@@ -1,6 +1,8 @@
+# 配置文件: 注释里标[必需]的参数必须修改, 其他参数根据需要修改, 但请勿删除
+
 import logging
 
-# Mirai的配置
+# [必需] Mirai的配置
 # 请到配置mirai的步骤中的教程查看每个字段的信息
 # host: 运行mirai的主机地址
 # port: 运行mirai的主机端口
@@ -13,7 +15,7 @@ mirai_http_api_config = {
     "qq": 0
 }
 
-# MySQL数据库的配置
+# [必需] MySQL数据库的配置
 # host: 数据库地址
 # port: 数据库端口
 # user: 数据库用户名
@@ -27,7 +29,7 @@ mysql_config = {
     "database": ""
 }
 
-# OpenAI的配置
+# [必需] OpenAI的配置
 # api_key: OpenAI的API Key
 openai_config = {
     "api_key": "",
@@ -37,9 +39,9 @@ openai_config = {
 # 不了解的话请不要修改，具体请查看OpenAI的文档
 completion_api_params = {
     "model": "text-davinci-003",
-    "temperature": 0.8,
-    "max_tokens": 200,  # 每次向OpenAI请求的最大字符数
-    "top_p": 1,
+    "temperature": 0.6,  # 数值越低得到的回答越理性，取值范围[0, 1]
+    "max_tokens": 200,  # 每次向OpenAI请求的最大字符数, 不高于4096
+    "top_p": 1,  # 生成的文本的文本与要求的符合度, 取值范围[0, 1]
     "frequency_penalty": 0.2,
     "presence_penalty": 0.4,
 }
