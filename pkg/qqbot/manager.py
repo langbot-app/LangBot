@@ -142,12 +142,14 @@ class QQBotManager:
                 reply = "[GPT]" + session.append(text_message)
             except openai.error.APIConnectionError as e:
                 self.notify_admin("{}会话调用API失败:{}".format(session_name, e))
-                # logging.exception(e)
                 reply = "[bot]err:调用API失败，请联系作者，或等待修复"
             except openai.error.RateLimitError as e:
-                # logging.exception(e)
                 self.notify_admin("API调用额度超限,请向OpenAI账户充值或在config.py中更换api_key")
                 reply = "[bot]err:API调用额度超额，请联系作者，或等待修复"
+            except openai.error.InvalidRequestError as e:
+                self.notify_admin("{}API调用参数错误:{}\n\n这可能是由于config.py中的prompt_submit_length参数或"
+                                  "completion_api_params中的max_tokens参数数值过大导致的，请尝试将其降低".format(session_name, e))
+                reply = "[bot]err:API调用参数错误，请联系作者，或等待修复"
             except Exception as e:
                 logging.exception(e)
                 reply = "[bot]err:{}".format(e)

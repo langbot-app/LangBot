@@ -38,20 +38,29 @@ openai_config = {
 completion_api_params = {
     "model": "text-davinci-003",
     "temperature": 0.8,
-    "max_tokens": 200,
+    "max_tokens": 200,  # 每次向OpenAI请求的最大字符数
     "top_p": 1,
     "frequency_penalty": 0.2,
     "presence_penalty": 0.4,
 }
 
+# 每次向OpenAI接口发送对话记录上下文的字符数
+# 最大不超过(4096 - max_tokens)个字符，max_tokens为上述completion_api_params中的max_tokens
+# 注意：较大的prompt_submit_length会导致OpenAI账户额度消耗更快
+prompt_submit_length = 1024
 
-# 消息处理的超时时间
+# 每次向OpenAI接口发送对话记录上下文的聊天回合数
+# 不建议过大，向OpenAI接口发送对话上下文时保证内容不超过prompt_submit_length个字符，
+# 不超过prompt_submit_round_amount个回合
+prompt_submit_round_amount = 8
+
+# 消息处理的超时时间，单位为秒
 process_message_timeout = 20
 
 # 消息处理超时重试次数
 retry_times = 3
 
-# 每个会话的过期时间
+# 每个会话的过期时间，单位为秒
 # 默认值20分钟
 session_expire_time = 60 * 20
 

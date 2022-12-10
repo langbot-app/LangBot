@@ -94,10 +94,12 @@ class Session:
     def append(self, text: str) -> str:
         self.last_interact_timestamp = int(time.time())
 
+        max_length = config.prompt_submit_length if config.prompt_submit_length is not None else 1024
+
         # 向API请求补全
         response = pkg.openai.manager.get_inst().request_completion(self.cut_out(self.prompt + self.user_name + ':' +
                                                                                  text + '\n' + self.bot_name + ':',
-                                                                                 7, 1024), self.user_name + ':')
+                                                                                 7, max_length), self.user_name + ':')
 
         self.prompt += self.user_name + ':' + text + '\n' + self.bot_name + ':'
         # print(response)
@@ -119,7 +121,7 @@ class Session:
 
         return res_ans
 
-    # 截取prompt里不多于max_rounds个回合，长度为大于max_tokens的最小整数字符串
+    # 从尾部截取prompt里不多于max_rounds个回合，长度不大于max_tokens的字符串
     # 保证都是完整的对话
     def cut_out(self, prompt: str, max_rounds: int, max_tokens: int) -> str:
         # 分隔出每个回合
@@ -130,14 +132,16 @@ class Session:
         checked_rounds = 0
         # 从后往前遍历，加到result前面，检查result是否符合要求
         for i in range(len(rounds_spt_by_user_name) - 1, 0, -1):
-            result = self.user_name + ':' + rounds_spt_by_user_name[i] + result
+            result_temp = self.user_name + ':' + rounds_spt_by_user_name[i] + result
             checked_rounds += 1
 
-            if checked_rounds >= max_rounds:
+            if checked_rounds > max_rounds:
                 break
 
-            if len(result) > max_tokens:
+            if len(result_temp) > max_tokens:
                 break
+
+            result = result_temp
 
         logging.debug('cut_out: {}'.format(result))
         return result
