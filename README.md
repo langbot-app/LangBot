@@ -70,7 +70,13 @@ python3 main.py
 
 按照文件内注释填写配置信息
 
-5. 运行主程序
+5. 初始化数据库
+
+```bash
+python3 main.py init_db
+```
+
+6. 运行主程序
 
 - 如提示安装`uvicorn`或`hypercorn`请不要安装，这两个不是必需的，目前存在未知原因bug
 
