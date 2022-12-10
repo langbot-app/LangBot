@@ -58,6 +58,9 @@ session_expire_time = 60 * 20
 # 日志级别
 logging_level = logging.INFO
 
+# 管理员QQ号，用于接收报错等通知
+admin_qq = 0
+
 # 定制帮助消息
 help_message = """此机器人通过调用OpenAI的GPT-3大型语言模型生成回复，不具有情感。
 你可以用自然语言与其交流，回复的消息中[GPT]开头的为模型生成的语言，[bot]开头的为程序提示。
