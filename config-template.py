@@ -9,16 +9,16 @@ import logging
 # verifyKey: mirai-api-http的verifyKey
 # qq: 机器人的QQ号
 mirai_http_api_config = {
-    "host": "",
+    "host": "localhost",
     "port": 8080,
-    "verifyKey": "",
-    "qq": 0
+    "verifyKey": "yirimirai",
+    "qq": 1234567890
 }
 
 # [必需] OpenAI的配置
 # api_key: OpenAI的API Key
 openai_config = {
-    "api_key": "",
+    "api_key": "openai_api_key",
 }
 
 # 管理员QQ号，用于接收报错等通知，为0时不发送通知
