@@ -1,4 +1,6 @@
 import asyncio
+import json
+import os
 import threading
 
 import openai.error
@@ -9,6 +11,8 @@ import pkg.openai.session
 from func_timeout import func_set_timeout, FunctionTimedOut
 import datetime
 import logging
+
+import pkg.qqbot.filter
 
 help_text = config.help_message
 
@@ -24,10 +28,20 @@ class QQBotManager:
 
     bot = None
 
+    reply_filter = None
+
     def __init__(self, mirai_http_api_config: dict, timeout: int = 60, retry: int = 3):
 
         self.timeout = timeout
         self.retry = retry
+
+        if os.path.exists("sensitive.json") \
+                and config.sensitive_word_filter is not None \
+                and config.sensitive_word_filter:
+            with open("sensitive.json", "r", encoding="utf-8") as f:
+                self.reply_filter = pkg.qqbot.filter.ReplyFilter(json.load(f)['words'])
+        else:
+            self.reply_filter = pkg.qqbot.filter.ReplyFilter([])
 
         bot = Mirai(
             qq=mirai_http_api_config['qq'],
@@ -157,7 +171,7 @@ class QQBotManager:
 
         logging.info(
             "回复[{}]消息:{}".format(session_name, reply[:min(100, len(reply))] + ("..." if len(reply) > 100 else "")))
-
+        reply = self.reply_filter.process(reply)
         return reply
 
     # 私聊消息处理

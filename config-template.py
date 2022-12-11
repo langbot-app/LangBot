@@ -24,6 +24,11 @@ openai_config = {
 # 管理员QQ号，用于接收报错等通知，为0时不发送通知
 admin_qq = 0
 
+# 敏感词过滤开关，以同样数量的*代替敏感词回复
+# 开启后可能会降低机器人的回复速度
+# 请在sensitive.json中添加敏感词
+sensitive_word_filter = True
+
 # OpenAI的completion API的参数
 # 不了解的话请不要修改，具体请查看OpenAI的文档
 completion_api_params = {
