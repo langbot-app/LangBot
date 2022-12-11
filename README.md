@@ -21,7 +21,13 @@
 - `pkg.qqbot` QQ机器人相关
   - 处理QQ收到的消息，调用API并进行回复
 
-## 部署
+## 自动化部署
+
+使用[此安装器](https://github.com/RockChinQ/qcg-installer)进行部署
+
+- 目前仅支持Windows x64平台
+
+## 手动部署
 
 - 请使用Python 3.9.x以上版本
 - 请注意OpenAI账号额度消耗
