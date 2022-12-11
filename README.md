@@ -1,6 +1,7 @@
 # QChatGPT
 
 通过调用OpenAI GPT-3模型提供的Completion API来实现一个更加智能的QQ机器人  
+使用SQLite储存会话内容，保证回复内容符合上下文  
 已部署的测试机器人QQ: 960164003  
 交流群、答疑群: 204785790  
 无需云服务器，在个人电脑上即可部署
@@ -9,7 +10,6 @@
 
 - [Mirai](https://github.com/mamoe/mirai) 高效率 QQ 机器人支持库
 - [YiriMirai](https://github.com/YiriMiraiProject/YiriMirai) 一个轻量级、低耦合的基于 mirai-api-http 的 Python SDK。
-- PyMySQL MySQL驱动
 - [OpenAI API](https://openai.com/api/) OpenAI API
 
 ## 项目结构
@@ -42,11 +42,7 @@
 
 按照[此教程](https://yiri-mirai.wybxc.cc/tutorials/01/configuration)配置Mirai及YiriMirai
 
-### 3. 配置MySQL数据库
-
-安装MySQL数据库，创建数据库`qchatgpt`
-
-### 4. 配置此程序
+### 3. 配置主程序
 
 1. 克隆此项目
 
