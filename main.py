@@ -59,6 +59,8 @@ def main():
 
     database = pkg.database.manager.DatabaseManager()
 
+    database.initialize_database()
+
     # 加载所有未超时的session
     pkg.openai.session.load_sessions()
 
