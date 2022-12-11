@@ -17,6 +17,7 @@ inst = None
 processing = []
 
 
+# 控制QQ消息输入输出的类
 class QQBotManager:
     timeout = 60
     retry = 3
@@ -159,6 +160,7 @@ class QQBotManager:
 
         return reply
 
+    # 私聊消息处理
     async def on_person_message(self, event: MessageEvent):
         global processing
         if "person_{}".format(event.sender.id) in processing:
@@ -192,6 +194,7 @@ class QQBotManager:
         if reply != '':
             return await self.bot.send(event, reply)
 
+    # 群消息处理
     async def on_group_message(self, event: GroupMessage):
         global processing
         if "group_{}".format(event.group.id) in processing:
@@ -226,6 +229,7 @@ class QQBotManager:
         if reply != '':
             return await self.bot.send(event, reply)
 
+    # 通知系统管理员
     def notify_admin(self, message: str):
         if config.admin_qq is not None and config.admin_qq != 0:
             send_task = self.bot.send_friend_message(config.admin_qq, "[bot]{}".format(message))

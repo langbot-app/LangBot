@@ -8,7 +8,8 @@ import config
 
 inst = None
 
-
+# 数据库管理
+# 为其他模块提供数据库操作接口
 class DatabaseManager:
     conn = None
     cursor = None
@@ -17,15 +18,16 @@ class DatabaseManager:
 
         self.reconnect()
 
-
         global inst
         inst = self
 
+    # 连接到数据库文件
     def reconnect(self):
         self.conn = sqlite3.connect('database.db', check_same_thread=False)
         # self.conn.isolation_level = None
         self.cursor = self.conn.cursor()
 
+    # 初始化数据库的函数
     def initialize_database(self):
         self.cursor.execute("""
         create table if not exists `sessions` (
@@ -42,6 +44,7 @@ class DatabaseManager:
         self.conn.commit()
         print('Database initialized.')
 
+    # session持久化
     def persistence_session(self, subject_type: str, subject_number: int, create_timestamp: int,
                             last_interact_timestamp: int, prompt: str):
         # 检查是否已经有了此name和create_timestamp的session
@@ -66,6 +69,7 @@ class DatabaseManager:
                        subject_number, create_timestamp))
             self.conn.commit()
 
+    # 显式关闭一个session
     def explicit_close_session(self, session_name: str, create_timestamp: int):
         self.cursor.execute("""
         update `sessions` set `status` = 'explicitly_closed' where `name` = '{}' and `create_timestamp` = {}
@@ -78,13 +82,14 @@ class DatabaseManager:
         """.format(session_name, create_timestamp))
         self.conn.commit()
 
+    # 设置session为过期
     def set_session_expired(self, session_name: str, create_timestamp: int):
         self.cursor.execute("""
         update `sessions` set `status` = 'expired' where `name` = '{}' and `create_timestamp` = {}
         """.format(session_name, create_timestamp))
         self.conn.commit()
 
-    # 记载还没过期的session数据
+    # 从数据库加载还没过期的session数据
     def load_valid_sessions(self) -> dict:
         # 从数据库中加载所有还没过期的session
         self.cursor.execute("""
@@ -175,6 +180,7 @@ class DatabaseManager:
             'prompt': prompt
         }
 
+    # 列出与某个对象的所有对话session
     def list_history(self, session_name: str, capacity: int, page: int):
         self.cursor.execute("""
         select `name`, `type`, `number`, `create_timestamp`, `last_interact_timestamp`, `prompt`, `status`

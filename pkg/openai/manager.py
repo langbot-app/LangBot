@@ -3,6 +3,7 @@ import openai
 inst = None
 
 
+# 为其他模块提供与OpenAI交互的接口
 class OpenAIInteract:
     api_key = ''
     api_params = {}
@@ -16,6 +17,7 @@ class OpenAIInteract:
         global inst
         inst = self
 
+    # 请求OpenAI Completion
     def request_completion(self, prompt, stop):
         response = openai.Completion.create(
             prompt=prompt,

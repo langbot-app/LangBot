@@ -21,6 +21,9 @@ openai_config = {
     "api_key": "",
 }
 
+# 管理员QQ号，用于接收报错等通知，为0时不发送通知
+admin_qq = 0
+
 # OpenAI的completion API的参数
 # 不了解的话请不要修改，具体请查看OpenAI的文档
 completion_api_params = {
@@ -54,9 +57,6 @@ session_expire_time = 60 * 20
 
 # 日志级别
 logging_level = logging.INFO
-
-# 管理员QQ号，用于接收报错等通知
-admin_qq = 0
 
 # 定制帮助消息
 help_message = """此机器人通过调用OpenAI的GPT-3大型语言模型生成回复，不具有情感。

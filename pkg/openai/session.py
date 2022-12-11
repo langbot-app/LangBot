@@ -6,6 +6,7 @@ import config
 import pkg.openai.manager
 import pkg.database.manager
 
+# 运行时保存的所有session
 sessions = {}
 
 
@@ -14,6 +15,7 @@ class SessionOfflineStatus:
     EXPLICITLY_CLOSED = 'explicitly_closed'
 
 
+# 从数据加载session
 def load_sessions():
     global sessions
 
@@ -33,6 +35,7 @@ def load_sessions():
         sessions[session_name] = temp_session
 
 
+# 获取指定名称的session，如果不存在则创建一个新的
 def get_session(session_name: str):
     global sessions
     if session_name not in sessions:
@@ -49,6 +52,8 @@ def dump_session(session_name: str):
 
 
 # 通用的OpenAI API交互session
+# session内部保留了对话的上下文，
+# 收到用户消息后，将上下文提交给OpenAI API生成回复
 class Session:
     name = ''
 
@@ -69,6 +74,7 @@ class Session:
         self.last_interact_timestamp = int(time.time())
         self.schedule()
 
+    # 设定检查session最后一次对话是否超过过期时间的计时器
     def schedule(self):
         threading.Thread(target=self.expire_check_timer_loop, args=(self.create_timestamp,)).start()
 
@@ -146,6 +152,7 @@ class Session:
         logging.debug('cut_out: {}'.format(result))
         return result
 
+    # 持久化session
     def persistence(self):
         if self.prompt == '':
             return
@@ -160,6 +167,7 @@ class Session:
         db_inst.persistence_session(subject_type, subject_number, self.create_timestamp, self.last_interact_timestamp,
                                     self.prompt)
 
+    # 重置session
     def reset(self, explicit: bool = False, expired: bool = False, schedule_new: bool = True):
         if self.prompt != '':
             self.persistence()
@@ -195,6 +203,7 @@ class Session:
             just_switched = True
             return self
 
+    # 切换到下一个session
     def next_session(self):
         next_one = pkg.database.manager.get_inst().next_session(self.name, self.last_interact_timestamp)
         if next_one is None:
