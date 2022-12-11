@@ -39,7 +39,8 @@
 
 ### 2. 配置Mirai
 
-按照[此教程](https://yiri-mirai.wybxc.cc/tutorials/01/configuration)配置Mirai及YiriMirai
+按照[此教程](https://yiri-mirai.wybxc.cc/tutorials/01/configuration)配置Mirai及YiriMirai  
+启动mirai-console后，使用`login`命令登录QQ账号，保持mirai-console运行状态
 
 ### 3. 配置主程序
 
