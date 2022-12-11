@@ -48,6 +48,7 @@
 
 ```bash
 git clone https://github.com/RockChinQ/QChatGPT
+cd QChatGPT
 ```
 
 2. 安装依赖
@@ -74,12 +75,11 @@ python3 main.py init_db
 
 6. 运行主程序
 
-- 如提示安装`uvicorn`或`hypercorn`请*不要*安装，这两个不是必需的，目前存在未知原因bug
-
 ```bash
 python3 main.py
 ```
 
+- 如提示安装`uvicorn`或`hypercorn`请*不要*安装，这两个不是必需的，目前存在未知原因bug
 - 如报错`TypeError: As of 3.10, the *loop* parameter was removed from Lock() since it is no longer necessary`, 请参考 [此处](https://github.com/RockChinQ/QChatGPT/issues/5)
 
 无报错信息即为运行成功
