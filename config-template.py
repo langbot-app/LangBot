@@ -15,20 +15,6 @@ mirai_http_api_config = {
     "qq": 0
 }
 
-# [必需] MySQL数据库的配置
-# host: 数据库地址
-# port: 数据库端口
-# user: 数据库用户名
-# password: 数据库密码
-# database: 数据库名
-mysql_config = {
-    "host": "",
-    "port": 3306,
-    "user": "",
-    "password": "",
-    "database": ""
-}
-
 # [必需] OpenAI的配置
 # api_key: OpenAI的API Key
 openai_config = {

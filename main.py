@@ -17,9 +17,8 @@ log_colors_config = {
 
 
 def init_db():
-    import config
     import pkg.database.manager
-    database = pkg.database.manager.DatabaseManager(**config.mysql_config)
+    database = pkg.database.manager.DatabaseManager()
 
     database.initialize_database()
 
@@ -54,7 +53,7 @@ def main():
     # 主启动流程
     openai_interact = pkg.openai.manager.OpenAIInteract(config.openai_config['api_key'], config.completion_api_params)
 
-    database = pkg.database.manager.DatabaseManager(**config.mysql_config)
+    database = pkg.database.manager.DatabaseManager()
 
     # 加载所有未超时的session
     pkg.openai.session.load_sessions()

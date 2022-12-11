@@ -1,8 +1,8 @@
-import threading
 import time
 
-import pymysql
 from pymysql.converters import escape_string
+
+import sqlite3
 
 import config
 
@@ -10,43 +10,26 @@ inst = None
 
 
 class DatabaseManager:
-    host = ''
-    port = 0
-    user = ''
-    password = ''
-    database = ''
     conn = None
     cursor = None
 
-    def __init__(self, host: str, port: int, user: str, password: str, database: str):
-        self.host = host
-        self.port = port
-        self.user = user
-        self.password = password
-        self.database = database
+    def __init__(self):
 
         self.reconnect()
 
-        heartbeat_proxy = threading.Thread(target=self.heartbeat, daemon=True)
-        heartbeat_proxy.start()
 
         global inst
         inst = self
 
-    def heartbeat(self):
-        while True:
-            time.sleep(30)
-            self.conn.ping(reconnect=True)
-
     def reconnect(self):
-        self.conn = pymysql.connect(host=self.host, port=self.port, user=self.user, password=self.password,
-                                    database=self.database, autocommit=True)
+        self.conn = sqlite3.connect('database.db', check_same_thread=False)
+        # self.conn.isolation_level = None
         self.cursor = self.conn.cursor()
 
     def initialize_database(self):
         self.cursor.execute("""
         create table if not exists `sessions` (
-            `id` bigint not null auto_increment primary key,
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT,
             `name` varchar(255) not null,
             `type` varchar(255) not null,
             `number` bigint not null,
@@ -56,6 +39,7 @@ class DatabaseManager:
             `prompt` text not null
         )
         """)
+        self.conn.commit()
         print('Database initialized.')
 
     def persistence_session(self, subject_type: str, subject_number: int, create_timestamp: int,
@@ -73,27 +57,32 @@ class DatabaseManager:
             values ('{}', '{}', {}, {}, {}, '{}')
             """.format("{}_{}".format(subject_type, subject_number), subject_type, subject_number, create_timestamp,
                        last_interact_timestamp, escape_string(prompt)))
+            self.conn.commit()
         else:
             self.cursor.execute("""
             update `sessions` set `last_interact_timestamp` = {}, `prompt` = '{}' 
             where `type` = '{}' and `number` = {} and `create_timestamp` = {}
             """.format(last_interact_timestamp, escape_string(prompt), subject_type,
                        subject_number, create_timestamp))
+            self.conn.commit()
 
     def explicit_close_session(self, session_name: str, create_timestamp: int):
         self.cursor.execute("""
         update `sessions` set `status` = 'explicitly_closed' where `name` = '{}' and `create_timestamp` = {}
         """.format(session_name, create_timestamp))
+        self.conn.commit()
 
     def set_session_ongoing(self, session_name: str, create_timestamp: int):
         self.cursor.execute("""
         update `sessions` set `status` = 'on_going' where `name` = '{}' and `create_timestamp` = {}
         """.format(session_name, create_timestamp))
+        self.conn.commit()
 
     def set_session_expired(self, session_name: str, create_timestamp: int):
         self.cursor.execute("""
         update `sessions` set `status` = 'expired' where `name` = '{}' and `create_timestamp` = {}
         """.format(session_name, create_timestamp))
+        self.conn.commit()
 
     # 记载还没过期的session数据
     def load_valid_sessions(self) -> dict:
