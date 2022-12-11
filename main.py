@@ -7,6 +7,10 @@ import time
 import logging
 import colorlog
 
+import sys
+sys.path.append(".")
+
+
 log_colors_config = {
     'DEBUG': 'green',  # cyan white
     'INFO': 'white',
