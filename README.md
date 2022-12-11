@@ -21,34 +21,39 @@
 - `pkg.qqbot` QQ机器人相关
   - 处理QQ收到的消息，调用API并进行回复
 
-## 自动化部署
+## 部署
 
-使用[此安装器](https://github.com/RockChinQ/qcg-installer)进行部署
-
-- 此安装器目前仅支持Windows x64平台,其他平台请手动部署
-
-## 手动部署
-
-- 请使用Python 3.9.x以上版本
-- 请注意OpenAI账号额度消耗
-  - 每个账户仅有18美元免费额度，如未绑定银行卡，则会在超出时报错
-  - OpenAI收费标准：默认使用的`text-davinci-003`模型 0.02美元/千字
-
-### 1. 注册OpenAI账号并取得api_key
+### 注册OpenAI账号
 
 参考以下文章
 
-- [只需 1 元搞定 ChatGPT 注册](https://zhuanlan.zhihu.com/p/589470082)
-- [手把手教你如何注册ChatGPT，超级详细](https://guxiaobei.com/51461)
+> [只需 1 元搞定 ChatGPT 注册](https://zhuanlan.zhihu.com/p/589470082)  
+> [手把手教你如何注册ChatGPT，超级详细](https://guxiaobei.com/51461)
 
-注册成功后请前往[个人中心查看](https://beta.openai.com/account/api-keys)api_key
+注册成功后请前往[个人中心查看](https://beta.openai.com/account/api-keys)api_key  
+完成注册后，请见以下自动化或手动部署步骤
 
-### 2. 配置Mirai
+### 自动化部署
+
+使用[此安装器](https://github.com/RockChinQ/qcg-installer)进行部署
+
+- 此安装器目前仅支持Windows x64平台，其他平台请手动部署
+
+### 手动部署
+<details>
+<summary>手动部署适用于所有平台</summary>
+
+- 请使用Python 3.9.x以上版本  
+- 请注意OpenAI账号额度消耗  
+  - 每个账户仅有18美元免费额度，如未绑定银行卡，则会在超出时报错  
+  - OpenAI收费标准：默认使用的`text-davinci-003`模型 0.02美元/千字  
+
+#### 配置Mirai
 
 按照[此教程](https://yiri-mirai.wybxc.cc/tutorials/01/configuration)配置Mirai及YiriMirai  
 启动mirai-console后，使用`login`命令登录QQ账号，保持mirai-console运行状态
 
-### 3. 配置主程序
+#### 配置主程序
 
 1. 克隆此项目
 
@@ -83,6 +88,8 @@ python3 main.py
 - 如报错`TypeError: As of 3.10, the *loop* parameter was removed from Lock() since it is no longer necessary`, 请参考 [此处](https://github.com/RockChinQ/QChatGPT/issues/5)
 
 无报错信息即为运行成功
+
+</details>
 
 ## 使用
 
