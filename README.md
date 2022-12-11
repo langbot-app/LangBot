@@ -25,7 +25,7 @@
 
 使用[此安装器](https://github.com/RockChinQ/qcg-installer)进行部署
 
-- 目前仅支持Windows x64平台
+- 此安装器目前仅支持Windows x64平台,其他平台请手动部署
 
 ## 手动部署
 
