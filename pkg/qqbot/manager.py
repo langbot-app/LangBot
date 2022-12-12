@@ -224,6 +224,7 @@ class QQBotManager:
                         continue
 
                 if failed == self.retry:
+                    self.notify_admin("{} 请求超时".format("person_{}".format(event.sender.id)))
                     reply = "[bot]err:请求超时"
 
         if reply != '':
@@ -255,7 +256,8 @@ class QQBotManager:
                     continue
 
             if failed == self.retry:
-                reply = "err:请求超时"
+                self.notify_admin("{} 请求超时".format("group_{}".format(event.sender.id)))
+                reply = "[bot]err:请求超时"
 
         if reply != '':
             return self.send(event, reply)
