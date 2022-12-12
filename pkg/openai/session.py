@@ -57,6 +57,22 @@ def get_default_prompt():
                                                                  config.default_prompt != "" else ''
 
 
+# def blocked_func(lock: threading.Lock):
+#
+#     def decorator(func):
+#         def wrapper(*args, **kwargs):
+#             print('lock acquire,{}'.format(lock))
+#             lock.acquire()
+#             try:
+#                 return func(*args, **kwargs)
+#             finally:
+#                 lock.release()
+#
+#         return wrapper
+#
+#     return decorator
+
+
 # 通用的OpenAI API交互session
 # session内部保留了对话的上下文，
 # 收到用户消息后，将上下文提交给OpenAI API生成回复
@@ -73,6 +89,16 @@ class Session:
     last_interact_timestamp = 0
 
     just_switched_to_exist_session = False
+
+    response_lock = threading.Lock()
+
+    # 加锁
+    def acquire_response_lock(self):
+        self.response_lock.acquire()
+
+    # 释放锁
+    def release_response_lock(self):
+        self.response_lock.release()
 
     def __init__(self, name: str):
         self.name = name
@@ -188,6 +214,8 @@ class Session:
         self.last_interact_timestamp = int(time.time())
         self.just_switched_to_exist_session = False
 
+        self.response_lock = threading.Lock()
+
         if schedule_new:
             self.schedule()
 
@@ -207,7 +235,7 @@ class Session:
             self.last_interact_timestamp = last_one['last_interact_timestamp']
             self.prompt = last_one['prompt']
 
-            just_switched = True
+            self.just_switched_to_exist_session = True
             return self
 
     # 切换到下一个session
@@ -222,7 +250,7 @@ class Session:
             self.last_interact_timestamp = next_one['last_interact_timestamp']
             self.prompt = next_one['prompt']
 
-            just_switched = True
+            self.just_switched_to_exist_session = True
             return self
 
     def list_history(self, capacity: int = 10, page: int = 0):
