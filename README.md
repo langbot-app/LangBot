@@ -71,7 +71,7 @@ cd QChatGPT
 2. 安装依赖
 
 ```bash
-pip3 install pymysql yiri-mirai openai colorlog func_timeout
+pip3 install -r requirements.txt
 ```
 
 3. 运行一次主程序，生成配置文件
