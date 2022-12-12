@@ -262,7 +262,7 @@ class QQBotManager:
 
     # 通知系统管理员
     def notify_admin(self, message: str):
-        if config.admin_qq is not None and config.admin_qq != 0:
+        if hasattr(config, "admin_qq") and config.admin_qq != 0:
             send_task = self.bot.send_friend_message(config.admin_qq, "[bot]{}".format(message))
             threading.Thread(target=asyncio.run, args=(send_task,)).start()
 
