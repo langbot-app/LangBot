@@ -2,13 +2,12 @@ import logging
 import time
 from sqlite3 import Cursor
 
-from pymysql.converters import escape_string
-
 import sqlite3
 
 import config
 
 inst = None
+
 
 # 数据库管理
 # 为其他模块提供数据库操作接口
@@ -29,9 +28,9 @@ class DatabaseManager:
         # self.conn.isolation_level = None
         self.cursor = self.conn.cursor()
 
-    def execute(self, sql: str) -> Cursor:
-        logging.debug('SQL: {}'.format(sql))
-        c = self.cursor.execute(sql)
+    def execute(self, *args, **kwargs) -> Cursor:
+        # logging.debug('SQL: {}'.format(sql))
+        c = self.cursor.execute(*args, **kwargs)
         self.conn.commit()
         return c
 
@@ -62,17 +61,23 @@ class DatabaseManager:
         """.format(subject_type, subject_number, create_timestamp))
         count = self.cursor.fetchone()[0]
         if count == 0:
-            self.execute("""
+
+            sql = """
             insert into `sessions` (`name`, `type`, `number`, `create_timestamp`, `last_interact_timestamp`, `prompt`) 
-            values ('{}', '{}', {}, {}, {}, '{}')
-            """.format("{}_{}".format(subject_type, subject_number), subject_type, subject_number, create_timestamp,
-                       last_interact_timestamp, escape_string(prompt)))
+            values (?, ?, ?, ?, ?, ?)
+            """
+
+            self.execute(sql,
+                         ("{}_{}".format(subject_type, subject_number), subject_type, subject_number, create_timestamp,
+                          last_interact_timestamp, prompt))
         else:
-            self.execute("""
-            update `sessions` set `last_interact_timestamp` = {}, `prompt` = '{}' 
-            where `type` = '{}' and `number` = {} and `create_timestamp` = {}
-            """.format(last_interact_timestamp, escape_string(prompt), subject_type,
-                       subject_number, create_timestamp))
+            sql = """
+            update `sessions` set `last_interact_timestamp` = ?, `prompt` = ? 
+            where `type` = ? and `number` = ? and `create_timestamp` = ?
+            """
+
+            self.execute(sql, (last_interact_timestamp, prompt, subject_type,
+                               subject_number, create_timestamp))
 
     # 显式关闭一个session
     def explicit_close_session(self, session_name: str, create_timestamp: int):
