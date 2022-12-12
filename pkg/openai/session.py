@@ -100,12 +100,13 @@ class Session:
     def append(self, text: str) -> str:
         self.last_interact_timestamp = int(time.time())
 
-        max_length = config.prompt_submit_length if config.prompt_submit_length is not None else 1024
+        max_rounds = config.prompt_submit_round_amount if hasattr(config, 'prompt_submit_round_amount') else 7
+        max_length = config.prompt_submit_length if hasattr(config, "prompt_submit_length") else 1024
 
         # 向API请求补全
         response = pkg.openai.manager.get_inst().request_completion(self.cut_out(self.prompt + self.user_name + ':' +
                                                                                  text + '\n' + self.bot_name + ':',
-                                                                                 7, max_length), self.user_name + ':')
+                                                                                 max_rounds, max_length), self.user_name + ':')
 
         self.prompt += self.user_name + ':' + text + '\n' + self.bot_name + ':'
         # print(response)
