@@ -51,13 +51,19 @@ def dump_session(session_name: str):
         del sessions[session_name]
 
 
+# 从配置文件获取会话预设信息
+def get_default_prompt():
+    return "You:{}\nBot:好的\n".format(config.default_prompt) if hasattr(config, 'default_prompt') and \
+                                                                 config.default_prompt != "" else ''
+
+
 # 通用的OpenAI API交互session
 # session内部保留了对话的上下文，
 # 收到用户消息后，将上下文提交给OpenAI API生成回复
 class Session:
     name = ''
 
-    prompt = ''
+    prompt = get_default_prompt()
 
     user_name = 'You'
     bot_name = 'Bot'
@@ -100,12 +106,13 @@ class Session:
     def append(self, text: str) -> str:
         self.last_interact_timestamp = int(time.time())
 
-        max_length = config.prompt_submit_length if config.prompt_submit_length is not None else 1024
+        max_rounds = config.prompt_submit_round_amount if hasattr(config, 'prompt_submit_round_amount') else 7
+        max_length = config.prompt_submit_length if hasattr(config, "prompt_submit_length") else 1024
 
         # 向API请求补全
         response = pkg.openai.manager.get_inst().request_completion(self.cut_out(self.prompt + self.user_name + ':' +
                                                                                  text + '\n' + self.bot_name + ':',
-                                                                                 7, max_length), self.user_name + ':')
+                                                                                 max_rounds, max_length), self.user_name + ':')
 
         self.prompt += self.user_name + ':' + text + '\n' + self.bot_name + ':'
         # print(response)
@@ -154,7 +161,7 @@ class Session:
 
     # 持久化session
     def persistence(self):
-        if self.prompt == '':
+        if self.prompt == get_default_prompt():
             return
 
         db_inst = pkg.database.manager.get_inst()
@@ -169,14 +176,14 @@ class Session:
 
     # 重置session
     def reset(self, explicit: bool = False, expired: bool = False, schedule_new: bool = True):
-        if self.prompt != '':
+        if self.prompt != get_default_prompt():
             self.persistence()
             if explicit:
                 pkg.database.manager.get_inst().explicit_close_session(self.name, self.create_timestamp)
 
             if expired:
                 pkg.database.manager.get_inst().set_session_expired(self.name, self.create_timestamp)
-        self.prompt = ''
+        self.prompt = get_default_prompt()
         self.create_timestamp = int(time.time())
         self.last_interact_timestamp = int(time.time())
         self.just_switched_to_exist_session = False

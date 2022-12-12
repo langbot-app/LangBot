@@ -1,5 +1,4 @@
 # 配置文件: 注释里标[必需]的参数必须修改, 其他参数根据需要修改, 但请勿删除
-
 import logging
 
 # [必需] Mirai的配置
@@ -25,12 +24,17 @@ openai_config = {
 admin_qq = 0
 
 # 敏感词过滤开关，以同样数量的*代替敏感词回复
-# 开启后可能会降低机器人的回复速度
 # 请在sensitive.json中添加敏感词
 sensitive_word_filter = True
 
+# 每个会话的预设信息，影响所有会话，无视指令重置
+# 可以通过这个字段指定某些情况的回复，可直接用自然语言描述指令
+# 例如: 如果我之后想获取帮助，请你说“输入!help获取帮助”
+# 可参考 https://github.com/PlexPt/awesome-chatgpt-prompts-zh
+default_prompt = ""
+
 # OpenAI的completion API的参数
-# 不了解的话请不要修改，具体请查看OpenAI的文档
+# 具体请查看OpenAI的文档
 completion_api_params = {
     "model": "text-davinci-003",
     "temperature": 0.6,  # 数值越低得到的回答越理性，取值范围[0, 1]
