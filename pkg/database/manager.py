@@ -30,8 +30,8 @@ class DatabaseManager:
         self.cursor = self.conn.cursor()
 
     def execute(self, sql: str) -> Cursor:
-        c = self.cursor.execute(sql)
         logging.debug('SQL: {}'.format(sql))
+        c = self.cursor.execute(sql)
         self.conn.commit()
         return c
 
