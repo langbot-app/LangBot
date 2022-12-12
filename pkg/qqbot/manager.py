@@ -190,20 +190,21 @@ class QQBotManager:
             else:
                 processing.append("person_{}".format(event.sender.id))
 
-                # 超时则重试，重试超过次数则放弃
-                failed = 0
-                for i in range(self.retry):
-                    try:
-                        reply = self.process_message('person', event.sender.id, str(event.message_chain))
-                        break
-                    except FunctionTimedOut:
-                        failed += 1
-                        continue
+                try:
+                    # 超时则重试，重试超过次数则放弃
+                    failed = 0
+                    for i in range(self.retry):
+                        try:
+                            reply = self.process_message('person', event.sender.id, str(event.message_chain))
+                            break
+                        except FunctionTimedOut:
+                            failed += 1
+                            continue
 
-                if failed == self.retry:
-                    reply = "[bot]err:请求超时"
-
-                processing.remove("person_{}".format(event.sender.id))
+                    if failed == self.retry:
+                        reply = "[bot]err:请求超时"
+                finally:
+                    processing.remove("person_{}".format(event.sender.id))
 
         if reply != '':
             return await self.bot.send(event, reply)
@@ -225,20 +226,21 @@ class QQBotManager:
 
             processing.append("group_{}".format(event.sender.id))
 
-            # 超时则重试，重试超过次数则放弃
-            failed = 0
-            for i in range(self.retry):
-                try:
-                    reply = self.process_message('group', event.group.id, str(event.message_chain).strip())
-                    break
-                except FunctionTimedOut:
-                    failed += 1
-                    continue
+            try:
+                # 超时则重试，重试超过次数则放弃
+                failed = 0
+                for i in range(self.retry):
+                    try:
+                        reply = self.process_message('group', event.group.id, str(event.message_chain).strip())
+                        break
+                    except FunctionTimedOut:
+                        failed += 1
+                        continue
 
-            if failed == self.retry:
-                reply = "err:请求超时"
-
-            processing.remove("group_{}".format(event.sender.id))
+                if failed == self.retry:
+                    reply = "err:请求超时"
+            finally:
+                processing.remove("group_{}".format(event.sender.id))
 
         if reply != '':
             return await self.bot.send(event, reply)
