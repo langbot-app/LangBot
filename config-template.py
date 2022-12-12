@@ -29,9 +29,10 @@ sensitive_word_filter = True
 
 # 每个会话的预设信息，影响所有会话，无视指令重置
 # 可以通过这个字段指定某些情况的回复，可直接用自然语言描述指令
-# 例如: 如果我之后想获取帮助，请你说“输入!help获取帮助”
+# 例如: 如果我之后想获取帮助，请你说“输入!help获取帮助”，
+#   这样用户在不知所措的时候机器人就会提示其输入!help获取帮助
 # 可参考 https://github.com/PlexPt/awesome-chatgpt-prompts-zh
-default_prompt = ""
+default_prompt = "如果我之后想获取帮助，请你说“输入!help获取帮助”"
 
 # OpenAI的completion API的参数
 # 具体请查看OpenAI的文档
