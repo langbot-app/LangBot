@@ -94,10 +94,12 @@ class Session:
 
     # 加锁
     def acquire_response_lock(self):
+        logging.debug('{},lock acquire,{}'.format(self.name, self.response_lock))
         self.response_lock.acquire()
 
     # 释放锁
     def release_response_lock(self):
+        logging.debug('{},lock release,{}'.format(self.name, self.response_lock))
         self.response_lock.release()
 
     def __init__(self, name: str):
@@ -214,7 +216,7 @@ class Session:
         self.last_interact_timestamp = int(time.time())
         self.just_switched_to_exist_session = False
 
-        self.response_lock = threading.Lock()
+        # self.response_lock = threading.Lock()
 
         if schedule_new:
             self.schedule()
