@@ -90,17 +90,19 @@ class Session:
 
     just_switched_to_exist_session = False
 
-    response_lock = threading.Lock()
+    response_lock = None
 
     # 加锁
     def acquire_response_lock(self):
         logging.debug('{},lock acquire,{}'.format(self.name, self.response_lock))
         self.response_lock.acquire()
+        logging.debug('{},lock acquire successfully,{}'.format(self.name, self.response_lock))
 
     # 释放锁
     def release_response_lock(self):
         logging.debug('{},lock release,{}'.format(self.name, self.response_lock))
         self.response_lock.release()
+        logging.debug('{},lock release successfully,{}'.format(self.name, self.response_lock))
 
     def __init__(self, name: str):
         self.name = name
@@ -108,24 +110,26 @@ class Session:
         self.last_interact_timestamp = int(time.time())
         self.schedule()
 
+        self.response_lock = threading.RLock()
+
     # 设定检查session最后一次对话是否超过过期时间的计时器
     def schedule(self):
         threading.Thread(target=self.expire_check_timer_loop, args=(self.create_timestamp,)).start()
 
     # 检查session是否已经过期
     def expire_check_timer_loop(self, create_timestamp: int):
+        global sessions
         while True:
             time.sleep(60)
 
             # 不是此session已更换，退出
-            if self.create_timestamp != create_timestamp:
+            if self.create_timestamp != create_timestamp or self not in sessions.values():
                 return
             if int(time.time()) - self.last_interact_timestamp > config.session_expire_time:
                 logging.info('session {} 已过期'.format(self.name))
                 self.reset(expired=True, schedule_new=False)
 
                 # 删除此session
-                global sessions
                 del sessions[self.name]
                 return
 

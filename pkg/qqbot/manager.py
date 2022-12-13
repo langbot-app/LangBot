@@ -86,6 +86,7 @@ class QQBotManager:
 
         try:
             if session_name in processing:
+                pkg.openai.session.get_session(session_name).release_response_lock()
                 return "[bot]err:正在处理中，请稍后再试"
 
             processing.append(session_name)
@@ -94,8 +95,9 @@ class QQBotManager:
 
                 if text_message.startswith('!') or text_message.startswith("！"):  # 指令
                     try:
-                        logging.info("[{}]发起指令:{}".format(session_name, text_message[:min(20, len(text_message))] + (
-                            "..." if len(text_message) > 20 else "")))
+                        logging.info(
+                            "[{}]发起指令:{}".format(session_name, text_message[:min(20, len(text_message))] + (
+                                "..." if len(text_message) > 20 else "")))
 
                         cmd = text_message[1:].strip().split(' ')[0]
 
@@ -112,9 +114,10 @@ class QQBotManager:
                             else:
                                 datetime_str = datetime.datetime.fromtimestamp(result.create_timestamp).strftime(
                                     '%Y-%m-%d %H:%M:%S')
-                                reply = "[bot]已切换到前一次的对话：\n创建时间:{}\n".format(datetime_str) + result.prompt[
-                                                                                                           :min(100,
-                                                                                                                len(result.prompt))] + \
+                                reply = "[bot]已切换到前一次的对话：\n创建时间:{}\n".format(
+                                    datetime_str) + result.prompt[
+                                                    :min(100,
+                                                         len(result.prompt))] + \
                                         ("..." if len(result.prompt) > 100 else "#END#")
                         elif cmd == 'next':
                             result = pkg.openai.session.get_session(session_name).next_session()
@@ -123,9 +126,10 @@ class QQBotManager:
                             else:
                                 datetime_str = datetime.datetime.fromtimestamp(result.create_timestamp).strftime(
                                     '%Y-%m-%d %H:%M:%S')
-                                reply = "[bot]已切换到后一次的对话：\n创建时间:{}\n".format(datetime_str) + result.prompt[
-                                                                                                           :min(100,
-                                                                                                                len(result.prompt))] + \
+                                reply = "[bot]已切换到后一次的对话：\n创建时间:{}\n".format(
+                                    datetime_str) + result.prompt[
+                                                    :min(100,
+                                                         len(result.prompt))] + \
                                         ("..." if len(result.prompt) > 100 else "#END#")
                         elif cmd == 'prompt':
                             reply = "[bot]当前对话所有内容：\n" + pkg.openai.session.get_session(session_name).prompt
@@ -188,7 +192,8 @@ class QQBotManager:
                         reply = "[bot]err:{}".format(e)
 
                 logging.info(
-                    "回复[{}]消息:{}".format(session_name, reply[:min(100, len(reply))] + ("..." if len(reply) > 100 else "")))
+                    "回复[{}]消息:{}".format(session_name,
+                                             reply[:min(100, len(reply))] + ("..." if len(reply) > 100 else "")))
                 reply = self.reply_filter.process(reply)
 
             finally:
@@ -196,7 +201,7 @@ class QQBotManager:
         finally:
             pkg.openai.session.get_session(session_name).release_response_lock()
 
-        return reply
+            return reply
 
     def send(self, event, msg):
         asyncio.run(self.bot.send(event, msg))
@@ -265,6 +270,7 @@ class QQBotManager:
     # 通知系统管理员
     def notify_admin(self, message: str):
         if hasattr(config, "admin_qq") and config.admin_qq != 0:
+            logging.info("通知管理员:{}".format(message))
             send_task = self.bot.send_friend_message(config.admin_qq, "[bot]{}".format(message))
             threading.Thread(target=asyncio.run, args=(send_task,)).start()
 
