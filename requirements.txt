@@ -1,5 +1,5 @@
 colorlog>=6.6.0
 func-timeout>=4.3.5
 openai>=0.25.0
-websockets>=10.3
-yiri-mirai
+websockets==10.4
+yiri-mirai==0.2.6.1
