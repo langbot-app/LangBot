@@ -225,10 +225,12 @@ class QQBotManager:
                         reply = self.process_message('person', event.sender.id, str(event.message_chain))
                         break
                     except FunctionTimedOut:
+                        pkg.openai.session.get_session('person_{}'.format(event.sender.id)).release_response_lock()
                         failed += 1
                         continue
 
                 if failed == self.retry:
+                    pkg.openai.session.get_session('person_{}'.format(event.sender.id)).release_response_lock()
                     self.notify_admin("{} 请求超时".format("person_{}".format(event.sender.id)))
                     reply = "[bot]err:请求超时"
 

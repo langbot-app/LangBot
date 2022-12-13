@@ -1,5 +1,7 @@
 import openai
 
+import config
+
 inst = None
 
 
@@ -22,6 +24,7 @@ class OpenAIInteract:
         response = openai.Completion.create(
             prompt=prompt,
             stop=stop,
+            timeout=config.process_message_timeout,
             **self.api_params
         )
         return response

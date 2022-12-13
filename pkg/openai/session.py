@@ -100,9 +100,10 @@ class Session:
 
     # 释放锁
     def release_response_lock(self):
-        logging.debug('{},lock release,{}'.format(self.name, self.response_lock))
-        self.response_lock.release()
-        logging.debug('{},lock release successfully,{}'.format(self.name, self.response_lock))
+        if self.response_lock.locked():
+            logging.debug('{},lock release,{}'.format(self.name, self.response_lock))
+            self.response_lock.release()
+            logging.debug('{},lock release successfully,{}'.format(self.name, self.response_lock))
 
     def __init__(self, name: str):
         self.name = name
@@ -110,7 +111,7 @@ class Session:
         self.last_interact_timestamp = int(time.time())
         self.schedule()
 
-        self.response_lock = threading.RLock()
+        self.response_lock = threading.Lock()
 
     # 设定检查session最后一次对话是否超过过期时间的计时器
     def schedule(self):
@@ -144,7 +145,8 @@ class Session:
         # 向API请求补全
         response = pkg.openai.manager.get_inst().request_completion(self.cut_out(self.prompt + self.user_name + ':' +
                                                                                  text + '\n' + self.bot_name + ':',
-                                                                                 max_rounds, max_length), self.user_name + ':')
+                                                                                 max_rounds, max_length),
+                                                                    self.user_name + ':')
 
         self.prompt += self.user_name + ':' + text + '\n' + self.bot_name + ':'
         # print(response)
