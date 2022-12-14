@@ -175,7 +175,8 @@ class QQBotManager:
 
                     session = pkg.openai.session.get_session(session_name)
                     try:
-                        reply = "[GPT]" + session.append(text_message)
+                        prefix = "[GPT]" if hasattr(config, "show_prefix") and config.show_prefix else ""
+                        reply = prefix + session.append(text_message)
                     except openai.error.APIConnectionError as e:
                         self.notify_admin("{}会话调用API失败:{}".format(session_name, e))
                         reply = "[bot]err:调用API失败，请联系作者，或等待修复"

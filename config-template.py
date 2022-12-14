@@ -23,6 +23,9 @@ openai_config = {
 # 管理员QQ号，用于接收报错等通知，为0时不发送通知
 admin_qq = 0
 
+# 回复消息时是否显示[GPT]前缀
+show_prefix = False
+
 # 敏感词过滤开关，以同样数量的*代替敏感词回复
 # 请在sensitive.json中添加敏感词
 sensitive_word_filter = True
