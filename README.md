@@ -41,7 +41,7 @@
 
 ### 自动化部署
 
-使用[此安装器](https://github.com/RockChinQ/qcg-installer)进行部署
+使用[此安装器](https://github.com/RockChinQ/qcg-installer)（若无法访问请到[Gitee](https://gitee.com/RockChin/qcg-installer)）进行部署
 
 - 此安装器目前仅支持Windows x64以及Linux x64平台，其他平台请手动部署
 
