@@ -16,9 +16,22 @@ mirai_http_api_config = {
 
 # [必需] OpenAI的配置
 # api_key: OpenAI的API Key
+# 若只有一个api-key，请直接修改以下内容中的"openai_api_key"为你的api-key
+# 如准备了多个api-key，可以以字典的形式填写，程序会自动选择可用的api-key
+# 例如{
+#       "api0": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+#       "api1": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+#     }
 openai_config = {
-    "api_key": "openai_api_key",
+    "api_key": {
+        "default": "openai_api_key"
+    },
 }
+
+# 单个api-key的使用量警告阈值
+# 当使用此api-key进行请求的文字量达到此阈值时，会在控制台输出警告并通知管理员
+# 若之后还有未使用超过此值的api-key，则会切换到新的api-key进行请求
+api_key_usage_threshold = 895000
 
 # 管理员QQ号，用于接收报错等通知，为0时不发送通知
 admin_qq = 0

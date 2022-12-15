@@ -8,8 +8,8 @@ import logging
 import colorlog
 
 import sys
-sys.path.append(".")
 
+sys.path.append(".")
 
 log_colors_config = {
     'DEBUG': 'green',  # cyan white
@@ -55,11 +55,11 @@ def main():
     import pkg.qqbot.manager
 
     # 主启动流程
-    openai_interact = pkg.openai.manager.OpenAIInteract(config.openai_config['api_key'], config.completion_api_params)
-
     database = pkg.database.manager.DatabaseManager()
 
     database.initialize_database()
+
+    openai_interact = pkg.openai.manager.OpenAIInteract(config.openai_config['api_key'], config.completion_api_params)
 
     # 加载所有未超时的session
     pkg.openai.session.load_sessions()
@@ -78,6 +78,7 @@ def main():
             time.sleep(86400)
         except KeyboardInterrupt:
             try:
+                pkg.openai.manager.get_inst().key_mgr.dump_usage()
                 for session in pkg.openai.session.sessions:
                     logging.info('持久化session: %s', session)
                     pkg.openai.session.sessions[session].persistence()
@@ -85,7 +86,7 @@ def main():
                 if not isinstance(e, KeyboardInterrupt):
                     raise e
             print("程序退出")
-            break
+            sys.exit(0)
 
 
 if __name__ == '__main__':
