@@ -1,3 +1,5 @@
 config.py
 .idea/
 __pycache__/
+database.db
+qchatgpt.log
