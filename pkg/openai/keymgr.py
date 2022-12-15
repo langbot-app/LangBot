@@ -91,6 +91,13 @@ class KeysManager:
                     self.alerted.append(key_name)
                     return False
 
+    # 设置当前使用的api-key使用量超限
+    # 这是在尝试调用api时发生超限异常时调用的
+    def set_current_exceeded(self):
+        md5 = hashlib.md5(self.using_key.encode('utf-8')).hexdigest()
+        self.usage[md5] = self.api_key_usage_threshold
+        self.dump_usage()
+
     def dump_usage(self):
         pkg.database.manager.get_inst().dump_api_key_usage(api_keys=self.api_key, usage=self.usage)
 
