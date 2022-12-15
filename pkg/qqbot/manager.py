@@ -168,16 +168,16 @@ class QQBotManager:
                                     reply += ",当前处于全新会话或不在此页"
                         elif cmd == 'usage':
                             api_keys = pkg.openai.manager.get_inst().key_mgr.api_key
-                            reply = "[bot]api-key使用情况:(阈值:{})\n".format(pkg.openai.manager.get_inst().key_mgr.api_key_usage_threshold)
+                            reply = "[bot]api-key使用情况:(阈值:{})\n\n".format(pkg.openai.manager.get_inst().key_mgr.api_key_usage_threshold)
 
                             using_key_name = ""
                             for api_key in api_keys:
-                                reply += "{}: {} {}%\n".format(api_key,
+                                reply += "{}:\n - {}字 {}%\n".format(api_key,
                                                                pkg.openai.manager.get_inst().key_mgr.get_usage(api_keys[api_key]),
-                                                               pkg.openai.manager.get_inst().key_mgr.get_usage(api_keys[api_key]) / pkg.openai.manager.get_inst().key_mgr.api_key_usage_threshold * 100)
+                                                               round(pkg.openai.manager.get_inst().key_mgr.get_usage(api_keys[api_key]) / pkg.openai.manager.get_inst().key_mgr.api_key_usage_threshold * 100, 3))
                                 if api_keys[api_key] == pkg.openai.manager.get_inst().key_mgr.using_key:
                                     using_key_name = api_key
-                            reply += "当前使用:{}".format(using_key_name)
+                            reply += "\n当前使用:{}".format(using_key_name)
                     except Exception as e:
                         self.notify_admin("{}指令执行失败:{}".format(session_name, e))
                         logging.exception(e)
