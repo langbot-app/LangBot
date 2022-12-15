@@ -1,6 +1,7 @@
 # QChatGPT
 
 - 交流、答疑群: 204785790  
+- QQ频道机器人见[QQChannelChatGPT](https://github.com/Soulter/QQChannelChatGPT)
 
 通过调用OpenAI GPT-3模型提供的Completion API来实现一个更加智能的QQ机器人  
 
