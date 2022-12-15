@@ -8,12 +8,63 @@
 
 通过调用OpenAI GPT-3模型提供的Completion API来实现一个更加智能的QQ机器人  
 
-- [x] 回复符合上下文
-- [x] 支持敏感词过滤，避免账号风险
-- [x] 使用官方api，不需要网络代理，稳定快捷
-- [x] 组件少，部署方便，提供一键安装器
-- [x] 支持预设指令文字，详见config-template.py
-- [ ] 提供ChatGPT逆向接口供选择
+## 功能
+
+以下是功能特色，点击展开查看具体使用方法
+
+<details>
+<summary>✅回复符合上下文</summary>
+
+  - 程序向模型发送近几次对话内容，模型根据上下文生成回复
+  - 您可在`config.py`中修改`prompt_submit_round_amount`及`process_message_timeout`自定义联系上下文的范围
+
+</details>
+
+<details>
+<summary>✅支持敏感词过滤，避免账号风险</summary>
+
+  - 难以监测机器人与用户对话时的内容，故引入此功能以减少机器人风险
+  - 编辑`sensitive.json`，并在`config.py`中修改`sensitive_word_filter`的值以开启此功能
+</details>
+
+<details>
+<summary>✅使用官方api，不需要网络代理，稳定快捷</summary>
+
+  - 不使用ChatGPT逆向接口，而使用官方的Completion API，稳定性高
+  - 您可以在`config.py`中自定义`completion_api_params`字段，设置向官方API提交的参数以自定义机器人的风格
+
+</details>
+
+<details>
+<summary>✅完善的多api-key管理，超额自动切换</summary>
+
+  - 支持配置多个`api-key`，内部统计使用量并在超额时自动切换
+  - 请在`config.py`中修改`openai_config`的值以设置`api-key`
+  - 可以在`config.py`中修改`api_key_usage_threshold`来自定义切换阈值
+  - 运行期间向机器人说`!usage`以查看当前使用情况
+</details>
+
+<details>
+<summary>✅组件少，部署方便，提供一键安装器</summary>
+
+  - 手动部署步骤少
+  - 提供自动安装器，详见以下安装步骤
+</details>
+
+<details>
+<summary>✅支持预设指令文字</summary>
+
+  - 支持以自然语言预设文字，自定义机器人人格等信息
+  - 详见`config.py`中的`default_prompt`部分
+</details>
+
+<details>
+<summary>✅完善的会话管理，重启不丢失</summary>
+
+  - 使用SQLite进行会话内容持久化
+  - 最后一次对话一定时间后自动保存，请到`config.py`中修改`session_expire_time`的值以自定义时间
+  - 运行期间可使用`!reset` `!list` `!last` `!next` `!prompt`等指令管理会话
+</details>
 
 ## 技术栈
 
