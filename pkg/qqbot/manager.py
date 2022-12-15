@@ -192,7 +192,7 @@ class QQBotManager:
                         reply = prefix + session.append(text_message)
                     except openai.error.APIConnectionError as e:
                         self.notify_admin("{}会话调用API失败:{}".format(session_name, e))
-                        reply = "[bot]err:调用API失败，请联系作者，或等待修复"
+                        reply = "[bot]err:调用API失败，请重试或联系作者，或等待修复"
                     except openai.error.RateLimitError as e:
                         self.notify_admin("API调用额度超限,请向OpenAI账户充值或在config.py中更换api_key")
                         reply = "[bot]err:API调用额度超额，请联系作者，或等待修复"
