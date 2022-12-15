@@ -98,4 +98,5 @@ help_message = """此机器人通过调用OpenAI的GPT-3大型语言模型生成
 !last - 切换到前一次的对话
 !next - 切换到后一次的对话
 !prompt - 显示当前对话所有内容
-!list - 列出所有历史会话""".format(session_expire_time // 60)
+!list - 列出所有历史会话
+!usage - 列出各个api-key的使用量""".format(session_expire_time // 60)
