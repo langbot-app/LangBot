@@ -185,7 +185,7 @@ class Session:
             if checked_rounds > max_rounds:
                 break
 
-            if len(result_temp) > max_tokens:
+            if int((len(result_temp.encode('utf-8')) - len(result_temp)) / 2 + len(result_temp)) > max_tokens:
                 break
 
             result = result_temp
