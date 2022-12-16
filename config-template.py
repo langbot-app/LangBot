@@ -31,7 +31,7 @@ openai_config = {
 # 单个api-key的使用量警告阈值
 # 当使用此api-key进行请求的文字量达到此阈值时，会在控制台输出警告并通知管理员
 # 若之后还有未使用超过此值的api-key，则会切换到新的api-key进行请求
-api_key_usage_threshold = 895000
+api_key_usage_threshold = 900000
 
 # 管理员QQ号，用于接收报错等通知，为0时不发送通知
 admin_qq = 0
