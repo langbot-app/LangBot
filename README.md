@@ -46,10 +46,10 @@
 </details>
 
 <details>
-<summary>✅组件少，部署方便，提供一键安装器</summary>
+<summary>✅组件少，部署方便，提供一键安装器及Docker安装</summary>
 
   - 手动部署步骤少
-  - 提供自动安装器，详见以下安装步骤
+  - 提供自动安装器及docker方式，详见以下安装步骤
 </details>
 
 <details>
