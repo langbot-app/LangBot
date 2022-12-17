@@ -74,9 +74,9 @@ class KeysManager:
             self.usage[md5] = 0
 
         # 经测算得出的理论与实际的偏差比例
-        salt_rate = 0.94
+        salt_rate = 0.93
 
-        self.usage[md5] += int((len(new_content.encode('utf-8')) - len(new_content)) / 2 + len(new_content))*salt_rate
+        self.usage[md5] += round(int((len(new_content.encode('utf-8')) - len(new_content)) / 2 + len(new_content))*salt_rate)
 
         if self.usage[md5] >= self.api_key_usage_threshold:
             switch_result, key_name = self.auto_switch()
