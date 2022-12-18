@@ -262,4 +262,6 @@ class Session:
             return self
 
     def list_history(self, capacity: int = 10, page: int = 0):
-        return pkg.database.manager.get_inst().list_history(self.name, capacity, page)
+        return pkg.database.manager.get_inst().list_history(self.name, capacity, page,
+                                                            (self.user_name + ":" + get_default_prompt() + "\n" +
+                                                             self.bot_name + ":") if get_default_prompt() != "" else "")
