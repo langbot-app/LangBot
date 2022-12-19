@@ -139,7 +139,8 @@ class Session:
     def append(self, text: str) -> str:
         self.last_interact_timestamp = int(time.time())
 
-        max_rounds = config.prompt_submit_round_amount if hasattr(config, 'prompt_submit_round_amount') else 7
+        # max_rounds = config.prompt_submit_round_amount if hasattr(config, 'prompt_submit_round_amount') else 7
+        max_rounds = 1000  # 不再限制回合数
         max_length = config.prompt_submit_length if hasattr(config, "prompt_submit_length") else 1024
 
         # 向API请求补全
