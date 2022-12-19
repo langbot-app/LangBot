@@ -46,6 +46,7 @@ def check_response_rule(text: str) -> (bool, str):
             import re
             match = re.match(rule, text)
             if match:
+                print(match)
                 return True, match.group(1)
 
     return False, ""
