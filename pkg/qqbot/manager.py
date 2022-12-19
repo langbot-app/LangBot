@@ -30,18 +30,23 @@ def go(func, args=()):
 
 # 检查消息是否符合泛响应匹配机制
 def check_response_rule(text: str) -> (bool, str):
+    if not hasattr(config, 'response_rules'):
+        return False, ''
+
     rules = config.response_rules
     # 检查前缀匹配
-    for rule in rules['prefix']:
-        if text.startswith(rule):
-            return True, text.replace(rule, "", 1)
+    if 'prefix' in rules:
+        for rule in rules['prefix']:
+            if text.startswith(rule):
+                return True, text.replace(rule, "", 1)
 
     # 检查正则表达式匹配
-    for rule in rules['regex']:
-        import re
-        match = re.match(rule, text)
-        if match:
-            return True, match.group(1)
+    if 'regexp' in rules:
+        for rule in rules['regexp']:
+            import re
+            match = re.match(rule, text)
+            if match:
+                return True, match.group(1)
 
     return False, ""
 
