@@ -38,6 +38,17 @@ admin_qq = 0
 # 可参考 https://github.com/PlexPt/awesome-chatgpt-prompts-zh
 default_prompt = "如果我之后想获取帮助，请你说“输入!help获取帮助”"
 
+# 群内响应规则
+# 符合此消息的群内消息即使不包含at机器人也会响应
+# 支持消息前缀匹配及正则表达式匹配
+# 注意：由消息前缀(prefix)匹配的消息中将会删除此前缀，正则表达式匹配的消息不会删除匹配的部分
+#      前缀匹配优先级高于正则表达式匹配
+# 正则表达式简明教程：https://www.runoob.com/regexp/regexp-tutorial.html
+response_rules = {
+    "prefix": ["/ai", "!ai", "！ai", "/chat", "!chat", "！chat"],
+    "regexp": ["为什么.*", "怎么?样.*", "如何.*", "[Hh]ow to.*", "[Ww]hy not.*", "[Ww]hat is.*", ]
+}
+
 # 单个api-key的使用量警告阈值
 # 当使用此api-key进行请求的文字量达到此阈值时，会在控制台输出警告并通知管理员
 # 若之后还有未使用超过此值的api-key，则会切换到新的api-key进行请求
