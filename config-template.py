@@ -66,11 +66,6 @@ completion_api_params = {
 # 注意：较大的prompt_submit_length会导致OpenAI账户额度消耗更快
 prompt_submit_length = 1536
 
-# 每次向OpenAI接口发送对话记录上下文的聊天回合数
-# 不建议过大，向OpenAI接口发送对话上下文时保证内容不超过prompt_submit_length个字符，
-# 不超过prompt_submit_round_amount个回合
-prompt_submit_round_amount = 16
-
 # 消息处理的超时时间，单位为秒
 process_message_timeout = 15
 
