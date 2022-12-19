@@ -225,6 +225,7 @@ class QQBotManager:
                             self.notify_admin("API调用额度超限,请向OpenAI账户充值或在config.py中更换api_key")
                             reply = "[bot]err:API调用额度超额，请联系作者，或等待修复"
                         else:
+                            openai.api_key = pkg.openai.manager.get_inst().key_mgr.get_using_key()
                             self.notify_admin("API调用额度超限,已切换到{}".format(name))
                             reply = "[bot]err:API调用额度超额，已自动切换，请重新发送消息"
                     except openai.error.InvalidRequestError as e:
