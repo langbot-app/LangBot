@@ -28,6 +28,24 @@ def go(func, args=()):
     thread.start()
 
 
+# 检查消息是否符合泛响应匹配机制
+def check_response_rule(text: str) -> (bool, str):
+    rules = config.response_rules
+    # 检查前缀匹配
+    for rule in rules['prefix']:
+        if text.startswith(rule):
+            return True, text.replace(rule, "", 1)
+
+    # 检查正则表达式匹配
+    for rule in rules['regex']:
+        import re
+        match = re.match(rule, text)
+        if match:
+            return True, match.group(1)
+
+    return False, ""
+
+
 # 控制QQ消息输入输出的类
 class QQBotManager:
     timeout = 60
@@ -265,11 +283,8 @@ class QQBotManager:
 
         reply = ''
 
-        if Image in event.message_chain:
-            pass
-        elif At(self.bot.qq) not in event.message_chain:
-            pass
-        else:
+        def process(text = None) -> str:
+            replys = ""
             event.message_chain.remove(At(self.bot.qq))
 
             processing.append("group_{}".format(event.sender.id))
@@ -278,7 +293,8 @@ class QQBotManager:
             failed = 0
             for i in range(self.retry):
                 try:
-                    reply = self.process_message('group', event.group.id, str(event.message_chain).strip())
+                    replys = self.process_message('group', event.group.id,
+                                                  str(event.message_chain).strip() if text is None else text)
                     break
                 except FunctionTimedOut:
                     failed += 1
@@ -286,7 +302,20 @@ class QQBotManager:
 
             if failed == self.retry:
                 self.notify_admin("{} 请求超时".format("group_{}".format(event.sender.id)))
-                reply = "[bot]err:请求超时"
+                replys = "[bot]err:请求超时"
+
+            return replys
+
+        if Image in event.message_chain:
+            pass
+        elif At(self.bot.qq) not in event.message_chain:
+            check, result = check_response_rule(str(event.message_chain).strip())
+
+            if check:
+                reply = process(result)
+        else:
+            # 直接调用
+            reply = process()
 
         if reply != '':
             return self.send(event, reply)
