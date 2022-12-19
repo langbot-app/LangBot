@@ -1,3 +1,5 @@
+import logging
+
 import openai
 
 import config
@@ -26,6 +28,7 @@ class OpenAIInteract:
 
     # 请求OpenAI Completion
     def request_completion(self, prompt, stop):
+        logging.debug("请求OpenAI Completion, key:"+openai.api_key)
         response = openai.Completion.create(
             prompt=prompt,
             stop=stop,
