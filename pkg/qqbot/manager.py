@@ -290,7 +290,8 @@ class QQBotManager:
 
         def process(text = None) -> str:
             replys = ""
-            event.message_chain.remove(At(self.bot.qq))
+            if At(self.bot.qq) in event.message_chain:
+                event.message_chain.remove(At(self.bot.qq))
 
             processing.append("group_{}".format(event.sender.id))
 
