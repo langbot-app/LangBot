@@ -46,7 +46,7 @@ default_prompt = "如果我之后想获取帮助，请你说“输入!help获取
 # 正则表达式简明教程：https://www.runoob.com/regexp/regexp-tutorial.html
 response_rules = {
     "prefix": ["/ai", "!ai", "！ai", "ai"],
-    "regexp": ["为什么.*", "怎么?样.*", "如何.*", "[Hh]ow to.*", "[Ww]hy not.*", "[Ww]hat is.*", ]
+    "regexp": ["为什么.*", "怎么?样.*", "怎么.*", "如何.*", "[Hh]ow to.*", "[Ww]hy not.*", "[Ww]hat is.*", ".*怎么办", ".*咋办"]
 }
 
 # 单个api-key的使用量警告阈值
