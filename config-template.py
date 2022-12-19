@@ -28,20 +28,8 @@ openai_config = {
     },
 }
 
-# 单个api-key的使用量警告阈值
-# 当使用此api-key进行请求的文字量达到此阈值时，会在控制台输出警告并通知管理员
-# 若之后还有未使用超过此值的api-key，则会切换到新的api-key进行请求
-api_key_usage_threshold = 900000
-
 # 管理员QQ号，用于接收报错等通知，为0时不发送通知
 admin_qq = 0
-
-# 回复消息时是否显示[GPT]前缀
-show_prefix = False
-
-# 敏感词过滤开关，以同样数量的*代替敏感词回复
-# 请在sensitive.json中添加敏感词
-sensitive_word_filter = True
 
 # 每个会话的预设信息，影响所有会话，无视指令重置
 # 可以通过这个字段指定某些情况的回复，可直接用自然语言描述指令
@@ -50,24 +38,36 @@ sensitive_word_filter = True
 # 可参考 https://github.com/PlexPt/awesome-chatgpt-prompts-zh
 default_prompt = "如果我之后想获取帮助，请你说“输入!help获取帮助”"
 
-# OpenAI的completion API的参数
-# 具体请查看OpenAI的文档
-completion_api_params = {
-    "model": "text-davinci-003",
-    "temperature": 0.6,  # 数值越低得到的回答越理性，取值范围[0, 1]
-    "max_tokens": 512,  # 每次向OpenAI请求的最大字符数, 不高于4096
-    "top_p": 1,  # 生成的文本的文本与要求的符合度, 取值范围[0, 1]
-    "frequency_penalty": 0.2,
-    "presence_penalty": 0.4,
-}
+# 单个api-key的使用量警告阈值
+# 当使用此api-key进行请求的文字量达到此阈值时，会在控制台输出警告并通知管理员
+# 若之后还有未使用超过此值的api-key，则会切换到新的api-key进行请求
+api_key_usage_threshold = 900000
+
+# 敏感词过滤开关，以同样数量的*代替敏感词回复
+# 请在sensitive.json中添加敏感词
+sensitive_word_filter = True
 
 # 每次向OpenAI接口发送对话记录上下文的字符数
 # 最大不超过(4096 - max_tokens)个字符，max_tokens为上述completion_api_params中的max_tokens
 # 注意：较大的prompt_submit_length会导致OpenAI账户额度消耗更快
 prompt_submit_length = 1536
 
+# OpenAI的completion API的参数
+# 具体请查看OpenAI的文档: https://beta.openai.com/docs/api-reference/completions/create
+completion_api_params = {
+    "model": "text-davinci-003",
+    "temperature": 0.6,  # 数值越低得到的回答越理性，取值范围[0, 1]
+    "max_tokens": 512,  # 每次向OpenAI请求的最大字符数, 不高于4096
+    "top_p": 1,  # 生成的文本的文本与要求的符合度, 取值范围[0, 1]
+    "frequency_penalty": 0.2,
+    "presence_penalty": 1.0,
+}
+
 # 消息处理的超时时间，单位为秒
 process_message_timeout = 15
+
+# 回复消息时是否显示[GPT]前缀
+show_prefix = False
 
 # 消息处理超时重试次数
 retry_times = 3
