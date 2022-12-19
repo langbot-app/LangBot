@@ -318,7 +318,7 @@ class QQBotManager:
             check, result = check_response_rule(str(event.message_chain).strip())
 
             if check:
-                reply = process(result)
+                reply = process(result.strip())
         else:
             # 直接调用
             reply = process()

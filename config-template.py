@@ -45,7 +45,7 @@ default_prompt = "如果我之后想获取帮助，请你说“输入!help获取
 #      前缀匹配优先级高于正则表达式匹配
 # 正则表达式简明教程：https://www.runoob.com/regexp/regexp-tutorial.html
 response_rules = {
-    "prefix": ["/ai", "!ai", "！ai", "/chat", "!chat", "！chat"],
+    "prefix": ["/ai", "!ai", "！ai", "ai"],
     "regexp": ["为什么.*", "怎么?样.*", "如何.*", "[Hh]ow to.*", "[Ww]hy not.*", "[Ww]hat is.*", ]
 }
 
