@@ -3,11 +3,13 @@ import logging
 
 # [必需] Mirai的配置
 # 请到配置mirai的步骤中的教程查看每个字段的信息
+# adapter: 选择适配器，目前支持HTTPAdapter和WebSocketAdapter
 # host: 运行mirai的主机地址
 # port: 运行mirai的主机端口
 # verifyKey: mirai-api-http的verifyKey
 # qq: 机器人的QQ号
 mirai_http_api_config = {
+    "adapter": "HTTPAdapter",
     "host": "localhost",
     "port": 8080,
     "verifyKey": "yirimirai",

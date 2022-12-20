@@ -4,7 +4,7 @@ import os
 import threading
 
 import openai.error
-from mirai import At, GroupMessage, MessageEvent, Mirai, Plain, StrangerMessage, WebSocketAdapter, FriendMessage, Image
+from mirai import At, GroupMessage, MessageEvent, Mirai, Plain, StrangerMessage, WebSocketAdapter,HTTPAdapter, FriendMessage, Image
 
 import config
 import pkg.openai.session
@@ -73,9 +73,19 @@ class QQBotManager:
         else:
             self.reply_filter = pkg.qqbot.filter.ReplyFilter([])
 
-        bot = Mirai(
+        if mirai_http_api_config['adapter'] == "WebSocketAdapter":
+            bot = Mirai(
             qq=mirai_http_api_config['qq'],
             adapter=WebSocketAdapter(
+                verify_key=mirai_http_api_config['verifyKey'],
+                host=mirai_http_api_config['host'],
+                port=mirai_http_api_config['port']
+            )
+        )
+        elif mirai_http_api_config['adapter'] == "HTTPAdapter":
+            bot = Mirai(
+            qq=mirai_http_api_config['qq'],
+            adapter=HTTPAdapter(
                 verify_key=mirai_http_api_config['verifyKey'],
                 host=mirai_http_api_config['host'],
                 port=mirai_http_api_config['port']
