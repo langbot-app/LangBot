@@ -3,3 +3,4 @@ config.py
 __pycache__/
 database.db
 qchatgpt.log
+config.py
