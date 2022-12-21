@@ -53,7 +53,9 @@ def dump_session(session_name: str):
 
 # 从配置文件获取会话预设信息
 def get_default_prompt():
-    return "You:{}\nBot:好的\n".format(config.default_prompt) if hasattr(config, 'default_prompt') and \
+    user_name = config.user_name if hasattr(config, 'user_name') and config.user_name != '' else 'You'
+    bot_name = config.bot_name if hasattr(config, 'bot_name') and config.bot_name != '' else 'Bot'
+    return user_name+":{}\n"+bot_name+":好的\n".format(config.default_prompt) if hasattr(config, 'default_prompt') and \
                                                                  config.default_prompt != "" else ''
 
 
@@ -81,8 +83,8 @@ class Session:
 
     prompt = get_default_prompt()
 
-    user_name = 'You'
-    bot_name = 'Bot'
+    user_name = config.user_name if hasattr(config, 'user_name') and config.user_name != '' else 'You'
+    bot_name = config.bot_name if hasattr(config, 'bot_name') and config.bot_name != '' else 'Bot'
 
     create_timestamp = 0
 

@@ -3,11 +3,13 @@ import logging
 
 # [必需] Mirai的配置
 # 请到配置mirai的步骤中的教程查看每个字段的信息
+# adapter: 选择适配器，目前支持HTTPAdapter和WebSocketAdapter
 # host: 运行mirai的主机地址
 # port: 运行mirai的主机端口
 # verifyKey: mirai-api-http的verifyKey
 # qq: 机器人的QQ号
 mirai_http_api_config = {
+    "adapter": "HTTPAdapter",
     "host": "localhost",
     "port": 8080,
     "verifyKey": "yirimirai",
@@ -28,15 +30,22 @@ openai_config = {
     },
 }
 
-# 管理员QQ号，用于接收报错等通知，为0时不发送通知
-admin_qq = 0
+# [可选] 机器人的配置
+#user_name: 管理员(主人)的名字
+#bot_name: 机器人的名字
+user_name = 'You'
+bot_name = 'Bot'
 
+# [可选] 情景预设（机器人人格）
 # 每个会话的预设信息，影响所有会话，无视指令重置
 # 可以通过这个字段指定某些情况的回复，可直接用自然语言描述指令
 # 例如: 如果我之后想获取帮助，请你说“输入!help获取帮助”，
 #   这样用户在不知所措的时候机器人就会提示其输入!help获取帮助
 # 可参考 https://github.com/PlexPt/awesome-chatgpt-prompts-zh
 default_prompt = "如果我之后想获取帮助，请你说“输入!help获取帮助”"
+
+# 管理员QQ号，用于接收报错等通知，为0时不发送通知
+admin_qq = 0
 
 # 群内响应规则
 # 符合此消息的群内消息即使不包含at机器人也会响应
