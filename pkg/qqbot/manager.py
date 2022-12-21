@@ -4,7 +4,8 @@ import os
 import threading
 
 import openai.error
-from mirai import At, GroupMessage, MessageEvent, Mirai, Plain, StrangerMessage, WebSocketAdapter,HTTPAdapter, FriendMessage, Image
+from mirai import At, GroupMessage, MessageEvent, Mirai, Plain, StrangerMessage, WebSocketAdapter, HTTPAdapter, \
+    FriendMessage, Image
 
 import config
 import pkg.openai.session
@@ -73,24 +74,24 @@ class QQBotManager:
         else:
             self.reply_filter = pkg.qqbot.filter.ReplyFilter([])
 
-        if mirai_http_api_config['adapter'] == "WebSocketAdapter":
+        if 'adapter' not in mirai_http_api_config or mirai_http_api_config['adapter'] == "WebSocketAdapter":
             bot = Mirai(
-            qq=mirai_http_api_config['qq'],
-            adapter=WebSocketAdapter(
-                verify_key=mirai_http_api_config['verifyKey'],
-                host=mirai_http_api_config['host'],
-                port=mirai_http_api_config['port']
+                qq=mirai_http_api_config['qq'],
+                adapter=WebSocketAdapter(
+                    verify_key=mirai_http_api_config['verifyKey'],
+                    host=mirai_http_api_config['host'],
+                    port=mirai_http_api_config['port']
+                )
             )
-        )
         elif mirai_http_api_config['adapter'] == "HTTPAdapter":
             bot = Mirai(
-            qq=mirai_http_api_config['qq'],
-            adapter=HTTPAdapter(
-                verify_key=mirai_http_api_config['verifyKey'],
-                host=mirai_http_api_config['host'],
-                port=mirai_http_api_config['port']
+                qq=mirai_http_api_config['qq'],
+                adapter=HTTPAdapter(
+                    verify_key=mirai_http_api_config['verifyKey'],
+                    host=mirai_http_api_config['host'],
+                    port=mirai_http_api_config['port']
+                )
             )
-        )
 
         @bot.on(FriendMessage)
         async def on_friend_message(event: FriendMessage):
@@ -201,13 +202,19 @@ class QQBotManager:
                                     reply += ",当前处于全新会话或不在此页"
                         elif cmd == 'usage':
                             api_keys = pkg.openai.manager.get_inst().key_mgr.api_key
-                            reply = "[bot]api-key使用情况:(阈值:{})\n\n".format(pkg.openai.manager.get_inst().key_mgr.api_key_usage_threshold)
+                            reply = "[bot]api-key使用情况:(阈值:{})\n\n".format(
+                                pkg.openai.manager.get_inst().key_mgr.api_key_usage_threshold)
 
                             using_key_name = ""
                             for api_key in api_keys:
                                 reply += "{}:\n - {}字 {}%\n".format(api_key,
-                                                               pkg.openai.manager.get_inst().key_mgr.get_usage(api_keys[api_key]),
-                                                               round(pkg.openai.manager.get_inst().key_mgr.get_usage(api_keys[api_key]) / pkg.openai.manager.get_inst().key_mgr.api_key_usage_threshold * 100, 3))
+                                                                     pkg.openai.manager.get_inst().key_mgr.get_usage(
+                                                                         api_keys[api_key]),
+                                                                     round(
+                                                                         pkg.openai.manager.get_inst().key_mgr.get_usage(
+                                                                             api_keys[
+                                                                                 api_key]) / pkg.openai.manager.get_inst().key_mgr.api_key_usage_threshold * 100,
+                                                                         3))
                                 if api_keys[api_key] == pkg.openai.manager.get_inst().key_mgr.using_key:
                                     using_key_name = api_key
                             reply += "\n当前使用:{}".format(using_key_name)
@@ -299,7 +306,7 @@ class QQBotManager:
 
         reply = ''
 
-        def process(text = None) -> str:
+        def process(text=None) -> str:
             replys = ""
             if At(self.bot.qq) in event.message_chain:
                 event.message_chain.remove(At(self.bot.qq))

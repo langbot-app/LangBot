@@ -9,7 +9,7 @@ import logging
 # verifyKey: mirai-api-http的verifyKey
 # qq: 机器人的QQ号
 mirai_http_api_config = {
-    "adapter": "HTTPAdapter",
+    "adapter": "WebSocketAdapter",
     "host": "localhost",
     "port": 8080,
     "verifyKey": "yirimirai",
