@@ -55,8 +55,9 @@ def dump_session(session_name: str):
 def get_default_prompt():
     user_name = config.user_name if hasattr(config, 'user_name') and config.user_name != '' else 'You'
     bot_name = config.bot_name if hasattr(config, 'bot_name') and config.bot_name != '' else 'Bot'
-    return user_name+":{}\n"+bot_name+":好的\n".format(config.default_prompt) if hasattr(config, 'default_prompt') and \
-                                                                 config.default_prompt != "" else ''
+    return user_name + ":{}\n".format(config.default_prompt if hasattr(config, 'default_prompt') \
+                                                               and config.default_prompt != "" else '') + \
+        bot_name + ":好的\n"
 
 
 # def blocked_func(lock: threading.Lock):
