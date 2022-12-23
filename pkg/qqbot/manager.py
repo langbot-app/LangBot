@@ -235,15 +235,16 @@ class QQBotManager:
                         reply = "[bot]err:调用API失败，请重试或联系作者，或等待修复"
                     except openai.error.RateLimitError as e:
                         # 尝试切换api-key
+                        current_tokens_amt = pkg.openai.manager.get_inst().key_mgr.get_usage(pkg.openai.manager.get_inst().key_mgr.get_using_key())
                         pkg.openai.manager.get_inst().key_mgr.set_current_exceeded()
                         switched, name = pkg.openai.manager.get_inst().key_mgr.auto_switch()
 
                         if not switched:
-                            self.notify_admin("API调用额度超限,请向OpenAI账户充值或在config.py中更换api_key")
+                            self.notify_admin("API调用额度超限({}),请向OpenAI账户充值或在config.py中更换api_key".format(current_tokens_amt))
                             reply = "[bot]err:API调用额度超额，请联系作者，或等待修复"
                         else:
                             openai.api_key = pkg.openai.manager.get_inst().key_mgr.get_using_key()
-                            self.notify_admin("API调用额度超限,已切换到{}".format(name))
+                            self.notify_admin("API调用额度超限({}),已切换到{}".format(current_tokens_amt, name))
                             reply = "[bot]err:API调用额度超额，已自动切换，请重新发送消息"
                     except openai.error.InvalidRequestError as e:
                         self.notify_admin("{}API调用参数错误:{}\n\n这可能是由于config.py中的prompt_submit_length参数或"
