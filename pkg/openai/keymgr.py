@@ -74,7 +74,7 @@ class KeysManager:
             self.usage[md5] = 0
 
         # 经测算得出的理论与实际的偏差比例
-        salt_rate = 0.93
+        salt_rate = 0.91
 
         self.usage[md5] += ( (len(new_content.encode('utf-8')) - len(new_content)) / 2 + len(new_content) )*salt_rate
 
