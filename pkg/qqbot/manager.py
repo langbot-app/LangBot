@@ -136,9 +136,9 @@ class QQBotManager:
                 if failed == self.retry:
                     pkg.openai.session.get_session('person_{}'.format(event.sender.id)).release_response_lock()
                     self.notify_admin("{} 请求超时".format("person_{}".format(event.sender.id)))
-                    reply = "[bot]err:请求超时"
+                    reply = ["[bot]err:请求超时"]
 
-        if reply != '':
+        if reply:
             return self.send(event, reply)
 
     # 群消息处理
@@ -164,7 +164,7 @@ class QQBotManager:
 
             if failed == self.retry:
                 self.notify_admin("{} 请求超时".format("group_{}".format(event.sender.id)))
-                replys = "[bot]err:请求超时"
+                replys = ["[bot]err:请求超时"]
 
             return replys
 
@@ -179,7 +179,7 @@ class QQBotManager:
             # 直接调用
             reply = process()
 
-        if reply != '':
+        if reply:
             return self.send(event, reply)
 
     # 通知系统管理员
