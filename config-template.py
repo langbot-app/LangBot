@@ -30,13 +30,7 @@ openai_config = {
     },
 }
 
-# [可选] 机器人的配置
-#user_name: 管理员(主人)的名字
-#bot_name: 机器人的名字
-user_name = 'You'
-bot_name = 'Bot'
-
-# [可选] 情景预设（机器人人格）
+# 情景预设（机器人人格）
 # 每个会话的预设信息，影响所有会话，无视指令重置
 # 可以通过这个字段指定某些情况的回复，可直接用自然语言描述指令
 # 例如: 如果我之后想获取帮助，请你说“输入!help获取帮助”，
@@ -85,6 +79,12 @@ completion_api_params = {
 
 # 消息处理的超时时间，单位为秒
 process_message_timeout = 15
+
+# 机器人的配置
+# user_name: 管理员(主人)的名字
+# bot_name: 机器人的名字
+user_name = 'You'
+bot_name = 'Bot'
 
 # 回复消息时是否显示[GPT]前缀
 show_prefix = False
