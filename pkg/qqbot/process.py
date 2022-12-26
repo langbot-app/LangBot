@@ -163,6 +163,9 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str) -> 
                                      "completion_api_params中的max_tokens参数数值过大导致的，请尝试将其降低".format(
                         session_name, e))
                     reply = ["[bot]err:API调用参数错误，请联系作者，或等待修复"]
+                except openai.error.ServiceUnavailableError as e:
+                    # mgr.notify_admin("{}API调用服务不可用:{}".format(session_name, e))
+                    reply = ["[bot]err:API调用服务暂不可用，请尝试重试"]
                 except Exception as e:
                     logging.exception(e)
                     reply = ["[bot]err:{}".format(e)]
