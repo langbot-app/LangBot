@@ -53,7 +53,7 @@ class KeysManager:
                 return True, key_name
 
         self.using_key = list(self.api_key.values())[0]
-        logging.info("使用api-key:" + self.using_key)
+        logging.info("使用api-key:" + self.api_key.keys()[0])
 
         return False, ""
 

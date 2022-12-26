@@ -113,7 +113,6 @@ class QQBotManager:
 
     # 私聊消息处理
     def on_person_message(self, event: MessageEvent):
-        global processing
 
         reply = ''
 
@@ -144,7 +143,6 @@ class QQBotManager:
 
     # 群消息处理
     def on_group_message(self, event: GroupMessage):
-        global processing
 
         reply = ''
 
