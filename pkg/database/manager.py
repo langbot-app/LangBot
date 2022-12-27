@@ -64,7 +64,7 @@ class DatabaseManager:
             `id` INTEGER PRIMARY KEY AUTOINCREMENT,
             `key_md5` varchar(255) not null,
             `timestamp` bigint not null,
-            `fee` DECIMAL(9,3) not null
+            `fee` DECIMAL(12,6) not null
         )
         """)
         print('Database initialized.')
