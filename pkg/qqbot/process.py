@@ -188,6 +188,8 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str) -> 
                     "回复[{}]文字消息:{}".format(session_name,
                                              reply[0][:min(100, len(reply[0]))] + ("..." if len(reply[0]) > 100 else "")))
                 reply = [mgr.reply_filter.process(reply[0])]
+            else:
+                logging.info("回复[{}]图片消息:{}".format(session_name, reply))
 
         finally:
             processing.remove(session_name)
