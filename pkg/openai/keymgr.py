@@ -12,11 +12,7 @@ class KeysManager:
 
     # api-key的使用量
     # 其中键为api-key的md5值，值为使用量
-    usage = {}
-
     fee = {}
-
-    api_key_usage_threshold = 900000 # 已弃用
 
     api_key_fee_threshold = 18.0
 
