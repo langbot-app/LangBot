@@ -6,6 +6,8 @@ from func_timeout import func_set_timeout
 import logging
 import openai
 
+from mirai import Image
+
 import config
 
 import pkg.openai.session
@@ -128,6 +130,17 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str) -> 
                         reply_str += "\n当前使用:{}".format(using_key_name)
 
                         reply = [reply_str]
+
+                    elif cmd == 'draw':
+                        if len(params) == 0:
+                            reply = ["[bot]err:请输入图片描述文字"]
+                        else:
+                            session = pkg.openai.session.get_session(session_name)
+
+                            res = session.draw_image(" ".join(params))
+
+                            logging.debug("draw_image result:{}".format(res))
+                            reply = [Image(url=res['data'][0]['url'])]
                 except Exception as e:
                     mgr.notify_admin("{}指令执行失败:{}".format(session_name, e))
                     logging.exception(e)

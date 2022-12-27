@@ -77,6 +77,12 @@ completion_api_params = {
     "presence_penalty": 1.0,
 }
 
+# OpenAI的Image API的参数
+# 具体请查看OpenAI的文档: https://beta.openai.com/docs/api-reference/images/create
+image_api_params = {
+    "size": "256x256",
+}
+
 # 消息处理的超时时间，单位为秒
 process_message_timeout = 15
 

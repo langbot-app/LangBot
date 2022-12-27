@@ -59,7 +59,7 @@ def main():
 
     database.initialize_database()
 
-    openai_interact = pkg.openai.manager.OpenAIInteract(config.openai_config['api_key'], config.completion_api_params)
+    openai_interact = pkg.openai.manager.OpenAIInteract(config.openai_config['api_key'])
 
     # 加载所有未超时的session
     pkg.openai.session.load_sessions()
