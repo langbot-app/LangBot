@@ -78,7 +78,7 @@ def main():
             time.sleep(86400)
         except KeyboardInterrupt:
             try:
-                pkg.openai.manager.get_inst().key_mgr.dump_usage()
+                pkg.openai.manager.get_inst().key_mgr.dump_fee()
                 for session in pkg.openai.session.sessions:
                     logging.info('持久化session: %s', session)
                     pkg.openai.session.sessions[session].persistence()

@@ -52,10 +52,10 @@ response_rules = {
     "regexp": []  # "为什么.*", "怎么?样.*", "怎么.*", "如何.*", "[Hh]ow to.*", "[Ww]hy not.*", "[Ww]hat is.*", ".*怎么办", ".*咋办"
 }
 
-# 单个api-key的使用量警告阈值
-# 当使用此api-key进行请求的文字量达到此阈值时，会在控制台输出警告并通知管理员
+# 单个api-key的费用警告阈值
+# 当使用此api-key进行请求所消耗的费用估算达到此阈值时，会在控制台输出警告并通知管理员
 # 若之后还有未使用超过此值的api-key，则会切换到新的api-key进行请求
-api_key_usage_threshold = 900000
+api_key_fee_threshold = 18.0
 
 # 敏感词过滤开关，以同样数量的*代替敏感词回复
 # 请在sensitive.json中添加敏感词
@@ -80,7 +80,7 @@ completion_api_params = {
 # OpenAI的Image API的参数
 # 具体请查看OpenAI的文档: https://beta.openai.com/docs/api-reference/images/create
 image_api_params = {
-    "size": "256x256",
+    "size": "256x256",  # 图片尺寸，支持256x256, 512x512, 1024x1024
 }
 
 # 消息处理的超时时间，单位为秒

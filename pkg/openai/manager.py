@@ -5,6 +5,7 @@ import openai
 import config
 
 import pkg.openai.keymgr
+import pkg.openai.pricing as pricing
 
 inst = None
 
@@ -37,18 +38,29 @@ class OpenAIInteract:
             timeout=config.process_message_timeout,
             **config.completion_api_params
         )
-        switched = self.key_mgr.report_usage(prompt + response['choices'][0]['text'])
+
+        switched = self.key_mgr.report_fee(pricing.language_base_price(config.completion_api_params['model'],
+                                                                       prompt + response['choices'][0]['text']))
+
         if switched:
             openai.api_key = self.key_mgr.get_using_key()
 
         return response
 
     def request_image(self, prompt):
+
+        params = config.image_api_params if hasattr(config, "image_api_params") else self.default_image_api_params
+
         response = openai.Image.create(
             prompt=prompt,
             n=1,
-            **config.image_api_params if hasattr(config, "image_api_params") else self.default_image_api_params
+            **params
         )
+
+        switched = self.key_mgr.report_fee(pricing.image_price(params['size']))
+
+        if switched:
+            openai.api_key = self.key_mgr.get_using_key()
 
         return response
 

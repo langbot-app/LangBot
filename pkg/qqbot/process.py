@@ -113,17 +113,17 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str) -> 
                     elif cmd == 'usage':
                         api_keys = pkg.openai.manager.get_inst().key_mgr.api_key
                         reply_str = "[bot]api-key使用情况:(阈值:{})\n\n".format(
-                            pkg.openai.manager.get_inst().key_mgr.api_key_usage_threshold)
+                            pkg.openai.manager.get_inst().key_mgr.api_key_fee_threshold)
 
                         using_key_name = ""
                         for api_key in api_keys:
-                            reply_str += "{}:\n - {}字 {}%\n".format(api_key,
-                                                                     pkg.openai.manager.get_inst().key_mgr.get_usage(
+                            reply_str += "{}:\n - {}元 {}%\n".format(api_key,
+                                                                     pkg.openai.manager.get_inst().key_mgr.get_fee(
                                                                          api_keys[api_key]),
                                                                      round(
-                                                                         pkg.openai.manager.get_inst().key_mgr.get_usage(
+                                                                         pkg.openai.manager.get_inst().key_mgr.get_fee(
                                                                              api_keys[
-                                                                                 api_key]) / pkg.openai.manager.get_inst().key_mgr.api_key_usage_threshold * 100,
+                                                                                 api_key]) / pkg.openai.manager.get_inst().key_mgr.api_key_fee_threshold * 100,
                                                                          3))
                             if api_keys[api_key] == pkg.openai.manager.get_inst().key_mgr.using_key:
                                 using_key_name = api_key
@@ -158,7 +158,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str) -> 
                     reply = ["[bot]err:调用API失败，请重试或联系作者，或等待修复"]
                 except openai.error.RateLimitError as e:
                     # 尝试切换api-key
-                    current_tokens_amt = pkg.openai.manager.get_inst().key_mgr.get_usage(
+                    current_tokens_amt = pkg.openai.manager.get_inst().key_mgr.get_fee(
                         pkg.openai.manager.get_inst().key_mgr.get_using_key())
                     pkg.openai.manager.get_inst().key_mgr.set_current_exceeded()
                     switched, name = pkg.openai.manager.get_inst().key_mgr.auto_switch()
