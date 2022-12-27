@@ -30,13 +30,7 @@ openai_config = {
     },
 }
 
-# [可选] 机器人的配置
-#user_name: 管理员(主人)的名字
-#bot_name: 机器人的名字
-user_name = 'You'
-bot_name = 'Bot'
-
-# [可选] 情景预设（机器人人格）
+# 情景预设（机器人人格）
 # 每个会话的预设信息，影响所有会话，无视指令重置
 # 可以通过这个字段指定某些情况的回复，可直接用自然语言描述指令
 # 例如: 如果我之后想获取帮助，请你说“输入!help获取帮助”，
@@ -58,10 +52,11 @@ response_rules = {
     "regexp": []  # "为什么.*", "怎么?样.*", "怎么.*", "如何.*", "[Hh]ow to.*", "[Ww]hy not.*", "[Ww]hat is.*", ".*怎么办", ".*咋办"
 }
 
-# 单个api-key的使用量警告阈值
-# 当使用此api-key进行请求的文字量达到此阈值时，会在控制台输出警告并通知管理员
+# 单个api-key的费用警告阈值
+# 当使用此api-key进行请求所消耗的费用估算达到此阈值时，会在控制台输出警告并通知管理员
 # 若之后还有未使用超过此值的api-key，则会切换到新的api-key进行请求
-api_key_usage_threshold = 900000
+# 单位：美元
+api_key_fee_threshold = 18.0
 
 # 敏感词过滤开关，以同样数量的*代替敏感词回复
 # 请在sensitive.json中添加敏感词
@@ -83,8 +78,20 @@ completion_api_params = {
     "presence_penalty": 1.0,
 }
 
+# OpenAI的Image API的参数
+# 具体请查看OpenAI的文档: https://beta.openai.com/docs/api-reference/images/create
+image_api_params = {
+    "size": "256x256",  # 图片尺寸，支持256x256, 512x512, 1024x1024
+}
+
 # 消息处理的超时时间，单位为秒
 process_message_timeout = 15
+
+# 机器人的配置
+# user_name: 管理员(主人)的名字
+# bot_name: 机器人的名字
+user_name = 'You'
+bot_name = 'Bot'
 
 # 回复消息时是否显示[GPT]前缀
 show_prefix = False

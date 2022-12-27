@@ -59,7 +59,7 @@ def main():
 
     database.initialize_database()
 
-    openai_interact = pkg.openai.manager.OpenAIInteract(config.openai_config['api_key'], config.completion_api_params)
+    openai_interact = pkg.openai.manager.OpenAIInteract(config.openai_config['api_key'])
 
     # 加载所有未超时的session
     pkg.openai.session.load_sessions()
@@ -78,7 +78,7 @@ def main():
             time.sleep(86400)
         except KeyboardInterrupt:
             try:
-                pkg.openai.manager.get_inst().key_mgr.dump_usage()
+                pkg.openai.manager.get_inst().key_mgr.dump_fee()
                 for session in pkg.openai.session.sessions:
                     logging.info('持久化session: %s', session)
                     pkg.openai.session.sessions[session].persistence()

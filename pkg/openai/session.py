@@ -268,3 +268,6 @@ class Session:
     def list_history(self, capacity: int = 10, page: int = 0):
         return pkg.database.manager.get_inst().list_history(self.name, capacity, page,
                                                             get_default_prompt())
+
+    def draw_image(self, prompt: str):
+        return pkg.openai.manager.get_inst().request_image(prompt)
