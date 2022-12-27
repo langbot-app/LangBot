@@ -117,7 +117,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str) -> 
 
                         using_key_name = ""
                         for api_key in api_keys:
-                            reply_str += "{}:\n - {}元 {}%\n".format(api_key,
+                            reply_str += "{}:\n - {}美元 {}%\n".format(api_key,
                                                                      round(pkg.openai.manager.get_inst().key_mgr.get_fee(
                                                                          api_keys[api_key]), 6),
                                                                      round(
