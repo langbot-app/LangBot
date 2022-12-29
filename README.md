@@ -66,6 +66,12 @@
   - 最后一次对话一定时间后自动保存，请到`config.py`中修改`session_expire_time`的值以自定义时间
   - 运行期间可使用`!reset` `!list` `!last` `!next` `!prompt`等指令管理会话
 </details>
+<details>
+<summary>✅支持对话、绘图等模型，可玩性更高</summary>
+
+  - 现已支持OpenAI的对话`Completion API`和绘图`Image API`
+  - 向机器人发送指令`!draw <prompt>`即可使用绘图模型
+</details>
 
 ## 💻技术栈
 
@@ -182,3 +188,5 @@ python3 main.py
 3. at机器人并发送`!help`查看帮助信息
 
 <img alt="群聊示例" src="res/屏幕截图%202022-12-08%20150511.png" width="671" height="522"/>
+
+<img alt="绘图功能" src="res/屏幕截图%202022-12-29%20194948.png" width="642" height="407"/>
