@@ -140,7 +140,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str) -> 
                             res = session.draw_image(" ".join(params))
 
                             logging.debug("draw_image result:{}".format(res))
-                            reply = [Image(url=res['data'][0]['url'])]
+                            reply = [Image(url=res['data'][0]['url']), " ".join(params)]
                 except Exception as e:
                     mgr.notify_admin("{}指令执行失败:{}".format(session_name, e))
                     logging.exception(e)
