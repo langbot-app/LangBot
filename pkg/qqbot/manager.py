@@ -7,6 +7,8 @@ import openai.error
 from mirai import At, GroupMessage, MessageEvent, Mirai, Plain, StrangerMessage, WebSocketAdapter, HTTPAdapter, \
     FriendMessage, Image
 
+from mirai.models.message import Quote
+
 import config
 import pkg.openai.session
 import pkg.openai.manager
@@ -108,8 +110,9 @@ class QQBotManager:
         global inst
         inst = self
 
-    def send(self, event, msg):
-        asyncio.run(self.bot.send(event, msg))
+    def send(self, event, msg, check_quote=True):
+        asyncio.run(
+            self.bot.send(event, msg, quote=True if hasattr(config, "quote_origin") and config.quote_origin and check_quote else False))
 
     # 私聊消息处理
     def on_person_message(self, event: MessageEvent):
@@ -126,7 +129,9 @@ class QQBotManager:
                 failed = 0
                 for i in range(self.retry):
                     try:
-                        reply = processor.process_message('person', event.sender.id, str(event.message_chain))
+                        reply = processor.process_message('person', event.sender.id, str(event.message_chain),
+                                                          event.message_chain,
+                                                          event.sender.id)
                         break
                     except FunctionTimedOut:
                         pkg.openai.session.get_session('person_{}'.format(event.sender.id)).release_response_lock()
@@ -139,7 +144,7 @@ class QQBotManager:
                     reply = ["[bot]err:请求超时"]
 
         if reply:
-            return self.send(event, reply)
+            return self.send(event, reply, check_quote=False)
 
     # 群消息处理
     def on_group_message(self, event: GroupMessage):
@@ -156,7 +161,9 @@ class QQBotManager:
             for i in range(self.retry):
                 try:
                     replys = processor.process_message('group', event.group.id,
-                                                  str(event.message_chain).strip() if text is None else text)
+                                                       str(event.message_chain).strip() if text is None else text,
+                                                       event.message_chain,
+                                                       event.sender.id)
                     break
                 except FunctionTimedOut:
                     failed += 1

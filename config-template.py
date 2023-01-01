@@ -84,6 +84,12 @@ image_api_params = {
     "size": "256x256",  # 图片尺寸，支持256x256, 512x512, 1024x1024
 }
 
+# 回复消息时是否引用原消息
+quote_origin = True
+
+# 回复绘图时是否包含图片描述
+include_image_description = True
+
 # 消息处理的超时时间，单位为秒
 process_message_timeout = 15
 

@@ -6,7 +6,8 @@ from func_timeout import func_set_timeout
 import logging
 import openai
 
-from mirai import Image
+from mirai import Image, MessageChain
+from mirai.models.message import Quote
 
 import config
 
@@ -17,7 +18,8 @@ processing = []
 
 
 @func_set_timeout(config.process_message_timeout)
-def process_message(launcher_type: str, launcher_id: int, text_message: str) -> []:
+def process_message(launcher_type: str, launcher_id: int, text_message: str, message_chain: MessageChain,
+                    sender_id: int) -> MessageChain:
     global processing
 
     mgr = pkg.qqbot.manager.get_inst()
@@ -118,13 +120,14 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str) -> 
                         using_key_name = ""
                         for api_key in api_keys:
                             reply_str += "{}:\n - {}美元 {}%\n".format(api_key,
-                                                                     round(pkg.openai.manager.get_inst().key_mgr.get_fee(
-                                                                         api_keys[api_key]), 6),
-                                                                     round(
-                                                                         pkg.openai.manager.get_inst().key_mgr.get_fee(
-                                                                             api_keys[
-                                                                                 api_key]) / pkg.openai.manager.get_inst().key_mgr.api_key_fee_threshold * 100,
-                                                                         3))
+                                                                       round(
+                                                                           pkg.openai.manager.get_inst().key_mgr.get_fee(
+                                                                               api_keys[api_key]), 6),
+                                                                       round(
+                                                                           pkg.openai.manager.get_inst().key_mgr.get_fee(
+                                                                               api_keys[
+                                                                                   api_key]) / pkg.openai.manager.get_inst().key_mgr.api_key_fee_threshold * 100,
+                                                                           3))
                             if api_keys[api_key] == pkg.openai.manager.get_inst().key_mgr.using_key:
                                 using_key_name = api_key
                         reply_str += "\n当前使用:{}".format(using_key_name)
@@ -140,7 +143,10 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str) -> 
                             res = session.draw_image(" ".join(params))
 
                             logging.debug("draw_image result:{}".format(res))
-                            reply = [Image(url=res['data'][0]['url']), " ".join(params)]
+                            reply = [Image(url=res['data'][0]['url'])]
+                            if not (hasattr(config, 'include_image_description')
+                                    and not config.include_image_description):
+                                reply.append(" ".join(params))
                 except Exception as e:
                     mgr.notify_admin("{}指令执行失败:{}".format(session_name, e))
                     logging.exception(e)
@@ -186,7 +192,8 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str) -> 
             if reply is not None and type(reply[0]) == str:
                 logging.info(
                     "回复[{}]文字消息:{}".format(session_name,
-                                             reply[0][:min(100, len(reply[0]))] + ("..." if len(reply[0]) > 100 else "")))
+                                                 reply[0][:min(100, len(reply[0]))] + (
+                                                     "..." if len(reply[0]) > 100 else "")))
                 reply = [mgr.reply_filter.process(reply[0])]
             else:
                 logging.info("回复[{}]图片消息:{}".format(session_name, reply))
@@ -196,4 +203,4 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str) -> 
     finally:
         pkg.openai.session.get_session(session_name).release_response_lock()
 
-        return reply
+        return MessageChain(reply)
