@@ -142,6 +142,7 @@ cd QChatGPT
 
 ```bash
 pip3 install yiri-mirai openai colorlog func_timeout
+pip3 install dulwich
 ```
 
 3. 运行一次主程序，生成配置文件
