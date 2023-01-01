@@ -30,7 +30,7 @@ class OpenAIInteract:
 
     # 请求OpenAI Completion
     def request_completion(self, prompt, stop):
-        print("request")
+        # print("request")
         response = openai.Completion.create(
             prompt=prompt,
             stop=stop,

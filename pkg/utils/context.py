@@ -3,7 +3,8 @@ context = {
         'database.manager.DatabaseManager': None,
         'openai.manager.OpenAIInteract': None,
         'qqbot.manager.QQBotManager': None,
-    }
+    },
+    'logger_handler': None,
 }
 
 

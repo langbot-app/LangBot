@@ -1,3 +1,4 @@
+import asyncio
 import os
 import shutil
 import sys
@@ -6,6 +7,8 @@ import time
 
 import logging
 import colorlog
+
+from mirai.bot import MiraiRunner
 
 import sys
 
@@ -27,10 +30,14 @@ def init_db():
     database.initialize_database()
 
 
-def main():
+def main(first_time_init=False):
     # 导入config.py
     assert os.path.exists('config.py')
     import config
+
+    import pkg.utils.context
+    if pkg.utils.context.context['logger_handler'] is not None:
+        logging.getLogger().removeHandler(pkg.utils.context.context['logger_handler'])
 
     logging.basicConfig(level=config.logging_level,  # 设置日志输出格式
                         filename='qchatgpt.log',  # log日志输出的文件位置和文件名
@@ -53,8 +60,8 @@ def main():
     import pkg.database.manager
     import pkg.openai.session
     import pkg.qqbot.manager
-    import pkg.utils.context
 
+    pkg.utils.context.context['logger_handler'] = sh
     # 主启动流程
     database = pkg.database.manager.DatabaseManager()
 
@@ -67,7 +74,8 @@ def main():
 
     # 初始化qq机器人
     qqbot = pkg.qqbot.manager.QQBotManager(mirai_http_api_config=config.mirai_http_api_config,
-                                           timeout=config.process_message_timeout, retry=config.retry_times)
+                                           timeout=config.process_message_timeout, retry=config.retry_times,
+                                           first_time_init=first_time_init)
 
     qq_bot_thread = threading.Thread(target=qqbot.bot.run, args=(), daemon=True)
     qq_bot_thread.start()
@@ -76,21 +84,44 @@ def main():
 
     while True:
         try:
-            time.sleep(86400)
+            time.sleep(10000)
+            if qqbot != pkg.utils.context.get_qqbot_manager():  # 已经reload了
+                break
         except KeyboardInterrupt:
-            try:
-                pkg.utils.context.get_openai_manager().key_mgr.dump_fee()
-                for session in pkg.openai.session.sessions:
-                    logging.info('持久化session: %s', session)
-                    pkg.openai.session.sessions[session].persistence()
-            except Exception as e:
-                if not isinstance(e, KeyboardInterrupt):
-                    raise e
+            stop()
+
             print("程序退出")
             sys.exit(0)
 
 
+def stop():
+    import pkg.utils.context
+    import pkg.qqbot.manager
+    import pkg.openai.session
+    try:
+        qqbot_inst = pkg.utils.context.get_qqbot_manager()
+        assert isinstance(qqbot_inst, pkg.qqbot.manager.QQBotManager)
+
+        # try:
+        #     asyncio.run(qqbot_inst.bot.shutdown())
+        # except ValueError:
+        #     pass
+        #
+        # import mirai.utils
+        # MiraiRunner.__class__._instance = None
+        # mirai.utils.Singleton._instance = None
+
+        pkg.utils.context.get_openai_manager().key_mgr.dump_fee()
+        for session in pkg.openai.session.sessions:
+            logging.info('持久化session: %s', session)
+            pkg.openai.session.sessions[session].persistence()
+    except Exception as e:
+        if not isinstance(e, KeyboardInterrupt):
+            raise e
+
+
 if __name__ == '__main__':
+    print('程序启动')
     # 检查是否有config.py,如果没有就把config-template.py复制一份,并退出程序
     if not os.path.exists('config.py'):
         shutil.copy('config-template.py', 'config.py')
@@ -110,4 +141,4 @@ if __name__ == '__main__':
             print("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
         sys.exit(0)
 
-    main()
+    main(True)

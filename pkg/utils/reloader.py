@@ -1,9 +1,14 @@
 import logging
+import os
+import threading
+
+import colorlog
 
 import pkg
 import importlib
 import pkgutil
 import pkg.utils.context
+from main import log_colors_config
 
 
 def walk(module, prefix=''):
@@ -16,7 +21,20 @@ def walk(module, prefix=''):
 
 
 def reload_all():
+    # 执行关闭流程
+    logging.info("执行程序关闭流程")
+    import main
+    main.stop()
+    import pkg
+
     context = pkg.utils.context.context
     walk(pkg)
     importlib.reload(__import__('config'))
+    importlib.reload(__import__('main'))
     pkg.utils.context.context = context
+
+    # 执行启动流程
+    logging.info("执行程序启动流程")
+    main.main()
+
+    logging.info('程序启动完成')

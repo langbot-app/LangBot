@@ -1,6 +1,7 @@
 # 此模块提供了消息处理的具体逻辑的接口
 import asyncio
 import datetime
+import threading
 
 import pkg.qqbot.manager as manager
 from func_timeout import func_set_timeout
@@ -8,7 +9,6 @@ import logging
 import openai
 
 from mirai import Image, MessageChain
-from mirai.models.message import Quote
 
 import config
 
@@ -162,8 +162,9 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                                 reply.append(" ".join(params))
                     elif cmd == 'reload' and launcher_type == 'person' and launcher_id == config.admin_qq:
                         try:
-                            pkg.utils.reloader.reload_all()
-                            reply = ["[bot]已重新加载所有模块"]
+                            # pkg.utils.reloader.reload_all()
+                            threading.Thread(target=pkg.utils.reloader.reload_all, daemon=True).start()
+                            # reply = ["[bot]已重新加载所有模块"]
                         except Exception as e:
                             logging.error("reload failed:{}".format(e))
                             reply = ["[bot]重载失败:{}".format(e)]
