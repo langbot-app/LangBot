@@ -103,7 +103,7 @@ if __name__ == '__main__':
     elif len(sys.argv) > 1 and sys.argv[1] == 'update':
         try:
             from dulwich import porcelain
-            repo = porcelain.open('.')
+            repo = porcelain.open_repo('.')
             porcelain.pull(repo)
         except ModuleNotFoundError:
             print("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
