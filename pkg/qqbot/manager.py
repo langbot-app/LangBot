@@ -112,7 +112,8 @@ class QQBotManager:
 
     def send(self, event, msg, check_quote=True):
         asyncio.run(
-            self.bot.send(event, msg, quote=True if hasattr(config, "quote_origin") and config.quote_origin and check_quote else False))
+            self.bot.send(event, msg, quote=True if hasattr(config,
+                                                            "quote_origin") and config.quote_origin and check_quote else False))
 
     # 私聊消息处理
     def on_person_message(self, event: MessageEvent):

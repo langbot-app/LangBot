@@ -1,4 +1,5 @@
 # 此模块提供了消息处理的具体逻辑的接口
+import asyncio
 import datetime
 
 import pkg.qqbot.manager as manager
@@ -26,6 +27,14 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
 
     reply = []
     session_name = "{}_{}".format(launcher_type, launcher_id)
+
+    # 检查是否被禁言
+    result = mgr.bot.member_info(target=launcher_id, member_id=mgr.bot.qq).get()
+    result = asyncio.run(result)
+    if result.mute_time_remaining > 0:
+        logging.info("机器人被禁言,跳过消息处理(group_{},剩余{}s)".format(launcher_id,
+                                                                              result.mute_time_remaining))
+        return reply
 
     pkg.openai.session.get_session(session_name).acquire_response_lock()
 
