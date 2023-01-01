@@ -108,7 +108,6 @@ class QQBotManager:
 
         pkg.utils.context.set_qqbot_manager(self)
 
-
     def send(self, event, msg, check_quote=True):
         asyncio.run(
             self.bot.send(event, msg, quote=True if hasattr(config,
@@ -166,11 +165,13 @@ class QQBotManager:
                                                        event.sender.id)
                     break
                 except FunctionTimedOut:
+                    pkg.openai.session.get_session('group_{}'.format(event.group.id)).release_response_lock()
                     failed += 1
                     continue
 
             if failed == self.retry:
-                self.notify_admin("{} 请求超时".format("group_{}".format(event.sender.id)))
+                pkg.openai.session.get_session('group_{}'.format(event.group.id)).release_response_lock()
+                self.notify_admin("{} 请求超时".format("group_{}".format(event.group.id)))
                 replys = ["[bot]err:请求超时"]
 
             return replys
@@ -195,5 +196,3 @@ class QQBotManager:
             logging.info("通知管理员:{}".format(message))
             send_task = self.bot.send_friend_message(config.admin_qq, "[bot]{}".format(message))
             threading.Thread(target=asyncio.run, args=(send_task,)).start()
-
-
