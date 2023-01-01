@@ -5,6 +5,7 @@ import time
 import config
 import pkg.openai.manager
 import pkg.database.manager
+import pkg.utils.context
 
 # 运行时保存的所有session
 sessions = {}
@@ -19,7 +20,7 @@ class SessionOfflineStatus:
 def load_sessions():
     global sessions
 
-    db_inst = pkg.database.manager.get_inst()
+    db_inst = pkg.utils.context.get_database_manager()
 
     session_data = db_inst.load_valid_sessions()
 
@@ -147,10 +148,11 @@ class Session:
         max_length = config.prompt_submit_length if hasattr(config, "prompt_submit_length") else 1024
 
         # 向API请求补全
-        response = pkg.openai.manager.get_inst().request_completion(self.cut_out(self.prompt + self.user_name + ':' +
-                                                                                 text + '\n' + self.bot_name + ':',
-                                                                                 max_rounds, max_length),
-                                                                    self.user_name + ':')
+        response = pkg.utils.context.get_openai_manager().request_completion(
+            self.cut_out(self.prompt + self.user_name + ':' +
+                         text + '\n' + self.bot_name + ':',
+                         max_rounds, max_length),
+            self.user_name + ':')
 
         self.prompt += self.user_name + ':' + text + '\n' + self.bot_name + ':'
         # print(response)
@@ -202,7 +204,7 @@ class Session:
         if self.prompt == get_default_prompt():
             return
 
-        db_inst = pkg.database.manager.get_inst()
+        db_inst = pkg.utils.context.get_database_manager()
 
         name_spt = self.name.split('_')
 
@@ -217,10 +219,10 @@ class Session:
         if self.prompt != get_default_prompt():
             self.persistence()
             if explicit:
-                pkg.database.manager.get_inst().explicit_close_session(self.name, self.create_timestamp)
+                pkg.utils.context.get_database_manager().explicit_close_session(self.name, self.create_timestamp)
 
             if expired:
-                pkg.database.manager.get_inst().set_session_expired(self.name, self.create_timestamp)
+                pkg.utils.context.get_database_manager().set_session_expired(self.name, self.create_timestamp)
         self.prompt = get_default_prompt()
         self.create_timestamp = int(time.time())
         self.last_interact_timestamp = int(time.time())
@@ -233,11 +235,11 @@ class Session:
 
     # 将本session的数据库状态设置为on_going
     def set_ongoing(self):
-        pkg.database.manager.get_inst().set_session_ongoing(self.name, self.create_timestamp)
+        pkg.utils.context.get_database_manager().set_session_ongoing(self.name, self.create_timestamp)
 
     # 切换到上一个session
     def last_session(self):
-        last_one = pkg.database.manager.get_inst().last_session(self.name, self.last_interact_timestamp)
+        last_one = pkg.utils.context.get_database_manager().last_session(self.name, self.last_interact_timestamp)
         if last_one is None:
             return None
         else:
@@ -252,7 +254,7 @@ class Session:
 
     # 切换到下一个session
     def next_session(self):
-        next_one = pkg.database.manager.get_inst().next_session(self.name, self.last_interact_timestamp)
+        next_one = pkg.utils.context.get_database_manager().next_session(self.name, self.last_interact_timestamp)
         if next_one is None:
             return None
         else:
@@ -266,8 +268,8 @@ class Session:
             return self
 
     def list_history(self, capacity: int = 10, page: int = 0):
-        return pkg.database.manager.get_inst().list_history(self.name, capacity, page,
-                                                            get_default_prompt())
+        return pkg.utils.context.get_database_manager().list_history(self.name, capacity, page,
+                                                                     get_default_prompt())
 
     def draw_image(self, prompt: str):
-        return pkg.openai.manager.get_inst().request_image(prompt)
+        return pkg.utils.context.get_openai_manager().request_image(prompt)

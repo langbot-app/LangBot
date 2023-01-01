@@ -4,6 +4,7 @@ import logging
 
 import pkg.database.manager
 import pkg.qqbot.manager
+import pkg.utils.context
 import config
 
 
@@ -62,43 +63,6 @@ class KeysManager:
     def add(self, key_name, key):
         self.api_key[key_name] = key
 
-    # def get_usage(self, api_key):
-    #     md5 = hashlib.md5(api_key.encode('utf-8')).hexdigest()
-    #     if md5 not in self.usage:
-    #         self.usage[md5] = 0
-    #     return self.usage[md5]
-
-    # 报告使用
-    # 返回是否需要将openai的api-key切换
-    # def report_usage(self, new_content: str) -> bool:
-    #     md5 = hashlib.md5(self.using_key.encode('utf-8')).hexdigest()
-    #     if md5 not in self.usage:
-    #         self.usage[md5] = 0
-    #
-    #     # 经测算得出的理论与实际的偏差比例
-    #     salt_rate = 0.91
-    #
-    #     self.usage[md5] += ( (len(new_content.encode('utf-8')) - len(new_content)) / 2 + len(new_content) )*salt_rate
-    #
-    #     self.usage[md5] = int(self.usage[md5])
-    #
-    #     if self.usage[md5] >= self.api_key_usage_threshold:
-    #         switch_result, key_name = self.auto_switch()
-    #
-    #         # 检查是否切换到新的
-    #         if switch_result:
-    #             if key_name not in self.alerted:
-    #                 # 通知管理员
-    #                 pkg.qqbot.manager.get_inst().notify_admin("api-key已切换到:" + key_name)
-    #                 self.alerted.append(key_name)
-    #                 return True
-    #         else:
-    #             if key_name not in self.alerted:
-    #                 # 通知管理员
-    #                 pkg.qqbot.manager.get_inst().notify_admin("api-key已用完，无未使用的api-key可供切换")
-    #                 self.alerted.append(key_name)
-    #                 return False
-
     # 设置当前使用的api-key使用量超限
     # 这是在尝试调用api时发生超限异常时调用的
     def set_current_exceeded(self):
@@ -106,14 +70,6 @@ class KeysManager:
         # self.usage[md5] = self.api_key_usage_threshold
         self.fee[md5] = self.api_key_fee_threshold
         self.dump_fee()
-
-    # def dump_usage(self):
-    #     pkg.database.manager.get_inst().dump_api_key_usage(api_keys=self.api_key, usage=self.usage)
-
-    # def load_usage(self):
-    #     self.usage = pkg.database.manager.get_inst().load_api_key_usage()
-    #     logging.debug("load usage:" + str(self.usage))
-    #     print("load usage:" + str(self.usage))
 
     def get_fee(self, api_key):
         md5 = hashlib.md5(api_key.encode('utf-8')).hexdigest()
@@ -135,19 +91,19 @@ class KeysManager:
             if switch_result:
                 if key_name not in self.alerted:
                     # 通知管理员
-                    pkg.qqbot.manager.get_inst().notify_admin("api-key已切换到:" + key_name)
+                    pkg.utils.context.get_qqbot_manager().notify_admin("api-key已切换到:" + key_name)
                     self.alerted.append(key_name)
                     return True
             else:
                 if key_name not in self.alerted:
                     # 通知管理员
-                    pkg.qqbot.manager.get_inst().notify_admin("api-key已用完，无未使用的api-key可供切换")
+                    pkg.utils.context.get_qqbot_manager().notify_admin("api-key已用完，无未使用的api-key可供切换")
                     self.alerted.append(key_name)
                     return False
 
     def dump_fee(self):
-        pkg.database.manager.get_inst().dump_api_key_fee(api_keys=self.api_key, fee=self.fee)
+        pkg.utils.context.get_database_manager().dump_api_key_fee(api_keys=self.api_key, fee=self.fee)
 
     def load_fee(self):
-        self.fee = pkg.database.manager.get_inst().load_api_key_fee()
+        self.fee = pkg.utils.context.get_database_manager().load_api_key_fee()
         logging.info("load fee:" + str(self.fee))

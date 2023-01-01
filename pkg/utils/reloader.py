@@ -3,6 +3,7 @@ import logging
 import pkg
 import importlib
 import pkgutil
+import pkg.utils.context
 
 
 def walk(module, prefix=''):
@@ -15,5 +16,7 @@ def walk(module, prefix=''):
 
 
 def reload_all():
+    context = pkg.utils.context.context
     walk(pkg)
     importlib.reload(__import__('config'))
+    pkg.utils.context.context = context

@@ -17,8 +17,7 @@ import logging
 
 import pkg.qqbot.filter
 import pkg.qqbot.process as processor
-
-inst = None
+import pkg.utils.context
 
 
 # 并行运行
@@ -107,8 +106,8 @@ class QQBotManager:
 
         self.bot = bot
 
-        global inst
-        inst = self
+        pkg.utils.context.set_qqbot_manager(self)
+
 
     def send(self, event, msg, check_quote=True):
         asyncio.run(
@@ -198,6 +197,3 @@ class QQBotManager:
             threading.Thread(target=asyncio.run, args=(send_task,)).start()
 
 
-def get_inst() -> QQBotManager:
-    global inst
-    return inst

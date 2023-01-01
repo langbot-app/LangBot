@@ -53,6 +53,7 @@ def main():
     import pkg.database.manager
     import pkg.openai.session
     import pkg.qqbot.manager
+    import pkg.utils.context
 
     # 主启动流程
     database = pkg.database.manager.DatabaseManager()
@@ -78,7 +79,7 @@ def main():
             time.sleep(86400)
         except KeyboardInterrupt:
             try:
-                pkg.openai.manager.get_inst().key_mgr.dump_fee()
+                pkg.utils.context.get_openai_manager().key_mgr.dump_fee()
                 for session in pkg.openai.session.sessions:
                     logging.info('持久化session: %s', session)
                     pkg.openai.session.sessions[session].persistence()
