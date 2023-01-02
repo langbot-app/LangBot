@@ -17,7 +17,7 @@
 <summary>✅回复符合上下文</summary>
 
   - 程序向模型发送近几次对话内容，模型根据上下文生成回复
-  - 您可在`config.py`中修改`process_message_timeout`自定义联系上下文的范围
+  - 您可在`config.py`中修改`prompt_submit_length`自定义联系上下文的范围
 
 </details>
 
