@@ -26,6 +26,7 @@ def reload_all(notify=True):
     main.stop()
 
     # 重载所有模块
+    pkg.utils.context.context['exceeded_keys'] = pkg.utils.context.get_openai_manager().key_mgr.exceeded
     context = pkg.utils.context.context
     walk(pkg)
     importlib.reload(__import__('config'))

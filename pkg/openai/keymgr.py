@@ -21,6 +21,10 @@ class KeysManager:
 
     alerted = []
 
+    # 在此list中的都是经超额报错标记过的api-key
+    # 记录的是key值，仅在运行时有效
+    exceeded = []
+
     def get_using_key(self):
         return self.using_key
 
@@ -45,15 +49,22 @@ class KeysManager:
         # 从usage中删除未加载的api-key的记录
         # 不删了，也许会运行时添加曾经有记录的api-key
 
-    # 根据使用量自动切换到可用的api-key
+        if 'exceeded_keys' in pkg.utils.context.context and pkg.utils.context.context['exceeded_keys'] is not None:
+            self.exceeded = pkg.utils.context.context['exceeded_keys']
+
+    # 根据tested自动切换到可用的api-key
     # 返回是否切换成功, 切换后的api-key的别名
     def auto_switch(self) -> (bool, str):
         self.dump_fee()
         for key_name in self.api_key:
-            if self.get_fee(self.api_key[key_name]) < self.api_key_fee_threshold:
+            if self.api_key[key_name] not in self.exceeded:
                 self.using_key = self.api_key[key_name]
                 logging.info("使用api-key:" + key_name)
                 return True, key_name
+            # if self.get_fee(self.api_key[key_name]) < self.api_key_fee_threshold:
+            #     self.using_key = self.api_key[key_name]
+            #     logging.info("使用api-key:" + key_name)
+            #     return True, key_name
 
         self.using_key = list(self.api_key.values())[0]
         logging.info("使用api-key:" + list(self.api_key.keys())[0])
@@ -66,10 +77,18 @@ class KeysManager:
     # 设置当前使用的api-key使用量超限
     # 这是在尝试调用api时发生超限异常时调用的
     def set_current_exceeded(self):
-        md5 = hashlib.md5(self.using_key.encode('utf-8')).hexdigest()
+        # md5 = hashlib.md5(self.using_key.encode('utf-8')).hexdigest()
         # self.usage[md5] = self.api_key_usage_threshold
-        self.fee[md5] = self.api_key_fee_threshold
+        # self.fee[md5] = self.api_key_fee_threshold
+        self.exceeded.append(self.using_key)
         self.dump_fee()
+
+    def get_key_name(self, api_key):
+        """根据api-key获取其别名"""
+        for key_name in self.api_key:
+            if self.api_key[key_name] == api_key:
+                return key_name
+        return ""
 
     def get_fee(self, api_key):
         md5 = hashlib.md5(api_key.encode('utf-8')).hexdigest()
@@ -103,6 +122,7 @@ class KeysManager:
                     pkg.utils.context.get_qqbot_manager().notify_admin("api-key已用完，无未使用的api-key可供切换")
                     self.alerted.append(key_name)
                     return False
+        return False
 
     def dump_fee(self):
         pkg.utils.context.get_database_manager().dump_api_key_fee(api_keys=self.api_key, fee=self.fee)
