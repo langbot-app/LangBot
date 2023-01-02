@@ -3,9 +3,12 @@ import json
 import os
 import threading
 
+import mirai.models.bus
 import openai.error
 from mirai import At, GroupMessage, MessageEvent, Mirai, Plain, StrangerMessage, WebSocketAdapter, HTTPAdapter, \
     FriendMessage, Image
+
+from mirai.models.bus import ModelEventBus
 
 from mirai.models.message import Quote
 
@@ -77,7 +80,32 @@ class QQBotManager:
 
         pkg.utils.context.set_qqbot_manager(self)
 
+        # Caution: 注册新的事件处理器之后，请务必在unsubscribe_all中编写相应的取消订阅代码
+        @self.bot.on(FriendMessage)
+        async def on_friend_message(event: FriendMessage):
+            go(self.on_person_message, (event,))
+
+        @self.bot.on(StrangerMessage)
+        async def on_stranger_message(event: StrangerMessage):
+            go(self.on_person_message, (event,))
+
+        @self.bot.on(GroupMessage)
+        async def on_group_message(event: GroupMessage):
+            go(self.on_group_message, (event,))
+
+        def unsubscribe_all():
+            assert isinstance(self.bot, Mirai)
+            bus = self.bot.bus
+            assert isinstance(bus, mirai.models.bus.ModelEventBus)
+
+            bus.unsubscribe(FriendMessage, on_friend_message)
+            bus.unsubscribe(StrangerMessage, on_stranger_message)
+            bus.unsubscribe(GroupMessage, on_group_message)
+
+        self.unsubscribe_all = unsubscribe_all
+
     def first_time_init(self, mirai_http_api_config: dict):
+        """热重载后不再运行此函数"""
 
         if 'adapter' not in mirai_http_api_config or mirai_http_api_config['adapter'] == "WebSocketAdapter":
             bot = Mirai(
@@ -103,18 +131,6 @@ class QQBotManager:
 
         self.bot = bot
 
-        @self.bot.on(FriendMessage)
-        async def on_friend_message(event: FriendMessage):
-            go(self.on_person_message, (event,))
-
-        @self.bot.on(StrangerMessage)
-        async def on_stranger_message(event: StrangerMessage):
-            go(self.on_person_message, (event,))
-
-        @self.bot.on(GroupMessage)
-        async def on_group_message(event: GroupMessage):
-            go(self.on_group_message, (event,))
-
     def send(self, event, msg, check_quote=True):
         asyncio.run(
             self.bot.send(event, msg, quote=True if hasattr(config,
@@ -122,7 +138,6 @@ class QQBotManager:
 
     # 私聊消息处理
     def on_person_message(self, event: MessageEvent):
-
         reply = ''
 
         if event.sender.id == self.bot.qq:

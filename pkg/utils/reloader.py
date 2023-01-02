@@ -21,11 +21,13 @@ def walk(module, prefix=''):
 
 
 def reload_all():
+    # 解除bot的事件注册
+    import pkg
+    pkg.utils.context.get_qqbot_manager().unsubscribe_all()
     # 执行关闭流程
     logging.info("执行程序关闭流程")
     import main
     main.stop()
-    import pkg
 
     context = pkg.utils.context.context
     walk(pkg)
