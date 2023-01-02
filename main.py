@@ -115,7 +115,6 @@ def stop():
 
 
 if __name__ == '__main__':
-    print('程序启动')
     # 检查是否有config.py,如果没有就把config-template.py复制一份,并退出程序
     if not os.path.exists('config.py'):
         shutil.copy('config-template.py', 'config.py')

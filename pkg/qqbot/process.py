@@ -167,7 +167,11 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                         threading.Thread(target=reload_task, daemon=True).start()
                     elif cmd == 'update' and launcher_type == 'person' and launcher_id == config.admin_qq:
                         def update_task():
-                            pkg.utils.updater.update_all()
+                            try:
+                                pkg.utils.updater.update_all()
+                            except Exception as e0:
+                                pkg.utils.context.get_qqbot_manager().notify_admin("更新失败:{}".format(e0))
+                                return
                             pkg.utils.reloader.reload_all()
 
                         threading.Thread(target=update_task, daemon=True).start()
