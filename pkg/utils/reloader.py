@@ -21,7 +21,7 @@ def walk(module, prefix=''):
             importlib.reload(__import__(module.__name__ + '.' + item.name, fromlist=['']))
 
 
-def reload_all():
+def reload_all(notify=True):
     # 解除bot的事件注册
     import pkg
     pkg.utils.context.get_qqbot_manager().unsubscribe_all()
@@ -42,4 +42,5 @@ def reload_all():
     threading.Thread(target=main.main, args=(False,), daemon=False).start()
 
     logging.info('程序启动完成')
-    pkg.utils.context.get_qqbot_manager().notify_admin("重载完成")
+    if notify:
+        pkg.utils.context.get_qqbot_manager().notify_admin("重载完成")
