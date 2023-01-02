@@ -171,6 +171,8 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                             pkg.utils.reloader.reload_all()
 
                         threading.Thread(target=update_task, daemon=True).start()
+                    else:
+                        reply = ["[bot]err:未知的指令或权限不足: "+cmd]
                 except Exception as e:
                     mgr.notify_admin("{}指令执行失败:{}".format(session_name, e))
                     logging.exception(e)
