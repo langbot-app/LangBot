@@ -196,7 +196,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                     # 尝试切换api-key
                     current_tokens_amt = pkg.utils.context.get_openai_manager().key_mgr.get_fee(
                         pkg.utils.context.get_openai_manager().key_mgr.get_using_key())
-                    pkg.utils.context.get_openai_manager().key_mgr.set_current_exceeded()
+                    # pkg.utils.context.get_openai_manager().key_mgr.set_current_exceeded()
                     switched, name = pkg.utils.context.get_openai_manager().key_mgr.auto_switch()
 
                     if not switched:
