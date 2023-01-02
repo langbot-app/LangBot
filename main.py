@@ -1,16 +1,16 @@
-import asyncio
 import os
 import shutil
-import sys
 import threading
 import time
 
 import logging
-import colorlog
-
-from mirai.bot import MiraiRunner
-
 import sys
+try:
+    import colorlog
+except ImportError:
+    print("未安装colorlog,请查看 https://github.com/RockChinQ/qcg-installer/issues/15")
+    sys.exit(1)
+import colorlog
 
 sys.path.append(".")
 
