@@ -60,6 +60,10 @@ response_rules = {
 # 单位：美元
 api_key_fee_threshold = 18.0
 
+# 是否根据估算的使用费用切换api-key
+# 设置为False将只在接口报错超额时自动切换
+auto_switch_api_key = False
+
 # 敏感词过滤开关，以同样数量的*代替敏感词回复
 # 请在sensitive.json中添加敏感词
 sensitive_word_filter = True

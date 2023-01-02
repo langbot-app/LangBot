@@ -86,7 +86,8 @@ class KeysManager:
 
         self.fee[md5] += fee
 
-        if self.fee[md5] >= self.api_key_fee_threshold:
+        if self.fee[md5] >= self.api_key_fee_threshold and \
+                hasattr(config, 'auto_switch_api_key') and config.auto_switch_api_key:
             switch_result, key_name = self.auto_switch()
 
             # 检查是否切换到新的
