@@ -33,7 +33,11 @@ def init_db():
 def main(first_time_init=False):
     # 导入config.py
     assert os.path.exists('config.py')
+
+    # 检查是否设置了管理员
     import config
+    if not (hasattr(config, 'admin_qq') and config.admin_qq != 0):
+        logging.warning("未设置管理员QQ,管理员权限指令及运行告警将无法使用,如需设置请修改config.py中的admin_qq字段")
 
     import pkg.utils.context
     if pkg.utils.context.context['logger_handler'] is not None:
