@@ -25,7 +25,6 @@ processing = []
 def process_message(launcher_type: str, launcher_id: int, text_message: str, message_chain: MessageChain,
                     sender_id: int) -> MessageChain:
     global processing
-    print("hot update test: process_message")
 
     mgr = pkg.utils.context.get_qqbot_manager()
 
