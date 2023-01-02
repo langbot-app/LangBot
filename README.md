@@ -17,7 +17,7 @@
 
 **部署过程中遇到任何问题，请先在[QChatGPT](https://github.com/RockChinQ/QChatGPT/issues)或[qcg-installer](https://github.com/RockChinQ/qcg-installer/issues)的issue里进行搜索**
 
-### 注册OpenAI账号
+### - 注册OpenAI账号
 
 参考以下文章
 
@@ -27,7 +27,7 @@
 注册成功后请前往[个人中心查看](https://beta.openai.com/account/api-keys)api_key  
 完成注册后，使用以下自动化或手动部署步骤
 
-### 自动化部署
+### - 自动化部署
 
 以下方式二选一，Linux首选Docker，Windows首选安装器
 
@@ -40,7 +40,7 @@
 
 - 安装器目前仅支持部分平台，请到仓库文档查看，其他平台请手动部署
 
-### 手动部署
+### - 手动部署
 <details>
 <summary>手动部署适用于所有平台</summary>
 
