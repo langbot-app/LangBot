@@ -99,20 +99,4 @@ python3 main.py
 
 ## 🚀使用
 
-### 私聊使用
-
-1. 添加机器人QQ为好友
-2. 发送消息给机器人，机器人即会自动回复
-3. 可以通过`!help`查看帮助信息
-
-<img alt="私聊示例" src="res/屏幕截图%202022-12-08%20150949.png" width="550" height="279"/>
-
-### 群聊使用
-
-1. 将机器人拉进群
-2. at机器人并发送消息，机器人即会自动回复
-3. at机器人并发送`!help`查看帮助信息
-
-<img alt="群聊示例" src="res/屏幕截图%202022-12-08%20150511.png" width="671" height="522"/>
-
-<img alt="绘图功能" src="res/屏幕截图%202022-12-29%20194948.png" width="642" height="407"/>
+查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E4%BD%BF%E7%94%A8%E6%96%B9%E5%BC%8F)
