@@ -4,13 +4,8 @@ import os
 import threading
 
 import mirai.models.bus
-import openai.error
 from mirai import At, GroupMessage, MessageEvent, Mirai, Plain, StrangerMessage, WebSocketAdapter, HTTPAdapter, \
     FriendMessage, Image
-
-from mirai.models.bus import ModelEventBus
-
-from mirai.models.message import Quote
 
 import config
 import pkg.openai.session

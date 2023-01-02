@@ -3,7 +3,6 @@ import asyncio
 import datetime
 import threading
 
-import pkg.qqbot.manager as manager
 from func_timeout import func_set_timeout
 import logging
 import openai

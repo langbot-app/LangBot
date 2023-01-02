@@ -1,14 +1,9 @@
 import logging
-import os
 import threading
 
-import colorlog
-
-import pkg
 import importlib
 import pkgutil
 import pkg.utils.context
-from main import log_colors_config
 
 
 def walk(module, prefix=''):
