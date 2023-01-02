@@ -73,6 +73,9 @@ class QQBotManager:
         else:
             self.reply_filter = pkg.qqbot.filter.ReplyFilter([])
 
+        # 由于YiriMirai的bot对象是单例的，且shutdown方法暂时无法使用
+        # 故只在第一次初始化时创建bot对象，重载之后使用原bot对象
+        # 因此，bot的配置不支持热重载
         if first_time_init:
             self.first_time_init(mirai_http_api_config)
         else:
@@ -94,6 +97,10 @@ class QQBotManager:
             go(self.on_group_message, (event,))
 
         def unsubscribe_all():
+            """取消所有订阅
+
+            用于在热重载流程中卸载所有事件处理器
+            """
             assert isinstance(self.bot, Mirai)
             bus = self.bot.bus
             assert isinstance(bus, mirai.models.bus.ModelEventBus)

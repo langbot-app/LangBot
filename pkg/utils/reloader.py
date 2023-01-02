@@ -12,6 +12,7 @@ from main import log_colors_config
 
 
 def walk(module, prefix=''):
+    """遍历并重载所有模块"""
     for item in pkgutil.iter_modules(module.__path__):
         if item.ispkg:
             walk(__import__(module.__name__ + '.' + item.name, fromlist=['']), prefix + item.name + '.')
@@ -29,6 +30,7 @@ def reload_all():
     import main
     main.stop()
 
+    # 重载所有模块
     context = pkg.utils.context.context
     walk(pkg)
     importlib.reload(__import__('config'))

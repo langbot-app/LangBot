@@ -2,6 +2,7 @@ import dulwich.porcelain
 
 
 def update_all():
+    """使用dulwich更新源码"""
     try:
         from dulwich import porcelain
         repo = porcelain.open_repo('.')
