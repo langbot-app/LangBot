@@ -1,6 +1,7 @@
 # 此模块提供了消息处理的具体逻辑的接口
 import asyncio
 import datetime
+import threading
 
 import pkg.qqbot.manager as manager
 from func_timeout import func_set_timeout
@@ -8,12 +9,14 @@ import logging
 import openai
 
 from mirai import Image, MessageChain
-from mirai.models.message import Quote
 
 import config
 
 import pkg.openai.session
 import pkg.openai.manager
+import pkg.utils.reloader
+import pkg.utils.updater
+import pkg.utils.context
 
 processing = []
 
@@ -23,7 +26,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                     sender_id: int) -> MessageChain:
     global processing
 
-    mgr = pkg.qqbot.manager.get_inst()
+    mgr = pkg.utils.context.get_qqbot_manager()
 
     reply = []
     session_name = "{}_{}".format(launcher_type, launcher_id)
@@ -123,22 +126,22 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
 
                             reply = [reply_str]
                     elif cmd == 'usage':
-                        api_keys = pkg.openai.manager.get_inst().key_mgr.api_key
+                        api_keys = pkg.utils.context.get_openai_manager().key_mgr.api_key
                         reply_str = "[bot]api-key使用情况:(阈值:{})\n\n".format(
-                            pkg.openai.manager.get_inst().key_mgr.api_key_fee_threshold)
+                            pkg.utils.context.get_openai_manager().key_mgr.api_key_fee_threshold)
 
                         using_key_name = ""
                         for api_key in api_keys:
                             reply_str += "{}:\n - {}美元 {}%\n".format(api_key,
                                                                        round(
-                                                                           pkg.openai.manager.get_inst().key_mgr.get_fee(
+                                                                           pkg.utils.context.get_openai_manager().key_mgr.get_fee(
                                                                                api_keys[api_key]), 6),
                                                                        round(
-                                                                           pkg.openai.manager.get_inst().key_mgr.get_fee(
+                                                                           pkg.utils.context.get_openai_manager().key_mgr.get_fee(
                                                                                api_keys[
-                                                                                   api_key]) / pkg.openai.manager.get_inst().key_mgr.api_key_fee_threshold * 100,
+                                                                                   api_key]) / pkg.utils.context.get_openai_manager().key_mgr.api_key_fee_threshold * 100,
                                                                            3))
-                            if api_keys[api_key] == pkg.openai.manager.get_inst().key_mgr.using_key:
+                            if api_keys[api_key] == pkg.utils.context.get_openai_manager().key_mgr.using_key:
                                 using_key_name = api_key
                         reply_str += "\n当前使用:{}".format(using_key_name)
 
@@ -157,6 +160,23 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                             if not (hasattr(config, 'include_image_description')
                                     and not config.include_image_description):
                                 reply.append(" ".join(params))
+                    elif cmd == 'reload' and launcher_type == 'person' and launcher_id == config.admin_qq:
+                        def reload_task():
+                            pkg.utils.reloader.reload_all()
+
+                        threading.Thread(target=reload_task, daemon=True).start()
+                    elif cmd == 'update' and launcher_type == 'person' and launcher_id == config.admin_qq:
+                        def update_task():
+                            try:
+                                pkg.utils.updater.update_all()
+                            except Exception as e0:
+                                pkg.utils.context.get_qqbot_manager().notify_admin("更新失败:{}".format(e0))
+                                return
+                            pkg.utils.reloader.reload_all()
+
+                        threading.Thread(target=update_task, daemon=True).start()
+                    else:
+                        reply = ["[bot]err:未知的指令或权限不足: "+cmd]
                 except Exception as e:
                     mgr.notify_admin("{}指令执行失败:{}".format(session_name, e))
                     logging.exception(e)
@@ -174,17 +194,17 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                     reply = ["[bot]err:调用API失败，请重试或联系作者，或等待修复"]
                 except openai.error.RateLimitError as e:
                     # 尝试切换api-key
-                    current_tokens_amt = pkg.openai.manager.get_inst().key_mgr.get_fee(
-                        pkg.openai.manager.get_inst().key_mgr.get_using_key())
-                    pkg.openai.manager.get_inst().key_mgr.set_current_exceeded()
-                    switched, name = pkg.openai.manager.get_inst().key_mgr.auto_switch()
+                    current_tokens_amt = pkg.utils.context.get_openai_manager().key_mgr.get_fee(
+                        pkg.utils.context.get_openai_manager().key_mgr.get_using_key())
+                    pkg.utils.context.get_openai_manager().key_mgr.set_current_exceeded()
+                    switched, name = pkg.utils.context.get_openai_manager().key_mgr.auto_switch()
 
                     if not switched:
                         mgr.notify_admin("API调用额度超限({}),请向OpenAI账户充值或在config.py中更换api_key".format(
                             current_tokens_amt))
                         reply = ["[bot]err:API调用额度超额，请联系作者，或等待修复"]
                     else:
-                        openai.api_key = pkg.openai.manager.get_inst().key_mgr.get_using_key()
+                        openai.api_key = pkg.utils.context.get_openai_manager().key_mgr.get_using_key()
                         mgr.notify_admin("API调用额度超限({}),已切换到{}".format(current_tokens_amt, name))
                         reply = ["[bot]err:API调用额度超额，已自动切换，请重新发送消息"]
                 except openai.error.InvalidRequestError as e:

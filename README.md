@@ -72,6 +72,12 @@
   - 现已支持OpenAI的对话`Completion API`和绘图`Image API`
   - 向机器人发送指令`!draw <prompt>`即可使用绘图模型
 </details>
+<details>
+<summary>✅支持指令控制热重载、热更新</summary>
+
+  - 允许在运行期间修改`config.py`或其他代码后，以管理员账号向机器人发送指令`!reload`进行热重载，无需重启
+  - 运行期间允许以管理员账号向机器人发送指令`!update`进行热更新，拉取远程最新代码并执行热重载
+</details>
 
 ## 💻技术栈
 

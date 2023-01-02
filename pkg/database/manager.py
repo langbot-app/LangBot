@@ -6,8 +6,7 @@ from sqlite3 import Cursor
 import sqlite3
 
 import config
-
-inst = None
+import pkg.utils.context
 
 
 # 数据库管理
@@ -20,8 +19,7 @@ class DatabaseManager:
 
         self.reconnect()
 
-        global inst
-        inst = self
+        pkg.utils.context.set_database_manager(self)
 
     # 连接到数据库文件
     def reconnect(self):
@@ -312,6 +310,3 @@ class DatabaseManager:
             fee[key_md5] = fee_count
         return fee
 
-def get_inst() -> DatabaseManager:
-    global inst
-    return inst

@@ -6,8 +6,7 @@ import config
 
 import pkg.openai.keymgr
 import pkg.openai.pricing as pricing
-
-inst = None
+import pkg.utils.context
 
 
 # 为其他模块提供与OpenAI交互的接口
@@ -27,11 +26,11 @@ class OpenAIInteract:
 
         openai.api_key = self.key_mgr.get_using_key()
 
-        global inst
-        inst = self
+        pkg.utils.context.set_openai_manager(self)
 
     # 请求OpenAI Completion
     def request_completion(self, prompt, stop):
+        # print("request")
         response = openai.Completion.create(
             prompt=prompt,
             stop=stop,
@@ -41,7 +40,6 @@ class OpenAIInteract:
 
         switched = self.key_mgr.report_fee(pricing.language_base_price(config.completion_api_params['model'],
                                                                        prompt + response['choices'][0]['text']))
-
         if switched:
             openai.api_key = self.key_mgr.get_using_key()
 
@@ -64,7 +62,3 @@ class OpenAIInteract:
 
         return response
 
-
-def get_inst() -> OpenAIInteract:
-    global inst
-    return inst

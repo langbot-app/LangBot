@@ -3,9 +3,12 @@ import json
 import os
 import threading
 
+import mirai.models.bus
 import openai.error
 from mirai import At, GroupMessage, MessageEvent, Mirai, Plain, StrangerMessage, WebSocketAdapter, HTTPAdapter, \
     FriendMessage, Image
+
+from mirai.models.bus import ModelEventBus
 
 from mirai.models.message import Quote
 
@@ -17,8 +20,7 @@ import logging
 
 import pkg.qqbot.filter
 import pkg.qqbot.process as processor
-
-inst = None
+import pkg.utils.context
 
 
 # 并行运行
@@ -58,7 +60,7 @@ class QQBotManager:
 
     reply_filter = None
 
-    def __init__(self, mirai_http_api_config: dict, timeout: int = 60, retry: int = 3):
+    def __init__(self, mirai_http_api_config: dict, timeout: int = 60, retry: int = 3, first_time_init=True):
 
         self.timeout = timeout
         self.retry = retry
@@ -70,6 +72,47 @@ class QQBotManager:
                 self.reply_filter = pkg.qqbot.filter.ReplyFilter(json.load(f)['words'])
         else:
             self.reply_filter = pkg.qqbot.filter.ReplyFilter([])
+
+        # 由于YiriMirai的bot对象是单例的，且shutdown方法暂时无法使用
+        # 故只在第一次初始化时创建bot对象，重载之后使用原bot对象
+        # 因此，bot的配置不支持热重载
+        if first_time_init:
+            self.first_time_init(mirai_http_api_config)
+        else:
+            self.bot = pkg.utils.context.get_qqbot_manager().bot
+
+        pkg.utils.context.set_qqbot_manager(self)
+
+        # Caution: 注册新的事件处理器之后，请务必在unsubscribe_all中编写相应的取消订阅代码
+        @self.bot.on(FriendMessage)
+        async def on_friend_message(event: FriendMessage):
+            go(self.on_person_message, (event,))
+
+        @self.bot.on(StrangerMessage)
+        async def on_stranger_message(event: StrangerMessage):
+            go(self.on_person_message, (event,))
+
+        @self.bot.on(GroupMessage)
+        async def on_group_message(event: GroupMessage):
+            go(self.on_group_message, (event,))
+
+        def unsubscribe_all():
+            """取消所有订阅
+
+            用于在热重载流程中卸载所有事件处理器
+            """
+            assert isinstance(self.bot, Mirai)
+            bus = self.bot.bus
+            assert isinstance(bus, mirai.models.bus.ModelEventBus)
+
+            bus.unsubscribe(FriendMessage, on_friend_message)
+            bus.unsubscribe(StrangerMessage, on_stranger_message)
+            bus.unsubscribe(GroupMessage, on_group_message)
+
+        self.unsubscribe_all = unsubscribe_all
+
+    def first_time_init(self, mirai_http_api_config: dict):
+        """热重载后不再运行此函数"""
 
         if 'adapter' not in mirai_http_api_config or mirai_http_api_config['adapter'] == "WebSocketAdapter":
             bot = Mirai(
@@ -93,22 +136,7 @@ class QQBotManager:
         else:
             raise Exception("未知的适配器类型")
 
-        @bot.on(FriendMessage)
-        async def on_friend_message(event: FriendMessage):
-            go(self.on_person_message, (event,))
-
-        @bot.on(StrangerMessage)
-        async def on_stranger_message(event: StrangerMessage):
-            go(self.on_person_message, (event,))
-
-        @bot.on(GroupMessage)
-        async def on_group_message(event: GroupMessage):
-            go(self.on_group_message, (event,))
-
         self.bot = bot
-
-        global inst
-        inst = self
 
     def send(self, event, msg, check_quote=True):
         asyncio.run(
@@ -117,7 +145,6 @@ class QQBotManager:
 
     # 私聊消息处理
     def on_person_message(self, event: MessageEvent):
-
         reply = ''
 
         if event.sender.id == self.bot.qq:
@@ -167,11 +194,13 @@ class QQBotManager:
                                                        event.sender.id)
                     break
                 except FunctionTimedOut:
+                    pkg.openai.session.get_session('group_{}'.format(event.group.id)).release_response_lock()
                     failed += 1
                     continue
 
             if failed == self.retry:
-                self.notify_admin("{} 请求超时".format("group_{}".format(event.sender.id)))
+                pkg.openai.session.get_session('group_{}'.format(event.group.id)).release_response_lock()
+                self.notify_admin("{} 请求超时".format("group_{}".format(event.group.id)))
                 replys = ["[bot]err:请求超时"]
 
             return replys
@@ -196,8 +225,3 @@ class QQBotManager:
             logging.info("通知管理员:{}".format(message))
             send_task = self.bot.send_friend_message(config.admin_qq, "[bot]{}".format(message))
             threading.Thread(target=asyncio.run, args=(send_task,)).start()
-
-
-def get_inst() -> QQBotManager:
-    global inst
-    return inst

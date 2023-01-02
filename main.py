@@ -1,3 +1,4 @@
+import asyncio
 import os
 import shutil
 import sys
@@ -6,6 +7,8 @@ import time
 
 import logging
 import colorlog
+
+from mirai.bot import MiraiRunner
 
 import sys
 
@@ -27,10 +30,18 @@ def init_db():
     database.initialize_database()
 
 
-def main():
+def main(first_time_init=False):
     # 导入config.py
     assert os.path.exists('config.py')
+
+    # 检查是否设置了管理员
     import config
+    if not (hasattr(config, 'admin_qq') and config.admin_qq != 0):
+        logging.warning("未设置管理员QQ,管理员权限指令及运行告警将无法使用,如需设置请修改config.py中的admin_qq字段")
+
+    import pkg.utils.context
+    if pkg.utils.context.context['logger_handler'] is not None:
+        logging.getLogger().removeHandler(pkg.utils.context.context['logger_handler'])
 
     logging.basicConfig(level=config.logging_level,  # 设置日志输出格式
                         filename='qchatgpt.log',  # log日志输出的文件位置和文件名
@@ -54,6 +65,7 @@ def main():
     import pkg.openai.session
     import pkg.qqbot.manager
 
+    pkg.utils.context.context['logger_handler'] = sh
     # 主启动流程
     database = pkg.database.manager.DatabaseManager()
 
@@ -66,27 +78,44 @@ def main():
 
     # 初始化qq机器人
     qqbot = pkg.qqbot.manager.QQBotManager(mirai_http_api_config=config.mirai_http_api_config,
-                                           timeout=config.process_message_timeout, retry=config.retry_times)
+                                           timeout=config.process_message_timeout, retry=config.retry_times,
+                                           first_time_init=first_time_init)
 
-    qq_bot_thread = threading.Thread(target=qqbot.bot.run, args=(), daemon=True)
-    qq_bot_thread.start()
+    if first_time_init:  # 不是热重载之后的启动,则不启动新的bot线程
+        qq_bot_thread = threading.Thread(target=qqbot.bot.run, args=(), daemon=True)
+        qq_bot_thread.start()
 
-    logging.info('程序启动完成')
+    time.sleep(2)
+    logging.info('程序启动完成,如长时间未显示 ”成功登录到账号xxxxx“ ,并且不回复消息,请查看 https://github.com/RockChinQ/QChatGPT/issues/37')
 
     while True:
         try:
-            time.sleep(86400)
+            time.sleep(10000)
+            if qqbot != pkg.utils.context.get_qqbot_manager():  # 已经reload了
+                logging.info("以前的main流程由于reload退出")
+                break
         except KeyboardInterrupt:
-            try:
-                pkg.openai.manager.get_inst().key_mgr.dump_fee()
-                for session in pkg.openai.session.sessions:
-                    logging.info('持久化session: %s', session)
-                    pkg.openai.session.sessions[session].persistence()
-            except Exception as e:
-                if not isinstance(e, KeyboardInterrupt):
-                    raise e
+            stop()
+
             print("程序退出")
             sys.exit(0)
+
+
+def stop():
+    import pkg.utils.context
+    import pkg.qqbot.manager
+    import pkg.openai.session
+    try:
+        qqbot_inst = pkg.utils.context.get_qqbot_manager()
+        assert isinstance(qqbot_inst, pkg.qqbot.manager.QQBotManager)
+
+        pkg.utils.context.get_openai_manager().key_mgr.dump_fee()
+        for session in pkg.openai.session.sessions:
+            logging.info('持久化session: %s', session)
+            pkg.openai.session.sessions[session].persistence()
+    except Exception as e:
+        if not isinstance(e, KeyboardInterrupt):
+            raise e
 
 
 if __name__ == '__main__':
@@ -109,4 +138,4 @@ if __name__ == '__main__':
             print("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
         sys.exit(0)
 
-    main()
+    main(True)

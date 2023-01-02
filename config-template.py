@@ -8,6 +8,8 @@ import logging
 # port: 运行mirai的主机端口
 # verifyKey: mirai-api-http的verifyKey
 # qq: 机器人的QQ号
+#
+# 注意: QQ机器人配置不支持热重载及热更新
 mirai_http_api_config = {
     "adapter": "WebSocketAdapter",
     "host": "localhost",
@@ -30,6 +32,9 @@ openai_config = {
     },
 }
 
+# 管理员QQ号，用于接收报错等通知及执行管理员级别指令，为0时关闭此功能
+admin_qq = 0
+
 # 情景预设（机器人人格）
 # 每个会话的预设信息，影响所有会话，无视指令重置
 # 可以通过这个字段指定某些情况的回复，可直接用自然语言描述指令
@@ -37,9 +42,6 @@ openai_config = {
 #   这样用户在不知所措的时候机器人就会提示其输入!help获取帮助
 # 可参考 https://github.com/PlexPt/awesome-chatgpt-prompts-zh
 default_prompt = "如果我之后想获取帮助，请你说“输入!help获取帮助”"
-
-# 管理员QQ号，用于接收报错等通知，为0时不发送通知
-admin_qq = 0
 
 # 群内响应规则
 # 符合此消息的群内消息即使不包含at机器人也会响应
