@@ -77,8 +77,9 @@ def main(first_time_init=False):
                                            timeout=config.process_message_timeout, retry=config.retry_times,
                                            first_time_init=first_time_init)
 
-    qq_bot_thread = threading.Thread(target=qqbot.bot.run, args=(), daemon=True)
-    qq_bot_thread.start()
+    if first_time_init: # 不是热重载之后的启动,则不启动新的bot线程
+        qq_bot_thread = threading.Thread(target=qqbot.bot.run, args=(), daemon=True)
+        qq_bot_thread.start()
 
     logging.info('程序启动完成')
 

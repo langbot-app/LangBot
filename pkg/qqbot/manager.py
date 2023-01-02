@@ -70,25 +70,12 @@ class QQBotManager:
         else:
             self.reply_filter = pkg.qqbot.filter.ReplyFilter([])
 
-
         if first_time_init:
             self.first_time_init(mirai_http_api_config)
         else:
             self.bot = pkg.utils.context.get_qqbot_manager().bot
 
         pkg.utils.context.set_qqbot_manager(self)
-
-        @self.bot.on(FriendMessage)
-        async def on_friend_message(event: FriendMessage):
-            go(self.on_person_message, (event,))
-
-        @self.bot.on(StrangerMessage)
-        async def on_stranger_message(event: StrangerMessage):
-            go(self.on_person_message, (event,))
-
-        @self.bot.on(GroupMessage)
-        async def on_group_message(event: GroupMessage):
-            go(self.on_group_message, (event,))
 
     def first_time_init(self, mirai_http_api_config: dict):
 
@@ -114,8 +101,19 @@ class QQBotManager:
         else:
             raise Exception("未知的适配器类型")
 
-
         self.bot = bot
+
+        @self.bot.on(FriendMessage)
+        async def on_friend_message(event: FriendMessage):
+            go(self.on_person_message, (event,))
+
+        @self.bot.on(StrangerMessage)
+        async def on_stranger_message(event: StrangerMessage):
+            go(self.on_person_message, (event,))
+
+        @self.bot.on(GroupMessage)
+        async def on_group_message(event: GroupMessage):
+            go(self.on_group_message, (event,))
 
     def send(self, event, msg, check_quote=True):
         asyncio.run(
