@@ -87,6 +87,7 @@ def main(first_time_init=False):
         try:
             time.sleep(10000)
             if qqbot != pkg.utils.context.get_qqbot_manager():  # 已经reload了
+                logging.info("以前的main流程由于reload退出")
                 break
         except KeyboardInterrupt:
             stop()
@@ -102,15 +103,6 @@ def stop():
     try:
         qqbot_inst = pkg.utils.context.get_qqbot_manager()
         assert isinstance(qqbot_inst, pkg.qqbot.manager.QQBotManager)
-
-        # try:
-        #     asyncio.run(qqbot_inst.bot.shutdown())
-        # except ValueError:
-        #     pass
-        #
-        # import mirai.utils
-        # MiraiRunner.__class__._instance = None
-        # mirai.utils.Singleton._instance = None
 
         pkg.utils.context.get_openai_manager().key_mgr.dump_fee()
         for session in pkg.openai.session.sessions:

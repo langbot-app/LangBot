@@ -37,6 +37,7 @@ def reload_all():
 
     # 执行启动流程
     logging.info("执行程序启动流程")
-    main.main()
+    threading.Thread(target=main.main, args=(False,), daemon=False).start()
 
     logging.info('程序启动完成')
+    pkg.utils.context.get_qqbot_manager().notify_admin("重载完成")

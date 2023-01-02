@@ -161,21 +161,16 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                                     and not config.include_image_description):
                                 reply.append(" ".join(params))
                     elif cmd == 'reload' and launcher_type == 'person' and launcher_id == config.admin_qq:
-                        try:
-                            # pkg.utils.reloader.reload_all()
-                            threading.Thread(target=pkg.utils.reloader.reload_all, daemon=True).start()
-                            # reply = ["[bot]已重新加载所有模块"]
-                        except Exception as e:
-                            logging.error("reload failed:{}".format(e))
-                            reply = ["[bot]重载失败:{}".format(e)]
+                        def reload_task():
+                            pkg.utils.reloader.reload_all()
+
+                        threading.Thread(target=reload_task, daemon=True).start()
                     elif cmd == 'update' and launcher_type == 'person' and launcher_id == config.admin_qq:
-                        try:
+                        def update_task():
                             pkg.utils.updater.update_all()
                             pkg.utils.reloader.reload_all()
-                            reply = ["[bot]已更新所有模块"]
-                        except Exception as e:
-                            logging.error("update failed:{}".format(e))
-                            reply = ["[bot]更新失败:{}".format(e)]
+
+                        threading.Thread(target=update_task, daemon=True).start()
                 except Exception as e:
                     mgr.notify_admin("{}指令执行失败:{}".format(session_name, e))
                     logging.exception(e)
