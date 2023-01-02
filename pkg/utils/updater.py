@@ -1,8 +1,10 @@
-import dulwich.porcelain
-
 
 def update_all():
     """使用dulwich更新源码"""
+    try:
+        import dulwich
+    except ModuleNotFoundError:
+        raise Exception("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
     try:
         from dulwich import porcelain
         repo = porcelain.open_repo('.')
