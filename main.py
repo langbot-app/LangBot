@@ -86,7 +86,7 @@ def main(first_time_init=False):
         qq_bot_thread.start()
 
     time.sleep(2)
-    logging.info('程序启动完成,如长时间未显示 ”成功登录到账号xxxxx“ ,并且不回复消息,请查看 https://github.com/RockChinQ/QChatGPT/issues/37')
+    logging.info('程序启动完成', ',如长时间未显示 ”成功登录到账号xxxxx“ ,并且不回复消息,请查看 https://github.com/RockChinQ/QChatGPT/issues/37' if first_time_init else '')
 
     while True:
         try:
