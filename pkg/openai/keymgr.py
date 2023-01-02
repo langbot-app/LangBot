@@ -78,6 +78,8 @@ class KeysManager:
         return self.fee[md5]
 
     def report_fee(self, fee: float) -> bool:
+        logging.debug("report fee:" + str(fee))
+
         md5 = hashlib.md5(self.using_key.encode('utf-8')).hexdigest()
         if md5 not in self.fee:
             self.fee[md5] = 0
