@@ -8,6 +8,8 @@ import logging
 # port: 运行mirai的主机端口
 # verifyKey: mirai-api-http的verifyKey
 # qq: 机器人的QQ号
+#
+# 注意: QQ机器人配置不支持热重载及热更新
 mirai_http_api_config = {
     "adapter": "WebSocketAdapter",
     "host": "localhost",
