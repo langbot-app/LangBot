@@ -146,7 +146,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
 
                         reply = [reply_str]
                     elif cmd == 'usage':
-                        reply_str = "[bot]各api-key使用情况:"
+                        reply_str = "[bot]各api-key使用情况:\n\n"
 
                         api_keys = pkg.utils.context.get_openai_manager().key_mgr.api_key
                         for key_name in api_keys:
