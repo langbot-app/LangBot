@@ -7,13 +7,16 @@ import config
 import pkg.openai.keymgr
 import pkg.openai.pricing as pricing
 import pkg.utils.context
+import pkg.audit.gatherer
 
 
 # 为其他模块提供与OpenAI交互的接口
 class OpenAIInteract:
     api_params = {}
 
-    key_mgr = None
+    key_mgr: pkg.openai.keymgr.KeysManager = None
+
+    audit_mgr: pkg.audit.gatherer.DataGatherer = None
 
     default_image_api_params = {
         "size": "256x256",
@@ -23,6 +26,7 @@ class OpenAIInteract:
         # self.api_key = api_key
 
         self.key_mgr = pkg.openai.keymgr.KeysManager(api_key)
+        self.audit_mgr = pkg.audit.gatherer.DataGatherer()
 
         openai.api_key = self.key_mgr.get_using_key()
 
@@ -36,6 +40,9 @@ class OpenAIInteract:
             timeout=config.process_message_timeout,
             **config.completion_api_params
         )
+
+        self.audit_mgr.report_text_model_usage(config.completion_api_params['model'],
+                                               prompt + response['choices'][0]['text'])
 
         switched = self.key_mgr.report_fee(pricing.language_base_price(config.completion_api_params['model'],
                                                                        prompt + response['choices'][0]['text']))
@@ -53,6 +60,8 @@ class OpenAIInteract:
             n=1,
             **params
         )
+
+        self.audit_mgr.report_image_model_usage(params['size'])
 
         switched = self.key_mgr.report_fee(pricing.image_price(params['size']))
 

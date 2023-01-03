@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 import time
 from sqlite3 import Cursor
@@ -63,6 +64,13 @@ class DatabaseManager:
             `key_md5` varchar(255) not null,
             `timestamp` bigint not null,
             `fee` DECIMAL(12,6) not null
+        )
+        """)
+
+        self.execute("""
+        create table if not exists `account_usage`(
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+            `json` text not null
         )
         """)
         print('Database initialized.')
@@ -310,3 +318,28 @@ class DatabaseManager:
             fee[key_md5] = fee_count
         return fee
 
+    def dump_usage_json(self, usage: dict):
+        json_str = json.dumps(usage)
+        self.execute("""
+        select count(*) from `account_usage`""")
+        result = self.cursor.fetchone()
+        if result[0] == 0:
+            # 不存在则插入
+            self.execute("""
+            insert into `account_usage` (`json`) values ('{}')
+            """.format(json_str))
+        else:
+            # 存在则更新
+            self.execute("""
+            update `account_usage` set `json` = '{}' where `id` = 1
+            """.format(json_str))
+
+    def load_usage_json(self):
+        self.execute("""
+        select `json` from `account_usage` order by id desc limit 1
+        """)
+        result = self.cursor.fetchone()
+        if result is None:
+            return None
+        else:
+            return result[0]

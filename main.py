@@ -94,6 +94,7 @@ def main(first_time_init=False):
                      "请查看 https://github.com/RockChinQ/QChatGPT/issues/5")
         logging.info("如报错 \"server rejected WebSocket connection: HTTP 404\" ,"
                      "请查看 https://github.com/RockChinQ/QChatGPT/issues/22")
+        logging.info("其他异常请前往仓库issue搜索或提issue")
     else:
         logging.info('热重载完成')
 

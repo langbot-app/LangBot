@@ -28,6 +28,9 @@ class KeysManager:
     def get_using_key(self):
         return self.using_key
 
+    def get_using_key_md5(self):
+        return hashlib.md5(self.using_key.encode('utf-8')).hexdigest()
+
     def __init__(self, api_key):
         # if hasattr(config, 'api_key_usage_threshold'):
         #     self.api_key_usage_threshold = config.api_key_usage_threshold

@@ -124,9 +124,9 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                                 reply_str += ",当前处于全新会话或不在此页"
 
                             reply = [reply_str]
-                    elif cmd == 'usage':
+                    elif cmd == 'fee':
                         api_keys = pkg.utils.context.get_openai_manager().key_mgr.api_key
-                        reply_str = "[bot]api-key使用情况:(阈值:{})\n\n".format(
+                        reply_str = "[bot]api-key费用情况(估算):(阈值:{})\n\n".format(
                             pkg.utils.context.get_openai_manager().key_mgr.api_key_fee_threshold)
 
                         using_key_name = ""
@@ -145,7 +145,18 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                         reply_str += "\n当前使用:{}".format(using_key_name)
 
                         reply = [reply_str]
+                    elif cmd == 'usage':
+                        reply_str = "[bot]各api-key使用情况:"
 
+                        api_keys = pkg.utils.context.get_openai_manager().key_mgr.api_key
+                        for key_name in api_keys:
+                            text_length = pkg.utils.context.get_openai_manager().audit_mgr\
+                                .get_text_length_of_key(api_keys[key_name])
+                            image_count = pkg.utils.context.get_openai_manager().audit_mgr\
+                                .get_image_count_of_key(api_keys[key_name])
+                            reply_str += "{}:\n - 文本长度:{}\n - 图片数量:{}\n".format(key_name, int(text_length), int(image_count))
+
+                        reply = [reply_str]
                     elif cmd == 'draw':
                         if len(params) == 0:
                             reply = ["[bot]err:请输入图片描述文字"]
