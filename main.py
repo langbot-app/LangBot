@@ -100,7 +100,7 @@ def main(first_time_init=False):
 
     while True:
         try:
-            time.sleep(10000)
+            time.sleep(10)
             if qqbot != pkg.utils.context.get_qqbot_manager():  # 已经reload了
                 logging.info("以前的main流程由于reload退出")
                 break
