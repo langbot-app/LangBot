@@ -88,6 +88,12 @@ def main(first_time_init=False):
     time.sleep(2)
     if first_time_init:
         logging.info('程序启动完成,如长时间未显示 ”成功登录到账号xxxxx“ ,并且不回复消息,请查看 https://github.com/RockChinQ/QChatGPT/issues/37')
+        logging.info("如报错 \"TypeError: run() got an ... argument 'debug'\" ,"
+                     "请查看 https://github.com/RockChinQ/QChatGPT/issues/82")
+        logging.info("如报错 \"TypeError: As of 3.10, the *loop* parameter ... it is no longer necessary\" ,"
+                     "请查看 https://github.com/RockChinQ/QChatGPT/issues/5")
+        logging.info("如报错 \"server rejected WebSocket connection: HTTP 404\" ,"
+                     "请查看 https://github.com/RockChinQ/QChatGPT/issues/22")
     else:
         logging.info('热重载完成')
 
