@@ -49,14 +49,14 @@ class DatabaseManager:
         )
         """)
 
-        self.execute("""
-        create table if not exists `api_key_usage`(
-            `id` INTEGER PRIMARY KEY AUTOINCREMENT,
-            `key_md5` varchar(255) not null,
-            `timestamp` bigint not null,
-            `usage` bigint not null
-        )
-        """)
+        # self.execute("""
+        # create table if not exists `api_key_usage`(
+        #     `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+        #     `key_md5` varchar(255) not null,
+        #     `timestamp` bigint not null,
+        #     `usage` bigint not null
+        # )
+        # """)
 
         self.execute("""
         create table if not exists `account_fee`(
