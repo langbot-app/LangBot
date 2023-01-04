@@ -51,16 +51,6 @@ def dump_session(session_name: str):
         del sessions[session_name]
 
 
-# 从配置文件获取会话预设信息
-def get_default_prompt():
-    import config
-    user_name = config.user_name if hasattr(config, 'user_name') and config.user_name != '' else 'You'
-    bot_name = config.bot_name if hasattr(config, 'bot_name') and config.bot_name != '' else 'Bot'
-    return user_name + ":{}\n".format(config.default_prompt if hasattr(config, 'default_prompt') \
-                                                               and config.default_prompt != "" else '') + \
-        bot_name + ":好的\n"
-
-
 # def blocked_func(lock: threading.Lock):
 #
 #     def decorator(func):
@@ -83,7 +73,7 @@ def get_default_prompt():
 class Session:
     name = ''
 
-    prompt = get_default_prompt()
+    prompt = ""
 
     import config
 
@@ -111,6 +101,15 @@ class Session:
             self.response_lock.release()
             logging.debug('{},lock release successfully,{}'.format(self.name, self.response_lock))
 
+    # 从配置文件获取会话预设信息
+    def get_default_prompt(self):
+        config = pkg.utils.context.get_config()
+        user_name = config.user_name if hasattr(config, 'user_name') and config.user_name != '' else 'You'
+        bot_name = config.bot_name if hasattr(config, 'bot_name') and config.bot_name != '' else 'Bot'
+        return user_name + ":{}\n".format(config.default_prompt if hasattr(config, 'default_prompt') \
+                                                                   and config.default_prompt != "" else '') + \
+            bot_name + ":好的\n"
+
     def __init__(self, name: str):
         self.name = name
         self.create_timestamp = int(time.time())
@@ -118,6 +117,7 @@ class Session:
         self.schedule()
 
         self.response_lock = threading.Lock()
+        self.prompt = self.get_default_prompt()
 
     # 设定检查session最后一次对话是否超过过期时间的计时器
     def schedule(self):
@@ -206,7 +206,7 @@ class Session:
 
     # 持久化session
     def persistence(self):
-        if self.prompt == get_default_prompt():
+        if self.prompt == self.get_default_prompt():
             return
 
         db_inst = pkg.utils.context.get_database_manager()
@@ -221,14 +221,14 @@ class Session:
 
     # 重置session
     def reset(self, explicit: bool = False, expired: bool = False, schedule_new: bool = True):
-        if self.prompt != get_default_prompt():
+        if self.prompt != self.get_default_prompt():
             self.persistence()
             if explicit:
                 pkg.utils.context.get_database_manager().explicit_close_session(self.name, self.create_timestamp)
 
             if expired:
                 pkg.utils.context.get_database_manager().set_session_expired(self.name, self.create_timestamp)
-        self.prompt = get_default_prompt()
+        self.prompt = self.get_default_prompt()
         self.create_timestamp = int(time.time())
         self.last_interact_timestamp = int(time.time())
         self.just_switched_to_exist_session = False
@@ -274,7 +274,7 @@ class Session:
 
     def list_history(self, capacity: int = 10, page: int = 0):
         return pkg.utils.context.get_database_manager().list_history(self.name, capacity, page,
-                                                                     get_default_prompt())
+                                                                     self.get_default_prompt())
 
     def draw_image(self, prompt: str):
         return pkg.utils.context.get_openai_manager().request_image(prompt)
