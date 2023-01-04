@@ -71,7 +71,7 @@ sensitive_word_filter = True
 # 每次向OpenAI接口发送对话记录上下文的字符数
 # 最大不超过(4096 - max_tokens)个字符，max_tokens为上述completion_api_params中的max_tokens
 # 注意：较大的prompt_submit_length会导致OpenAI账户额度消耗更快
-prompt_submit_length = 1536
+prompt_submit_length = 1024
 
 # OpenAI的completion API的参数
 # 具体请查看OpenAI的文档: https://beta.openai.com/docs/api-reference/completions/create
