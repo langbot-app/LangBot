@@ -25,12 +25,15 @@ class DataGatherer:
         self.load_from_db()
 
     def report_to_server(self, subservice_name: str, count: int):
-        config = pkg.utils.context.get_config()
-        if hasattr(config, "report_usage") and not config.report_usage:
+        try:
+            config = pkg.utils.context.get_config()
+            if hasattr(config, "report_usage") and not config.report_usage:
+                return
+            res = requests.get("http://rockchin.top:18989/usage?service_name=qchatgpt.{}&version={}&count={}".format(subservice_name, version, count))
+            if res.status_code != 200 or res.text != "ok":
+                logging.warning("report to server failed, status_code: {}, text: {}".format(res.status_code, res.text))
+        except:
             return
-        res = requests.get("http://rockchin.top:18989/usage?service_name=qchatgpt.{}&version={}&count={}".format(subservice_name, version, count))
-        if res.status_code != 200 or res.text != "ok":
-            logging.warning("report to server failed, status_code: {}, text: {}".format(res.status_code, res.text))
 
     def report_text_model_usage(self, model, text):
         key_md5 = pkg.utils.context.get_openai_manager().key_mgr.get_using_key_md5()
