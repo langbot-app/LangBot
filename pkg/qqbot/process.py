@@ -24,6 +24,72 @@ import pkg.utils.context
 processing = []
 
 
+def config_operation(cmd, params):
+    reply = []
+    config = pkg.utils.context.get_config()
+    reply_str = ""
+    if len(params) == 0:
+        reply = ["[bot]err:请输入配置项"]
+    else:
+        cfg_name = params[0]
+        if cfg_name == 'all':
+            reply_str = "[bot]所有配置项:\n\n"
+            for cfg in dir(config):
+                if not cfg.startswith('__') and not cfg == 'logging':
+                    # 根据配置项类型进行格式化，如果是字典则转换为json并格式化
+                    if isinstance(getattr(config, cfg), str):
+                        reply_str += "{}: \"{}\"\n".format(cfg, getattr(config, cfg))
+                    elif isinstance(getattr(config, cfg), dict):
+                        # 不进行unicode转义，并格式化
+                        reply_str += "{}: {}\n".format(cfg,
+                                                       json.dumps(getattr(config, cfg),
+                                                                  ensure_ascii=False, indent=4))
+                    else:
+                        reply_str += "{}: {}\n".format(cfg, getattr(config, cfg))
+            reply = [reply_str]
+        elif cfg_name in dir(config):
+            if len(params) == 1:
+                # 按照配置项类型进行格式化
+                if isinstance(getattr(config, cfg_name), str):
+                    reply_str = "[bot]配置项{}: \"{}\"\n".format(cfg_name, getattr(config, cfg_name))
+                elif isinstance(getattr(config, cfg_name), dict):
+                    reply_str = "[bot]配置项{}: {}\n".format(cfg_name,
+                                                             json.dumps(getattr(config, cfg_name),
+                                                                        ensure_ascii=False, indent=4))
+                else:
+                    reply_str = "[bot]配置项{}: {}\n".format(cfg_name, getattr(config, cfg_name))
+                reply = [reply_str]
+            else:
+                cfg_value = " ".join(params[1:])
+                # 类型转换，如果是json则转换为字典
+                if cfg_value == 'true':
+                    cfg_value = True
+                elif cfg_value == 'false':
+                    cfg_value = False
+                elif cfg_value.isdigit():
+                    cfg_value = int(cfg_value)
+                elif cfg_value.startswith('{') and cfg_value.endswith('}'):
+                    cfg_value = json.loads(cfg_value)
+                else:
+                    try:
+                        cfg_value = float(cfg_value)
+                    except ValueError:
+                        pass
+
+                # 检查类型是否匹配
+                if isinstance(getattr(config, cfg_name), type(cfg_value)):
+                    setattr(config, cfg_name, cfg_value)
+                    pkg.utils.context.set_config(config)
+                    reply = ["[bot]配置项{}修改成功".format(cfg_name)]
+                else:
+                    reply = ["[bot]err:配置项{}类型不匹配".format(cfg_name)]
+
+        else:
+            reply = ["[bot]err:未找到配置项 {}".format(cfg_name)]
+
+    return reply
+
+
 @func_set_timeout(config_init_import.process_message_timeout)
 def process_message(launcher_type: str, launcher_id: int, text_message: str, message_chain: MessageChain,
                     sender_id: int) -> MessageChain:
@@ -193,68 +259,14 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
 
                         threading.Thread(target=update_task, daemon=True).start()
                     elif cmd == 'cfg' and launcher_type == 'person' and launcher_id == config.admin_qq:
-                        reply_str = ""
-                        if len(params) == 0:
-                            reply = ["[bot]err:请输入配置项"]
-                        else:
-                            cfg_name = params[0]
-                            if cfg_name == 'all':
-                                reply_str = "[bot]所有配置项:\n\n"
-                                for cfg in dir(config):
-                                    print(cfg)
-                                    if not cfg.startswith('__') and not cfg == 'logging':
-                                        # 根据配置项类型进行格式化，如果是字典则转换为json并格式化
-                                        if isinstance(getattr(config, cfg), str):
-                                            reply_str += "{}: \"{}\"\n".format(cfg, getattr(config, cfg))
-                                        elif isinstance(getattr(config, cfg), dict):
-                                            # 不进行unicode转义，并格式化
-                                            reply_str += "{}: {}\n".format(cfg,
-                                                                           json.dumps(getattr(config, cfg),
-                                                                                      ensure_ascii=False, indent=4))
-                                        else:
-                                            reply_str += "{}: {}\n".format(cfg, getattr(config, cfg))
-                                reply = [reply_str]
-                            elif cfg_name in dir(config):
-                                if len(params) == 1:
-                                    # 按照配置项类型进行格式化
-                                    if isinstance(getattr(config, cfg_name), str):
-                                        reply_str = "[bot]配置项{}: \"{}\"\n".format(cfg_name, getattr(config, cfg_name))
-                                    elif isinstance(getattr(config, cfg_name), dict):
-                                        reply_str = "[bot]配置项{}: {}\n".format(cfg_name,
-                                                                                json.dumps(getattr(config, cfg_name),
-                                                                                           ensure_ascii=False, indent=4))
-                                    else:
-                                        reply_str = "[bot]配置项{}: {}\n".format(cfg_name, getattr(config, cfg_name))
-                                    reply = [reply_str]
-                                else:
-                                    cfg_value = " ".join(params[1:])
-                                    # 类型转换，如果是json则转换为字典
-                                    if cfg_value == 'true':
-                                        cfg_value = True
-                                    elif cfg_value == 'false':
-                                        cfg_value = False
-                                    elif cfg_value.isdigit():
-                                        cfg_value = int(cfg_value)
-                                    elif cfg_value.startswith('{') and cfg_value.endswith('}'):
-                                        cfg_value = json.loads(cfg_value)
-                                    else:
-                                        try:
-                                            cfg_value = float(cfg_value)
-                                        except ValueError:
-                                            pass
-
-                                    # 检查类型是否匹配
-                                    if isinstance(getattr(config, cfg_name), type(cfg_value)):
-                                        setattr(config, cfg_name, cfg_value)
-                                        pkg.utils.context.set_config(config)
-                                        reply = ["[bot]配置项{}修改成功".format(cfg_name)]
-                                    else:
-                                        reply = ["[bot]err:配置项{}类型不匹配".format(cfg_name)]
-
-                            else:
-                                reply = ["[bot]err:未找到配置项 {}".format(cfg_name)]
+                        reply = config_operation(cmd, params)
                     else:
-                        reply = ["[bot]err:未知的指令或权限不足: "+cmd]
+                        if cmd.startswith("~") and launcher_type == 'person' and launcher_id == config.admin_qq:
+                            config_item = cmd[1:]
+                            params = [config_item] + params
+                            reply = config_operation("cfg", params)
+                        else:
+                            reply = ["[bot]err:未知的指令或权限不足: "+cmd]
                 except Exception as e:
                     mgr.notify_admin("{}指令执行失败:{}".format(session_name, e))
                     logging.exception(e)
