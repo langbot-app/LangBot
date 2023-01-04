@@ -1,3 +1,4 @@
+import importlib
 import os
 import shutil
 import threading
@@ -33,7 +34,9 @@ def init_db():
 
     database.initialize_database()
 
+
 known_exception_caught = False
+
 
 def main(first_time_init=False):
     global known_exception_caught
@@ -43,12 +46,11 @@ def main(first_time_init=False):
         # 导入config.py
         assert os.path.exists('config.py')
 
-        # 检查是否设置了管理员
-        import config
-        if not (hasattr(config, 'admin_qq') and config.admin_qq != 0):
-            logging.warning("未设置管理员QQ,管理员权限指令及运行告警将无法使用,如需设置请修改config.py中的admin_qq字段")
+        config = importlib.import_module('config')
 
         import pkg.utils.context
+        pkg.utils.context.set_config(config)
+
         if pkg.utils.context.context['logger_handler'] is not None:
             logging.getLogger().removeHandler(pkg.utils.context.context['logger_handler'])
 
@@ -68,6 +70,10 @@ def main(first_time_init=False):
             log_colors=log_colors_config
         ))
         logging.getLogger().addHandler(sh)
+
+        # 检查是否设置了管理员
+        if not (hasattr(config, 'admin_qq') and config.admin_qq != 0):
+            logging.warning("未设置管理员QQ,管理员权限指令及运行告警将无法使用,如需设置请修改config.py中的admin_qq字段")
 
         import pkg.openai.manager
         import pkg.database.manager
@@ -98,35 +104,42 @@ def main(first_time_init=False):
                     qqbot.bot.run()
                 except TypeError as e:
                     if str(e).__contains__("argument 'debug'"):
-                        logging.error("连接bot失败:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/82".format(e))
+                        logging.error(
+                            "连接bot失败:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/82".format(e))
                         known_exception_caught = True
                     elif str(e).__contains__("As of 3.10, the *loop*"):
-                        logging.error("Websockets版本过低:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/5".format(e))
+                        logging.error(
+                            "Websockets版本过低:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/5".format(e))
                         known_exception_caught = True
 
                 except websockets.exceptions.InvalidStatus as e:
-                    logging.error("mirai-api-http端口无法使用:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/22".format(e))
+                    logging.error(
+                        "mirai-api-http端口无法使用:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/22".format(
+                            e))
                     known_exception_caught = True
                 except mirai.exceptions.NetworkError as e:
                     logging.error("连接mirai-api-http失败:{}, 请检查是否已按照文档启动mirai".format(e))
                     known_exception_caught = True
                 except Exception as e:
-                    if str(e).__contains__("HTTP 404"):
-                        logging.error("mirai-api-http端口无法使用:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/22".format(e))
+                    if str(e).__contains__("404"):
+                        logging.error(
+                            "mirai-api-http端口无法使用:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/22".format(
+                                e))
                         known_exception_caught = True
                     else:
-                        logging.error("捕捉到未知异常:{}, 请前往 https://github.com/RockChinQ/issues 查找或提issue".format(e))
+                        logging.error(
+                            "捕捉到未知异常:{}, 请前往 https://github.com/RockChinQ/issues 查找或提issue".format(e))
                         known_exception_caught = True
                         raise e
 
             qq_bot_thread = threading.Thread(target=run_bot_wrapper, args=(), daemon=True)
             qq_bot_thread.start()
     finally:
-        time.sleep(10)
+        time.sleep(12)
         if first_time_init:
             if not known_exception_caught:
-                    logging.info('程序启动完成,如长时间未显示 ”成功登录到账号xxxxx“ ,并且不回复消息,请查看 '
-                                 'https://github.com/RockChinQ/QChatGPT/issues/37')
+                logging.info('程序启动完成,如长时间未显示 ”成功登录到账号xxxxx“ ,并且不回复消息,请查看 '
+                             'https://github.com/RockChinQ/QChatGPT/issues/37')
             else:
                 sys.exit(1)
         else:
@@ -177,10 +190,15 @@ if __name__ == '__main__':
     elif len(sys.argv) > 1 and sys.argv[1] == 'update':
         try:
             from dulwich import porcelain
+
             repo = porcelain.open_repo('.')
             porcelain.pull(repo)
         except ModuleNotFoundError:
             print("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
         sys.exit(0)
+
+    # import pkg.utils.configmgr
+    #
+    # pkg.utils.configmgr.set_config_and_reload("quote_origin", False)
 
     main(True)

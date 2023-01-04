@@ -7,7 +7,6 @@ import mirai.models.bus
 from mirai import At, GroupMessage, MessageEvent, Mirai, Plain, StrangerMessage, WebSocketAdapter, HTTPAdapter, \
     FriendMessage, Image
 
-import config
 import pkg.openai.session
 import pkg.openai.manager
 from func_timeout import FunctionTimedOut
@@ -26,6 +25,7 @@ def go(func, args=()):
 
 # 检查消息是否符合泛响应匹配机制
 def check_response_rule(text: str) -> (bool, str):
+    config = pkg.utils.context.get_config()
     if not hasattr(config, 'response_rules'):
         return False, ''
 
@@ -60,6 +60,7 @@ class QQBotManager:
         self.timeout = timeout
         self.retry = retry
 
+        config = pkg.utils.context.get_config()
         if os.path.exists("sensitive.json") \
                 and config.sensitive_word_filter is not None \
                 and config.sensitive_word_filter:
@@ -134,6 +135,7 @@ class QQBotManager:
         self.bot = bot
 
     def send(self, event, msg, check_quote=True):
+        config = pkg.utils.context.get_config()
         asyncio.run(
             self.bot.send(event, msg, quote=True if hasattr(config,
                                                             "quote_origin") and config.quote_origin and check_quote else False))
@@ -216,6 +218,7 @@ class QQBotManager:
 
     # 通知系统管理员
     def notify_admin(self, message: str):
+        config = pkg.utils.context.get_config()
         if hasattr(config, "admin_qq") and config.admin_qq != 0:
             logging.info("通知管理员:{}".format(message))
             send_task = self.bot.send_friend_message(config.admin_qq, "[bot]{}".format(message))

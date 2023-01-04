@@ -2,7 +2,6 @@ import logging
 import threading
 import time
 
-import config
 import pkg.openai.manager
 import pkg.database.manager
 import pkg.utils.context
@@ -54,6 +53,7 @@ def dump_session(session_name: str):
 
 # 从配置文件获取会话预设信息
 def get_default_prompt():
+    import config
     user_name = config.user_name if hasattr(config, 'user_name') and config.user_name != '' else 'You'
     bot_name = config.bot_name if hasattr(config, 'bot_name') and config.bot_name != '' else 'Bot'
     return user_name + ":{}\n".format(config.default_prompt if hasattr(config, 'default_prompt') \
@@ -84,6 +84,8 @@ class Session:
     name = ''
 
     prompt = get_default_prompt()
+
+    import config
 
     user_name = config.user_name if hasattr(config, 'user_name') and config.user_name != '' else 'You'
     bot_name = config.bot_name if hasattr(config, 'bot_name') and config.bot_name != '' else 'Bot'
@@ -130,6 +132,8 @@ class Session:
             # 不是此session已更换，退出
             if self.create_timestamp != create_timestamp or self not in sessions.values():
                 return
+
+            config = pkg.utils.context.get_config()
             if int(time.time()) - self.last_interact_timestamp > config.session_expire_time:
                 logging.info('session {} 已过期'.format(self.name))
                 self.reset(expired=True, schedule_new=False)
@@ -144,6 +148,7 @@ class Session:
         self.last_interact_timestamp = int(time.time())
 
         # max_rounds = config.prompt_submit_round_amount if hasattr(config, 'prompt_submit_round_amount') else 7
+        config = pkg.utils.context.get_config()
         max_rounds = 1000  # 不再限制回合数
         max_length = config.prompt_submit_length if hasattr(config, "prompt_submit_length") else 1024
 

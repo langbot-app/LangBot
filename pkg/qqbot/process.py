@@ -9,6 +9,9 @@ import openai
 
 from mirai import Image, MessageChain
 
+# 这里不使用动态引入config
+# 因为在这里动态引入会卡死程序
+# 而此模块静态引用config与动态引入的表现一致
 import config
 
 import pkg.openai.session

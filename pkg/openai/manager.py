@@ -2,8 +2,6 @@ import logging
 
 import openai
 
-import config
-
 import pkg.openai.keymgr
 import pkg.openai.pricing as pricing
 import pkg.utils.context
@@ -34,6 +32,7 @@ class OpenAIInteract:
 
     # 请求OpenAI Completion
     def request_completion(self, prompt, stop):
+        config = pkg.utils.context.get_config()
         response = openai.Completion.create(
             prompt=prompt,
             stop=stop,
@@ -53,6 +52,7 @@ class OpenAIInteract:
 
     def request_image(self, prompt):
 
+        config = pkg.utils.context.get_config()
         params = config.image_api_params if hasattr(config, "image_api_params") else self.default_image_api_params
 
         response = openai.Image.create(

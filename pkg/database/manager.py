@@ -6,7 +6,6 @@ from sqlite3 import Cursor
 
 import sqlite3
 
-import config
 import pkg.utils.context
 
 
@@ -25,7 +24,6 @@ class DatabaseManager:
     # 连接到数据库文件
     def reconnect(self):
         self.conn = sqlite3.connect('database.db', check_same_thread=False)
-        # self.conn.isolation_level = None
         self.cursor = self.conn.cursor()
 
     def close(self):
@@ -127,6 +125,7 @@ class DatabaseManager:
     # 从数据库加载还没过期的session数据
     def load_valid_sessions(self) -> dict:
         # 从数据库中加载所有还没过期的session
+        config = pkg.utils.context.get_config()
         self.execute("""
         select `name`, `type`, `number`, `create_timestamp`, `last_interact_timestamp`, `prompt`, `status`
         from `sessions` where `last_interact_timestamp` > {}

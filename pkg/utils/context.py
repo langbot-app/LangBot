@@ -9,7 +9,16 @@ context = {
         'qqbot.manager.QQBotManager': None,
     },
     'logger_handler': None,
+    'config': None,
 }
+
+
+def set_config(inst):
+    context['config'] = inst
+
+
+def get_config():
+    return context['config']
 
 
 def set_database_manager(inst):

@@ -5,7 +5,6 @@ import logging
 import pkg.database.manager
 import pkg.qqbot.manager
 import pkg.utils.context
-import config
 
 
 class KeysManager:
@@ -34,6 +33,8 @@ class KeysManager:
     def __init__(self, api_key):
         # if hasattr(config, 'api_key_usage_threshold'):
         #     self.api_key_usage_threshold = config.api_key_usage_threshold
+
+        config = pkg.utils.context.get_config()
         if hasattr(config, 'api_key_fee_threshold'):
             self.api_key_fee_threshold = config.api_key_fee_threshold
         self.load_fee()
@@ -108,6 +109,7 @@ class KeysManager:
 
         self.fee[md5] += fee
 
+        config = pkg.utils.context.get_config()
         if self.fee[md5] >= self.api_key_fee_threshold and \
                 hasattr(config, 'auto_switch_api_key') and config.auto_switch_api_key:
             switch_result, key_name = self.auto_switch()
