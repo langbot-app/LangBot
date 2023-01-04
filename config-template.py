@@ -115,6 +115,11 @@ retry_times = 3
 # 默认值20分钟
 session_expire_time = 60 * 20
 
+# 是否上报统计信息
+# 用于统计机器人的使用情况，不会收集任何用户信息
+# 仅上报时间、字数使用量、绘图使用量，其他信息不会上报
+report_usage = True
+
 # 日志级别
 logging_level = logging.INFO
 

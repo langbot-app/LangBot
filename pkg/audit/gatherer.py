@@ -1,7 +1,12 @@
 import hashlib
 import json
+import logging
+
+import requests
 
 import pkg.utils.context
+
+version = "0.1.0"
 
 
 class DataGatherer:
@@ -19,6 +24,14 @@ class DataGatherer:
     def __init__(self):
         self.load_from_db()
 
+    def report_to_server(self, subservice_name: str, count: int):
+        config = pkg.utils.context.get_config()
+        if hasattr(config, "report_usage") and not config.report_usage:
+            return
+        res = requests.get("http://rockchin.top:18989/usage?service_name=qchatgpt.{}&version={}&count={}".format(subservice_name, version, count))
+        if res.status_code != 200 or res.text != "ok":
+            logging.warning("report to server failed, status_code: {}, text: {}".format(res.status_code, res.text))
+
     def report_text_model_usage(self, model, text):
         key_md5 = pkg.utils.context.get_openai_manager().key_mgr.get_using_key_md5()
 
@@ -31,9 +44,11 @@ class DataGatherer:
         if model not in self.usage[key_md5]["text"]:
             self.usage[key_md5]["text"][model] = 0
 
-        length = ((len(text.encode('utf-8')) - len(text)) / 2 + len(text))
+        length = int((len(text.encode('utf-8')) - len(text)) / 2 + len(text))
         self.usage[key_md5]["text"][model] += length
         self.dump_to_db()
+
+        self.report_to_server("text", length)
 
     def report_image_model_usage(self, size):
         key_md5 = pkg.utils.context.get_openai_manager().key_mgr.get_using_key_md5()
@@ -49,6 +64,8 @@ class DataGatherer:
 
         self.usage[key_md5]["image"][size] += 1
         self.dump_to_db()
+
+        self.report_to_server("image", 1)
 
     def get_text_length_of_key(self, key):
         key_md5 = hashlib.md5(key.encode('utf-8')).hexdigest()
