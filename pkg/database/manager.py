@@ -28,6 +28,9 @@ class DatabaseManager:
         # self.conn.isolation_level = None
         self.cursor = self.conn.cursor()
 
+    def close(self):
+        self.conn.close()
+
     def execute(self, *args, **kwargs) -> Cursor:
         # logging.debug('SQL: {}'.format(sql))
         c = self.cursor.execute(*args, **kwargs)

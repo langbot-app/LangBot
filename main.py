@@ -5,6 +5,10 @@ import time
 
 import logging
 import sys
+
+import mirai.exceptions
+import websockets.exceptions
+
 try:
     import colorlog
 except ImportError:
@@ -29,74 +33,104 @@ def init_db():
 
     database.initialize_database()
 
+known_exception_caught = False
 
 def main(first_time_init=False):
-    # 导入config.py
-    assert os.path.exists('config.py')
+    global known_exception_caught
 
-    # 检查是否设置了管理员
-    import config
-    if not (hasattr(config, 'admin_qq') and config.admin_qq != 0):
-        logging.warning("未设置管理员QQ,管理员权限指令及运行告警将无法使用,如需设置请修改config.py中的admin_qq字段")
+    known_exception_caught = False
+    try:
+        # 导入config.py
+        assert os.path.exists('config.py')
 
-    import pkg.utils.context
-    if pkg.utils.context.context['logger_handler'] is not None:
-        logging.getLogger().removeHandler(pkg.utils.context.context['logger_handler'])
+        # 检查是否设置了管理员
+        import config
+        if not (hasattr(config, 'admin_qq') and config.admin_qq != 0):
+            logging.warning("未设置管理员QQ,管理员权限指令及运行告警将无法使用,如需设置请修改config.py中的admin_qq字段")
 
-    logging.basicConfig(level=config.logging_level,  # 设置日志输出格式
-                        filename='qchatgpt.log',  # log日志输出的文件位置和文件名
-                        format="[%(asctime)s.%(msecs)03d] %(filename)s (%(lineno)d) - [%(levelname)s] : %(message)s",
-                        # 日志输出的格式
-                        # -8表示占位符，让输出左对齐，输出长度都为8位
-                        datefmt="%Y-%m-%d %H:%M:%S"  # 时间输出的格式
-                        )
-    sh = logging.StreamHandler()
-    sh.setLevel(config.logging_level)
-    sh.setFormatter(colorlog.ColoredFormatter(
-        fmt="%(log_color)s[%(asctime)s.%(msecs)03d] %(filename)s (%(lineno)d) - [%(levelname)s] : "
-            "%(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        log_colors=log_colors_config
-    ))
-    logging.getLogger().addHandler(sh)
+        import pkg.utils.context
+        if pkg.utils.context.context['logger_handler'] is not None:
+            logging.getLogger().removeHandler(pkg.utils.context.context['logger_handler'])
 
-    import pkg.openai.manager
-    import pkg.database.manager
-    import pkg.openai.session
-    import pkg.qqbot.manager
+        logging.basicConfig(level=config.logging_level,  # 设置日志输出格式
+                            filename='qchatgpt.log',  # log日志输出的文件位置和文件名
+                            format="[%(asctime)s.%(msecs)03d] %(filename)s (%(lineno)d) - [%(levelname)s] : %(message)s",
+                            # 日志输出的格式
+                            # -8表示占位符，让输出左对齐，输出长度都为8位
+                            datefmt="%Y-%m-%d %H:%M:%S"  # 时间输出的格式
+                            )
+        sh = logging.StreamHandler()
+        sh.setLevel(config.logging_level)
+        sh.setFormatter(colorlog.ColoredFormatter(
+            fmt="%(log_color)s[%(asctime)s.%(msecs)03d] %(filename)s (%(lineno)d) - [%(levelname)s] : "
+                "%(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+            log_colors=log_colors_config
+        ))
+        logging.getLogger().addHandler(sh)
 
-    pkg.utils.context.context['logger_handler'] = sh
-    # 主启动流程
-    database = pkg.database.manager.DatabaseManager()
+        import pkg.openai.manager
+        import pkg.database.manager
+        import pkg.openai.session
+        import pkg.qqbot.manager
 
-    database.initialize_database()
+        pkg.utils.context.context['logger_handler'] = sh
+        # 主启动流程
+        database = pkg.database.manager.DatabaseManager()
 
-    openai_interact = pkg.openai.manager.OpenAIInteract(config.openai_config['api_key'])
+        database.initialize_database()
 
-    # 加载所有未超时的session
-    pkg.openai.session.load_sessions()
+        openai_interact = pkg.openai.manager.OpenAIInteract(config.openai_config['api_key'])
 
-    # 初始化qq机器人
-    qqbot = pkg.qqbot.manager.QQBotManager(mirai_http_api_config=config.mirai_http_api_config,
-                                           timeout=config.process_message_timeout, retry=config.retry_times,
-                                           first_time_init=first_time_init)
+        # 加载所有未超时的session
+        pkg.openai.session.load_sessions()
 
-    if first_time_init:  # 不是热重载之后的启动,则不启动新的bot线程
-        qq_bot_thread = threading.Thread(target=qqbot.bot.run, args=(), daemon=True)
-        qq_bot_thread.start()
+        # 初始化qq机器人
+        qqbot = pkg.qqbot.manager.QQBotManager(mirai_http_api_config=config.mirai_http_api_config,
+                                               timeout=config.process_message_timeout, retry=config.retry_times,
+                                               first_time_init=first_time_init)
 
-    time.sleep(2)
-    if first_time_init:
-        logging.info('程序启动完成,如长时间未显示 ”成功登录到账号xxxxx“ ,并且不回复消息,请查看 https://github.com/RockChinQ/QChatGPT/issues/37')
-        logging.info("如报错 \"TypeError: run() got an ... argument 'debug'\" ,"
-                     "请查看 https://github.com/RockChinQ/QChatGPT/issues/82")
-        logging.info("如报错 \"TypeError: As of 3.10, the *loop* parameter ... it is no longer necessary\" ,"
-                     "请查看 https://github.com/RockChinQ/QChatGPT/issues/5")
-        logging.info("如报错 \"server rejected WebSocket connection: HTTP 404\" ,"
-                     "请查看 https://github.com/RockChinQ/QChatGPT/issues/22")
-        logging.info("其他异常请前往仓库issue搜索或提issue")
-    else:
-        logging.info('热重载完成')
+        if first_time_init:  # 不是热重载之后的启动,则不启动新的bot线程
+
+            def run_bot_wrapper():
+                global known_exception_caught
+                try:
+                    qqbot.bot.run()
+                except TypeError as e:
+                    if str(e).__contains__("argument 'debug'"):
+                        logging.error("连接bot失败:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/82".format(e))
+                        known_exception_caught = True
+                    elif str(e).__contains__("As of 3.10, the *loop*"):
+                        logging.error("Websockets版本过低:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/5".format(e))
+                        known_exception_caught = True
+
+                except websockets.exceptions.InvalidStatus as e:
+                    logging.error("mirai-api-http端口无法使用:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/22".format(e))
+                    known_exception_caught = True
+                except mirai.exceptions.NetworkError as e:
+                    logging.error("连接mirai-api-http失败:{}, 请检查是否已按照文档启动mirai".format(e))
+                    known_exception_caught = True
+                except Exception as e:
+                    if str(e).__contains__("HTTP 404"):
+                        logging.error("mirai-api-http端口无法使用:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/22".format(e))
+                        known_exception_caught = True
+                    else:
+                        logging.error("捕捉到未知异常:{}, 请前往 https://github.com/RockChinQ/issues 查找或提issue".format(e))
+                        known_exception_caught = True
+                        raise e
+
+            qq_bot_thread = threading.Thread(target=run_bot_wrapper, args=(), daemon=True)
+            qq_bot_thread.start()
+    finally:
+        time.sleep(10)
+        if first_time_init:
+            if not known_exception_caught:
+                    logging.info('程序启动完成,如长时间未显示 ”成功登录到账号xxxxx“ ,并且不回复消息,请查看 '
+                                 'https://github.com/RockChinQ/QChatGPT/issues/37')
+            else:
+                sys.exit(1)
+        else:
+            logging.info('热重载完成')
 
     while True:
         try:
@@ -123,6 +157,7 @@ def stop():
         for session in pkg.openai.session.sessions:
             logging.info('持久化session: %s', session)
             pkg.openai.session.sessions[session].persistence()
+        pkg.utils.context.get_database_manager().close()
     except Exception as e:
         if not isinstance(e, KeyboardInterrupt):
             raise e
