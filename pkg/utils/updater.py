@@ -3,7 +3,7 @@ import datetime
 import pkg.utils.context
 
 
-def update_all():
+def update_all() -> bool:
     """使用dulwich更新源码"""
     try:
         import dulwich
@@ -14,7 +14,6 @@ def update_all():
         from dulwich import porcelain
         repo = porcelain.open_repo('.')
         porcelain.pull(repo)
-        after_commit_id = get_current_commit_id()
 
         change_log = ""
 
@@ -27,6 +26,9 @@ def update_all():
 
         if change_log != "":
             pkg.utils.context.get_qqbot_manager().notify_admin("代码拉取完成,更新内容如下:\n"+change_log)
+            return True
+        else:
+            return False
     except ModuleNotFoundError:
         raise Exception("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
     except dulwich.porcelain.DivergedBranches:

@@ -252,12 +252,14 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                     elif cmd == 'update' and launcher_type == 'person' and launcher_id == config.admin_qq:
                         def update_task():
                             try:
-                                pkg.utils.updater.update_all()
+                                if pkg.utils.updater.update_all():
+                                    pkg.utils.reloader.reload_all(notify=False)
+                                    pkg.utils.context.get_qqbot_manager().notify_admin("更新完成")
+                                else:
+                                    pkg.utils.context.get_qqbot_manager().notify_admin("无新版本")
                             except Exception as e0:
                                 pkg.utils.context.get_qqbot_manager().notify_admin("更新失败:{}".format(e0))
                                 return
-                            pkg.utils.reloader.reload_all(notify=False)
-                            pkg.utils.context.get_qqbot_manager().notify_admin("更新完成")
 
                         threading.Thread(target=update_task, daemon=True).start()
 
