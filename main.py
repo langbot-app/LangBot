@@ -73,7 +73,27 @@ def main(first_time_init=False):
 
         # 检查是否设置了管理员
         if not (hasattr(config, 'admin_qq') and config.admin_qq != 0):
-            logging.warning("未设置管理员QQ,管理员权限指令及运行告警将无法使用,如需设置请修改config.py中的admin_qq字段")
+            # logging.warning("未设置管理员QQ,管理员权限指令及运行告警将无法使用,如需设置请修改config.py中的admin_qq字段")
+            while True:
+                try:
+                    config.admin_qq = int(input("未设置管理员QQ,管理员权限指令及运行告警将无法使用,请输入管理员QQ号: "))
+                    # 写入到文件
+
+                    # 读取文件
+                    config_file_str = ""
+                    with open("config.py", "r", encoding="utf-8") as f:
+                        config_file_str = f.read()
+                    # 替换
+                    config_file_str = config_file_str.replace("admin_qq = 0", "admin_qq = " + str(config.admin_qq))
+                    # 写入
+                    with open("config.py", "w", encoding="utf-8") as f:
+                        f.write(config_file_str)
+
+                    print("管理员QQ已设置，如需修改请修改config.py中的admin_qq字段")
+                    time.sleep(4)
+                    break
+                except ValueError:
+                    print("请输入数字")
 
         import pkg.openai.manager
         import pkg.database.manager
