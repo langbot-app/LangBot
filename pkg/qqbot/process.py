@@ -260,6 +260,8 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                             pkg.utils.context.get_qqbot_manager().notify_admin("更新完成")
 
                         threading.Thread(target=update_task, daemon=True).start()
+
+                        reply = ["[bot]正在更新，请耐心等待，请勿重复发起更新..."]
                     elif cmd == 'cfg' and launcher_type == 'person' and launcher_id == config.admin_qq:
                         reply = config_operation(cmd, params)
                     else:
