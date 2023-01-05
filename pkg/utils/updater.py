@@ -58,3 +58,24 @@ def get_commit_id_and_time_and_msg() -> str:
         dt = datetime.datetime.fromtimestamp(entry.commit.commit_time, tz)
         return str(entry.commit.id)[2:9] + " " + dt.strftime('%Y-%m-%d %H:%M:%S') + " [" + str(entry.commit.message, encoding="utf-8").strip()+"]"
 
+
+def is_new_version_available() -> bool:
+    """检查是否有新版本"""
+    try:
+        import dulwich
+    except ModuleNotFoundError:
+        raise Exception("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
+
+    from dulwich import porcelain
+
+    repo = porcelain.open_repo('.')
+    fetch_res = porcelain.ls_remote(porcelain.get_remote_repo(repo, "origin")[1])
+
+    current_commit_id = ""
+    for entry in repo.get_walker():
+        current_commit_id = str(entry.commit.id)[2:9]
+        break
+
+    latest_commit_id = str(fetch_res[b'HEAD'])[2:9]
+
+    return current_commit_id != latest_commit_id

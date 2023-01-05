@@ -8,7 +8,9 @@ import logging
 import sys
 
 import mirai.exceptions
+import requests
 import websockets.exceptions
+from urllib3.exceptions import InsecureRequestWarning
 
 try:
     import colorlog
@@ -170,6 +172,17 @@ def main(first_time_init=False):
         else:
             logging.info('热重载完成')
 
+    time.sleep(5)
+    import pkg.utils.updater
+    try:
+        if pkg.utils.updater.is_new_version_available():
+            pkg.utils.context.get_qqbot_manager().notify_admin("新版本可用，请发送 !update 进行自动更新")
+        else:
+            logging.info("当前已是最新版本")
+
+    except Exception as e:
+        logging.error("检查更新失败:{}".format(e))
+
     while True:
         try:
             time.sleep(10)
@@ -225,5 +238,5 @@ if __name__ == '__main__':
     # import pkg.utils.configmgr
     #
     # pkg.utils.configmgr.set_config_and_reload("quote_origin", False)
-
+    requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
     main(True)
