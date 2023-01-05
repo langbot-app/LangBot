@@ -5,8 +5,7 @@ import logging
 import requests
 
 import pkg.utils.context
-
-version = "0.1.0"
+import pkg.utils.updater
 
 
 class DataGatherer:
@@ -21,15 +20,21 @@ class DataGatherer:
         }
     }为值的字典"""
 
+    version_str = "0.1.0"
+
     def __init__(self):
         self.load_from_db()
+        try:
+            self.version_str = pkg.utils.updater.get_commit_id_and_time_and_msg()
+        except:
+            pass
 
     def report_to_server(self, subservice_name: str, count: int):
         try:
             config = pkg.utils.context.get_config()
             if hasattr(config, "report_usage") and not config.report_usage:
                 return
-            res = requests.get("http://rockchin.top:18989/usage?service_name=qchatgpt.{}&version={}&count={}".format(subservice_name, version, count))
+            res = requests.get("http://rockchin.top:18989/usage?service_name=qchatgpt.{}&version={}&count={}".format(subservice_name, self.version_str, count))
             if res.status_code != 200 or res.text != "ok":
                 logging.warning("report to server failed, status_code: {}, text: {}".format(res.status_code, res.text))
         except:

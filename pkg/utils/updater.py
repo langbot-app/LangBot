@@ -1,5 +1,4 @@
 import datetime
-import time
 
 
 def update_all():
@@ -41,3 +40,21 @@ def get_current_version_info() -> str:
         break
 
     return version_str
+
+
+def get_commit_id_and_time_and_msg() -> str:
+    """获取当前提交id和时间和提交信息"""
+    try:
+        import dulwich
+    except ModuleNotFoundError:
+        raise Exception("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
+
+    from dulwich import porcelain
+
+    repo = porcelain.open_repo('.')
+
+    for entry in repo.get_walker():
+        tz = datetime.timezone(datetime.timedelta(hours=entry.commit.commit_timezone // 3600))
+        dt = datetime.datetime.fromtimestamp(entry.commit.commit_time, tz)
+        return str(entry.commit.id)[2:9] + " " + dt.strftime('%Y-%m-%d %H:%M:%S') + " [" + str(entry.commit.message, encoding="utf-8").strip()+"]"
+
