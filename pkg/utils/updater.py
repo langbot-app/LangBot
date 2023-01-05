@@ -25,7 +25,8 @@ def update_all():
             dt = datetime.datetime.fromtimestamp(entry.commit.commit_time, tz)
             change_log += dt.strftime('%Y-%m-%d %H:%M:%S') + " [" + str(entry.commit.message, encoding="utf-8").strip()+"]\n"
 
-        pkg.utils.context.get_qqbot_manager().notify_admin("更新完成,更新内容如下:\n"+change_log)
+        if change_log != "":
+            pkg.utils.context.get_qqbot_manager().notify_admin("代码拉取完成,更新内容如下:\n"+change_log)
     except ModuleNotFoundError:
         raise Exception("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
     except dulwich.porcelain.DivergedBranches:
