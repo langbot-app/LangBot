@@ -126,6 +126,11 @@ def main(first_time_init=False):
                             "mirai-api-http端口无法使用:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/22".format(
                                 e))
                         known_exception_caught = True
+                    elif str(e).__contains__("signal only works in main thread"):
+                        logging.error(
+                            "hypercorn异常:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/86".format(
+                                e))
+                        known_exception_caught = True
                     else:
                         logging.error(
                             "捕捉到未知异常:{}, 请前往 https://github.com/RockChinQ/issues 查找或提issue".format(e))
