@@ -6,18 +6,17 @@ import time
 
 import logging
 import sys
-
-import mirai.exceptions
-import requests
-import websockets.exceptions
-from urllib3.exceptions import InsecureRequestWarning
-
 try:
     import colorlog
 except ImportError:
     print("未安装colorlog,请查看 https://github.com/RockChinQ/qcg-installer/issues/15")
     sys.exit(1)
 import colorlog
+
+import requests
+import websockets.exceptions
+from urllib3.exceptions import InsecureRequestWarning
+
 
 sys.path.append(".")
 
@@ -120,6 +119,7 @@ def main(first_time_init=False):
 
         if first_time_init:  # 不是热重载之后的启动,则不启动新的bot线程
 
+            import mirai.exceptions
             def run_bot_wrapper():
                 global known_exception_caught
                 try:

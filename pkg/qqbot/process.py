@@ -243,7 +243,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                                     and not config.include_image_description):
                                 reply.append(" ".join(params))
                     elif cmd == 'version':
-                        reply_str = "[bot]当前版本:{}\n".format(pkg.utils.updater.get_current_version_info())
+                        reply_str = "[bot]当前版本:\n{}\n".format(pkg.utils.updater.get_current_version_info())
                         try:
                             if pkg.utils.updater.is_new_version_available():
                                 reply_str += "\n有新版本可用，请使用命令 !update 进行更新"
