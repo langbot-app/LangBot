@@ -25,7 +25,7 @@ class DataGatherer:
     def __init__(self):
         self.load_from_db()
         try:
-            self.version_str = pkg.utils.updater.get_commit_id_and_time_and_msg()
+            self.version_str = pkg.utils.updater.get_commit_id_and_time_and_msg()[:50 if len(pkg.utils.updater.get_commit_id_and_time_and_msg()) > 50 else len(pkg.utils.updater.get_commit_id_and_time_and_msg())]
         except:
             pass
 
