@@ -120,9 +120,11 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
 
         config = pkg.utils.context.get_config()
 
+        is_message = True
         try:
 
             if text_message.startswith('!') or text_message.startswith("！"):  # 指令
+                is_message = False
                 try:
                     logging.info(
                         "[{}]发起指令:{}".format(session_name, text_message[:min(20, len(text_message))] + (
@@ -196,6 +198,11 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                                 reply_str += ",当前处于全新会话或不在此页"
 
                             reply = [reply_str]
+                    elif cmd == 'resend':
+                        session = pkg.openai.session.get_session(session_name)
+                        to_send = session.undo()
+                        text_message = to_send
+                        is_message = True
                     elif cmd == 'fee':
                         api_keys = pkg.utils.context.get_openai_manager().key_mgr.api_key
                         reply_str = "[bot]api-key费用情况(估算):(阈值:{})\n\n".format(
@@ -284,7 +291,8 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                     mgr.notify_admin("{}指令执行失败:{}".format(session_name, e))
                     logging.exception(e)
                     reply = ["[bot]err:{}".format(e)]
-            else:  # 消息
+
+            if is_message:  # 消息
                 logging.info("[{}]发送消息:{}".format(session_name, text_message[:min(20, len(text_message))] + (
                     "..." if len(text_message) > 20 else "")))
 

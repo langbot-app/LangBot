@@ -179,6 +179,18 @@ class Session:
 
         return res_ans
 
+    # 删除上一回合并返回上一回合的问题
+    def undo(self) -> str:
+        self.last_interact_timestamp = int(time.time())
+
+        # 删除上一回合
+        to_delete = self.cut_out(self.prompt, 1, 1024)
+
+        self.prompt = self.prompt.replace(to_delete, '')
+
+        # 返回上一回合的问题
+        return to_delete.split(self.bot_name + ':')[0].split(self.user_name + ':')[1].strip()
+
     # 从尾部截取prompt里不多于max_rounds个回合，长度不大于max_tokens的字符串
     # 保证都是完整的对话
     def cut_out(self, prompt: str, max_rounds: int, max_tokens: int) -> str:
