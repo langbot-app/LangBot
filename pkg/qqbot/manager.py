@@ -159,6 +159,7 @@ class QQBotManager:
                                                           event.sender.id)
                         break
                     except FunctionTimedOut:
+                        logging.warning("person_{}: 超时，重试中".format(event.sender.id))
                         pkg.openai.session.get_session('person_{}'.format(event.sender.id)).release_response_lock()
                         failed += 1
                         continue
@@ -191,6 +192,7 @@ class QQBotManager:
                                                        event.sender.id)
                     break
                 except FunctionTimedOut:
+                    logging.warning("group_{}: 超时，重试中".format(event.group.id))
                     pkg.openai.session.get_session('group_{}'.format(event.group.id)).release_response_lock()
                     failed += 1
                     continue
