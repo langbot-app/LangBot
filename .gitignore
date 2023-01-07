@@ -4,3 +4,4 @@ __pycache__/
 database.db
 qchatgpt.log
 config.py
+banlist.py

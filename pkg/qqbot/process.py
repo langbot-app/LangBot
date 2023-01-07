@@ -100,12 +100,21 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
     reply = []
     session_name = "{}_{}".format(launcher_type, launcher_id)
 
-    # 检查是否被禁言
-    if launcher_type == 'group':
-        result = mgr.bot.member_info(target=launcher_id, member_id=mgr.bot.qq).get()
-        result = asyncio.run(result)
-        if result.mute_time_remaining > 0:
-            logging.info("机器人被禁言,跳过消息处理(group_{},剩余{}s)".format(launcher_id,
+    # 检查发送方是否被禁用
+    if pkg.utils.context.get_qqbot_manager().enable_banlist:
+        if sender_id in pkg.utils.context.get_qqbot_manager().ban_person:
+            logging.info("根据禁用列表忽略用户{}的消息".format(sender_id))
+            return []
+        if launcher_type == 'group' and launcher_id in pkg.utils.context.get_qqbot_manager().ban_group:
+            logging.info("根据禁用列表忽略群{}的消息".format(launcher_id))
+            return []
+
+        # 检查是否被禁言
+        if launcher_type == 'group':
+            result = mgr.bot.member_info(target=launcher_id, member_id=mgr.bot.qq).get()
+            result = asyncio.run(result)
+            if result.mute_time_remaining > 0:
+                logging.info("机器人被禁言,跳过消息处理(group_{},剩余{}s)".format(launcher_id,
                                                                                   result.mute_time_remaining))
             return reply
 
@@ -229,11 +238,12 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
 
                         api_keys = pkg.utils.context.get_openai_manager().key_mgr.api_key
                         for key_name in api_keys:
-                            text_length = pkg.utils.context.get_openai_manager().audit_mgr\
+                            text_length = pkg.utils.context.get_openai_manager().audit_mgr \
                                 .get_text_length_of_key(api_keys[key_name])
-                            image_count = pkg.utils.context.get_openai_manager().audit_mgr\
+                            image_count = pkg.utils.context.get_openai_manager().audit_mgr \
                                 .get_image_count_of_key(api_keys[key_name])
-                            reply_str += "{}:\n - 文本长度:{}\n - 图片数量:{}\n".format(key_name, int(text_length), int(image_count))
+                            reply_str += "{}:\n - 文本长度:{}\n - 图片数量:{}\n".format(key_name, int(text_length),
+                                                                                        int(image_count))
 
                         reply = [reply_str]
                     elif cmd == 'draw':
@@ -286,7 +296,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                             params = [config_item] + params
                             reply = config_operation("cfg", params)
                         else:
-                            reply = ["[bot]err:未知的指令或权限不足: "+cmd]
+                            reply = ["[bot]err:未知的指令或权限不足: " + cmd]
                 except Exception as e:
                     mgr.notify_admin("{}指令执行失败:{}".format(session_name, e))
                     logging.exception(e)
@@ -313,8 +323,9 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                         switched, name = pkg.utils.context.get_openai_manager().key_mgr.auto_switch()
 
                         if not switched:
-                            mgr.notify_admin("API调用额度超限({}),无可用api_key,请向OpenAI账户充值或在config.py中更换api_key".format(
-                                current_tokens_amt))
+                            mgr.notify_admin(
+                                "API调用额度超限({}),无可用api_key,请向OpenAI账户充值或在config.py中更换api_key".format(
+                                    current_tokens_amt))
                             reply = ["[bot]err:API调用额度超额，请联系作者，或等待修复"]
                         else:
                             openai.api_key = pkg.utils.context.get_openai_manager().key_mgr.get_using_key()

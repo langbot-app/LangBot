@@ -221,6 +221,10 @@ if __name__ == '__main__':
         print('请先在config.py中填写配置')
         sys.exit(0)
 
+    # 检查是否有banlist.py,如果没有就把banlist-template.py复制一份
+    if not os.path.exists('banlist.py'):
+        shutil.copy('banlist-template.py', 'banlist.py')
+
     if len(sys.argv) > 1 and sys.argv[1] == 'init_db':
         init_db()
         sys.exit(0)

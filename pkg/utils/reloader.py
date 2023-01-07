@@ -31,6 +31,7 @@ def reload_all(notify=True):
     walk(pkg)
     importlib.reload(__import__('config'))
     importlib.reload(__import__('main'))
+    importlib.reload(__import__('banlist'))
     pkg.utils.context.context = context
 
     # 执行启动流程

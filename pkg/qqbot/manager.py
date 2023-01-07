@@ -55,10 +55,23 @@ class QQBotManager:
 
     reply_filter = None
 
+    enable_banlist = False
+
+    ban_person = []
+    ban_group = []
+
     def __init__(self, mirai_http_api_config: dict, timeout: int = 60, retry: int = 3, first_time_init=True):
 
         self.timeout = timeout
         self.retry = retry
+
+        # 加载禁用列表
+        if os.path.exists("banlist.py"):
+            import banlist
+            self.enable_banlist = banlist.enable
+            self.ban_person = banlist.person
+            self.ban_group = banlist.group
+            logging.info("加载禁用列表: person: {}, group: {}".format(self.ban_person, self.ban_group))
 
         config = pkg.utils.context.get_config()
         if os.path.exists("sensitive.json") \
