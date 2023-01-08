@@ -307,18 +307,19 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                         reply = ["[bot]err:调用API失败，请重试或联系作者，或等待修复"]
                     except openai.error.RateLimitError as e:
                         # 尝试切换api-key
-                        current_tokens_amt = pkg.utils.context.get_openai_manager().key_mgr.get_fee(
-                            pkg.utils.context.get_openai_manager().key_mgr.get_using_key())
+                        current_key_name = pkg.utils.context.get_openai_manager().key_mgr.get_key_name(
+                            pkg.utils.context.get_openai_manager().key_mgr.using_key
+                        )
                         pkg.utils.context.get_openai_manager().key_mgr.set_current_exceeded()
                         switched, name = pkg.utils.context.get_openai_manager().key_mgr.auto_switch()
 
                         if not switched:
-                            mgr.notify_admin("API调用额度超限({}),无可用api_key,请向OpenAI账户充值或在config.py中更换api_key".format(
-                                current_tokens_amt))
+                            mgr.notify_admin("api-key调用额度超限({}),无可用api_key,请向OpenAI账户充值或在config.py中更换api_key".format(
+                                current_key_name))
                             reply = ["[bot]err:API调用额度超额，请联系作者，或等待修复"]
                         else:
                             openai.api_key = pkg.utils.context.get_openai_manager().key_mgr.get_using_key()
-                            mgr.notify_admin("API调用额度超限({}),接口报错,已切换到{}".format(current_tokens_amt, name))
+                            mgr.notify_admin("api-key调用额度超限({}),接口报错,已切换到{}".format(current_key_name, name))
                             reply = ["[bot]err:API调用额度超额，已自动切换，请重新发送消息"]
                             continue
                     except openai.error.InvalidRequestError as e:
