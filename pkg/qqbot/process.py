@@ -8,7 +8,7 @@ from func_timeout import func_set_timeout
 import logging
 import openai
 
-from mirai import Image, MessageChain
+from mirai import Image, MessageChain, Plain
 
 # 这里不使用动态引入config
 # 因为在这里动态引入会卡死程序
@@ -114,7 +114,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
     try:
         if session_name in processing:
             pkg.openai.session.get_session(session_name).release_response_lock()
-            return ["[bot]err:正在处理中，请稍后再试"]
+            return MessageChain([Plain("[bot]err:正在处理中，请稍后再试")])
 
         processing.append(session_name)
 
