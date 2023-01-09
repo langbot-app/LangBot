@@ -1,7 +1,3 @@
-import pkg.database.manager
-import pkg.openai.manager
-import pkg.qqbot.manager
-
 context = {
     'inst': {
         'database.manager.DatabaseManager': None,
