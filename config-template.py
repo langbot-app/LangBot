@@ -97,7 +97,7 @@ quote_origin = True
 include_image_description = True
 
 # 消息处理的超时时间，单位为秒
-process_message_timeout = 15
+process_message_timeout = 30
 
 # 机器人的配置
 # user_name: 管理员(主人)的名字

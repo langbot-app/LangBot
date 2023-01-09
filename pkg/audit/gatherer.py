@@ -25,7 +25,7 @@ class DataGatherer:
     def __init__(self):
         self.load_from_db()
         try:
-            self.version_str = pkg.utils.updater.get_commit_id_and_time_and_msg()[:50 if len(pkg.utils.updater.get_commit_id_and_time_and_msg()) > 50 else len(pkg.utils.updater.get_commit_id_and_time_and_msg())]
+            self.version_str = pkg.utils.updater.get_commit_id_and_time_and_msg()[:40 if len(pkg.utils.updater.get_commit_id_and_time_and_msg()) > 40 else len(pkg.utils.updater.get_commit_id_and_time_and_msg())]
         except:
             pass
 
@@ -34,6 +34,7 @@ class DataGatherer:
             config = pkg.utils.context.get_config()
             if hasattr(config, "report_usage") and not config.report_usage:
                 return
+            # print("http://rockchin.top:18989/usage?service_name=qchatgpt.{}&version={}&count={}".format(subservice_name, self.version_str, count))
             res = requests.get("http://rockchin.top:18989/usage?service_name=qchatgpt.{}&version={}&count={}".format(subservice_name, self.version_str, count))
             if res.status_code != 200 or res.text != "ok":
                 logging.warning("report to server failed, status_code: {}, text: {}".format(res.status_code, res.text))

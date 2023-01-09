@@ -52,7 +52,7 @@ def get_current_version_info() -> str:
         version_str += "提交编号: "+str(entry.commit.id)[2:9] + "\n"
         tz = datetime.timezone(datetime.timedelta(hours=entry.commit.commit_timezone // 3600))
         dt = datetime.datetime.fromtimestamp(entry.commit.commit_time, tz)
-        version_str += "时间: "+dt.strftime('%Y-%m-%d %H:%M:%S') + "\n"
+        version_str += "时间: "+dt.strftime('%m-%d %H:%M:%S') + "\n"
         version_str += "说明: "+str(entry.commit.message, encoding="utf-8").strip() + "\n"
         version_str += "提交作者: '" + str(entry.commit.author)[2:-1] + "'"
         break
