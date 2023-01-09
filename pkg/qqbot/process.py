@@ -109,13 +109,13 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
             logging.info("根据禁用列表忽略群{}的消息".format(launcher_id))
             return []
 
-        # 检查是否被禁言
-        if launcher_type == 'group':
-            result = mgr.bot.member_info(target=launcher_id, member_id=mgr.bot.qq).get()
-            result = asyncio.run(result)
-            if result.mute_time_remaining > 0:
-                logging.info("机器人被禁言,跳过消息处理(group_{},剩余{}s)".format(launcher_id,
-                                                                                  result.mute_time_remaining))
+    # 检查是否被禁言
+    if launcher_type == 'group':
+        result = mgr.bot.member_info(target=launcher_id, member_id=mgr.bot.qq).get()
+        result = asyncio.run(result)
+        if result.mute_time_remaining > 0:
+            logging.info("机器人被禁言,跳过消息处理(group_{},剩余{}s)".format(launcher_id,
+                                                                                result.mute_time_remaining))
             return reply
 
     pkg.openai.session.get_session(session_name).acquire_response_lock()

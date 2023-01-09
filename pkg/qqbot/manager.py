@@ -189,7 +189,6 @@ class QQBotManager:
 
     # 群消息处理
     def on_group_message(self, event: GroupMessage):
-
         reply = ''
 
         def process(text=None) -> str:
