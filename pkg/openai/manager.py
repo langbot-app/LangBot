@@ -3,7 +3,6 @@ import logging
 import openai
 
 import pkg.openai.keymgr
-import pkg.openai.pricing as pricing
 import pkg.utils.context
 import pkg.audit.gatherer
 
@@ -43,11 +42,6 @@ class OpenAIInteract:
         self.audit_mgr.report_text_model_usage(config.completion_api_params['model'],
                                                prompt + response['choices'][0]['text'])
 
-        switched = self.key_mgr.report_fee(pricing.language_base_price(config.completion_api_params['model'],
-                                                                       prompt + response['choices'][0]['text']))
-        if switched:
-            openai.api_key = self.key_mgr.get_using_key()
-
         return response
 
     def request_image(self, prompt):
@@ -62,11 +56,6 @@ class OpenAIInteract:
         )
 
         self.audit_mgr.report_image_model_usage(params['size'])
-
-        switched = self.key_mgr.report_fee(pricing.image_price(params['size']))
-
-        if switched:
-            openai.api_key = self.key_mgr.get_using_key()
 
         return response
 

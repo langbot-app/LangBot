@@ -51,22 +51,6 @@ def dump_session(session_name: str):
         del sessions[session_name]
 
 
-# def blocked_func(lock: threading.Lock):
-#
-#     def decorator(func):
-#         def wrapper(*args, **kwargs):
-#             print('lock acquire,{}'.format(lock))
-#             lock.acquire()
-#             try:
-#                 return func(*args, **kwargs)
-#             finally:
-#                 lock.release()
-#
-#         return wrapper
-#
-#     return decorator
-
-
 # 通用的OpenAI API交互session
 # session内部保留了对话的上下文，
 # 收到用户消息后，将上下文提交给OpenAI API生成回复

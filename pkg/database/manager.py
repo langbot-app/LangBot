@@ -50,15 +50,6 @@ class DatabaseManager:
         )
         """)
 
-        # self.execute("""
-        # create table if not exists `api_key_usage`(
-        #     `id` INTEGER PRIMARY KEY AUTOINCREMENT,
-        #     `key_md5` varchar(255) not null,
-        #     `timestamp` bigint not null,
-        #     `usage` bigint not null
-        # )
-        # """)
-
         self.execute("""
         create table if not exists `account_fee`(
             `id` INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -280,45 +271,6 @@ class DatabaseManager:
             usage_count = result[1]
             usage[key_md5] = usage_count
         return usage
-
-    def dump_api_key_fee(self, api_keys: dict, fee: dict):
-        logging.debug("dumping api key fee...")
-        logging.debug(api_keys)
-        logging.debug(fee)
-        for api_key in api_keys:
-            # 计算key的md5值
-            key_md5 = hashlib.md5(api_keys[api_key].encode('utf-8')).hexdigest()
-            # 获取使用量
-            fee_count = 0
-            if key_md5 in fee:
-                fee_count = fee[key_md5]
-            # 将使用量存进数据库
-            # 先检查是否已存在
-            self.execute("""
-            select count(*) from `account_fee` where `key_md5` = '{}'""".format(key_md5))
-            result = self.cursor.fetchone()
-            if result[0] == 0:
-                # 不存在则插入
-                self.execute("""
-                insert into `account_fee` (`key_md5`, `fee`,`timestamp`) values ('{}', {}, {})
-                """.format(key_md5, fee_count, int(time.time())))
-            else:
-                # 存在则更新，timestamp设置为当前
-                self.execute("""
-                update `account_fee` set `fee` = {}, `timestamp` = {} where `key_md5` = '{}'
-                """.format(fee_count, int(time.time()), key_md5))
-
-    def load_api_key_fee(self):
-        self.execute("""
-        select `key_md5`, `fee` from `account_fee`
-        """)
-        results = self.cursor.fetchall()
-        fee = {}
-        for result in results:
-            key_md5 = result[0]
-            fee_count = result[1]
-            fee[key_md5] = fee_count
-        return fee
 
     def dump_usage_json(self, usage: dict):
         json_str = json.dumps(usage)

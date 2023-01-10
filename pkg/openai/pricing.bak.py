@@ -1,3 +1,6 @@
+# 计费模块
+# 已弃用 https://github.com/RockChinQ/QChatGPT/issues/81
+
 import logging
 
 pricing = {

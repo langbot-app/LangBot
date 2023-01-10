@@ -12,10 +12,6 @@ class KeysManager:
 
     # api-key的使用量
     # 其中键为api-key的md5值，值为使用量
-    fee = {}
-
-    api_key_fee_threshold = 18.0
-
     using_key = ""
 
     alerted = []
@@ -33,11 +29,6 @@ class KeysManager:
     def __init__(self, api_key):
         # if hasattr(config, 'api_key_usage_threshold'):
         #     self.api_key_usage_threshold = config.api_key_usage_threshold
-
-        config = pkg.utils.context.get_config()
-        if hasattr(config, 'api_key_fee_threshold'):
-            self.api_key_fee_threshold = config.api_key_fee_threshold
-        self.load_fee()
 
         if type(api_key) is dict:
             self.api_key = api_key
@@ -59,16 +50,11 @@ class KeysManager:
     # 根据tested自动切换到可用的api-key
     # 返回是否切换成功, 切换后的api-key的别名
     def auto_switch(self) -> (bool, str):
-        self.dump_fee()
         for key_name in self.api_key:
             if self.api_key[key_name] not in self.exceeded:
                 self.using_key = self.api_key[key_name]
                 logging.info("使用api-key:" + key_name)
                 return True, key_name
-            # if self.get_fee(self.api_key[key_name]) < self.api_key_fee_threshold:
-            #     self.using_key = self.api_key[key_name]
-            #     logging.info("使用api-key:" + key_name)
-            #     return True, key_name
 
         self.using_key = list(self.api_key.values())[0]
         logging.info("使用api-key:" + list(self.api_key.keys())[0])
@@ -85,7 +71,6 @@ class KeysManager:
         # self.usage[md5] = self.api_key_usage_threshold
         # self.fee[md5] = self.api_key_fee_threshold
         self.exceeded.append(self.using_key)
-        self.dump_fee()
 
     def get_key_name(self, api_key):
         """根据api-key获取其别名"""
@@ -93,45 +78,3 @@ class KeysManager:
             if self.api_key[key_name] == api_key:
                 return key_name
         return ""
-
-    def get_fee(self, api_key):
-        md5 = hashlib.md5(api_key.encode('utf-8')).hexdigest()
-        if md5 not in self.fee:
-            self.fee[md5] = 0
-        return self.fee[md5]
-
-    def report_fee(self, fee: float) -> bool:
-        logging.debug("report fee:" + str(fee))
-
-        md5 = hashlib.md5(self.using_key.encode('utf-8')).hexdigest()
-        if md5 not in self.fee:
-            self.fee[md5] = 0
-
-        self.fee[md5] += fee
-
-        config = pkg.utils.context.get_config()
-        if self.fee[md5] >= self.api_key_fee_threshold and \
-                hasattr(config, 'auto_switch_api_key') and config.auto_switch_api_key:
-            switch_result, key_name = self.auto_switch()
-
-            # 检查是否切换到新的
-            if switch_result:
-                if key_name not in self.alerted:
-                    # 通知管理员
-                    pkg.utils.context.get_qqbot_manager().notify_admin("api-key已切换到:" + key_name)
-                    self.alerted.append(key_name)
-                    return True
-            else:
-                if key_name not in self.alerted:
-                    # 通知管理员
-                    pkg.utils.context.get_qqbot_manager().notify_admin("api-key已用完，无未使用的api-key可供切换")
-                    self.alerted.append(key_name)
-                    return False
-        return False
-
-    def dump_fee(self):
-        pkg.utils.context.get_database_manager().dump_api_key_fee(api_keys=self.api_key, fee=self.fee)
-
-    def load_fee(self):
-        self.fee = pkg.utils.context.get_database_manager().load_api_key_fee()
-        logging.info("load fee:" + str(self.fee))

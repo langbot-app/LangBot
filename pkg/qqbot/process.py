@@ -212,27 +212,6 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                         to_send = session.undo()
                         text_message = to_send
                         is_message = True
-                    elif cmd == 'fee':
-                        api_keys = pkg.utils.context.get_openai_manager().key_mgr.api_key
-                        reply_str = "[bot]api-key费用情况(估算):(阈值:{})\n\n".format(
-                            pkg.utils.context.get_openai_manager().key_mgr.api_key_fee_threshold)
-
-                        using_key_name = ""
-                        for api_key in api_keys:
-                            reply_str += "{}:\n - {}美元 {}%\n".format(api_key,
-                                                                       round(
-                                                                           pkg.utils.context.get_openai_manager().key_mgr.get_fee(
-                                                                               api_keys[api_key]), 6),
-                                                                       round(
-                                                                           pkg.utils.context.get_openai_manager().key_mgr.get_fee(
-                                                                               api_keys[
-                                                                                   api_key]) / pkg.utils.context.get_openai_manager().key_mgr.api_key_fee_threshold * 100,
-                                                                           3))
-                            if api_keys[api_key] == pkg.utils.context.get_openai_manager().key_mgr.using_key:
-                                using_key_name = api_key
-                        reply_str += "\n当前使用:{}".format(using_key_name)
-
-                        reply = [reply_str]
                     elif cmd == 'usage':
                         reply_str = "[bot]各api-key使用情况:\n\n"
 

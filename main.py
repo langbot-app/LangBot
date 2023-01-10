@@ -204,7 +204,6 @@ def stop():
         qqbot_inst = pkg.utils.context.get_qqbot_manager()
         assert isinstance(qqbot_inst, pkg.qqbot.manager.QQBotManager)
 
-        pkg.utils.context.get_openai_manager().key_mgr.dump_fee()
         for session in pkg.openai.session.sessions:
             logging.info('持久化session: %s', session)
             pkg.openai.session.sessions[session].persistence()
