@@ -181,7 +181,7 @@ def main(first_time_init=False):
             logging.info("当前已是最新版本")
 
     except Exception as e:
-        logging.error("检查更新失败:{}".format(e))
+        logging.warning("检查更新失败:{}".format(e))
 
     while True:
         try:

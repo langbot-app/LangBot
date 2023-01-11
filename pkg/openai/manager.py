@@ -35,7 +35,6 @@ class OpenAIInteract:
         response = openai.Completion.create(
             prompt=prompt,
             stop=stop,
-            timeout=config.process_message_timeout,
             **config.completion_api_params
         )
 
