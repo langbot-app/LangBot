@@ -295,6 +295,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                         mgr.notify_admin("{}会话调用API失败:{}".format(session_name, e))
                         reply = ["[bot]err:调用API失败，请重试或联系作者，或等待修复"]
                     except openai.error.RateLimitError as e:
+                        logging.debug(type(e))
                         # 尝试切换api-key
                         current_key_name = pkg.utils.context.get_openai_manager().key_mgr.get_key_name(
                             pkg.utils.context.get_openai_manager().key_mgr.using_key
