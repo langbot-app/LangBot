@@ -6,6 +6,7 @@ context = {
     },
     'logger_handler': None,
     'config': None,
+    'plugin_host': None,
 }
 
 
@@ -39,3 +40,11 @@ def set_qqbot_manager(inst):
 
 def get_qqbot_manager():
     return context['inst']['qqbot.manager.QQBotManager']
+
+
+def set_plugin_host(inst):
+    context['plugin_host'] = inst
+
+
+def get_plugin_host():
+    return context['plugin_host']

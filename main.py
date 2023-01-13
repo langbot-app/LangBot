@@ -117,9 +117,16 @@ def main(first_time_init=False):
                                                timeout=config.process_message_timeout, retry=config.retry_times,
                                                first_time_init=first_time_init)
 
+        # 加载插件
+        import pkg.plugin.host
+        pkg.plugin.host.load_plugins()
+
+        pkg.plugin.host.initialize_plugins()
+
         if first_time_init:  # 不是热重载之后的启动,则不启动新的bot线程
 
             import mirai.exceptions
+
             def run_bot_wrapper():
                 global known_exception_caught
                 try:
@@ -201,6 +208,9 @@ def stop():
     import pkg.qqbot.manager
     import pkg.openai.session
     try:
+        import pkg.plugin.host
+        pkg.plugin.host.unload_plugins()
+
         qqbot_inst = pkg.utils.context.get_qqbot_manager()
         assert isinstance(qqbot_inst, pkg.qqbot.manager.QQBotManager)
 

@@ -16,6 +16,9 @@ import pkg.qqbot.filter
 import pkg.qqbot.process as processor
 import pkg.utils.context
 
+import pkg.plugin.host as plugin_host
+import pkg.plugin.models as plugin_models
+
 
 # 并行运行
 def go(func, args=()):
@@ -155,6 +158,8 @@ class QQBotManager:
 
     # 私聊消息处理
     def on_person_message(self, event: MessageEvent):
+        plugin_host.emit(plugin_models.PersonMessage)
+
         reply = ''
 
         if event.sender.id == self.bot.qq:
