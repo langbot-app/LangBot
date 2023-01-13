@@ -54,7 +54,7 @@ def check_response_rule(text: str) -> (bool, str):
 class QQBotManager:
     retry = 3
 
-    bot = None
+    bot: Mirai = None
 
     reply_filter = None
 
@@ -158,7 +158,15 @@ class QQBotManager:
 
     # 私聊消息处理
     def on_person_message(self, event: MessageEvent):
-        plugin_host.emit(plugin_models.PersonMessage)
+
+        # 触发事件
+        args = {
+            "launcher_type": "person",
+            "launcher_id": event.sender.id,
+            "sender_id": event.sender.id,
+            "message_chain": event.message_chain,
+        }
+        plugin_host.emit(plugin_models.PersonMessage, **args)
 
         reply = ''
 
@@ -194,6 +202,16 @@ class QQBotManager:
 
     # 群消息处理
     def on_group_message(self, event: GroupMessage):
+
+        # 触发事件
+        args = {
+            "launcher_type": "group",
+            "launcher_id": event.group.id,
+            "sender_id": event.sender.id,
+            "message_chain": event.message_chain,
+        }
+        plugin_host.emit(plugin_models.GroupMessage, **args)
+
         reply = ''
 
         def process(text=None) -> str:

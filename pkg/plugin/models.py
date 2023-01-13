@@ -1,22 +1,48 @@
 import logging
 
 import pkg.plugin.host as host
+import pkg.utils.context
 
 __current_registering_plugin__ = ""
 
-import pkg.utils.context
-
 PersonMessage = "person_message"
+"""收到私聊消息时，在判断是否应该响应前触发
+    kwargs:
+        launcher_type: str 发起对象类型(group/person)
+        launcher_id: int 发起对象ID(群号/QQ号)
+        sender_id: int 发送者ID(QQ号)
+        message_chain: mirai.models.message.MessageChain 消息链
+"""
+
 GroupMessage = "group_message"
+"""收到群聊消息时，在判断是否应该响应前触发（所有群消息）"""
+
 PersonNormalMessage = "person_normal_message"
+"""判断为应该处理的私聊普通消息时触发"""
+
 PersonCommand = "person_command"
+"""判断为应该处理的私聊指令时触发"""
+
 GroupNormalMessage = "group_normal_message"
+"""判断为应该处理的群聊普通消息时触发"""
+
 GroupCommand = "group_command"
+"""判断为应该处理的群聊指令时触发"""
+
 SessionFirstMessage = "session_first_message"
+"""会话被第一次交互时触发"""
+
 SessionReset = "session_reset"
+"""会话被用户手动重置时触发"""
+
 SessionExpired = "session_expired"
+"""会话过期时触发"""
+
 KeyExceeded = "key_exceeded"
+"""api-key超额时触发"""
+
 KeySwitched = "key_switched"
+"""api-key超额切换成功时触发"""
 
 
 class Plugin:

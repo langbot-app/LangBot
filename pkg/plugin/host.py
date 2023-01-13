@@ -91,3 +91,11 @@ class PluginHost:
     def get_runtime_context(self) -> context:
         """获取运行时上下文"""
         return context
+
+    def get_bot(self):
+        """获取机器人对象"""
+        return context.get_qqbot_manager().bot
+
+    def notify_admin(self, message):
+        """通知管理员"""
+        context.get_qqbot_manager().notify_admin(message)
