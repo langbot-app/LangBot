@@ -39,13 +39,10 @@ class KeysManager:
         elif type(api_key) is list:
             for i in range(len(api_key)):
                 self.api_key[str(i)] = api_key[i]
-
-        self.auto_switch()
         # 从usage中删除未加载的api-key的记录
         # 不删了，也许会运行时添加曾经有记录的api-key
 
-        if 'exceeded_keys' in pkg.utils.context.context and pkg.utils.context.context['exceeded_keys'] is not None:
-            self.exceeded = pkg.utils.context.context['exceeded_keys']
+        self.auto_switch()
 
     # 根据tested自动切换到可用的api-key
     # 返回是否切换成功, 切换后的api-key的别名
