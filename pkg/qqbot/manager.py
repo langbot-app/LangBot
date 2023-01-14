@@ -105,9 +105,9 @@ class QQBotManager:
                 "sender_id": event.sender.id,
                 "message_chain": event.message_chain,
             }
-            event = plugin_host.emit(plugin_models.PersonMessage, **args)
+            plugin_event = plugin_host.emit(plugin_models.PersonMessage, **args)
 
-            if event.is_prevented_default():
+            if plugin_event.is_prevented_default():
                 return
 
             go(self.on_person_message, (event,))
@@ -121,9 +121,9 @@ class QQBotManager:
                 "sender_id": event.sender.id,
                 "message_chain": event.message_chain,
             }
-            event = plugin_host.emit(plugin_models.PersonMessage, **args)
+            plugin_event = plugin_host.emit(plugin_models.PersonMessage, **args)
 
-            if event.is_prevented_default():
+            if plugin_event.is_prevented_default():
                 return
 
             go(self.on_person_message, (event,))
@@ -137,9 +137,9 @@ class QQBotManager:
                 "sender_id": event.sender.id,
                 "message_chain": event.message_chain,
             }
-            event = plugin_host.emit(plugin_models.GroupMessage, **args)
+            plugin_event = plugin_host.emit(plugin_models.GroupMessage, **args)
 
-            if event.is_prevented_default():
+            if plugin_event.is_prevented_default():
                 return
 
             go(self.on_group_message, (event,))

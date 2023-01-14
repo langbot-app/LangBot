@@ -139,7 +139,7 @@ class PluginHost:
                     hook(plugin['instance'], **kwargs)
 
                     if event_context.is_prevented_default():
-                        logging.debug("插件 {} 要求阻止事件{}的默认行为".format(plugin['name'], event_name))
+                        logging.debug("插件 {} 已要求阻止事件 {} 的默认行为".format(plugin['name'], event_name))
 
                     if event_context.is_prevented_postorder():
                         logging.debug("插件 {} 阻止了后序插件的执行".format(plugin['name']))
