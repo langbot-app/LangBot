@@ -153,7 +153,7 @@ class Session:
                 'default_prompt': self.prompt,
             }
 
-            event = pkg.plugin.host.emit(plugin_models.SessionFirstMessage, **args)
+            event = pkg.plugin.host.emit(plugin_models.SessionFirstMessageReceived, **args)
             if event.is_prevented_default():
                 return None
 

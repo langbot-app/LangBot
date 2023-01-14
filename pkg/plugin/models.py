@@ -5,7 +5,7 @@ import pkg.utils.context
 
 __current_registering_plugin__ = ""
 
-PersonMessage = "person_message"
+PersonMessageReceived = "person_message_received"
 """收到私聊消息时，在判断是否应该响应前触发
     kwargs:
         launcher_type: str 发起对象类型(group/person)
@@ -14,7 +14,7 @@ PersonMessage = "person_message"
         message_chain: mirai.models.message.MessageChain 消息链
 """
 
-GroupMessage = "group_message"
+GroupMessageReceived = "group_message_received"
 """收到群聊消息时，在判断是否应该响应前触发（所有群消息）
     kwargs:
         launcher_type: str 发起对象类型(group/person)
@@ -23,7 +23,7 @@ GroupMessage = "group_message"
         message_chain: mirai.models.message.MessageChain 消息链
 """
 
-PersonNormalMessage = "person_normal_message"
+PersonNormalMessageReceived = "person_normal_message_received"
 """判断为应该处理的私聊普通消息时触发
     kwargs:
         launcher_type: str 发起对象类型(group/person)
@@ -32,7 +32,7 @@ PersonNormalMessage = "person_normal_message"
         text_message: str 消息文本
 """
 
-PersonCommand = "person_command"
+PersonCommandSent = "person_command_sent"
 """判断为应该处理的私聊指令时触发
     kwargs:
         launcher_type: str 发起对象类型(group/person)
@@ -44,7 +44,7 @@ PersonCommand = "person_command"
         is_admin: bool 是否为管理员
 """
 
-GroupNormalMessage = "group_normal_message"
+GroupNormalMessageReceived = "group_normal_message_received"
 """判断为应该处理的群聊普通消息时触发
     kwargs:
         launcher_type: str 发起对象类型(group/person)
@@ -53,7 +53,7 @@ GroupNormalMessage = "group_normal_message"
         text_message: str 消息文本
 """
 
-GroupCommand = "group_command"
+GroupCommandSent = "group_command_sent"
 """判断为应该处理的群聊指令时触发
     kwargs:
         launcher_type: str 发起对象类型(group/person)
@@ -65,7 +65,7 @@ GroupCommand = "group_command"
         is_admin: bool 是否为管理员
 """
 
-SessionFirstMessage = "session_first_message"
+SessionFirstMessageReceived = "session_first_message_received"
 """会话被第一次交互时触发
     kwargs:
         session_name: str 会话名称(<launcher_type>_<launcher_id>)

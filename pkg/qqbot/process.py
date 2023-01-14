@@ -77,9 +77,9 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                     'text_message': text_message,
                     'is_admin': sender_id is config.admin_qq,
                 }
-                event = plugin_host.emit(plugin_models.PersonCommand
+                event = plugin_host.emit(plugin_models.PersonCommandSent
                                          if launcher_type == 'person'
-                                         else plugin_models.GroupCommand, **args)
+                                         else plugin_models.GroupCommandSent, **args)
 
                 if not event.is_prevented_default():
                     reply = pkg.qqbot.command.process_command(session_name, text_message,
@@ -93,9 +93,9 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                     "sender_id": sender_id,
                     "text_message": text_message,
                 }
-                event = plugin_host.emit(plugin_models.PersonNormalMessage
+                event = plugin_host.emit(plugin_models.PersonNormalMessageReceived
                                          if launcher_type == 'person'
-                                         else plugin_models.GroupNormalMessage, **args)
+                                         else plugin_models.GroupNormalMessageReceived, **args)
 
                 if not event.is_prevented_default():
                     reply = pkg.qqbot.message.process_normal_message(text_message,
