@@ -98,14 +98,50 @@ class QQBotManager:
         # Caution: 注册新的事件处理器之后，请务必在unsubscribe_all中编写相应的取消订阅代码
         @self.bot.on(FriendMessage)
         async def on_friend_message(event: FriendMessage):
+            # 触发事件
+            args = {
+                "launcher_type": "person",
+                "launcher_id": event.sender.id,
+                "sender_id": event.sender.id,
+                "message_chain": event.message_chain,
+            }
+            event = plugin_host.emit(plugin_models.PersonMessage, **args)
+
+            if event.is_prevented_default():
+                return
+
             go(self.on_person_message, (event,))
 
         @self.bot.on(StrangerMessage)
         async def on_stranger_message(event: StrangerMessage):
+            # 触发事件
+            args = {
+                "launcher_type": "person",
+                "launcher_id": event.sender.id,
+                "sender_id": event.sender.id,
+                "message_chain": event.message_chain,
+            }
+            event = plugin_host.emit(plugin_models.PersonMessage, **args)
+
+            if event.is_prevented_default():
+                return
+
             go(self.on_person_message, (event,))
 
         @self.bot.on(GroupMessage)
         async def on_group_message(event: GroupMessage):
+            # 触发事件
+            args = {
+                "launcher_type": "group",
+                "launcher_id": event.group.id,
+                "sender_id": event.sender.id,
+                "message_chain": event.message_chain,
+            }
+            event = plugin_host.emit(plugin_models.GroupMessage, **args)
+
+            if event.is_prevented_default():
+                return
+
             go(self.on_group_message, (event,))
 
         def unsubscribe_all():
@@ -159,15 +195,6 @@ class QQBotManager:
     # 私聊消息处理
     def on_person_message(self, event: MessageEvent):
 
-        # 触发事件
-        args = {
-            "launcher_type": "person",
-            "launcher_id": event.sender.id,
-            "sender_id": event.sender.id,
-            "message_chain": event.message_chain,
-        }
-        plugin_host.emit(plugin_models.PersonMessage, **args)
-
         reply = ''
 
         if event.sender.id == self.bot.qq:
@@ -202,15 +229,6 @@ class QQBotManager:
 
     # 群消息处理
     def on_group_message(self, event: GroupMessage):
-
-        # 触发事件
-        args = {
-            "launcher_type": "group",
-            "launcher_id": event.group.id,
-            "sender_id": event.sender.id,
-            "message_chain": event.message_chain,
-        }
-        plugin_host.emit(plugin_models.GroupMessage, **args)
 
         reply = ''
 
