@@ -84,6 +84,41 @@ class EventContext:
     __prevent_postorder__ = False
     """ 是否阻止后续插件的执行 """
 
+    __return_value__ = {}
+    """ 返回值 
+    示例:
+    {
+        "example": [
+            'value1',
+            'value2',
+            3,
+            4,
+            {
+                'key1': 'value1',
+            },
+            ['value1', 'value2']
+        ]
+    }
+    """
+
+    def add_return(self, key: str, ret):
+        """添加返回值"""
+        if key not in self.__return_value__:
+            self.__return_value__[key] = []
+        self.__return_value__[key].append(ret)
+
+    def get_return(self, key: str):
+        """获取key的所有返回值"""
+        if key in self.__return_value__:
+            return self.__return_value__[key]
+        return None
+
+    def get_return_value(self, key: str):
+        """获取key的首个返回值"""
+        if key in self.__return_value__:
+            return self.__return_value__[key][0]
+        return None
+
     def prevent_default(self):
         """阻止默认行为"""
         self.__prevent_default__ = True
