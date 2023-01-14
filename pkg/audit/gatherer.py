@@ -40,6 +40,9 @@ class DataGatherer:
         except:
             return
 
+    def get_usage(self, key_md5):
+        return self.usage[key_md5] if key_md5 in self.usage else {}
+
     def report_text_model_usage(self, model, text):
         key_md5 = pkg.utils.context.get_openai_manager().key_mgr.get_using_key_md5()
 

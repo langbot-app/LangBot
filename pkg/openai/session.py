@@ -6,6 +6,9 @@ import pkg.openai.manager
 import pkg.database.manager
 import pkg.utils.context
 
+import pkg.plugin.host as plugin_host
+import pkg.plugin.models as plugin_models
+
 # 运行时保存的所有session
 sessions = {}
 
@@ -120,6 +123,17 @@ class Session:
             config = pkg.utils.context.get_config()
             if int(time.time()) - self.last_interact_timestamp > config.session_expire_time:
                 logging.info('session {} 已过期'.format(self.name))
+
+                # 触发插件事件
+                args = {
+                    'session_name': self.name,
+                    'session': self,
+                    'session_expire_time': config.session_expire_time
+                }
+                event = pkg.plugin.host.emit(plugin_models.SessionExpired, **args)
+                if event.is_prevented_default():
+                    return
+
                 self.reset(expired=True, schedule_new=False)
 
                 # 删除此session
@@ -130,6 +144,18 @@ class Session:
     # 这个函数是阻塞的
     def append(self, text: str) -> str:
         self.last_interact_timestamp = int(time.time())
+
+        # 触发插件事件
+        if self.prompt == self.get_default_prompt():
+            args = {
+                'session_name': self.name,
+                'session': self,
+                'default_prompt': self.prompt,
+            }
+
+            event = pkg.plugin.host.emit(plugin_models.SessionFirstMessage, **args)
+            if event.is_prevented_default():
+                return None
 
         # max_rounds = config.prompt_submit_round_amount if hasattr(config, 'prompt_submit_round_amount') else 7
         config = pkg.utils.context.get_config()
@@ -220,6 +246,15 @@ class Session:
         if self.prompt != self.get_default_prompt():
             self.persistence()
             if explicit:
+                # 触发插件事件
+                args = {
+                    'session_name': self.name,
+                    'session': self
+                }
+
+                # 此事件不支持阻止默认行为
+                _ = pkg.plugin.host.emit(plugin_models.SessionExplicitReset, **args)
+
                 pkg.utils.context.get_database_manager().explicit_close_session(self.name, self.create_timestamp)
 
             if expired:

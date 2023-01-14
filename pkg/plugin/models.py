@@ -39,7 +39,7 @@ PersonCommand = "person_command"
         launcher_id: int 发起对象ID(群号/QQ号)
         sender_id: int 发送者ID(QQ号)
         command: str 指令
-        args: list[str] 参数列表
+        params: list[str] 参数列表
         text_message: str 完整指令文本
         is_admin: bool 是否为管理员
 """
@@ -60,25 +60,22 @@ GroupCommand = "group_command"
         launcher_id: int 发起对象ID(群号/QQ号)
         sender_id: int 发送者ID(QQ号)
         command: str 指令
-        args: list[str] 参数列表
+        params: list[str] 参数列表
         text_message: str 完整指令文本
+        is_admin: bool 是否为管理员
 """
 
 SessionFirstMessage = "session_first_message"
 """会话被第一次交互时触发
     kwargs:
-        launcher_type: str 发起对象类型(group/person)
-        launcher_id: int 发起对象ID(群号/QQ号)
         session_name: str 会话名称(<launcher_type>_<launcher_id>)
         session: pkg.openai.session.Session 会话对象
         default_prompt: str 预设值
 """
 
-SessionReset = "session_reset"
-"""会话被用户手动重置时触发
+SessionExplicitReset = "session_reset"
+"""会话被用户手动重置时触发，此事件不支持阻止默认行为
     kwargs:
-        launcher_type: str 发起对象类型(group/person)
-        launcher_id: int 发起对象ID(群号/QQ号)
         session_name: str 会话名称(<launcher_type>_<launcher_id>)
         session: pkg.openai.session.Session 会话对象
 """
@@ -86,11 +83,9 @@ SessionReset = "session_reset"
 SessionExpired = "session_expired"
 """会话过期时触发
     kwargs:
-        launcher_type: str 发起对象类型(group/person)
-        launcher_id: int 发起对象ID(群号/QQ号)
         session_name: str 会话名称(<launcher_type>_<launcher_id>)
         session: pkg.openai.session.Session 会话对象
-        expired_time: int 已设置的会话过期时间(秒)
+        session_expire_time: int 已设置的会话过期时间(秒)
 """
 
 KeyExceeded = "key_exceeded"
@@ -98,15 +93,23 @@ KeyExceeded = "key_exceeded"
     kwargs:
         key_name: str 超额的api-key名称
         usage: dict 超额的api-key使用情况
-        exceeded_key: list[str] 超额的api-key列表
+        exceeded_keys: list[str] 超额的api-key列表
 """
 
 KeySwitched = "key_switched"
-"""api-key超额切换成功时触发
+"""api-key超额切换成功时触发，此事件不支持阻止默认行为
     kwargs:
         key_name: str 切换成功的api-key名称
         key_list: list[str] api-key列表
 """
+
+
+def on(event: str):
+    """注册事件监听器
+    :param
+        event: str 事件名称
+    """
+    return Plugin.on(event)
 
 
 class Plugin:

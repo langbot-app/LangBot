@@ -93,9 +93,11 @@ class EventContext:
         self.__prevent_postorder__ = True
 
     def is_prevented_default(self):
+        """是否阻止默认行为"""
         return self.__prevent_default__
 
     def is_prevented_postorder(self):
+        """是否阻止后序插件执行"""
         return self.__prevent_postorder__
 
     def __init__(self, name: str):
@@ -107,6 +109,8 @@ class EventContext:
 def emit(event_name: str, **kwargs) -> EventContext:
     """ 触发事件 """
     import pkg.utils.context as context
+    if context.get_plugin_host() is None:
+        return None
     return context.get_plugin_host().emit(event_name, **kwargs)
 
 

@@ -2,10 +2,8 @@
 import hashlib
 import logging
 
-import pkg.database.manager
-import pkg.qqbot.manager
-import pkg.utils.context
-
+import pkg.plugin.host as plugin_host
+import pkg.plugin.models as plugin_models
 
 class KeysManager:
     api_key = {}
@@ -50,7 +48,16 @@ class KeysManager:
         for key_name in self.api_key:
             if self.api_key[key_name] not in self.exceeded:
                 self.using_key = self.api_key[key_name]
+
                 logging.info("使用api-key:" + key_name)
+
+                # 触发插件事件
+                args = {
+                    "key_name": key_name,
+                    "key_list": self.api_key.keys()
+                }
+                _ = plugin_host.emit(plugin_models.KeySwitched, **args)
+
                 return True, key_name
 
         self.using_key = list(self.api_key.values())[0]

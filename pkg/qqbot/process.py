@@ -1,14 +1,10 @@
 # 此模块提供了消息处理的具体逻辑的接口
 import asyncio
-import datetime
-import json
-import threading
 
 from func_timeout import func_set_timeout
 import logging
-import openai
 
-from mirai import Image, MessageChain, Plain
+from mirai import MessageChain, Plain
 
 # 这里不使用动态引入config
 # 因为在这里动态引入会卡死程序
@@ -22,6 +18,9 @@ import pkg.utils.updater
 import pkg.utils.context
 import pkg.qqbot.message
 import pkg.qqbot.command
+
+import pkg.plugin.host as plugin_host
+import pkg.plugin.models as plugin_models
 
 processing = []
 
@@ -68,11 +67,39 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
         try:
 
             if text_message.startswith('!') or text_message.startswith("！"):  # 指令
-                reply = pkg.qqbot.command.process_command(session_name, text_message,
-                                                          mgr, config, launcher_type, launcher_id)
+                # 触发插件事件
+                args = {
+                    'launcher_type': launcher_type,
+                    'launcher_id': launcher_id,
+                    'sender_id': sender_id,
+                    'command': text_message[1:].strip().split(' ')[0],
+                    'params': text_message[1:].strip().split(' ')[1:],
+                    'text_message': text_message,
+                    'is_admin': sender_id is config.admin_qq,
+                }
+                event = plugin_host.emit(plugin_models.PersonCommand
+                                         if launcher_type == 'person'
+                                         else plugin_models.GroupCommand, **args)
+
+                if not event.is_prevented_default():
+                    reply = pkg.qqbot.command.process_command(session_name, text_message,
+                                                              mgr, config, launcher_type, launcher_id)
 
             else:  # 消息
-                reply = pkg.qqbot.message.process_normal_message(text_message, mgr, config, launcher_type, launcher_id)
+                # 触发插件事件
+                args = {
+                    "launcher_type": launcher_type,
+                    "launcher_id": launcher_id,
+                    "sender_id": sender_id,
+                    "text_message": text_message,
+                }
+                event = plugin_host.emit(plugin_models.PersonNormalMessage
+                                         if launcher_type == 'person'
+                                         else plugin_models.GroupNormalMessage, **args)
+
+                if not event.is_prevented_default():
+                    reply = pkg.qqbot.message.process_normal_message(text_message,
+                                                                     mgr, config, launcher_type, launcher_id)
 
             if reply is not None and type(reply[0]) == str:
                 logging.info(

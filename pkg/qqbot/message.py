@@ -4,6 +4,8 @@ import openai
 import pkg.utils.context
 import pkg.openai.session
 
+import pkg.plugin.host as plugin_host
+import pkg.plugin.models as plugin_models
 
 def process_normal_message(text_message: str, mgr, config, launcher_type: str, launcher_id: int) -> list:
     session_name = f"{launcher_type}_{launcher_id}"
@@ -26,18 +28,29 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str, l
                 pkg.utils.context.get_openai_manager().key_mgr.using_key
             )
             pkg.utils.context.get_openai_manager().key_mgr.set_current_exceeded()
-            switched, name = pkg.utils.context.get_openai_manager().key_mgr.auto_switch()
 
-            if not switched:
-                mgr.notify_admin(
-                    "api-key调用额度超限({}),无可用api_key,请向OpenAI账户充值或在config.py中更换api_key".format(
-                        current_key_name))
-                reply = ["[bot]err:API调用额度超额，请联系作者，或等待修复"]
-            else:
-                openai.api_key = pkg.utils.context.get_openai_manager().key_mgr.get_using_key()
-                mgr.notify_admin("api-key调用额度超限({}),接口报错,已切换到{}".format(current_key_name, name))
-                reply = ["[bot]err:API调用额度超额，已自动切换，请重新发送消息"]
-                continue
+            # 触发插件事件
+            args = {
+                'key_name': current_key_name,
+                'usage': pkg.utils.context.get_openai_manager().audit_mgr
+                        .get_usage(pkg.utils.context.get_openai_manager().key_mgr.get_using_key_md5()),
+                'exceeded_keys': pkg.utils.context.get_openai_manager().key_mgr.exceeded,
+            }
+            event = plugin_host.emit(plugin_models.KeyExceeded, **args)
+
+            if not event.is_prevented_default():
+                switched, name = pkg.utils.context.get_openai_manager().key_mgr.auto_switch()
+
+                if not switched:
+                    mgr.notify_admin(
+                        "api-key调用额度超限({}),无可用api_key,请向OpenAI账户充值或在config.py中更换api_key".format(
+                            current_key_name))
+                    reply = ["[bot]err:API调用额度超额，请联系作者，或等待修复"]
+                else:
+                    openai.api_key = pkg.utils.context.get_openai_manager().key_mgr.get_using_key()
+                    mgr.notify_admin("api-key调用额度超限({}),接口报错,已切换到{}".format(current_key_name, name))
+                    reply = ["[bot]err:API调用额度超额，已自动切换，请重新发送消息"]
+                    continue
         except openai.error.InvalidRequestError as e:
             mgr.notify_admin("{}API调用参数错误:{}\n\n这可能是由于config.py中的prompt_submit_length参数或"
                              "completion_api_params中的max_tokens参数数值过大导致的，请尝试将其降低".format(
