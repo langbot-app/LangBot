@@ -1,10 +1,14 @@
 # 插件管理模块
+import asyncio
 import logging
 import importlib
 import pkgutil
 import sys
+import traceback
 
 import pkg.utils.context as context
+
+from mirai import Mirai
 
 __plugins__ = {}
 """
@@ -159,9 +163,17 @@ class PluginHost:
         """获取运行时上下文"""
         return context
 
-    def get_bot(self):
+    def get_bot(self) -> Mirai:
         """获取机器人对象"""
         return context.get_qqbot_manager().bot
+
+    def send_person_message(self, person, message):
+        """发送私聊消息"""
+        asyncio.run(self.get_bot().send_friend_message(person, message))
+
+    def send_group_message(self, group, message):
+        """发送群消息"""
+        asyncio.run(self.get_bot().send_group_message(group, message))
 
     def notify_admin(self, message):
         """通知管理员"""
@@ -184,7 +196,8 @@ class PluginHost:
                         logging.debug("插件 {} 阻止了后序插件的执行".format(plugin['name']))
                         break
 
-                except:
-                    logging.error("插件{}触发事件{}时发生错误: {}".format(plugin['name'], event_name, sys.exc_info()))
+                except Exception as e:
+                    logging.error("插件{}触发事件{}时发生错误".format(plugin['name'], event_name))
+                    logging.error(traceback.format_exc())
 
         return event_context
