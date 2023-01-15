@@ -39,7 +39,7 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
                 prefix = event.get_return_value("prefix")
 
             if event.get_return_value("reply") is not None:
-                reply = event.get_return("reply")
+                reply = event.get_return_value("reply")
 
             if not event.is_prevented_default():
                 reply = [prefix + text]

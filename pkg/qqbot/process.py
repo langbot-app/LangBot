@@ -65,7 +65,6 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
 
         processing.append(session_name)
         try:
-
             if text_message.startswith('!') or text_message.startswith("！"):  # 指令
                 # 触发插件事件
                 args = {
@@ -86,7 +85,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
 
                 # 取出插件提交的返回值赋值给reply
                 if event.get_return_value("reply") is not None:
-                    reply.append(event.get_return("reply"))
+                    reply = event.get_return_value("reply")
 
                 if not event.is_prevented_default():
                     reply = pkg.qqbot.command.process_command(session_name, text_message,
