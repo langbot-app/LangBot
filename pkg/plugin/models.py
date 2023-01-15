@@ -30,6 +30,9 @@ PersonNormalMessageReceived = "person_normal_message_received"
         launcher_id: int 发起对象ID(群号/QQ号)
         sender_id: int 发送者ID(QQ号)
         text_message: str 消息文本
+        
+    returns (optional):
+        alter: str 修改后的消息文本
 """
 
 PersonCommandSent = "person_command_sent"
@@ -44,6 +47,7 @@ PersonCommandSent = "person_command_sent"
         is_admin: bool 是否为管理员
     
     returns (optional):
+        alter: str 修改后的完整指令文本
         reply: list 回复消息组件列表
 """
 
@@ -54,6 +58,9 @@ GroupNormalMessageReceived = "group_normal_message_received"
         launcher_id: int 发起对象ID(群号/QQ号)
         sender_id: int 发送者ID(QQ号)
         text_message: str 消息文本
+        
+    returns (optional):
+        alter: str 修改后的消息文本
 """
 
 GroupCommandSent = "group_command_sent"
@@ -66,6 +73,10 @@ GroupCommandSent = "group_command_sent"
         params: list[str] 参数列表
         text_message: str 完整指令文本
         is_admin: bool 是否为管理员
+    
+    returns (optional):
+        alter: str 修改后的完整指令文本
+        reply: list 回复消息组件列表
 """
 
 NormalMessageResponded = "normal_message_responded"
@@ -79,6 +90,7 @@ NormalMessageResponded = "normal_message_responded"
         response_text: str 响应文本
     
     returns (optional):
+        prefix: str 修改后的回复文字消息的前缀
         reply: list 替换回复消息组件列表
 """
 
