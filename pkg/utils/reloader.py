@@ -4,6 +4,7 @@ import threading
 import importlib
 import pkgutil
 import pkg.utils.context
+import pkg.plugin.host
 
 
 def walk(module, prefix=''):
@@ -32,8 +33,11 @@ def reload_all(notify=True):
     importlib.reload(__import__('config'))
     importlib.reload(__import__('main'))
     importlib.reload(__import__('banlist'))
-    importlib.reload(__import__('plugins'))
     pkg.utils.context.context = context
+
+    # 重载插件
+    import plugins
+    walk(plugins)
 
     # 执行启动流程
     logging.info("执行程序启动流程")

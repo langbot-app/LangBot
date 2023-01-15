@@ -36,8 +36,10 @@ def walk_plugin_path(module, prefix=''):
     """遍历插件路径"""
     for item in pkgutil.iter_modules(module.__path__):
         if item.ispkg:
+            logging.debug("扫描插件包: {}".format(item.name))
             walk_plugin_path(__import__(module.__name__ + '.' + item.name, fromlist=['']), prefix + item.name + '.')
         else:
+            logging.debug("扫描插件模块: {}".format(item.name))
             logging.info('加载模块: {}'.format(prefix + item.name))
 
             importlib.import_module(module.__name__ + '.' + item.name)
@@ -142,6 +144,9 @@ class EventContext:
     def __init__(self, name: str):
         self.name = name
         self.eid = EventContext.eid
+        self.__prevent_default__ = False
+        self.__prevent_postorder__ = False
+        self.__return_value__ = {}
         EventContext.eid += 1
 
 
@@ -182,6 +187,7 @@ class PluginHost:
     def emit(self, event_name: str, **kwargs) -> EventContext:
         """ 触发事件 """
         event_context = EventContext(event_name)
+        logging.debug("触发事件: {} ({})".format(event_name, event_context.eid))
         for plugin in __plugins__.values():
             for hook in plugin['hooks'].get(event_name, []):
                 try:
