@@ -106,6 +106,10 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                 if event.get_return_value("alter") is not None:
                     text_message = event.get_return_value("alter")
 
+                # 取出插件提交的返回值赋值给reply
+                if event.get_return_value("reply") is not None:
+                    reply = event.get_return_value("reply")
+
                 if not event.is_prevented_default():
                     reply = pkg.qqbot.message.process_normal_message(text_message,
                                                                      mgr, config, launcher_type, launcher_id, sender_id)

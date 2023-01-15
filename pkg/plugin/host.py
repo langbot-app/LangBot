@@ -193,6 +193,7 @@ class PluginHost:
                 try:
                     kwargs['host'] = context.get_plugin_host()
                     kwargs['event'] = event_context
+
                     hook(plugin['instance'], **kwargs)
 
                     if event_context.is_prevented_default():

@@ -33,6 +33,7 @@ PersonNormalMessageReceived = "person_normal_message_received"
         
     returns (optional):
         alter: str 修改后的消息文本
+        reply: list 回复消息组件列表
 """
 
 PersonCommandSent = "person_command_sent"
@@ -61,6 +62,7 @@ GroupNormalMessageReceived = "group_normal_message_received"
         
     returns (optional):
         alter: str 修改后的消息文本
+        reply: list 回复消息组件列表
 """
 
 GroupCommandSent = "group_command_sent"
