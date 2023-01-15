@@ -81,9 +81,13 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                                          if launcher_type == 'person'
                                          else plugin_models.GroupCommandSent, **args)
 
+                # 取出插件提交的返回值赋值给reply
+                if event.get_return_value("reply") is not None:
+                    reply.append(event.get_return("reply"))
+
                 if not event.is_prevented_default():
                     reply = pkg.qqbot.command.process_command(session_name, text_message,
-                                                              mgr, config, launcher_type, launcher_id)
+                                                              mgr, config, launcher_type, launcher_id, sender_id)
 
             else:  # 消息
                 # 触发插件事件
@@ -99,7 +103,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
 
                 if not event.is_prevented_default():
                     reply = pkg.qqbot.message.process_normal_message(text_message,
-                                                                     mgr, config, launcher_type, launcher_id)
+                                                                     mgr, config, launcher_type, launcher_id, sender_id)
 
             if reply is not None and type(reply[0]) == str:
                 logging.info(

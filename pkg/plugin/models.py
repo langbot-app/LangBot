@@ -42,6 +42,9 @@ PersonCommandSent = "person_command_sent"
         params: list[str] 参数列表
         text_message: str 完整指令文本
         is_admin: bool 是否为管理员
+    
+    returns (optional):
+        reply: list 回复消息组件列表
 """
 
 GroupNormalMessageReceived = "group_normal_message_received"
@@ -63,6 +66,20 @@ GroupCommandSent = "group_command_sent"
         params: list[str] 参数列表
         text_message: str 完整指令文本
         is_admin: bool 是否为管理员
+"""
+
+NormalMessageResponded = "normal_message_responded"
+"""获取到对普通消息的文字响应时触发
+    kwargs:
+        launcher_type: str 发起对象类型(group/person)
+        launcher_id: int 发起对象ID(群号/QQ号)
+        sender_id: int 发送者ID(QQ号)
+        session: pkg.openai.session.Session 会话对象
+        prefix: str 回复文字消息的前缀
+        response_text: str 响应文本
+    
+    returns (optional):
+        reply: list 替换回复消息组件列表
 """
 
 SessionFirstMessageReceived = "session_first_message_received"

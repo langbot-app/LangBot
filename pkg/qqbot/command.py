@@ -80,7 +80,8 @@ def config_operation(cmd, params):
     return reply
 
 
-def process_command(session_name: str, text_message: str, mgr, config, launcher_type: str, launcher_id: int) -> list:
+def process_command(session_name: str, text_message: str, mgr, config,
+                    launcher_type: str, launcher_id: int, sender_id: int) -> list:
     reply = []
     try:
         logging.info(
@@ -159,7 +160,8 @@ def process_command(session_name: str, text_message: str, mgr, config, launcher_
             session = pkg.openai.session.get_session(session_name)
             to_send = session.undo()
 
-            reply = pkg.qqbot.message.process_normal_message(to_send, mgr, config, launcher_type, launcher_id)
+            reply = pkg.qqbot.message.process_normal_message(to_send, mgr, config,
+                                                             launcher_type, launcher_id, sender_id)
         elif cmd == 'usage':
             reply_str = "[bot]各api-key使用情况:\n\n"
 

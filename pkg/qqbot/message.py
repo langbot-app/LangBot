@@ -7,17 +7,38 @@ import pkg.openai.session
 import pkg.plugin.host as plugin_host
 import pkg.plugin.models as plugin_models
 
-def process_normal_message(text_message: str, mgr, config, launcher_type: str, launcher_id: int) -> list:
+
+def process_normal_message(text_message: str, mgr, config, launcher_type: str,
+                           launcher_id: int, sender_id: int) -> list:
     session_name = f"{launcher_type}_{launcher_id}"
     logging.info("[{}]发送消息:{}".format(session_name, text_message[:min(20, len(text_message))] + (
         "..." if len(text_message) > 20 else "")))
 
     session = pkg.openai.session.get_session(session_name)
 
+    reply = []
     while True:
         try:
             prefix = "[GPT]" if hasattr(config, "show_prefix") and config.show_prefix else ""
-            reply = [prefix + session.append(text_message)]
+
+            text = session.append(text_message)
+
+            # 触发插件事件
+            args = {
+                "launcher_type": launcher_type,
+                "launcher_id": launcher_id,
+                "sender_id": sender_id,
+                "session": session,
+                "prefix": prefix,
+                "response_text": text
+            }
+
+            event = pkg.plugin.host.emit(plugin_models.NormalMessageResponded, **args)
+            if event.get_return_value("reply") is not None:
+                reply = event.get_return("reply")
+
+            if not event.is_prevented_default():
+                reply = [prefix + text]
         except openai.error.APIConnectionError as e:
             mgr.notify_admin("{}会话调用API失败:{}".format(session_name, e))
             reply = ["[bot]err:调用API失败，请重试或联系作者，或等待修复"]
