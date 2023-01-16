@@ -35,15 +35,21 @@ __plugins__ = {}
 }"""
 
 
-def walk_plugin_path(module, prefix=''):
+__current_module_path__ = ""
+
+
+def walk_plugin_path(module, prefix='', path_prefix=''):
+    global __current_module_path__
     """遍历插件路径"""
     for item in pkgutil.iter_modules(module.__path__):
         if item.ispkg:
-            logging.debug("扫描插件包: {}".format(item.name))
-            walk_plugin_path(__import__(module.__name__ + '.' + item.name, fromlist=['']), prefix + item.name + '.')
+            logging.debug("扫描插件包: plugins/{}".format(path_prefix + item.name))
+            walk_plugin_path(__import__(module.__name__ + '.' + item.name, fromlist=['']),
+                             prefix + item.name + '.', path_prefix + item.name + '/')
         else:
-            logging.debug("扫描插件模块: {}".format(item.name))
-            logging.info('加载模块: {}'.format(prefix + item.name))
+            logging.debug("扫描插件模块: plugins/{}".format(path_prefix + item.name + '.py'))
+            logging.info('加载模块: plugins/{}'.format(path_prefix + item.name + '.py'))
+            __current_module_path__ = "plugins/"+path_prefix + item.name + '.py'
 
             importlib.import_module(module.__name__ + '.' + item.name)
 
@@ -55,6 +61,9 @@ def load_plugins():
     walk_plugin_path(__import__('plugins'))
 
     logging.debug(__plugins__)
+
+    # 加载开关数据
+    switch.load_switch()
 
 
 def initialize_plugins():
@@ -72,7 +81,7 @@ def initialize_plugins():
 def unload_plugins():
     """ 卸载插件 """
     for plugin in __plugins__.values():
-        if plugin['instance'] is not None:
+        if plugin['enabled'] and plugin['instance'] is not None:
             if not hasattr(plugin['instance'], '__del__'):
                 logging.warning("插件{}没有定义析构函数".format(plugin['name']))
             else:

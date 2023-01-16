@@ -197,6 +197,7 @@ def register(name: str, description: str, version: str, author: str):
         "hooks": {},
         "path": host.__current_module_path__,
         "enabled": True,
+        "instance": None,
     }
 
     def wrapper(cls: Plugin):
