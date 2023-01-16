@@ -162,7 +162,7 @@ def main(first_time_init=False):
                         known_exception_caught = True
                     else:
                         logging.error(
-                            "捕捉到未知异常:{}, 请前往 https://github.com/RockChinQ/issues 查找或提issue".format(e))
+                            "捕捉到未知异常:{}, 请前往 https://github.com/RockChinQ/QChatGPT/issues 查找或提issue".format(e))
                         known_exception_caught = True
                         raise e
 
