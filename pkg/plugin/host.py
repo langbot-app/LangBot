@@ -92,6 +92,25 @@ def unload_plugins():
                     logging.error("插件{}卸载时发生错误: {}".format(plugin['name'], sys.exc_info()))
 
 
+def install_plugin(repo_url: str):
+    """ 安装插件，从git储存库获取并解决依赖 """
+    try:
+        import pkg.utils.pkgmgr
+        pkg.utils.pkgmgr.ensure_dulwich()
+    except:
+        pass
+
+    try:
+        import dulwich
+    except ModuleNotFoundError:
+        raise Exception("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
+
+    from dulwich import porcelain
+
+    logging.info("克隆插件储存库: {}".format(repo_url))
+    repo = porcelain.clone(repo_url, "plugins", checkout=True)
+
+
 class EventContext:
     """ 事件上下文 """
     eid = 0

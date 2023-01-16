@@ -80,6 +80,35 @@ def config_operation(cmd, params):
     return reply
 
 
+def plugin_operation(cmd, params, is_admin):
+    reply = []
+
+    import pkg.plugin.host as plugin_host
+
+    plugin_list = plugin_host.__plugins__
+
+    if len(params) == 0:
+        reply_str = "[bot]所有插件:\n\n"
+        idx = 0
+        for key in plugin_list:
+            plugin = plugin_list[key]
+            print(plugin)
+            reply_str += "#{} {}:\n{}\nv{}\n作者:{}\n\n".format((idx+1), plugin['name'], plugin['description'],
+                                                              plugin['version'], plugin['author'])
+            idx += 1
+
+        reply = [reply_str]
+    elif params[0] == 'update':
+        pass
+    elif params[0].startswith("http"):
+        if is_admin:
+            threading.Thread(target=plugin_host.install_plugin, args=(params[0],)).start()
+            reply = ["[bot]正在安装插件..."]
+        else:
+            reply = ["[bot]err:权限不足，请使用管理员账号私聊发起"]
+    return reply
+
+
 def process_command(session_name: str, text_message: str, mgr, config,
                     launcher_type: str, launcher_id: int, sender_id: int) -> list:
     reply = []
@@ -197,6 +226,11 @@ def process_command(session_name: str, text_message: str, mgr, config,
                 pass
 
             reply = [reply_str]
+
+        elif cmd == 'plugin':
+            reply = plugin_operation(cmd, params, True
+                                                if (launcher_type == 'person' and launcher_id == config.admin_qq)
+                                                else False)
         elif cmd == 'reload' and launcher_type == 'person' and launcher_id == config.admin_qq:
             def reload_task():
                 pkg.utils.reloader.reload_all()
