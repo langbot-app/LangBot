@@ -3,7 +3,7 @@ from pkg.plugin.host import EventContext
 
 
 # 注册插件
-@register(name="hello", description="hello world", version="0.1", author="RockChinQ")
+@register(name="Hello", description="hello world", version="0.1", author="RockChinQ")
 class HelloPlugin(Plugin):
 
     def __init__(self):
