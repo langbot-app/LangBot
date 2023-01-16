@@ -166,7 +166,12 @@ class PluginHost:
         context.set_plugin_host(self)
 
     def get_runtime_context(self) -> context:
-        """获取运行时上下文"""
+        """获取运行时上下文（pkg.utils.context模块的对象）
+
+        此上下文用于和主程序其他模块交互（数据库、QQ机器人、OpenAI接口等）
+        详见pkg.utils.context模块
+        其中的context变量保存了其他重要模块的类对象，可以使用这些对象进行交互
+        """
         return context
 
     def get_bot(self) -> Mirai:
@@ -192,12 +197,14 @@ class PluginHost:
         for plugin in __plugins__.values():
             for hook in plugin['hooks'].get(event_name, []):
                 try:
+                    already_prevented_default = event_context.is_prevented_default()
+
                     kwargs['host'] = context.get_plugin_host()
                     kwargs['event'] = event_context
 
                     hook(plugin['instance'], **kwargs)
 
-                    if event_context.is_prevented_default():
+                    if event_context.is_prevented_default() and not already_prevented_default:
                         logging.debug("插件 {} 已要求阻止事件 {} 的默认行为".format(plugin['name'], event_name))
 
                     if event_context.is_prevented_postorder():
