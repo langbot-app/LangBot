@@ -7,6 +7,7 @@ import sys
 import traceback
 
 import pkg.utils.context as context
+import pkg.plugin.switch as switch
 
 from mirai import Mirai
 
@@ -17,6 +18,8 @@ __plugins__ = {}
 示例:
 {
     "example": {
+        "path": "plugins/example/main.py",
+        "enabled: True,
         "name": "example",
         "description": "example",
         "version": "0.0.1",
@@ -58,6 +61,8 @@ def initialize_plugins():
     """ 初始化插件 """
     logging.info("初始化插件")
     for plugin in __plugins__.values():
+        if not plugin['enabled']:
+            continue
         try:
             plugin['instance'] = plugin["class"]()
         except:
@@ -195,6 +200,18 @@ class PluginHost:
         event_context = EventContext(event_name)
         logging.debug("触发事件: {} ({})".format(event_name, event_context.eid))
         for plugin in __plugins__.values():
+
+            if not plugin['enabled']:
+                continue
+
+            if plugin['instance'] is None:
+                # 从关闭状态切到开启状态之后，重新加载插件
+                try:
+                    plugin['instance'] = plugin["class"]()
+                except:
+                    logging.error("插件{}初始化时发生错误: {}".format(plugin['name'], sys.exc_info()))
+                    continue
+
             for hook in plugin['hooks'].get(event_name, []):
                 try:
                     already_prevented_default = event_context.is_prevented_default()

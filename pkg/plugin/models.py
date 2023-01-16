@@ -3,8 +3,6 @@ import logging
 import pkg.plugin.host as host
 import pkg.utils.context
 
-__current_registering_plugin__ = ""
-
 PersonMessageReceived = "person_message_received"
 """收到私聊消息时，在判断是否应该响应前触发
     kwargs:
@@ -143,6 +141,9 @@ def on(event: str):
     return Plugin.on(event)
 
 
+__current_registering_plugin__ = ""
+
+
 class Plugin:
 
     host: host.PluginHost
@@ -193,7 +194,9 @@ def register(name: str, description: str, version: str, author: str):
         "description": description,
         "version": version,
         "author": author,
-        "hooks": {}
+        "hooks": {},
+        "path": host.__current_module_path__,
+        "enabled": True,
     }
 
     def wrapper(cls: Plugin):
@@ -202,6 +205,8 @@ def register(name: str, description: str, version: str, author: str):
         cls.version = version
         cls.author = author
         cls.host = pkg.utils.context.get_plugin_host()
+        cls.enabled = True
+        cls.path = host.__current_module_path__
 
         # 存到插件列表
         host.__plugins__[name]["class"] = cls
