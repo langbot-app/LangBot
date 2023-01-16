@@ -6,6 +6,12 @@ import pkg.utils.context
 def update_all() -> bool:
     """使用dulwich更新源码"""
     try:
+        import pkg.utils.pkgmgr
+        pkg.utils.pkgmgr.ensure_dulwich()
+    except:
+        pass
+
+    try:
         import dulwich
     except ModuleNotFoundError:
         raise Exception("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
@@ -38,6 +44,12 @@ def update_all() -> bool:
 def get_current_version_info() -> str:
     """获取当前版本信息"""
     try:
+        import pkg.utils.pkgmgr
+        pkg.utils.pkgmgr.ensure_dulwich()
+    except:
+        pass
+
+    try:
         import dulwich
     except ModuleNotFoundError:
         raise Exception("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
@@ -63,6 +75,12 @@ def get_current_version_info() -> str:
 def get_commit_id_and_time_and_msg() -> str:
     """获取当前提交id和时间和提交信息"""
     try:
+        import pkg.utils.pkgmgr
+        pkg.utils.pkgmgr.ensure_dulwich()
+    except:
+        pass
+
+    try:
         import dulwich
     except ModuleNotFoundError:
         raise Exception("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
@@ -79,6 +97,12 @@ def get_commit_id_and_time_and_msg() -> str:
 
 def get_current_commit_id() -> str:
     """检查是否有新版本"""
+    try:
+        import pkg.utils.pkgmgr
+        pkg.utils.pkgmgr.ensure_dulwich()
+    except:
+        pass
+
     try:
         import dulwich
     except ModuleNotFoundError:
@@ -97,6 +121,12 @@ def get_current_commit_id() -> str:
 
 def is_new_version_available() -> bool:
     """检查是否有新版本"""
+    try:
+        import pkg.utils.pkgmgr
+        pkg.utils.pkgmgr.ensure_dulwich()
+    except:
+        pass
+
     try:
         import dulwich
     except ModuleNotFoundError:

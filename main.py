@@ -240,6 +240,12 @@ if __name__ == '__main__':
 
     elif len(sys.argv) > 1 and sys.argv[1] == 'update':
         try:
+            try:
+                import pkg.utils.pkgmgr
+                pkg.utils.pkgmgr.ensure_dulwich()
+            except:
+                pass
+
             from dulwich import porcelain
 
             repo = porcelain.open_repo('.')
