@@ -81,6 +81,7 @@ def unload_plugins():
 class EventContext:
     """ 事件上下文 """
     eid = 0
+    """事件编号"""
 
     name = ""
 
