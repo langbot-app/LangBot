@@ -98,7 +98,9 @@ def plugin_operation(cmd, params, is_admin):
                                                               plugin['version'], plugin['author'])
 
             if updater.is_repo("/".join(plugin['path'].split('/')[:-1])):
-                reply_str += "源码: "+updater.get_remote_url("/".join(plugin['path'].split('/')[:-1]))+"\n"
+                remote_url = updater.get_remote_url("/".join(plugin['path'].split('/')[:-1]))
+                if remote_url != "https://github.com/RockChinQ/QChatGPT" and remote_url != "https://gitee.com/RockChin/QChatGPT":
+                    reply_str += "源码: "+remote_url+"\n"
 
             reply_str += "\n"
 
