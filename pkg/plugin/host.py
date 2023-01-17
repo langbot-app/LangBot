@@ -75,22 +75,24 @@ def initialize_plugins():
             continue
         try:
             plugin['instance'] = plugin["class"](plugin_host=context.get_plugin_host())
+            logging.info("插件 {} 已初始化".format(plugin['name']))
         except:
             logging.error("插件{}初始化时发生错误: {}".format(plugin['name'], sys.exc_info()))
 
 
 def unload_plugins():
     """ 卸载插件 """
-    for plugin in __plugins__.values():
-        if plugin['enabled'] and plugin['instance'] is not None:
-            if not hasattr(plugin['instance'], '__del__'):
-                logging.warning("插件{}没有定义析构函数".format(plugin['name']))
-            else:
-                try:
-                    plugin['instance'].__del__()
-                    logging.info("卸载插件: {}".format(plugin['name']))
-                except:
-                    logging.error("插件{}卸载时发生错误: {}".format(plugin['name'], sys.exc_info()))
+    # for plugin in __plugins__.values():
+    #     if plugin['enabled'] and plugin['instance'] is not None:
+    #         if not hasattr(plugin['instance'], '__del__'):
+    #             logging.warning("插件{}没有定义析构函数".format(plugin['name']))
+    #         else:
+    #             try:
+    #                 plugin['instance'].__del__()
+    #                 logging.info("卸载插件: {}".format(plugin['name']))
+    #                 plugin['instance'] = None
+    #             except:
+    #                 logging.error("插件{}卸载时发生错误: {}".format(plugin['name'], sys.exc_info()))
 
 
 def install_plugin(repo_url: str):
@@ -242,13 +244,14 @@ class PluginHost:
             if not plugin['enabled']:
                 continue
 
-            if plugin['instance'] is None:
-                # 从关闭状态切到开启状态之后，重新加载插件
-                try:
-                    plugin['instance'] = plugin["class"]()
-                except:
-                    logging.error("插件{}初始化时发生错误: {}".format(plugin['name'], sys.exc_info()))
-                    continue
+            # if plugin['instance'] is None:
+            #     # 从关闭状态切到开启状态之后，重新加载插件
+            #     try:
+            #         plugin['instance'] = plugin["class"](plugin_host=self)
+            #         logging.info("插件 {} 已初始化".format(plugin['name']))
+            #     except:
+            #         logging.error("插件 {} 初始化时发生错误: {}".format(plugin['name'], sys.exc_info()))
+            #         continue
 
             for hook in plugin['hooks'].get(event_name, []):
                 try:

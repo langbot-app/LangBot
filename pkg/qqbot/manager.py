@@ -4,7 +4,7 @@ import os
 import threading
 
 import mirai.models.bus
-from mirai import At, GroupMessage, MessageEvent, Mirai, Plain, StrangerMessage, WebSocketAdapter, HTTPAdapter, \
+from mirai import At, GroupMessage, MessageEvent, Mirai, StrangerMessage, WebSocketAdapter, HTTPAdapter, \
     FriendMessage, Image
 
 import pkg.openai.session
