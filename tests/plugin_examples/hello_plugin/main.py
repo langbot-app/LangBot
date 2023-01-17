@@ -1,5 +1,5 @@
 from pkg.plugin.models import *
-from pkg.plugin.host import EventContext
+from pkg.plugin.host import EventContext, PluginHost
 
 """
 在收到私聊或群聊消息"hello"时，回复"hello, <发送者id>!"或"hello, everyone!"
@@ -10,7 +10,9 @@ from pkg.plugin.host import EventContext
 @register(name="Hello", description="hello world", version="0.1", author="RockChinQ")
 class HelloPlugin(Plugin):
 
-    def __init__(self):
+    # 插件加载时触发
+    # plugin_host (pkg.plugin.host.PluginHost) 提供了与主程序交互的一些方法，详细请查看其源码
+    def __init__(self, plugin_host: PluginHost):
         pass
 
     # 当收到个人消息时触发
@@ -43,5 +45,6 @@ class HelloPlugin(Plugin):
             # 阻止该事件默认行为（向接口获取回复）
             event.prevent_default()
 
+    # 插件卸载时触发
     def __del__(self):
         pass

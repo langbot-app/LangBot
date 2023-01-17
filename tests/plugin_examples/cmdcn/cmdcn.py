@@ -1,5 +1,5 @@
 from pkg.plugin.models import *
-from pkg.plugin.host import EventContext
+from pkg.plugin.host import EventContext, PluginHost
 
 """
 基本命令的中文形式支持
@@ -26,7 +26,7 @@ __mapping__ = {
 @register(name="CmdCN", description="命令中文支持", version="0.1", author="RockChinQ")
 class CmdCnPlugin(Plugin):
 
-    def __init__(self):
+    def __init__(self, plugin_host: PluginHost):
         pass
 
     # 私聊发送指令

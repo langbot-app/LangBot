@@ -19,7 +19,7 @@ __random_reply__ = ['好好好', "啊对对对", "好好好好", "你说得对",
 @register(name="啊对对对", description="你都这样了，我就顺从你吧", version="0.1", author="RockChinQ")
 class AdddPlugin(Plugin):
 
-    def __init__(self):
+    def __init__(self, plugin_host: PluginHost):
         pass
 
     # 绑定私聊消息事件和群消息事件

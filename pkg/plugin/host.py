@@ -74,7 +74,7 @@ def initialize_plugins():
         if not plugin['enabled']:
             continue
         try:
-            plugin['instance'] = plugin["class"]()
+            plugin['instance'] = plugin["class"](plugin_host=context.get_plugin_host())
         except:
             logging.error("插件{}初始化时发生错误: {}".format(plugin['name'], sys.exc_info()))
 
