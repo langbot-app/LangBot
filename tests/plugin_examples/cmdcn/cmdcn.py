@@ -1,6 +1,11 @@
 from pkg.plugin.models import *
 from pkg.plugin.host import EventContext
 
+"""
+基本命令的中文形式支持
+"""
+
+
 __mapping__ = {
     "帮助": "help",
     "重置": "reset",

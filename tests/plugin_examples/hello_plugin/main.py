@@ -1,6 +1,10 @@
 from pkg.plugin.models import *
 from pkg.plugin.host import EventContext
 
+"""
+在收到私聊或群聊消息"hello"时，回复"hello, <发送者id>!"或"hello, everyone!"
+"""
+
 
 # 注册插件
 @register(name="Hello", description="hello world", version="0.1", author="RockChinQ")
