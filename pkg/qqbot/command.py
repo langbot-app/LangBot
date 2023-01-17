@@ -2,6 +2,7 @@
 import logging
 import json
 import datetime
+import os
 import threading
 
 import pkg.openai.session
@@ -84,17 +85,23 @@ def plugin_operation(cmd, params, is_admin):
     reply = []
 
     import pkg.plugin.host as plugin_host
+    import pkg.utils.updater as updater
 
     plugin_list = plugin_host.__plugins__
 
     if len(params) == 0:
-        reply_str = "[bot]所有插件{}:\n\n".format(len(plugin_list))
+        reply_str = "[bot]所有插件({}):\n\n".format(len(plugin_list))
         idx = 0
         for key in plugin_list:
             plugin = plugin_list[key]
-            print(plugin)
-            reply_str += "#{} {}:\n{}\nv{}\n作者:{}\n\n".format((idx+1), plugin['name'], plugin['description'],
+            reply_str += "#{} {}:\n{}\nv{}\n作者: {}\n".format((idx+1), plugin['name'], plugin['description'],
                                                               plugin['version'], plugin['author'])
+
+            if updater.is_repo("/".join(plugin['path'].split('/')[:-1])):
+                reply_str += "源码: "+updater.get_remote_url("/".join(plugin['path'].split('/')[:-1]))+"\n"
+
+            reply_str += "\n"
+
             idx += 1
 
         reply = [reply_str]
