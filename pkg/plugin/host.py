@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import importlib
+import os
 import pkgutil
 import sys
 import traceback
@@ -108,7 +109,16 @@ def install_plugin(repo_url: str):
     from dulwich import porcelain
 
     logging.info("克隆插件储存库: {}".format(repo_url))
-    repo = porcelain.clone(repo_url, "plugins", checkout=True)
+    repo = porcelain.clone(repo_url, "plugins/"+repo_url.split(".git")[0].split("/")[-1]+"/", checkout=True)
+
+    # 检查此目录是否包含requirements.txt
+    if os.path.exists("plugins/"+repo_url.split(".git")[0].split("/")[-1]+"/requirements.txt"):
+        logging.info("检测到requirements.txt，正在安装依赖")
+        import pkg.utils.pkgmgr
+        pkg.utils.pkgmgr.install_requirements("plugins/"+repo_url.split(".git")[0].split("/")[-1]+"/requirements.txt")
+
+        import main
+        main.reset_logging()
 
 
 class EventContext:

@@ -88,7 +88,7 @@ def plugin_operation(cmd, params, is_admin):
     plugin_list = plugin_host.__plugins__
 
     if len(params) == 0:
-        reply_str = "[bot]所有插件:\n\n"
+        reply_str = "[bot]所有插件{}:\n\n".format(len(plugin_list))
         idx = 0
         for key in plugin_list:
             plugin = plugin_list[key]
@@ -102,7 +102,16 @@ def plugin_operation(cmd, params, is_admin):
         pass
     elif params[0].startswith("http"):
         if is_admin:
-            threading.Thread(target=plugin_host.install_plugin, args=(params[0],)).start()
+
+            def closure():
+                try:
+                    plugin_host.install_plugin(params[0])
+                    pkg.utils.context.get_qqbot_manager().notify_admin("插件安装成功，请发送 !reload 指令重载插件")
+                except Exception as e:
+                    logging.error("插件安装失败:{}".format(e))
+                    pkg.utils.context.get_qqbot_manager().notify_admin("插件安装失败:{}".format(e))
+
+            threading.Thread(target=closure, args=()).start()
             reply = ["[bot]正在安装插件..."]
         else:
             reply = ["[bot]err:权限不足，请使用管理员账号私聊发起"]

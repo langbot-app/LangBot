@@ -59,8 +59,9 @@ def load_switch():
 
     switch_modified = False
 
+    switch_copy = switch.copy()
     # 检查switch中多余的和path不相符的
-    for plugin_name in switch:
+    for plugin_name in switch_copy:
         if plugin_name not in host.__plugins__:
             del switch[plugin_name]
             switch_modified = True
