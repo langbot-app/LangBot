@@ -1,6 +1,7 @@
 # 此模块提供了消息处理的具体逻辑的接口
 import asyncio
 
+import mirai
 from func_timeout import func_set_timeout
 import logging
 
@@ -114,7 +115,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                     reply = pkg.qqbot.message.process_normal_message(text_message,
                                                                      mgr, config, launcher_type, launcher_id, sender_id)
 
-            if reply is not None and type(reply[0]) == str:
+            if reply is not None and (type(reply[0]) == str or type(reply[0]) == mirai.Plain):
                 logging.info(
                     "回复[{}]文字消息:{}".format(session_name,
                                                  reply[0][:min(100, len(reply[0]))] + (

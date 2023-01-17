@@ -273,4 +273,7 @@ class PluginHost:
                     logging.error("插件{}触发事件{}时发生错误".format(plugin['name'], event_name))
                     logging.error(traceback.format_exc())
 
+            logging.debug("事件 {} ({}) 处理完毕，返回值: {}".format(event_name, event_context.eid,
+                                                                    event_context.__return_value__))
+
         return event_context
