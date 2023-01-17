@@ -109,6 +109,7 @@ def plugin_operation(cmd, params, is_admin):
         # 更新所有插件
         if is_admin:
             def closure():
+                import pkg.utils.context
                 updated = []
                 for key in plugin_list:
                     plugin = plugin_list[key]
@@ -117,10 +118,22 @@ def plugin_operation(cmd, params, is_admin):
                         if success:
                             updated.append(plugin['name'])
 
+                # 检查是否有requirements.txt
+                pkg.utils.context.get_qqbot_manager().notify_admin("正在安装依赖...")
+                for key in plugin_list:
+                    plugin = plugin_list[key]
+                    if os.path.exists("/".join(plugin['path'].split('/')[:-1])+"/requirements.txt"):
+                        logging.info("{}检测到requirements.txt，安装依赖".format(plugin['name']))
+                        import pkg.utils.pkgmgr
+                        pkg.utils.pkgmgr.install_requirements("/".join(plugin['path'].split('/')[:-1])+"/requirements.txt")
+
+                        import main
+                        main.reset_logging()
+
                 pkg.utils.context.get_qqbot_manager().notify_admin("[bot]已更新插件: {}".format(", ".join(updated)))
 
             threading.Thread(target=closure).start()
-            reply = ["[bot]正在更新所有插件..."]
+            reply = ["[bot]正在更新所有插件，请勿重复发起..."]
         else:
             reply = ["[bot]err:权限不足"]
     elif params[0].startswith("http"):
