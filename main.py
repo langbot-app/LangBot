@@ -174,6 +174,10 @@ def main(first_time_init=False):
                             "hypercorn异常:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/86".format(
                                 e))
                         known_exception_caught = True
+                    elif str(e).__contains__("did not receive a valid HTTP"):
+                        logging.error(
+                            "mirai-api-http端口无法使用:{}, 请参考 https://github.com/RockChinQ/QChatGPT/issues/22 更换端口".format(
+                                e))
                     else:
                         logging.error(
                             "捕捉到未知异常:{}, 请前往 https://github.com/RockChinQ/QChatGPT/issues 查找或提issue".format(e))
