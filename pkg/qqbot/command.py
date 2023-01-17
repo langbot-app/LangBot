@@ -132,7 +132,7 @@ def plugin_operation(cmd, params, is_admin):
                         import main
                         main.reset_logging()
 
-                pkg.utils.context.get_qqbot_manager().notify_admin("[bot]已更新插件: {}".format(", ".join(updated)))
+                pkg.utils.context.get_qqbot_manager().notify_admin("已更新插件: {}".format(", ".join(updated)))
 
             threading.Thread(target=closure).start()
             reply = ["[bot]正在更新所有插件，请勿重复发起..."]
