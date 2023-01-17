@@ -16,6 +16,18 @@ def check_dulwich_closure():
         raise Exception("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
 
 
+def pull_latest(repo_path: str) -> bool:
+    """拉取最新代码"""
+    check_dulwich_closure()
+
+    from dulwich import porcelain
+
+    repo = porcelain.open_repo(repo_path)
+    porcelain.pull(repo)
+
+    return True
+
+
 def update_all() -> bool:
     """使用dulwich更新源码"""
     check_dulwich_closure()
@@ -56,7 +68,6 @@ def is_repo(path: str) -> bool:
         return True
     except:
         return False
-
 
 
 def get_remote_url(repo_path: str) -> str:

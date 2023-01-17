@@ -106,7 +106,23 @@ def plugin_operation(cmd, params, is_admin):
 
         reply = [reply_str]
     elif params[0] == 'update':
-        pass
+        # 更新所有插件
+        if is_admin:
+            def closure():
+                updated = []
+                for key in plugin_list:
+                    plugin = plugin_list[key]
+                    if updater.is_repo("/".join(plugin['path'].split('/')[:-1])):
+                        success = updater.pull_latest("/".join(plugin['path'].split('/')[:-1]))
+                        if success:
+                            updated.append(plugin['name'])
+
+                pkg.utils.context.get_qqbot_manager().notify_admin("[bot]已更新插件: {}".format(", ".join(updated)))
+
+            threading.Thread(target=closure).start()
+            reply = ["[bot]正在更新所有插件..."]
+        else:
+            reply = ["[bot]err:权限不足"]
     elif params[0].startswith("http"):
         if is_admin:
 
