@@ -3,12 +3,35 @@ import datetime
 import pkg.utils.context
 
 
-def update_all() -> bool:
-    """使用dulwich更新源码"""
+def check_dulwich_closure():
+    try:
+        import pkg.utils.pkgmgr
+        pkg.utils.pkgmgr.ensure_dulwich()
+    except:
+        pass
+
     try:
         import dulwich
     except ModuleNotFoundError:
         raise Exception("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
+
+
+def pull_latest(repo_path: str) -> bool:
+    """拉取最新代码"""
+    check_dulwich_closure()
+
+    from dulwich import porcelain
+
+    repo = porcelain.open_repo(repo_path)
+    porcelain.pull(repo)
+
+    return True
+
+
+def update_all() -> bool:
+    """使用dulwich更新源码"""
+    check_dulwich_closure()
+    import dulwich
     try:
         before_commit_id = get_current_commit_id()
         from dulwich import porcelain
@@ -35,12 +58,30 @@ def update_all() -> bool:
         raise Exception("分支不一致,自动更新仅支持master分支,请手动更新(https://github.com/RockChinQ/QChatGPT/issues/76)")
 
 
+def is_repo(path: str) -> bool:
+    """检查是否是git仓库"""
+    check_dulwich_closure()
+
+    from dulwich import porcelain
+    try:
+        porcelain.open_repo(path)
+        return True
+    except:
+        return False
+
+
+def get_remote_url(repo_path: str) -> str:
+    """获取远程仓库地址"""
+    check_dulwich_closure()
+
+    from dulwich import porcelain
+    repo = porcelain.open_repo(repo_path)
+    return str(porcelain.get_remote_repo(repo, "origin")[1])
+
+
 def get_current_version_info() -> str:
     """获取当前版本信息"""
-    try:
-        import dulwich
-    except ModuleNotFoundError:
-        raise Exception("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
+    check_dulwich_closure()
 
     from dulwich import porcelain
 
@@ -62,10 +103,7 @@ def get_current_version_info() -> str:
 
 def get_commit_id_and_time_and_msg() -> str:
     """获取当前提交id和时间和提交信息"""
-    try:
-        import dulwich
-    except ModuleNotFoundError:
-        raise Exception("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
+    check_dulwich_closure()
 
     from dulwich import porcelain
 
@@ -79,10 +117,7 @@ def get_commit_id_and_time_and_msg() -> str:
 
 def get_current_commit_id() -> str:
     """检查是否有新版本"""
-    try:
-        import dulwich
-    except ModuleNotFoundError:
-        raise Exception("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
+    check_dulwich_closure()
 
     from dulwich import porcelain
 
@@ -97,10 +132,7 @@ def get_current_commit_id() -> str:
 
 def is_new_version_available() -> bool:
     """检查是否有新版本"""
-    try:
-        import dulwich
-    except ModuleNotFoundError:
-        raise Exception("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
+    check_dulwich_closure()
 
     from dulwich import porcelain
 

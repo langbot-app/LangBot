@@ -39,6 +39,38 @@ def init_db():
 known_exception_caught = False
 
 
+def reset_logging():
+    assert os.path.exists('config.py')
+
+    config = importlib.import_module('config')
+
+    import pkg.utils.context
+
+    if pkg.utils.context.context['logger_handler'] is not None:
+        logging.getLogger().removeHandler(pkg.utils.context.context['logger_handler'])
+
+    for handler in logging.getLogger().handlers:
+        logging.getLogger().removeHandler(handler)
+
+    logging.basicConfig(level=config.logging_level,  # 设置日志输出格式
+                        filename='qchatgpt.log',  # log日志输出的文件位置和文件名
+                        format="[%(asctime)s.%(msecs)03d] %(filename)s (%(lineno)d) - [%(levelname)s] : %(message)s",
+                        # 日志输出的格式
+                        # -8表示占位符，让输出左对齐，输出长度都为8位
+                        datefmt="%Y-%m-%d %H:%M:%S"  # 时间输出的格式
+                        )
+    sh = logging.StreamHandler()
+    sh.setLevel(config.logging_level)
+    sh.setFormatter(colorlog.ColoredFormatter(
+        fmt="%(log_color)s[%(asctime)s.%(msecs)03d] %(filename)s (%(lineno)d) - [%(levelname)s] : "
+            "%(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        log_colors=log_colors_config
+    ))
+    logging.getLogger().addHandler(sh)
+    return sh
+
+
 def main(first_time_init=False):
     global known_exception_caught
 
@@ -52,25 +84,7 @@ def main(first_time_init=False):
         import pkg.utils.context
         pkg.utils.context.set_config(config)
 
-        if pkg.utils.context.context['logger_handler'] is not None:
-            logging.getLogger().removeHandler(pkg.utils.context.context['logger_handler'])
-
-        logging.basicConfig(level=config.logging_level,  # 设置日志输出格式
-                            filename='qchatgpt.log',  # log日志输出的文件位置和文件名
-                            format="[%(asctime)s.%(msecs)03d] %(filename)s (%(lineno)d) - [%(levelname)s] : %(message)s",
-                            # 日志输出的格式
-                            # -8表示占位符，让输出左对齐，输出长度都为8位
-                            datefmt="%Y-%m-%d %H:%M:%S"  # 时间输出的格式
-                            )
-        sh = logging.StreamHandler()
-        sh.setLevel(config.logging_level)
-        sh.setFormatter(colorlog.ColoredFormatter(
-            fmt="%(log_color)s[%(asctime)s.%(msecs)03d] %(filename)s (%(lineno)d) - [%(levelname)s] : "
-                "%(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-            log_colors=log_colors_config
-        ))
-        logging.getLogger().addHandler(sh)
+        sh = reset_logging()
 
         # 检查是否设置了管理员
         if not (hasattr(config, 'admin_qq') and config.admin_qq != 0):
@@ -117,9 +131,16 @@ def main(first_time_init=False):
                                                timeout=config.process_message_timeout, retry=config.retry_times,
                                                first_time_init=first_time_init)
 
+        # 加载插件
+        import pkg.plugin.host
+        pkg.plugin.host.load_plugins()
+
+        pkg.plugin.host.initialize_plugins()
+
         if first_time_init:  # 不是热重载之后的启动,则不启动新的bot线程
 
             import mirai.exceptions
+
             def run_bot_wrapper():
                 global known_exception_caught
                 try:
@@ -155,7 +176,7 @@ def main(first_time_init=False):
                         known_exception_caught = True
                     else:
                         logging.error(
-                            "捕捉到未知异常:{}, 请前往 https://github.com/RockChinQ/issues 查找或提issue".format(e))
+                            "捕捉到未知异常:{}, 请前往 https://github.com/RockChinQ/QChatGPT/issues 查找或提issue".format(e))
                         known_exception_caught = True
                         raise e
 
@@ -201,6 +222,9 @@ def stop():
     import pkg.qqbot.manager
     import pkg.openai.session
     try:
+        import pkg.plugin.host
+        pkg.plugin.host.unload_plugins()
+
         qqbot_inst = pkg.utils.context.get_qqbot_manager()
         assert isinstance(qqbot_inst, pkg.qqbot.manager.QQBotManager)
 
@@ -230,6 +254,12 @@ if __name__ == '__main__':
 
     elif len(sys.argv) > 1 and sys.argv[1] == 'update':
         try:
+            try:
+                import pkg.utils.pkgmgr
+                pkg.utils.pkgmgr.ensure_dulwich()
+            except:
+                pass
+
             from dulwich import porcelain
 
             repo = porcelain.open_repo('.')

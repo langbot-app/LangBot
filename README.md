@@ -99,12 +99,25 @@ python3 main.py
 - 如提示安装`uvicorn`或`hypercorn`请*不要*安装，这两个不是必需的，目前存在未知原因bug
 - 如报错`TypeError: As of 3.10, the *loop* parameter was removed from Lock() since it is no longer necessary`, 请参考 [此处](https://github.com/RockChinQ/QChatGPT/issues/5)
 
-
 </details>
 
 ## 🚀使用
 
 查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E4%BD%BF%E7%94%A8%E6%96%B9%E5%BC%8F)
+
+## 🧩插件生态
+
+现已支持自行开发插件对功能进行扩展或自定义程序行为  
+详见[Wiki插件使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8)  
+开发教程见[Wiki插件开发页](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91)
+
+### 示例插件
+
+在`tests/plugin_examples`目录下，将其整个目录复制到`plugins`目录下即可使用
+
+- `cmdcn` - 主程序指令中文形式
+- `hello_plugin` - 在收到消息`hello`时回复相应消息
+- `urlikethisijustsix` - 收到冒犯性消息时回复相应消息
 
 ## 👍赞赏
 

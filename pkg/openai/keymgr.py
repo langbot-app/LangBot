@@ -2,10 +2,8 @@
 import hashlib
 import logging
 
-import pkg.database.manager
-import pkg.qqbot.manager
-import pkg.utils.context
-
+import pkg.plugin.host as plugin_host
+import pkg.plugin.models as plugin_models
 
 class KeysManager:
     api_key = {}
@@ -39,13 +37,10 @@ class KeysManager:
         elif type(api_key) is list:
             for i in range(len(api_key)):
                 self.api_key[str(i)] = api_key[i]
-
-        self.auto_switch()
         # 从usage中删除未加载的api-key的记录
         # 不删了，也许会运行时添加曾经有记录的api-key
 
-        if 'exceeded_keys' in pkg.utils.context.context and pkg.utils.context.context['exceeded_keys'] is not None:
-            self.exceeded = pkg.utils.context.context['exceeded_keys']
+        self.auto_switch()
 
     # 根据tested自动切换到可用的api-key
     # 返回是否切换成功, 切换后的api-key的别名
@@ -53,7 +48,16 @@ class KeysManager:
         for key_name in self.api_key:
             if self.api_key[key_name] not in self.exceeded:
                 self.using_key = self.api_key[key_name]
+
                 logging.info("使用api-key:" + key_name)
+
+                # 触发插件事件
+                args = {
+                    "key_name": key_name,
+                    "key_list": self.api_key.keys()
+                }
+                _ = plugin_host.emit(plugin_models.KeySwitched, **args)
+
                 return True, key_name
 
         self.using_key = list(self.api_key.values())[0]

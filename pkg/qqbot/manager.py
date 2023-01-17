@@ -16,6 +16,9 @@ import pkg.qqbot.filter
 import pkg.qqbot.process as processor
 import pkg.utils.context
 
+import pkg.plugin.host as plugin_host
+import pkg.plugin.models as plugin_models
+
 
 # 并行运行
 def go(func, args=()):
@@ -51,7 +54,7 @@ def check_response_rule(text: str) -> (bool, str):
 class QQBotManager:
     retry = 3
 
-    bot = None
+    bot: Mirai = None
 
     reply_filter = None
 
@@ -95,15 +98,64 @@ class QQBotManager:
         # Caution: 注册新的事件处理器之后，请务必在unsubscribe_all中编写相应的取消订阅代码
         @self.bot.on(FriendMessage)
         async def on_friend_message(event: FriendMessage):
-            go(self.on_person_message, (event,))
+
+            def friend_message_handler(event: FriendMessage):
+
+                # 触发事件
+                args = {
+                    "launcher_type": "person",
+                    "launcher_id": event.sender.id,
+                    "sender_id": event.sender.id,
+                    "message_chain": event.message_chain,
+                }
+                plugin_event = plugin_host.emit(plugin_models.PersonMessageReceived, **args)
+
+                if plugin_event.is_prevented_default():
+                    return
+
+                self.on_person_message(event)
+
+            go(friend_message_handler, (event,))
 
         @self.bot.on(StrangerMessage)
         async def on_stranger_message(event: StrangerMessage):
-            go(self.on_person_message, (event,))
+
+            def stranger_message_handler(event: StrangerMessage):
+                # 触发事件
+                args = {
+                    "launcher_type": "person",
+                    "launcher_id": event.sender.id,
+                    "sender_id": event.sender.id,
+                    "message_chain": event.message_chain,
+                }
+                plugin_event = plugin_host.emit(plugin_models.PersonMessageReceived, **args)
+
+                if plugin_event.is_prevented_default():
+                    return
+
+                self.on_person_message(event)
+
+            go(stranger_message_handler, (event,))
 
         @self.bot.on(GroupMessage)
         async def on_group_message(event: GroupMessage):
-            go(self.on_group_message, (event,))
+
+            def group_message_handler(event: GroupMessage):
+                # 触发事件
+                args = {
+                    "launcher_type": "group",
+                    "launcher_id": event.group.id,
+                    "sender_id": event.sender.id,
+                    "message_chain": event.message_chain,
+                }
+                plugin_event = plugin_host.emit(plugin_models.GroupMessageReceived, **args)
+
+                if plugin_event.is_prevented_default():
+                    return
+
+                self.on_group_message(event)
+
+            go(group_message_handler, (event,))
 
         def unsubscribe_all():
             """取消所有订阅
@@ -155,6 +207,7 @@ class QQBotManager:
 
     # 私聊消息处理
     def on_person_message(self, event: MessageEvent):
+
         reply = ''
 
         if event.sender.id == self.bot.qq:
@@ -189,6 +242,7 @@ class QQBotManager:
 
     # 群消息处理
     def on_group_message(self, event: GroupMessage):
+
         reply = ''
 
         def process(text=None) -> str:
