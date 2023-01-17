@@ -119,6 +119,12 @@ python3 main.py
 - `hello_plugin` - 在收到消息`hello`时回复相应消息
 - `urlikethisijustsix` - 收到冒犯性消息时回复相应消息
 
+### 更多
+
+欢迎提交新的插件
+
+- [hello_plugin](https://github.com/RockChinQ/hello_plugin) - `hello_plugin` 的储存库形式，插件开发模板
+
 ## 👍赞赏
 
 <img alt="赞赏码" src="res/mm_reward_qrcode_1672840549070.png" width="400" height="400"/>
