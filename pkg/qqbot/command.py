@@ -90,7 +90,7 @@ def plugin_operation(cmd, params, is_admin):
     plugin_list = plugin_host.__plugins__
 
     if len(params) == 0:
-        reply_str = "[bot]所有插件({}):\n\n".format(len(plugin_list))
+        reply_str = "[bot]所有插件({}):\n".format(len(plugin_list))
         idx = 0
         for key in plugin_list:
             plugin = plugin_list[key]
@@ -101,8 +101,6 @@ def plugin_operation(cmd, params, is_admin):
                 remote_url = updater.get_remote_url("/".join(plugin['path'].split('/')[:-1]))
                 if remote_url != "https://github.com/RockChinQ/QChatGPT" and remote_url != "https://gitee.com/RockChin/QChatGPT":
                     reply_str += "源码: "+remote_url+"\n"
-
-            reply_str += "\n"
 
             idx += 1
 
