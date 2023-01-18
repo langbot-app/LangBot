@@ -148,16 +148,16 @@ def main(first_time_init=False):
                 except TypeError as e:
                     if str(e).__contains__("argument 'debug'"):
                         logging.error(
-                            "连接bot失败:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/82".format(e))
+                            "连接bot失败:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/82".format(e))
                         known_exception_caught = True
                     elif str(e).__contains__("As of 3.10, the *loop*"):
                         logging.error(
-                            "Websockets版本过低:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/5".format(e))
+                            "Websockets版本过低:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/5".format(e))
                         known_exception_caught = True
 
                 except websockets.exceptions.InvalidStatus as e:
                     logging.error(
-                        "mirai-api-http端口无法使用:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/22".format(
+                        "mirai-api-http端口无法使用:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/22".format(
                             e))
                     known_exception_caught = True
                 except mirai.exceptions.NetworkError as e:
@@ -166,17 +166,17 @@ def main(first_time_init=False):
                 except Exception as e:
                     if str(e).__contains__("404"):
                         logging.error(
-                            "mirai-api-http端口无法使用:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/22".format(
+                            "mirai-api-http端口无法使用:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/22".format(
                                 e))
                         known_exception_caught = True
                     elif str(e).__contains__("signal only works in main thread"):
                         logging.error(
-                            "hypercorn异常:{}, 请查看 https://github.com/RockChinQ/QChatGPT/issues/86".format(
+                            "hypercorn异常:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/86".format(
                                 e))
                         known_exception_caught = True
                     elif str(e).__contains__("did not receive a valid HTTP"):
                         logging.error(
-                            "mirai-api-http端口无法使用:{}, 请参考 https://github.com/RockChinQ/QChatGPT/issues/22 更换端口".format(
+                            "mirai-api-http端口无法使用:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/22".format(
                                 e))
                     else:
                         logging.error(
