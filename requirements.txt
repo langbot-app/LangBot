@@ -1,0 +1,9 @@
+requests~=2.28.1
+openai~=0.25.0
+pip~=22.3.1
+dulwich~=0.20.50
+colorlog~=6.6.0
+yiri-mirai~=0.2.7
+websockets~=9.1
+urllib3~=1.26.10
+func_timeout~=4.3.5
