@@ -262,8 +262,8 @@ class QQBotManager:
                 except FunctionTimedOut:
                     logging.warning("group_{}: 超时，重试中({})".format(event.group.id, i))
                     pkg.openai.session.get_session('group_{}'.format(event.group.id)).release_response_lock()
-                    if "group_{}".format(event.sender.id) in pkg.qqbot.process.processing:
-                        pkg.qqbot.process.processing.remove('group_{}'.format(event.sender.id))
+                    if "group_{}".format(event.group.id) in pkg.qqbot.process.processing:
+                        pkg.qqbot.process.processing.remove('group_{}'.format(event.group.id))
                     failed += 1
                     continue
 
