@@ -79,6 +79,9 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
                         mgr.notify_admin("api-key调用额度超限({}),接口报错,已切换到{}".format(current_key_name, name))
                         reply = ["[bot]err:API调用额度超额，已自动切换，请重新发送消息"]
                         continue
+            elif 'message' in e.error and e.error['message'].__contains__('You can retry your request'):
+                # 重试
+                continue
             else:
                 mgr.notify_admin("{}会话调用API失败:{}".format(session_name, e))
                 reply = ["[bot]err:RateLimitError,请重试或联系作者，或等待修复"]
