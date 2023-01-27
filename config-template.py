@@ -90,7 +90,7 @@ image_api_params = {
     "size": "256x256",  # 图片尺寸，支持256x256, 512x512, 1024x1024
 }
 
-# 回复消息时是否引用原消息
+# 群内回复消息时是否引用原消息
 quote_origin = True
 
 # 回复绘图时是否包含图片描述
@@ -99,7 +99,9 @@ include_image_description = True
 # 消息处理的超时时间，单位为秒
 process_message_timeout = 30
 
-# 机器人的配置
+# 会话对象名称，此配置与会话对象管理相关，
+# 若不了解相关功能，无需修改此配置
+# 详细说明请查看：https://github.com/RockChinQ/QChatGPT/wiki/%E6%8A%80%E6%9C%AF%E4%BF%A1%E6%81%AF#%E4%BC%9A%E8%AF%9Dsession
 # user_name: 管理员(主人)的名字
 # bot_name: 机器人的名字
 user_name = 'You'
