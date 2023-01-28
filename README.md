@@ -124,6 +124,7 @@ python3 main.py
 欢迎提交新的插件
 
 - [hello_plugin](https://github.com/RockChinQ/hello_plugin) - `hello_plugin` 的储存库形式，插件开发模板
+- [dominoar/QchatPlugins](https://github.com/dominoar/QchatPlugins) - dominoar编写的诸多新功能插件（语言输出、Ranimg、屏蔽词规则等）
 
 ## 👍赞赏
 
