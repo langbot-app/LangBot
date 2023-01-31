@@ -22,13 +22,17 @@ mirai_http_api_config = {
 # api_key: OpenAI的API Key
 # 若只有一个api-key，请直接修改以下内容中的"openai_api_key"为你的api-key
 # 如准备了多个api-key，可以以字典的形式填写，程序会自动选择可用的api-key
-# 例如{
-#       "api0": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-#       "api1": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-#     }
+# 例如
+# openai_config = {
+#     "api_key": {
+#         "default": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+#         "key1": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+#         "key2": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+#     },
+# }
 openai_config = {
     "api_key": {
-        "default": "openai_api_key"
+        "default": "fill_your_api_key_here"
     },
 }
 
@@ -106,6 +110,10 @@ process_message_timeout = 30
 # bot_name: 机器人的名字
 user_name = 'You'
 bot_name = 'Bot'
+
+# 群内会话是否启用多对象名称
+# 若不启用，群内会话的prompt只使用user_name和bot_name
+multi_subject = False
 
 # 回复消息时是否显示[GPT]前缀
 show_prefix = False
