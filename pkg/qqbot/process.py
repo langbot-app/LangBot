@@ -75,7 +75,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                     'command': text_message[1:].strip().split(' ')[0],
                     'params': text_message[1:].strip().split(' ')[1:],
                     'text_message': text_message,
-                    'is_admin': sender_id is config.admin_qq,
+                    'is_admin': sender_id == config.admin_qq,
                 }
                 event = plugin_host.emit(plugin_models.PersonCommandSent
                                          if launcher_type == 'person'
