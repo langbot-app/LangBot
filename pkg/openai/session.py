@@ -93,9 +93,9 @@ class Session:
         config = pkg.utils.context.get_config()
         user_name = config.user_name if hasattr(config, 'user_name') and config.user_name != '' else 'You'
         bot_name = config.bot_name if hasattr(config, 'bot_name') and config.bot_name != '' else 'Bot'
-        return user_name + ":{}\n".format(config.default_prompt if hasattr(config, 'default_prompt') \
-                                                                   and config.default_prompt != "" else '') + \
-            bot_name + ":好的\n"
+
+        return (user_name + ":{}\n".format(config.default_prompt) + bot_name + ":好的\n") \
+            if hasattr(config, 'default_prompt') and config.default_prompt != '' else ''
 
     def __init__(self, name: str):
         self.name = name
