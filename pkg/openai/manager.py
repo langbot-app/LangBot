@@ -38,8 +38,10 @@ class OpenAIInteract:
             **config.completion_api_params
         )
 
+        logging.debug("OpenAI response: %s", response)
+
         self.audit_mgr.report_text_model_usage(config.completion_api_params['model'],
-                                               prompt + response['choices'][0]['text'])
+                                               response['usage']['total_tokens'])
 
         return response
 

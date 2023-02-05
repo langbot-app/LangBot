@@ -43,7 +43,7 @@ class DataGatherer:
     def get_usage(self, key_md5):
         return self.usage[key_md5] if key_md5 in self.usage else {}
 
-    def report_text_model_usage(self, model, text):
+    def report_text_model_usage(self, model, total_tokens):
         key_md5 = pkg.utils.context.get_openai_manager().key_mgr.get_using_key_md5()
 
         if key_md5 not in self.usage:
@@ -55,7 +55,7 @@ class DataGatherer:
         if model not in self.usage[key_md5]["text"]:
             self.usage[key_md5]["text"][model] = 0
 
-        length = int((len(text.encode('utf-8')) - len(text)) / 2 + len(text))
+        length = total_tokens
         self.usage[key_md5]["text"][model] += length
         self.dump_to_db()
 
