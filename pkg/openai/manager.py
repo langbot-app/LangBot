@@ -40,8 +40,12 @@ class OpenAIInteract:
 
         logging.debug("OpenAI response: %s", response)
 
-        self.audit_mgr.report_text_model_usage(config.completion_api_params['model'],
-                                               response['usage']['total_tokens'])
+        if 'model' in config.completion_api_params:
+            self.audit_mgr.report_text_model_usage(config.completion_api_params['model'],
+                                                   response['usage']['total_tokens'])
+        elif 'engine' in config.completion_api_params:
+            self.audit_mgr.report_text_model_usage(config.completion_api_params['engine'],
+                                                   response['usage']['total_tokens'])
 
         return response
 
