@@ -1,5 +1,7 @@
 # QChatGPT🤖
 
+> 当AI与人类高度相似，区别人和AI是否还有意义？
+
 - 到[项目Wiki](https://github.com/RockChinQ/QChatGPT/wiki)可了解项目详细信息
 - 由bilibili TheLazy制作的[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)
 - 测试号: 2196084348
