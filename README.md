@@ -4,7 +4,7 @@
 
 - 到[项目Wiki](https://github.com/RockChinQ/QChatGPT/wiki)可了解项目详细信息
 - 由bilibili TheLazy制作的[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)
-- 测试号: 2196084348(被封)，1480613886
+- 测试号: 2196084348
 - 交流、答疑群: 204785790 
   - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
   - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
