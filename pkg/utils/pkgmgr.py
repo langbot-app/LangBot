@@ -1,12 +1,16 @@
 from pip._internal import main as pipmain
 
+import main
+
 
 def install(package):
     pipmain(['install', package])
+    main.reset_logging()
 
 
 def install_requirements(file):
     pipmain(['install', '-r', file])
+    main.reset_logging()
 
 
 def ensure_dulwich():
