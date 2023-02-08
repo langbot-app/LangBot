@@ -58,16 +58,6 @@ response_rules = {
     "regexp": []  # "为什么.*", "怎么?样.*", "怎么.*", "如何.*", "[Hh]ow to.*", "[Ww]hy not.*", "[Ww]hat is.*", ".*怎么办", ".*咋办"
 }
 
-# 单个api-key的费用警告阈值
-# 当使用此api-key进行请求所消耗的费用估算达到此阈值时，会在控制台输出警告并通知管理员
-# 若之后还有未使用超过此值的api-key，则会切换到新的api-key进行请求
-# 单位：美元
-api_key_fee_threshold = 18.0
-
-# 是否根据估算的使用费用切换api-key
-# 设置为False将只在接口报错超额时自动切换
-auto_switch_api_key = False
-
 # 敏感词过滤开关，以同样数量的*代替敏感词回复
 # 请在sensitive.json中添加敏感词
 sensitive_word_filter = True
@@ -120,6 +110,16 @@ show_prefix = False
 
 # 消息处理超时重试次数
 retry_times = 3
+
+# 消息处理出错时是否向用户隐藏错误详细信息
+# 设置为True时，仅向管理员发送错误详细信息
+# 设置为False时，向用户及管理员发送错误详细信息
+hide_exce_info_to_user = False
+
+# 消息处理出错时向用户发送的提示信息
+# 仅当hide_exce_info_to_user为True时生效
+# 设置为空字符串时，不发送提示信息
+alter_tip_message = '出错了，请稍后再试'
 
 # 每个会话的过期时间，单位为秒
 # 默认值20分钟
