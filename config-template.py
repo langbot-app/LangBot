@@ -21,6 +21,7 @@ mirai_http_api_config = {
 # [必需] OpenAI的配置
 # api_key: OpenAI的API Key
 # 若只有一个api-key，请直接修改以下内容中的"openai_api_key"为你的api-key
+
 # 如准备了多个api-key，可以以字典的形式填写，程序会自动选择可用的api-key
 # 例如
 # openai_config = {
@@ -32,7 +33,7 @@ mirai_http_api_config = {
 # }
 openai_config = {
     "api_key": {
-        "default": "fill_your_api_key_here"
+        "default": "openai_api_key"
     },
 }
 
