@@ -36,7 +36,7 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
     reply = []
     while True:
         if unexpected_exception_times >= max_unexpected_exception_times:
-            reply = handle_exception(notify_admin=f"[bot]{session_name}，多次尝试失败。", set_reply=f"[bot]多次尝试失败，请重试或联系管理员")
+            reply = handle_exception(notify_admin=f"{session_name}，多次尝试失败。", set_reply=f"[bot]多次尝试失败，请重试或联系管理员")
             break
         try:
             prefix = "[GPT]" if hasattr(config, "show_prefix") and config.show_prefix else ""
