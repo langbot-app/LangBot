@@ -29,8 +29,15 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
 
     session = pkg.openai.session.get_session(session_name)
 
+    unexpected_exception_times = 0
+
+    max_unexpected_exception_times = 3
+
     reply = []
     while True:
+        if unexpected_exception_times >= max_unexpected_exception_times:
+            reply = handle_exception(notify_admin=f"[bot]{session_name}，多次尝试失败。", set_reply=f"[bot]多次尝试失败，请重试或联系管理员")
+            break
         try:
             prefix = "[GPT]" if hasattr(config, "show_prefix") and config.show_prefix else ""
 
@@ -92,6 +99,12 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
                         continue
             elif 'message' in e.error and e.error['message'].__contains__('You can retry your request'):
                 # 重试
+                unexpected_exception_times += 1
+                continue
+            elif 'message' in e.error and e.error['message']\
+                    .__contains__('The server had an error while processing your request'):
+                # 重试
+                unexpected_exception_times += 1
                 continue
             else:
                 reply = handle_exception("{}会话调用API失败:{}".format(session_name, e),
