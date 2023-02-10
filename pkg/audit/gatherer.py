@@ -96,6 +96,14 @@ class DataGatherer:
         # 遍历其中所有模型，求和
         return sum(self.usage[key_md5]["image"].values())
 
+    def get_total_text_length(self):
+        total = 0
+        for key in self.usage:
+            if "text" not in self.usage[key]:
+                continue
+            total += sum(self.usage[key]["text"].values())
+        return total
+
     def dump_to_db(self):
         pkg.utils.context.get_database_manager().dump_usage_json(self.usage)
 

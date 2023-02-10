@@ -295,3 +295,10 @@ class QQBotManager:
             logging.info("通知管理员:{}".format(message))
             send_task = self.bot.send_friend_message(config.admin_qq, "[bot]{}".format(message))
             threading.Thread(target=asyncio.run, args=(send_task,)).start()
+
+    def notify_admin_message_chain(self, message):
+        config = pkg.utils.context.get_config()
+        if hasattr(config, "admin_qq") and config.admin_qq != 0:
+            logging.info("通知管理员:{}".format(message))
+            send_task = self.bot.send_friend_message(config.admin_qq, message)
+            threading.Thread(target=asyncio.run, args=(send_task,)).start()

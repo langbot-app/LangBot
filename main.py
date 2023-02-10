@@ -6,6 +6,7 @@ import time
 
 import logging
 import sys
+
 try:
     import colorlog
 except ImportError:
@@ -196,6 +197,23 @@ def main(first_time_init=False):
                 sys.exit(1)
         else:
             logging.info('热重载完成')
+
+    # 发送赞赏码
+    if hasattr(config, 'encourage_sponsor_at_start') \
+        and config.encourage_sponsor_at_start \
+        and pkg.utils.context.get_openai_manager().audit_mgr.get_total_text_length() >= 2048:
+
+        logging.info("发送赞赏码")
+        from mirai import MessageChain, Plain, Image
+        import pkg.utils.constants
+        message_chain = MessageChain([
+            Plain("自2022年12月初以来，开发者已经花费了大量时间和精力来维护本项目，如果您觉得本项目对您有帮助，欢迎赞赏开发者，"
+                  "以支持项目稳定运行😘"),
+            Image(base64=pkg.utils.constants.alipay_qr_b64),
+            Image(base64=pkg.utils.constants.wechat_qr_b64),
+            Plain("(本消息仅在启动时发送至管理员，如果您不想再看到此消息，请在config.py中将encourage_sponsor_at_start设置为False)")
+        ])
+        pkg.utils.context.get_qqbot_manager().notify_admin_message_chain(message_chain)
 
     time.sleep(5)
     import pkg.utils.updater
