@@ -23,9 +23,10 @@
 
 ### - 注册OpenAI账号
 
-参考以下文章
+**可以直接进群找群主购买**  
+或参考以下文章自行注册
 
-> [只需 1 元搞定 ChatGPT 注册](https://zhuanlan.zhihu.com/p/589470082)  
+> ~~[只需 1 元搞定 ChatGPT 注册](https://zhuanlan.zhihu.com/p/589470082)~~（已失效）  
 > [手把手教你如何注册ChatGPT，超级详细](https://guxiaobei.com/51461)
 
 注册成功后请前往[个人中心查看](https://beta.openai.com/account/api-keys)api_key  
