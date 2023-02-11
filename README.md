@@ -128,7 +128,7 @@ python3 main.py
 - [hello_plugin](https://github.com/RockChinQ/hello_plugin) - `hello_plugin` 的储存库形式，插件开发模板
 - [dominoar/QchatPlugins](https://github.com/dominoar/QchatPlugins) - dominoar编写的诸多新功能插件（语言输出、Ranimg、屏蔽词规则等）
 - [dominoar/QCP-NovelAi](https://github.com/dominoar/QCP-NovelAi) - NovelAI 故事叙述与绘画
-- 
+
 ## 👍赞赏
 
 <img alt="赞赏码" src="res/mm_reward_qrcode_1672840549070.png" width="400" height="400"/>
