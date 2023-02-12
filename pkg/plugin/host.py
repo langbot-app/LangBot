@@ -48,11 +48,15 @@ def walk_plugin_path(module, prefix='', path_prefix=''):
             walk_plugin_path(__import__(module.__name__ + '.' + item.name, fromlist=['']),
                              prefix + item.name + '.', path_prefix + item.name + '/')
         else:
-            logging.debug("扫描插件模块: plugins/{}".format(path_prefix + item.name + '.py'))
-            logging.info('加载模块: plugins/{}'.format(path_prefix + item.name + '.py'))
-            __current_module_path__ = "plugins/"+path_prefix + item.name + '.py'
+            try:
+                logging.debug("扫描插件模块: plugins/{}".format(path_prefix + item.name + '.py'))
+                __current_module_path__ = "plugins/"+path_prefix + item.name + '.py'
 
-            importlib.import_module(module.__name__ + '.' + item.name)
+                importlib.import_module(module.__name__ + '.' + item.name)
+                logging.info('加载模块: plugins/{} 成功'.format(path_prefix + item.name + '.py'))
+            except:
+                logging.error('加载模块: plugins/{} 失败: {}'.format(path_prefix + item.name + '.py', sys.exc_info()))
+                traceback.print_exc()
 
 
 def load_plugins():
