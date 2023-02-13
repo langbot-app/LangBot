@@ -68,7 +68,7 @@ sensitive_word_filter = True
 encourage_sponsor_at_start = True
 
 # 每次向OpenAI接口发送对话记录上下文的字符数
-# 最大不超过(4096 - max_tokens)个字符，max_tokens为上述completion_api_params中的max_tokens
+# 最大不超过(4096 - max_tokens)个字符，max_tokens为下方completion_api_params中的max_tokens
 # 注意：较大的prompt_submit_length会导致OpenAI账户额度消耗更快
 prompt_submit_length = 1024
 
@@ -77,7 +77,7 @@ prompt_submit_length = 1024
 completion_api_params = {
     "model": "text-davinci-003",
     "temperature": 0.9,  # 数值越低得到的回答越理性，取值范围[0, 1]
-    "max_tokens": 512,  # 每次向OpenAI请求的最大字符数, 不高于4096
+    "max_tokens": 512,  # 每次获取OpenAI接口响应的文字量上限, 不高于4096
     "top_p": 1,  # 生成的文本的文本与要求的符合度, 取值范围[0, 1]
     "frequency_penalty": 0.2,
     "presence_penalty": 1.0,
