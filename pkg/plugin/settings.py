@@ -78,7 +78,7 @@ def load_settings():
             settings["order"].append(plugin_name)
             settings_modified = True
 
+    apply_settings(settings)
+
     if settings_modified:
         dump_settings()
-
-    apply_settings(settings)

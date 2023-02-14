@@ -79,9 +79,9 @@ def load_switch():
             }
             switch_modified = True
 
+    # 应用开关数据
+    apply_switch(switch)
+
     # 如果switch有修改，保存
     if switch_modified:
         dump_switch()
-
-    # 应用开关数据
-    apply_switch(switch)
