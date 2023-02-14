@@ -106,7 +106,7 @@ process_message_timeout = 30
 user_name = 'You'
 bot_name = 'Bot'
 
-# 群内会话是否启用多对象名称
+# [暂未实现] 群内会话是否启用多对象名称
 # 若不启用，群内会话的prompt只使用user_name和bot_name
 multi_subject = False
 
