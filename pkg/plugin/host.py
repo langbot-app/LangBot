@@ -9,6 +9,7 @@ import traceback
 
 import pkg.utils.context as context
 import pkg.plugin.switch as switch
+import pkg.plugin.settings as settings
 
 from mirai import Mirai
 
@@ -34,6 +35,23 @@ __plugins__ = {}
         "instance": None
     }
 }"""
+
+__plugins_order__ = []
+"""插件顺序"""
+
+
+def generate_plugin_order():
+    """ 根据__plugin__生成插件初始顺序，无视是否启用 """
+    global __plugins_order__
+    __plugins_order__ = []
+    for plugin_name in __plugins__:
+        __plugins_order__.append(plugin_name)
+
+
+def iter_plugins():
+    """ 按照顺序迭代插件 """
+    for plugin_name in __plugins_order__:
+        yield __plugins__[plugin_name]
 
 
 __current_module_path__ = ""
@@ -70,11 +88,16 @@ def load_plugins():
     # 加载开关数据
     switch.load_switch()
 
+    # 生成初始顺序
+    generate_plugin_order()
+    # 加载插件顺序
+    settings.load_settings()
+
 
 def initialize_plugins():
     """ 初始化插件 """
     logging.info("初始化插件")
-    for plugin in __plugins__.values():
+    for plugin in iter_plugins():
         if not plugin['enabled']:
             continue
         try:
@@ -243,7 +266,7 @@ class PluginHost:
         """ 触发事件 """
         event_context = EventContext(event_name)
         logging.debug("触发事件: {} ({})".format(event_name, event_context.eid))
-        for plugin in __plugins__.values():
+        for plugin in iter_plugins():
 
             if not plugin['enabled']:
                 continue
