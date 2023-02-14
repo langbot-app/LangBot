@@ -211,6 +211,7 @@ def main(first_time_init=False):
                   "以支持项目稳定运行😘"),
             Image(base64=pkg.utils.constants.alipay_qr_b64),
             Image(base64=pkg.utils.constants.wechat_qr_b64),
+            Plain("BTC: 3N4Azee63vbBB9boGv9Rjf4N5SocMe5eCq\nXMR: 89LS21EKQuDGkyQoe2nDupiuWXk4TVD6FALvSKv5owfmeJEPFpHeMsZLYtLiJ6GxLrhsRe5gMs6MyMSDn4GNQAse2Mae4KE\n\n"),
             Plain("(本消息仅在启动时发送至管理员，如果您不想再看到此消息，请在config.py中将encourage_sponsor_at_start设置为False)")
         ])
         pkg.utils.context.get_qqbot_manager().notify_admin_message_chain(message_chain)

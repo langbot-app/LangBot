@@ -7,3 +7,4 @@ config.py
 banlist.py
 plugins/
 !plugins/__init__.py
+/revcfg.py
