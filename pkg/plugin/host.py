@@ -9,6 +9,7 @@ import traceback
 
 import pkg.utils.context as context
 import pkg.plugin.switch as switch
+import pkg.plugin.settings as settings
 
 from mirai import Mirai
 
@@ -35,6 +36,23 @@ __plugins__ = {}
     }
 }"""
 
+__plugins_order__ = []
+"""插件顺序"""
+
+
+def generate_plugin_order():
+    """ 根据__plugin__生成插件初始顺序，无视是否启用 """
+    global __plugins_order__
+    __plugins_order__ = []
+    for plugin_name in __plugins__:
+        __plugins_order__.append(plugin_name)
+
+
+def iter_plugins():
+    """ 按照顺序迭代插件 """
+    for plugin_name in __plugins_order__:
+        yield __plugins__[plugin_name]
+
 
 __current_module_path__ = ""
 
@@ -48,11 +66,15 @@ def walk_plugin_path(module, prefix='', path_prefix=''):
             walk_plugin_path(__import__(module.__name__ + '.' + item.name, fromlist=['']),
                              prefix + item.name + '.', path_prefix + item.name + '/')
         else:
-            logging.debug("扫描插件模块: plugins/{}".format(path_prefix + item.name + '.py'))
-            logging.info('加载模块: plugins/{}'.format(path_prefix + item.name + '.py'))
-            __current_module_path__ = "plugins/"+path_prefix + item.name + '.py'
+            try:
+                logging.debug("扫描插件模块: plugins/{}".format(path_prefix + item.name + '.py'))
+                __current_module_path__ = "plugins/"+path_prefix + item.name + '.py'
 
-            importlib.import_module(module.__name__ + '.' + item.name)
+                importlib.import_module(module.__name__ + '.' + item.name)
+                logging.info('加载模块: plugins/{} 成功'.format(path_prefix + item.name + '.py'))
+            except:
+                logging.error('加载模块: plugins/{} 失败: {}'.format(path_prefix + item.name + '.py', sys.exc_info()))
+                traceback.print_exc()
 
 
 def load_plugins():
@@ -66,11 +88,16 @@ def load_plugins():
     # 加载开关数据
     switch.load_switch()
 
+    # 生成初始顺序
+    generate_plugin_order()
+    # 加载插件顺序
+    settings.load_settings()
+
 
 def initialize_plugins():
     """ 初始化插件 """
     logging.info("初始化插件")
-    for plugin in __plugins__.values():
+    for plugin in iter_plugins():
         if not plugin['enabled']:
             continue
         try:
@@ -239,7 +266,7 @@ class PluginHost:
         """ 触发事件 """
         event_context = EventContext(event_name)
         logging.debug("触发事件: {} ({})".format(event_name, event_context.eid))
-        for plugin in __plugins__.values():
+        for plugin in iter_plugins():
 
             if not plugin['enabled']:
                 continue
