@@ -54,6 +54,12 @@ def iter_plugins():
         yield __plugins__[plugin_name]
 
 
+def iter_plugins_name():
+    """ 迭代插件名 """
+    for plugin_name in __plugins_order__:
+        yield plugin_name
+
+
 __current_module_path__ = ""
 
 

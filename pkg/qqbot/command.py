@@ -90,12 +90,15 @@ def plugin_operation(cmd, params, is_admin):
     plugin_list = plugin_host.__plugins__
 
     if len(params) == 0:
-        reply_str = "[bot]所有插件({}):\n".format(len(plugin_list))
+        reply_str = "[bot]所有插件({}):\n".format(len(plugin_host.__plugins__))
         idx = 0
-        for key in plugin_list:
+        for key in plugin_host.iter_plugins_name():
             plugin = plugin_list[key]
-            reply_str += "#{} {}:\n{}\nv{}\n作者: {}\n".format((idx+1), plugin['name'], plugin['description'],
-                                                              plugin['version'], plugin['author'])
+            reply_str += "\n#{} {} {}\n{}\nv{}\n作者: {}\n"\
+                .format((idx+1), plugin['name'],
+                        "[已禁用]" if not plugin['enabled'] else "",
+                        plugin['description'],
+                        plugin['version'], plugin['author'])
 
             if updater.is_repo("/".join(plugin['path'].split('/')[:-1])):
                 remote_url = updater.get_remote_url("/".join(plugin['path'].split('/')[:-1]))
