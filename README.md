@@ -1,7 +1,5 @@
 # QChatGPT🤖
 
-> 当AI与人类高度相似，区别人和AI是否还有意义？
-
 ### 🎉现已支持接入ChatGPT网页版，详情请完成部署并查看底部**插件**小节或[此仓库](https://github.com/RockChinQ/revLibs)
 
 - 到[项目Wiki](https://github.com/RockChinQ/QChatGPT/wiki)可了解项目详细信息
