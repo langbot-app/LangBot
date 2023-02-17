@@ -9,7 +9,7 @@ def install(package):
 
 
 def install_requirements(file):
-    pipmain(['install', '-r', file])
+    pipmain(['install', '-r', file, "--upgrade"])
     main.reset_logging()
 
 
