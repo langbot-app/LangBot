@@ -131,6 +131,14 @@ python3 main.py
 - [dominoar/QchatPlugins](https://github.com/dominoar/QchatPlugins) - dominoar编写的诸多新功能插件（语言输出、Ranimg、屏蔽词规则等）
 - [dominoar/QCP-NovelAi](https://github.com/dominoar/QCP-NovelAi) - NovelAI 故事叙述与绘画
 
+## 😘致谢
+
+- [@the-lazy-me](https://github.com/the-lazy-me) 为本项目制作[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)
+- [@dominoar](https://github.com/dominoar) 为本项目开发多种插件
+- [@hissincn](https://github.com/hissincn) 本项目贡献者
+
+以及其他所有为本项目提供支持的朋友们。
+
 ## 👍赞赏
 
 <img alt="赞赏码" src="res/mm_reward_qrcode_1672840549070.png" width="400" height="400"/>
