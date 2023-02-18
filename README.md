@@ -134,6 +134,7 @@ python3 main.py
 ## 😘致谢
 
 - [@the-lazy-me](https://github.com/the-lazy-me) 为本项目制作[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)
+- [@mikumifa](https://github.com/mikumifa) 本项目Docker部署仓库开发者
 - [@dominoar](https://github.com/dominoar) 为本项目开发多种插件
 - [@hissincn](https://github.com/hissincn) 本项目贡献者
 
