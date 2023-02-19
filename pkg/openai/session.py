@@ -89,13 +89,21 @@ class Session:
             logging.debug('{},lock release successfully,{}'.format(self.name, self.response_lock))
 
     # 从配置文件获取会话预设信息
-    def get_default_prompt(self):
+    def get_default_prompt(self, use_default: str=None):
         config = pkg.utils.context.get_config()
+
+        import pkg.openai.dprompt as dprompt
+
+        if use_default is None:
+            current_default_prompt = dprompt.get_prompt(dprompt.get_current())
+        else:
+            current_default_prompt = dprompt.get_prompt(use_default)
+
         user_name = config.user_name if hasattr(config, 'user_name') and config.user_name != '' else 'You'
         bot_name = config.bot_name if hasattr(config, 'bot_name') and config.bot_name != '' else 'Bot'
 
-        return (user_name + ":{}\n".format(config.default_prompt) + bot_name + ":好的\n") \
-            if hasattr(config, 'default_prompt') and config.default_prompt != '' else ''
+        return (user_name + ":{}\n".format(current_default_prompt) + bot_name + ":好的\n") \
+            if current_default_prompt != '' else ''
 
     def __init__(self, name: str):
         self.name = name
@@ -242,8 +250,8 @@ class Session:
                                     self.prompt)
 
     # 重置session
-    def reset(self, explicit: bool = False, expired: bool = False, schedule_new: bool = True):
-        if self.prompt != self.get_default_prompt():
+    def reset(self, explicit: bool = False, expired: bool = False, schedule_new: bool = True, use_prompt: str = None):
+        if not self.prompt.endswith(':好的\n'):
             self.persistence()
             if explicit:
                 # 触发插件事件
@@ -259,7 +267,7 @@ class Session:
 
             if expired:
                 pkg.utils.context.get_database_manager().set_session_expired(self.name, self.create_timestamp)
-        self.prompt = self.get_default_prompt()
+        self.prompt = self.get_default_prompt(use_prompt)
         self.create_timestamp = int(time.time())
         self.last_interact_timestamp = int(time.time())
         self.just_switched_to_exist_session = False

@@ -189,6 +189,7 @@ def register(name: str, description: str, version: str, author: str):
 
     __current_registering_plugin__ = name
 
+    # print("registering plugin: n='{}', d='{}', v={}, a='{}'".format(name, description, version, author))
     host.__plugins__[name] = {
         "name": name,
         "description": description,

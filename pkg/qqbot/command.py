@@ -171,8 +171,12 @@ def process_command(session_name: str, text_message: str, mgr, config,
         if cmd == 'help':
             reply = ["[bot]" + config.help_message]
         elif cmd == 'reset':
-            pkg.openai.session.get_session(session_name).reset(explicit=True)
-            reply = ["[bot]会话已重置"]
+            if len(params) == 0:
+                pkg.openai.session.get_session(session_name).reset(explicit=True)
+                reply = ["[bot]会话已重置"]
+            else:
+                pkg.openai.session.get_session(session_name).reset(explicit=True, use_prompt=params[0])
+                reply = ["[bot]会话已重置，使用场景预设:{}".format(params[0])]
         elif cmd == 'last':
             result = pkg.openai.session.get_session(session_name).last_session()
             if result is None:
@@ -279,6 +283,27 @@ def process_command(session_name: str, text_message: str, mgr, config,
             reply = plugin_operation(cmd, params, True
                                                 if (launcher_type == 'person' and launcher_id == config.admin_qq)
                                                 else False)
+        elif cmd == 'default':
+            if len(params) == 0:
+                # 输出目前所有情景预设
+                import pkg.openai.dprompt as dprompt
+                reply_str = "[bot]当前所有情景预设:\n\n"
+                for key,value in dprompt.get_prompt_dict().items():
+                    reply_str += "  - {}: {}\n".format(key,value)
+
+                reply_str += "\n当前默认情景预设:{}\n".format(dprompt.get_current())
+                reply_str += "请使用!default <情景预设>来设置默认情景预设"
+                reply = [reply_str]
+            elif len(params) >0  and launcher_type == 'person' and launcher_id == config.admin_qq:
+                # 设置默认情景
+                import pkg.openai.dprompt as dprompt
+                try:
+                    dprompt.set_current(params[0])
+                    reply = ["[bot]已设置默认情景预设为:{}".format(dprompt.get_current())]
+                except KeyError:
+                    reply = ["[bot]err: 未找到情景预设:{}".format(params[0])]
+            else:
+                reply = ["[bot]err: 仅管理员可设置默认情景预设"]
         elif cmd == 'reload' and launcher_type == 'person' and launcher_id == config.admin_qq:
             def reload_task():
                 pkg.utils.reloader.reload_all()

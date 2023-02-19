@@ -23,6 +23,8 @@ def wrapper_dict_from_plugin_list() -> dict:
 
 def apply_switch(switch: dict):
     """将开关数据应用到插件列表中"""
+    # print("将开关数据应用到插件列表中")
+    # print(switch)
     for plugin_name in switch:
         host.__plugins__[plugin_name]["enabled"] = switch[plugin_name]["enabled"]
 
