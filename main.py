@@ -69,6 +69,7 @@ def reset_logging():
         log_colors=log_colors_config
     ))
     logging.getLogger().addHandler(sh)
+    pkg.utils.context.context['logger_handler'] = sh
     return sh
 
 
