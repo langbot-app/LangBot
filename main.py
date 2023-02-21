@@ -10,8 +10,14 @@ import sys
 try:
     import colorlog
 except ImportError:
-    print("未安装colorlog,请查看 https://github.com/RockChinQ/qcg-installer/issues/15")
-    sys.exit(1)
+    # 尝试安装
+    import pkg.utils.pkgmgr as pkgmgr
+    pkgmgr.install_requirements("requirements.txt")
+    try:
+        import colorlog
+    except ImportError:
+        print("依赖不满足,请查看 https://github.com/RockChinQ/qcg-installer/issues/15")
+        sys.exit(1)
 import colorlog
 
 import requests
