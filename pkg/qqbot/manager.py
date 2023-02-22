@@ -27,7 +27,7 @@ def go(func, args=()):
 
 
 # 检查消息是否符合泛响应匹配机制
-def check_response_rule(text: str) -> tuple[bool, str]:
+def check_response_rule(text: str):
     config = pkg.utils.context.get_config()
     if not hasattr(config, 'response_rules'):
         return False, ''
