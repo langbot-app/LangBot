@@ -6,6 +6,7 @@ import threading
 import mirai.models.bus
 from mirai import At, GroupMessage, MessageEvent, Mirai, StrangerMessage, WebSocketAdapter, HTTPAdapter, \
     FriendMessage, Image
+from func_timeout import func_set_timeout
 
 import pkg.openai.session
 import pkg.openai.manager
@@ -207,7 +208,7 @@ class QQBotManager:
 
     # 私聊消息处理
     def on_person_message(self, event: MessageEvent):
-
+        import config
         reply = ''
 
         if event.sender.id == self.bot.qq:
@@ -220,9 +221,15 @@ class QQBotManager:
                 failed = 0
                 for i in range(self.retry):
                     try:
-                        reply = processor.process_message('person', event.sender.id, str(event.message_chain),
-                                                          event.message_chain,
-                                                          event.sender.id)
+                        
+                        @func_set_timeout(config.process_message_timeout)
+                        def time_ctrl_wrapper():
+                            reply = processor.process_message('person', event.sender.id, str(event.message_chain),
+                                                            event.message_chain,
+                                                            event.sender.id)
+                            return reply
+                        
+                        reply = time_ctrl_wrapper()
                         break
                     except FunctionTimedOut:
                         logging.warning("person_{}: 超时，重试中({})".format(event.sender.id, i))
@@ -242,7 +249,7 @@ class QQBotManager:
 
     # 群消息处理
     def on_group_message(self, event: GroupMessage):
-
+        import config
         reply = ''
 
         def process(text=None) -> str:
@@ -254,10 +261,15 @@ class QQBotManager:
             failed = 0
             for i in range(self.retry):
                 try:
-                    replys = processor.process_message('group', event.group.id,
-                                                       str(event.message_chain).strip() if text is None else text,
-                                                       event.message_chain,
-                                                       event.sender.id)
+                    @func_set_timeout(config.process_message_timeout)
+                    def time_ctrl_wrapper():
+                        replys = processor.process_message('group', event.group.id,
+                                                        str(event.message_chain).strip() if text is None else text,
+                                                        event.message_chain,
+                                                        event.sender.id)
+                        return replys
+                    
+                    replys = time_ctrl_wrapper()
                     break
                 except FunctionTimedOut:
                     logging.warning("group_{}: 超时，重试中({})".format(event.group.id, i))

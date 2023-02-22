@@ -2,7 +2,6 @@
 import asyncio
 
 import mirai
-from func_timeout import func_set_timeout
 import logging
 
 from mirai import MessageChain, Plain
@@ -10,7 +9,8 @@ from mirai import MessageChain, Plain
 # 这里不使用动态引入config
 # 因为在这里动态引入会卡死程序
 # 而此模块静态引用config与动态引入的表现一致
-import config as config_init_import
+# 已弃用，由于超时时间现已动态使用
+# import config as config_init_import
 
 import pkg.openai.session
 import pkg.openai.manager
@@ -26,7 +26,6 @@ import pkg.plugin.models as plugin_models
 processing = []
 
 
-@func_set_timeout(config_init_import.process_message_timeout)
 def process_message(launcher_type: str, launcher_id: int, text_message: str, message_chain: MessageChain,
                     sender_id: int) -> MessageChain:
     global processing
