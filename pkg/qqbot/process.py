@@ -22,6 +22,7 @@ import pkg.qqbot.command
 
 import pkg.plugin.host as plugin_host
 import pkg.plugin.models as plugin_models
+import pkg.qqbot.ignore as ignore
 
 processing = []
 
@@ -43,6 +44,10 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
         if launcher_type == 'group' and launcher_id in pkg.utils.context.get_qqbot_manager().ban_group:
             logging.info("根据禁用列表忽略群{}的消息".format(launcher_id))
             return []
+
+    if ignore.ignore(text_message):
+        logging.info("根据忽略规则忽略消息: {}".format(text_message))
+        return []
 
     # 检查是否被禁言
     if launcher_type == 'group':

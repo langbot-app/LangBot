@@ -83,6 +83,18 @@ response_rules = {
     "regexp": []  # "为什么.*", "怎么?样.*", "怎么.*", "如何.*", "[Hh]ow to.*", "[Ww]hy not.*", "[Ww]hat is.*", ".*怎么办", ".*咋办"
 }
 
+# 消息忽略规则
+# 适用于私聊及群聊
+# 符合此规则的消息将不会被响应
+# 支持消息前缀匹配及正则表达式匹配
+# 此设置优先级高于response_rules
+# 用以过滤mirai等其他层级的指令
+# @see https://github.com/RockChinQ/QChatGPT/issues/165
+ignore_rules = {
+    "prefix": ["/"],
+    "regexp": []
+}
+
 # 敏感词过滤开关，以同样数量的*代替敏感词回复
 # 请在sensitive.json中添加敏感词
 sensitive_word_filter = True
