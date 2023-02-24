@@ -60,6 +60,8 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
 
     pkg.openai.session.get_session(session_name).acquire_response_lock()
 
+    text_message = text_message.strip()
+
     # 处理消息
     try:
         if session_name in processing:
