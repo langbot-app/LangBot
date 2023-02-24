@@ -1,5 +1,6 @@
 # 此模块提供了消息处理的具体逻辑的接口
 import asyncio
+import time
 
 import mirai
 import logging
@@ -19,6 +20,7 @@ import pkg.utils.updater
 import pkg.utils.context
 import pkg.qqbot.message
 import pkg.qqbot.command
+import pkg.qqbot.ratelimit as ratelimit
 
 import pkg.plugin.host as plugin_host
 import pkg.plugin.models as plugin_models
@@ -99,6 +101,14 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                                                               mgr, config, launcher_type, launcher_id, sender_id)
 
             else:  # 消息
+                # 限速丢弃检查
+                # print(ratelimit.__crt_minute_usage__[session_name])
+                if hasattr(config, "rate_limitation") and config.rate_limit_strategy == "drop":
+                    if ratelimit.is_reach_limit(session_name):
+                        logging.info("根据限速策略丢弃[{}]消息: {}".format(session_name, text_message))
+                        return MessageChain(["[bot]"+config.rate_limit_drop_tip]) if hasattr(config, "rate_limit_drop_tip") and config.rate_limit_drop_tip != "" else []
+
+                before = time.time()
                 # 触发插件事件
                 args = {
                     "launcher_type": launcher_type,
@@ -121,6 +131,13 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                     reply = pkg.qqbot.message.process_normal_message(text_message,
                                                                      mgr, config, launcher_type, launcher_id, sender_id)
 
+                # 限速等待时间
+                if hasattr(config, "rate_limitation") and config.rate_limit_strategy == "wait":
+                    time.sleep(ratelimit.get_rest_wait_time(session_name, time.time() - before))
+                
+                if hasattr(config, "rate_limitation"):
+                    ratelimit.add_usage(session_name)
+
             if reply is not None and (type(reply[0]) == str or type(reply[0]) == mirai.Plain):
                 logging.info(
                     "回复[{}]文字消息:{}".format(session_name,
@@ -135,4 +152,4 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
     finally:
         pkg.openai.session.get_session(session_name).release_response_lock()
 
-        return MessageChain(reply)
+    return MessageChain(reply)
