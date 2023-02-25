@@ -158,6 +158,7 @@ class Plugin:
         :return:
             None
         """
+        global __current_registering_plugin__
 
         def wrapper(func):
             plugin_hooks = host.__plugins__[__current_registering_plugin__]["hooks"]
@@ -165,6 +166,8 @@ class Plugin:
             if event not in plugin_hooks:
                 plugin_hooks[event] = []
             plugin_hooks[event].append(func)
+
+            # print("registering hook: p='{}', e='{}', f={}".format(__current_registering_plugin__, event, func))
 
             host.__plugins__[__current_registering_plugin__]["hooks"] = plugin_hooks
 
@@ -188,7 +191,6 @@ def register(name: str, description: str, version: str, author: str):
     global __current_registering_plugin__
 
     __current_registering_plugin__ = name
-
     # print("registering plugin: n='{}', d='{}', v={}, a='{}'".format(name, description, version, author))
     host.__plugins__[name] = {
         "name": name,

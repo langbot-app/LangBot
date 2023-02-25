@@ -103,10 +103,12 @@ def load_plugins():
 def initialize_plugins():
     """ 初始化插件 """
     logging.info("初始化插件")
+    import pkg.plugin.models as models
     for plugin in iter_plugins():
         if not plugin['enabled']:
             continue
         try:
+            models.__current_registering_plugin__ = plugin['name']
             plugin['instance'] = plugin["class"](plugin_host=context.get_plugin_host())
             logging.info("插件 {} 已初始化".format(plugin['name']))
         except:
@@ -270,10 +272,12 @@ class PluginHost:
 
     def emit(self, event_name: str, **kwargs) -> EventContext:
         """ 触发事件 """
+        import json
+
         event_context = EventContext(event_name)
         logging.debug("触发事件: {} ({})".format(event_name, event_context.eid))
         for plugin in iter_plugins():
-
+            
             if not plugin['enabled']:
                 continue
 
@@ -286,7 +290,13 @@ class PluginHost:
             #         logging.error("插件 {} 初始化时发生错误: {}".format(plugin['name'], sys.exc_info()))
             #         continue
 
-            for hook in plugin['hooks'].get(event_name, []):
+            if 'hooks' not in plugin or event_name not in plugin['hooks']:
+                continue
+
+            hooks = []
+            if event_name in plugin["hooks"]:
+                hooks = plugin["hooks"][event_name]
+            for hook in hooks:
                 try:
                     already_prevented_default = event_context.is_prevented_default()
 
@@ -298,15 +308,16 @@ class PluginHost:
                     if event_context.is_prevented_default() and not already_prevented_default:
                         logging.debug("插件 {} 已要求阻止事件 {} 的默认行为".format(plugin['name'], event_name))
 
-                    if event_context.is_prevented_postorder():
-                        logging.debug("插件 {} 阻止了后序插件的执行".format(plugin['name']))
-                        break
-
                 except Exception as e:
                     logging.error("插件{}触发事件{}时发生错误".format(plugin['name'], event_name))
                     logging.error(traceback.format_exc())
 
-            logging.debug("事件 {} ({}) 处理完毕，返回值: {}".format(event_name, event_context.eid,
-                                                                    event_context.__return_value__))
+            # print("done:{}".format(plugin['name']))
+            if event_context.is_prevented_postorder():
+                logging.debug("插件 {} 阻止了后序插件的执行".format(plugin['name']))
+                break
+
+        logging.debug("事件 {} ({}) 处理完毕，返回值: {}".format(event_name, event_context.eid,
+                                                                event_context.__return_value__))
 
         return event_context
