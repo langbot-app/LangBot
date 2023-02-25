@@ -3,7 +3,7 @@ import random
 from mirai import Plain
 
 from pkg.plugin.models import *
-from pkg.plugin.host import EventContext
+from pkg.plugin.host import EventContext, PluginHost
 
 """
 私聊或群聊消息为以下列出的一些冒犯性词语时，自动回复__random_reply__中的一句话
@@ -38,6 +38,7 @@ class AdddPlugin(Plugin):
 
             # 阻止向接口获取回复
             event.prevent_default()
+            event.prevent_postorder()
 
     def __del__(self):
         pass
