@@ -2,16 +2,38 @@
 
 __current__ = "default"
 
+__prompts_from_files__ = {}
+
+
+def read_prompt_from_file() -> str:
+    """从文件读取预设值"""
+    # 读取prompts/目录下的所有文件，以文件名为键，文件内容为值
+    # 保存在__prompts_from_files__中
+    global __prompts_from_files__
+    import os
+
+    __prompts_from_files__ = {}
+    for file in os.listdir("prompts"):
+        with open(os.path.join("prompts", file), encoding="utf-8") as f:
+            __prompts_from_files__[file] = f.read()
+
+
 def get_prompt_dict() -> dict:
     """获取预设值字典"""
     import config
     default_prompt = config.default_prompt
     if type(default_prompt) == str:
-        return {"default": default_prompt}
+        default_prompt = {"default": default_prompt}
     elif type(default_prompt) == dict:
-        return default_prompt
+        pass
     else:
         raise TypeError("default_prompt must be str or dict")
+
+    # 将文件中的预设值合并到default_prompt中
+    for key in __prompts_from_files__:
+        default_prompt[key] = __prompts_from_files__[key]
+
+    return default_prompt
 
 
 def set_current(name):
@@ -48,4 +70,7 @@ def get_prompt(name: str = None) -> str:
     for key in default_dict:
         if key.lower().startswith(name.lower()):
             return default_dict[key]
+
     raise KeyError("未找到情景预设: " + name)
+
+read_prompt_from_file()

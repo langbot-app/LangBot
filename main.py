@@ -82,6 +82,12 @@ def reset_logging():
 def main(first_time_init=False):
     global known_exception_caught
 
+    # 检查并创建plugins、prompts目录
+    check_path = ["plugins", "prompts"]
+    for path in check_path:
+        if not os.path.exists(path):
+            os.mkdir(path)
+
     known_exception_caught = False
     try:
         # 导入config.py
