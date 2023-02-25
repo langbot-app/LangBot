@@ -138,7 +138,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                 if hasattr(config, "rate_limitation"):
                     ratelimit.add_usage(session_name)
 
-            if reply is not None and (type(reply[0]) == str or type(reply[0]) == mirai.Plain):
+            if reply is not None and len(reply) > 0 and (type(reply[0]) == str or type(reply[0]) == mirai.Plain):
                 logging.info(
                     "回复[{}]文字消息:{}".format(session_name,
                                                  reply[0][:min(100, len(reply[0]))] + (
