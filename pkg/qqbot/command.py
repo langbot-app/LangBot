@@ -158,7 +158,7 @@ def plugin_operation(cmd, params, is_admin):
 
 
 def process_command(session_name: str, text_message: str, mgr, config,
-                    launcher_type: str, launcher_id: int, sender_id: int) -> list:
+                    launcher_type: str, launcher_id: int, sender_id: int, is_admin: bool) -> list:
     reply = []
     try:
         logging.info(
@@ -280,9 +280,8 @@ def process_command(session_name: str, text_message: str, mgr, config,
             reply = [reply_str]
 
         elif cmd == 'plugin':
-            reply = plugin_operation(cmd, params, True
-                                                if (launcher_type == 'person' and launcher_id == config.admin_qq)
-                                                else False)
+            reply = plugin_operation(cmd, params, is_admin)
+
         elif cmd == 'default':
             if len(params) == 0:
                 # 输出目前所有情景预设
@@ -294,7 +293,7 @@ def process_command(session_name: str, text_message: str, mgr, config,
                 reply_str += "\n当前默认情景预设:{}\n".format(dprompt.get_current())
                 reply_str += "请使用!default <情景预设>来设置默认情景预设"
                 reply = [reply_str]
-            elif len(params) >0  and launcher_type == 'person' and launcher_id == config.admin_qq:
+            elif len(params) >0  and is_admin:
                 # 设置默认情景
                 import pkg.openai.dprompt as dprompt
                 try:
@@ -304,12 +303,12 @@ def process_command(session_name: str, text_message: str, mgr, config,
                     reply = ["[bot]err: 未找到情景预设:{}".format(params[0])]
             else:
                 reply = ["[bot]err: 仅管理员可设置默认情景预设"]
-        elif cmd == 'reload' and launcher_type == 'person' and launcher_id == config.admin_qq:
+        elif cmd == 'reload' and is_admin:
             def reload_task():
                 pkg.utils.reloader.reload_all()
 
             threading.Thread(target=reload_task, daemon=True).start()
-        elif cmd == 'update' and launcher_type == 'person' and launcher_id == config.admin_qq:
+        elif cmd == 'update' and is_admin:
             def update_task():
                 try:
                     if pkg.utils.updater.update_all():
@@ -324,10 +323,10 @@ def process_command(session_name: str, text_message: str, mgr, config,
             threading.Thread(target=update_task, daemon=True).start()
 
             reply = ["[bot]正在更新，请耐心等待，请勿重复发起更新..."]
-        elif cmd == 'cfg' and launcher_type == 'person' and launcher_id == config.admin_qq:
+        elif cmd == 'cfg' and is_admin:
             reply = config_operation(cmd, params)
         else:
-            if cmd.startswith("~") and launcher_type == 'person' and launcher_id == config.admin_qq:
+            if cmd.startswith("~") and is_admin:
                 config_item = cmd[1:]
                 params = [config_item] + params
                 reply = config_operation("cfg", params)

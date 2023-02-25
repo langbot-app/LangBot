@@ -303,14 +303,25 @@ class QQBotManager:
     # 通知系统管理员
     def notify_admin(self, message: str):
         config = pkg.utils.context.get_config()
-        if hasattr(config, "admin_qq") and config.admin_qq != 0:
+        if hasattr(config, "admin_qq") and config.admin_qq != 0 and config.admin_qq != []:
             logging.info("通知管理员:{}".format(message))
-            send_task = self.bot.send_friend_message(config.admin_qq, "[bot]{}".format(message))
-            threading.Thread(target=asyncio.run, args=(send_task,)).start()
+            if type(config.admin_qq) == int:
+                send_task = self.bot.send_friend_message(config.admin_qq, "[bot]{}".format(message))
+                threading.Thread(target=asyncio.run, args=(send_task,)).start()
+            else:
+                for adm in config.admin_qq:
+                    send_task = self.bot.send_friend_message(adm, "[bot]{}".format(message))
+                    threading.Thread(target=asyncio.run, args=(send_task,)).start()
+
 
     def notify_admin_message_chain(self, message):
         config = pkg.utils.context.get_config()
-        if hasattr(config, "admin_qq") and config.admin_qq != 0:
+        if hasattr(config, "admin_qq") and config.admin_qq != 0 and config.admin_qq != []:
             logging.info("通知管理员:{}".format(message))
-            send_task = self.bot.send_friend_message(config.admin_qq, message)
-            threading.Thread(target=asyncio.run, args=(send_task,)).start()
+            if type(config.admin_qq) == int:
+                send_task = self.bot.send_friend_message(config.admin_qq, message)
+                threading.Thread(target=asyncio.run, args=(send_task,)).start()
+            else:
+                for adm in config.admin_qq:
+                    send_task = self.bot.send_friend_message(adm, message)
+                    threading.Thread(target=asyncio.run, args=(send_task,)).start()

@@ -29,6 +29,15 @@ import pkg.qqbot.ignore as ignore
 processing = []
 
 
+def is_admin(qq: int) -> bool:
+    """兼容list和int类型的管理员判断"""
+    import config
+    if type(config.admin_qq) == list:
+        return qq in config.admin_qq
+    else:
+        return qq == config.admin_qq
+
+
 def process_message(launcher_type: str, launcher_id: int, text_message: str, message_chain: MessageChain,
                     sender_id: int) -> MessageChain:
     global processing
@@ -83,7 +92,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                     'command': text_message[1:].strip().split(' ')[0],
                     'params': text_message[1:].strip().split(' ')[1:],
                     'text_message': text_message,
-                    'is_admin': sender_id == config.admin_qq,
+                    'is_admin': is_admin(sender_id),
                 }
                 event = plugin_host.emit(plugin_models.PersonCommandSent
                                          if launcher_type == 'person'
@@ -98,7 +107,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
 
                 if not event.is_prevented_default():
                     reply = pkg.qqbot.command.process_command(session_name, text_message,
-                                                              mgr, config, launcher_type, launcher_id, sender_id)
+                                                              mgr, config, launcher_type, launcher_id, sender_id, is_admin(sender_id))
 
             else:  # 消息
                 # 限速丢弃检查
