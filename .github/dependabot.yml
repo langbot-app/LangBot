@@ -8,4 +8,8 @@ updates:
   - package-ecosystem: "pip" # See documentation for possible values
     directory: "/" # Location of package manifests
     schedule:
-      interval: "daily"
+      interval: "weekly"
+    allow:
+      - dependency-name: "yiri-mirai"
+      - dependency-name: "dulwich"
+      - dependency-name: "openai"
