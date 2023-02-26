@@ -72,5 +72,3 @@ def get_prompt(name: str = None) -> str:
             return default_dict[key]
 
     raise KeyError("未找到情景预设: " + name)
-
-read_prompt_from_file()
