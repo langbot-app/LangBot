@@ -4,7 +4,7 @@ __pycache__/
 database.db
 qchatgpt.log
 config.py
-banlist.py
+/banlist.py
 plugins/
 !plugins/__init__.py
 /revcfg.py

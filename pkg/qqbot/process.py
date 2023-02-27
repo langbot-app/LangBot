@@ -25,6 +25,7 @@ import pkg.qqbot.ratelimit as ratelimit
 import pkg.plugin.host as plugin_host
 import pkg.plugin.models as plugin_models
 import pkg.qqbot.ignore as ignore
+import pkg.qqbot.banlist as banlist
 
 processing = []
 
@@ -48,13 +49,9 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
     session_name = "{}_{}".format(launcher_type, launcher_id)
 
     # 检查发送方是否被禁用
-    if pkg.utils.context.get_qqbot_manager().enable_banlist:
-        if sender_id in pkg.utils.context.get_qqbot_manager().ban_person:
-            logging.info("根据禁用列表忽略用户{}的消息".format(sender_id))
-            return []
-        if launcher_type == 'group' and launcher_id in pkg.utils.context.get_qqbot_manager().ban_group:
-            logging.info("根据禁用列表忽略群{}的消息".format(launcher_id))
-            return []
+    if banlist.is_banned(launcher_type, launcher_id):
+        logging.info("根据禁用列表忽略{}_{}的消息".format(launcher_type, launcher_id))
+        return []
 
     if ignore.ignore(text_message):
         logging.info("根据忽略规则忽略消息: {}".format(text_message))
