@@ -11,6 +11,7 @@ import pkg.utils.reloader
 import pkg.utils.updater
 import pkg.utils.context
 import pkg.qqbot.message
+import pkg.utils.credit as credit
 
 from mirai import Image
 
@@ -254,6 +255,12 @@ def process_command(session_name: str, text_message: str, mgr, config,
                     .get_image_count_of_key(api_keys[key_name])
                 reply_str += "{}:\n - 文本长度:{}\n - 图片数量:{}\n".format(key_name, int(text_length),
                                                                             int(image_count))
+                # 获取此key的额度
+                try:
+                    credit_data = credit.fetch_credit_data(api_keys[key_name])
+                    reply_str += " - 使用额度:{:.2f}/{:.2f}\n".format(credit_data['total_used'],credit_data['total_granted'])
+                except Exception as e:
+                    logging.warning("获取额度失败:{}".format(e))
 
             reply = [reply_str]
         elif cmd == 'draw':
