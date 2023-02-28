@@ -9,3 +9,4 @@ plugins/
 !plugins/__init__.py
 /revcfg.py
 prompts/
+logs/
