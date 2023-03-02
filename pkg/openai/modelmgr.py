@@ -1,12 +1,26 @@
 # 提供与模型交互的抽象接口
 import openai, logging
 
-CHAT_COMPLETION_MODELS = {
-    'gpt-3.5-turbo'
+COMPLETION_MODELS = {
+    'text-davinci-003',
+    'text-davinci-002',
+    'code-davinci-002',
+    'code-cushman-001',
+    'text-curie-001',
+    'text-babbage-001',
+    'text-ada-001',
 }
 
-COMPLETION_MODELS = {
-    'text-davinci-003'
+CHAT_COMPLETION_MODELS = {
+    'gpt-3.5-turbo',
+    'gpt-3.5-turbo-0301',
+    'text-davinci-003',
+    'text-davinci-002',
+    'code-davinci-002',
+    'code-cushman-001',
+    'text-curie-001',
+    'text-babbage-001',
+    'text-ada-001',
 }
 
 EDIT_MODELS = {
