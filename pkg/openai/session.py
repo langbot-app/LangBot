@@ -92,7 +92,7 @@ def dump_session(session_name: str):
 class Session:
     name = ''
 
-    prompt = {}
+    prompt = []
 
     create_timestamp = 0
 
