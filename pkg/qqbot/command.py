@@ -224,9 +224,21 @@ def process_command(session_name: str, text_message: str, mgr, config,
                 for i in range(len(results)):
                     # 时间(使用create_timestamp转换) 序号 部分内容
                     datetime_obj = datetime.datetime.fromtimestamp(results[i]['create_timestamp'])
-                    reply_str += "#{} 创建:{} {}\n".format(i + page * 10,
-                                                           datetime_obj.strftime("%Y-%m-%d %H:%M:%S"),
-                                                           results[i]['prompt'][1]['content'])
+                    msg = ""
+                    try:
+                        msg = json.loads(results[i]['prompt'])
+                    except json.decoder.JSONDecodeError:
+                        msg = pkg.openai.session.reset_session_prompt(session_name, results[i]['prompt'])
+                        # 持久化
+                        pkg.openai.session.get_session(session_name).persistence()
+                    if len(msg) >= 2:
+                        reply_str += "#{} 创建:{} {}\n".format(i + page * 10,
+                                                               datetime_obj.strftime("%Y-%m-%d %H:%M:%S"),
+                                                               msg[1]['content'])
+                    else:
+                        reply_str += "#{} 创建:{} {}\n".format(i + page * 10,
+                                                               datetime_obj.strftime("%Y-%m-%d %H:%M:%S"),
+                                                               "无内容")
                     if results[i]['create_timestamp'] == pkg.openai.session.get_session(
                             session_name).create_timestamp:
                         current = i + page * 10

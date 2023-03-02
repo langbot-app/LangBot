@@ -227,7 +227,7 @@ class DatabaseManager:
                 'subject_number': subject_number,
                 'create_timestamp': create_timestamp,
                 'last_interact_timestamp': last_interact_timestamp,
-                'prompt': json.loads(prompt)
+                'prompt': prompt
             })
 
         return sessions

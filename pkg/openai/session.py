@@ -19,6 +19,32 @@ class SessionOfflineStatus:
     ON_GOING = 'on_going'
     EXPLICITLY_CLOSED = 'explicitly_closed'
 
+# 重置session.prompt
+def reset_session_prompt(session_name, prompt):
+    # 备份原始数据
+    bak_path = 'logs/{}-{}.bak'.format(
+        session_name,
+        time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
+    )
+    f = open(bak_path, 'w+')
+    f.write(prompt)
+    f.close()
+    # 生成新数据
+    config = pkg.utils.context.get_config()
+    prompt = [
+        {
+            'role': 'system',
+            'content': config.default_prompt['default']
+        }
+    ]
+    # 警告
+    logging.warning(
+        """
+用户[{}]的数据已被重置，有可能是因为数据版本过旧或存储错误
+原始数据将备份在：
+{}""".format(session_name, bak_path)
+    )
+    return prompt
 
 # 从数据加载session
 def load_sessions():
@@ -35,7 +61,11 @@ def load_sessions():
         temp_session.name = session_name
         temp_session.create_timestamp = session_data[session_name]['create_timestamp']
         temp_session.last_interact_timestamp = session_data[session_name]['last_interact_timestamp']
-        temp_session.prompt = json.loads(session_data[session_name]['prompt'])
+        try:
+            temp_session.prompt = json.loads(session_data[session_name]['prompt'])
+        except Exception:
+            temp_session.prompt = reset_session_prompt(session_name, session_data[session_name]['prompt'])
+            temp_session.persistence()
 
         sessions[session_name] = temp_session
 
@@ -278,7 +308,11 @@ class Session:
 
             self.create_timestamp = last_one['create_timestamp']
             self.last_interact_timestamp = last_one['last_interact_timestamp']
-            self.prompt = json.loads(last_one['prompt'])
+            try:
+                self.prompt = json.loads(last_one['prompt'])
+            except json.decoder.JSONDecodeError:
+                self.prompt = reset_session_prompt(self.name, last_one['prompt'])
+                self.persistence()
 
             self.just_switched_to_exist_session = True
             return self
@@ -293,7 +327,11 @@ class Session:
 
             self.create_timestamp = next_one['create_timestamp']
             self.last_interact_timestamp = next_one['last_interact_timestamp']
-            self.prompt = json.loads(next_one['prompt'])
+            try:
+                self.prompt = json.loads(next_one['prompt'])
+            except json.decoder.JSONDecodeError:
+                self.prompt = reset_session_prompt(self.name, next_one['prompt'])
+                self.persistence()
 
             self.just_switched_to_exist_session = True
             return self
