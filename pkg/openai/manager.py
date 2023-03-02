@@ -5,7 +5,7 @@ import openai
 import pkg.openai.keymgr
 import pkg.utils.context
 import pkg.audit.gatherer
-
+from pkg.openai.modelmgr import Model, ChatCompletionModel, OpenaiModel
 
 # 为其他模块提供与OpenAI交互的接口
 class OpenAIInteract:
@@ -32,24 +32,26 @@ class OpenAIInteract:
         pkg.utils.context.set_openai_manager(self)
 
     # 请求OpenAI Completion
-    def request_completion(self, prompt, stop):
+    def request_completion(self, messages):
         config = pkg.utils.context.get_config()
-        response = openai.Completion.create(
-            prompt=prompt,
-            stop=stop,
+
+        ai:Model = OpenaiModel(config.completion_api_params['model'], 'user')
+        ai.request(
+            messages,
             **config.completion_api_params
         )
+        response = ai.get_response()
 
         logging.debug("OpenAI response: %s", response)
 
         if 'model' in config.completion_api_params:
             self.audit_mgr.report_text_model_usage(config.completion_api_params['model'],
-                                                   response['usage']['total_tokens'])
+                                                   ai.get_total_tokens())
         elif 'engine' in config.completion_api_params:
             self.audit_mgr.report_text_model_usage(config.completion_api_params['engine'],
                                                    response['usage']['total_tokens'])
 
-        return response
+        return ai.get_message()
 
     def request_image(self, prompt):
 
