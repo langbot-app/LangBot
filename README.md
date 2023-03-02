@@ -1,6 +1,7 @@
 # QChatGPT🤖
 
-### 🎉现已支持接入ChatGPT网页版，详情请完成部署并查看底部**插件**小节或[此仓库](https://github.com/RockChinQ/revLibs)
+> 2023/3/2  OpenAI已发布ChatGPT官方接口，我们正在全力接入，预计明日前完成，请查看[此PR](https://github.com/RockChinQ/QChatGPT/pull/194)  
+> 2023/2/16 现已支持接入ChatGPT网页版，详情请完成部署并查看底部**插件**小节或[此仓库](https://github.com/RockChinQ/revLibs)
 
 - 到[项目Wiki](https://github.com/RockChinQ/QChatGPT/wiki)可了解项目详细信息
 - 由bilibili TheLazy制作的[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)
