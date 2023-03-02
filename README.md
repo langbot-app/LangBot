@@ -233,6 +233,7 @@ python3 main.py
 - [@mikumifa](https://github.com/mikumifa) 本项目Docker部署仓库开发者
 - [@dominoar](https://github.com/dominoar) 为本项目开发多种插件
 - [@hissincn](https://github.com/hissincn) 本项目贡献者
+- [@LINSTCL](https://github.com/LINSTCL)   GPT-3.5官方模型适配贡献者
 
 以及其他所有为本项目提供支持的朋友们。
 
