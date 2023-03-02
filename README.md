@@ -1,5 +1,5 @@
 # QChatGPT🤖
-
+> 2023/3/3  现已在主线支持官方ChatGPT接口，使用方法查看https://github.com/RockChinQ/QChatGPT/issues/195  
 > 2023/3/2  OpenAI已发布ChatGPT官方接口，我们正在全力接入，预计明日前完成，请查看[此PR](https://github.com/RockChinQ/QChatGPT/pull/194)  
 > 2023/2/16 现已支持接入ChatGPT网页版，详情请完成部署并查看底部**插件**小节或[此仓库](https://github.com/RockChinQ/revLibs)
 
