@@ -17,6 +17,7 @@ IMAGE_MODELS = {
 
 }
 
+
 class Model():
 
     can_chat = False
@@ -45,8 +46,10 @@ class Model():
     
     def get_response(self):
         return self.ret
+    
 
 class ChatCompletionModel(Model):
+    """ChatCompletion接口实现"""
     def __init__(self, model_name, user_name):
         request_fun = openai.ChatCompletion.create
         self.can_chat = True
@@ -59,8 +62,10 @@ class ChatCompletionModel(Model):
 
     def get_content(self):
         return self.message
+    
 
 class CompletionModel(Model):
+    """Completion接口实现"""
     def __init__(self, model_name, user_name):
         request_fun = openai.Completion.create
         super().__init__(model_name, user_name, request_fun)
@@ -82,6 +87,7 @@ class CompletionModel(Model):
     
     def get_text(self):
         return self.message
+    
 
 def OpenaiModel(model_name:str, user_name='user'):
     if model_name in CHAT_COMPLETION_MODELS:
