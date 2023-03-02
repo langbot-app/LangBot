@@ -206,7 +206,7 @@ class DatabaseManager:
         }
 
     # 列出与某个对象的所有对话session
-    def list_history(self, session_name: str, capacity: int, page: int, replace: str = ""):
+    def list_history(self, session_name: str, capacity: int, page: int):
         self.execute("""
         select `name`, `type`, `number`, `create_timestamp`, `last_interact_timestamp`, `prompt`, `status`
         from `sessions` where `name` = '{}' order by `last_interact_timestamp` desc limit {} offset {}
@@ -227,7 +227,7 @@ class DatabaseManager:
                 'subject_number': subject_number,
                 'create_timestamp': create_timestamp,
                 'last_interact_timestamp': last_interact_timestamp,
-                'prompt': prompt if replace == "" else prompt.replace(replace, "")
+                'prompt': prompt
             })
 
         return sessions

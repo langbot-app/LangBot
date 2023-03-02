@@ -112,10 +112,23 @@ encourage_sponsor_at_start = True
 # 注意：较大的prompt_submit_length会导致OpenAI账户额度消耗更快
 prompt_submit_length = 1024
 
-# OpenAI的completion API的参数
+# OpenAI补全API的参数
+# 请在下方填写模型，程序自动选择接口
+# 现已支持的模型有：
+# 
+#    'gpt-3.5-turbo'
+#    'gpt-3.5-turbo-0301'
+#    'text-davinci-003'
+#    'text-davinci-002'
+#    'code-davinci-002'
+#    'code-cushman-001'
+#    'text-curie-001'
+#    'text-babbage-001'
+#    'text-ada-001'
+#
 # 具体请查看OpenAI的文档: https://beta.openai.com/docs/api-reference/completions/create
 completion_api_params = {
-    "model": "text-davinci-003",
+    "model": "gpt-3.5-turbo",
     "temperature": 0.9,  # 数值越低得到的回答越理性，取值范围[0, 1]
     "max_tokens": 512,  # 每次获取OpenAI接口响应的文字量上限, 不高于4096
     "top_p": 1,  # 生成的文本的文本与要求的符合度, 取值范围[0, 1]
@@ -137,14 +150,6 @@ include_image_description = True
 
 # 消息处理的超时时间，单位为秒
 process_message_timeout = 30
-
-# 会话对象名称，此配置与会话对象管理相关，
-# 若不了解相关功能，无需修改此配置
-# 详细说明请查看：https://github.com/RockChinQ/QChatGPT/wiki/%E6%8A%80%E6%9C%AF%E4%BF%A1%E6%81%AF#%E4%BC%9A%E8%AF%9Dsession
-# user_name: 管理员(主人)的名字
-# bot_name: 机器人的名字
-user_name = 'You'
-bot_name = 'Bot'
 
 # [暂未实现] 群内会话是否启用多对象名称
 # 若不启用，群内会话的prompt只使用user_name和bot_name

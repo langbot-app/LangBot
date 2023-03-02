@@ -185,11 +185,7 @@ def process_command(session_name: str, text_message: str, mgr, config,
             else:
                 datetime_str = datetime.datetime.fromtimestamp(result.create_timestamp).strftime(
                     '%Y-%m-%d %H:%M:%S')
-                reply = ["[bot]已切换到前一次的对话：\n创建时间:{}\n".format(
-                    datetime_str) + result.prompt[
-                                    :min(100,
-                                         len(result.prompt))] + \
-                         ("..." if len(result.prompt) > 100 else "#END#")]
+                reply = ["[bot]已切换到前一次的对话：\n创建时间:{}\n".format(datetime_str)]
         elif cmd == 'next':
             result = pkg.openai.session.get_session(session_name).next_session()
             if result is None:
@@ -197,13 +193,18 @@ def process_command(session_name: str, text_message: str, mgr, config,
             else:
                 datetime_str = datetime.datetime.fromtimestamp(result.create_timestamp).strftime(
                     '%Y-%m-%d %H:%M:%S')
-                reply = ["[bot]已切换到后一次的对话：\n创建时间:{}\n".format(
-                    datetime_str) + result.prompt[
-                                    :min(100,
-                                         len(result.prompt))] + \
-                         ("..." if len(result.prompt) > 100 else "#END#")]
+                reply = ["[bot]已切换到后一次的对话：\n创建时间:{}\n".format(datetime_str)]
         elif cmd == 'prompt':
-            reply = ["[bot]当前对话所有内容：\n" + pkg.openai.session.get_session(session_name).prompt]
+            msgs = ""
+            session:list = pkg.openai.session.get_session(session_name).prompt
+            for msg in session:
+                if len(params) != 0 and params[0] in ['-all', '-a']:
+                    msgs = msgs + "{}: {}\n\n".format(msg['role'], msg['content'])
+                elif len(msg['content']) > 30:
+                    msgs = msgs + "[{}]: {}...\n\n".format(msg['role'], msg['content'][:30])
+                else:
+                    msgs = msgs + "[{}]: {}\n\n".format(msg['role'], msg['content'])
+            reply = ["[bot]当前对话所有内容：\n{}".format(msgs)]
         elif cmd == 'list':
             pkg.openai.session.get_session(session_name).persistence()
             page = 0
@@ -223,10 +224,21 @@ def process_command(session_name: str, text_message: str, mgr, config,
                 for i in range(len(results)):
                     # 时间(使用create_timestamp转换) 序号 部分内容
                     datetime_obj = datetime.datetime.fromtimestamp(results[i]['create_timestamp'])
-                    reply_str += "#{} 创建:{} {}\n".format(i + page * 10,
-                                                           datetime_obj.strftime("%Y-%m-%d %H:%M:%S"),
-                                                           results[i]['prompt'][
-                                                           :min(20, len(results[i]['prompt']))])
+                    msg = ""
+                    try:
+                        msg = json.loads(results[i]['prompt'])
+                    except json.decoder.JSONDecodeError:
+                        msg = pkg.openai.session.reset_session_prompt(session_name, results[i]['prompt'])
+                        # 持久化
+                        pkg.openai.session.get_session(session_name).persistence()
+                    if len(msg) >= 2:
+                        reply_str += "#{} 创建:{} {}\n".format(i + page * 10,
+                                                               datetime_obj.strftime("%Y-%m-%d %H:%M:%S"),
+                                                               msg[1]['content'])
+                    else:
+                        reply_str += "#{} 创建:{} {}\n".format(i + page * 10,
+                                                               datetime_obj.strftime("%Y-%m-%d %H:%M:%S"),
+                                                               "无内容")
                     if results[i]['create_timestamp'] == pkg.openai.session.get_session(
                             session_name).create_timestamp:
                         current = i + page * 10

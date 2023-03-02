@@ -1,8 +1,10 @@
 import logging
 import threading
 import time
+import json
 
 import pkg.openai.manager
+import pkg.openai.modelmgr
 import pkg.database.manager
 import pkg.utils.context
 
@@ -17,6 +19,32 @@ class SessionOfflineStatus:
     ON_GOING = 'on_going'
     EXPLICITLY_CLOSED = 'explicitly_closed'
 
+# 重置session.prompt
+def reset_session_prompt(session_name, prompt):
+    # 备份原始数据
+    bak_path = 'logs/{}-{}.bak'.format(
+        session_name,
+        time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
+    )
+    f = open(bak_path, 'w+')
+    f.write(prompt)
+    f.close()
+    # 生成新数据
+    config = pkg.utils.context.get_config()
+    prompt = [
+        {
+            'role': 'system',
+            'content': config.default_prompt['default']
+        }
+    ]
+    # 警告
+    logging.warning(
+        """
+用户[{}]的数据已被重置，有可能是因为数据版本过旧或存储错误
+原始数据将备份在：
+{}""".format(session_name, bak_path)
+    )
+    return prompt
 
 # 从数据加载session
 def load_sessions():
@@ -33,7 +61,11 @@ def load_sessions():
         temp_session.name = session_name
         temp_session.create_timestamp = session_data[session_name]['create_timestamp']
         temp_session.last_interact_timestamp = session_data[session_name]['last_interact_timestamp']
-        temp_session.prompt = session_data[session_name]['prompt']
+        try:
+            temp_session.prompt = json.loads(session_data[session_name]['prompt'])
+        except Exception:
+            temp_session.prompt = reset_session_prompt(session_name, session_data[session_name]['prompt'])
+            temp_session.persistence()
 
         sessions[session_name] = temp_session
 
@@ -60,12 +92,7 @@ def dump_session(session_name: str):
 class Session:
     name = ''
 
-    prompt = ""
-
-    import config
-
-    user_name = config.user_name if hasattr(config, 'user_name') and config.user_name != '' else 'You'
-    bot_name = config.bot_name if hasattr(config, 'bot_name') and config.bot_name != '' else 'Bot'
+    prompt = []
 
     create_timestamp = 0
 
@@ -99,11 +126,15 @@ class Session:
         else:
             current_default_prompt = dprompt.get_prompt(use_default)
 
-        user_name = config.user_name if hasattr(config, 'user_name') and config.user_name != '' else 'You'
-        bot_name = config.bot_name if hasattr(config, 'bot_name') and config.bot_name != '' else 'Bot'
-
-        return (user_name + ":{}\n".format(current_default_prompt) + bot_name + ":好的\n") \
-            if current_default_prompt != '' else ''
+        return [
+            {
+                'role': 'user',
+                'content': current_default_prompt
+            },{
+                'role': 'assistant',
+                'content': 'ok'
+            }
+        ]
 
     def __init__(self, name: str):
         self.name = name
@@ -165,22 +196,16 @@ class Session:
             if event.is_prevented_default():
                 return None
 
-        # max_rounds = config.prompt_submit_round_amount if hasattr(config, 'prompt_submit_round_amount') else 7
         config = pkg.utils.context.get_config()
-        max_rounds = 1000  # 不再限制回合数
         max_length = config.prompt_submit_length if hasattr(config, "prompt_submit_length") else 1024
 
         # 向API请求补全
-        response = pkg.utils.context.get_openai_manager().request_completion(
-            self.cut_out(self.prompt + self.user_name + ':' +
-                         text + '\n' + self.bot_name + ':',
-                         max_rounds, max_length),
-            self.user_name + ':')
+        message = pkg.utils.context.get_openai_manager().request_completion(
+            self.cut_out(text, max_length),
+        )
 
-        self.prompt += self.user_name + ':' + text + '\n' + self.bot_name + ':'
-        # print(response)
-        # 处理回复
-        res_test = response["choices"][0]["text"]
+        # 成功获取，处理回复
+        res_test = message
         res_ans = res_test
 
         # 去除开头可能的提示
@@ -189,50 +214,56 @@ class Session:
             del (res_ans_spt[0])
             res_ans = '\n\n'.join(res_ans_spt)
 
-        self.prompt += "{}".format(res_ans) + '\n'
+        # 将此次对话的双方内容加入到prompt中
+        self.prompt.append({'role':'user', 'content':text})
+        self.prompt.append({'role':'assistant', 'content':res_ans})
 
         if self.just_switched_to_exist_session:
             self.just_switched_to_exist_session = False
             self.set_ongoing()
 
-        return res_ans
+        return res_ans if res_ans[0]!='\n' else res_ans[1:]
 
     # 删除上一回合并返回上一回合的问题
     def undo(self) -> str:
         self.last_interact_timestamp = int(time.time())
 
         # 删除上一回合
-        to_delete = self.cut_out(self.prompt, 1, 1024)
-
-        self.prompt = self.prompt.replace(to_delete, '')
+        if self.prompt[-1]['role'] != 'user':
+            res = self.prompt[-1]['content']
+            self.prompt.remove(self.prompt[-2])
+        else:
+            res = self.prompt[-2]['content']
+        self.prompt.remove(self.prompt[-1])
 
         # 返回上一回合的问题
-        return to_delete.split(self.bot_name + ':')[0].split(self.user_name + ':')[1].strip()
+        return res
 
-    # 从尾部截取prompt里不多于max_rounds个回合，长度不大于max_tokens的字符串
-    # 保证都是完整的对话
-    def cut_out(self, prompt: str, max_rounds: int, max_tokens: int) -> str:
-        # 分隔出每个回合
-        rounds_spt_by_user_name = prompt.split(self.user_name + ':')
+    # 构建对话体
+    def cut_out(self, msg: str, max_tokens: int) -> list:
+        """将现有prompt进行切割处理，使得新的prompt长度不超过max_tokens"""
+        # 如果用户消息长度超过max_tokens，直接返回
+        
+        temp_prompt = [
+                {
+                    'role': 'user',
+                    'content': msg
+                }
+            ]
 
-        result = ''
-
-        checked_rounds = 0
-        # 从后往前遍历，加到result前面，检查result是否符合要求
-        for i in range(len(rounds_spt_by_user_name) - 1, 0, -1):
-            result_temp = self.user_name + ':' + rounds_spt_by_user_name[i] + result
-            checked_rounds += 1
-
-            if checked_rounds > max_rounds:
+        token_count = len(msg)
+        # 倒序遍历prompt
+        for i in range(len(self.prompt) - 1, -1, -1):
+            if token_count >= max_tokens:
                 break
 
-            if int((len(result_temp.encode('utf-8')) - len(result_temp)) / 2 + len(result_temp)) > max_tokens:
-                break
+            # 将prompt加到temp_prompt头部
+            temp_prompt.insert(0, self.prompt[i])
+            token_count += len(self.prompt[i]['content'])
 
-            result = result_temp
+        logging.debug('cut_out: {}'.format(str(temp_prompt)))
 
-        logging.debug('cut_out: {}'.format(result))
-        return result
+        return temp_prompt
 
     # 持久化session
     def persistence(self):
@@ -247,11 +278,11 @@ class Session:
         subject_number = int(name_spt[1])
 
         db_inst.persistence_session(subject_type, subject_number, self.create_timestamp, self.last_interact_timestamp,
-                                    self.prompt)
+                                    json.dumps(self.prompt))
 
     # 重置session
     def reset(self, explicit: bool = False, expired: bool = False, schedule_new: bool = True, use_prompt: str = None):
-        if not self.prompt.endswith(':好的\n'):
+        if self.prompt[-1]['role'] != "system":
             self.persistence()
             if explicit:
                 # 触发插件事件
@@ -291,7 +322,11 @@ class Session:
 
             self.create_timestamp = last_one['create_timestamp']
             self.last_interact_timestamp = last_one['last_interact_timestamp']
-            self.prompt = last_one['prompt']
+            try:
+                self.prompt = json.loads(last_one['prompt'])
+            except json.decoder.JSONDecodeError:
+                self.prompt = reset_session_prompt(self.name, last_one['prompt'])
+                self.persistence()
 
             self.just_switched_to_exist_session = True
             return self
@@ -306,14 +341,17 @@ class Session:
 
             self.create_timestamp = next_one['create_timestamp']
             self.last_interact_timestamp = next_one['last_interact_timestamp']
-            self.prompt = next_one['prompt']
+            try:
+                self.prompt = json.loads(next_one['prompt'])
+            except json.decoder.JSONDecodeError:
+                self.prompt = reset_session_prompt(self.name, next_one['prompt'])
+                self.persistence()
 
             self.just_switched_to_exist_session = True
             return self
 
     def list_history(self, capacity: int = 10, page: int = 0):
-        return pkg.utils.context.get_database_manager().list_history(self.name, capacity, page,
-                                                                     self.get_default_prompt())
+        return pkg.utils.context.get_database_manager().list_history(self.name, capacity, page)
 
     def draw_image(self, prompt: str):
         return pkg.utils.context.get_openai_manager().request_image(prompt)
