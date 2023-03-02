@@ -32,12 +32,13 @@ class OpenAIInteract:
         pkg.utils.context.set_openai_manager(self)
 
     # 请求OpenAI Completion
-    def request_completion(self, messages):
+    def request_completion(self, prompts):
         config = pkg.utils.context.get_config()
 
-        ai:ModelRequest = create_openai_model_request(config.completion_api_params['model'], 'user')
+        # 根据模型选择使用的接口
+        ai: ModelRequest = create_openai_model_request(config.completion_api_params['model'], 'user')
         ai.request(
-            messages,
+            prompts,
             **config.completion_api_params
         )
         response = ai.get_response()

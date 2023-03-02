@@ -126,10 +126,15 @@ class Session:
         else:
             current_default_prompt = dprompt.get_prompt(use_default)
 
-        return [{
-            'role': 'system',
-            'content': current_default_prompt
-        }]
+        return [
+            {
+                'role': 'user',
+                'content': current_default_prompt
+            },{
+                'role': 'assistant',
+                'content': 'ok'
+            }
+        ]
 
     def __init__(self, name: str):
         self.name = name
@@ -195,12 +200,11 @@ class Session:
         max_length = config.prompt_submit_length if hasattr(config, "prompt_submit_length") else 1024
 
         # 向API请求补全
-        self.cut_out(text, max_length)
         message = pkg.utils.context.get_openai_manager().request_completion(
-            self.prompt
+            self.cut_out(text, max_length),
         )
 
-        # 处理回复
+        # 成功获取，处理回复
         res_test = message
         res_ans = res_test
 
@@ -210,6 +214,8 @@ class Session:
             del (res_ans_spt[0])
             res_ans = '\n\n'.join(res_ans_spt)
 
+        # 将此次对话的双方内容加入到prompt中
+        self.prompt.append({'role':'user', 'content':text})
         self.prompt.append({'role':'assistant', 'content':res_ans})
 
         if self.just_switched_to_exist_session:
@@ -234,17 +240,30 @@ class Session:
         return res
 
     # 构建对话体
-    def cut_out(self, msg: str, max_tokens: int) -> str:
+    def cut_out(self, msg: str, max_tokens: int) -> list:
+        """将现有prompt进行切割处理，使得新的prompt长度不超过max_tokens"""
+        # 如果用户消息长度超过max_tokens，直接返回
+        
+        temp_prompt = [
+                {
+                    'role': 'user',
+                    'content': msg
+                }
+            ]
 
-        if len(msg) > max_tokens:
-            msg = msg[:max_tokens]
+        token_count = len(msg)
+        # 倒序遍历prompt
+        for i in range(len(self.prompt) - 1, -1, -1):
+            if token_count >= max_tokens:
+                break
 
-        self.prompt.append({
-            'role': 'user',
-            'content': msg
-        })
+            # 将prompt加到temp_prompt头部
+            temp_prompt.insert(0, self.prompt[i])
+            token_count += len(self.prompt[i]['content'])
 
-        logging.debug('cut_out: {}'.format(msg))
+        logging.debug('cut_out: {}'.format(str(temp_prompt)))
+
+        return temp_prompt
 
     # 持久化session
     def persistence(self):

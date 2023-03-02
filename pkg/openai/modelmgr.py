@@ -26,7 +26,7 @@ IMAGE_MODELS = {
 
 
 class ModelRequest():
-
+    """模型请求抽象类"""
     can_chat = False
 
     def __init__(self, model_name, user_name, request_fun):
@@ -39,7 +39,8 @@ class ModelRequest():
         self.ret = self.ret_handle(ret)
         self.message = self.ret["choices"][0]["message"]
 
-    def msg_handle(self, msg):
+    def __msg_handle__(self, msg):
+        """将prompt dict转换成接口需要的格式"""
         return msg
     
     def ret_handle(self, ret):
@@ -63,17 +64,16 @@ class ChatCompletionModel(ModelRequest):
         self.can_chat = True
         super().__init__(model_name, user_name, request_fun)
 
-    def request(self, messages, **kwargs):
-        ret = self.request_fun(messages = self.msg_handle(messages), **kwargs, user=self.user_name)
+    def request(self, prompts, **kwargs):
+        ret = self.request_fun(messages = self.__msg_handle__(prompts), **kwargs, user=self.user_name)
         self.ret = self.ret_handle(ret)
         self.message = self.ret["choices"][0]["message"]['content']
 
-    def msg_handle(self, msgs):
+    def __msg_handle__(self, msgs):
         temp_msgs = []
+        # 把msgs拷贝进temp_msgs
         for msg in msgs:
-            if msg['role'] not in self.Chat_role:
-                msg['role'] = 'user'
-            temp_msgs.append(msg)
+            temp_msgs.append(msg.copy())
         return temp_msgs
 
     def get_content(self):
@@ -86,18 +86,21 @@ class CompletionModel(ModelRequest):
         request_fun = openai.Completion.create
         super().__init__(model_name, user_name, request_fun)
 
-    def request(self, prompt, **kwargs):
-        ret = self.request_fun(prompt = self.msg_handle(prompt), **kwargs)
+    def request(self, prompts, **kwargs):
+        ret = self.request_fun(prompt = self.__msg_handle__(prompts), **kwargs)
         self.ret = self.ret_handle(ret)
         self.message = self.ret["choices"][0]["text"]
 
-    def msg_handle(self, msgs):
+    def __msg_handle__(self, msgs):
         prompt = ''
         for msg in msgs:
-            if msg['role'] == 'assistant':
-                prompt = prompt + "{}\n".format(msg['content'])
-            else:
-                prompt = prompt + "{}:{}\n".format(msg['role'] , msg['content'])
+            prompt = prompt + "{}: {}\n".format(msg['role'], msg['content'])
+        # for msg in msgs:
+        #     if msg['role'] == 'assistant':
+        #         prompt = prompt + "{}\n".format(msg['content'])
+        #     else:
+        #         prompt = prompt + "{}:{}\n".format(msg['role'] , msg['content'])
+        prompt = prompt + "assistant: "
         return prompt
     
     def get_text(self):
