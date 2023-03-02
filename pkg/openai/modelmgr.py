@@ -43,8 +43,8 @@ class ModelRequest():
         """将prompt dict转换成接口需要的格式"""
         return msg
     
-    def ret_handle(self, ret):
-        return ret
+    def ret_handle(self):
+        return
     
     def get_total_tokens(self):
         return self.ret['usage']['total_tokens']
@@ -66,7 +66,7 @@ class ChatCompletionModel(ModelRequest):
 
     def request(self, prompts, **kwargs):
         ret = self.request_fun(messages = self.__msg_handle__(prompts), **kwargs, user=self.user_name)
-        self.ret = self.ret_handle(ret)
+        self.ret_handle()
         self.message = self.ret["choices"][0]["message"]['content']
 
     def __msg_handle__(self, msgs):
@@ -88,7 +88,7 @@ class CompletionModel(ModelRequest):
 
     def request(self, prompts, **kwargs):
         ret = self.request_fun(prompt = self.__msg_handle__(prompts), **kwargs)
-        self.ret = self.ret_handle(ret)
+        self.ret_handle()
         self.message = self.ret["choices"][0]["text"]
 
     def __msg_handle__(self, msgs):
