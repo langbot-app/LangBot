@@ -112,7 +112,20 @@ encourage_sponsor_at_start = True
 # 注意：较大的prompt_submit_length会导致OpenAI账户额度消耗更快
 prompt_submit_length = 1024
 
-# OpenAI的completion API的参数
+# OpenAI补全API的参数
+# 请在下方填写模型，程序自动选择接口
+# 现已支持的模型有：
+# 
+#    'gpt-3.5-turbo'
+#    'gpt-3.5-turbo-0301'
+#    'text-davinci-003'
+#    'text-davinci-002'
+#    'code-davinci-002'
+#    'code-cushman-001'
+#    'text-curie-001'
+#    'text-babbage-001'
+#    'text-ada-001'
+#
 # 具体请查看OpenAI的文档: https://beta.openai.com/docs/api-reference/completions/create
 completion_api_params = {
     "model": "text-davinci-003",
