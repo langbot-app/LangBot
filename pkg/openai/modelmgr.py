@@ -14,13 +14,6 @@ COMPLETION_MODELS = {
 CHAT_COMPLETION_MODELS = {
     'gpt-3.5-turbo',
     'gpt-3.5-turbo-0301',
-    'text-davinci-003',
-    'text-davinci-002',
-    'code-davinci-002',
-    'code-cushman-001',
-    'text-curie-001',
-    'text-babbage-001',
-    'text-ada-001',
 }
 
 EDIT_MODELS = {
@@ -121,5 +114,5 @@ def create_openai_model_request(model_name: str, user_name: str = 'user') -> Mod
         log = "找不到模型[{}]，请检查配置文件".format(model_name)
         logging.error(log)
         raise IndexError(log)
-
+    logging.debug("使用接口[{}]创建模型请求[{}]".format(model.__class__.__name__, model_name))
     return model
