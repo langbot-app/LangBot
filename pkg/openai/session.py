@@ -210,10 +210,7 @@ class Session:
             del (res_ans_spt[0])
             res_ans = '\n\n'.join(res_ans_spt)
 
-        if config.completion_api_params['model'] in pkg.openai.modelmgr.CHAT_COMPLETION_MODELS:
-            self.prompt.append({'role':'assistant', 'content':res_ans})
-        elif config.completion_api_params['model'] in pkg.openai.modelmgr.COMPLETION_MODELS:
-            self.prompt.append({'role':'', 'content':res_ans})
+        self.prompt.append({'role':'assistant', 'content':res_ans})
 
         if self.just_switched_to_exist_session:
             self.just_switched_to_exist_session = False

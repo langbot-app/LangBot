@@ -94,10 +94,10 @@ class CompletionModel(ModelRequest):
     def msg_handle(self, msgs):
         prompt = ''
         for msg in msgs:
-            if msg['role'] == '':
+            if msg['role'] == 'assistant':
                 prompt = prompt + "{}\n".format(msg['content'])
             else:
-                prompt = prompt + "{}:{}\n".format(msg['role'] if msg['role']!='system' else '你的回答要遵守此规则', msg['content'])
+                prompt = prompt + "{}:{}\n".format(msg['role'] , msg['content'])
         return prompt
     
     def get_text(self):
