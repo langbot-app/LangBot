@@ -32,7 +32,7 @@ IMAGE_MODELS = {
 }
 
 
-class Model():
+class ModelRequest():
 
     can_chat = False
 
@@ -62,7 +62,7 @@ class Model():
         return self.ret
     
 
-class ChatCompletionModel(Model):
+class ChatCompletionModel(ModelRequest):
     """ChatCompletion接口实现"""
     Chat_role = ['system', 'user', 'assistant']
     def __init__(self, model_name, user_name):
@@ -87,7 +87,7 @@ class ChatCompletionModel(Model):
         return self.message
     
 
-class CompletionModel(Model):
+class CompletionModel(ModelRequest):
     """Completion接口实现"""
     def __init__(self, model_name, user_name):
         request_fun = openai.Completion.create
@@ -111,7 +111,8 @@ class CompletionModel(Model):
         return self.message
     
 
-def OpenaiModel(model_name:str, user_name='user'):
+def create_openai_model_request(model_name: str, user_name: str = 'user') -> ModelRequest:
+    """使用给定的模型名称创建模型请求对象"""
     if model_name in CHAT_COMPLETION_MODELS:
         model = ChatCompletionModel(model_name, user_name)
     elif model_name in COMPLETION_MODELS:

@@ -94,8 +94,6 @@ class Session:
 
     prompt = {}
 
-    import config
-
     create_timestamp = 0
 
     last_interact_timestamp = 0

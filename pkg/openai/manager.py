@@ -5,7 +5,7 @@ import openai
 import pkg.openai.keymgr
 import pkg.utils.context
 import pkg.audit.gatherer
-from pkg.openai.modelmgr import Model, ChatCompletionModel, OpenaiModel
+from pkg.openai.modelmgr import ModelRequest, create_openai_model_request
 
 # 为其他模块提供与OpenAI交互的接口
 class OpenAIInteract:
@@ -35,7 +35,7 @@ class OpenAIInteract:
     def request_completion(self, messages):
         config = pkg.utils.context.get_config()
 
-        ai:Model = OpenaiModel(config.completion_api_params['model'], 'user')
+        ai:ModelRequest = create_openai_model_request(config.completion_api_params['model'], 'user')
         ai.request(
             messages,
             **config.completion_api_params
