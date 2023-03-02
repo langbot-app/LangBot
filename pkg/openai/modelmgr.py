@@ -65,7 +65,7 @@ class ChatCompletionModel(ModelRequest):
         super().__init__(model_name, user_name, request_fun)
 
     def request(self, prompts, **kwargs):
-        ret = self.request_fun(messages = self.__msg_handle__(prompts), **kwargs, user=self.user_name)
+        self.ret = self.request_fun(messages = self.__msg_handle__(prompts), **kwargs, user=self.user_name)
         self.ret_handle()
         self.message = self.ret["choices"][0]["message"]['content']
 
@@ -87,7 +87,7 @@ class CompletionModel(ModelRequest):
         super().__init__(model_name, user_name, request_fun)
 
     def request(self, prompts, **kwargs):
-        ret = self.request_fun(prompt = self.__msg_handle__(prompts), **kwargs)
+        self.ret = self.request_fun(prompt = self.__msg_handle__(prompts), **kwargs)
         self.ret_handle()
         self.message = self.ret["choices"][0]["text"]
 
