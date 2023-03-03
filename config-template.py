@@ -20,6 +20,7 @@ mirai_http_api_config = {
 
 # [必需] OpenAI的配置
 # api_key: OpenAI的API Key
+# http_proxy: 请求OpenAI时使用的代理，None为不使用，https和socks5暂不能使用
 # 若只有一个api-key，请直接修改以下内容中的"openai_api_key"为你的api-key
 #
 # 如准备了多个api-key，可以以字典的形式填写，程序会自动选择可用的api-key
@@ -30,11 +31,13 @@ mirai_http_api_config = {
 #         "key1": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
 #         "key2": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
 #     },
+#     "http_proxy": "http://127.0.0.1:12345"
 # }
 openai_config = {
     "api_key": {
         "default": "openai_api_key"
     },
+    "http_proxy": None
 }
 
 # [必需] 管理员QQ号，用于接收报错等通知及执行管理员级别指令
