@@ -133,7 +133,7 @@ prompt_submit_length = 1024
 completion_api_params = {
     "model": "gpt-3.5-turbo",
     "temperature": 0.9,  # 数值越低得到的回答越理性，取值范围[0, 1]
-    "max_tokens": 512,  # 每次获取OpenAI接口响应的文字量上限, 不高于4096
+    "max_tokens": 1024,  # 每次获取OpenAI接口响应的文字量上限, 不高于4096
     "top_p": 1,  # 生成的文本的文本与要求的符合度, 取值范围[0, 1]
     "frequency_penalty": 0.2,
     "presence_penalty": 1.0,
