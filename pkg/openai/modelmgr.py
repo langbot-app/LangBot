@@ -45,8 +45,9 @@ class ModelRequest():
 
     def request(self, **kwargs):
         if self.proxy != None: #异步请求
+            loop = asyncio.new_event_loop()
             self.runtime = threading.Thread(
-                target=asyncio.run,
+                target=loop.run_until_complete,
                 args=(self.__a_request__(**kwargs),)
             )
             self.runtime.start()

@@ -39,7 +39,7 @@ class OpenAIInteract:
         ai: ModelRequest = create_openai_model_request(
             config.completion_api_params['model'], 
             'user', 
-            config.openai_config["http_proxy"]
+            config.openai_config["http_proxy"] if "http_proxy" in config.openai_config else None
         )
         ai.request(
             prompts,
