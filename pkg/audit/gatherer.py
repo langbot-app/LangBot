@@ -20,7 +20,7 @@ class DataGatherer:
         }
     }为值的字典"""
 
-    version_str = "0.1.0"
+    version_str = "undetermined"
 
     def __init__(self):
         self.load_from_db()
