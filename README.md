@@ -1,28 +1,19 @@
 # QChatGPT🤖
-> 2023/3/3  现已在主线支持官方ChatGPT接口，使用方法查看https://github.com/RockChinQ/QChatGPT/issues/195  
+> 2023/3/3  现已在主线支持官方ChatGPT接口，使用方法查看[#195](https://github.com/RockChinQ/QChatGPT/issues/195)  
 > 2023/3/2  OpenAI已发布ChatGPT官方接口，我们正在全力接入，预计明日前完成，请查看[此PR](https://github.com/RockChinQ/QChatGPT/pull/194)  
 > 2023/2/16 现已支持接入ChatGPT网页版，详情请完成部署并查看底部**插件**小节或[此仓库](https://github.com/RockChinQ/revLibs)
 
 - 到[项目Wiki](https://github.com/RockChinQ/QChatGPT/wiki)可了解项目详细信息
 - 由bilibili TheLazy制作的[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)
-- 测试号: 2196084348（已加载逆向库插件、每分钟限速）、~~1480613886（已加载逆向库插件）~~（被封）
 - 交流、答疑群: ~~204785790~~（已满）、691226829 
   - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
   - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
   - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
 - QQ频道机器人见[QQChannelChatGPT](https://github.com/Soulter/QQChannelChatGPT)
 
-通过调用OpenAI GPT-3模型提供的Completion API来实现一个更加智能的QQ机器人  
+通过调用OpenAI的ChatGPT等语言模型来实现一个更加智能的QQ机器人  
 
 ## ✅功能
-
-<details>
-<summary>✅回复符合上下文</summary>
-
-  - 程序向模型发送近几次对话内容，模型根据上下文生成回复
-  - 您可在`config.py`中修改`prompt_submit_length`自定义联系上下文的范围
-
-</details>
 
 <details>
 <summary>✅支持敏感词过滤，避免账号风险</summary>
@@ -31,20 +22,11 @@
   - 编辑`sensitive.json`，并在`config.py`中修改`sensitive_word_filter`的值以开启此功能
 </details>
 
-
 <details>
 <summary>✅群内多种响应规则，不必at</summary>
 
   - 默认回复`ai`作为前缀或`@`机器人的消息
   - 详细见`config.py`中的`response_rules`字段
-</details>
-
-<details>
-<summary>✅使用官方api，不需要网络代理，稳定快捷</summary>
-
-  - 不使用ChatGPT逆向接口，而使用官方的Completion API，稳定性高
-  - 您可以在`config.py`中自定义`completion_api_params`字段，设置向官方API提交的参数以自定义机器人的风格
-
 </details>
 
 <details>
@@ -57,13 +39,6 @@
 </details>
 
 <details>
-<summary>✅组件少，部署方便，提供一键安装器及Docker安装</summary>
-
-  - 手动部署步骤少
-  - 提供自动安装器及docker方式，详见以下安装步骤
-</details>
-
-<details>
 <summary>✅支持预设指令文字</summary>
 
   - 支持以自然语言预设文字，自定义机器人人格等信息
@@ -71,13 +46,6 @@
   - 支持设置多个预设情景，并通过!reset、!default等指令控制，详细请查看[wiki指令](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4)
 </details>
 
-<details>
-<summary>✅完善的会话管理，重启不丢失</summary>
-
-  - 使用SQLite进行会话内容持久化
-  - 最后一次对话一定时间后自动保存，请到`config.py`中修改`session_expire_time`的值以自定义时间
-  - 运行期间可使用`!reset` `!list` `!last` `!next` `!prompt`等指令管理会话
-</details>
 <details>
 <summary>✅支持对话、绘图等模型，可玩性更高</summary>
 
@@ -225,7 +193,7 @@ python3 main.py
 
 - [revLibs](https://github.com/RockChinQ/revLibs) - 将ChatGPT网页版接入此项目，关于[官方接口和网页版有什么区别](https://github.com/RockChinQ/QChatGPT/wiki/%E5%AE%98%E6%96%B9%E6%8E%A5%E5%8F%A3%E4%B8%8EChatGPT%E7%BD%91%E9%A1%B5%E7%89%88)
 - [hello_plugin](https://github.com/RockChinQ/hello_plugin) - `hello_plugin` 的储存库形式，插件开发模板
-- [dominoar/QchatPlugins](https://github.com/dominoar/QchatPlugins) - dominoar编写的诸多新功能插件（语言输出、Ranimg、屏蔽词规则等）
+- [dominoar/QChatPlugins](https://github.com/dominoar/QchatPlugins) - dominoar编写的诸多新功能插件（语言输出、Ranimg、屏蔽词规则等）
 - [dominoar/QCP-NovelAi](https://github.com/dominoar/QCP-NovelAi) - NovelAI 故事叙述与绘画
 
 ## 😘致谢
