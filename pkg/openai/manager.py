@@ -36,7 +36,11 @@ class OpenAIInteract:
         config = pkg.utils.context.get_config()
 
         # 根据模型选择使用的接口
-        ai: ModelRequest = create_openai_model_request(config.completion_api_params['model'], 'user')
+        ai: ModelRequest = create_openai_model_request(
+            config.completion_api_params['model'], 
+            'user', 
+            config.openai_config["http_proxy"]
+        )
         ai.request(
             prompts,
             **config.completion_api_params
