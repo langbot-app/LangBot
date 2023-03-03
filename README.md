@@ -1,5 +1,5 @@
 # QChatGPT🤖
-> 2023/3/3  官方接口疑似被墙，请自行测试，或等待近期敏感时期结束。  
+> 2023/3/3  官方接口疑似被墙，可考虑使用网络代理 [#198](https://github.com/RockChinQ/QChatGPT/issues/198)  
 > 2023/3/3  现已在主线支持官方ChatGPT接口，使用方法查看[#195](https://github.com/RockChinQ/QChatGPT/issues/195)  
 > 2023/3/2  OpenAI已发布ChatGPT官方接口，我们正在全力接入，预计明日前完成，请查看[此PR](https://github.com/RockChinQ/QChatGPT/pull/194)  
 > 2023/2/16 现已支持接入ChatGPT网页版，详情请完成部署并查看底部**插件**小节或[此仓库](https://github.com/RockChinQ/revLibs)
@@ -8,11 +8,30 @@
 - 由bilibili TheLazy制作的[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)
 - 交流、答疑群: ~~204785790~~（已满）、691226829、656285629  
   - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
-  - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
-  - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
 - QQ频道机器人见[QQChannelChatGPT](https://github.com/Soulter/QQChannelChatGPT)
 
 通过调用OpenAI的ChatGPT等语言模型来实现一个更加智能的QQ机器人  
+
+## 🍺模型适配一览
+
+### 文字对话
+
+- OpenAI GPT-3.5模型(ChatGPT API), 本项目原生支持, 默认使用
+- OpenAI GPT-3模型, 本项目原生支持, 部署完成后前往config.py切换
+- ChatGPT网页版逆向API, 由[插件](https://github.com/RockChinQ/revLibs)接入
+
+### 故事续写
+
+- NovelAI API, 由[插件](https://github.com/dominoar/QCPNovelAi)接入
+
+### 图片绘制
+
+- OpenAI DALL·E模型, 本项目原生支持, 使用方法查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E5%8A%9F%E8%83%BD%E7%82%B9%E5%88%97%E4%B8%BE)
+- NovelAI API, 由[插件](https://github.com/dominoar/QCPNovelAi)接入
+
+### 语音生成
+
+- TTS+VITS, 由[插件](https://github.com/dominoar/QChatPlugins)接入
 
 ## ✅功能
 
@@ -118,10 +137,7 @@
 <details>
 <summary>手动部署适用于所有平台</summary>
 
-- 请使用Python 3.9.x以上版本  
-- 请注意OpenAI账号额度消耗  
-  - 每个账户仅有18美元免费额度，如未绑定银行卡，则会在超出时报错  
-  - OpenAI收费标准：默认使用的`text-davinci-003`模型 0.02美元/千字  
+- 请使用Python 3.9.x以上版本   
 
 #### 配置Mirai
 
@@ -164,7 +180,7 @@ python3 main.py
 
 **常见问题**
 
-- mirai登录提示`QQ版本过低`，见[此issue](https://github.com/RockChinQ/QChatGPT/issues/38)
+- mirai登录提示`QQ版本过低`，见[此issue](https://github.com/RockChinQ/QChatGPT/issues/137)
 - 如提示安装`uvicorn`或`hypercorn`请*不要*安装，这两个不是必需的，目前存在未知原因bug
 - 如报错`TypeError: As of 3.10, the *loop* parameter was removed from Lock() since it is no longer necessary`, 请参考 [此处](https://github.com/RockChinQ/QChatGPT/issues/5)
 
