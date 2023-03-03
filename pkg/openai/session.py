@@ -228,16 +228,15 @@ class Session:
     def undo(self) -> str:
         self.last_interact_timestamp = int(time.time())
 
-        # 删除上一回合
-        if self.prompt[-1]['role'] != 'user':
-            res = self.prompt[-1]['content']
-            self.prompt.remove(self.prompt[-2])
-        else:
-            res = self.prompt[-2]['content']
-        self.prompt.remove(self.prompt[-1])
-
+        # 删除最后两个消息
+        if len(self.prompt) < 2:
+            raise Exception('之前无对话，无法撤销')
+    
+        question = self.prompt[-2]['content']
+        self.prompt = self.prompt[:-2]
+        
         # 返回上一回合的问题
-        return res
+        return question
 
     # 构建对话体
     def cut_out(self, msg: str, max_tokens: int) -> list:
