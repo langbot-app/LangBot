@@ -62,7 +62,7 @@ class ReplyFilter:
 
             if "error_code" in response_dict:
                 error_msg = response_dict.get("error_msg")
-                logging.info(f"百度云判定出错，错误信息：{error_msg}")
+                logging.warning(f"百度云判定出错，错误信息：{error_msg}")
                 conclusion = f"百度云判定出错，错误信息：{error_msg}\n以下是原消息：{message}"
             else:
                 conclusion = response_dict["conclusion"]
@@ -70,7 +70,7 @@ class ReplyFilter:
                     logging.info(f"百度云判定结果：{conclusion}")
                     return message
                 else:
-                    logging.info(f"百度云判定结果：{conclusion}")
+                    logging.warning(f"百度云判定结果：{conclusion}")
                     conclusion = inappropriate_message_tips
             # 返回百度云审核结果
             return conclusion
