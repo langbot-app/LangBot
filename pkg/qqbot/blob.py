@@ -45,16 +45,16 @@ def text_to_image(text: str) -> MessageComponent:
         os.mkdir('temp')
     img_path = text2img.text_to_image(text_str=text, save_as='temp/{}.png'.format(int(time.time())))
     
-    compressed = text2img.compress_image(img_path, outfile="temp/{}_compressed.png".format(int(time.time())))
+    compressed_path, size = text2img.compress_image(img_path, outfile="temp/{}_compressed.png".format(int(time.time())))
     # 读取图片，转换成base64
-    with open(img_path, 'rb') as f:
+    with open(compressed_path, 'rb') as f:
         img = f.read()
 
     b64 = base64.b64encode(img)
 
     # 删除图片
     os.remove(img_path)
-    os.remove(compressed)
+    os.remove(compressed_path)
     # 返回图片
     return Image(base64=b64.decode('utf-8'))
 
