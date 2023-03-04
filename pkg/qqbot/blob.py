@@ -1,10 +1,15 @@
 # 长消息处理相关
+import os
+import time
+import base64
+
 import config
-from mirai.models.message import MessageComponent, MessageChain
+from mirai.models.message import MessageComponent, MessageChain, Image
 from mirai.models.message import ForwardMessageNode
 from mirai.models.base import MiraiBaseModel
-from typing import List, Optional
+from typing import List
 import pkg.utils.context as context
+import pkg.utils.text2img as text2img
 
 
 class ForwardMessageDiaplay(MiraiBaseModel):
@@ -33,6 +38,26 @@ class Forward(MessageComponent):
         return '[聊天记录]'
 
 
+def text_to_image(text: str) -> MessageComponent:
+    """将文本转换成图片"""
+    # 检查temp文件夹是否存在
+    if not os.path.exists('temp'):
+        os.mkdir('temp')
+    img_path = text2img.text_to_image(text_str=text, save_as='temp/{}.png'.format(int(time.time())))
+    
+    compressed = text2img.compress_image(img_path, outfile="temp/{}_compressed.png".format(int(time.time())))
+    # 读取图片，转换成base64
+    with open(img_path, 'rb') as f:
+        img = f.read()
+
+    b64 = base64.b64encode(img)
+
+    # 删除图片
+    os.remove(img_path)
+    os.remove(compressed)
+    # 返回图片
+    return Image(base64=b64.decode('utf-8'))
+
 
 def check_text(text: str) -> list:
     """检查文本是否为长消息，并转换成该使用的消息链组件"""
@@ -45,7 +70,7 @@ def check_text(text: str) -> list:
         
         if config.blob_message_strategy == 'image':
             # 转换成图片
-            pass
+            return [text_to_image(text)]
         elif config.blob_message_strategy == 'forward':
             # 敏感词屏蔽
             text = context.get_qqbot_manager().reply_filter.process(text)
@@ -71,3 +96,5 @@ def check_text(text: str) -> list:
             )
 
             return [forward]
+    else:
+        return [text]
