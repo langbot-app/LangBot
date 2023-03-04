@@ -154,12 +154,18 @@ include_image_description = True
 # 消息处理的超时时间，单位为秒
 process_message_timeout = 30
 
-# [暂未实现] 群内会话是否启用多对象名称
-# 若不启用，群内会话的prompt只使用user_name和bot_name
-multi_subject = False
-
 # 回复消息时是否显示[GPT]前缀
 show_prefix = False
+
+# 应用长消息处理策略的阈值
+# 当回复消息长度超过此值时，将使用长消息处理策略
+blob_message_threshold = 256
+
+# 长消息处理策略
+# - "split": 将长消息分割为多条短消息发送
+# - "image": 将长消息转换为图片发送
+# - "forward": 将长消息转换为转发消息组件发送
+blob_message_strategy = "forward"
 
 # 消息处理超时重试次数
 retry_times = 3
