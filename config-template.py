@@ -116,7 +116,7 @@ baidu_api_key = ""
 baidu_secret_key =""
 
 #不合规消息自定义返回
-illgalmessage = "[百度云]请珍惜机器人，当前返回内容不合规"
+inappropriate_message_tips = "[百度云]请珍惜机器人，当前返回内容不合规"
 
 # 启动时是否发送赞赏码
 # 仅当使用量已经超过2048字时发送
