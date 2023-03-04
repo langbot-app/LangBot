@@ -162,7 +162,6 @@ show_prefix = False
 blob_message_threshold = 256
 
 # 长消息处理策略
-# - "split": 将长消息分割为多条短消息发送
 # - "image": 将长消息转换为图片发送
 # - "forward": 将长消息转换为转发消息组件发送
 blob_message_strategy = "forward"
