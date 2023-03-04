@@ -7,6 +7,7 @@ import pkg.openai.session
 
 import pkg.plugin.host as plugin_host
 import pkg.plugin.models as plugin_models
+import pkg.qqbot.blob as blob
 
 
 def handle_exception(notify_admin: str = "", set_reply: str = "") -> list:
@@ -63,7 +64,7 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
                 reply = event.get_return_value("reply")
 
             if not event.is_prevented_default():
-                reply = [prefix + text]
+                reply = blob.check_text(prefix + text)
         except openai.error.APIConnectionError as e:
             err_msg = str(e)
             if err_msg.__contains__('Error communicating with OpenAI'):

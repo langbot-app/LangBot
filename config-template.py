@@ -133,7 +133,7 @@ prompt_submit_length = 1024
 completion_api_params = {
     "model": "gpt-3.5-turbo",
     "temperature": 0.9,  # 数值越低得到的回答越理性，取值范围[0, 1]
-    "max_tokens": 512,  # 每次获取OpenAI接口响应的文字量上限, 不高于4096
+    "max_tokens": 1024,  # 每次获取OpenAI接口响应的文字量上限, 不高于4096
     "top_p": 1,  # 生成的文本的文本与要求的符合度, 取值范围[0, 1]
     "frequency_penalty": 0.2,
     "presence_penalty": 1.0,
@@ -154,12 +154,17 @@ include_image_description = True
 # 消息处理的超时时间，单位为秒
 process_message_timeout = 30
 
-# [暂未实现] 群内会话是否启用多对象名称
-# 若不启用，群内会话的prompt只使用user_name和bot_name
-multi_subject = False
-
 # 回复消息时是否显示[GPT]前缀
 show_prefix = False
+
+# 应用长消息处理策略的阈值
+# 当回复消息长度超过此值时，将使用长消息处理策略
+blob_message_threshold = 256
+
+# 长消息处理策略
+# - "image": 将长消息转换为图片发送
+# - "forward": 将长消息转换为转发消息组件发送
+blob_message_strategy = "forward"
 
 # 消息处理超时重试次数
 retry_times = 3
