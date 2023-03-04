@@ -39,7 +39,7 @@
 <summary>✅支持敏感词过滤，避免账号风险</summary>
 
   - 难以监测机器人与用户对话时的内容，故引入此功能以减少机器人风险
-  - 加入了百度云内容审核
+  - 加入了百度云内容审核，在`config.py`中修改`check`的值，并填写`baidu_api_key`和`baidu_secret_key`以开启此功能
   - 编辑`sensitive.json`，并在`config.py`中修改`sensitive_word_filter`的值以开启此功能
 </details>
 
