@@ -107,7 +107,7 @@ ignore_rules = {
 sensitive_word_filter = True
 
 #是否启动百度云内容安全审核
-check = False
+baidu_check = False
 
 #百度云API_KEY 24位英文数字字符串
 baidu_api_key = ""

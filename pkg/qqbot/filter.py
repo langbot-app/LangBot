@@ -2,7 +2,7 @@
 import re
 import requests
 import json
-from config import check, baidu_api_key, baidu_secret_key, illgalmessage
+from config import baidu_check, baidu_api_key, baidu_secret_key, illgalmessage
 import logging
 
 
@@ -32,7 +32,7 @@ class ReplyFilter:
 
     def process(self, message: str) -> str:
         # 百度云审核
-        if check:
+        if baidu_check:
             # 百度云审核
             payload = "text=" + message
             logging.info("向百度云发送:" + payload)
