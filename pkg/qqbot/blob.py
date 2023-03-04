@@ -1,4 +1,5 @@
 # 长消息处理相关
+import logging
 import os
 import time
 import base64
@@ -54,7 +55,10 @@ def text_to_image(text: str) -> MessageComponent:
 
     # 删除图片
     os.remove(img_path)
-    os.remove(compressed_path)
+
+    # 判断compressed_path是否存在
+    if os.path.exists(compressed_path):
+        os.remove(compressed_path)
     # 返回图片
     return Image(base64=b64.decode('utf-8'))
 
@@ -67,7 +71,8 @@ def check_text(text: str) -> list:
     if len(text) > config.blob_message_threshold:
         if not hasattr(config, 'blob_message_strategy'):
             raise AttributeError('未定义长消息处理策略')
-        
+
+        # logging.info("长消息: {}".format(text))
         if config.blob_message_strategy == 'image':
             # 转换成图片
             return [text_to_image(text)]

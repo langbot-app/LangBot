@@ -70,7 +70,7 @@ def compress_image(infile, outfile='', kb=100, step=20, quality=90):
     """
     o_size = get_size(infile)
     if o_size <= kb:
-        return infile
+        return infile, o_size
     outfile = get_outfile(infile, outfile)
     while o_size > kb:
         im = Image.open(infile)
@@ -82,9 +82,10 @@ def compress_image(infile, outfile='', kb=100, step=20, quality=90):
     return outfile, get_size(outfile)
 
 
-def text_to_image(text_str, save_as="temp.png", width=800):
+def text_to_image(text_str: str, save_as="temp.png", width=800):
     global text_render_font
-    # 文字分行
+
+    text_str = text_str.replace("\t", "    ")
     
     # 分行
     lines = text_str.split('\n')
@@ -92,7 +93,7 @@ def text_to_image(text_str, save_as="temp.png", width=800):
     # 计算并分割
     final_lines = []
 
-    text_width = width-40
+    text_width = width-80
     for line in lines:
         # 如果长了就分割
         line_width = text_render_font.getlength(line)
@@ -122,14 +123,14 @@ def text_to_image(text_str, save_as="temp.png", width=800):
                 else:
                     continue
     # 准备画布
-    img = Image.new('RGBA', (width, max(280, len(final_lines) * 35 + 35)), (255, 255, 255, 255))
+    img = Image.new('RGBA', (width, max(280, len(final_lines) * 35 + 45)), (255, 255, 255, 255))
     draw = ImageDraw.Draw(img, mode='RGBA')
 
     
     # 绘制正文
     line_number = 0
     offset_x = 20
-    offset_y = 20
+    offset_y = 30
     for final_line in final_lines:
         draw.text((offset_x, offset_y + 35 * line_number), final_line, fill=(0, 0, 0), font=text_render_font)
         # 遍历此行,检查是否有emoji
