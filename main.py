@@ -43,9 +43,9 @@ def init_db():
     database.initialize_database()
 
 
-def ensure_openai():
+def ensure_dependencies():
     import pkg.utils.pkgmgr as pkgmgr
-    pkgmgr.run_pip(["install", "openai", "--upgrade"])
+    pkgmgr.run_pip(["install", "openai", "Pillow", "--upgrade"])
 
 
 known_exception_caught = False
@@ -348,7 +348,7 @@ if __name__ == '__main__':
         else:
             print("这个操作不是必须的,如果不想更新,请在config.py中将upgrade_dependencies设置为False")
         try:
-            ensure_openai()
+            ensure_dependencies()
         except Exception as e:
             print("更新openai库失败:{}, 请忽略或自行更新".format(e))
 
