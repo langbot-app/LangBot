@@ -8,6 +8,11 @@ def install(package):
     main.reset_logging()
 
 
+def run_pip(params: list):
+    pipmain(params)
+    main.reset_logging()
+
+
 def install_requirements(file):
     pipmain(['install', '-r', file, "--upgrade"])
     main.reset_logging()

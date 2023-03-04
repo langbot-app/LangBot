@@ -43,6 +43,11 @@ def init_db():
     database.initialize_database()
 
 
+def ensure_openai():
+    import pkg.utils.pkgmgr as pkgmgr
+    pkgmgr.run_pip(["install", "openai", "--upgrade"])
+
+
 known_exception_caught = False
 
 log_file_name = "qchatgpt.log"
@@ -333,4 +338,18 @@ if __name__ == '__main__':
     #
     # pkg.utils.configmgr.set_config_and_reload("quote_origin", False)
     requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
+    import config
+    # 更新openai库到最新版本
+    if not hasattr(config, 'upgrade_dependencies') or config.upgrade_dependencies:
+        print("正在更新依赖库，请等待...")
+        if not hasattr(config, 'upgrade_dependencies'):
+            print("这个操作不是必须的,如果不想更新,请在config.py中添加upgrade_dependencies=False")
+        else:
+            print("这个操作不是必须的,如果不想更新,请在config.py中将upgrade_dependencies设置为False")
+        try:
+            ensure_openai()
+        except Exception as e:
+            print("更新openai库失败:{}, 请忽略或自行更新".format(e))
+
     main(True)
