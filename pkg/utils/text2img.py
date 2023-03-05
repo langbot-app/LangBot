@@ -4,23 +4,32 @@ from PIL import Image, ImageDraw, ImageFont
 import re
 import os
 import config
+import traceback
 
-use_font = config.font_path if hasattr(config, "font_path") else ""
-text_render_font: ImageFont = None
+if hasattr(config, "blob_message_strategy") and config.blob_message_strategy == "image":  # 仅在启用了image时才加载字体
+    try:
+        use_font = config.font_path if hasattr(config, "font_path") else ""
+        text_render_font: ImageFont = None
 
-# 检查是否存在
-if not os.path.exists(use_font):
-    # 若是windows系统，使用微软雅黑
-    if os.name == "nt":
-        use_font = "C:/Windows/Fonts/msyh.ttc"
+        # 检查是否存在
         if not os.path.exists(use_font):
-            logging.warn("未找到字体文件，且无法使用Windows自带字体，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。")
-            config.blob_message_strategy = "forward"
+            # 若是windows系统，使用微软雅黑
+            if os.name == "nt":
+                use_font = "C:/Windows/Fonts/msyh.ttc"
+                if not os.path.exists(use_font):
+                    logging.warn("未找到字体文件，且无法使用Windows自带字体，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。")
+                    config.blob_message_strategy = "forward"
+                else:
+                    logging.info("使用Windows自带字体：" + use_font)
+                    text_render_font = ImageFont.truetype(use_font, 32, encoding="utf-8")
+            else:
+                logging.warn("未找到字体文件，且无法使用Windows自带字体，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。")
+                config.blob_message_strategy = "forward"
         else:
-            logging.info("使用Windows自带字体：" + use_font)
             text_render_font = ImageFont.truetype(use_font, 32, encoding="utf-8")
-    else:
-        logging.warn("未找到字体文件，且无法使用Windows自带字体，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。")
+    except:
+        traceback.print_exc()
+        logging.error("加载字体文件失败({})，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。".format(use_font))
         config.blob_message_strategy = "forward"
 
 
