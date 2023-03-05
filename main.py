@@ -180,7 +180,7 @@ def main(first_time_init=False):
         # 初始化qq机器人
         qqbot = pkg.qqbot.manager.QQBotManager(mirai_http_api_config=config.mirai_http_api_config,
                                                timeout=config.process_message_timeout, retry=config.retry_times,
-                                               first_time_init=first_time_init)
+                                               first_time_init=first_time_init, pool_num=config.pool_num)
 
         # 加载插件
         import pkg.plugin.host
