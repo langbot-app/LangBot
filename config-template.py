@@ -183,6 +183,12 @@ blob_message_threshold = 256
 # - "forward": 将长消息转换为转发消息组件发送
 blob_message_strategy = "forward"
 
+# 文字转图片时使用的字体文件路径
+# 当策略为"image"时生效
+#   若在Windows系统下，程序会自动使用Windows自带的微软雅黑字体
+#   若未填写或不存在且不是Windows，将禁用文字转图片功能，改为使用转发消息组件
+font_path = ""
+
 # 消息处理超时重试次数
 retry_times = 3
 
