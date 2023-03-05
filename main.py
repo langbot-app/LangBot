@@ -270,7 +270,7 @@ def main(first_time_init=False):
     import pkg.utils.updater
     try:
         if pkg.utils.updater.is_new_version_available():
-            pkg.utils.context.get_qqbot_manager().notify_admin("新版本可用，请发送 !update 进行自动更新")
+            pkg.utils.context.get_qqbot_manager().notify_admin("新版本可用，请发送 !update 进行自动更新\n更新日志:\n{}".format("\n".join(pkg.utils.updater.get_rls_notes())))
         else:
             logging.info("当前已是最新版本")
 

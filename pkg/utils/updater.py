@@ -33,18 +33,32 @@ def pull_latest(repo_path: str) -> bool:
     return True
 
 
-def update_all() -> bool:
-    """检查更新并下载源码"""
-    current_tag = "v0.1.0"
-    if os.path.exists("current_tag"):
-        with open("current_tag", "r") as f:
-            current_tag = f.read()
-
+def get_release_list() -> list:
+    """获取发行列表"""
     rls_list_resp = requests.get(
         url="https://api.github.com/repos/RockChinQ/QChatGPT/releases"
     )
 
     rls_list = rls_list_resp.json()
+
+    return rls_list
+
+
+def get_current_tag() -> str:
+    """获取当前tag"""
+    current_tag = "v0.1.0"
+    if os.path.exists("current_tag"):
+        with open("current_tag", "r") as f:
+            current_tag = f.read()
+
+    return current_tag
+
+
+def update_all() -> bool:
+    """检查更新并下载源码"""
+    current_tag = get_current_tag()
+
+    rls_list = get_release_list()
 
     latest_rls = {}
     rls_notes = []
@@ -189,18 +203,41 @@ def get_current_commit_id() -> str:
 
 def is_new_version_available() -> bool:
     """检查是否有新版本"""
-    check_dulwich_closure()
+    # 从github获取release列表
+    rls_list = get_release_list()
+    if rls_list is None:
+        return False
 
-    from dulwich import porcelain
+    # 获取当前版本
+    current_tag = get_current_tag()
 
-    repo = porcelain.open_repo('.')
-    fetch_res = porcelain.ls_remote(porcelain.get_remote_repo(repo, "origin")[1])
+    # 检查是否有新版本
+    for rls in rls_list:
+        if rls['tag_name'] == current_tag:
+            return False
+        else:
+            return True
 
-    current_commit_id = get_current_commit_id()
 
-    latest_commit_id = str(fetch_res[b'HEAD'])[2:-1]
+def get_rls_notes() -> list:
+    """获取更新日志"""
+    # 从github获取release列表
+    rls_list = get_release_list()
+    if rls_list is None:
+        return None
 
-    return current_commit_id != latest_commit_id
+    # 获取当前版本
+    current_tag = get_current_tag()
+
+    # 检查是否有新版本
+    rls_notes = []
+    for rls in rls_list:
+        if rls['tag_name'] == current_tag:
+            break
+
+        rls_notes.append(rls['name'])
+
+    return rls_notes
 
 
 if __name__ == "__main__":
