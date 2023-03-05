@@ -3,10 +3,10 @@ config.py
 __pycache__/
 database.db
 qchatgpt.log
-config.py
 /banlist.py
 plugins/
 !plugins/__init__.py
 /revcfg.py
 prompts/
 logs/
+sensitive.json
