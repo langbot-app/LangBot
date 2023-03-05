@@ -314,9 +314,13 @@ if __name__ == '__main__':
     if not os.path.exists('banlist.py'):
         shutil.copy('banlist-template.py', 'banlist.py')
 
-    # 检查是否有sensitive.json,
+    # 检查是否有sensitive.json
     if not os.path.exists("sensitive.json"):
         shutil.copy("sensitive-template.json", "sensitive.json")
+
+    # 检查temp目录
+    if not os.path.exists("temp/"):
+        os.mkdir("temp/")
 
     if len(sys.argv) > 1 and sys.argv[1] == 'init_db':
         init_db()
