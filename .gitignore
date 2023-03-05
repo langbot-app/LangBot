@@ -10,3 +10,4 @@ plugins/
 prompts/
 logs/
 sensitive.json
+temp/
