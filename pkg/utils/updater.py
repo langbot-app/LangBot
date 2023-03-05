@@ -55,7 +55,7 @@ def update_all() -> bool:
 
         if latest_rls == {}:
             latest_rls = rls
-    print(rls_notes)
+    logging.info("更新日志: {}".format(rls_notes))
     if latest_rls == {}:  # 没有新版本
         return False
 
@@ -111,7 +111,7 @@ def update_all() -> bool:
 
     # 通知管理员
     import pkg.utils.context
-    pkg.utils.context.get_qqbot_manager().notify_admin("已更新到最新版本: {}\n更新日志:\n{}".format(current_tag, "\n".join(rls_notes)))
+    pkg.utils.context.get_qqbot_manager().notify_admin("已更新到最新版本: {}\n更新日志:\n{}\n新功能通常可以在config-template.py中看到，完整的更新日志请前往 https://github.com/RockChinQ/QChatGPT/releases 查看".format(current_tag, "\n".join(rls_notes)))
     return True
 
 
