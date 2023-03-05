@@ -2,33 +2,26 @@
 import re
 import requests
 import json
-import importlib
 import logging
 
-# 默认值( 兼容性考虑 )
-
-baidu_check = False
-baidu_api_key = ""
-baidu_secret_key = ""
-inappropriate_message_tips = "[百度云]请珍惜机器人，当前返回内容不合规"
-
-# 初始化
-
-config = importlib.import_module('config')
-baidu_check = config.baidu_check
-baidu_api_key = config.baidu_api_key
-baidu_secret_key = config.baidu_secret_key
-inappropriate_message_tips = config.inappropriate_message_tips
 
 class ReplyFilter:
     sensitive_words = []
 
+    # 默认值( 兼容性考虑 )
+    baidu_check = False
+    baidu_api_key = ""
+    baidu_secret_key = ""
+    inappropriate_message_tips = "[百度云]请珍惜机器人，当前返回内容不合规"
+
     def __init__(self, sensitive_words: list):
         self.sensitive_words = sensitive_words
+        import config
         if hasattr(config, 'baidu_check') and hasattr(config, 'baidu_api_key') and hasattr(config, 'baidu_secret_key'):
             self.baidu_check = config.baidu_check
             self.baidu_api_key = config.baidu_api_key
             self.baidu_secret_key = config.baidu_secret_key
+            self.inappropriate_message_tips = config.inappropriate_message_tips
 
     def process(self, message: str) -> str:
 
@@ -46,8 +39,8 @@ class ReplyFilter:
             baidu_url = "https://aip.baidubce.com/rest/2.0/solution/v1/text_censor/v2/user_defined?access_token=" + \
                 str(requests.post("https://aip.baidubce.com/oauth/2.0/token", 
                       params={"grant_type": "client_credentials", 
-                              "client_id": baidu_api_key,
-                              "client_secret": baidu_secret_key}).json().get("access_token"))
+                              "client_id": self.baidu_api_key,
+                              "client_secret": self.baidu_secret_key}).json().get("access_token"))
 
             # 百度云审核
             payload = "text=" + message
@@ -71,7 +64,7 @@ class ReplyFilter:
                     return message
                 else:
                     logging.warning(f"百度云判定结果：{conclusion}")
-                    conclusion = inappropriate_message_tips
+                    conclusion = self.inappropriate_message_tips
             # 返回百度云审核结果
             return conclusion
         
