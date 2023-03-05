@@ -52,6 +52,8 @@ class ModelRequest():
         except aiE.APIConnectionError as e:
             self.error_info = "{}\n请检查网络连接或代理是否正常".format(e)
             raise ConnectionError(self.error_info)
+        except ValueError as e:
+            self.error_info = "{}\n该错误可能是由于http_proxy格式设置错误引起的"
         except Exception as e:
             self.error_info = "{}\n由于请求异常产生的未知错误，请查看日志".format(e)
             raise Exception(self.error_info)
