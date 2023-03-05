@@ -23,6 +23,12 @@ class ReplyFilter:
             self.baidu_secret_key = config.baidu_secret_key
             self.inappropriate_message_tips = config.inappropriate_message_tips
 
+    def is_illegal(self, message: str) -> bool:
+        processed = self.process(message)
+        if processed != message:
+            return True
+        return False
+
     def process(self, message: str) -> str:
 
         # 本地关键词屏蔽

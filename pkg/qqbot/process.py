@@ -66,6 +66,11 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                                                                                 result.mute_time_remaining))
             return reply
 
+    import config
+    if hasattr(config, 'income_msg_check') and config.income_msg_check:
+        if mgr.reply_filter.is_illegal(text_message):
+            return MessageChain(Plain("[bot] 你的提问中有不合适的内容, 请更换措辞~"))
+
     pkg.openai.session.get_session(session_name).acquire_response_lock()
 
     text_message = text_message.strip()

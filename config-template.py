@@ -102,6 +102,10 @@ ignore_rules = {
     "regexp": []
 }
 
+# 是否检查收到的消息中是否包含敏感词
+# 若收到的消息无法通过下方指定的敏感词检查策略，则发送提示信息
+income_msg_check = False
+
 # 敏感词过滤开关，以同样数量的*代替敏感词回复
 # 请在sensitive.json中添加敏感词
 sensitive_word_filter = True
