@@ -64,8 +64,10 @@ class QQBotManager:
     def __init__(self, mirai_http_api_config: dict, timeout: int = 60, retry: int = 3, pool_num: int = 10, first_time_init=True):
         self.timeout = timeout
         self.retry = retry
+        logging.info("Register thread pool Size:{}".format(pool_num))
         self.pool_num = pool_num
         self.pool = ThreadPoolExecutor(max_workers=self.pool_num)
+        logging.info('done')
 
         # 加载禁用列表
         if os.path.exists("banlist.py"):
