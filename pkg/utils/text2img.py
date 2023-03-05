@@ -6,10 +6,11 @@ import os
 import config
 import traceback
 
+text_render_font: ImageFont = None
+
 if hasattr(config, "blob_message_strategy") and config.blob_message_strategy == "image":  # 仅在启用了image时才加载字体
+    use_font = config.font_path if hasattr(config, "font_path") else ""
     try:
-        use_font = config.font_path if hasattr(config, "font_path") else ""
-        text_render_font: ImageFont = None
 
         # 检查是否存在
         if not os.path.exists(use_font):
