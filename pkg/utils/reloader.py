@@ -7,13 +7,15 @@ import pkg.utils.context
 import pkg.plugin.host
 
 
-def walk(module, prefix=''):
+def walk(module, prefix='', path_prefix=''):
     """遍历并重载所有模块"""
     for item in pkgutil.iter_modules(module.__path__):
         if item.ispkg:
-            walk(__import__(module.__name__ + '.' + item.name, fromlist=['']), prefix + item.name + '.')
+
+            walk(__import__(module.__name__ + '.' + item.name, fromlist=['']), prefix + item.name + '.', path_prefix + item.name + '/')
         else:
-            logging.info('reload module: {}'.format(prefix + item.name))
+            logging.info('reload module: {}, path: {}'.format(prefix + item.name, path_prefix + item.name + '.py'))
+            pkg.plugin.host.__current_module_path__ = "plugins/" + path_prefix + item.name + '.py'
             importlib.reload(__import__(module.__name__ + '.' + item.name, fromlist=['']))
 
 
