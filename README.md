@@ -92,6 +92,12 @@
   - 详见Wiki`加入黑名单`节
 </details>
 <details>
+<summary>✅长消息处理策略</summary>
+
+  - 支持将长消息转换成图片或消息记录组件，避免消息刷屏
+  - 请查看`config.py`中`blob_message_strategy`等字段
+</details>
+<details>
 <summary>✅回复速度限制</summary>
 
   - 支持限制单会话内每分钟可进行的对话次数
