@@ -45,7 +45,7 @@ def init_db():
 
 def ensure_dependencies():
     import pkg.utils.pkgmgr as pkgmgr
-    pkgmgr.run_pip(["install", "openai", "Pillow", "--upgrade"])
+    pkgmgr.run_pip(["install", "openai", "Pillow", "--upgrade", "-i", "https://pypi.douban.com/simple/"])
 
 
 known_exception_caught = False
