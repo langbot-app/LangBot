@@ -10,3 +10,5 @@ plugins/
 prompts/
 logs/
 sensitive.json
+temp/
+current_tag

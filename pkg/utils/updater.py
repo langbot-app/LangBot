@@ -1,4 +1,9 @@
 import datetime
+import logging
+import os.path
+
+import requests
+import json
 
 import pkg.utils.context
 
@@ -28,34 +33,100 @@ def pull_latest(repo_path: str) -> bool:
     return True
 
 
+def get_release_list() -> list:
+    """获取发行列表"""
+    rls_list_resp = requests.get(
+        url="https://api.github.com/repos/RockChinQ/QChatGPT/releases"
+    )
+
+    rls_list = rls_list_resp.json()
+
+    return rls_list
+
+
+def get_current_tag() -> str:
+    """获取当前tag"""
+    current_tag = "v0.1.0"
+    if os.path.exists("current_tag"):
+        with open("current_tag", "r") as f:
+            current_tag = f.read()
+
+    return current_tag
+
+
 def update_all() -> bool:
-    """使用dulwich更新源码"""
-    check_dulwich_closure()
-    import dulwich
-    try:
-        before_commit_id = get_current_commit_id()
-        from dulwich import porcelain
-        repo = porcelain.open_repo('.')
-        porcelain.pull(repo)
+    """检查更新并下载源码"""
+    current_tag = get_current_tag()
 
-        change_log = ""
+    rls_list = get_release_list()
 
-        for entry in repo.get_walker():
-            if str(entry.commit.id)[2:-1] == before_commit_id:
-                break
-            tz = datetime.timezone(datetime.timedelta(hours=entry.commit.commit_timezone // 3600))
-            dt = datetime.datetime.fromtimestamp(entry.commit.commit_time, tz)
-            change_log += dt.strftime('%Y-%m-%d %H:%M:%S') + " [" + str(entry.commit.message, encoding="utf-8").strip()+"]\n"
+    latest_rls = {}
+    rls_notes = []
+    for rls in rls_list:
+        rls_notes.append(rls['name'])  # 使用发行名称作为note
+        if rls['tag_name'] == current_tag:
+            break
 
-        if change_log != "":
-            pkg.utils.context.get_qqbot_manager().notify_admin("代码拉取完成,更新内容如下:\n"+change_log)
-            return True
-        else:
-            return False
-    except ModuleNotFoundError:
-        raise Exception("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
-    except dulwich.porcelain.DivergedBranches:
-        raise Exception("分支不一致,自动更新仅支持master分支,请手动更新(https://github.com/RockChinQ/QChatGPT/issues/76)")
+        if latest_rls == {}:
+            latest_rls = rls
+    logging.info("更新日志: {}".format(rls_notes))
+    if latest_rls == {}:  # 没有新版本
+        return False
+
+    # 下载最新版本的zip到temp目录
+    logging.info("开始下载最新版本: {}".format(latest_rls['zipball_url']))
+    zip_url = latest_rls['zipball_url']
+    zip_resp = requests.get(url=zip_url)
+    zip_data = zip_resp.content
+
+    # 检查temp/updater目录
+    if not os.path.exists("temp"):
+        os.mkdir("temp")
+    if not os.path.exists("temp/updater"):
+        os.mkdir("temp/updater")
+    with open("temp/updater/{}.zip".format(latest_rls['tag_name']), "wb") as f:
+        f.write(zip_data)
+
+    logging.info("下载最新版本完成: {}".format("temp/updater/{}.zip".format(latest_rls['tag_name'])))
+
+    # 解压zip到temp/updater/<tag_name>/
+    import zipfile
+    # 检查目标文件夹
+    if os.path.exists("temp/updater/{}".format(latest_rls['tag_name'])):
+        import shutil
+        shutil.rmtree("temp/updater/{}".format(latest_rls['tag_name']))
+    os.mkdir("temp/updater/{}".format(latest_rls['tag_name']))
+    with zipfile.ZipFile("temp/updater/{}.zip".format(latest_rls['tag_name']), 'r') as zip_ref:
+        zip_ref.extractall("temp/updater/{}".format(latest_rls['tag_name']))
+
+    # 覆盖源码
+    source_root = ""
+    # 找到temp/updater/<tag_name>/中的第一个子目录路径
+    for root, dirs, files in os.walk("temp/updater/{}".format(latest_rls['tag_name'])):
+        if root != "temp/updater/{}".format(latest_rls['tag_name']):
+            source_root = root
+            break
+
+    # 覆盖源码
+    import shutil
+    for root, dirs, files in os.walk(source_root):
+        # 覆盖所有子文件子目录
+        for file in files:
+            src = os.path.join(root, file)
+            dst = src.replace(source_root, ".")
+            if os.path.exists(dst):
+                os.remove(dst)
+            shutil.copy(src, dst)
+
+    # 把current_tag写入文件
+    current_tag = latest_rls['tag_name']
+    with open("current_tag", "w") as f:
+        f.write(current_tag)
+
+    # 通知管理员
+    import pkg.utils.context
+    pkg.utils.context.get_qqbot_manager().notify_admin("已更新到最新版本: {}\n更新日志:\n{}\n新功能通常可以在config-template.py中看到，完整的更新日志请前往 https://github.com/RockChinQ/QChatGPT/releases 查看".format(current_tag, "\n".join(rls_notes)))
+    return True
 
 
 def is_repo(path: str) -> bool:
@@ -132,15 +203,42 @@ def get_current_commit_id() -> str:
 
 def is_new_version_available() -> bool:
     """检查是否有新版本"""
-    check_dulwich_closure()
+    # 从github获取release列表
+    rls_list = get_release_list()
+    if rls_list is None:
+        return False
 
-    from dulwich import porcelain
+    # 获取当前版本
+    current_tag = get_current_tag()
 
-    repo = porcelain.open_repo('.')
-    fetch_res = porcelain.ls_remote(porcelain.get_remote_repo(repo, "origin")[1])
+    # 检查是否有新版本
+    for rls in rls_list:
+        if rls['tag_name'] == current_tag:
+            return False
+        else:
+            return True
 
-    current_commit_id = get_current_commit_id()
 
-    latest_commit_id = str(fetch_res[b'HEAD'])[2:-1]
+def get_rls_notes() -> list:
+    """获取更新日志"""
+    # 从github获取release列表
+    rls_list = get_release_list()
+    if rls_list is None:
+        return None
 
-    return current_commit_id != latest_commit_id
+    # 获取当前版本
+    current_tag = get_current_tag()
+
+    # 检查是否有新版本
+    rls_notes = []
+    for rls in rls_list:
+        if rls['tag_name'] == current_tag:
+            break
+
+        rls_notes.append(rls['name'])
+
+    return rls_notes
+
+
+if __name__ == "__main__":
+    update_all()

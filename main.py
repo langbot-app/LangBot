@@ -107,11 +107,18 @@ def reset_logging():
 def main(first_time_init=False):
     global known_exception_caught
 
-    # 检查并创建plugins、prompts目录
-    check_path = ["plugins", "prompts"]
-    for path in check_path:
-        if not os.path.exists(path):
-            os.mkdir(path)
+    import config
+    # 更新openai库到最新版本
+    if not hasattr(config, 'upgrade_dependencies') or config.upgrade_dependencies:
+        print("正在更新依赖库，请等待...")
+        if not hasattr(config, 'upgrade_dependencies'):
+            print("这个操作不是必须的,如果不想更新,请在config.py中添加upgrade_dependencies=False")
+        else:
+            print("这个操作不是必须的,如果不想更新,请在config.py中将upgrade_dependencies设置为False")
+        try:
+            ensure_dependencies()
+        except Exception as e:
+            print("更新openai库失败:{}, 请忽略或自行更新".format(e))
 
     known_exception_caught = False
     try:
@@ -263,7 +270,7 @@ def main(first_time_init=False):
     import pkg.utils.updater
     try:
         if pkg.utils.updater.is_new_version_available():
-            pkg.utils.context.get_qqbot_manager().notify_admin("新版本可用，请发送 !update 进行自动更新")
+            pkg.utils.context.get_qqbot_manager().notify_admin("新版本可用，请发送 !update 进行自动更新\n更新日志:\n{}".format("\n".join(pkg.utils.updater.get_rls_notes())))
         else:
             logging.info("当前已是最新版本")
 
@@ -314,9 +321,19 @@ if __name__ == '__main__':
     if not os.path.exists('banlist.py'):
         shutil.copy('banlist-template.py', 'banlist.py')
 
-    # 检查是否有sensitive.json,
+    # 检查是否有sensitive.json
     if not os.path.exists("sensitive.json"):
         shutil.copy("sensitive-template.json", "sensitive.json")
+
+    # 检查temp目录
+    if not os.path.exists("temp/"):
+        os.mkdir("temp/")
+
+    # 检查并创建plugins、prompts目录
+    check_path = ["plugins", "prompts"]
+    for path in check_path:
+        if not os.path.exists(path):
+            os.mkdir(path)
 
     if len(sys.argv) > 1 and sys.argv[1] == 'init_db':
         init_db()
@@ -342,18 +359,5 @@ if __name__ == '__main__':
     #
     # pkg.utils.configmgr.set_config_and_reload("quote_origin", False)
     requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
-
-    import config
-    # 更新openai库到最新版本
-    if not hasattr(config, 'upgrade_dependencies') or config.upgrade_dependencies:
-        print("正在更新依赖库，请等待...")
-        if not hasattr(config, 'upgrade_dependencies'):
-            print("这个操作不是必须的,如果不想更新,请在config.py中添加upgrade_dependencies=False")
-        else:
-            print("这个操作不是必须的,如果不想更新,请在config.py中将upgrade_dependencies设置为False")
-        try:
-            ensure_dependencies()
-        except Exception as e:
-            print("更新openai库失败:{}, 请忽略或自行更新".format(e))
 
     main(True)
