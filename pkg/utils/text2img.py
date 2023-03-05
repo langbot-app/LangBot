@@ -1,8 +1,27 @@
+import logging
+
 from PIL import Image, ImageDraw, ImageFont
 import re
 import os
+import config
 
-text_render_font = ImageFont.truetype("res/simhei.ttf", 32, encoding="utf-8")
+use_font = config.font_path if hasattr(config, "font_path") else ""
+text_render_font: ImageFont = None
+
+# 检查是否存在
+if not os.path.exists(use_font):
+    # 若是windows系统，使用微软雅黑
+    if os.name == "nt":
+        use_font = "C:/Windows/Fonts/msyh.ttc"
+        if not os.path.exists(use_font):
+            logging.warn("未找到字体文件，且无法使用Windows自带字体，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。")
+            config.blob_message_strategy = "forward"
+        else:
+            logging.info("使用Windows自带字体：" + use_font)
+            text_render_font = ImageFont.truetype(use_font, 32, encoding="utf-8")
+    else:
+        logging.warn("未找到字体文件，且无法使用Windows自带字体，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。")
+        config.blob_message_strategy = "forward"
 
 
 def indexNumber(path=''):
@@ -123,7 +142,7 @@ def text_to_image(text_str: str, save_as="temp.png", width=800):
                 else:
                     continue
     # 准备画布
-    img = Image.new('RGBA', (width, max(280, len(final_lines) * 35 + 45)), (255, 255, 255, 255))
+    img = Image.new('RGBA', (width, max(280, len(final_lines) * 35 + 65)), (255, 255, 255, 255))
     draw = ImageDraw.Draw(img, mode='RGBA')
 
     
