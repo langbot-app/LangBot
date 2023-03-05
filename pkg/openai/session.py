@@ -1,3 +1,8 @@
+"""主线使用的会话管理模块
+
+每个人、每个群单独一个session，session内部保留了对话的上下文，
+"""
+
 import logging
 import threading
 import time
@@ -18,6 +23,7 @@ sessions = {}
 class SessionOfflineStatus:
     ON_GOING = 'on_going'
     EXPLICITLY_CLOSED = 'explicitly_closed'
+
 
 # 重置session.prompt
 def reset_session_prompt(session_name, prompt):
@@ -43,11 +49,14 @@ def reset_session_prompt(session_name, prompt):
 用户[{}]的数据已被重置，有可能是因为数据版本过旧或存储错误
 原始数据将备份在：
 {}""".format(session_name, bak_path)
-    )
+    )  # 为保证多行文本格式正确故无缩进
     return prompt
+
 
 # 从数据加载session
 def load_sessions():
+    """从数据库加载sessions"""
+
     global sessions
 
     db_inst = pkg.utils.context.get_database_manager()
@@ -93,10 +102,13 @@ class Session:
     name = ''
 
     prompt = []
+    """使用list来保存会话中的回合"""
 
     create_timestamp = 0
+    """会话创建时间"""
 
     last_interact_timestamp = 0
+    """上次交互(产生回复)时间"""
 
     just_switched_to_exist_session = False
 
@@ -116,7 +128,7 @@ class Session:
             logging.debug('{},lock release successfully,{}'.format(self.name, self.response_lock))
 
     # 从配置文件获取会话预设信息
-    def get_default_prompt(self, use_default: str=None):
+    def get_default_prompt(self, use_default: str = None):
         config = pkg.utils.context.get_config()
 
         import pkg.openai.dprompt as dprompt
@@ -130,7 +142,7 @@ class Session:
             {
                 'role': 'user',
                 'content': current_default_prompt
-            },{
+            }, {
                 'role': 'assistant',
                 'content': 'ok'
             }
@@ -182,6 +194,8 @@ class Session:
     # 请求回复
     # 这个函数是阻塞的
     def append(self, text: str) -> str:
+        """向session中添加一条消息，返回接口回复"""
+
         self.last_interact_timestamp = int(time.time())
 
         # 触发插件事件
@@ -215,14 +229,14 @@ class Session:
             res_ans = '\n\n'.join(res_ans_spt)
 
         # 将此次对话的双方内容加入到prompt中
-        self.prompt.append({'role':'user', 'content':text})
-        self.prompt.append({'role':'assistant', 'content':res_ans})
+        self.prompt.append({'role': 'user', 'content': text})
+        self.prompt.append({'role': 'assistant', 'content': res_ans})
 
         if self.just_switched_to_exist_session:
             self.just_switched_to_exist_session = False
             self.set_ongoing()
 
-        return res_ans if res_ans[0]!='\n' else res_ans[1:]
+        return res_ans if res_ans[0] != '\n' else res_ans[1:]
 
     # 删除上一回合并返回上一回合的问题
     def undo(self) -> str:
@@ -231,10 +245,10 @@ class Session:
         # 删除最后两个消息
         if len(self.prompt) < 2:
             raise Exception('之前无对话，无法撤销')
-    
+
         question = self.prompt[-2]['content']
         self.prompt = self.prompt[:-2]
-        
+
         # 返回上一回合的问题
         return question
 
@@ -242,13 +256,13 @@ class Session:
     def cut_out(self, msg: str, max_tokens: int) -> list:
         """将现有prompt进行切割处理，使得新的prompt长度不超过max_tokens"""
         # 如果用户消息长度超过max_tokens，直接返回
-        
+
         temp_prompt = [
-                {
-                    'role': 'user',
-                    'content': msg
-                }
-            ]
+            {
+                'role': 'user',
+                'content': msg
+            }
+        ]
 
         token_count = len(msg)
         # 倒序遍历prompt

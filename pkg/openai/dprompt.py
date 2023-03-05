@@ -1,8 +1,13 @@
 # 多情景预设值管理
 
 __current__ = "default"
+"""当前默认使用的情景预设的名称
+
+由管理员使用`!default <名称>`指令切换
+"""
 
 __prompts_from_files__ = {}
+"""从文件中读取的情景预设值"""
 
 
 def read_prompt_from_file() -> str:

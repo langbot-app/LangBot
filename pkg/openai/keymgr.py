@@ -5,18 +5,26 @@ import logging
 import pkg.plugin.host as plugin_host
 import pkg.plugin.models as plugin_models
 
+
 class KeysManager:
     api_key = {}
+    """所有api-key"""
 
-    # api-key的使用量
-    # 其中键为api-key的md5值，值为使用量
     using_key = ""
+    """当前使用的api-key
+    """
 
     alerted = []
+    """已提示过超额的key
+    
+    记录在此以避免重复提示
+    """
 
-    # 在此list中的都是经超额报错标记过的api-key
-    # 记录的是key值，仅在运行时有效
     exceeded = []
+    """已超额的key
+    
+    供自动切换功能识别
+    """
 
     def get_using_key(self):
         return self.using_key
@@ -25,8 +33,6 @@ class KeysManager:
         return hashlib.md5(self.using_key.encode('utf-8')).hexdigest()
 
     def __init__(self, api_key):
-        # if hasattr(config, 'api_key_usage_threshold'):
-        #     self.api_key_usage_threshold = config.api_key_usage_threshold
 
         if type(api_key) is dict:
             self.api_key = api_key
@@ -42,9 +48,13 @@ class KeysManager:
 
         self.auto_switch()
 
-    # 根据tested自动切换到可用的api-key
-    # 返回是否切换成功, 切换后的api-key的别名
     def auto_switch(self) -> (bool, str):
+        """尝试切换api-key
+
+        Returns:
+            是否切换成功, 切换后的api-key的别名
+        """
+
         for key_name in self.api_key:
             if self.api_key[key_name] not in self.exceeded:
                 self.using_key = self.api_key[key_name]
@@ -68,12 +78,9 @@ class KeysManager:
     def add(self, key_name, key):
         self.api_key[key_name] = key
 
-    # 设置当前使用的api-key使用量超限
-    # 这是在尝试调用api时发生超限异常时调用的
     def set_current_exceeded(self):
-        # md5 = hashlib.md5(self.using_key.encode('utf-8')).hexdigest()
-        # self.usage[md5] = self.api_key_usage_threshold
-        # self.fee[md5] = self.api_key_fee_threshold
+        """设置当前使用的api-key使用量超限
+        """
         self.exceeded.append(self.using_key)
 
     def get_key_name(self, api_key):

@@ -1,3 +1,6 @@
+"""
+数据库管理模块
+"""
 import hashlib
 import json
 import logging
@@ -9,9 +12,9 @@ import sqlite3
 import pkg.utils.context
 
 
-# 数据库管理
-# 为其他模块提供数据库操作接口
 class DatabaseManager:
+    """封装数据库底层操作，并提供方法给上层使用"""
+
     conn = None
     cursor = None
 
@@ -23,13 +26,14 @@ class DatabaseManager:
 
     # 连接到数据库文件
     def reconnect(self):
+        """连接到数据库"""
         self.conn = sqlite3.connect('database.db', check_same_thread=False)
         self.cursor = self.conn.cursor()
 
     def close(self):
         self.conn.close()
 
-    def execute(self, *args, **kwargs) -> Cursor:
+    def __execute__(self, *args, **kwargs) -> Cursor:
         # logging.debug('SQL: {}'.format(sql))
         c = self.cursor.execute(*args, **kwargs)
         self.conn.commit()
@@ -37,7 +41,9 @@ class DatabaseManager:
 
     # 初始化数据库的函数
     def initialize_database(self):
-        self.execute("""
+        """创建数据表"""
+
+        self.__execute__("""
         create table if not exists `sessions` (
             `id` INTEGER PRIMARY KEY AUTOINCREMENT,
             `name` varchar(255) not null,
@@ -50,7 +56,7 @@ class DatabaseManager:
         )
         """)
 
-        self.execute("""
+        self.__execute__("""
         create table if not exists `account_fee`(
             `id` INTEGER PRIMARY KEY AUTOINCREMENT,
             `key_md5` varchar(255) not null,
@@ -59,7 +65,7 @@ class DatabaseManager:
         )
         """)
 
-        self.execute("""
+        self.__execute__("""
         create table if not exists `account_usage`(
             `id` INTEGER PRIMARY KEY AUTOINCREMENT,
             `json` text not null
@@ -70,10 +76,12 @@ class DatabaseManager:
     # session持久化
     def persistence_session(self, subject_type: str, subject_number: int, create_timestamp: int,
                             last_interact_timestamp: int, prompt: str):
+        """持久化指定session"""
+
         # 检查是否已经有了此name和create_timestamp的session
         # 如果有，就更新prompt和last_interact_timestamp
         # 如果没有，就插入一条新的记录
-        self.execute("""
+        self.__execute__("""
         select count(*) from `sessions` where `type` = '{}' and `number` = {} and `create_timestamp` = {}
         """.format(subject_type, subject_number, create_timestamp))
         count = self.cursor.fetchone()[0]
@@ -84,8 +92,8 @@ class DatabaseManager:
             values (?, ?, ?, ?, ?, ?)
             """
 
-            self.execute(sql,
-                         ("{}_{}".format(subject_type, subject_number), subject_type, subject_number, create_timestamp,
+            self.__execute__(sql,
+                             ("{}_{}".format(subject_type, subject_number), subject_type, subject_number, create_timestamp,
                           last_interact_timestamp, prompt))
         else:
             sql = """
@@ -93,23 +101,23 @@ class DatabaseManager:
             where `type` = ? and `number` = ? and `create_timestamp` = ?
             """
 
-            self.execute(sql, (last_interact_timestamp, prompt, subject_type,
-                               subject_number, create_timestamp))
+            self.__execute__(sql, (last_interact_timestamp, prompt, subject_type,
+                                   subject_number, create_timestamp))
 
     # 显式关闭一个session
     def explicit_close_session(self, session_name: str, create_timestamp: int):
-        self.execute("""
+        self.__execute__("""
         update `sessions` set `status` = 'explicitly_closed' where `name` = '{}' and `create_timestamp` = {}
         """.format(session_name, create_timestamp))
 
     def set_session_ongoing(self, session_name: str, create_timestamp: int):
-        self.execute("""
+        self.__execute__("""
         update `sessions` set `status` = 'on_going' where `name` = '{}' and `create_timestamp` = {}
         """.format(session_name, create_timestamp))
 
     # 设置session为过期
     def set_session_expired(self, session_name: str, create_timestamp: int):
-        self.execute("""
+        self.__execute__("""
         update `sessions` set `status` = 'expired' where `name` = '{}' and `create_timestamp` = {}
         """.format(session_name, create_timestamp))
 
@@ -117,7 +125,7 @@ class DatabaseManager:
     def load_valid_sessions(self) -> dict:
         # 从数据库中加载所有还没过期的session
         config = pkg.utils.context.get_config()
-        self.execute("""
+        self.__execute__("""
         select `name`, `type`, `number`, `create_timestamp`, `last_interact_timestamp`, `prompt`, `status`
         from `sessions` where `last_interact_timestamp` > {}
         """.format(int(time.time()) - config.session_expire_time))
@@ -150,7 +158,7 @@ class DatabaseManager:
     # 获取此session_name前一个session的数据
     def last_session(self, session_name: str, cursor_timestamp: int):
 
-        self.execute("""
+        self.__execute__("""
         select `name`, `type`, `number`, `create_timestamp`, `last_interact_timestamp`, `prompt`, `status`
         from `sessions` where `name` = '{}' and `last_interact_timestamp` < {} order by `last_interact_timestamp` desc
         limit 1
@@ -179,7 +187,7 @@ class DatabaseManager:
     # 获取此session_name后一个session的数据
     def next_session(self, session_name: str, cursor_timestamp: int):
 
-        self.execute("""
+        self.__execute__("""
             select `name`, `type`, `number`, `create_timestamp`, `last_interact_timestamp`, `prompt`, `status`
             from `sessions` where `name` = '{}' and `last_interact_timestamp` > {} order by `last_interact_timestamp` asc
             limit 1
@@ -207,7 +215,7 @@ class DatabaseManager:
 
     # 列出与某个对象的所有对话session
     def list_history(self, session_name: str, capacity: int, page: int):
-        self.execute("""
+        self.__execute__("""
         select `name`, `type`, `number`, `create_timestamp`, `last_interact_timestamp`, `prompt`, `status`
         from `sessions` where `name` = '{}' order by `last_interact_timestamp` desc limit {} offset {}
         """.format(session_name, capacity, capacity * page))
@@ -246,22 +254,22 @@ class DatabaseManager:
                 usage_count = usage[key_md5]
             # 将使用量存进数据库
             # 先检查是否已存在
-            self.execute("""
+            self.__execute__("""
             select count(*) from `api_key_usage` where `key_md5` = '{}'""".format(key_md5))
             result = self.cursor.fetchone()
             if result[0] == 0:
                 # 不存在则插入
-                self.execute("""
+                self.__execute__("""
                 insert into `api_key_usage` (`key_md5`, `usage`,`timestamp`) values ('{}', {}, {})
                 """.format(key_md5, usage_count, int(time.time())))
             else:
                 # 存在则更新，timestamp设置为当前
-                self.execute("""
+                self.__execute__("""
                 update `api_key_usage` set `usage` = {}, `timestamp` = {} where `key_md5` = '{}'
                 """.format(usage_count, int(time.time()), key_md5))
 
     def load_api_key_usage(self):
-        self.execute("""
+        self.__execute__("""
         select `key_md5`, `usage` from `api_key_usage`
         """)
         results = self.cursor.fetchall()
@@ -273,23 +281,24 @@ class DatabaseManager:
         return usage
 
     def dump_usage_json(self, usage: dict):
+
         json_str = json.dumps(usage)
-        self.execute("""
+        self.__execute__("""
         select count(*) from `account_usage`""")
         result = self.cursor.fetchone()
         if result[0] == 0:
             # 不存在则插入
-            self.execute("""
+            self.__execute__("""
             insert into `account_usage` (`json`) values ('{}')
             """.format(json_str))
         else:
             # 存在则更新
-            self.execute("""
+            self.__execute__("""
             update `account_usage` set `json` = '{}' where `id` = 1
             """.format(json_str))
 
     def load_usage_json(self):
-        self.execute("""
+        self.__execute__("""
         select `json` from `account_usage` order by id desc limit 1
         """)
         result = self.cursor.fetchone()

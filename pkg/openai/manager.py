@@ -7,9 +7,12 @@ import pkg.utils.context
 import pkg.audit.gatherer
 from pkg.openai.modelmgr import ModelRequest, create_openai_model_request
 
-# 为其他模块提供与OpenAI交互的接口
+
 class OpenAIInteract:
-    api_params = {}
+    """OpenAI 接口封装
+
+    将文字接口和图片接口封装供调用方使用
+    """
 
     key_mgr: pkg.openai.keymgr.KeysManager = None
 
@@ -20,7 +23,6 @@ class OpenAIInteract:
     }
 
     def __init__(self, api_key: str):
-        # self.api_key = api_key
 
         self.key_mgr = pkg.openai.keymgr.KeysManager(api_key)
         self.audit_mgr = pkg.audit.gatherer.DataGatherer()
@@ -32,7 +34,16 @@ class OpenAIInteract:
         pkg.utils.context.set_openai_manager(self)
 
     # 请求OpenAI Completion
-    def request_completion(self, prompts):
+    def request_completion(self, prompts) -> str:
+        """请求补全接口回复
+
+        Parameters:
+            prompts (str): 提示语
+
+        Returns:
+            str: 回复
+        """
+
         config = pkg.utils.context.get_config()
 
         # 根据模型选择使用的接口
@@ -58,8 +69,15 @@ class OpenAIInteract:
 
         return ai.get_message()
 
-    def request_image(self, prompt):
+    def request_image(self, prompt) -> dict:
+        """请求图片接口回复
 
+        Parameters:
+            prompt (str): 提示语
+
+        Returns:
+            dict: 响应
+        """
         config = pkg.utils.context.get_config()
         params = config.image_api_params if hasattr(config, "image_api_params") else self.default_image_api_params
 

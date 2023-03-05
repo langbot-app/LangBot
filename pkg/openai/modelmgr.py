@@ -1,4 +1,10 @@
-# 提供与模型交互的抽象接口
+"""OpenAI 接口底层封装
+
+目前使用的对话接口有：
+ChatCompletion - gpt-3.5-turbo 等模型
+Completion - text-davinci-003 等模型
+此模块封装此两个接口的请求实现，为上层提供统一的调用方式
+"""
 import openai, logging, threading, asyncio
 import openai.error as aiE
 
@@ -26,14 +32,15 @@ IMAGE_MODELS = {
 }
 
 
-class ModelRequest():
-    """GPT父类"""
+class ModelRequest:
+    """模型接口请求父类"""
+
     can_chat = False
-    runtime:threading.Thread = None
+    runtime: threading.Thread = None
     ret = {}
-    proxy:str = None
+    proxy: str = None
     request_ready = True
-    error_info:str = "若在没有任何错误的情况下看到这句话，请带着配置文件上报Issues"
+    error_info: str = "若在没有任何错误的情况下看到这句话，请带着配置文件上报Issues"
 
     def __init__(self, model_name, user_name, request_fun, http_proxy:str = None, time_out = None):
         self.model_name = model_name
@@ -46,6 +53,8 @@ class ModelRequest():
             self.request_ready = False
 
     async def __a_request__(self, **kwargs):
+        """异步请求"""
+
         try:
             self.ret:dict = await self.request_fun(**kwargs)
             self.request_ready = True
@@ -59,6 +68,8 @@ class ModelRequest():
             raise Exception(self.error_info)
 
     def request(self, **kwargs):
+        """向接口发起请求"""
+
         if self.proxy != None: #异步请求
             self.request_ready = False
             loop = asyncio.new_event_loop()
@@ -97,8 +108,10 @@ class ModelRequest():
     def get_response(self):
         return self.ret
 
+
 class ChatCompletionModel(ModelRequest):
-    """ChatCompletion类模型"""
+    """ChatCompletion接口的请求实现"""
+
     Chat_role = ['system', 'user', 'assistant']
     def __init__(self, model_name, user_name, http_proxy:str = None, **kwargs):
         if http_proxy == None:
@@ -126,7 +139,8 @@ class ChatCompletionModel(ModelRequest):
 
 
 class CompletionModel(ModelRequest):
-    """Completion类模型"""
+    """Completion接口的请求实现"""
+
     def __init__(self, model_name, user_name, http_proxy:str = None, **kwargs):
         if http_proxy == None:
             request_fun = openai.Completion.create

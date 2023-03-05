@@ -116,7 +116,9 @@ def initialize_plugins():
 
 
 def unload_plugins():
-    """ 卸载插件 """
+    """ 卸载插件
+    """
+    # 不再显式卸载插件，因为当程序结束时，插件的析构函数会被系统执行
     # for plugin in __plugins__.values():
     #     if plugin['enabled'] and plugin['instance'] is not None:
     #         if not hasattr(plugin['instance'], '__del__'):

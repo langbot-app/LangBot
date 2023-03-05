@@ -145,6 +145,7 @@ __current_registering_plugin__ = ""
 
 
 class Plugin:
+    """插件基类"""
 
     host: host.PluginHost
     """插件宿主，提供插件的一些基础功能"""
