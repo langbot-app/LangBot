@@ -129,11 +129,15 @@ def main(first_time_init=False):
 
         config = importlib.import_module('config')
 
-        #配置完整性校验
+        init_runtime_log_file()
+
+        sh = reset_logging()
+
+        # 配置完整性校验
         is_integrity = True
         config_template = importlib.import_module('config-template')
         for key in dir(config_template):
-            if not hasattr(config, key):
+            if not key.startswith("__") and not hasattr(config, key):
                 setattr(config, key, getattr(config_template, key))
                 logging.warning("[{}]不存在".format(key))
                 is_integrity = False
@@ -144,10 +148,6 @@ def main(first_time_init=False):
 
         import pkg.utils.context
         pkg.utils.context.set_config(config)
-
-        init_runtime_log_file()
-
-        sh = reset_logging()
 
         # 检查是否设置了管理员
         if not (hasattr(config, 'admin_qq') and config.admin_qq != 0):
