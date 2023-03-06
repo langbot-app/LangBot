@@ -7,6 +7,7 @@ import logging
 
 class ReplyFilter:
     sensitive_words = []
+    mask = "*"
 
     # 默认值( 兼容性考虑 )
     baidu_check = False
@@ -14,8 +15,9 @@ class ReplyFilter:
     baidu_secret_key = ""
     inappropriate_message_tips = "[百度云]请珍惜机器人，当前返回内容不合规"
 
-    def __init__(self, sensitive_words: list):
+    def __init__(self, sensitive_words: list, mask: str = "*"):
         self.sensitive_words = sensitive_words
+        self.mask = mask
         import config
         if hasattr(config, 'baidu_check') and hasattr(config, 'baidu_api_key') and hasattr(config, 'baidu_secret_key'):
             self.baidu_check = config.baidu_check
@@ -36,7 +38,7 @@ class ReplyFilter:
             match = re.findall(word, message)
             if len(match) > 0:
                 for i in range(len(match)):
-                    message = message.replace(match[i], "*" * len(match[i]))
+                    message = message.replace(match[i], self.mask * len(match[i]))
 
         # 百度云审核
         if self.baidu_check:
