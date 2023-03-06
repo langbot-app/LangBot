@@ -21,6 +21,7 @@ import pkg.utils.context
 import pkg.plugin.host as plugin_host
 import pkg.plugin.models as plugin_models
 
+
 # 检查消息是否符合泛响应匹配机制
 def check_response_rule(text: str):
     config = pkg.utils.context.get_config()
@@ -43,6 +44,22 @@ def check_response_rule(text: str):
                 return True, text
 
     return False, ""
+
+
+def response_at():
+    config = pkg.utils.context.get_config()
+    if 'at' not in config.response_rules:
+        return True
+
+    return config.response_rules['at']
+
+
+def random_responding():
+    config = pkg.utils.context.get_config()
+    if 'random_rate' in config.response_rules:
+        import random
+        return random.random() < config.response_rules['random_rate']
+    return False
 
 
 # 控制QQ消息输入输出的类
@@ -296,14 +313,19 @@ class QQBotManager:
 
         if Image in event.message_chain:
             pass
-        elif At(self.bot.qq) not in event.message_chain:
-            check, result = check_response_rule(str(event.message_chain).strip())
-
-            if check:
-                reply = process(result.strip())
         else:
-            # 直接调用
-            reply = process()
+            if At(self.bot.qq) in event.message_chain and response_at():
+                # 直接调用
+                reply = process()
+            else:
+                check, result = check_response_rule(str(event.message_chain).strip())
+
+                if check:
+                    reply = process(result.strip())
+                # 检查是否随机响应
+                elif random_responding():
+                    logging.info("随机响应group_{}消息".format(event.group.id))
+                    reply = process()
 
         if reply:
             return self.send(event, reply)
