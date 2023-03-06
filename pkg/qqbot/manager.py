@@ -82,7 +82,12 @@ class QQBotManager:
                 and config.sensitive_word_filter is not None \
                 and config.sensitive_word_filter:
             with open("sensitive.json", "r", encoding="utf-8") as f:
-                self.reply_filter = pkg.qqbot.filter.ReplyFilter(json.load(f)['words'])
+                sensitive_json = json.load(f)
+                self.reply_filter = pkg.qqbot.filter.ReplyFilter(
+                    sensitive_words=sensitive_json['words'],
+                    mask=sensitive_json['mask'] if 'mask' in sensitive_json else '*',
+                    mask_word=sensitive_json['mask_word'] if 'mask_word' in sensitive_json else ''
+                )
         else:
             self.reply_filter = pkg.qqbot.filter.ReplyFilter([])
 
