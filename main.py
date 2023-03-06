@@ -129,12 +129,25 @@ def main(first_time_init=False):
 
         config = importlib.import_module('config')
 
-        import pkg.utils.context
-        pkg.utils.context.set_config(config)
-
         init_runtime_log_file()
 
         sh = reset_logging()
+
+        # 配置完整性校验
+        is_integrity = True
+        config_template = importlib.import_module('config-template')
+        for key in dir(config_template):
+            if not key.startswith("__") and not hasattr(config, key):
+                setattr(config, key, getattr(config_template, key))
+                logging.warning("[{}]不存在".format(key))
+                is_integrity = False
+        if not is_integrity:
+            logging.warning("配置文件不完整，请依据config-template.py检查config.py")
+            logging.warning("以上配置已被设为默认值，将在5秒后继续启动... ")
+            time.sleep(5)
+
+        import pkg.utils.context
+        pkg.utils.context.set_config(config)
 
         # 检查是否设置了管理员
         if not (hasattr(config, 'admin_qq') and config.admin_qq != 0):
@@ -182,8 +195,7 @@ def main(first_time_init=False):
         # 初始化qq机器人
         qqbot = pkg.qqbot.manager.QQBotManager(mirai_http_api_config=config.mirai_http_api_config,
                                                timeout=config.process_message_timeout, retry=config.retry_times,
-                                               first_time_init=first_time_init,
-                                               pool_num=config.pool_num if hasattr(config, 'pool_num') else 10)
+                                               first_time_init=first_time_init, pool_num=config.pool_num)
 
         # 加载插件
         import pkg.plugin.host
