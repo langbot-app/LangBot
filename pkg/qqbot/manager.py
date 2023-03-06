@@ -85,7 +85,8 @@ class QQBotManager:
                 sensitive_json = json.load(f)
                 self.reply_filter = pkg.qqbot.filter.ReplyFilter(
                     sensitive_words=sensitive_json['words'],
-                    mask=sensitive_json['mask'] if 'mask' in sensitive_json else '*'
+                    mask=sensitive_json['mask'] if 'mask' in sensitive_json else '*',
+                    mask_word=sensitive_json['mask_word'] if 'mask_word' in sensitive_json else ''
                 )
         else:
             self.reply_filter = pkg.qqbot.filter.ReplyFilter([])
