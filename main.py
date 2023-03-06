@@ -107,6 +107,8 @@ def reset_logging():
 
 
 def main(first_time_init=False):
+    """启动流程，reload之后会被执行"""
+
     global known_exception_caught
 
     import config
@@ -203,7 +205,7 @@ def main(first_time_init=False):
 
         pkg.plugin.host.initialize_plugins()
 
-        if first_time_init:  # 不是热重载之后的启动,则不启动新的bot线程
+        if first_time_init:  # 是热重载之后的启动,则不启动新的bot线程
 
             import mirai.exceptions
 
@@ -292,17 +294,7 @@ def main(first_time_init=False):
     except Exception as e:
         logging.warning("检查更新失败:{}".format(e))
 
-    while True:
-        try:
-            time.sleep(10)
-            if qqbot != pkg.utils.context.get_qqbot_manager():  # 已经reload了
-                logging.info("以前的main流程由于reload退出")
-                break
-        except KeyboardInterrupt:
-            stop()
-
-            print("程序退出")
-            sys.exit(0)
+    return qqbot
 
 
 def stop():
@@ -365,4 +357,14 @@ if __name__ == '__main__':
     # pkg.utils.configmgr.set_config_and_reload("quote_origin", False)
     requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
-    main(True)
+    qqbot = main(True)
+
+    import pkg.utils.context
+    while True:
+        try:
+            time.sleep(10)
+        except KeyboardInterrupt:
+            stop()
+
+            print("程序退出")
+            sys.exit(0)
