@@ -130,12 +130,17 @@ def main(first_time_init=False):
         config = importlib.import_module('config')
 
         #配置完整性校验
+        is_integrity = True
         config_template = importlib.import_module('config-template')
         for key in dir(config_template):
             if not hasattr(config, key):
                 setattr(config, key, getattr(config_template, key))
-                logging.warning("[{}]未配置，请更新或检查config.py".format(key))
-                input('按回车继续...')
+                logging.warning("[{}]不存在".format(key))
+                is_integrity = False
+        if not is_integrity:
+            logging.warning("配置文件不完整，请依据config-template.py检查config.py")
+            logging.warning("以上配置已被设为默认值，将在5秒后继续启动... ")
+            time.sleep(5)
 
         import pkg.utils.context
         pkg.utils.context.set_config(config)
