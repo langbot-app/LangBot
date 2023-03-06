@@ -343,8 +343,9 @@ if __name__ == '__main__':
         sys.exit(0)
 
     elif len(sys.argv) > 1 and sys.argv[1] == 'update':
+        print("正在进行程序更新...")
         import pkg.utils.updater as updater
-        updater.update_all()
+        updater.update_all(cli=True)
         sys.exit(0)
 
     # import pkg.utils.configmgr

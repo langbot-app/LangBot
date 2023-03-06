@@ -54,7 +54,7 @@ def get_current_tag() -> str:
     return current_tag
 
 
-def update_all(cli: bool=False) -> bool:
+def update_all(cli: bool = False) -> bool:
     """检查更新并下载源码"""
     current_tag = get_current_tag()
 
@@ -69,12 +69,19 @@ def update_all(cli: bool=False) -> bool:
 
         if latest_rls == {}:
             latest_rls = rls
-    logging.info("更新日志: {}".format(rls_notes))
+    if not cli:
+        logging.info("更新日志: {}".format(rls_notes))
+    else:
+        print("更新日志: {}".format(rls_notes))
+
     if latest_rls == {}:  # 没有新版本
         return False
 
     # 下载最新版本的zip到temp目录
-    logging.info("开始下载最新版本: {}".format(latest_rls['zipball_url']))
+    if not cli:
+        logging.info("开始下载最新版本: {}".format(latest_rls['zipball_url']))
+    else:
+        print("开始下载最新版本: {}".format(latest_rls['zipball_url']))
     zip_url = latest_rls['zipball_url']
     zip_resp = requests.get(url=zip_url)
     zip_data = zip_resp.content
@@ -87,7 +94,10 @@ def update_all(cli: bool=False) -> bool:
     with open("temp/updater/{}.zip".format(latest_rls['tag_name']), "wb") as f:
         f.write(zip_data)
 
-    logging.info("下载最新版本完成: {}".format("temp/updater/{}.zip".format(latest_rls['tag_name'])))
+    if not cli:
+        logging.info("下载最新版本完成: {}".format("temp/updater/{}.zip".format(latest_rls['tag_name'])))
+    else:
+        print("下载最新版本完成: {}".format("temp/updater/{}.zip".format(latest_rls['tag_name'])))
 
     # 解压zip到temp/updater/<tag_name>/
     import zipfile
