@@ -54,7 +54,7 @@ def get_current_tag() -> str:
     return current_tag
 
 
-def update_all() -> bool:
+def update_all(cli: bool=False) -> bool:
     """检查更新并下载源码"""
     current_tag = get_current_tag()
 
@@ -124,8 +124,11 @@ def update_all() -> bool:
         f.write(current_tag)
 
     # 通知管理员
-    import pkg.utils.context
-    pkg.utils.context.get_qqbot_manager().notify_admin("已更新到最新版本: {}\n更新日志:\n{}\n新功能通常可以在config-template.py中看到，完整的更新日志请前往 https://github.com/RockChinQ/QChatGPT/releases 查看".format(current_tag, "\n".join(rls_notes)))
+    if not cli:
+        import pkg.utils.context
+        pkg.utils.context.get_qqbot_manager().notify_admin("已更新到最新版本: {}\n更新日志:\n{}\n新功能通常可以在config-template.py中看到，完整的更新日志请前往 https://github.com/RockChinQ/QChatGPT/releases 查看".format(current_tag, "\n".join(rls_notes)))
+    else:
+        print("已更新到最新版本: {}\n更新日志:\n{}\n新功能通常可以在config-template.py中看到，完整的更新日志请前往 https://github.com/RockChinQ/QChatGPT/releases 查看".format(current_tag, "\n".join(rls_notes)))
     return True
 
 
