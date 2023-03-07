@@ -205,7 +205,7 @@ def main(first_time_init=False):
 
         pkg.plugin.host.initialize_plugins()
 
-        if first_time_init:  # 是热重载之后的启动,则不启动新的bot线程
+        if first_time_init:  # 不是热重载之后的启动,则启动新的bot线程
 
             import mirai.exceptions
 
