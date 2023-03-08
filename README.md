@@ -227,6 +227,7 @@ python3 main.py
 - [@hissincn](https://github.com/hissincn) 本项目贡献者
 - [@LINSTCL](https://github.com/LINSTCL)   GPT-3.5官方模型适配贡献者
 - [@Haibersut](https://github.com/Haibersut)  本项目贡献者
+- [@万神的星空](https://github.com/qq255204159)  整合包发行
 
 以及其他所有为本项目提供支持的朋友们。
 
