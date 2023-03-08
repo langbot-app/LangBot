@@ -23,7 +23,7 @@ import colorlog
 import requests
 import websockets.exceptions
 from urllib3.exceptions import InsecureRequestWarning
-
+import pkg.utils.context
 
 sys.path.append(".")
 
@@ -74,11 +74,8 @@ def init_runtime_log_file():
 
 def reset_logging():
     global log_file_name
-    assert os.path.exists('config.py')
 
-    config = importlib.import_module('config')
-
-    import pkg.utils.context
+    config = pkg.utils.context.get_config()
 
     if pkg.utils.context.context['logger_handler'] is not None:
         logging.getLogger().removeHandler(pkg.utils.context.context['logger_handler'])
@@ -106,12 +103,13 @@ def reset_logging():
     return sh
 
 
-def main(first_time_init=False):
+def start(first_time_init=False):
     """启动流程，reload之后会被执行"""
 
     global known_exception_caught
+    import pkg.utils.context
 
-    import config
+    config = pkg.utils.context.get_config()
     # 更新openai库到最新版本
     if not hasattr(config, 'upgrade_dependencies') or config.upgrade_dependencies:
         print("正在更新依赖库，请等待...")
@@ -126,30 +124,9 @@ def main(first_time_init=False):
 
     known_exception_caught = False
     try:
-        # 导入config.py
-        assert os.path.exists('config.py')
-
-        config = importlib.import_module('config')
-
         init_runtime_log_file()
 
         sh = reset_logging()
-
-        # 配置完整性校验
-        is_integrity = True
-        config_template = importlib.import_module('config-template')
-        for key in dir(config_template):
-            if not key.startswith("__") and not hasattr(config, key):
-                setattr(config, key, getattr(config_template, key))
-                logging.warning("[{}]不存在".format(key))
-                is_integrity = False
-        if not is_integrity:
-            logging.warning("配置文件不完整，请依据config-template.py检查config.py")
-            logging.warning("以上配置已被设为默认值，将在5秒后继续启动... ")
-            time.sleep(5)
-
-        import pkg.utils.context
-        pkg.utils.context.set_config(config)
 
         # 检查是否设置了管理员
         if not (hasattr(config, 'admin_qq') and config.admin_qq != 0):
@@ -197,7 +174,7 @@ def main(first_time_init=False):
         # 初始化qq机器人
         qqbot = pkg.qqbot.manager.QQBotManager(mirai_http_api_config=config.mirai_http_api_config,
                                                timeout=config.process_message_timeout, retry=config.retry_times,
-                                               first_time_init=first_time_init, pool_num=config.pool_num)
+                                               first_time_init=first_time_init)
 
         # 加载插件
         import pkg.plugin.host
@@ -252,10 +229,10 @@ def main(first_time_init=False):
                         known_exception_caught = True
                         raise e
 
-            qq_bot_thread = threading.Thread(target=run_bot_wrapper, args=(), daemon=True)
-            qq_bot_thread.start()
+            pkg.utils.context.get_thread_ctl().submit_sys_task(
+                run_bot_wrapper
+            )
     finally:
-        time.sleep(12)
         if first_time_init:
             if not known_exception_caught:
                 logging.info('程序启动完成,如长时间未显示 ”成功登录到账号xxxxx“ ,并且不回复消息,请查看 '
@@ -294,11 +271,8 @@ def main(first_time_init=False):
     except Exception as e:
         logging.warning("检查更新失败:{}".format(e))
 
-    return qqbot
-
 
 def stop():
-    import pkg.utils.context
     import pkg.qqbot.manager
     import pkg.openai.session
     try:
@@ -316,14 +290,30 @@ def stop():
         if not isinstance(e, KeyboardInterrupt):
             raise e
 
-
-if __name__ == '__main__':
-    # 检查是否有config.py,如果没有就把config-template.py复制一份,并退出程序
+# 临时函数，用于加载config和上下文，未来统一放在config类
+def load_config():
+    #存在性校验
     if not os.path.exists('config.py'):
         shutil.copy('config-template.py', 'config.py')
         print('请先在config.py中填写配置')
         sys.exit(0)
+    #完整性校验
+    is_integrity = True
+    config_template = importlib.import_module('config-template')
+    config = importlib.import_module('config')
+    for key in dir(config_template):
+        if not key.startswith("__") and not hasattr(config, key):
+            setattr(config, key, getattr(config_template, key))
+            logging.warning("[{}]不存在".format(key))
+            is_integrity = False
+    if not is_integrity:
+        logging.warning("配置文件不完整，请依据config-template.py检查config.py")
+        logging.warning("以上配置已被设为默认值，将在5秒后继续启动... ")
+        time.sleep(5)
+    #context配置
+    pkg.utils.context.set_config(config)
 
+def check_file():
     # 检查是否有banlist.py,如果没有就把banlist-template.py复制一份
     if not os.path.exists('banlist.py'):
         shutil.copy('banlist-template.py', 'banlist.py')
@@ -342,6 +332,24 @@ if __name__ == '__main__':
         if not os.path.exists(path):
             os.mkdir(path)
 
+def main():
+    # 加载配置
+    load_config()
+    config = pkg.utils.context.get_config()
+
+    # 初始化相关文件
+    check_file()
+
+    # 配置线程池
+    from pkg.utils import ThreadCtl
+    thread_ctl = ThreadCtl(
+        sys_pool_num = config.sys_pool_num,
+        admin_pool_num = config.admin_pool_num,
+        user_pool_num = config.user_pool_num
+    )
+    pkg.utils.context.set_thread_ctl(thread_ctl)
+
+    # 控制台指令处理
     if len(sys.argv) > 1 and sys.argv[1] == 'init_db':
         init_db()
         sys.exit(0)
@@ -352,19 +360,27 @@ if __name__ == '__main__':
         updater.update_all(cli=True)
         sys.exit(0)
 
+    # 不知道干啥的
     # import pkg.utils.configmgr
     #
     # pkg.utils.configmgr.set_config_and_reload("quote_origin", False)
     requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
-    qqbot = main(True)
+    pkg.utils.context.get_thread_ctl().submit_sys_task(
+        start,
+        True
+    )
 
-    import pkg.utils.context
+    # 主线程循环
     while True:
         try:
-            time.sleep(10)
-        except KeyboardInterrupt:
+            time.sleep(0xFF)
+        except:
             stop()
-
-            print("程序退出")
+            pkg.utils.context.get_thread_ctl().shutdown()
+            print("退出")
             sys.exit(0)
+
+if __name__ == '__main__':
+    main()
+
