@@ -2,7 +2,6 @@ import asyncio
 import json
 import os
 import threading
-from concurrent.futures import ThreadPoolExecutor
 
 import mirai.models.bus
 from mirai import At, GroupMessage, MessageEvent, Mirai, StrangerMessage, WebSocketAdapter, HTTPAdapter, \
@@ -22,11 +21,26 @@ import pkg.plugin.host as plugin_host
 import pkg.plugin.models as plugin_models
 
 
+# 并行运行
+def go(func, args=()):
+    thread = threading.Thread(target=func, args=args, daemon=True)
+    thread.start()
+
+
 # 检查消息是否符合泛响应匹配机制
-def check_response_rule(text: str):
+def check_response_rule(text: str, event):
     config = pkg.utils.context.get_config()
     if not hasattr(config, 'response_rules'):
         return False, ''
+    
+
+    bot_name = pkg.openai.session.get_session('group_{}'.format(event.group.id)).bot_name
+    logging.debug(bot_name)
+    # 检查情景json自带的名字
+    if bot_name:
+        import re
+        if re.search(bot_name, text):
+            return True, text
 
     rules = config.response_rules
     # 检查前缀匹配
@@ -42,32 +56,13 @@ def check_response_rule(text: str):
             match = re.match(rule, text)
             if match:
                 return True, text
-
+            
     return False, ""
-
-
-def response_at():
-    config = pkg.utils.context.get_config()
-    if 'at' not in config.response_rules:
-        return True
-
-    return config.response_rules['at']
-
-
-def random_responding():
-    config = pkg.utils.context.get_config()
-    if 'random_rate' in config.response_rules:
-        import random
-        return random.random() < config.response_rules['random_rate']
-    return False
 
 
 # 控制QQ消息输入输出的类
 class QQBotManager:
     retry = 3
-
-    #线程池控制
-    pool = None
 
     bot: Mirai = None
 
@@ -78,13 +73,10 @@ class QQBotManager:
     ban_person = []
     ban_group = []
 
-    def __init__(self, mirai_http_api_config: dict, timeout: int = 60, retry: int = 3, pool_num: int = 10, first_time_init=True):
+    def __init__(self, mirai_http_api_config: dict, timeout: int = 60, retry: int = 3, first_time_init=True):
+
         self.timeout = timeout
         self.retry = retry
-
-        self.pool_num = pool_num
-        self.pool = ThreadPoolExecutor(max_workers=self.pool_num)
-        logging.debug("Registered thread pool Size:{}".format(pool_num))
 
         # 加载禁用列表
         if os.path.exists("banlist.py"):
@@ -99,12 +91,7 @@ class QQBotManager:
                 and config.sensitive_word_filter is not None \
                 and config.sensitive_word_filter:
             with open("sensitive.json", "r", encoding="utf-8") as f:
-                sensitive_json = json.load(f)
-                self.reply_filter = pkg.qqbot.filter.ReplyFilter(
-                    sensitive_words=sensitive_json['words'],
-                    mask=sensitive_json['mask'] if 'mask' in sensitive_json else '*',
-                    mask_word=sensitive_json['mask_word'] if 'mask_word' in sensitive_json else ''
-                )
+                self.reply_filter = pkg.qqbot.filter.ReplyFilter(json.load(f)['words'])
         else:
             self.reply_filter = pkg.qqbot.filter.ReplyFilter([])
 
@@ -138,7 +125,7 @@ class QQBotManager:
 
                 self.on_person_message(event)
 
-            self.go(friend_message_handler, event)
+            go(friend_message_handler, (event,))
 
         @self.bot.on(StrangerMessage)
         async def on_stranger_message(event: StrangerMessage):
@@ -158,7 +145,7 @@ class QQBotManager:
 
                 self.on_person_message(event)
 
-            self.go(stranger_message_handler, event)
+            go(stranger_message_handler, (event,))
 
         @self.bot.on(GroupMessage)
         async def on_group_message(event: GroupMessage):
@@ -178,7 +165,7 @@ class QQBotManager:
 
                 self.on_group_message(event)
 
-            self.go(group_message_handler, event)
+            go(group_message_handler, (event,))
 
         def unsubscribe_all():
             """取消所有订阅
@@ -194,9 +181,6 @@ class QQBotManager:
             bus.unsubscribe(GroupMessage, on_group_message)
 
         self.unsubscribe_all = unsubscribe_all
-
-    def go(self, func, *args, **kwargs):
-        self.pool.submit(func, *args, **kwargs)
 
     def first_time_init(self, mirai_http_api_config: dict):
         """热重载后不再运行此函数"""
@@ -313,19 +297,14 @@ class QQBotManager:
 
         if Image in event.message_chain:
             pass
-        else:
-            if At(self.bot.qq) in event.message_chain and response_at():
-                # 直接调用
-                reply = process()
-            else:
-                check, result = check_response_rule(str(event.message_chain).strip())
+        elif At(self.bot.qq) not in event.message_chain:
+            check, result = check_response_rule(str(event.message_chain).strip(), event)
 
-                if check:
-                    reply = process(result.strip())
-                # 检查是否随机响应
-                elif random_responding():
-                    logging.info("随机响应group_{}消息".format(event.group.id))
-                    reply = process()
+            if check:
+                reply = process(result.strip())
+        else:
+            # 直接调用
+            reply = process()
 
         if reply:
             return self.send(event, reply)
