@@ -256,7 +256,19 @@ class Session:
         if len(res_ans_spt) > 1:
             del (res_ans_spt[0])
             res_ans = '\n\n'.join(res_ans_spt)
-
+    
+        #检测是否包含ai人格否定
+        logging.debug('bot_filter: {}'.format(self.bot_filter))
+        if config.filter_ai_warning and self.bot_filter:
+            import re
+            match = re.search(self.bot_filter['reg'], res_ans)
+            logging.debug(self.bot_filter)
+            logging.debug(res_ans)
+            if match:
+                logging.debug('回复：{}， 检测到人格否定，替换中。。'.format(res_ans))
+                res_ans = self.bot_filter['replace']
+                logging.debug('替换为: {}'.format(res_ans))
+                
         # 将此次对话的双方内容加入到prompt中
         self.prompt.append({'role': 'user', 'content': text})
         self.prompt.append({'role': 'assistant', 'content': res_ans})
