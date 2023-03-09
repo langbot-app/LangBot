@@ -228,7 +228,7 @@ class Session:
         self.last_interact_timestamp = int(time.time())
 
         # 触发插件事件
-        if self.prompt == self.get_default_prompt(get_only=True):
+        if self.prompt == self.get_default_prompt(get_only = True):
             args = {
                 'session_name': self.name,
                 'session': self,
@@ -309,7 +309,7 @@ class Session:
 
     # 持久化session
     def persistence(self):
-        if self.prompt == self.get_default_prompt(get_only=True):
+        if self.prompt == self.get_default_prompt(get_only = True):
             return
 
         db_inst = pkg.utils.context.get_database_manager()
