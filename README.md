@@ -1,6 +1,7 @@
 # QChatGPT🤖完整情景导入版
 
-> 2023/3/9  初步追加通过json导入messages数组的方式进行情景预设，参考[api](https://platform.openai.com/docs/guides/chat/introduction)，通过该方法能注入gpt本不存在的记忆。neko.json来源于[此](https://gist.github.com/ChenYFan/ffb8390aac6c4aa44869ec10fe4eb9e2)
+> 2023/3/9  初步追加通过json导入messages数组的方式进行情景预设，
+            参考[api](https://platform.openai.com/docs/guides/chat/introduction)，通过该方法能注入gpt本不存在的记忆。neko.json来源于[此](https://gist.github.com/ChenYFan/ffb8390aac6c4aa44869ec10fe4eb9e2)
 > 2023/3/8  fork from: [RockChinQ/QChatGPT](https://github.com/RockChinQ/QChatGPT)
 
 ## 🍺模型适配一览
