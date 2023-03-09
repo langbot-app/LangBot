@@ -145,11 +145,12 @@ class Session:
                     'content': 'ok'
                 }
             ]
+        
         # 根据设置进行prompt预设模式
 
         if config.preset_mode == "full_scenario":
             import os
-            ##
+
             dir = os.path.join(os.getcwd(),  config.full_prompt_dir)
             json_file = os.path.join(dir, use_default) + '.json'
 
@@ -161,15 +162,15 @@ class Session:
                     current_default_prompt = json_content['prompt']
 
                     if not get_only:
-                        self.bot_name = json_content['name'] # 读取机器人名字，用于响应信息
-                        self.bot_filter = json_content['filter'] # 过滤掉不符合人格的警告
+                        # 读取机器人名字，用于响应信息
+                        self.bot_name = json_content['name'] 
+                        # 过滤掉不符合人格的回复
+                        self.bot_filter = json_content['filter'] 
                         logging.debug("first bot filter: {}".format(self.bot_filter))
            
             except FileNotFoundError:
                 logging.info("couldn't find file {}".format(json_file))
-
-            # logging.info("json: {}".format(current_default_prompt))
-            ##
+            
 
         else:
             current_default_prompt = dprompt.get_prompt(use_default)
@@ -249,24 +250,26 @@ class Session:
         # 成功获取，处理回复
         res_test = message
         res_ans = res_test
+        
 
         # 去除开头可能的提示
         res_ans_spt = res_test.split("\n\n")
         if len(res_ans_spt) > 1:
             del (res_ans_spt[0])
             res_ans = '\n\n'.join(res_ans_spt)
+
     
         # 检测是否包含ai人格否定
-        # logging.debug('bot_filter: {}'.format(self.bot_filter))
-        # if config.filter_ai_warning and self.bot_filter:
-        #    import re
-        #    match = re.search(self.bot_filter['reg'], res_ans)
-        #    logging.debug(self.bot_filter)
-        #    logging.debug(res_ans)
-        #    if match:
-        #        logging.debug('回复：{}， 检测到人格否定，替换中。。'.format(res_ans))
-        #        res_ans = self.bot_filter['replace']
-        #        logging.debug('替换为: {}'.format(res_ans))
+        if config.filter_ai_warning and self.bot_filter:
+           import re
+           match = re.search(self.bot_filter['reg'], res_ans)
+           logging.debug(self.bot_filter)
+           logging.debug(res_ans)
+           if match:
+               logging.debug('回复：{}， 检测到人格否定，替换中。。'.format(res_ans))
+               res_ans = self.bot_filter['replace']
+               logging.debug('替换为: {}'.format(res_ans))
+
 
         # 将此次对话的双方内容加入到prompt中
         self.prompt.append({'role': 'user', 'content': text})

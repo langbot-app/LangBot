@@ -1,16 +1,27 @@
-# QChatGPT🤖
-> 2023/3/3  官方接口疑似被墙，可考虑使用网络代理 [#198](https://github.com/RockChinQ/QChatGPT/issues/198)  
-> 2023/3/3  现已在主线支持官方ChatGPT接口，使用方法查看[#195](https://github.com/RockChinQ/QChatGPT/issues/195)  
-> 2023/3/2  OpenAI已发布ChatGPT官方接口，我们正在全力接入，预计明日前完成，请查看[此PR](https://github.com/RockChinQ/QChatGPT/pull/194)  
-> 2023/2/16 现已支持接入ChatGPT网页版，详情请完成部署并查看底部**插件**小节或[此仓库](https://github.com/RockChinQ/revLibs)
+# QChatGPT🤖完整情景导入版
 
-- 到[项目Wiki](https://github.com/RockChinQ/QChatGPT/wiki)可了解项目详细信息
-- 由bilibili TheLazy制作的[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)
-- 交流、答疑群: ~~204785790~~（已满）、691226829、656285629  
-  - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
-- QQ频道机器人见[QQChannelChatGPT](https://github.com/Soulter/QQChannelChatGPT)
+- 2023/3/9  初步追加通过json导入messages数组的方式进行情景预设，
+            参考[api](https://platform.openai.com/docs/guides/chat/introduction)，通过该方法能注入gpt本不存在的记忆。neko.json来源于[此](https://gist.github.com/ChenYFan/ffb8390aac6c4aa44869ec10fe4eb9e2)
+- 2023/3/8  fork from: [RockChinQ/QChatGPT](https://github.com/RockChinQ/QChatGPT)
 
-通过调用OpenAI的ChatGPT等语言模型来实现一个更加智能的QQ机器人  
+## 改动一览
+
+### 切换完整情景模式
+
+- 在`config.py`中，将`preset_mode`更改为`full_scenario`
+- 将情景json放入`scenario`文件夹中，使用`!reload`和`!reset <无后缀文件名>`指令切换
+
+### 过滤脱离人设的回复
+
+- 在`config.py`中将`filter_ai_warning`改为`True`
+- 在对应情景的json中添加（**注意，使用此过滤会使得机器人无法回复有关过滤词的内容**）：
+
+  ```json
+  "filter": {
+      "reg": "我的本质|抱歉|AI助手|人工智能|语言模型|无法提供|无法回应|机器人",
+      "replace": "<替换的回复>"
+  },  
+  ```
 
 ## 🍺模型适配一览
 
@@ -227,7 +238,6 @@ python3 main.py
 - [@hissincn](https://github.com/hissincn) 本项目贡献者
 - [@LINSTCL](https://github.com/LINSTCL)   GPT-3.5官方模型适配贡献者
 - [@Haibersut](https://github.com/Haibersut)  本项目贡献者
-- [@万神的星空](https://github.com/qq255204159)  整合包发行
 
 以及其他所有为本项目提供支持的朋友们。
 
