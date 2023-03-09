@@ -79,6 +79,17 @@ default_prompt = {
     "default": "如果我之后想获取帮助，请你说“输入!help获取帮助”",
 }
 
+# 实验性设置项：JSON完整情景导入
+full_prompt_dir = "scenario/"
+
+# 预设prompt模式
+# 参考值：default / full_scenario
+preset_mode = "default"
+
+# 过滤AI脱离人设的消息 
+# 这类消息在对应情景json中设置，将其替换为自定义消息，以保持人格
+filter_ai_warning = False
+
 # 群内响应规则
 # 符合此消息的群内消息即使不包含at机器人也会响应
 # 支持消息前缀匹配及正则表达式匹配
