@@ -128,54 +128,25 @@ class Session:
             logging.debug('{},lock release successfully,{}'.format(self.name, self.response_lock))
 
     # 从配置文件获取会话预设信息
-    def get_default_prompt(self, use_default: str = None, get_only = False):
+    def get_default_prompt(self, use_default: str = None):
         config = pkg.utils.context.get_config()
 
         import pkg.openai.dprompt as dprompt
 
         if use_default is None:
-            use_default = dprompt.get_current()
-        current_default_prompt = \
-            [
-                {
-                    'role': 'user',
-                    'content': '如果我之后想获取帮助，请你说“输入!help获取帮助”'
-                }, {
-                    'role': 'assistant',
-                    'content': 'ok'
-                }
-            ]
-        # 根据设置进行prompt预设模式
-
-        if config.preset_mode == "full_scenario":
-            import os
-            logging.info("A")
-            ##
-            dir = os.path.join(os.getcwd(),  config.full_prompt_dir)
-            json_file = os.path.join(dir, use_default) + '.json'
-            logging.info("B")
-            logging.info("try to load json: {}".format(json_file))
-
-            try:
-                with open(json_file, 'r', encoding ='utf-8') as f:
-                    json_content = json.load(f)
-                    current_default_prompt = json_content['prompt']
-
-                    if not get_only:
-                        self.bot_name = json_content['name'] # 读取机器人名字，用于响应信息
-                        self.bot_filter = json_content['filter'] # 过滤掉不符合人格的警告
-                        logging.debug("first bot filter: {}".format(self.bot_filter))
-           
-            except FileNotFoundError:
-                logging.info("couldn't find file {}".format(json_file))
-
-            # logging.info("json: {}".format(current_default_prompt))
-            ##
-
+            current_default_prompt = dprompt.get_prompt(dprompt.get_current())
         else:
             current_default_prompt = dprompt.get_prompt(use_default)
 
-        return current_default_prompt
+        return [
+            {
+                'role': 'user',
+                'content': current_default_prompt
+            }, {
+                'role': 'assistant',
+                'content': 'ok'
+            }
+        ]
 
     def __init__(self, name: str):
         self.name = name
@@ -228,7 +199,7 @@ class Session:
         self.last_interact_timestamp = int(time.time())
 
         # 触发插件事件
-        if self.prompt == self.get_default_prompt(get_only=True):
+        if self.prompt == self.get_default_prompt():
             args = {
                 'session_name': self.name,
                 'session': self,
@@ -309,7 +280,7 @@ class Session:
 
     # 持久化session
     def persistence(self):
-        if self.prompt == self.get_default_prompt(get_only=True):
+        if self.prompt == self.get_default_prompt():
             return
 
         db_inst = pkg.utils.context.get_database_manager()

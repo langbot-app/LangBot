@@ -23,19 +23,11 @@ import pkg.plugin.models as plugin_models
 
 
 # 检查消息是否符合泛响应匹配机制
-def check_response_rule(text: str, event):
+def check_response_rule(text: str):
     config = pkg.utils.context.get_config()
     if not hasattr(config, 'response_rules'):
         return False, ''
-    
 
-    bot_name = pkg.openai.session.get_session('group_{}'.format(event.group.id)).bot_name
-    logging.debug(bot_name)
-    # 检查情景json自带的名字
-    if bot_name:
-        import re
-        if re.search(bot_name, text):
-            return True, text
     rules = config.response_rules
     # 检查前缀匹配
     if 'prefix' in rules:
@@ -326,7 +318,7 @@ class QQBotManager:
                 # 直接调用
                 reply = process()
             else:
-                check, result = check_response_rule(str(event.message_chain).strip(), event)
+                check, result = check_response_rule(str(event.message_chain).strip())
 
                 if check:
                     reply = process(result.strip())
