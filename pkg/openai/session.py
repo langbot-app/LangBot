@@ -4,7 +4,6 @@
 """
 
 import logging
-import os
 import threading
 import time
 import json
@@ -19,8 +18,6 @@ import pkg.plugin.models as plugin_models
 
 # 运行时保存的所有session
 sessions = {}
-
-
 
 
 class SessionOfflineStatus:
@@ -189,8 +186,6 @@ class Session:
         self.schedule()
 
         self.response_lock = threading.Lock()
-        self.bot_name = 'ai'
-        self.bot_filter = None
         self.prompt = self.get_default_prompt()
 
     # 设定检查session最后一次对话是否超过过期时间的计时器
@@ -235,7 +230,7 @@ class Session:
         self.last_interact_timestamp = int(time.time())
 
         # 触发插件事件
-        if self.prompt == self.get_default_prompt(get_only=True):
+        if self.prompt == self.get_default_prompt(get_only = True):
             args = {
                 'session_name': self.name,
                 'session': self,
@@ -264,22 +259,9 @@ class Session:
             del (res_ans_spt[0])
             res_ans = '\n\n'.join(res_ans_spt)
 
-        #检测是否包含ai人格否定
-        logging.debug('bot_filter: {}'.format(self.bot_filter))
-        if config.filter_ai_warning and self.bot_filter:
-            import re
-            match = re.search(self.bot_filter['reg'], res_ans)
-            logging.debug(self.bot_filter)
-            logging.debug(res_ans)
-            if match:
-                logging.debug('回复：{}， 检测到人格否定，替换中。。'.format(res_ans))
-                res_ans = self.bot_filter['replace']
-                logging.debug('替换为: {}'.format(res_ans))
-
         # 将此次对话的双方内容加入到prompt中
         self.prompt.append({'role': 'user', 'content': text})
         self.prompt.append({'role': 'assistant', 'content': res_ans})
-
 
         if self.just_switched_to_exist_session:
             self.just_switched_to_exist_session = False
@@ -329,7 +311,7 @@ class Session:
 
     # 持久化session
     def persistence(self):
-        if self.prompt == self.get_default_prompt(get_only=True):
+        if self.prompt == self.get_default_prompt(get_only = True):
             return
 
         db_inst = pkg.utils.context.get_database_manager()
