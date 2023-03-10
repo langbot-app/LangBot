@@ -27,7 +27,7 @@ def check_response_rule(text: str):
     config = pkg.utils.context.get_config()
     if not hasattr(config, 'response_rules'):
         return False, ''
-        
+
     rules = config.response_rules
     # 检查前缀匹配
     if 'prefix' in rules:
