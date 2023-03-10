@@ -40,7 +40,7 @@ def reset_session_prompt(session_name, prompt):
     prompt = [
         {
             'role': 'system',
-            'content': config.default_prompt['default']
+            'content': config.default_prompt['default'] if type(config.default_prompt) == dict else config.default_prompt
         }
     ]
     # 警告
@@ -365,6 +365,12 @@ class Session:
 
     def list_history(self, capacity: int = 10, page: int = 0):
         return pkg.utils.context.get_database_manager().list_history(self.name, capacity, page)
+
+    def delete_history(self, index: int) -> bool:
+        return pkg.utils.context.get_database_manager().delete_history(self.name, index)
+
+    def delete_all_history(self) -> bool:
+        return pkg.utils.context.get_database_manager().delete_all_history(self.name)
 
     def draw_image(self, prompt: str):
         return pkg.utils.context.get_openai_manager().request_image(prompt)

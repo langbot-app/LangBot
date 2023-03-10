@@ -256,6 +256,20 @@ def process_command(session_name: str, text_message: str, mgr, config,
 
             reply = pkg.qqbot.message.process_normal_message(to_send, mgr, config,
                                                              launcher_type, launcher_id, sender_id)
+        elif cmd == 'del':  # 删除指定会话历史记录
+            if len(params) == 0:
+                reply = ["[bot]参数不足, 格式: !del <序号>\n可以通过!list查看序号"]
+            else:
+                if params[0] == 'all':
+                    pkg.openai.session.get_session(session_name).delete_all_history()
+                    reply = ["[bot]已删除所有历史会话"]
+                elif params[0].isdigit():
+                    if pkg.openai.session.get_session(session_name).delete_history(int(params[0])):
+                        reply = ["[bot]已删除历史会话 #{}".format(params[0])]
+                    else:
+                        reply = ["[bot]没有历史会话 #{}".format(params[0])]
+                else:
+                    reply = ["[bot]参数错误, 格式: !del <序号>\n可以通过!list查看序号"]
         elif cmd == 'usage':
             reply_str = "[bot]各api-key使用情况:\n\n"
 
@@ -322,6 +336,18 @@ def process_command(session_name: str, text_message: str, mgr, config,
                     reply = ["[bot]err: 未找到情景预设:{}".format(params[0])]
             else:
                 reply = ["[bot]err: 仅管理员可设置默认情景预设"]
+        elif cmd == "delhst" and is_admin:
+            if len(params) == 0:
+                reply = ["[bot]err:请输入要删除的会话名: group_<群号> 或者 person_<QQ号>, 或使用 !delhst all 删除所有会话的历史记录"]
+            else:
+                if params[0] == "all":
+                    pkg.utils.context.get_database_manager().delete_all_session_history()
+                    reply = ["[bot]已删除所有会话的历史记录"]
+                else:
+                    if pkg.utils.context.get_database_manager().delete_all_history(params[0]):
+                        reply = ["[bot]已删除会话 {} 的所有历史记录".format(params[0])]
+                    else:
+                        reply = ["[bot]未找到会话 {} 的历史记录".format(params[0])]
         elif cmd == 'reload' and is_admin:
             def reload_task():
                 pkg.utils.reloader.reload_all()

@@ -352,9 +352,6 @@ if __name__ == '__main__':
         updater.update_all(cli=True)
         sys.exit(0)
 
-    # import pkg.utils.configmgr
-    #
-    # pkg.utils.configmgr.set_config_and_reload("quote_origin", False)
     requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
     qqbot = main(True)
