@@ -129,15 +129,12 @@ class Session:
 
     # 从配置文件获取会话预设信息
     def get_default_prompt(self, use_default: str = None):
-        config = pkg.utils.context.get_config()
-
         import pkg.openai.dprompt as dprompt
 
         if use_default is None:
             use_default = dprompt.get_current()
 
-        current_default_prompt = dprompt.get_prompt(use_default)
-
+        current_default_prompt, bot_name, bot_filter = dprompt.get_prompt(use_default)
         return current_default_prompt
 
     def __init__(self, name: str):
@@ -148,6 +145,7 @@ class Session:
 
         self.response_lock = threading.Lock()
         self.prompt = self.get_default_prompt()
+        logging.debug("prompt is: {}".format(self.prompt))
 
     # 设定检查session最后一次对话是否超过过期时间的计时器
     def schedule(self):
@@ -191,7 +189,7 @@ class Session:
         self.last_interact_timestamp = int(time.time())
 
         # 触发插件事件
-        if self.prompt == self.get_default_prompt():
+        if self.prompt == self.get_default_prompt()[0]:
             args = {
                 'session_name': self.name,
                 'session': self,
@@ -274,7 +272,7 @@ class Session:
 
     # 持久化session
     def persistence(self):
-        if self.prompt == self.get_default_prompt():
+        if self.prompt == self.get_default_prompt()[0]:
             return
 
         db_inst = pkg.utils.context.get_database_manager()
