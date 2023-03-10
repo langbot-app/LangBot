@@ -10,6 +10,10 @@ __prompts_from_files__ = {}
 """从文件中读取的情景预设值"""
 
 
+import json
+import logging
+
+
 def read_prompt_from_file() -> str:
     """从文件读取预设值"""
     # 读取prompts/目录下的所有文件，以文件名为键，文件内容为值
@@ -66,14 +70,38 @@ def set_to_default():
 
 
 def get_prompt(name: str = None) -> str:
+    import config
+    preset_mode = config.preset_mode
+
     """获取预设值"""
     if name is None:
         name = get_current()
 
-    default_dict = get_prompt_dict()
+    # JSON预设方式
+    if preset_mode == 'full_scenario':
+        import os
+        # 整合路径，获取json文件名
+        json_file = os.path.join(os.getcwd(),  "scenario", name + '.json')
 
-    for key in default_dict:
-        if key.lower().startswith(name.lower()):
-            return default_dict[key]
+        logging.debug('try to load json: {}'.format(json_file))
 
-    raise KeyError("未找到情景预设: " + name)
+        try:
+            with open(json_file, 'r', encoding ='utf-8') as f:
+                json_content = json.load(f)
+                logging.debug('succeed to load json: {}'.format(json_file))
+                return json_content['prompt']
+
+        except FileNotFoundError:
+
+            raise KeyError("未找到Json情景预设: " + name)
+        
+    # 默认预设方式
+    elif preset_mode == 'default':
+
+        default_dict = get_prompt_dict()
+
+        for key in default_dict:
+            if key.lower().startswith(name.lower()):
+                return default_dict[key], None, None
+
+        raise KeyError("未找到默认情景预设: " + name)
