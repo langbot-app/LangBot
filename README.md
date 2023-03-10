@@ -6,7 +6,7 @@
 
 - 到[项目Wiki](https://github.com/RockChinQ/QChatGPT/wiki)可了解项目详细信息
 - 由bilibili TheLazy制作的[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)
-- 交流、答疑群: ~~204785790~~（已满）、691226829、656285629  
+- 交流、答疑群: ~~204785790~~（已满）、~~691226829~~（已满）、656285629  
   - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
 - QQ频道机器人见[QQChannelChatGPT](https://github.com/Soulter/QQChannelChatGPT)
 
