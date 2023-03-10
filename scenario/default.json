@@ -1,8 +1,4 @@
 {
-    "name": "ai",
-    "filter": {
-
-    },
     "prompt": [
         {
             "role": "system",

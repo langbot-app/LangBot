@@ -69,7 +69,7 @@ def set_to_default():
         __current__ = list(default_dict.keys())[0]
 
 
-def get_prompt(name: str = None) -> str:
+def get_prompt(name: str = None) -> list:
     import config
     preset_mode = config.preset_mode
 
@@ -89,7 +89,7 @@ def get_prompt(name: str = None) -> str:
             with open(json_file, 'r', encoding ='utf-8') as f:
                 json_content = json.load(f)
                 logging.debug('succeed to load json: {}'.format(json_file))
-                return json_content['prompt'], json_content['name'], json_content['filter']
+                return json_content['prompt']
 
         except FileNotFoundError:
 
@@ -111,6 +111,6 @@ def get_prompt(name: str = None) -> str:
                     "role":"assistant",
                     "content":"好的。"
                     }
-                    ], None, None
+                    ]
 
         raise KeyError("未找到默认情景预设: " + name)

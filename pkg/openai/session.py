@@ -135,7 +135,6 @@ class Session:
             use_default = dprompt.get_current()
 
         current_default_prompt = dprompt.get_prompt(use_default)
-        # 返回一个元组：(prompt, name, filter)
         return current_default_prompt
 
     def __init__(self, name: str):
@@ -146,8 +145,7 @@ class Session:
 
         self.response_lock = threading.Lock()
 
-        #更改了返回值，后两个变量给机器人名字和过滤器占位
-        self.prompt, a, b = self.get_default_prompt()
+        self.prompt = self.get_default_prompt()
         logging.debug("prompt is: {}".format(self.prompt))
 
     # 设定检查session最后一次对话是否超过过期时间的计时器
@@ -192,7 +190,7 @@ class Session:
         self.last_interact_timestamp = int(time.time())
 
         # 触发插件事件
-        if self.prompt == self.get_default_prompt()[0]:
+        if self.prompt == self.get_default_prompt():
             args = {
                 'session_name': self.name,
                 'session': self,
@@ -275,7 +273,7 @@ class Session:
 
     # 持久化session
     def persistence(self):
-        if self.prompt == self.get_default_prompt()[0]:
+        if self.prompt == self.get_default_prompt():
             return
 
         db_inst = pkg.utils.context.get_database_manager()
@@ -306,8 +304,8 @@ class Session:
 
             if expired:
                 pkg.utils.context.get_database_manager().set_session_expired(self.name, self.create_timestamp)
-        # a, b为bot_name和bot_filter占位变量
-        self.prompt, a, b = self.get_default_prompt(use_prompt)
+
+        self.prompt = self.get_default_prompt(use_prompt)
         self.create_timestamp = int(time.time())
         self.last_interact_timestamp = int(time.time())
         self.just_switched_to_exist_session = False
