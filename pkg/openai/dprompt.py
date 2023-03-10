@@ -1,4 +1,6 @@
 # 多情景预设值管理
+import json
+import logging
 
 __current__ = "default"
 """当前默认使用的情景预设的名称
@@ -10,11 +12,7 @@ __prompts_from_files__ = {}
 """从文件中读取的情景预设值"""
 
 
-import json
-import logging
-
-
-def read_prompt_from_file() -> str:
+def read_prompt_from_file():
     """从文件读取预设值"""
     # 读取prompts/目录下的所有文件，以文件名为键，文件内容为值
     # 保存在__prompts_from_files__中
@@ -104,13 +102,13 @@ def get_prompt(name: str = None) -> list:
             if key.lower().startswith(name.lower()):
                 return [
                     {
-                    "role":"user",
-                    "content":default_dict[key]
+                        "role": "user",
+                        "content": default_dict[key]
                     },
                     {
-                    "role":"assistant",
-                    "content":"好的。"
+                        "role": "assistant",
+                        "content": "好的。"
                     }
-                    ]
+                ]
 
         raise KeyError("未找到默认情景预设: " + name)

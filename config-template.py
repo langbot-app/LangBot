@@ -84,7 +84,6 @@ default_prompt = {
 # 参考值：旧版本方式：default | 完整情景：full_scenario
 preset_mode = "default"
 
-
 # 群内响应规则
 # 符合此消息的群内消息即使不包含at机器人也会响应
 # 支持消息前缀匹配及正则表达式匹配
