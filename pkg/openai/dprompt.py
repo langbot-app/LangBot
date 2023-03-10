@@ -11,6 +11,8 @@ __current__ = "default"
 __prompts_from_files__ = {}
 """从文件中读取的情景预设值"""
 
+__scenario_from_files__ = {}
+
 
 def read_prompt_from_file():
     """从文件读取预设值"""
@@ -23,6 +25,19 @@ def read_prompt_from_file():
     for file in os.listdir("prompts"):
         with open(os.path.join("prompts", file), encoding="utf-8") as f:
             __prompts_from_files__[file] = f.read()
+
+
+def read_scenario_from_file():
+    """从JSON文件读取情景预设"""
+    global __scenario_from_files__
+    import os
+
+    __scenario_from_files__ = {}
+    for file in os.listdir("scenario"):
+        if file == "default-template.json":
+            continue
+        with open(os.path.join("scenario", file), encoding="utf-8") as f:
+            __scenario_from_files__[file] = json.load(f)
 
 
 def get_prompt_dict() -> dict:
@@ -68,6 +83,7 @@ def set_to_default():
 
 
 def get_prompt(name: str = None) -> list:
+    global __scenario_from_files__
     import config
     preset_mode = config.preset_mode
 
@@ -78,18 +94,11 @@ def get_prompt(name: str = None) -> list:
     # JSON预设方式
     if preset_mode == 'full_scenario':
         import os
-        # 整合路径，获取json文件名
-        json_file = os.path.join(os.getcwd(),  "scenario", name + '.json')
 
-        logging.debug('try to load json: {}'.format(json_file))
-
-        try:
-            with open(json_file, 'r', encoding ='utf-8') as f:
-                json_content = json.load(f)
-                logging.debug('succeed to load json: {}'.format(json_file))
-                return json_content['prompt']
-        except FileNotFoundError:
-            raise KeyError("未找到JSON情景预设: " + name)
+        for key in __scenario_from_files__:
+            if key.lower().startswith(name.lower()):
+                logging.debug('成功加载情景预设从JSON文件: {}'.format(key))
+                return __scenario_from_files__[key]['prompt']
         
     # 默认预设方式
     elif preset_mode == 'default':
@@ -109,4 +118,4 @@ def get_prompt(name: str = None) -> list:
                     }
                 ]
 
-        raise KeyError("未找到默认情景预设: " + name)
+    raise KeyError("未找到默认情景预设: " + name)

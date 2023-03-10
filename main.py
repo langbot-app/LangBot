@@ -182,6 +182,7 @@ def main(first_time_init=False):
         import pkg.openai.dprompt
 
         pkg.openai.dprompt.read_prompt_from_file()
+        pkg.openai.dprompt.read_scenario_from_file()
 
         pkg.utils.context.context['logger_handler'] = sh
         # 主启动流程
