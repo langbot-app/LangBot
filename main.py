@@ -228,10 +228,13 @@ def start(first_time_init=False):
                             "捕捉到未知异常:{}, 请前往 https://github.com/RockChinQ/QChatGPT/issues 查找或提issue".format(e))
                         known_exception_caught = True
                         raise e
-
-            pkg.utils.context.get_thread_ctl().submit_sys_task(
-                run_bot_wrapper
-            )
+            threading.Thread(
+                target=run_bot_wrapper
+            ).start()
+            # 机器人暂时不能放在线程池中
+            # pkg.utils.context.get_thread_ctl().submit_sys_task(
+            #     run_bot_wrapper
+            # )
     finally:
         if first_time_init:
             if not known_exception_caught:
@@ -378,8 +381,12 @@ def main():
         except:
             stop()
             pkg.utils.context.get_thread_ctl().shutdown()
-            print("退出")
-            sys.exit(0)
+            import platform
+            if platform.system() == 'Windows':
+                cmd = "taskkill /F /PID {}".format(os.getpid())
+            elif platform.system() in ['Linux', 'Darwin']:
+                cmd = "kill -9 {}".format(os.getpid())
+            os.system(cmd)
 
 if __name__ == '__main__':
     main()
