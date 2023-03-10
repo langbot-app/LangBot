@@ -255,6 +255,11 @@ def main(first_time_init=False):
             qq_bot_thread = threading.Thread(target=run_bot_wrapper, args=(), daemon=True)
             qq_bot_thread.start()
     finally:
+        # 判断若是Windows，输出选择模式可能会暂停程序的警告
+        if os.name == 'nt':
+            time.sleep(2)
+            logging.info("您正在使用Windows系统，若命令行窗口处于“选择”模式，程序可能会被暂停，此时请右键点击窗口空白区域使其取消选择模式。")
+
         time.sleep(12)
         if first_time_init:
             if not known_exception_caught:
