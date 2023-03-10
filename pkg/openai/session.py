@@ -306,7 +306,8 @@ class Session:
 
             if expired:
                 pkg.utils.context.get_database_manager().set_session_expired(self.name, self.create_timestamp)
-        self.prompt = self.get_default_prompt(use_prompt)
+        # a, b为bot_name和bot_filter占位变量
+        self.prompt, a, b = self.get_default_prompt(use_prompt)
         self.create_timestamp = int(time.time())
         self.last_interact_timestamp = int(time.time())
         self.just_switched_to_exist_session = False

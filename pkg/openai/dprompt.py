@@ -89,7 +89,7 @@ def get_prompt(name: str = None) -> str:
             with open(json_file, 'r', encoding ='utf-8') as f:
                 json_content = json.load(f)
                 logging.debug('succeed to load json: {}'.format(json_file))
-                return json_content['prompt']
+                return json_content['prompt'], json_content['name'], json_content['filter']
 
         except FileNotFoundError:
 
