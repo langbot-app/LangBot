@@ -256,6 +256,12 @@ class DatabaseManager:
         """.format(session_name))
         return self.cursor.rowcount > 0
 
+    def delete_all_session_history(self) -> bool:
+        self.__execute__("""
+        delete from `sessions`
+        """)
+        return self.cursor.rowcount > 0
+
     # 将apikey的使用量存进数据库
     def dump_api_key_usage(self, api_keys: dict, usage: dict):
         logging.debug('dumping api key usage...')

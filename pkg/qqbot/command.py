@@ -336,6 +336,18 @@ def process_command(session_name: str, text_message: str, mgr, config,
                     reply = ["[bot]err: 未找到情景预设:{}".format(params[0])]
             else:
                 reply = ["[bot]err: 仅管理员可设置默认情景预设"]
+        elif cmd == "delhst" and is_admin:
+            if len(params) == 0:
+                reply = ["[bot]err:请输入要删除的会话名: group_<群号> 或者 person_<QQ号>, 或使用 !delhst all 删除所有会话的历史记录"]
+            else:
+                if params[0] == "all":
+                    pkg.utils.context.get_database_manager().delete_all_session_history()
+                    reply = ["[bot]已删除所有会话的历史记录"]
+                else:
+                    if pkg.utils.context.get_database_manager().delete_all_history(params[0]):
+                        reply = ["[bot]已删除会话 {} 的所有历史记录".format(params[0])]
+                    else:
+                        reply = ["[bot]未找到会话 {} 的历史记录".format(params[0])]
         elif cmd == 'reload' and is_admin:
             def reload_task():
                 pkg.utils.reloader.reload_all()
