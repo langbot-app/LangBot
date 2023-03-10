@@ -134,7 +134,8 @@ class Session:
         if use_default is None:
             use_default = dprompt.get_current()
 
-        current_default_prompt, bot_name, bot_filter = dprompt.get_prompt(use_default)
+        current_default_prompt = dprompt.get_prompt(use_default)
+        # 返回一个元组：(prompt, name, filter)
         return current_default_prompt
 
     def __init__(self, name: str):
@@ -144,7 +145,9 @@ class Session:
         self.schedule()
 
         self.response_lock = threading.Lock()
-        self.prompt = self.get_default_prompt()
+
+        #更改了返回值，后两个变量给机器人名字和过滤器占位
+        self.prompt, a, b = self.get_default_prompt()
         logging.debug("prompt is: {}".format(self.prompt))
 
     # 设定检查session最后一次对话是否超过过期时间的计时器
