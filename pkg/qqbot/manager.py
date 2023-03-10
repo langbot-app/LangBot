@@ -23,7 +23,7 @@ import pkg.plugin.models as plugin_models
 
 
 # 检查消息是否符合泛响应匹配机制
-def check_response_rule(text: str, event):
+def check_response_rule(text: str):
     config = pkg.utils.context.get_config()
     if not hasattr(config, 'response_rules'):
         return False, ''
@@ -318,7 +318,7 @@ class QQBotManager:
                 # 直接调用
                 reply = process()
             else:
-                check, result = check_response_rule(str(event.message_chain).strip(), event)
+                check, result = check_response_rule(str(event.message_chain).strip())
 
                 if check:
                     reply = process(result.strip())

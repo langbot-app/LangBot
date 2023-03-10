@@ -102,6 +102,15 @@ def get_prompt(name: str = None) -> str:
 
         for key in default_dict:
             if key.lower().startswith(name.lower()):
-                return default_dict[key], None, None
+                return [
+                    {
+                    "role":"user",
+                    "content":default_dict[key]
+                    },
+                    {
+                    "role":"assistant",
+                    "content":"好的。"
+                    }
+                    ], None, None
 
         raise KeyError("未找到默认情景预设: " + name)
