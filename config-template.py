@@ -249,11 +249,4 @@ help_message = """此机器人通过调用OpenAI的GPT-3大型语言模型生成
 每次会话最后一次交互后{}分钟后会自动结束，结束后将开启新会话，如需继续前一次会话请发送 !last 重新开启
 欢迎到github.com/RockChinQ/QChatGPT 给个star
 
-帮助信息：
-!help - 显示帮助
-!reset - 重置会话
-!last - 切换到前一次的对话
-!next - 切换到后一次的对话
-!prompt - 显示当前对话所有内容
-!list - 列出所有历史会话
-!usage - 列出各个api-key的使用量""".format(session_expire_time // 60)
+指令帮助信息请查看: https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4""".format(session_expire_time // 60)
