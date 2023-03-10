@@ -35,6 +35,7 @@ class DatabaseManager:
 
     def __execute__(self, *args, **kwargs) -> Cursor:
         # logging.debug('SQL: {}'.format(sql))
+        logging.debug('SQL: {}'.format(args))
         c = self.cursor.execute(*args, **kwargs)
         self.conn.commit()
         return c
@@ -239,6 +240,21 @@ class DatabaseManager:
             })
 
         return sessions
+
+    def delete_history(self, session_name: str, index: int) -> bool:
+        # 删除倒序第index个session
+        # 查找其id再删除
+        self.__execute__("""
+        delete from `sessions` where `id` in (select `id` from `sessions` where `name` = '{}' order by `last_interact_timestamp` desc limit 1 offset {})
+        """.format(session_name, index))
+
+        return self.cursor.rowcount == 1
+
+    def delete_all_history(self, session_name: str) -> bool:
+        self.__execute__("""
+        delete from `sessions` where `name` = '{}'
+        """.format(session_name))
+        return self.cursor.rowcount > 0
 
     # 将apikey的使用量存进数据库
     def dump_api_key_usage(self, api_keys: dict, usage: dict):
