@@ -88,10 +88,8 @@ def get_prompt(name: str = None) -> list:
                 json_content = json.load(f)
                 logging.debug('succeed to load json: {}'.format(json_file))
                 return json_content['prompt']
-
         except FileNotFoundError:
-
-            raise KeyError("未找到Json情景预设: " + name)
+            raise KeyError("未找到JSON情景预设: " + name)
         
     # 默认预设方式
     elif preset_mode == 'default':
