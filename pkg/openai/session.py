@@ -75,6 +75,8 @@ def load_sessions():
         except Exception:
             temp_session.prompt = reset_session_prompt(session_name, session_data[session_name]['prompt'])
             temp_session.persistence()
+        temp_session.default_prompt = json.loads(session_data[session_name]['default_prompt']) if \
+            session_data[session_name]['default_prompt'] else []
 
         sessions[session_name] = temp_session
 
@@ -103,6 +105,9 @@ class Session:
 
     prompt = []
     """使用list来保存会话中的回合"""
+
+    default_prompt = []
+    """本session的默认prompt"""
 
     create_timestamp = 0
     """会话创建时间"""
@@ -145,8 +150,8 @@ class Session:
 
         self.response_lock = threading.Lock()
 
-        self.prompt = self.get_default_prompt()
-        logging.debug("prompt is: {}".format(self.prompt))
+        self.default_prompt = self.get_default_prompt()
+        logging.debug("prompt is: {}".format(self.default_prompt))
 
     # 设定检查session最后一次对话是否超过过期时间的计时器
     def schedule(self):
@@ -190,11 +195,11 @@ class Session:
         self.last_interact_timestamp = int(time.time())
 
         # 触发插件事件
-        if self.prompt == self.get_default_prompt():
+        if not self.prompt:
             args = {
                 'session_name': self.name,
                 'session': self,
-                'default_prompt': self.prompt,
+                'default_prompt': self.default_prompt,
             }
 
             event = pkg.plugin.host.emit(plugin_models.SessionFirstMessageReceived, **args)
@@ -212,14 +217,12 @@ class Session:
         # 成功获取，处理回复
         res_test = message
         res_ans = res_test
-        
 
         # 去除开头可能的提示
         res_ans_spt = res_test.split("\n\n")
         if len(res_ans_spt) > 1:
             del (res_ans_spt[0])
             res_ans = '\n\n'.join(res_ans_spt)
-
 
         # 将此次对话的双方内容加入到prompt中
         self.prompt.append({'role': 'user', 'content': text})
@@ -249,25 +252,29 @@ class Session:
     def cut_out(self, msg: str, max_tokens: int) -> list:
         """将现有prompt进行切割处理，使得新的prompt长度不超过max_tokens"""
         # 如果用户消息长度超过max_tokens，直接返回
-
-        temp_prompt = [
+        temp_prompt: list = []
+        temp_prompt += self.default_prompt
+        temp_prompt.append(
             {
                 'role': 'user',
                 'content': msg
             }
-        ]
+        )
 
-        token_count = len(msg)
+        token_count = 0
+        for item in temp_prompt:
+            token_count += len(item['content'])
+
         # 倒序遍历prompt
         for i in range(len(self.prompt) - 1, -1, -1):
             if token_count >= max_tokens:
                 break
 
-            # 将prompt加到temp_prompt头部
-            temp_prompt.insert(0, self.prompt[i])
+            # 将prompt加到temp_prompt倒数第二个位置
+            temp_prompt.insert(len(self.default_prompt), self.prompt[i])
             token_count += len(self.prompt[i]['content'])
 
-        logging.debug('cut_out: {}'.format(str(temp_prompt)))
+        logging.debug('cut_out: {}'.format(json.dumps(temp_prompt, ensure_ascii=False, indent=4)))
 
         return temp_prompt
 
@@ -284,11 +291,11 @@ class Session:
         subject_number = int(name_spt[1])
 
         db_inst.persistence_session(subject_type, subject_number, self.create_timestamp, self.last_interact_timestamp,
-                                    json.dumps(self.prompt))
+                                    json.dumps(self.prompt), json.dumps(self.default_prompt))
 
     # 重置session
     def reset(self, explicit: bool = False, expired: bool = False, schedule_new: bool = True, use_prompt: str = None):
-        if self.prompt[-1]['role'] != "system":
+        if self.prompt:
             self.persistence()
             if explicit:
                 # 触发插件事件
@@ -305,7 +312,8 @@ class Session:
             if expired:
                 pkg.utils.context.get_database_manager().set_session_expired(self.name, self.create_timestamp)
 
-        self.prompt = self.get_default_prompt(use_prompt)
+        self.default_prompt = self.get_default_prompt(use_prompt)
+        self.prompt = []
         self.create_timestamp = int(time.time())
         self.last_interact_timestamp = int(time.time())
         self.just_switched_to_exist_session = False
@@ -334,6 +342,7 @@ class Session:
             except json.decoder.JSONDecodeError:
                 self.prompt = reset_session_prompt(self.name, last_one['prompt'])
                 self.persistence()
+            self.default_prompt = json.loads(last_one['default_prompt']) if last_one['default_prompt'] else []
 
             self.just_switched_to_exist_session = True
             return self
@@ -353,6 +362,7 @@ class Session:
             except json.decoder.JSONDecodeError:
                 self.prompt = reset_session_prompt(self.name, next_one['prompt'])
                 self.persistence()
+            self.default_prompt = json.loads(next_one['default_prompt']) if next_one['default_prompt'] else []
 
             self.just_switched_to_exist_session = True
             return self
