@@ -234,7 +234,7 @@ def process_command(session_name: str, text_message: str, mgr, config,
                     if len(msg) >= 2:
                         reply_str += "#{} 创建:{} {}\n".format(i + page * 10,
                                                                datetime_obj.strftime("%Y-%m-%d %H:%M:%S"),
-                                                               msg[1]['content'])
+                                                               msg[0]['content'])
                     else:
                         reply_str += "#{} 创建:{} {}\n".format(i + page * 10,
                                                                datetime_obj.strftime("%Y-%m-%d %H:%M:%S"),
