@@ -182,6 +182,7 @@ def main(first_time_init=False):
         import pkg.openai.dprompt
 
         pkg.openai.dprompt.read_prompt_from_file()
+        pkg.openai.dprompt.read_scenario_from_file()
 
         pkg.utils.context.context['logger_handler'] = sh
         # 主启动流程
@@ -336,6 +337,10 @@ if __name__ == '__main__':
     # 检查是否有sensitive.json
     if not os.path.exists("sensitive.json"):
         shutil.copy("sensitive-template.json", "sensitive.json")
+
+    # 检查是否有scenario/default.json
+    if not os.path.exists("scenario/default.json"):
+        shutil.copy("scenario/default-template.json", "scenario/default.json")
 
     # 检查temp目录
     if not os.path.exists("temp/"):
