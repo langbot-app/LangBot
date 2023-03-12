@@ -126,6 +126,15 @@ def update_all(cli: bool = False) -> bool:
             dst = src.replace(source_root, ".")
             if os.path.exists(dst):
                 os.remove(dst)
+
+            # 检查目标文件夹是否存在
+            if not os.path.exists(os.path.dirname(dst)):
+                os.makedirs(os.path.dirname(dst))
+            # 检查目标文件是否存在
+            if not os.path.exists(dst):
+                # 创建目标文件
+                open(dst, "w").close()
+
             shutil.copy(src, dst)
 
     # 把current_tag写入文件

@@ -4,6 +4,7 @@ import json
 import datetime
 import os
 import threading
+import traceback
 
 import pkg.openai.session
 import pkg.openai.manager
@@ -362,6 +363,7 @@ def process_command(session_name: str, text_message: str, mgr, config,
                     else:
                         pkg.utils.context.get_qqbot_manager().notify_admin("无新版本")
                 except Exception as e0:
+                    traceback.print_exc()
                     pkg.utils.context.get_qqbot_manager().notify_admin("更新失败:{}".format(e0))
                     return
 
