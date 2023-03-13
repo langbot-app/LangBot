@@ -1,4 +1,5 @@
 import importlib
+import json
 import os
 import shutil
 import threading
@@ -143,9 +144,22 @@ def main(first_time_init=False):
                 setattr(config, key, getattr(config_template, key))
                 logging.warning("[{}]不存在".format(key))
                 is_integrity = False
+
         if not is_integrity:
             logging.warning("配置文件不完整，请依据config-template.py检查config.py")
             logging.warning("以上配置已被设为默认值，将在5秒后继续启动... ")
+
+        # 检查override.json覆盖
+        if os.path.exists("override.json"):
+            override_json = json.load(open("override.json", "r", encoding="utf-8"))
+            for key in override_json:
+                if hasattr(config, key):
+                    setattr(config, key, override_json[key])
+                    logging.info("覆写配置[{}]为[{}]".format(key, override_json[key]))
+                else:
+                    logging.error("无法覆写配置[{}]为[{}]，该配置不存在，请检查override.json是否正确".format(key, override_json[key]))
+
+        if not is_integrity:
             time.sleep(5)
 
         import pkg.utils.context

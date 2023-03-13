@@ -14,3 +14,4 @@ temp/
 current_tag
 scenario/
 !scenario/default-template.json
+override.json
