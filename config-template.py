@@ -79,9 +79,10 @@ default_prompt = {
     "default": "如果我之后想获取帮助，请你说“输入!help获取帮助”",
 }
 
-# 实验性设置项: JSON完整情景导入
-# 预设prompt模式
+# 情景预设格式
 # 参考值：旧版本方式：default | 完整情景：full_scenario
+# 旧版本的格式为上述default_prompt中的内容，或prompts目录下的文件名
+# 完整情景预设的格式为JSON，在JSON文件中列出对话的每个回合，编写方法见scenario/default-template.json
 preset_mode = "default"
 
 # 群内响应规则
