@@ -226,7 +226,7 @@ python3 main.py
 - [@dominoar](https://github.com/dominoar) 为本项目开发多种插件
 - [@万神的星空](https://github.com/qq255204159)  整合包发行
 
-以及所有[贡献者](https://github.com/RockChinQ/QChatGPT/graphs/contributors)其他所有为本项目提供支持的朋友们。
+以及所有[贡献者](https://github.com/RockChinQ/QChatGPT/graphs/contributors)和其他为本项目提供支持的朋友们。
 
 ## 👍赞赏
 
