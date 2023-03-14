@@ -224,12 +224,9 @@ python3 main.py
 - [@the-lazy-me](https://github.com/the-lazy-me) 为本项目制作[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)
 - [@mikumifa](https://github.com/mikumifa) 本项目Docker部署仓库开发者
 - [@dominoar](https://github.com/dominoar) 为本项目开发多种插件
-- [@hissincn](https://github.com/hissincn) 本项目贡献者
-- [@LINSTCL](https://github.com/LINSTCL)   GPT-3.5官方模型适配贡献者
-- [@Haibersut](https://github.com/Haibersut)  本项目贡献者
 - [@万神的星空](https://github.com/qq255204159)  整合包发行
 
-以及其他所有为本项目提供支持的朋友们。
+以及所有[贡献者](https://github.com/RockChinQ/QChatGPT/graphs/contributors)其他所有为本项目提供支持的朋友们。
 
 ## 👍赞赏
 
