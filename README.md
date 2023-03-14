@@ -162,8 +162,7 @@ cd QChatGPT
 2. 安装依赖
 
 ```bash
-pip3 install yiri-mirai openai colorlog func_timeout
-pip3 install dulwich
+pip3 install yiri-mirai openai colorlog func_timeout dulwich Pillow
 ```
 
 3. 运行一次主程序，生成配置文件
