@@ -1,5 +1,4 @@
 # 长消息处理相关
-import logging
 import os
 import time
 import base64
