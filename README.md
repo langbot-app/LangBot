@@ -1,5 +1,6 @@
 # QChatGPT🤖
 
+> 2023/3/15 逆向库已支持New Bing，使用方法查看[插件文档](https://github.com/RockChinQ/revLibs)  
 > 2023/3/15 逆向库已支持GPT-4模型，使用方法查看[插件](https://github.com/RockChinQ/revLibs)  
 > 2023/3/3  官方接口疑似被墙，可考虑使用网络代理[#198](https://github.com/RockChinQ/QChatGPT/issues/198)  
 > 2023/3/3  现已在主线支持官方ChatGPT接口，使用方法查看[#195](https://github.com/RockChinQ/QChatGPT/issues/195)  
@@ -21,6 +22,7 @@
 - OpenAI GPT-3模型, 本项目原生支持, 部署完成后前往config.py切换
 - ChatGPT网页版GPT-3.5模型, 由[插件](https://github.com/RockChinQ/revLibs)接入
 - ChatGPT网页版GPT-4模型, 由[插件](https://github.com/RockChinQ/revLibs)接入
+- New Bing逆向库, 由[插件](https://github.com/RockChinQ/revLibs)接入
 
 ### 故事续写
 
