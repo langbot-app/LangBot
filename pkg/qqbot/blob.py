@@ -66,7 +66,7 @@ def check_text(text: str) -> list:
     """检查文本是否为长消息，并转换成该使用的消息链组件"""
     if not hasattr(config, 'blob_message_threshold'):
         return [text]
-    
+
     if len(text) > config.blob_message_threshold:
         if not hasattr(config, 'blob_message_strategy'):
             raise AttributeError('未定义长消息处理策略')

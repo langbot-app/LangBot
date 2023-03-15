@@ -26,6 +26,7 @@ import pkg.plugin.host as plugin_host
 import pkg.plugin.models as plugin_models
 import pkg.qqbot.ignore as ignore
 import pkg.qqbot.banlist as banlist
+import pkg.qqbot.blob as blob
 
 processing = []
 
@@ -157,6 +158,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                                                  reply[0][:min(100, len(reply[0]))] + (
                                                      "..." if len(reply[0]) > 100 else "")))
                 reply = [mgr.reply_filter.process(reply[0])]
+                reply = blob.check_text(reply[0])
             else:
                 logging.info("回复[{}]消息".format(session_name))
 

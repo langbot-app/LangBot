@@ -63,7 +63,7 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
                 reply = event.get_return_value("reply")
 
             if not event.is_prevented_default():
-                reply = blob.check_text(prefix + text)
+                reply = prefix + text
         except openai.error.APIConnectionError as e:
             err_msg = str(e)
             if err_msg.__contains__('Error communicating with OpenAI'):
