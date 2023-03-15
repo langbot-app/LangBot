@@ -15,3 +15,4 @@ current_tag
 scenario/
 !scenario/default-template.json
 override.json
+cookies.json
