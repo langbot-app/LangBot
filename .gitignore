@@ -16,3 +16,4 @@ scenario/
 !scenario/default-template.json
 override.json
 cookies.json
+res/announcement_saved
