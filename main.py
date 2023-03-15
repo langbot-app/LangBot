@@ -33,7 +33,7 @@ log_colors_config = {
     'INFO': 'white',
     'WARNING': 'yellow',
     'ERROR': 'red',
-    'CRITICAL': 'bold_red',
+    'CRITICAL': 'cyan',
 }
 
 
@@ -307,12 +307,20 @@ def main(first_time_init=False):
     import pkg.utils.updater
     try:
         if pkg.utils.updater.is_new_version_available():
-            pkg.utils.context.get_qqbot_manager().notify_admin("新版本可用，请发送 !update 进行自动更新\n更新日志:\n{}".format("\n".join(pkg.utils.updater.get_rls_notes())))
+            logging.info("新版本可用，请发送 !update 进行自动更新\n更新日志:\n{}".format("\n".join(pkg.utils.updater.get_rls_notes())))
         else:
             logging.info("当前已是最新版本")
 
     except Exception as e:
         logging.warning("检查更新失败:{}".format(e))
+
+    try:
+        import pkg.utils.announcement as announcement
+        new_announcement = announcement.fetch_new()
+        if new_announcement != "":
+            logging.critical("[公告] {}".format(new_announcement))
+    except Exception as e:
+        logging.warning("获取公告失败:{}".format(e))
 
     return qqbot
 
