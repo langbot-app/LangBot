@@ -18,7 +18,8 @@
 
 - OpenAI GPT-3.5模型(ChatGPT API), 本项目原生支持, 默认使用
 - OpenAI GPT-3模型, 本项目原生支持, 部署完成后前往config.py切换
-- ChatGPT网页版逆向API, 由[插件](https://github.com/RockChinQ/revLibs)接入
+- ChatGPT网页版GPT-3.5模型, 由[插件](https://github.com/RockChinQ/revLibs)接入
+- ChatGPT网页版GPT-4模型, 由[插件](https://github.com/RockChinQ/revLibs)接入
 
 ### 故事续写
 
