@@ -75,7 +75,7 @@ def init_runtime_log_file():
 def reset_logging():
     global log_file_name
 
-    config = pkg.utils.context.get_config()
+    import config
 
     if pkg.utils.context.context['logger_handler'] is not None:
         logging.getLogger().removeHandler(pkg.utils.context.context['logger_handler'])
@@ -124,9 +124,10 @@ def start(first_time_init=False):
 
     known_exception_caught = False
     try:
-        init_runtime_log_file()
 
         sh = reset_logging()
+
+        pkg.utils.context.context['logger_handler'] = sh
 
         # 检查是否设置了管理员
         if not (hasattr(config, 'admin_qq') and config.admin_qq != 0):
@@ -160,7 +161,6 @@ def start(first_time_init=False):
 
         pkg.openai.dprompt.read_prompt_from_file()
 
-        pkg.utils.context.context['logger_handler'] = sh
         # 主启动流程
         database = pkg.database.manager.DatabaseManager()
 
@@ -296,13 +296,6 @@ def stop():
 
 # 临时函数，用于加载config和上下文，未来统一放在config类
 def load_config():
-
-    # 存在性校验
-    if not os.path.exists('config.py'):
-        shutil.copy('config-template.py', 'config.py')
-        print('请先在config.py中填写配置')
-        sys.exit(0)
-
     # 完整性校验
     is_integrity = True
     config_template = importlib.import_module('config-template')
@@ -322,6 +315,12 @@ def load_config():
 
 
 def check_file():
+    # 配置文件存在性校验
+    if not os.path.exists('config.py'):
+        shutil.copy('config-template.py', 'config.py')
+        print('请先在config.py中填写配置')
+        sys.exit(0)
+
     # 检查是否有banlist.py,如果没有就把banlist-template.py复制一份
     if not os.path.exists('banlist.py'):
         shutil.copy('banlist-template.py', 'banlist.py')
@@ -342,12 +341,16 @@ def check_file():
 
 
 def main():
+    # 初始化相关文件
+    check_file()
+
+    # 初始化logging
+    init_runtime_log_file()
+    pkg.utils.context.context['logger_handler'] = reset_logging()
+
     # 加载配置
     load_config()
     config = pkg.utils.context.get_config()
-
-    # 初始化相关文件
-    check_file()
 
     # 配置线程池
     from pkg.utils import ThreadCtl

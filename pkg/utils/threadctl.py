@@ -52,7 +52,7 @@ class ThreadCtl:
         self.submit_sys_task(self.__admin_pool__.__thread_monitor__)
         self.submit_sys_task(self.__user_pool__.__thread_monitor__)
 
-    def __submit__(self, pool:Pool, fn, /, *args, **kwargs ):
+    def __submit__(self, pool: Pool, fn, /, *args, **kwargs ):
         t = pool.ctl.submit(fn, *args, **kwargs)
         pool.task_list_lock.acquire()
         pool.task_list.append(t)
