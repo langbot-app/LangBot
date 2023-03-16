@@ -36,6 +36,7 @@
 ### 语音生成
 
 - TTS+VITS, 由[插件](https://github.com/dominoar/QChatPlugins)接入
+- Plachta/VITS-Umamusume-voice-synthesizer, 由[插件](https://github.com/oliverkirk-sudo/chat_voice)接入
 
 ## ✅功能
 
@@ -221,6 +222,7 @@ python3 main.py
 - [hello_plugin](https://github.com/RockChinQ/hello_plugin) - `hello_plugin` 的储存库形式，插件开发模板
 - [dominoar/QChatPlugins](https://github.com/dominoar/QchatPlugins) - dominoar编写的诸多新功能插件（语言输出、Ranimg、屏蔽词规则等）
 - [dominoar/QCP-NovelAi](https://github.com/dominoar/QCP-NovelAi) - NovelAI 故事叙述与绘画
+- [oliverkirk-sudo/chat_voice](https://github.com/oliverkirk-sudo/chat_voice) - 文字转语音输出，使用HuggingFace上的[VITS-Umamusume-voice-synthesizer模型](https://huggingface.co/spaces/Plachta/VITS-Umamusume-voice-synthesizer)
 
 ## 😘致谢
 
