@@ -284,7 +284,8 @@ def process_command(session_name: str, text_message: str, mgr, config,
                                                                             int(image_count))
                 # 获取此key的额度
                 try:
-                    credit_data = credit.fetch_credit_data(api_keys[key_name])
+                    http_proxy = config.openai_config["http_proxy"] if "http_proxy" in config.openai_config else None
+                    credit_data = credit.fetch_credit_data(api_keys[key_name], http_proxy)
                     reply_str += " - 使用额度:{:.2f}/{:.2f}\n".format(credit_data['total_used'],credit_data['total_granted'])
                 except Exception as e:
                     logging.warning("获取额度失败:{}".format(e))
