@@ -1,7 +1,9 @@
-from concurrent.futures import ThreadPoolExecutor, Future
-import threading, time
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 
-class Pool():
+
+class Pool:
     '''
     线程池结构
     '''
@@ -28,7 +30,8 @@ class Pool():
                     continue
             time.sleep(1)
 
-class ThreadCtl():
+
+class ThreadCtl:
     def __init__(self, sys_pool_num, admin_pool_num, user_pool_num):
         '''
         线程池控制类

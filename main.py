@@ -293,14 +293,17 @@ def stop():
         if not isinstance(e, KeyboardInterrupt):
             raise e
 
+
 # 临时函数，用于加载config和上下文，未来统一放在config类
 def load_config():
-    #存在性校验
+
+    # 存在性校验
     if not os.path.exists('config.py'):
         shutil.copy('config-template.py', 'config.py')
         print('请先在config.py中填写配置')
         sys.exit(0)
-    #完整性校验
+
+    # 完整性校验
     is_integrity = True
     config_template = importlib.import_module('config-template')
     config = importlib.import_module('config')
@@ -313,8 +316,10 @@ def load_config():
         logging.warning("配置文件不完整，请依据config-template.py检查config.py")
         logging.warning("以上配置已被设为默认值，将在5秒后继续启动... ")
         time.sleep(5)
-    #context配置
+
+    # 存进上下文
     pkg.utils.context.set_config(config)
+
 
 def check_file():
     # 检查是否有banlist.py,如果没有就把banlist-template.py复制一份
@@ -335,6 +340,7 @@ def check_file():
         if not os.path.exists(path):
             os.mkdir(path)
 
+
 def main():
     # 加载配置
     load_config()
@@ -346,13 +352,14 @@ def main():
     # 配置线程池
     from pkg.utils import ThreadCtl
     thread_ctl = ThreadCtl(
-        sys_pool_num = config.sys_pool_num,
-        admin_pool_num = config.admin_pool_num,
-        user_pool_num = config.user_pool_num
+        sys_pool_num=config.sys_pool_num,
+        admin_pool_num=config.admin_pool_num,
+        user_pool_num=config.user_pool_num
     )
+    # 存进上下文
     pkg.utils.context.set_thread_ctl(thread_ctl)
 
-    # 控制台指令处理
+    # 启动指令处理
     if len(sys.argv) > 1 and sys.argv[1] == 'init_db':
         init_db()
         sys.exit(0)
@@ -363,10 +370,7 @@ def main():
         updater.update_all(cli=True)
         sys.exit(0)
 
-    # 不知道干啥的
-    # import pkg.utils.configmgr
-    #
-    # pkg.utils.configmgr.set_config_and_reload("quote_origin", False)
+    # 关闭urllib的http警告
     requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
     pkg.utils.context.get_thread_ctl().submit_sys_task(
@@ -387,6 +391,7 @@ def main():
             elif platform.system() in ['Linux', 'Darwin']:
                 cmd = "kill -9 {}".format(os.getpid())
             os.system(cmd)
+
 
 if __name__ == '__main__':
     main()

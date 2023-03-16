@@ -1,4 +1,6 @@
 import threading
+from pkg.utils import ThreadCtl
+
 
 context = {
     'inst': {
@@ -78,14 +80,15 @@ def get_plugin_host():
     context_lock.release()
     return t
 
+
 def set_thread_ctl(inst):
     context_lock.acquire()
     context['pool_ctl'] = inst
     context_lock.release()
 
-from pkg.utils import ThreadCtl
+
 def get_thread_ctl() -> ThreadCtl:
     context_lock.acquire()
-    t = context['pool_ctl']
+    t: ThreadCtl = context['pool_ctl']
     context_lock.release()
     return t
