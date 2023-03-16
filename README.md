@@ -1,10 +1,9 @@
 # QChatGPT🤖
 
+> 2023/3/16 正在等待GPT-4 API内测资格，若您已获得资格并愿意提供测试，请进群联系群主  
 > 2023/3/15 逆向库已支持New Bing，使用方法查看[插件文档](https://github.com/RockChinQ/revLibs)  
-> 2023/3/15 逆向库已支持GPT-4模型，使用方法查看[插件](https://github.com/RockChinQ/revLibs)  
-> 2023/3/3  官方接口疑似被墙，可考虑使用网络代理[#198](https://github.com/RockChinQ/QChatGPT/issues/198)  
+> 2023/3/15 逆向库已支持GPT-4模型，使用方法查看[插件](https://github.com/RockChinQ/revLibs)   
 > 2023/3/3  现已在主线支持官方ChatGPT接口，使用方法查看[#195](https://github.com/RockChinQ/QChatGPT/issues/195)  
-> 2023/2/16 现已支持接入ChatGPT网页版，详情请完成部署并查看底部**插件**小节或[此仓库](https://github.com/RockChinQ/revLibs)
 
 - 到[项目Wiki](https://github.com/RockChinQ/QChatGPT/wiki)可了解项目详细信息
 - 由bilibili TheLazy制作的[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)
@@ -111,6 +110,12 @@
     - “丢弃”策略：此分钟内对话次数达到限制时，丢弃之后的对话
   - 详细请查看config.py中的相关配置
 </details>
+<details>
+<summary>✅支持使用网络代理</summary>
+
+  - 目前已支持正向代理访问接口
+  - 详细请查看config.py中的`openai_config`的说明
+</details>
 
 详情请查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E5%8A%9F%E8%83%BD%E7%82%B9%E5%88%97%E4%B8%BE)
 
@@ -122,7 +127,7 @@
 
 参考以下文章自行注册
 
-> [国内注册ChatGPT的方法(100%可用)](https://www.pythonthree.com/register-openai-chatgpt/)
+> [国内注册ChatGPT的方法(100%可用)](https://www.pythonthree.com/register-openai-chatgpt/)  
 > [手把手教你如何注册ChatGPT，超级详细](https://guxiaobei.com/51461)
 
 注册成功后请前往[个人中心查看](https://beta.openai.com/account/api-keys)api_key  
