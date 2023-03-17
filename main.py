@@ -13,8 +13,8 @@ try:
 except ImportError:
     # 尝试安装
     import pkg.utils.pkgmgr as pkgmgr
-    pkgmgr.install_requirements("requirements.txt")
     try:
+        pkgmgr.install_requirements("requirements.txt")
         import colorlog
     except ImportError:
         print("依赖不满足,请查看 https://github.com/RockChinQ/qcg-installer/issues/15")
