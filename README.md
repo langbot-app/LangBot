@@ -237,6 +237,7 @@ python3 main.py
 - [@mikumifa](https://github.com/mikumifa) 本项目Docker部署仓库开发者
 - [@dominoar](https://github.com/dominoar) 为本项目开发多种插件
 - [@万神的星空](https://github.com/qq255204159)  整合包发行
+- [@ljcduo](https://github.com/ljcduo)  GPT-4 API内测账号提供
 
 以及所有[贡献者](https://github.com/RockChinQ/QChatGPT/graphs/contributors)和其他为本项目提供支持的朋友们。
 
