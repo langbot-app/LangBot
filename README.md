@@ -1,6 +1,6 @@
 # QChatGPT🤖
 
-> 2023/3/18 现已支持GPT-4 API（内测），请查看`config-template.py`中的`completion_api_params`
+> 2023/3/18 现已支持GPT-4 API（内测），请查看`config-template.py`中的`completion_api_params`  
 > 2023/3/15 逆向库已支持New Bing，使用方法查看[插件文档](https://github.com/RockChinQ/revLibs)  
 > 2023/3/15 逆向库已支持GPT-4模型，使用方法查看[插件](https://github.com/RockChinQ/revLibs)   
 > 2023/3/3  现已在主线支持官方ChatGPT接口，使用方法查看[#195](https://github.com/RockChinQ/QChatGPT/issues/195)  
