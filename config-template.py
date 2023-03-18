@@ -145,6 +145,10 @@ prompt_submit_length = 1024
 # 请在下方填写模型，程序自动选择接口
 # 现已支持的模型有：
 # 
+#    'gpt-4'
+#    'gpt-4-0314'
+#    'gpt-4-32k'
+#    'gpt-4-32k-0314'
 #    'gpt-3.5-turbo'
 #    'gpt-3.5-turbo-0301'
 #    'text-davinci-003'
@@ -156,6 +160,7 @@ prompt_submit_length = 1024
 #    'text-ada-001'
 #
 # 具体请查看OpenAI的文档: https://beta.openai.com/docs/api-reference/completions/create
+# 请将内容修改到config.py中，请勿修改此文件
 completion_api_params = {
     "model": "gpt-3.5-turbo",
     "temperature": 0.9,  # 数值越低得到的回答越理性，取值范围[0, 1]
