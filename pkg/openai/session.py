@@ -72,6 +72,7 @@ def load_sessions():
         temp_session.last_interact_timestamp = session_data[session_name]['last_interact_timestamp']
         try:
             temp_session.prompt = json.loads(session_data[session_name]['prompt'])
+            temp_session.token_counts = json.loads(session_data[session_name]['token_counts'])
         except Exception:
             temp_session.prompt = reset_session_prompt(session_name, session_data[session_name]['prompt'])
             temp_session.persistence()
@@ -105,6 +106,9 @@ class Session:
 
     prompt = []
     """使用list来保存会话中的回合"""
+
+    token_counts = []
+    """每个回合的token数量"""
 
     default_prompt = []
     """本session的默认prompt"""
@@ -146,6 +150,8 @@ class Session:
         self.name = name
         self.create_timestamp = int(time.time())
         self.last_interact_timestamp = int(time.time())
+        self.prompt = []
+        self.token_counts = []
         self.schedule()
 
         self.response_lock = threading.Lock()
@@ -209,9 +215,16 @@ class Session:
         config = pkg.utils.context.get_config()
         max_length = config.prompt_submit_length if hasattr(config, "prompt_submit_length") else 1024
 
+        prompts, counts = self.cut_out(text, max_length)
+
+        # 计算请求前的prompt数量
+        total_token_before_query = 0
+        for token_count in counts:
+            total_token_before_query += token_count
+
         # 向API请求补全
-        message = pkg.utils.context.get_openai_manager().request_completion(
-            self.cut_out(text, max_length),
+        message, total_token = pkg.utils.context.get_openai_manager().request_completion(
+            prompts,
         )
 
         # 成功获取，处理回复
@@ -227,6 +240,10 @@ class Session:
         # 将此次对话的双方内容加入到prompt中
         self.prompt.append({'role': 'user', 'content': text})
         self.prompt.append({'role': 'assistant', 'content': res_ans})
+
+        # 向token_counts中添加本回合的token数量
+        self.token_counts.append(total_token-total_token_before_query)
+        logging.debug("本回合使用token: {}, session counts: {}".format(total_token-total_token_before_query, self.token_counts))
 
         if self.just_switched_to_exist_session:
             self.just_switched_to_exist_session = False
@@ -244,39 +261,65 @@ class Session:
 
         question = self.prompt[-2]['content']
         self.prompt = self.prompt[:-2]
+        self.token_counts = self.token_counts[:-1]
 
         # 返回上一回合的问题
         return question
 
     # 构建对话体
-    def cut_out(self, msg: str, max_tokens: int) -> list:
-        """将现有prompt进行切割处理，使得新的prompt长度不超过max_tokens"""
-        # 如果用户消息长度超过max_tokens，直接返回
-        temp_prompt: list = []
-        temp_prompt += self.default_prompt
-        temp_prompt.append(
+    def cut_out(self, msg: str, max_tokens: int) -> tuple[list, list]:
+        """将现有prompt进行切割处理，使得新的prompt长度不超过max_tokens
+
+        :return: (新的prompt, 新的token_counts)
+        """
+
+        # 最终由三个部分组成
+        # - default_prompt         情景预设固定值
+        # - changable_prompts      可变部分, 此会话中的历史对话回合
+        # - current_question       当前问题
+
+        # 包装目前的对话回合内容
+        changable_prompts = []
+        changable_counts = []
+        # 倒着来, 遍历prompt的步长为2, 遍历tokens_counts的步长为1
+        changable_index = len(self.prompt) - 1
+        token_count_index = len(self.token_counts) - 1
+
+        packed_tokens = 0
+
+        print(self.prompt)
+
+        while changable_index >= 0 and token_count_index >= 0:
+            if packed_tokens + self.token_counts[token_count_index] > max_tokens:
+                break
+
+            changable_prompts.insert(0, self.prompt[changable_index])
+            changable_prompts.insert(0, self.prompt[changable_index - 1])
+            changable_counts.insert(0, self.token_counts[token_count_index])
+            packed_tokens += self.token_counts[token_count_index]
+
+            changable_index -= 2
+            token_count_index -= 1
+
+        # 将default_prompt和changable_prompts合并
+        result_prompt = self.default_prompt + changable_prompts
+
+        print(changable_prompts)
+
+        # 添加当前问题
+        result_prompt.append(
             {
                 'role': 'user',
                 'content': msg
             }
         )
 
-        token_count = 0
-        for item in temp_prompt:
-            token_count += len(item['content'])
+        logging.debug('cut_out: {}\nchangable section tokens: {}\npacked counts: {}\nsession counts: {}'.format(json.dumps(result_prompt, ensure_ascii=False, indent=4),
+                                                                             packed_tokens,
+                                                                             changable_counts,
+                                                                             self.token_counts))
 
-        # 倒序遍历prompt
-        for i in range(len(self.prompt) - 1, -1, -1):
-            if token_count >= max_tokens:
-                break
-
-            # 将prompt加到temp_prompt倒数第二个位置
-            temp_prompt.insert(len(self.default_prompt), self.prompt[i])
-            token_count += len(self.prompt[i]['content'])
-
-        logging.debug('cut_out: {}'.format(json.dumps(temp_prompt, ensure_ascii=False, indent=4)))
-
-        return temp_prompt
+        return result_prompt, changable_counts
 
     # 持久化session
     def persistence(self):
@@ -291,7 +334,7 @@ class Session:
         subject_number = int(name_spt[1])
 
         db_inst.persistence_session(subject_type, subject_number, self.create_timestamp, self.last_interact_timestamp,
-                                    json.dumps(self.prompt), json.dumps(self.default_prompt))
+                                    json.dumps(self.prompt), json.dumps(self.default_prompt), json.dumps(self.token_counts))
 
     # 重置session
     def reset(self, explicit: bool = False, expired: bool = False, schedule_new: bool = True, use_prompt: str = None):
@@ -314,6 +357,7 @@ class Session:
 
         self.default_prompt = self.get_default_prompt(use_prompt)
         self.prompt = []
+        self.token_counts = []
         self.create_timestamp = int(time.time())
         self.last_interact_timestamp = int(time.time())
         self.just_switched_to_exist_session = False
@@ -339,6 +383,7 @@ class Session:
             self.last_interact_timestamp = last_one['last_interact_timestamp']
             try:
                 self.prompt = json.loads(last_one['prompt'])
+                self.token_counts = json.loads(last_one['token_counts'])
             except json.decoder.JSONDecodeError:
                 self.prompt = reset_session_prompt(self.name, last_one['prompt'])
                 self.persistence()
@@ -359,6 +404,7 @@ class Session:
             self.last_interact_timestamp = next_one['last_interact_timestamp']
             try:
                 self.prompt = json.loads(next_one['prompt'])
+                self.token_counts = json.loads(next_one['token_counts'])
             except json.decoder.JSONDecodeError:
                 self.prompt = reset_session_prompt(self.name, next_one['prompt'])
                 self.persistence()

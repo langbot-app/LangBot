@@ -55,7 +55,7 @@ class DatabaseManager:
             `status` varchar(255) not null default 'on_going',
             `default_prompt` text not null default '',
             `prompt` text not null,
-            `token_counts` text not null default '[]',
+            `token_counts` text not null default '[]'
         )
         """)
 
@@ -96,7 +96,7 @@ class DatabaseManager:
 
     # session持久化
     def persistence_session(self, subject_type: str, subject_number: int, create_timestamp: int,
-                            last_interact_timestamp: int, prompt: str, default_prompt: str = '', token_counts: list = []):
+                            last_interact_timestamp: int, prompt: str, default_prompt: str = '', token_counts: str = ''):
         """持久化指定session"""
 
         # 检查是否已经有了此name和create_timestamp的session
@@ -115,14 +115,14 @@ class DatabaseManager:
 
             self.__execute__(sql,
                              ("{}_{}".format(subject_type, subject_number), subject_type, subject_number, create_timestamp,
-                          last_interact_timestamp, prompt, default_prompt, json.dumps(token_counts)))
+                          last_interact_timestamp, prompt, default_prompt, token_counts))
         else:
             sql = """
             update `sessions` set `last_interact_timestamp` = ?, `prompt` = ?, `token_counts` = ?
             where `type` = ? and `number` = ? and `create_timestamp` = ?
             """
 
-            self.__execute__(sql, (last_interact_timestamp, prompt, json.dumps(token_counts), subject_type,
+            self.__execute__(sql, (last_interact_timestamp, prompt, token_counts, subject_type,
                                    subject_number, create_timestamp))
 
     # 显式关闭一个session
@@ -172,7 +172,7 @@ class DatabaseManager:
                     'last_interact_timestamp': last_interact_timestamp,
                     'prompt': prompt,
                     'default_prompt': default_prompt,
-                    'token_counts': json.loads(token_counts)
+                    'token_counts': token_counts
                 }
             else:
                 if session_name in sessions:
@@ -210,7 +210,7 @@ class DatabaseManager:
             'last_interact_timestamp': last_interact_timestamp,
             'prompt': prompt,
             'default_prompt': default_prompt,
-            'token_counts': json.loads(token_counts)
+            'token_counts': token_counts
         }
 
     # 获取此session_name后一个session的数据
@@ -243,7 +243,7 @@ class DatabaseManager:
             'last_interact_timestamp': last_interact_timestamp,
             'prompt': prompt,
             'default_prompt': default_prompt,
-            'token_counts': json.loads(token_counts)
+            'token_counts': token_counts
         }
 
     # 列出与某个对象的所有对话session
@@ -272,7 +272,7 @@ class DatabaseManager:
                 'last_interact_timestamp': last_interact_timestamp,
                 'prompt': prompt,
                 'default_prompt': default_prompt,
-                'token_counts': json.loads(token_counts)
+                'token_counts': token_counts
             })
 
         return sessions
