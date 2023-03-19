@@ -82,7 +82,30 @@ default_prompt = {
 # 情景预设格式
 # 参考值：旧版本方式：default | 完整情景：full_scenario
 # 旧版本的格式为上述default_prompt中的内容，或prompts目录下的文件名
-# 完整情景预设的格式为JSON，在JSON文件中列出对话的每个回合，编写方法见scenario/default-template.json
+#
+# 完整情景预设的格式为JSON，在scenario目录下的JSON文件中列出对话的每个回合，编写方法见scenario/default-template.json
+# 编写方法例如：
+# {
+#   "prompt": [
+#       {
+#           "role": "user",
+#           "content": "之后当我需要帮助时，请说“输入!help获取帮助”"
+#       },{
+#           "role": "assistant",
+#           "content": "好的，当你之后需要帮助时，我会说“输入!help获取帮助”"
+#       },{
+#           "role": "user",
+#           "content": "帮助"
+#       },{
+#           "role": "assistant",
+#           "content": "输入!help获取帮助"
+#       }
+#   ]
+# }
+#
+# 您可以按照上述格式编写自己的情景预设，在prompt中列出对话的每个回合，
+# role为user或assistant，分别表示用户和机器人的回复
+# 每个JSON文件是一个情景预设，文件名即为情景预设的名称
 preset_mode = "default"
 
 # 群内响应规则
@@ -139,7 +162,7 @@ encourage_sponsor_at_start = True
 # 每次向OpenAI接口发送对话记录上下文的字符数
 # 最大不超过(4096 - max_tokens)个字符，max_tokens为下方completion_api_params中的max_tokens
 # 注意：较大的prompt_submit_length会导致OpenAI账户额度消耗更快
-prompt_submit_length = 1024
+prompt_submit_length = 2048
 
 # OpenAI补全API的参数
 # 请在下方填写模型，程序自动选择接口
