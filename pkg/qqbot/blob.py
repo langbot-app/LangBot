@@ -76,8 +76,6 @@ def check_text(text: str) -> list:
             # 转换成图片
             return [text_to_image(text)]
         elif config.blob_message_strategy == 'forward':
-            # 敏感词屏蔽
-            text = context.get_qqbot_manager().reply_filter.process(text)
 
             # 包装转发消息
             display = ForwardMessageDiaplay(
