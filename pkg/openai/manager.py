@@ -34,7 +34,7 @@ class OpenAIInteract:
         pkg.utils.context.set_openai_manager(self)
 
     # 请求OpenAI Completion
-    def request_completion(self, prompts) -> str:
+    def request_completion(self, prompts) -> tuple[str, int]:
         """请求补全接口回复
 
         Parameters:
@@ -60,14 +60,18 @@ class OpenAIInteract:
 
         logging.debug("OpenAI response: %s", response)
 
+        # 记录使用量
+        current_round_token = 0
         if 'model' in config.completion_api_params:
             self.audit_mgr.report_text_model_usage(config.completion_api_params['model'],
                                                    ai.get_total_tokens())
+            current_round_token = ai.get_total_tokens()
         elif 'engine' in config.completion_api_params:
             self.audit_mgr.report_text_model_usage(config.completion_api_params['engine'],
                                                    response['usage']['total_tokens'])
+            current_round_token = response['usage']['total_tokens']
 
-        return ai.get_message()
+        return ai.get_message(), current_round_token
 
     def request_image(self, prompt) -> dict:
         """请求图片接口回复
