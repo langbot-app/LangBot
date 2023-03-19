@@ -287,8 +287,6 @@ class Session:
 
         packed_tokens = 0
 
-        print(self.prompt)
-
         while changable_index >= 0 and token_count_index >= 0:
             if packed_tokens + self.token_counts[token_count_index] > max_tokens:
                 break
@@ -303,8 +301,6 @@ class Session:
 
         # 将default_prompt和changable_prompts合并
         result_prompt = self.default_prompt + changable_prompts
-
-        print(changable_prompts)
 
         # 添加当前问题
         result_prompt.append(
