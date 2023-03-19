@@ -4,7 +4,7 @@
 
 ### 事务
 
-- [ ] 已阅读仓库[贡献指引](CONTRIBUTING.md)
+- [ ] 已阅读仓库[贡献指引](../CONTRIBUTING.md)
 - [ ] 已与维护者在issues或其他平台沟通此PR大致内容
 
 ### 功能
