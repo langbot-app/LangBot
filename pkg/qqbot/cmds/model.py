@@ -1,4 +1,5 @@
 # 指令模型
+import logging
 
 commands = []
 """已注册的指令类
@@ -16,7 +17,7 @@ commands = []
 def command(name: str, description: str, usage: str, aliases: list = None, admin_only: bool = False):
     """指令装饰器"""
 
-    def wrapper(fun: function):
+    def wrapper(fun):
         commands.append({
             "name": name,
             "description": description,
@@ -28,3 +29,16 @@ def command(name: str, description: str, usage: str, aliases: list = None, admin
         return fun
     
     return wrapper
+
+
+def search(cmd: str) -> dict:
+    """查找指令"""
+    for command in commands:
+        if (command["name"] == cmd) or (cmd in command["aliases"]):
+            return command
+    return None
+
+
+import pkg.qqbot.cmds.func
+import pkg.qqbot.cmds.system
+import pkg.qqbot.cmds.session
