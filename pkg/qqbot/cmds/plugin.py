@@ -1,5 +1,6 @@
 from pkg.qqbot.cmds.model import command
 import pkg.utils.context
+import pkg.plugin.switch as plugin_switch
 
 import os
 import threading
@@ -77,6 +78,21 @@ def plugin_operation(cmd, params, is_admin):
                     reply = ["[bot]err:未找到插件: {}, 请使用!plugin指令查看插件列表".format(plugin_name)]
         else:
             reply = ["[bot]err:权限不足，请使用管理员账号私聊发起"]
+    elif params[0] == 'on' or params[0] == 'off' :
+        new_status = params[0] == 'on'
+        if is_admin:
+            if len(params) < 2:
+                reply = ["[bot]err:未指定插件名"]
+            else:
+                plugin_name = params[1]
+                if plugin_name in plugin_list:
+                    plugin_list[plugin_name]['enabled'] = new_status
+                    plugin_switch.dump_switch()
+                    reply = ["[bot]已{}插件: {}".format("启用" if new_status else "禁用", plugin_name)]
+                else:
+                    reply = ["[bot]err:未找到插件: {}, 请使用!plugin指令查看插件列表".format(plugin_name)]
+        else:
+            reply = ["[bot]err:权限不足，请使用管理员账号私聊发起"]
     elif params[0].startswith("http"):
         if is_admin:
 
@@ -101,7 +117,7 @@ def plugin_operation(cmd, params, is_admin):
 @command(
     "plugin",
     "插件相关操作",
-    "!plugin\n!plugin <插件仓库地址>",
+    "!plugin\n!plugin <插件仓库地址>\!plugin update\n!plugin del <插件名>\n!plugin on <插件名>\n!plugin off <插件名>",
     [],
     False
 )
