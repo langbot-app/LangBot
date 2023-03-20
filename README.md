@@ -218,6 +218,9 @@ python3 main.py
 详见[Wiki插件使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8)  
 开发教程见[Wiki插件开发页](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91)
 
+<details>
+<summary>查看插件列表</summary>
+
 ### 示例插件
 
 在`tests/plugin_examples`目录下，将其整个目录复制到`plugins`目录下即可使用
@@ -237,6 +240,7 @@ python3 main.py
 - [oliverkirk-sudo/chat_voice](https://github.com/oliverkirk-sudo/chat_voice) - 文字转语音输出，使用HuggingFace上的[VITS-Umamusume-voice-synthesizer模型](https://huggingface.co/spaces/Plachta/VITS-Umamusume-voice-synthesizer)
 - [RockChinQ/WaitYiYan](https://github.com/RockChinQ/WaitYiYan) - 实时获取百度`文心一言`等待列表人数
 - [QChartGPT_Emoticon_Plugin](https://github.com/chordfish-k/QChartGPT_Emoticon_Plugin) - 使机器人根据回复内容发送表情包
+</details>
 
 ## 😘致谢
 
@@ -248,6 +252,6 @@ python3 main.py
 
 以及所有[贡献者](https://github.com/RockChinQ/QChatGPT/graphs/contributors)和其他为本项目提供支持的朋友们。
 
-## 👍赞赏
+<!-- ## 👍赞赏
 
-<img alt="赞赏码" src="res/mm_reward_qrcode_1672840549070.png" width="400" height="400"/>
+<img alt="赞赏码" src="res/mm_reward_qrcode_1672840549070.png" width="400" height="400"/> -->
