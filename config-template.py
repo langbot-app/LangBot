@@ -183,7 +183,7 @@ prompt_submit_length = 2048
 #    'text-ada-001'
 #
 # 具体请查看OpenAI的文档: https://beta.openai.com/docs/api-reference/completions/create
-# 请将内容修改到config.py中，请勿修改此文件
+# 请将内容修改到config.py中，请勿修改config-template.py
 completion_api_params = {
     "model": "gpt-3.5-turbo",
     "temperature": 0.9,  # 数值越低得到的回答越理性，取值范围[0, 1]
