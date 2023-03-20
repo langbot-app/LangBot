@@ -42,3 +42,4 @@ def search(cmd: str) -> dict:
 import pkg.qqbot.cmds.func
 import pkg.qqbot.cmds.system
 import pkg.qqbot.cmds.session
+import pkg.qqbot.cmds.plugin

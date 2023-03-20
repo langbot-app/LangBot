@@ -5,6 +5,7 @@ import importlib
 import os
 import pkgutil
 import sys
+import shutil
 import traceback
 
 import pkg.utils.context as context
@@ -158,6 +159,22 @@ def install_plugin(repo_url: str):
 
         import main
         main.reset_logging()
+
+
+def uninstall_plugin(plugin_name: str) -> str:
+    """ 卸载插件 """
+    if plugin_name not in __plugins__:
+        raise Exception("插件不存在")
+    
+    # 获取文件夹路径
+    plugin_path = __plugins__[plugin_name]['path'].replace("\\", "/")
+
+    # 剪切路径为plugins/插件名
+    plugin_path = plugin_path.split("plugins/")[1].split("/")[0]
+
+    # 删除文件夹
+    shutil.rmtree("plugins/"+plugin_path)
+    return "plugins/"+plugin_path
 
 
 class EventContext:
