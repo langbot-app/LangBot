@@ -6,6 +6,7 @@ import requests
 import json
 
 import pkg.utils.constants
+import pkg.utils.network as network
 
 
 def check_dulwich_closure():
@@ -36,7 +37,8 @@ def pull_latest(repo_path: str) -> bool:
 def get_release_list() -> list:
     """获取发行列表"""
     rls_list_resp = requests.get(
-        url="https://api.github.com/repos/RockChinQ/QChatGPT/releases"
+        url="https://api.github.com/repos/RockChinQ/QChatGPT/releases",
+        proxies=network.wrapper_proxies()
     )
 
     rls_list = rls_list_resp.json()
@@ -83,7 +85,10 @@ def update_all(cli: bool = False) -> bool:
     else:
         print("开始下载最新版本: {}".format(latest_rls['zipball_url']))
     zip_url = latest_rls['zipball_url']
-    zip_resp = requests.get(url=zip_url)
+    zip_resp = requests.get(
+        url=zip_url,
+        proxies=network.wrapper_proxies()
+    )
     zip_data = zip_resp.content
 
     # 检查temp/updater目录

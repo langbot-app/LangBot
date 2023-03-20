@@ -3,10 +3,13 @@ import os
 
 import requests
 
+import pkg.utils.network as network
+
 
 def read_latest() -> str:
     resp = requests.get(
         url="https://api.github.com/repos/RockChinQ/QChatGPT/contents/res/announcement",
+        proxies=network.wrapper_proxies()
     )
     obj_json = resp.json()
     b64_content = obj_json["content"]
