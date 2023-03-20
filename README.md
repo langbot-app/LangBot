@@ -6,7 +6,7 @@
 > 2023/3/3  现已在主线支持官方ChatGPT接口，使用方法查看[#195](https://github.com/RockChinQ/QChatGPT/issues/195)  
 
 - 到[项目Wiki](https://github.com/RockChinQ/QChatGPT/wiki)可了解项目详细信息
-- 由bilibili TheLazy制作的[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)
+- ~~由bilibili TheLazy制作的[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)~~（寄了，求大佬做个新的）
 - 交流、答疑群: ~~204785790~~（已满）、~~691226829~~（已满）、656285629  
   - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
 - QQ频道机器人见[QQChannelChatGPT](https://github.com/Soulter/QQChannelChatGPT)
@@ -128,7 +128,9 @@
 
 ## 🔩部署
 
-**部署过程中遇到任何问题，请先在[QChatGPT](https://github.com/RockChinQ/QChatGPT/issues)或[qcg-installer](https://github.com/RockChinQ/qcg-installer/issues)的issue里进行搜索**
+**部署过程中遇到任何问题，请先在[QChatGPT](https://github.com/RockChinQ/QChatGPT/issues)或[qcg-installer](https://github.com/RockChinQ/qcg-installer/issues)的issue里进行搜索**  
+
+> **❗部署完成后必看: [指令说明](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4)❗**
 
 ### - 注册OpenAI账号
 
