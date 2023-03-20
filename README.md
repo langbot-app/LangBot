@@ -134,6 +134,8 @@
 
 ### - 注册OpenAI账号
 
+> 若您要直接使用非OpenAI的模型（如New Bing），可跳过此步骤，直接进行之后的部署，完成后按照相关插件的文档进行配置即可
+
 参考以下文章自行注册
 
 > [国内注册ChatGPT的方法(100%可用)](https://www.pythonthree.com/register-openai-chatgpt/)  
