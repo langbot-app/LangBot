@@ -2,7 +2,6 @@ import asyncio
 import json
 import os
 import threading
-from concurrent.futures import ThreadPoolExecutor
 
 import mirai.models.bus
 from mirai import At, GroupMessage, MessageEvent, Mirai, StrangerMessage, WebSocketAdapter, HTTPAdapter, \
@@ -66,9 +65,6 @@ def random_responding():
 class QQBotManager:
     retry = 3
 
-    #线程池控制
-    pool = None
-
     bot: Mirai = None
 
     reply_filter = None
@@ -78,13 +74,9 @@ class QQBotManager:
     ban_person = []
     ban_group = []
 
-    def __init__(self, mirai_http_api_config: dict, timeout: int = 60, retry: int = 3, pool_num: int = 10, first_time_init=True):
+    def __init__(self, mirai_http_api_config: dict, timeout: int = 60, retry: int = 3, first_time_init=True):
         self.timeout = timeout
         self.retry = retry
-
-        self.pool_num = pool_num
-        self.pool = ThreadPoolExecutor(max_workers=self.pool_num)
-        logging.debug("Registered thread pool Size:{}".format(pool_num))
 
         # 加载禁用列表
         if os.path.exists("banlist.py"):
@@ -138,7 +130,10 @@ class QQBotManager:
 
                 self.on_person_message(event)
 
-            self.go(friend_message_handler, event)
+            pkg.utils.context.get_thread_ctl().submit_user_task(
+                friend_message_handler,
+                event
+            )
 
         @self.bot.on(StrangerMessage)
         async def on_stranger_message(event: StrangerMessage):
@@ -158,7 +153,10 @@ class QQBotManager:
 
                 self.on_person_message(event)
 
-            self.go(stranger_message_handler, event)
+            pkg.utils.context.get_thread_ctl().submit_user_task(
+                stranger_message_handler,
+                event
+            )
 
         @self.bot.on(GroupMessage)
         async def on_group_message(event: GroupMessage):
@@ -178,7 +176,10 @@ class QQBotManager:
 
                 self.on_group_message(event)
 
-            self.go(group_message_handler, event)
+            pkg.utils.context.get_thread_ctl().submit_user_task(
+                group_message_handler,
+                event
+            )
 
         def unsubscribe_all():
             """取消所有订阅

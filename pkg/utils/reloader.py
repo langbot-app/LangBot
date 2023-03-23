@@ -3,7 +3,7 @@ import threading
 
 import importlib
 import pkgutil
-import pkg.utils.context
+import pkg.utils.context as context
 import pkg.plugin.host
 
 
@@ -22,20 +22,21 @@ def walk(module, prefix='', path_prefix=''):
 def reload_all(notify=True):
     # 解除bot的事件注册
     import pkg
-    pkg.utils.context.get_qqbot_manager().unsubscribe_all()
+    context.get_qqbot_manager().unsubscribe_all()
     # 执行关闭流程
     logging.info("执行程序关闭流程")
     import main
     main.stop()
 
     # 重载所有模块
-    pkg.utils.context.context['exceeded_keys'] = pkg.utils.context.get_openai_manager().key_mgr.exceeded
-    context = pkg.utils.context.context
+    context.context['exceeded_keys'] = context.get_openai_manager().key_mgr.exceeded
+    this_context = context.context
     walk(pkg)
+    importlib.reload(__import__("config-template"))
     importlib.reload(__import__('config'))
     importlib.reload(__import__('main'))
     importlib.reload(__import__('banlist'))
-    pkg.utils.context.context = context
+    context.context = this_context
 
     # 重载插件
     import plugins
@@ -43,8 +44,16 @@ def reload_all(notify=True):
 
     # 执行启动流程
     logging.info("执行程序启动流程")
-    threading.Thread(target=main.main, args=(False,), daemon=False).start()
+    main.load_config()
+    context.get_thread_ctl().reload(
+        admin_pool_num=context.get_config().admin_pool_num,
+        user_pool_num=context.get_config().user_pool_num
+    )
+    context.get_thread_ctl().submit_sys_task(
+        main.start,
+        False
+    )
 
     logging.info('程序启动完成')
     if notify:
-        pkg.utils.context.get_qqbot_manager().notify_admin("重载完成")
+        context.get_qqbot_manager().notify_admin("重载完成")
