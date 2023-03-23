@@ -247,6 +247,8 @@ def start(first_time_init=False):
                             "捕捉到未知异常:{}, 请前往 https://github.com/RockChinQ/QChatGPT/issues 查找或提issue".format(e))
                         known_exception_caught = True
                         raise e
+                finally:
+                    time.sleep(12)
             threading.Thread(
                 target=run_bot_wrapper
             ).start()
