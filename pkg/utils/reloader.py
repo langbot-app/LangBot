@@ -32,6 +32,7 @@ def reload_all(notify=True):
     context.context['exceeded_keys'] = context.get_openai_manager().key_mgr.exceeded
     this_context = context.context
     walk(pkg)
+    importlib.reload(__import__("config-template"))
     importlib.reload(__import__('config'))
     importlib.reload(__import__('main'))
     importlib.reload(__import__('banlist'))
@@ -43,6 +44,7 @@ def reload_all(notify=True):
 
     # 执行启动流程
     logging.info("执行程序启动流程")
+    main.load_config()
     context.get_thread_ctl().reload(
         admin_pool_num=context.get_config().admin_pool_num,
         user_pool_num=context.get_config().user_pool_num

@@ -102,6 +102,7 @@ def reset_logging():
     pkg.utils.context.context['logger_handler'] = sh
     return sh
 
+
 # 临时函数，用于加载config和上下文，未来统一放在config类
 def load_config():
     # 完整性校验
@@ -121,13 +122,13 @@ def load_config():
     # 存进上下文
     pkg.utils.context.set_config(config)
 
+
 def start(first_time_init=False):
     """启动流程，reload之后会被执行"""
 
     global known_exception_caught
     import pkg.utils.context
 
-    load_config() #暂时在start里加载config应对重载，未来在config抽象类中统一处理reload(未来删除该行)
     config = pkg.utils.context.get_config()
     # 更新openai库到最新版本
     if not hasattr(config, 'upgrade_dependencies') or config.upgrade_dependencies:
