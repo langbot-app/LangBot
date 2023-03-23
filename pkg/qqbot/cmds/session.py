@@ -234,13 +234,13 @@ def cmd_default(cmd: str, params: list, session_name: str,
         # 输出目前所有情景预设
         import pkg.openai.dprompt as dprompt
         reply_str = "[bot]当前所有情景预设:\n\n"
-        for key,value in dprompt.get_prompt_dict().items():
-            reply_str += "  - {}: {}\n".format(key,value)
+        for key, value in dprompt.get_prompt_dict().items():
+            reply_str += "  - {}: {}\n".format(key, value)
 
         reply_str += "\n当前默认情景预设:{}\n".format(dprompt.get_current())
         reply_str += "请使用!default <情景预设>来设置默认情景预设"
         reply = [reply_str]
-    elif len(params) >0  and is_admin:
+    elif len(params) > 0 and is_admin:
         # 设置默认情景
         import pkg.openai.dprompt as dprompt
         try:
