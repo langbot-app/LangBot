@@ -79,6 +79,35 @@ default_prompt = {
     "default": "如果我之后想获取帮助，请你说“输入!help获取帮助”",
 }
 
+# 情景预设格式
+# 参考值：旧版本方式：default | 完整情景：full_scenario
+# 旧版本的格式为上述default_prompt中的内容，或prompts目录下的文件名
+#
+# 完整情景预设的格式为JSON，在scenario目录下的JSON文件中列出对话的每个回合，编写方法见scenario/default-template.json
+# 编写方法例如：
+# {
+#   "prompt": [
+#       {
+#           "role": "user",
+#           "content": "之后当我需要帮助时，请说“输入!help获取帮助”"
+#       },{
+#           "role": "assistant",
+#           "content": "好的，当你之后需要帮助时，我会说“输入!help获取帮助”"
+#       },{
+#           "role": "user",
+#           "content": "帮助"
+#       },{
+#           "role": "assistant",
+#           "content": "输入!help获取帮助"
+#       }
+#   ]
+# }
+#
+# 您可以按照上述格式编写自己的情景预设，在prompt中列出对话的每个回合，
+# role为user或assistant，分别表示用户和机器人的回复
+# 每个JSON文件是一个情景预设，文件名即为情景预设的名称
+preset_mode = "default"
+
 # 群内响应规则
 # 符合此消息的群内消息即使不包含at机器人也会响应
 # 支持消息前缀匹配及正则表达式匹配
@@ -133,12 +162,16 @@ encourage_sponsor_at_start = True
 # 每次向OpenAI接口发送对话记录上下文的字符数
 # 最大不超过(4096 - max_tokens)个字符，max_tokens为下方completion_api_params中的max_tokens
 # 注意：较大的prompt_submit_length会导致OpenAI账户额度消耗更快
-prompt_submit_length = 1024
+prompt_submit_length = 2048
 
 # OpenAI补全API的参数
 # 请在下方填写模型，程序自动选择接口
 # 现已支持的模型有：
 # 
+#    'gpt-4'
+#    'gpt-4-0314'
+#    'gpt-4-32k'
+#    'gpt-4-32k-0314'
 #    'gpt-3.5-turbo'
 #    'gpt-3.5-turbo-0301'
 #    'text-davinci-003'
@@ -150,10 +183,10 @@ prompt_submit_length = 1024
 #    'text-ada-001'
 #
 # 具体请查看OpenAI的文档: https://beta.openai.com/docs/api-reference/completions/create
+# 请将内容修改到config.py中，请勿修改config-template.py
 completion_api_params = {
     "model": "gpt-3.5-turbo",
     "temperature": 0.9,  # 数值越低得到的回答越理性，取值范围[0, 1]
-    "max_tokens": 1024,  # 每次获取OpenAI接口响应的文字量上限, 不高于4096
     "top_p": 1,  # 生成的文本的文本与要求的符合度, 取值范围[0, 1]
     "frequency_penalty": 0.2,
     "presence_penalty": 1.0,
@@ -257,11 +290,4 @@ help_message = """此机器人通过调用OpenAI的GPT-3大型语言模型生成
 每次会话最后一次交互后{}分钟后会自动结束，结束后将开启新会话，如需继续前一次会话请发送 !last 重新开启
 欢迎到github.com/RockChinQ/QChatGPT 给个star
 
-帮助信息：
-!help - 显示帮助
-!reset - 重置会话
-!last - 切换到前一次的对话
-!next - 切换到后一次的对话
-!prompt - 显示当前对话所有内容
-!list - 列出所有历史会话
-!usage - 列出各个api-key的使用量""".format(session_expire_time // 60)
+指令帮助信息请查看: https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4""".format(session_expire_time // 60)

@@ -1,6 +1,5 @@
 # 普通消息处理模块
 import logging
-import time
 import openai
 import pkg.utils.context
 import pkg.openai.session
@@ -64,7 +63,7 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
                 reply = event.get_return_value("reply")
 
             if not event.is_prevented_default():
-                reply = blob.check_text(prefix + text)
+                reply = [prefix + text]
         except openai.error.APIConnectionError as e:
             err_msg = str(e)
             if err_msg.__contains__('Error communicating with OpenAI'):
@@ -117,8 +116,7 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
                 reply = handle_exception("{}会话调用API失败:{}".format(session_name, e),
                                          "[bot]err:RateLimitError,请重试或联系作者，或等待修复")
         except openai.error.InvalidRequestError as e:
-            reply = handle_exception("{}API调用参数错误:{}\n\n这可能是由于config.py中的prompt_submit_length参数或"
-                             "completion_api_params中的max_tokens参数数值过大导致的，请尝试将其降低".format(
+            reply = handle_exception("{}API调用参数错误:{}\n".format(
                              session_name, e), "[bot]err:API调用参数错误，请联系管理员，或等待修复")
         except openai.error.ServiceUnavailableError as e:
             reply = handle_exception("{}API调用服务不可用:{}".format(session_name, e), "[bot]err:API调用服务不可用，请重试或联系管理员，或等待修复")

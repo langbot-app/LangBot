@@ -1,4 +1,6 @@
 # 多情景预设值管理
+import json
+import logging
 
 __current__ = "default"
 """当前默认使用的情景预设的名称
@@ -9,8 +11,10 @@ __current__ = "default"
 __prompts_from_files__ = {}
 """从文件中读取的情景预设值"""
 
+__scenario_from_files__ = {}
 
-def read_prompt_from_file() -> str:
+
+def read_prompt_from_file():
     """从文件读取预设值"""
     # 读取prompts/目录下的所有文件，以文件名为键，文件内容为值
     # 保存在__prompts_from_files__中
@@ -21,6 +25,19 @@ def read_prompt_from_file() -> str:
     for file in os.listdir("prompts"):
         with open(os.path.join("prompts", file), encoding="utf-8") as f:
             __prompts_from_files__[file] = f.read()
+
+
+def read_scenario_from_file():
+    """从JSON文件读取情景预设"""
+    global __scenario_from_files__
+    import os
+
+    __scenario_from_files__ = {}
+    for file in os.listdir("scenario"):
+        if file == "default-template.json":
+            continue
+        with open(os.path.join("scenario", file), encoding="utf-8") as f:
+            __scenario_from_files__[file] = json.load(f)
 
 
 def get_prompt_dict() -> dict:
@@ -65,15 +82,40 @@ def set_to_default():
         __current__ = list(default_dict.keys())[0]
 
 
-def get_prompt(name: str = None) -> str:
+def get_prompt(name: str = None) -> list:
+    global __scenario_from_files__
+    import config
+    preset_mode = config.preset_mode
+
     """获取预设值"""
     if name is None:
         name = get_current()
 
-    default_dict = get_prompt_dict()
+    # JSON预设方式
+    if preset_mode == 'full_scenario':
+        import os
 
-    for key in default_dict:
-        if key.lower().startswith(name.lower()):
-            return default_dict[key]
+        for key in __scenario_from_files__:
+            if key.lower().startswith(name.lower()):
+                logging.debug('成功加载情景预设从JSON文件: {}'.format(key))
+                return __scenario_from_files__[key]['prompt']
+        
+    # 默认预设方式
+    elif preset_mode == 'default':
 
-    raise KeyError("未找到情景预设: " + name)
+        default_dict = get_prompt_dict()
+
+        for key in default_dict:
+            if key.lower().startswith(name.lower()):
+                return [
+                    {
+                        "role": "user",
+                        "content": default_dict[key]
+                    },
+                    {
+                        "role": "assistant",
+                        "content": "好的。"
+                    }
+                ]
+
+    raise KeyError("未找到默认情景预设: " + name)

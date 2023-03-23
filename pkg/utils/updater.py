@@ -6,6 +6,7 @@ import requests
 import json
 
 import pkg.utils.constants
+import pkg.utils.network as network
 
 
 def check_dulwich_closure():
@@ -36,7 +37,8 @@ def pull_latest(repo_path: str) -> bool:
 def get_release_list() -> list:
     """获取发行列表"""
     rls_list_resp = requests.get(
-        url="https://api.github.com/repos/RockChinQ/QChatGPT/releases"
+        url="https://api.github.com/repos/RockChinQ/QChatGPT/releases",
+        proxies=network.wrapper_proxies()
     )
 
     rls_list = rls_list_resp.json()
@@ -83,7 +85,10 @@ def update_all(cli: bool = False) -> bool:
     else:
         print("开始下载最新版本: {}".format(latest_rls['zipball_url']))
     zip_url = latest_rls['zipball_url']
-    zip_resp = requests.get(url=zip_url)
+    zip_resp = requests.get(
+        url=zip_url,
+        proxies=network.wrapper_proxies()
+    )
     zip_data = zip_resp.content
 
     # 检查temp/updater目录
@@ -126,6 +131,15 @@ def update_all(cli: bool = False) -> bool:
             dst = src.replace(source_root, ".")
             if os.path.exists(dst):
                 os.remove(dst)
+
+            # 检查目标文件夹是否存在
+            if not os.path.exists(os.path.dirname(dst)):
+                os.makedirs(os.path.dirname(dst))
+            # 检查目标文件是否存在
+            if not os.path.exists(dst):
+                # 创建目标文件
+                open(dst, "w").close()
+
             shutil.copy(src, dst)
 
     # 把current_tag写入文件

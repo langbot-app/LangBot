@@ -1,12 +1,13 @@
 # QChatGPT🤖
-> 2023/3/3  官方接口疑似被墙，可考虑使用网络代理 [#198](https://github.com/RockChinQ/QChatGPT/issues/198)  
+
+> 2023/3/18 现已支持GPT-4 API（内测），请查看`config-template.py`中的`completion_api_params`  
+> 2023/3/15 逆向库已支持New Bing，使用方法查看[插件文档](https://github.com/RockChinQ/revLibs)  
+> 2023/3/15 逆向库已支持GPT-4模型，使用方法查看[插件](https://github.com/RockChinQ/revLibs)   
 > 2023/3/3  现已在主线支持官方ChatGPT接口，使用方法查看[#195](https://github.com/RockChinQ/QChatGPT/issues/195)  
-> 2023/3/2  OpenAI已发布ChatGPT官方接口，我们正在全力接入，预计明日前完成，请查看[此PR](https://github.com/RockChinQ/QChatGPT/pull/194)  
-> 2023/2/16 现已支持接入ChatGPT网页版，详情请完成部署并查看底部**插件**小节或[此仓库](https://github.com/RockChinQ/revLibs)
 
 - 到[项目Wiki](https://github.com/RockChinQ/QChatGPT/wiki)可了解项目详细信息
-- 由bilibili TheLazy制作的[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)
-- 交流、答疑群: ~~204785790~~（已满）、691226829、656285629  
+- ~~由bilibili TheLazy制作的[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)~~（寄了，求大佬做个新的）
+- 交流、答疑群: ~~204785790~~（已满）、~~691226829~~（已满）、656285629  
   - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
 - QQ频道机器人见[QQChannelChatGPT](https://github.com/Soulter/QQChannelChatGPT)
 
@@ -14,11 +15,17 @@
 
 ## 🍺模型适配一览
 
+<details>
+<summary>点击此处展开</summary>
+
 ### 文字对话
 
 - OpenAI GPT-3.5模型(ChatGPT API), 本项目原生支持, 默认使用
-- OpenAI GPT-3模型, 本项目原生支持, 部署完成后前往config.py切换
-- ChatGPT网页版逆向API, 由[插件](https://github.com/RockChinQ/revLibs)接入
+- OpenAI GPT-3模型, 本项目原生支持, 部署完成后前往`config.py`切换
+- OpenAI GPT-4模型, 本项目原生支持, 目前需要您的账户通过OpenAI的内测申请, 请前往`config.py`切换
+- ChatGPT网页版GPT-3.5模型, 由[插件](https://github.com/RockChinQ/revLibs)接入
+- ChatGPT网页版GPT-4模型, 目前需要ChatGPT Plus订阅, 由[插件](https://github.com/RockChinQ/revLibs)接入
+- New Bing逆向库, 由[插件](https://github.com/RockChinQ/revLibs)接入
 
 ### 故事续写
 
@@ -32,6 +39,10 @@
 ### 语音生成
 
 - TTS+VITS, 由[插件](https://github.com/dominoar/QChatPlugins)接入
+- Plachta/VITS-Umamusume-voice-synthesizer, 由[插件](https://github.com/oliverkirk-sudo/chat_voice)接入
+
+
+</details>
 
 ## ✅功能
 
@@ -106,18 +117,26 @@
     - “丢弃”策略：此分钟内对话次数达到限制时，丢弃之后的对话
   - 详细请查看config.py中的相关配置
 </details>
+<details>
+<summary>✅支持使用网络代理</summary>
+
+  - 目前已支持正向代理访问接口
+  - 详细请查看config.py中的`openai_config`的说明
+</details>
 
 详情请查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E5%8A%9F%E8%83%BD%E7%82%B9%E5%88%97%E4%B8%BE)
 
 ## 🔩部署
 
-**部署过程中遇到任何问题，请先在[QChatGPT](https://github.com/RockChinQ/QChatGPT/issues)或[qcg-installer](https://github.com/RockChinQ/qcg-installer/issues)的issue里进行搜索**
+**部署过程中遇到任何问题，请先在[QChatGPT](https://github.com/RockChinQ/QChatGPT/issues)或[qcg-installer](https://github.com/RockChinQ/qcg-installer/issues)的issue里进行搜索**  
 
 ### - 注册OpenAI账号
 
+> 若您要直接使用非OpenAI的模型（如New Bing），可跳过此步骤，直接进行之后的部署，完成后按照相关插件的文档进行配置即可
+
 参考以下文章自行注册
 
-> [国内注册ChatGPT的方法(100%可用)](https://www.pythonthree.com/register-openai-chatgpt/)
+> [国内注册ChatGPT的方法(100%可用)](https://www.pythonthree.com/register-openai-chatgpt/)  
 > [手把手教你如何注册ChatGPT，超级详细](https://guxiaobei.com/51461)
 
 注册成功后请前往[个人中心查看](https://beta.openai.com/account/api-keys)api_key  
@@ -162,8 +181,7 @@ cd QChatGPT
 2. 安装依赖
 
 ```bash
-pip3 install yiri-mirai openai colorlog func_timeout
-pip3 install dulwich
+pip3 install yiri-mirai openai colorlog func_timeout dulwich Pillow
 ```
 
 3. 运行一次主程序，生成配置文件
@@ -194,13 +212,17 @@ python3 main.py
 
 ## 🚀使用
 
-查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E4%BD%BF%E7%94%A8%E6%96%B9%E5%BC%8F)
+**部署完成后必看: [指令说明](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4)**  
+所有功能查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E4%BD%BF%E7%94%A8%E6%96%B9%E5%BC%8F)  
 
 ## 🧩插件生态
 
 现已支持自行开发插件对功能进行扩展或自定义程序行为  
 详见[Wiki插件使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8)  
 开发教程见[Wiki插件开发页](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91)
+
+<details>
+<summary>查看插件列表</summary>
 
 ### 示例插件
 
@@ -216,20 +238,23 @@ python3 main.py
 
 - [revLibs](https://github.com/RockChinQ/revLibs) - 将ChatGPT网页版接入此项目，关于[官方接口和网页版有什么区别](https://github.com/RockChinQ/QChatGPT/wiki/%E5%AE%98%E6%96%B9%E6%8E%A5%E5%8F%A3%E4%B8%8EChatGPT%E7%BD%91%E9%A1%B5%E7%89%88)
 - [hello_plugin](https://github.com/RockChinQ/hello_plugin) - `hello_plugin` 的储存库形式，插件开发模板
-- [dominoar/QChatPlugins](https://github.com/dominoar/QchatPlugins) - dominoar编写的诸多新功能插件（语言输出、Ranimg、屏蔽词规则等）
+- [dominoar/QChatPlugins](https://github.com/dominoar/QchatPlugins) - dominoar编写的诸多新功能插件（语音输出、Ranimg、屏蔽词规则等）
 - [dominoar/QCP-NovelAi](https://github.com/dominoar/QCP-NovelAi) - NovelAI 故事叙述与绘画
+- [oliverkirk-sudo/chat_voice](https://github.com/oliverkirk-sudo/chat_voice) - 文字转语音输出，使用HuggingFace上的[VITS-Umamusume-voice-synthesizer模型](https://huggingface.co/spaces/Plachta/VITS-Umamusume-voice-synthesizer)
+- [RockChinQ/WaitYiYan](https://github.com/RockChinQ/WaitYiYan) - 实时获取百度`文心一言`等待列表人数
+- [QChartGPT_Emoticon_Plugin](https://github.com/chordfish-k/QChartGPT_Emoticon_Plugin) - 使机器人根据回复内容发送表情包
+</details>
 
 ## 😘致谢
 
 - [@the-lazy-me](https://github.com/the-lazy-me) 为本项目制作[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)
 - [@mikumifa](https://github.com/mikumifa) 本项目Docker部署仓库开发者
 - [@dominoar](https://github.com/dominoar) 为本项目开发多种插件
-- [@hissincn](https://github.com/hissincn) 本项目贡献者
-- [@LINSTCL](https://github.com/LINSTCL)   GPT-3.5官方模型适配贡献者
-- [@Haibersut](https://github.com/Haibersut)  本项目贡献者
+- [@万神的星空](https://github.com/qq255204159)  整合包发行
+- [@ljcduo](https://github.com/ljcduo)  GPT-4 API内测账号提供
 
-以及其他所有为本项目提供支持的朋友们。
+以及所有[贡献者](https://github.com/RockChinQ/QChatGPT/graphs/contributors)和其他为本项目提供支持的朋友们。
 
-## 👍赞赏
+<!-- ## 👍赞赏
 
-<img alt="赞赏码" src="res/mm_reward_qrcode_1672840549070.png" width="400" height="400"/>
+<img alt="赞赏码" src="res/mm_reward_qrcode_1672840549070.png" width="400" height="400"/> -->

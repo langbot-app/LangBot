@@ -1,4 +1,5 @@
 import importlib
+import json
 import os
 import shutil
 import threading
@@ -12,8 +13,8 @@ try:
 except ImportError:
     # 尝试安装
     import pkg.utils.pkgmgr as pkgmgr
-    pkgmgr.install_requirements("requirements.txt")
     try:
+        pkgmgr.install_requirements("requirements.txt")
         import colorlog
     except ImportError:
         print("依赖不满足,请查看 https://github.com/RockChinQ/qcg-installer/issues/15")
@@ -32,7 +33,7 @@ log_colors_config = {
     'INFO': 'white',
     'WARNING': 'yellow',
     'ERROR': 'red',
-    'CRITICAL': 'bold_red',
+    'CRITICAL': 'cyan',
 }
 
 
@@ -114,8 +115,21 @@ def load_config():
             setattr(config, key, getattr(config_template, key))
             logging.warning("[{}]不存在".format(key))
             is_integrity = False
+    
     if not is_integrity:
         logging.warning("配置文件不完整，请依据config-template.py检查config.py")
+
+    # 检查override.json覆盖
+    if os.path.exists("override.json"):
+        override_json = json.load(open("override.json", "r", encoding="utf-8"))
+        for key in override_json:
+            if hasattr(config, key):
+                setattr(config, key, override_json[key])
+                logging.info("覆写配置[{}]为[{}]".format(key, override_json[key]))
+            else:
+                logging.error("无法覆写配置[{}]为[{}]，该配置不存在，请检查override.json是否正确".format(key, override_json[key]))
+
+    if not is_integrity:
         logging.warning("以上配置已被设为默认值，将在5秒后继续启动... ")
         time.sleep(5)
 
@@ -146,7 +160,6 @@ def start(first_time_init=False):
     try:
 
         sh = reset_logging()
-
         pkg.utils.context.context['logger_handler'] = sh
 
         # 检查是否设置了管理员
@@ -180,6 +193,7 @@ def start(first_time_init=False):
         import pkg.openai.dprompt
 
         pkg.openai.dprompt.read_prompt_from_file()
+        pkg.openai.dprompt.read_scenario_from_file()
 
         # 主启动流程
         database = pkg.database.manager.DatabaseManager()
@@ -258,6 +272,13 @@ def start(first_time_init=False):
             #     run_bot_wrapper
             # )
     finally:
+        # 判断若是Windows，输出选择模式可能会暂停程序的警告
+        if os.name == 'nt':
+            time.sleep(2)
+            logging.info("您正在使用Windows系统，若命令行窗口处于“选择”模式，程序可能会被暂停，此时请右键点击窗口空白区域使其取消选择模式。")
+
+        time.sleep(12)
+        
         if first_time_init:
             if not known_exception_caught:
                 logging.info('程序启动完成,如长时间未显示 ”成功登录到账号xxxxx“ ,并且不回复消息,请查看 '
@@ -289,13 +310,22 @@ def start(first_time_init=False):
     import pkg.utils.updater
     try:
         if pkg.utils.updater.is_new_version_available():
-            pkg.utils.context.get_qqbot_manager().notify_admin("新版本可用，请发送 !update 进行自动更新\n更新日志:\n{}".format("\n".join(pkg.utils.updater.get_rls_notes())))
+            logging.info("新版本可用，请发送 !update 进行自动更新\n更新日志:\n{}".format("\n".join(pkg.utils.updater.get_rls_notes())))
         else:
             logging.info("当前已是最新版本")
 
     except Exception as e:
         logging.warning("检查更新失败:{}".format(e))
 
+    try:
+        import pkg.utils.announcement as announcement
+        new_announcement = announcement.fetch_new()
+        if new_announcement != "":
+            logging.critical("[公告] {}".format(new_announcement))
+    except Exception as e:
+        logging.warning("获取公告失败:{}".format(e))
+
+    return qqbot
 
 def stop():
     import pkg.qqbot.manager
@@ -330,6 +360,10 @@ def check_file():
     # 检查是否有sensitive.json
     if not os.path.exists("sensitive.json"):
         shutil.copy("sensitive-template.json", "sensitive.json")
+
+    # 检查是否有scenario/default.json
+    if not os.path.exists("scenario/default.json"):
+        shutil.copy("scenario/default-template.json", "scenario/default.json")
 
     # 检查temp目录
     if not os.path.exists("temp/"):

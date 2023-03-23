@@ -1,5 +1,4 @@
 # 长消息处理相关
-import logging
 import os
 import time
 import base64
@@ -67,7 +66,7 @@ def check_text(text: str) -> list:
     """检查文本是否为长消息，并转换成该使用的消息链组件"""
     if not hasattr(config, 'blob_message_threshold'):
         return [text]
-    
+
     if len(text) > config.blob_message_threshold:
         if not hasattr(config, 'blob_message_strategy'):
             raise AttributeError('未定义长消息处理策略')
@@ -77,8 +76,6 @@ def check_text(text: str) -> list:
             # 转换成图片
             return [text_to_image(text)]
         elif config.blob_message_strategy == 'forward':
-            # 敏感词屏蔽
-            text = context.get_qqbot_manager().reply_filter.process(text)
 
             # 包装转发消息
             display = ForwardMessageDiaplay(
