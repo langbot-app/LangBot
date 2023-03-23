@@ -102,6 +102,24 @@ def reset_logging():
     pkg.utils.context.context['logger_handler'] = sh
     return sh
 
+# 临时函数，用于加载config和上下文，未来统一放在config类
+def load_config():
+    # 完整性校验
+    is_integrity = True
+    config_template = importlib.import_module('config-template')
+    config = importlib.import_module('config')
+    for key in dir(config_template):
+        if not key.startswith("__") and not hasattr(config, key):
+            setattr(config, key, getattr(config_template, key))
+            logging.warning("[{}]不存在".format(key))
+            is_integrity = False
+    if not is_integrity:
+        logging.warning("配置文件不完整，请依据config-template.py检查config.py")
+        logging.warning("以上配置已被设为默认值，将在5秒后继续启动... ")
+        time.sleep(5)
+
+    # 存进上下文
+    pkg.utils.context.set_config(config)
 
 def start(first_time_init=False):
     """启动流程，reload之后会被执行"""
@@ -109,6 +127,7 @@ def start(first_time_init=False):
     global known_exception_caught
     import pkg.utils.context
 
+    load_config() #暂时在start里加载config应对重载，未来在config抽象类中统一处理reload(未来删除该行)
     config = pkg.utils.context.get_config()
     # 更新openai库到最新版本
     if not hasattr(config, 'upgrade_dependencies') or config.upgrade_dependencies:
@@ -292,26 +311,6 @@ def stop():
     except Exception as e:
         if not isinstance(e, KeyboardInterrupt):
             raise e
-
-
-# 临时函数，用于加载config和上下文，未来统一放在config类
-def load_config():
-    # 完整性校验
-    is_integrity = True
-    config_template = importlib.import_module('config-template')
-    config = importlib.import_module('config')
-    for key in dir(config_template):
-        if not key.startswith("__") and not hasattr(config, key):
-            setattr(config, key, getattr(config_template, key))
-            logging.warning("[{}]不存在".format(key))
-            is_integrity = False
-    if not is_integrity:
-        logging.warning("配置文件不完整，请依据config-template.py检查config.py")
-        logging.warning("以上配置已被设为默认值，将在5秒后继续启动... ")
-        time.sleep(5)
-
-    # 存进上下文
-    pkg.utils.context.set_config(config)
 
 
 def check_file():
