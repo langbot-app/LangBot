@@ -101,7 +101,7 @@ def get_prompt(name: str = None) -> list:
                 return __scenario_from_files__[key]['prompt']
         
     # 默认预设方式
-    elif preset_mode == 'default':
+    elif preset_mode == 'default' or preset_mode == 'normal':
 
         default_dict = get_prompt_dict()
 
