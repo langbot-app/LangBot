@@ -149,7 +149,8 @@
 
 #### Docker方式
 
-请查看此仓库[mikumifa/QChatGPT-Docker-Installer](https://github.com/mikumifa/QChatGPT-Docker-Installer)
+请查看[此文档](docker_deploy.md)  
+由[@mikumifa](https://github.com/mikumifa)贡献
 
 #### 安装器方式
 使用[此安装器](https://github.com/RockChinQ/qcg-installer)（若无法访问请到[Gitee](https://gitee.com/RockChin/qcg-installer)）进行部署
