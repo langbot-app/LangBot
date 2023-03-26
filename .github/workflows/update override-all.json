@@ -1,46 +1,48 @@
-name: Check for config-template.py changes and update override-all.json
+name: Check and Update override-all.json
 
 on:
   push:
     paths:
       - 'config-template.py'
   pull_request:
-    types: [closed]
+    types:
+      - closed
+    branches:
+      - main
     paths:
       - 'config-template.py'
-    branches:
-      - master
 
 jobs:
   update-override-all:
     if: github.event.pull_request.merged == true || github.event_name == 'push'
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
 
-      - name: Set up Python 3.9
+      - name: Set up Python
         uses: actions/setup-python@v2
         with:
-          python-version: 3.9
+          python-version: 3.x
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          # 在此处添加您的项目所需的其他依赖
 
-      - name: Run generate_override_all.py and check for changes
+      - name: Run generate_override_all.py
+        run: python3 generate_override_all.py
+
+      - name: Check for changes in override-all.json
+        id: check_changes
         run: |
-          python3 generate_override_all.py
-          if git diff --exit-code override-all.json; then
-            echo "No changes to commit"
-          else
-            git config --global user.email "github-actions[bot]@users.noreply.github.com"
-            git config --global user.name "github-actions[bot]"
-            git add override-all.json
-            git commit -m "Update override-all.json based on config-template.py changes"
-            git push
-          fi
+          git diff --exit-code override-all.json || echo "::set-output name=changes_detected::true"
+
+      - name: Commit and push changes
+        if: steps.check_changes.outputs.changes_detected == 'true'
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions"
+          git add override-all.json
+          git commit -m "Update override-all.json"
+          git push
