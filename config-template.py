@@ -33,11 +33,26 @@ mirai_http_api_config = {
 #     },
 #     "http_proxy": "http://127.0.0.1:12345"
 # }
+# 
+# 现已支持反向代理，可以添加reverse_proxy字段以使用反向代理
+# 使用反向代理可以在国内使用OpenAI的API，反向代理的配置请参考 
+# https://github.com/Ice-Hazymoon/openai-scf-proxy
+#
+# 反向代理填写示例：
+# openai_config = {
+#     "api_key": {
+#         "default": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+#         "key1": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+#         "key2": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+#     },
+#     "reverse_proxy": "http://example.com:12345/v1"
+# }
 openai_config = {
     "api_key": {
         "default": "openai_api_key"
     },
-    "http_proxy": None
+    "http_proxy": None,
+    "reverse_proxy": None
 }
 
 # [必需] 管理员QQ号，用于接收报错等通知及执行管理员级别指令
