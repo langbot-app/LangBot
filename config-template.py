@@ -45,7 +45,7 @@ mirai_http_api_config = {
 #         "key1": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
 #         "key2": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
 #     },
-#     "reverse_proxy": "http://example.com:12345"
+#     "reverse_proxy": "http://example.com:12345/v1"
 # }
 openai_config = {
     "api_key": {
