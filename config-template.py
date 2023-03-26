@@ -81,31 +81,9 @@ default_prompt = {
 
 # 情景预设格式
 # 参考值：默认方式：normal | 完整情景：full_scenario
-# 默认的格式为上述default_prompt中的内容，或prompts目录下的文件名
-#
-# 完整情景预设的格式为JSON，在scenario目录下的JSON文件中列出对话的每个回合，编写方法见scenario/default-template.json
-# 编写方法例如：
-# {
-#   "prompt": [
-#       {
-#           "role": "user",
-#           "content": "之后当我需要帮助时，请说“输入!help获取帮助”"
-#       },{
-#           "role": "assistant",
-#           "content": "好的，当你之后需要帮助时，我会说“输入!help获取帮助”"
-#       },{
-#           "role": "user",
-#           "content": "帮助"
-#       },{
-#           "role": "assistant",
-#           "content": "输入!help获取帮助"
-#       }
-#   ]
-# }
-#
-# 您可以按照上述格式编写自己的情景预设，在prompt中列出对话的每个回合，
-# role为user或assistant，分别表示用户和机器人的回复
-# 每个JSON文件是一个情景预设，文件名即为情景预设的名称
+# 默认方式 的格式为上述default_prompt中的内容，或prompts目录下的文件名
+# 完整情景方式 的格式为JSON，在scenario目录下的JSON文件中列出对话的每个回合，编写方法见scenario/default-template.json
+#     编写方法请查看：https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E9%A2%84%E8%AE%BE%E6%96%87%E5%AD%97full_scenario%E6%A8%A1%E5%BC%8F
 preset_mode = "normal"
 
 # 群内响应规则
