@@ -191,9 +191,8 @@ def start(first_time_init=False):
         import pkg.openai.session
         import pkg.qqbot.manager
         import pkg.openai.dprompt
-
-        pkg.openai.dprompt.read_prompt_from_file()
-        pkg.openai.dprompt.read_scenario_from_file()
+        
+        pkg.openai.dprompt.register_all()
 
         # 主启动流程
         database = pkg.database.manager.DatabaseManager()

@@ -141,9 +141,9 @@ class Session:
         import pkg.openai.dprompt as dprompt
 
         if use_default is None:
-            use_default = dprompt.get_current()
+            use_default = dprompt.mode_inst().get_using_name()
 
-        current_default_prompt = dprompt.get_prompt(use_default)
+        current_default_prompt, _ = dprompt.mode_inst().get_prompt(use_default)
         return current_default_prompt
 
     def __init__(self, name: str):

@@ -80,12 +80,11 @@ default_prompt = {
 }
 
 # 情景预设格式
-# 参考值：旧版本方式：default | 完整情景：full_scenario
-# 旧版本的格式为上述default_prompt中的内容，或prompts目录下的文件名
-#
-# 完整情景预设的格式为JSON，在scenario目录下的JSON文件中列出对话的每个回合，编写方法见scenario/default-template.json
-# 编写方法请查看：https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E9%A2%84%E8%AE%BE%E6%96%87%E5%AD%97full_scenario%E6%A8%A1%E5%BC%8F
-preset_mode = "default"
+# 参考值：默认方式：normal | 完整情景：full_scenario
+# 默认方式 的格式为上述default_prompt中的内容，或prompts目录下的文件名
+# 完整情景方式 的格式为JSON，在scenario目录下的JSON文件中列出对话的每个回合，编写方法见scenario/default-template.json
+#     编写方法请查看：https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E9%A2%84%E8%AE%BE%E6%96%87%E5%AD%97full_scenario%E6%A8%A1%E5%BC%8F
+preset_mode = "normal"
 
 # 群内响应规则
 # 符合此消息的群内消息即使不包含at机器人也会响应
