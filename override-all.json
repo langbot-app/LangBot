@@ -11,7 +11,8 @@
         "api_key": {
             "default": "openai_api_key"
         },
-        "http_proxy": null
+        "http_proxy": null,
+        "reverse_proxy": null
     },
     "admin_qq": 0,
     "default_prompt": {
