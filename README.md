@@ -153,6 +153,9 @@
 由[@mikumifa](https://github.com/mikumifa)贡献
 
 #### 安装器方式
+
+> 警告：若您主机上已经安装了Python，请不要使用此安装器，否则可能会导致无法导入此程序自带模块的问题。请使用下方的手动部署方式。
+
 使用[此安装器](https://github.com/RockChinQ/qcg-installer)（若无法访问请到[Gitee](https://gitee.com/RockChin/qcg-installer)）进行部署
 
 - 安装器目前仅支持部分平台，请到仓库文档查看，其他平台请手动部署
