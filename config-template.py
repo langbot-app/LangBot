@@ -1,7 +1,7 @@
 # 配置文件: 注释里标[必需]的参数必须修改, 其他参数根据需要修改, 但请勿删除
 import logging
 
-test_debug = True
+test_debug = False
 
 # [必需] Mirai的配置
 # 请到配置mirai的步骤中的教程查看每个字段的信息
