@@ -1,4 +1,4 @@
-name: Check and Update override-all.json
+name: Check and Update override_all
 
 on:
   push:
@@ -8,12 +8,13 @@ on:
     types:
       - closed
     branches:
-      - main
+      - master
     paths:
       - 'config-template.py'
 
 jobs:
   update-override-all:
+    name: check and update
     if: github.event.pull_request.merged == true || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
