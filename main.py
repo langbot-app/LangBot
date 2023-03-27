@@ -8,6 +8,8 @@ import time
 import logging
 import sys
 
+sys.path.append(".")
+
 try:
     import colorlog
 except ImportError:
@@ -26,7 +28,6 @@ import websockets.exceptions
 from urllib3.exceptions import InsecureRequestWarning
 import pkg.utils.context
 
-sys.path.append(".")
 
 log_colors_config = {
     'DEBUG': 'green',  # cyan white
