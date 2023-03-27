@@ -1,7 +1,7 @@
 name: 漏洞反馈
 description: 报错或漏洞请使用这个模板创建，不使用此模板创建的异常、漏洞相关issue将被直接关闭
 title: "[Bug]: "
-label: ["bugs?"]
+labels: ["bugs?"]
 assignees:
   - RockChinQ
 body:
