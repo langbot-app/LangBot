@@ -11,7 +11,7 @@ body:
       label: 部署方式
       description: "主程序使用的部署方式"
       options:
-        - 手动部署 (Default)
+        - 手动部署
         - 安装器部署
         - 一键安装包部署
         - Docker部署
