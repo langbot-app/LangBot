@@ -133,6 +133,7 @@ def cmd_update(cmd: str, params: list, session_name: str,
     threading.Thread(target=update_task, daemon=True).start()
 
     reply = ["[bot]正在更新，请耐心等待，请勿重复发起更新..."]
+    return reply
 
 
 def config_operation(cmd, params):
