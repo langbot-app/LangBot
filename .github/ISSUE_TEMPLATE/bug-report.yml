@@ -37,6 +37,6 @@ body:
   - type: textarea
     attributes:
       label: 报错信息
-      description: 请提供完整的报错信息（若有）
+      description: 请提供完整的**控制台**报错信息（若有）
     validations:
       required: false
