@@ -38,6 +38,5 @@ body:
     attributes:
       label: 报错信息
       description: 请提供完整的报错信息（若有）
-      render: markdown
     validations:
       required: false
