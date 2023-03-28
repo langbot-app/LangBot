@@ -4,6 +4,8 @@ import pkg.openai.session
 import pkg.utils.context
 
 class ResetCommand(AbstractCommand):
+    parent: type = None
+
     name = 'reset'
     description = '重置当前会话'
     usage = 'reset'

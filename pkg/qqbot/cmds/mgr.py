@@ -1,5 +1,10 @@
+import importlib
+import inspect
 import logging
 import copy
+import pkgutil
+import traceback
+import types
 
 
 __commands_tree__ = {}
@@ -109,6 +114,9 @@ class Context:
 class AbstractCommand:
     """指令抽象类"""
 
+    parent: type
+    """父指令类"""
+
     name: str
     """指令名"""
 
@@ -179,6 +187,12 @@ class AbstractCommand:
             # 更新索引
             __tree_index__[cls.__module__ + '.' + cls.__name__] = path + [name]
 
+
+class CommandPrivilegeError(Exception):
+    """指令权限不足或不存在异常"""
+    pass
+
+
 # 传入Context对象，广搜命令树，返回执行结果
 # 若命令被处理，返回reply列表
 # 若命令未被处理，继续执行下一级指令
@@ -198,12 +212,15 @@ def execute(context: Context) -> list:
     # 从树取出顶级指令
     node = __commands_tree__
     
+    path = ""
+
     # 搜当前顶层，找不到则报错
     while True:
+        path = path + ctx.crt_command + "."
         try:
             # 检查权限
             if ctx.privilege < node[ctx.crt_command]['privilege']:
-                raise ValueError('权限不足')
+                raise CommandPrivilegeError('权限不足: {}'.format(path[:-1]))
             # 执行
             execed, reply, ctx.crt_command = node[ctx.crt_command]['cls'].process(ctx)
             if execed:
@@ -214,4 +231,36 @@ def execute(context: Context) -> list:
                 # 删除crt_params第一个参数
                 ctx.crt_params.pop(0)
         except KeyError:
-            raise ValueError('找不到指令: {}'.format(ctx.command))
+            raise CommandPrivilegeError('找不到指令: {}'.format(path[:-1]))
+
+
+def register_all():
+    """启动时调用此函数注册所有指令
+    
+    递归处理pkg.qqbot.cmds包下及其子包下所有模块的所有继承于AbstractCommand的类
+    """
+    # 模块：遍历其中的继承于AbstractCommand的类，进行注册
+    # 包：递归处理包下的模块
+    # 排除__开头的属性
+    import pkg.qqbot.cmds
+
+    def walk(module, prefix, path_prefix):
+        # 排除不处于pkg.qqbot.cmds中的包
+        if not module.__name__.startswith('pkg.qqbot.cmds'):
+            return
+        for item in pkgutil.iter_modules(module.__path__):
+            if item.name.startswith('__'):
+                continue
+
+            if item.ispkg:
+                walk(__import__(module.__name__ + '.' + item.name, fromlist=['']), prefix + item.name + '.', path_prefix + item.name + '/')
+            else:
+                m = __import__(module.__name__ + '.' + item.name, fromlist=[''])
+                for name, cls in inspect.getmembers(m, inspect.isclass):
+                    # 检查是否为指令类
+                    if cls.__module__ == m.__name__ and issubclass(cls, AbstractCommand) and cls != AbstractCommand:
+                        cls.register(cls, cls.name, cls.parent)
+
+    walk(pkg.qqbot.cmds, '', '')
+    logging.debug(__commands_tree__)
+
