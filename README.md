@@ -10,6 +10,7 @@
 - 交流、答疑群: ~~204785790~~（已满）、~~691226829~~（已满）、656285629  
   - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
 - QQ频道机器人见[QQChannelChatGPT](https://github.com/Soulter/QQChannelChatGPT)
+- 欢迎各种形式的贡献，请查看[贡献指引](CONTRIBUTING.md)
 
 通过调用OpenAI的ChatGPT等语言模型来实现一个更加智能的QQ机器人  
 
