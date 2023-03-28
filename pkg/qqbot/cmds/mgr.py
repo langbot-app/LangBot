@@ -7,7 +7,7 @@ import traceback
 import types
 
 
-__commands_tree__ = {}
+__command_list__ = {}
 """命令树
 
 结构：
@@ -17,44 +17,52 @@ __commands_tree__ = {}
         'usage': 'cmd1 usage',
         'aliases': ['cmd1 alias1', 'cmd1 alias2'],
         'privilege': 0,
+        'parent': None,
         'cls': <class 'pkg.qqbot.cmds.cmd1.CommandCmd1'>,
-        'sub': {
-            'cmd1-1': {
-                'description': 'cmd1-1 description',
-                'usage': 'cmd1-1 usage',
-                'aliases': ['cmd1-1 alias1', 'cmd1-1 alias2'],
-                'privilege': 0,
-                'cls': <class 'pkg.qqbot.cmds.cmd1.CommandCmd1_1'>,
-                'sub': {}
-            },
-        }
+        'sub': [
+            'cmd1-1'
+        ]
+    },
+    'cmd1.cmd1-1: {
+        'description': 'cmd1-1 description',
+        'usage': 'cmd1-1 usage',
+        'aliases': ['cmd1-1 alias1', 'cmd1-1 alias2'],
+        'privilege': 0,
+        'parent': 'cmd1',
+        'cls': <class 'pkg.qqbot.cmds.cmd1.CommandCmd1_1'>,
+        'sub': []
     },
     'cmd2': {
         'description': 'cmd2 description',
         'usage': 'cmd2 usage',
         'aliases': ['cmd2 alias1', 'cmd2 alias2'],
         'privilege': 0,
+        'parent': None,
         'cls': <class 'pkg.qqbot.cmds.cmd2.CommandCmd2'>,
-        'sub': {
-            'cmd2-1': {
-                'description': 'cmd2-1 description',
-                'usage': 'cmd2-1 usage',
-                'aliases': ['cmd2-1 alias1', 'cmd2-1 alias2'],
-                'privilege': 0,
-                'cls': <class 'pkg.qqbot.cmds.cmd2.CommandCmd2_1'>,
-                'sub': {
-                    'cmd2-1-1': {
-                        'description': 'cmd2-1-1 description',
-                        'usage': 'cmd2-1-1 usage',
-                        'aliases': ['cmd2-1-1 alias1', 'cmd2-1-1 alias2'],
-                        'privilege': 0,
-                        'cls': <class 'pkg.qqbot.cmds.cmd2.CommandCmd2_1_1'>,
-                        'sub': {}
-                    },
-                }
-            },
-        }
-    }
+        'sub': [
+            'cmd2-1'
+        ]
+    },
+    'cmd2.cmd2-1': {
+        'description': 'cmd2-1 description',
+        'usage': 'cmd2-1 usage',
+        'aliases': ['cmd2-1 alias1', 'cmd2-1 alias2'],
+        'privilege': 0,
+        'parent': 'cmd2',
+        'cls': <class 'pkg.qqbot.cmds.cmd2.CommandCmd2_1'>,
+        'sub': [
+            'cmd2-1-1'
+        ]
+    },
+    'cmd2.cmd2-1.cmd2-1-1': {
+        'description': 'cmd2-1-1 description',
+        'usage': 'cmd2-1-1 usage',
+        'aliases': ['cmd2-1-1 alias1', 'cmd2-1-1 alias2'],
+        'privilege': 0,
+        'parent': 'cmd2.cmd2-1',
+        'cls': <class 'pkg.qqbot.cmds.cmd2.CommandCmd2_1_1'>,
+        'sub': []
+    },
 }
 """
 
@@ -63,11 +71,11 @@ __tree_index__: dict[str, list] = {}
 
 结构：
 {
-    'pkg.qqbot.cmds.cmd1.CommandCmd1': ['cmd1'],  # 顶级指令
-    'pkg.qqbot.cmds.cmd1.CommandCmd1_1': ['cmd1', 'cmd1-1'],  # 类名: 节点路径
-    'pkg.qqbot.cmds.cmd2.CommandCmd2': ['cmd2'],
-    'pkg.qqbot.cmds.cmd2.CommandCmd2_1': ['cmd2', 'cmd2-1'],
-    'pkg.qqbot.cmds.cmd2.CommandCmd2_1_1': ['cmd2', 'cmd2-1', 'cmd2-1-1'],
+    'pkg.qqbot.cmds.cmd1.CommandCmd1': 'cmd1',  # 顶级指令
+    'pkg.qqbot.cmds.cmd1.CommandCmd1_1': 'cmd1.cmd1-1',  # 类名: 节点路径
+    'pkg.qqbot.cmds.cmd2.CommandCmd2': 'cmd2',
+    'pkg.qqbot.cmds.cmd2.CommandCmd2_1': 'cmd2.cmd2-1',
+    'pkg.qqbot.cmds.cmd2.CommandCmd2_1_1': 'cmd2.cmd2-1.cmd2-1-1',
 }
 """
 
@@ -111,7 +119,7 @@ class Context:
         self.__dict__.update(kwargs)
 
 
-class AbstractCommand:
+class AbstractCommandNode:
     """指令抽象类"""
 
     parent: type
@@ -133,15 +141,28 @@ class AbstractCommand:
     """指令权限等级, 权限大于等于此值的用户才能执行指令"""
 
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list, str]:
+    def process(cls, ctx: Context) -> tuple[bool, list]:
         """指令处理函数
         
         :param ctx: 指令执行上下文
 
-        :return: (是否执行, 回复列表(若执行), 下一级指令(若未执行))
+        :return: (是否执行, 回复列表(若执行))
+
+        若未执行，将自动以下一个参数查找并执行子指令
         """
         raise NotImplementedError
     
+    @classmethod
+    def help(cls) -> str:
+        """获取指令帮助信息"""
+        return '指令: {}\n描述: {}\n用法: {}\n别名: {}\n权限: {}'.format(
+            cls.name,
+            cls.description,
+            cls.usage,
+            ', '.join(cls.aliases),
+            cls.privilege
+        )
+
     @staticmethod
     def register(cls: type, name: str, parent: type = None):
         """注册指令
@@ -150,42 +171,40 @@ class AbstractCommand:
         :param name: 指令名
         :param parent: 父指令类
         """
-        global __commands_tree__, __tree_index__
+        global __command_list__, __tree_index__
 
         if parent is None:
             # 顶级指令注册
-            __commands_tree__[name] = {
+            __command_list__[name] = {
                 'description': cls.description,
                 'usage': cls.usage,
                 'aliases': cls.aliases,
                 'privilege': cls.privilege,
+                'parent': None,
                 'cls': cls,
-                'sub': {}
-            }
-            __tree_index__[cls.__module__ + '.' + cls.__name__] = [name]
-        else:
-            # 从索引取出路径
-            path = []
-            try:
-                path = __tree_index__[parent.__module__ + '.' + parent.__name__]
-            except KeyError:
-                raise ValueError('register parent command first: {}'.format(parent.__name__))
-            # 从树取出父节点
-            node = __commands_tree__
-            for p in path:
-                node = node[p]['sub']
-
-            # 注册子指令
-            node[name] = {
-                'description': cls.description,
-                'usage': cls.usage,
-                'aliases': cls.aliases,
-                'privilege': cls.privilege,
-                'cls': cls,
-                'sub': {}
+                'sub': []
             }
             # 更新索引
-            __tree_index__[cls.__module__ + '.' + cls.__name__] = path + [name]
+            __tree_index__[cls.__module__ + '.' + cls.__name__] = name
+        else:
+            # 获取父节点名称
+            path = __tree_index__[parent.__module__ + '.' + parent.__name__]
+            
+            parent_node = __command_list__[path]
+            # 链接父子指令
+            __command_list__[path]['sub'].append(name)
+            # 注册子指令
+            __command_list__[path + '.' + name] = {
+                'description': cls.description,
+                'usage': cls.usage,
+                'aliases': cls.aliases,
+                'privilege': cls.privilege,
+                'parent': path,
+                'cls': cls,
+                'sub': []
+            }
+            # 更新索引
+            __tree_index__[cls.__module__ + '.' + cls.__name__] = path + '.' + name
 
 
 class CommandPrivilegeError(Exception):
@@ -204,34 +223,35 @@ def execute(context: Context) -> list:
 
     :return: 回复列表
     """
-    global __commands_tree__
+    global __command_list__
 
     # 拷贝ctx
     ctx: Context = copy.deepcopy(context)
 
     # 从树取出顶级指令
-    node = __commands_tree__
+    node = __command_list__
     
-    path = ""
+    path = ctx.command
 
-    # 搜当前顶层，找不到则报错
     while True:
-        path = path + ctx.crt_command + "."
         try:
+            node = node[path]
+
             # 检查权限
-            if ctx.privilege < node[ctx.crt_command]['privilege']:
-                raise CommandPrivilegeError('权限不足: {}'.format(path[:-1]))
+            if ctx.privilege < node['privilege']:
+                raise CommandPrivilegeError('权限不足: {}'.format(path))
+            
             # 执行
-            execed, reply, ctx.crt_command = node[ctx.crt_command]['cls'].process(ctx)
+            execed, reply = node['cls'].process(ctx)
             if execed:
                 return reply
             else:
-                # 从树取出下一级指令
-                node = node[ctx.crt_command]['sub']
                 # 删除crt_params第一个参数
-                ctx.crt_params.pop(0)
+                ctx.crt_command = ctx.crt_params.pop(0)
+                # 下一个path
+                path = path + '.' + ctx.crt_command
         except KeyError:
-            raise CommandPrivilegeError('找不到指令: {}'.format(path[:-1]))
+            raise CommandPrivilegeError('找不到指令: {}'.format(path))
 
 
 def register_all():
@@ -242,6 +262,11 @@ def register_all():
     # 模块：遍历其中的继承于AbstractCommand的类，进行注册
     # 包：递归处理包下的模块
     # 排除__开头的属性
+    global __command_list__, __tree_index__
+
+    __command_list__ = {}
+    __tree_index__ = {}
+
     import pkg.qqbot.cmds
 
     def walk(module, prefix, path_prefix):
@@ -258,9 +283,8 @@ def register_all():
                 m = __import__(module.__name__ + '.' + item.name, fromlist=[''])
                 for name, cls in inspect.getmembers(m, inspect.isclass):
                     # 检查是否为指令类
-                    if cls.__module__ == m.__name__ and issubclass(cls, AbstractCommand) and cls != AbstractCommand:
+                    if cls.__module__ == m.__name__ and issubclass(cls, AbstractCommandNode) and cls != AbstractCommandNode:
                         cls.register(cls, cls.name, cls.parent)
 
     walk(pkg.qqbot.cmds, '', '')
-    logging.debug(__commands_tree__)
-
+    logging.debug(__command_list__)

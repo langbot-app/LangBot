@@ -1,16 +1,16 @@
-from ..mgr import AbstractCommand, Context
+from ..mgr import AbstractCommandNode, Context
 
 import pkg.openai.session
 import pkg.utils.context
 
-class ResetCommand(AbstractCommand):
+class ResetCommand(AbstractCommandNode):
     parent: type = None
 
     name = 'reset'
     description = '重置当前会话'
-    usage = 'reset'
-    aliases = ['重置', '重置会话']
-    privilege = 0
+    usage = '!reset'
+    aliases = []
+    privilege = 1
 
     @classmethod
     def process(cls, ctx: Context) -> tuple[bool, list, str]:
@@ -30,4 +30,4 @@ class ResetCommand(AbstractCommand):
             except Exception as e:
                 reply = ["[bot]会话重置失败：{}".format(e)]
         
-        return True, reply, ''
+        return True, reply
