@@ -164,7 +164,14 @@ class AbstractCommandNode:
         )
 
     @staticmethod
-    def register(cls: type, name: str, parent: type = None):
+    def register(
+        parent: type = None,
+        name: str = None,
+        description: str = None,
+        usage: str = None,
+        aliases: list[str] = None,
+        privilege: int = 0
+    ):
         """注册指令
         
         :param cls: 指令类
@@ -172,39 +179,53 @@ class AbstractCommandNode:
         :param parent: 父指令类
         """
         global __command_list__, __tree_index__
+        
+        def wrapper(cls):
+            cls.name = name
+            cls.parent = parent
+            cls.description = description
+            cls.usage = usage
+            cls.aliases = aliases
+            cls.privilege = privilege
 
-        if parent is None:
-            # 顶级指令注册
-            __command_list__[name] = {
-                'description': cls.description,
-                'usage': cls.usage,
-                'aliases': cls.aliases,
-                'privilege': cls.privilege,
-                'parent': None,
-                'cls': cls,
-                'sub': []
-            }
-            # 更新索引
-            __tree_index__[cls.__module__ + '.' + cls.__name__] = name
-        else:
-            # 获取父节点名称
-            path = __tree_index__[parent.__module__ + '.' + parent.__name__]
-            
-            parent_node = __command_list__[path]
-            # 链接父子指令
-            __command_list__[path]['sub'].append(name)
-            # 注册子指令
-            __command_list__[path + '.' + name] = {
-                'description': cls.description,
-                'usage': cls.usage,
-                'aliases': cls.aliases,
-                'privilege': cls.privilege,
-                'parent': path,
-                'cls': cls,
-                'sub': []
-            }
-            # 更新索引
-            __tree_index__[cls.__module__ + '.' + cls.__name__] = path + '.' + name
+            logging.debug("cls: {}, name: {}, parent: {}".format(cls, name, parent))
+
+            if parent is None:
+                # 顶级指令注册
+                __command_list__[name] = {
+                    'description': cls.description,
+                    'usage': cls.usage,
+                    'aliases': cls.aliases,
+                    'privilege': cls.privilege,
+                    'parent': None,
+                    'cls': cls,
+                    'sub': []
+                }
+                # 更新索引
+                __tree_index__[cls.__module__ + '.' + cls.__name__] = name
+            else:
+                # 获取父节点名称
+                path = __tree_index__[parent.__module__ + '.' + parent.__name__]
+                
+                parent_node = __command_list__[path]
+                # 链接父子指令
+                __command_list__[path]['sub'].append(name)
+                # 注册子指令
+                __command_list__[path + '.' + name] = {
+                    'description': cls.description,
+                    'usage': cls.usage,
+                    'aliases': cls.aliases,
+                    'privilege': cls.privilege,
+                    'parent': path,
+                    'cls': cls,
+                    'sub': []
+                }
+                # 更新索引
+                __tree_index__[cls.__module__ + '.' + cls.__name__] = path + '.' + name
+
+            return cls
+        
+        return wrapper
 
 
 class CommandPrivilegeError(Exception):
@@ -235,6 +256,7 @@ def execute(context: Context) -> list:
 
     while True:
         try:
+            logging.debug('执行指令: {}'.format(path))
             node = node[path]
 
             # 检查权限
@@ -251,6 +273,7 @@ def execute(context: Context) -> list:
                 # 下一个path
                 path = path + '.' + ctx.crt_command
         except KeyError:
+            traceback.print_exc()
             raise CommandPrivilegeError('找不到指令: {}'.format(path))
 
 
@@ -281,10 +304,10 @@ def register_all():
                 walk(__import__(module.__name__ + '.' + item.name, fromlist=['']), prefix + item.name + '.', path_prefix + item.name + '/')
             else:
                 m = __import__(module.__name__ + '.' + item.name, fromlist=[''])
-                for name, cls in inspect.getmembers(m, inspect.isclass):
-                    # 检查是否为指令类
-                    if cls.__module__ == m.__name__ and issubclass(cls, AbstractCommandNode) and cls != AbstractCommandNode:
-                        cls.register(cls, cls.name, cls.parent)
+                # for name, cls in inspect.getmembers(m, inspect.isclass):
+                #     # 检查是否为指令类
+                #     if cls.__module__ == m.__name__ and issubclass(cls, AbstractCommandNode) and cls != AbstractCommandNode:
+                #         cls.register(cls, cls.name, cls.parent)
 
     walk(pkg.qqbot.cmds, '', '')
     logging.debug(__command_list__)

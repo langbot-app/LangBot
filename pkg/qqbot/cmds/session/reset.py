@@ -3,17 +3,18 @@ from ..mgr import AbstractCommandNode, Context
 import pkg.openai.session
 import pkg.utils.context
 
+
+@AbstractCommandNode.register(
+    parent=None,
+    name='reset',
+    description='重置当前会话',
+    usage='!reset',
+    aliases=[],
+    privilege=1
+)
 class ResetCommand(AbstractCommandNode):
-    parent: type = None
-
-    name = 'reset'
-    description = '重置当前会话'
-    usage = '!reset'
-    aliases = []
-    privilege = 1
-
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list, str]:
+    def process(cls, ctx: Context) -> tuple[bool, list]:
         params = ctx.params
         session_name = ctx.session_name
         
