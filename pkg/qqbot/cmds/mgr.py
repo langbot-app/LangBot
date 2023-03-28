@@ -5,6 +5,7 @@ import copy
 import pkgutil
 import traceback
 import types
+import json
 
 
 __command_list__ = {}
@@ -257,7 +258,7 @@ def execute(context: Context) -> list:
     while True:
         try:
             logging.debug('执行指令: {}'.format(path))
-            node = node[path]
+            node = __command_list__[path]
 
             # 检查权限
             if ctx.privilege < node['privilege']:
