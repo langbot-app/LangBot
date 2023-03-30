@@ -288,9 +288,6 @@ def register_all():
     # 排除__开头的属性
     global __command_list__, __tree_index__
 
-    __command_list__ = {}
-    __tree_index__ = {}
-
     import pkg.qqbot.cmds
 
     def walk(module, prefix, path_prefix):

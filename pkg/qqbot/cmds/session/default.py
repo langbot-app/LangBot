@@ -5,7 +5,7 @@ from ..mgr import AbstractCommandNode, Context
     parent=None,
     name="default",
     description="操作情景预设",
-    usage="!default\n!default [指定情景预设为默认]",
+    usage="!default\n!default set [指定情景预设为默认]",
     aliases=[],
     privilege=1
 )
@@ -35,7 +35,7 @@ class DefaultCommand(AbstractCommandNode):
                 reply_str += "\n\n"
 
             reply_str += "\n当前默认情景预设:{}\n".format(dprompt.mode_inst().get_using_name())
-            reply_str += "请使用 !default <情景预设名称> 来设置默认情景预设"
+            reply_str += "请使用 !default set <情景预设名称> 来设置默认情景预设"
             reply = [reply_str]
         elif params[0] != "set":
             reply = ["[bot]err: 已弃用，请使用!default set <情景预设名称> 来设置默认情景预设"]

@@ -28,6 +28,11 @@ def reload_all(notify=True):
     import main
     main.stop()
 
+    # 删除所有已注册的指令
+    import pkg.qqbot.cmds.mgr as cmdsmgr
+    cmdsmgr.__command_list__ = {}
+    cmdsmgr.__tree_index__ = {}
+
     # 重载所有模块
     context.context['exceeded_keys'] = context.get_openai_manager().key_mgr.exceeded
     this_context = context.context
