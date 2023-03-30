@@ -90,6 +90,6 @@ autologin setConfig <机器人QQ号> protocol ANDROID_PAD
 配置好config.py,保存到当前目录下,运行下面的
 
 ```
- docker run  -it -d --name QChatGPT   --network host   -v ${PWD}/config.py:/QChatGPT/config.py  mikumifa/qchatgpt-docker
+ docker run  -it -d --name QChatGPT   --network host   -v ${PWD}/config.py:/QChatGPT/config.py  -v ${PWD}/banlist.py:/QChatGPT/banlist.py  -v ${PWD}/sensitive.json:/QChatGPT/sensitive.json  mikumifa/qchatgpt-docker
 ```
 
