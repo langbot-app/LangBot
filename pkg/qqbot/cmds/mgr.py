@@ -156,7 +156,7 @@ class AbstractCommandNode:
     @classmethod
     def help(cls) -> str:
         """获取指令帮助信息"""
-        return '指令: {}\n描述: {}\n用法: {}\n别名: {}\n权限: {}'.format(
+        return '指令: {}\n描述: {}\n用法: \n{}\n别名: {}\n权限: {}'.format(
             cls.name,
             cls.description,
             cls.usage,
@@ -297,6 +297,8 @@ def register_all():
         # 排除不处于pkg.qqbot.cmds中的包
         if not module.__name__.startswith('pkg.qqbot.cmds'):
             return
+        
+        logging.debug('walk: {}, path: {}'.format(module.__name__, module.__path__))
         for item in pkgutil.iter_modules(module.__path__):
             if item.name.startswith('__'):
                 continue
