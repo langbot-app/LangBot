@@ -17,7 +17,7 @@
 #### 2.1 输入指令
 
 ```
-docker run -d -it -p 8080:8080 --name mcl --network host -v ./qq/plugins:/app/plugins -v ./qq/config:/app/config -v   ./qq/data:/app/data -v ./qq/bots:/app/bots --restart unless-stopped kagurazakanyaa/mcl:latest
+docker run -d -it --name mcl --network host -v ${PWD}/qq/plugins:/app/plugins -v ${PWD}/qq/config:/app/config -v   ${PWD}/qq/data:/app/data -v ${PWD}/qq/bots:/app/bots --restart unless-stopped kagurazakanyaa/mcl:latest
 ```
 
 这里使用了[KagurazakaNyaa/mirai-console-loader-docker](https://github.com/KagurazakaNyaa/mirai-console-loader-docker)的镜像
@@ -60,7 +60,7 @@ adapterSettings:
 
 `verifyKey`要求与`bot`的`config.py`中的`verifyKey`相同
 
- `port`: 8080要和2.1输入指令的端口号相同
+ `port`: 8080要和2.4 config.py配置里面的端口号相同
 
 #### 2.4 登录
 
@@ -87,9 +87,9 @@ autologin setConfig <机器人QQ号> protocol ANDROID_PAD
 
 ### 3. 部署QChatGPT
 
-配置好config.py,运行下面的
+配置好config.py,保存到当前目录下,运行下面的
 
 ```
- docker run  -it -p 8080:8080  --name mcl   --network host   -v ${PWD}/:/QChatGPT  mikumifa/qchatgpt-docker
+ docker run  -it -d --name QChatGPT   --network host   -v ${PWD}/config.py:/QChatGPT/config.py  -v ${PWD}/banlist.py:/QChatGPT/banlist.py  -v ${PWD}/sensitive.json:/QChatGPT/sensitive.json  mikumifa/qchatgpt-docker
 ```
 
