@@ -17,4 +17,3 @@ class TestCommand(AbstractCommandNode):
         reply.append('测试指令')
 
         return True, reply
-    
