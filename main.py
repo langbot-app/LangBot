@@ -7,6 +7,7 @@ import time
 
 import logging
 import sys
+import traceback
 
 sys.path.append(".")
 
@@ -192,8 +193,15 @@ def start(first_time_init=False):
         import pkg.openai.session
         import pkg.qqbot.manager
         import pkg.openai.dprompt
+        import pkg.qqbot.cmds.mgr
         
-        pkg.openai.dprompt.register_all()
+        try:
+            pkg.openai.dprompt.register_all()
+            pkg.qqbot.cmds.mgr.register_all()
+            pkg.qqbot.cmds.mgr.apply_privileges()
+        except Exception as e:
+            logging.error(e)
+            traceback.print_exc()
 
         # 配置openai api_base
         if "reverse_proxy" in config.openai_config and config.openai_config["reverse_proxy"] is not None:
@@ -272,10 +280,6 @@ def start(first_time_init=False):
             threading.Thread(
                 target=run_bot_wrapper
             ).start()
-            # 机器人暂时不能放在线程池中
-            # pkg.utils.context.get_thread_ctl().submit_sys_task(
-            #     run_bot_wrapper
-            # )
     finally:
         # 判断若是Windows，输出选择模式可能会暂停程序的警告
         if os.name == 'nt':
@@ -369,6 +373,10 @@ def check_file():
     # 检查是否有scenario/default.json
     if not os.path.exists("scenario/default.json"):
         shutil.copy("scenario/default-template.json", "scenario/default.json")
+
+    # 检查cmdpriv.json
+    if not os.path.exists("cmdpriv.json"):
+        shutil.copy("cmdpriv-template.json", "cmdpriv.json")
 
     # 检查temp目录
     if not os.path.exists("temp/"):

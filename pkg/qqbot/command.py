@@ -13,7 +13,8 @@ import pkg.utils.updater
 import pkg.utils.context
 import pkg.qqbot.message
 import pkg.utils.credit as credit
-import pkg.qqbot.cmds.model as cmdmodel
+# import pkg.qqbot.cmds.model as cmdmodel
+import pkg.qqbot.cmds.mgr as cmdmgr
 
 from mirai import Image
 
@@ -36,22 +37,24 @@ def process_command(session_name: str, text_message: str, mgr, config,
             params = [cmd[1:]] + params
             cmd = 'cfg'
 
-        # 选择指令处理函数
-        cmd_obj = cmdmodel.search(cmd)
-        if cmd_obj is not None and (cmd_obj['admin_only'] is False or is_admin):
-            cmd_func = cmd_obj['func']
-            reply = cmd_func(
-                cmd=cmd,
-                params=params,
-                session_name=session_name,
-                text_message=text_message,
-                launcher_type=launcher_type,
-                launcher_id=launcher_id,
-                sender_id=sender_id,
-                is_admin=is_admin,
-            )
-        else:
-            reply = ["[bot]err:未知的指令或权限不足: " + cmd]
+        # 包装参数
+        context = cmdmgr.Context(
+            command=cmd,
+            crt_command=cmd,
+            params=params,
+            crt_params=params[:],
+            session_name=session_name,
+            text_message=text_message,
+            launcher_type=launcher_type,
+            launcher_id=launcher_id,
+            sender_id=sender_id,
+            is_admin=is_admin,
+            privilege=2 if is_admin else 1,  # 普通用户1，管理员2
+        )
+        try:
+            reply = cmdmgr.execute(context)
+        except cmdmgr.CommandPrivilegeError as e:
+            reply = ["[bot]err:{}".format(e)]
 
         return reply
     except Exception as e:
