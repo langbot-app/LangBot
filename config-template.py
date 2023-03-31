@@ -145,6 +145,8 @@ baidu_api_key = ""
 # 百度云SECRET_KEY 32位的英文数字字符串
 baidu_secret_key = ""
 
+# 不合规消息自定义返回
+inappropriate_message_tips = "[百度云]请珍爱机器人，当前返回内容不合规"
 
 # 启动时是否发送赞赏码
 # 仅当使用量已经超过2048字时发送
@@ -224,7 +226,6 @@ retry_times = 3
 # 设置为False时，向用户及管理员发送错误详细信息
 hide_exce_info_to_user = False
 
-
 # 线程池相关配置
 # 该参数决定机器人可以同时处理几个人的消息，超出线程池数量的请求会被阻塞，不会被丢弃
 # 如果你不清楚该参数的意义，请不要更改
@@ -252,8 +253,6 @@ rate_limitation = 60
 # - "wait": 每次对话获取到回复时，等待一定时间再发送回复，保证其不会超过限速均值
 # - "drop": 此分钟内，若对话次数超过限速次数，则丢弃之后的对话，每自然分钟重置
 rate_limit_strategy = "wait"
-
-
 
 # 是否在启动时进行依赖库更新
 upgrade_dependencies = True
