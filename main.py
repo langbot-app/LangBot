@@ -197,6 +197,7 @@ def start(first_time_init=False):
         try:
             pkg.openai.dprompt.register_all()
             pkg.qqbot.cmds.mgr.register_all()
+            pkg.qqbot.cmds.mgr.apply_privileges()
         except Exception as e:
             logging.error(e)
             traceback.print_exc()
@@ -371,6 +372,10 @@ def check_file():
     # 检查是否有scenario/default.json
     if not os.path.exists("scenario/default.json"):
         shutil.copy("scenario/default-template.json", "scenario/default.json")
+
+    # 检查cmdpriv.json
+    if not os.path.exists("cmdpriv.json"):
+        shutil.copy("cmdpriv-template.json", "cmdpriv.json")
 
     # 检查temp目录
     if not os.path.exists("temp/"):
