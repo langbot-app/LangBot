@@ -24,8 +24,8 @@ jobs:
         python-version: 3.x
 
     - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
+      run: |
+        python -m pip install --upgrade pip
 
     - name: Run generate_cmdpriv_template.py
       run: python3 generate_cmdpriv_template.py
