@@ -7,6 +7,7 @@ import pkg.openai.session
 import pkg.plugin.host as plugin_host
 import pkg.plugin.models as plugin_models
 import pkg.qqbot.blob as blob
+import tips_custom
 
 
 def handle_exception(notify_admin: str = "", set_reply: str = "") -> list:
@@ -15,7 +16,7 @@ def handle_exception(notify_admin: str = "", set_reply: str = "") -> list:
     pkg.utils.context.get_qqbot_manager().notify_admin(notify_admin)
     if hasattr(config, 'hide_exce_info_to_user') and config.hide_exce_info_to_user:
         if hasattr(config, 'alter_tip_message'):
-            return [config.alter_tip_message] if config.alter_tip_message else []
+            return [tips_custom.alter_tip_message] if tips_custom.alter_tip_message else []
         else:
             return ["[bot]出错了，请重试或联系管理员"]
     else:

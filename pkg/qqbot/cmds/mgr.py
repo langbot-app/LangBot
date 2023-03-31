@@ -9,6 +9,9 @@ import json
 
 
 __command_list__ = {}
+
+import tips_custom
+
 """命令树
 
 结构：
@@ -262,7 +265,7 @@ def execute(context: Context) -> list:
 
             # 检查权限
             if ctx.privilege < node['privilege']:
-                raise CommandPrivilegeError('权限不足: {}'.format(path))
+                raise CommandPrivilegeError(tips_custom.command_admin_message)
             
             # 执行
             execed, reply = node['cls'].process(ctx)
@@ -275,7 +278,7 @@ def execute(context: Context) -> list:
                 path = path + '.' + ctx.crt_command
         except KeyError:
             traceback.print_exc()
-            raise CommandPrivilegeError('找不到指令: {}'.format(path))
+            raise CommandPrivilegeError(tips_custom.command_err_message)
 
 
 def register_all():
