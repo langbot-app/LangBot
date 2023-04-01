@@ -47,4 +47,4 @@ command_err_message = "指令执行出错："
 # 会话重置提示
 # pkg/qqbot/cmds/session/reset.py，line:25,31
 command_reset_message = ["[bot]会话已重置"]
-command_reset_name_message = ["[bot]会话已重置，使用场景预设:"]
+command_reset_name_message = "[bot]会话已重置，使用场景预设:"
