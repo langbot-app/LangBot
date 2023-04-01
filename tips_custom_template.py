@@ -38,7 +38,6 @@ replys_message = ["群聊请求超时"]
 # 指令权限不足/无效提示
 # QChatGPT/pkg/qqbot/command.py，line:57
 # 更改代码
-# reply = [format(e)]
 # QChatGPT/pkg/qqbot/cmds/mgr.py
 # line:266,279
 command_admin_message = "权限不足： "

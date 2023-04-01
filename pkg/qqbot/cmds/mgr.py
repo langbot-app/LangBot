@@ -265,7 +265,7 @@ def execute(context: Context) -> list:
 
             # 检查权限
             if ctx.privilege < node['privilege']:
-                raise CommandPrivilegeError(tips_custom.command_admin_message)
+                raise CommandPrivilegeError(tips_custom.command_admin_message+"{}".format(path))
             
             # 执行
             execed, reply = node['cls'].process(ctx)
@@ -278,7 +278,7 @@ def execute(context: Context) -> list:
                 path = path + '.' + ctx.crt_command
         except KeyError:
             traceback.print_exc()
-            raise CommandPrivilegeError(tips_custom.command_err_message)
+            raise CommandPrivilegeError(tips_custom.command_err_message+"{}".format(path))
 
 
 def register_all():

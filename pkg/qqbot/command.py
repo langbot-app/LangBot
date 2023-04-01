@@ -54,7 +54,7 @@ def process_command(session_name: str, text_message: str, mgr, config,
         try:
             reply = cmdmgr.execute(context)
         except cmdmgr.CommandPrivilegeError as e:
-            reply = [format(e)]
+            reply = ["{}".format(e)]
 
         return reply
     except Exception as e:

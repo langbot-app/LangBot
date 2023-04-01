@@ -378,6 +378,10 @@ def check_file():
     if not os.path.exists("cmdpriv.json"):
         shutil.copy("cmdpriv-template.json", "cmdpriv.json")
 
+    # 检查tips_custom
+    if not os.path.exists("tips_custom.py"):
+        shutil.copy("tips_custom_template.py", "tips_custom.py")
+
     # 检查temp目录
     if not os.path.exists("temp/"):
         os.mkdir("temp/")

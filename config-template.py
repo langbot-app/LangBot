@@ -253,6 +253,8 @@ rate_limitation = 60
 # - "wait": 每次对话获取到回复时，等待一定时间再发送回复，保证其不会超过限速均值
 # - "drop": 此分钟内，若对话次数超过限速次数，则丢弃之后的对话，每自然分钟重置
 rate_limit_strategy = "wait"
+# drop策略时，超过限速均值时，丢弃的对话的提示信息，仅当rate_limitation_strategy为"drop"时生效
+# 转tips_custom.py中rate_limit_drop_tip字段
 
 # 是否在启动时进行依赖库更新
 upgrade_dependencies = True
