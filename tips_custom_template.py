@@ -25,7 +25,8 @@ help_message = """【可自定义】
 请不要用其生成整篇文章或大段代码，因为每次只会向模型提交少部分文字，生成大部分文字会产生偏题、前后矛盾等问题
 每次会话最后一次交互后{}分钟后会自动结束，结束后将开启新会话，如需继续前一次会话请发送 !last 重新开启
 欢迎到github.com/RockChinQ/QChatGPT 给个star
-指令帮助信息请查看: https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4""".format(config.session_expire_time // 60)
+指令帮助信息请查看: https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4""".format(
+    config.session_expire_time // 60)
 
 # ---原config.py结束--
 
@@ -42,3 +43,8 @@ replys_message = ["群聊请求超时"]
 # line:266,279
 command_admin_message = "权限不足： "
 command_err_message = "指令执行出错："
+
+# 会话重置提示
+# pkg/qqbot/cmds/session/reset.py，line:25,31
+command_reset_message = ["[bot]会话已重置"]
+command_reset_name_message = ["[bot]会话已重置，使用场景预设:"]
