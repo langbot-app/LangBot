@@ -48,6 +48,9 @@
 ## ✅功能
 
 <details>
+<summary>点击此处展开概述</summary>
+
+<details>
 <summary>✅支持敏感词过滤，避免账号风险</summary>
 
   - 难以监测机器人与用户对话时的内容，故引入此功能以减少机器人风险
@@ -123,6 +126,7 @@
 
   - 目前已支持正向代理访问接口
   - 详细请查看config.py中的`openai_config`的说明
+</details>
 </details>
 
 详情请查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E5%8A%9F%E8%83%BD%E7%82%B9%E5%88%97%E4%B8%BE)
