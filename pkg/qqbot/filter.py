@@ -50,8 +50,8 @@ class ReplyFilter:
 
             # 百度云审核URL
             baidu_url = "https://aip.baidubce.com/rest/2.0/solution/v1/text_censor/v2/user_defined?access_token=" + \
-                str(requests.post("https://aip.baidubce.com/oauth/2.0/token", 
-                      params={"grant_type": "client_credentials", 
+                str(requests.post("https://aip.baidubce.com/oauth/2.0/token",
+                      params={"grant_type": "client_credentials",
                               "client_id": self.baidu_api_key,
                               "client_secret": self.baidu_secret_key}).json().get("access_token"))
 

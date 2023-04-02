@@ -32,7 +32,7 @@ def process_command(session_name: str, text_message: str, mgr, config,
 
         params = text_message[1:].strip().split(' ')[1:]
 
-        # 把!~开头的转换成!cfg 
+        # 把!~开头的转换成!cfg
         if cmd.startswith('~'):
             params = [cmd[1:]] + params
             cmd = 'cfg'
