@@ -225,6 +225,8 @@ retry_times = 3
 # 设置为True时，仅向管理员发送错误详细信息
 # 设置为False时，向用户及管理员发送错误详细信息
 hide_exce_info_to_user = False
+# 消息处理出错时向用户发送的提示信息
+#转tips_custom.py中alter_tip_message字段
 
 # 线程池相关配置
 # 该参数决定机器人可以同时处理几个人的消息，超出线程池数量的请求会被阻塞，不会被丢弃
