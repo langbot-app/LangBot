@@ -22,10 +22,10 @@ def read_saved() -> str:
     # 已保存的在res/announcement_saved
     # 检查是否存在
     if not os.path.exists("res/announcement_saved"):
-        with open("res/announcement_saved", "w") as f:
+        with open("res/announcement_saved", "w", encoding="utf-8") as f:
             f.write("")
 
-    with open("res/announcement_saved", "r") as f:
+    with open("res/announcement_saved", "r", encoding="utf-8") as f:
         content = f.read()
 
     return content
@@ -33,7 +33,7 @@ def read_saved() -> str:
 
 def write_saved(content: str):
     # 已保存的在res/announcement_saved
-    with open("res/announcement_saved", "w") as f:
+    with open("res/announcement_saved", "w", encoding="utf-8") as f:
         f.write(content)
 
 
