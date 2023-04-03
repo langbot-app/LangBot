@@ -4,9 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 
 class Pool:
-    '''
-    线程池结构
-    '''
+    """线程池结构"""
     pool_num:int = None
     ctl:ThreadPoolExecutor = None
     task_list:list = None
@@ -33,12 +31,11 @@ class Pool:
 
 class ThreadCtl:
     def __init__(self, sys_pool_num, admin_pool_num, user_pool_num):
-        '''
-        线程池控制类
+        """线程池控制类
         sys_pool_num：分配系统使用的线程池数量(>=8)
         admin_pool_num：用于处理管理员消息的线程池数量(>=1)
         user_pool_num：分配用于处理用户消息的线程池的数量(>=1)
-        '''
+        """
         if sys_pool_num < 5:
             raise Exception("Too few system threads(sys_pool_num needs >= 8, but received {})".format(sys_pool_num))
         if admin_pool_num < 1:

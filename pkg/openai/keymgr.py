@@ -11,8 +11,7 @@ class KeysManager:
     """所有api-key"""
 
     using_key = ""
-    """当前使用的api-key
-    """
+    """当前使用的api-key"""
 
     alerted = []
     """已提示过超额的key
@@ -79,8 +78,7 @@ class KeysManager:
         self.api_key[key_name] = key
 
     def set_current_exceeded(self):
-        """设置当前使用的api-key使用量超限
-        """
+        """设置当前使用的api-key使用量超限"""
         self.exceeded.append(self.using_key)
 
     def get_key_name(self, api_key):
