@@ -48,7 +48,7 @@ class KeysManager:
 
         self.auto_switch()
 
-    def auto_switch(self) -> (bool, str):
+    def auto_switch(self) -> tuple[bool, str]:
         """尝试切换api-key
 
         Returns:
