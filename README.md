@@ -45,6 +45,8 @@
 
 </details>
 
+安装[此插件](https://github.com/RockChinQ/Switcher)，即可在使用中切换文字模型。
+
 ## ✅功能
 
 <details>
