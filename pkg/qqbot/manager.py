@@ -201,7 +201,6 @@ class QQBotManager:
 
     def first_time_init(self, mirai_http_api_config: dict):
         """热重载后不再运行此函数"""
-
         if 'adapter' not in mirai_http_api_config or mirai_http_api_config['adapter'] == "WebSocketAdapter":
             bot = Mirai(
                 qq=mirai_http_api_config['qq'],

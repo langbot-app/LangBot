@@ -290,6 +290,7 @@ def start(first_time_init=False):
         
         if first_time_init:
             if not known_exception_caught:
+                logging.info("QQ: {}, MAH: {}".format(config.mirai_http_api_config['qq'], config.mirai_http_api_config['host']+":"+str(config.mirai_http_api_config['port'])))
                 logging.info('程序启动完成,如长时间未显示 ”成功登录到账号xxxxx“ ,并且不回复消息,请查看 '
                              'https://github.com/RockChinQ/QChatGPT/issues/37')
             else:
