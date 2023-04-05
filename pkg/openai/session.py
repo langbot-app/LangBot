@@ -229,13 +229,7 @@ class Session:
 
         # 成功获取，处理回复
         res_test = message
-        res_ans = res_test
-
-        # 去除开头可能的提示
-        res_ans_spt = res_test.split("\n\n")
-        if len(res_ans_spt) > 1:
-            del (res_ans_spt[0])
-            res_ans = '\n\n'.join(res_ans_spt)
+        res_ans = res_test.strip()
 
         # 将此次对话的双方内容加入到prompt中
         self.prompt.append({'role': 'user', 'content': text})
