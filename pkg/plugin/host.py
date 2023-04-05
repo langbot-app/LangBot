@@ -106,8 +106,8 @@ def initialize_plugins():
     logging.info("初始化插件")
     import pkg.plugin.models as models
     for plugin in iter_plugins():
-        if not plugin['enabled']:
-            continue
+        # if not plugin['enabled']:
+        #     continue
         try:
             models.__current_registering_plugin__ = plugin['name']
             plugin['instance'] = plugin["class"](plugin_host=context.get_plugin_host())
