@@ -299,8 +299,7 @@ def start(first_time_init=False):
             logging.info('热重载完成')
 
     # 发送赞赏码
-    if hasattr(config, 'encourage_sponsor_at_start') \
-        and config.encourage_sponsor_at_start \
+    if config.encourage_sponsor_at_start \
         and pkg.utils.context.get_openai_manager().audit_mgr.get_total_text_length() >= 2048:
 
         logging.info("发送赞赏码")
