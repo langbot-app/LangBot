@@ -5,9 +5,6 @@ def ignore(msg: str) -> bool:
     """检查消息是否应该被忽略"""
     import config
     
-    if not hasattr(config, 'ignore_rules'):
-        return False
-    
     if 'prefix' in config.ignore_rules:
         for rule in config.ignore_rules['prefix']:
             if msg.startswith(rule):

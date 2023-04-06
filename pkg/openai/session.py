@@ -213,7 +213,7 @@ class Session:
                 return None
 
         config = pkg.utils.context.get_config()
-        max_length = config.prompt_submit_length if hasattr(config, "prompt_submit_length") else 1024
+        max_length = config.prompt_submit_length
 
         prompts, counts = self.cut_out(text, max_length)
 

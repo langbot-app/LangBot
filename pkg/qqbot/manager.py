@@ -24,8 +24,6 @@ import pkg.plugin.models as plugin_models
 # 检查消息是否符合泛响应匹配机制
 def check_response_rule(text: str):
     config = pkg.utils.context.get_config()
-    if not hasattr(config, 'response_rules'):
-        return False, ''
 
     rules = config.response_rules
     # 检查前缀匹配
@@ -228,8 +226,7 @@ class QQBotManager:
     def send(self, event, msg, check_quote=True):
         config = pkg.utils.context.get_config()
         asyncio.run(
-            self.bot.send(event, msg, quote=True if hasattr(config,
-                                                            "quote_origin") and config.quote_origin and check_quote else False))
+            self.bot.send(event, msg, quote=True if config.quote_origin and check_quote else False))
 
     # 私聊消息处理
     def on_person_message(self, event: MessageEvent):
@@ -333,7 +330,7 @@ class QQBotManager:
     # 通知系统管理员
     def notify_admin(self, message: str):
         config = pkg.utils.context.get_config()
-        if hasattr(config, "admin_qq") and config.admin_qq != 0 and config.admin_qq != []:
+        if config.admin_qq != 0 and config.admin_qq != []:
             logging.info("通知管理员:{}".format(message))
             if type(config.admin_qq) == int:
                 send_task = self.bot.send_friend_message(config.admin_qq, "[bot]{}".format(message))
@@ -346,7 +343,7 @@ class QQBotManager:
 
     def notify_admin_message_chain(self, message):
         config = pkg.utils.context.get_config()
-        if hasattr(config, "admin_qq") and config.admin_qq != 0 and config.admin_qq != []:
+        if config.admin_qq != 0 and config.admin_qq != []:
             logging.info("通知管理员:{}".format(message))
             if type(config.admin_qq) == int:
                 send_task = self.bot.send_friend_message(config.admin_qq, message)

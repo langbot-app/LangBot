@@ -13,7 +13,7 @@ class HelpCommand(AbstractCommandNode):
     @classmethod
     def process(cls, ctx: Context) -> tuple[bool, list]:
         import config
-        reply = [(config.help_message if hasattr(config, 'help_message') else "") + "\n请输入 !cmds 查看指令列表"]
+        reply = [(config.help_message) + "\n请输入 !cmds 查看指令列表"]
 
         return True, reply
     

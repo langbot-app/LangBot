@@ -83,7 +83,7 @@ class OpenAIInteract:
             dict: 响应
         """
         config = pkg.utils.context.get_config()
-        params = config.image_api_params if hasattr(config, "image_api_params") else self.default_image_api_params
+        params = config.image_api_params
 
         response = openai.Image.create(
             prompt=prompt,

@@ -21,11 +21,11 @@ class ReplyFilter:
         self.mask = mask
         self.mask_word = mask_word
         import config
-        if hasattr(config, 'baidu_check') and hasattr(config, 'baidu_api_key') and hasattr(config, 'baidu_secret_key'):
-            self.baidu_check = config.baidu_check
-            self.baidu_api_key = config.baidu_api_key
-            self.baidu_secret_key = config.baidu_secret_key
-            self.inappropriate_message_tips = config.inappropriate_message_tips
+
+        self.baidu_check = config.baidu_check
+        self.baidu_api_key = config.baidu_api_key
+        self.baidu_secret_key = config.baidu_secret_key
+        self.inappropriate_message_tips = config.inappropriate_message_tips
 
     def is_illegal(self, message: str) -> bool:
         processed = self.process(message)
