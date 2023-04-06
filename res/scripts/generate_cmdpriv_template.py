@@ -13,5 +13,5 @@ for key in cmdsmgr.__command_list__:
     template[key] = cmdsmgr.__command_list__[key]['privilege']
 
 # 写入cmdpriv-template.json
-with open('../../cmdpriv-template.json', 'w') as f:
+with open('../templates/cmdpriv-template.json', 'w') as f:
     f.write(json.dumps(template, indent=4, ensure_ascii=False))

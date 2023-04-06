@@ -365,11 +365,11 @@ def check_file():
 
     # 检查是否有banlist.py,如果没有就把banlist-template.py复制一份
     if not os.path.exists('banlist.py'):
-        shutil.copy('banlist-template.py', 'banlist.py')
+        shutil.copy('res/templates/banlist-template.py', 'banlist.py')
 
     # 检查是否有sensitive.json
     if not os.path.exists("sensitive.json"):
-        shutil.copy("sensitive-template.json", "sensitive.json")
+        shutil.copy("res/templates/sensitive-template.json", "sensitive.json")
 
     # 检查是否有scenario/default.json
     if not os.path.exists("scenario/default.json"):
@@ -377,7 +377,7 @@ def check_file():
 
     # 检查cmdpriv.json
     if not os.path.exists("cmdpriv.json"):
-        shutil.copy("cmdpriv-template.json", "cmdpriv.json")
+        shutil.copy("res/templates/cmdpriv-template.json", "cmdpriv.json")
 
     # 检查temp目录
     if not os.path.exists("temp/"):
