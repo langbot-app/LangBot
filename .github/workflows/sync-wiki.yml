@@ -1,26 +1,31 @@
-name: Sync Wiki on Update
+name: Update Wiki
+
 on:
   push:
     paths:
       - 'res/wiki/**'
 
 jobs:
-  build:
+  update-wiki:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout QChatGPT.wiki
-        uses: actions/checkout@v2
-        with:
-          repository: RockChinQ/QChatGPT.wiki
-          ref: main
-          path: wiki
-      - name: Copy updated files
-        run: cp -R res/wiki/* wiki/
-      - name: Commit and push changes
-        run: |
-          cd wiki/
-          git config --global user.name "GitHub Action"
-          git config --global user.email "action@github.com"
-          git add -A
-          git commit -m "Sync Wiki on update"
-          git push
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Setup Git
+      run: |
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+    - name: Clone Wiki Repository
+      uses: actions/checkout@v2
+      with:
+        repository: RockChinQ/QChatGPT.wiki
+        path: wiki
+    - name: Copy res/wiki content to wiki
+      run: |
+        cp -r res/wiki/* wiki/
+    - name: Commit and Push Changes
+      run: |
+        cd wiki
+        git add .
+        git commit -m "Update wiki"
+        git push
