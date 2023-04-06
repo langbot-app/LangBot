@@ -193,12 +193,12 @@ def start(first_time_init=False):
         import pkg.openai.session
         import pkg.qqbot.manager
         import pkg.openai.dprompt
-        import pkg.qqbot.cmds.mgr
+        import pkg.qqbot.cmds.aamgr
         
         try:
             pkg.openai.dprompt.register_all()
-            pkg.qqbot.cmds.mgr.register_all()
-            pkg.qqbot.cmds.mgr.apply_privileges()
+            pkg.qqbot.cmds.aamgr.register_all()
+            pkg.qqbot.cmds.aamgr.apply_privileges()
         except Exception as e:
             logging.error(e)
             traceback.print_exc()

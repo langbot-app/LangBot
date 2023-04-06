@@ -1,4 +1,4 @@
-from ..mgr import AbstractCommandNode, Context
+from ..aamgr import AbstractCommandNode, Context
 
 import pkg.openai.session
 import pkg.utils.context

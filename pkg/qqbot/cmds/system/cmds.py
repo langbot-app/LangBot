@@ -1,4 +1,4 @@
-from ..mgr import AbstractCommandNode, Context, __command_list__
+from ..aamgr import AbstractCommandNode, Context, __command_list__
 
 
 @AbstractCommandNode.register(

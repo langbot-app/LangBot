@@ -14,7 +14,7 @@ import pkg.utils.context
 import pkg.qqbot.message
 import pkg.utils.credit as credit
 # import pkg.qqbot.cmds.model as cmdmodel
-import pkg.qqbot.cmds.mgr as cmdmgr
+import pkg.qqbot.cmds.aamgr as cmdmgr
 
 from mirai import Image
 

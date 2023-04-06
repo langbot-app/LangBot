@@ -1,4 +1,4 @@
-import pkg.qqbot.cmds.mgr as cmdsmgr
+import pkg.qqbot.cmds.aamgr as cmdsmgr
 import json
 
 # 执行命令模块的注册

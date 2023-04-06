@@ -1,4 +1,4 @@
-from ..mgr import AbstractCommandNode, Context
+from ..aamgr import AbstractCommandNode, Context
 import logging
 
 from mirai import Image
