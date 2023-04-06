@@ -1,0 +1,24 @@
+欢迎查看QChatGPT的Wiki页。
+
+## 简介
+
+通过调用OpenAI官方提供的API接口，结合mirai和YiriMirai框架，将QQ消息与语言模型连接，实现更加智能的对话机器人。
+
+
+## 技术栈
+
+- [Mirai](https://github.com/mamoe/mirai) 高效率 QQ 机器人支持库
+- [YiriMirai](https://github.com/YiriMiraiProject/YiriMirai) 一个轻量级、低耦合的基于 mirai-api-http 的 Python SDK。
+- [dulwich](https://github.com/jelmer/dulwich) Pure-Python Git implementation
+- [OpenAI API](https://openai.com/api/) OpenAI API
+
+## 代码结构
+
+- `pkg.database` 数据库操作相关
+  - 数据库用于存放会话的历史记录，确保在程序重启后能记住对话内容
+- `pkg.openai` OpenAI API相关
+  - 用于调用OpenAI的API生成回复内容
+- `pkg.qqbot` QQ机器人相关
+  - 处理QQ收到的消息，调用API并进行回复
+- `pkg.utils` 常用功能包
+- `pkg.audit` 审计模块
