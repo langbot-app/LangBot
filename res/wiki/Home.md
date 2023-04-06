@@ -2,7 +2,7 @@
 
 ## 简介
 
-通过调用OpenAI官方提供的API接口，结合mirai和YiriMirai框架，将QQ消息与多个语言模型连接，实现更加智能的对话机器人。
+调用OpenAI官方提供的API接口，结合mirai和YiriMirai框架，将QQ消息与语言模型连接，实现更加智能的对话机器人。
 
 ## 技术栈
 
@@ -21,3 +21,4 @@
   - 处理QQ收到的消息，调用API并进行回复
 - `pkg.utils` 常用功能包
 - `pkg.audit` 审计模块
+- `pkg.plugin` 插件管理相关功能
