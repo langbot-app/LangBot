@@ -2,17 +2,14 @@
 
 > 2023/3/18 现已支持GPT-4 API（内测），请查看`config-template.py`中的`completion_api_params`  
 > 2023/3/15 逆向库已支持New Bing，使用方法查看[插件文档](https://github.com/RockChinQ/revLibs)  
-> 2023/3/15 逆向库已支持GPT-4模型，使用方法查看[插件](https://github.com/RockChinQ/revLibs)   
-> 2023/3/3  现已在主线支持官方ChatGPT接口，使用方法查看[#195](https://github.com/RockChinQ/QChatGPT/issues/195)  
 
+- **客官，来都来了，不点个⭐吗？**
 - 到[项目Wiki](https://github.com/RockChinQ/QChatGPT/wiki)可了解项目详细信息
-- ~~由bilibili TheLazy制作的[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)~~（寄了，求大佬做个新的）
-- 交流、答疑群: ~~204785790~~（已满）、~~691226829~~（已满）、656285629  
+- 官方交流、答疑群: 656285629  
   - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
+- 社区群（内有一键部署包等资源）: 362515018
 - QQ频道机器人见[QQChannelChatGPT](https://github.com/Soulter/QQChannelChatGPT)
 - 欢迎各种形式的贡献，请查看[贡献指引](CONTRIBUTING.md)
-
-通过调用OpenAI的ChatGPT等语言模型来实现一个更加智能的QQ机器人  
 
 ## 🍺模型适配一览
 
