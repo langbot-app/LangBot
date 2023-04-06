@@ -19,6 +19,7 @@ class DrawCommand(AbstractCommandNode):
         import pkg.openai.session
 
         reply = []
+        
         if len(ctx.params) == 0:
             reply = ["[bot]err: 未提供图片描述文字"]
         else:
