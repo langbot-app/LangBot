@@ -19,5 +19,5 @@ for k, v in template.__dict__.items():
     print(k, v, type(v))
     output_json[k] = v
 
-with open("../../override-all.json", "w", encoding="utf-8") as f:
+with open("override-all.json", "w", encoding="utf-8") as f:
     json.dump(output_json, f, indent=4, ensure_ascii=False)
