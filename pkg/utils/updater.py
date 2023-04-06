@@ -34,6 +34,23 @@ def pull_latest(repo_path: str) -> bool:
     return True
 
 
+def is_newer_ignored_bugfix_ver(new_tag: str, old_tag: str):
+    """判断版本是否更新，忽略第四位版本"""
+    if new_tag == old_tag:
+        return False
+
+    new_tag = new_tag.split(".")
+    old_tag = old_tag.split(".")
+    if len(new_tag) < 4:
+        return True
+
+    # 合成前三段，判断是否相同
+    new_tag = ".".join(new_tag[:3])
+    old_tag = ".".join(old_tag[:3])
+
+    return new_tag != old_tag
+
+
 def get_release_list() -> list:
     """获取发行列表"""
     rls_list_resp = requests.get(
@@ -64,8 +81,12 @@ def update_all(cli: bool = False) -> bool:
 
     latest_rls = {}
     rls_notes = []
+    latest_tag_name = ""
     for rls in rls_list:
         rls_notes.append(rls['name'])  # 使用发行名称作为note
+        if latest_tag_name == "":
+            latest_tag_name = rls['tag_name']
+
         if rls['tag_name'] == current_tag:
             break
 
@@ -76,7 +97,7 @@ def update_all(cli: bool = False) -> bool:
     else:
         print("更新日志: {}".format(rls_notes))
 
-    if latest_rls == {}:  # 没有新版本
+    if latest_rls == {} and not is_newer_ignored_bugfix_ver(latest_tag_name, current_tag):  # 没有新版本
         return False
 
     # 下载最新版本的zip到temp目录
@@ -227,11 +248,13 @@ def is_new_version_available() -> bool:
     current_tag = get_current_tag()
 
     # 检查是否有新版本
+    latest_tag_name = ""
     for rls in rls_list:
-        if rls['tag_name'] == current_tag:
-            return False
-        else:
-            return True
+        if latest_tag_name == "":
+            latest_tag_name = rls['tag_name']
+            break
+
+    return is_newer_ignored_bugfix_ver(latest_tag_name, current_tag)
 
 
 def get_rls_notes() -> list:
