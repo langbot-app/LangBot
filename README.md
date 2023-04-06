@@ -153,7 +153,7 @@
 
 #### Docker方式
 
-请查看[此文档](docker_deploy.md)  
+请查看[此文档](res/docs/docker_deploy.md)  
 由[@mikumifa](https://github.com/mikumifa)贡献
 
 #### 安装器方式
