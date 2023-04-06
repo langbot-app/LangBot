@@ -27,7 +27,11 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         python -m pip install --upgrade  yiri-mirai openai colorlog func_timeout dulwich Pillow
-      
+
+    - name: Copy Scripts
+      run: |
+        cp res/scripts/generate_cmdpriv_template.py .  
+
     - name: Generate Files
       run: |
         python main.py

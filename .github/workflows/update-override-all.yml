@@ -31,6 +31,10 @@ jobs:
           python -m pip install --upgrade pip
           # 在此处添加您的项目所需的其他依赖
 
+      - name: Copy Scripts
+        run: |
+          cp res/scripts/generate_override_all.py .
+
       - name: Run generate_override_all.py
         run: python3 generate_override_all.py
 
