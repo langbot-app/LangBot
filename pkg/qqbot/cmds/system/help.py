@@ -12,8 +12,13 @@ from ..aamgr import AbstractCommandNode, Context
 class HelpCommand(AbstractCommandNode):
     @classmethod
     def process(cls, ctx: Context) -> tuple[bool, list]:
+        import tips
+        reply = ["[bot] "+tips.help_message + "\n请输入 !cmd 查看指令列表"]
+
+        # 警告config.help_message过时
         import config
-        reply = [(config.help_message) + "\n请输入 !cmds 查看指令列表"]
+        if hasattr(config, "help_message"):
+            reply[0] += "\n\n警告：config.py中的help_message已过时，不再生效，请使用tips.py中的help_message替代"
 
         return True, reply
     
