@@ -26,6 +26,8 @@ jobs:
     - name: Commit and Push Changes
       run: |
         cd wiki
-        git add .
-        git commit -m "Update wiki"
-        git push
+        if git diff --name-only; then
+          git add .
+          git commit -m "Update wiki"
+          git push
+        fi
