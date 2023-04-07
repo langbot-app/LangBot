@@ -27,6 +27,7 @@ import pkg.plugin.models as plugin_models
 import pkg.qqbot.ignore as ignore
 import pkg.qqbot.banlist as banlist
 import pkg.qqbot.blob as blob
+import tips as tips_custom
 
 processing = []
 
@@ -118,7 +119,8 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                 if config.rate_limit_strategy == "drop":
                     if ratelimit.is_reach_limit(session_name):
                         logging.info("根据限速策略丢弃[{}]消息: {}".format(session_name, text_message))
-                        return MessageChain(["[bot]"+config.rate_limit_drop_tip]) if config.rate_limit_drop_tip != "" else []
+
+                        return MessageChain(["[bot]"+tips_custom.rate_limit_drop_tip]) if tips_custom.rate_limit_drop_tip != "" else []
 
                 before = time.time()
                 # 触发插件事件

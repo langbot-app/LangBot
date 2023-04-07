@@ -18,3 +18,4 @@ override.json
 cookies.json
 res/announcement_saved
 cmdpriv.json
+tips.py

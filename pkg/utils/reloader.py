@@ -41,15 +41,20 @@ def reload_all(notify=True):
     importlib.reload(__import__('config'))
     importlib.reload(__import__('main'))
     importlib.reload(__import__('banlist'))
+    importlib.reload(__import__('tips'))
     context.context = this_context
 
     # 重载插件
     import plugins
     walk(plugins)
 
+    # 初始化相关文件
+    main.check_file()
+
     # 执行启动流程
     logging.info("执行程序启动流程")
     main.load_config()
+    main.complete_tips()
     context.get_thread_ctl().reload(
         admin_pool_num=context.get_config().admin_pool_num,
         user_pool_num=context.get_config().user_pool_num

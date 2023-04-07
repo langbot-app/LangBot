@@ -7,6 +7,7 @@ import pkg.openai.session
 import pkg.plugin.host as plugin_host
 import pkg.plugin.models as plugin_models
 import pkg.qqbot.blob as blob
+import tips as tips_custom
 
 
 def handle_exception(notify_admin: str = "", set_reply: str = "") -> list:
@@ -14,7 +15,7 @@ def handle_exception(notify_admin: str = "", set_reply: str = "") -> list:
     import config
     pkg.utils.context.get_qqbot_manager().notify_admin(notify_admin)
     if config.hide_exce_info_to_user:
-        return [config.alter_tip_message] if config.alter_tip_message else []
+        return [tips_custom.alter_tip_message] if tips_custom.alter_tip_message else []
     else:
         return [set_reply]
 
