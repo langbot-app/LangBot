@@ -81,3 +81,4 @@ class CfgCommand(AbstractCommandNode):
     @classmethod
     def process(cls, ctx: Context) -> tuple[bool, list]:
         return True, config_operation(ctx.command, ctx.params)
+    
