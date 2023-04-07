@@ -42,7 +42,7 @@ jobs:
     - name: Check for changes in cmdpriv-template.json
       id: check_changes
       run: |
-        if git diff --name-only | grep -q "cmdpriv-template.json"; then
+        if git diff --name-only | grep -q "res/templates/cmdpriv-template.json"; then
           echo "::set-output name=changes_detected::true"
         else
           echo "::set-output name=changes_detected::false"
@@ -53,6 +53,6 @@ jobs:
       run: |
         git config --global user.name "GitHub Actions Bot"
         git config --global user.email "<github-actions@github.com>"
-        git add cmdpriv-template.json
+        git add res/templates/cmdpriv-template.json
         git commit -m "Update cmdpriv-template.json"
         git push
