@@ -47,6 +47,9 @@ def reload_all(notify=True):
     import plugins
     walk(plugins)
 
+    # 初始化相关文件
+    main.check_file()
+
     # 执行启动流程
     logging.info("执行程序启动流程")
     main.load_config()
