@@ -25,7 +25,7 @@ reply_message = "[bot]err:请求超时"
 # 群聊消息超时提示
 replys_message = "[bot]err:请求超时"
 
-# 指令权限不足/无效提示
+# 指令权限不足提示
 command_admin_message = "[bot]err:权限不足： "
 # 指令无效提示
 command_err_message = "[bot]err:指令执行出错："
