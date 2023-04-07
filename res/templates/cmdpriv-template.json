@@ -19,6 +19,7 @@
     "prompt": 1,
     "resend": 1,
     "reset": 1,
+    "cfg": 2,
     "cmd": 1,
     "help": 1,
     "reload": 2,
