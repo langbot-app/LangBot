@@ -126,6 +126,12 @@
   - 目前已支持正向代理访问接口
   - 详细请查看config.py中的`openai_config`的说明
 </details>
+<details>
+<summary>✅支持自定义提示内容</summary>
+
+  - 允许用户自定义报错、帮助等提示信息
+  - 请查看`tips.py`
+</details>
 </details>
 
 详情请查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E5%8A%9F%E8%83%BD%E7%82%B9%E5%88%97%E4%B8%BE)

@@ -19,6 +19,7 @@ import pkg.utils.context
 
 import pkg.plugin.host as plugin_host
 import pkg.plugin.models as plugin_models
+import tips as tips_custom
 
 
 # 检查消息是否符合泛响应匹配机制
@@ -264,7 +265,7 @@ class QQBotManager:
                 if failed == self.retry:
                     pkg.openai.session.get_session('person_{}'.format(event.sender.id)).release_response_lock()
                     self.notify_admin("{} 请求超时".format("person_{}".format(event.sender.id)))
-                    reply = ["[bot]err:请求超时"]
+                    reply = [tips_custom.reply_message]
 
         if reply:
             return self.send(event, reply, check_quote=False)
@@ -304,7 +305,7 @@ class QQBotManager:
             if failed == self.retry:
                 pkg.openai.session.get_session('group_{}'.format(event.group.id)).release_response_lock()
                 self.notify_admin("{} 请求超时".format("group_{}".format(event.group.id)))
-                replys = ["[bot]err:请求超时"]
+                replys = [tips_custom.replys_message]
 
             return replys
 

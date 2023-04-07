@@ -33,9 +33,9 @@ mirai_http_api_config = {
 #     },
 #     "http_proxy": "http://127.0.0.1:12345"
 # }
-#
+# 
 # 现已支持反向代理，可以添加reverse_proxy字段以使用反向代理
-# 使用反向代理可以在国内使用OpenAI的API，反向代理的配置请参考
+# 使用反向代理可以在国内使用OpenAI的API，反向代理的配置请参考 
 # https://github.com/Ice-Hazymoon/openai-scf-proxy
 #
 # 反向代理填写示例：
@@ -63,7 +63,7 @@ admin_qq = 0
 # 情景预设（机器人人格）
 # 每个会话的预设信息，影响所有会话，无视指令重置
 # 可以通过这个字段指定某些情况的回复，可直接用自然语言描述指令
-# 例如:
+# 例如: 
 # default_prompt = "如果我之后想获取帮助，请你说“输入!help获取帮助”"
 #   这样用户在不知所措的时候机器人就会提示其输入!help获取帮助
 # 可参考 https://github.com/PlexPt/awesome-chatgpt-prompts-zh
@@ -81,14 +81,14 @@ admin_qq = 0
 # 例如：
 # !reset linux-terminal
 # 若不指定名称，则使用默认情景预设
-#
+# 
 # 也可以使用指令：
 # !default <名称>
 #   将指定的情景预设设置为默认情景预设
 # 例如：
 # !default linux-terminal
 # 之后的会话重置时若不指定名称，则使用linux-terminal情景预设
-#
+# 
 # 还可以加载文件中的预设文字，使用方法请查看：https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E9%A2%84%E8%AE%BE%E6%96%87%E5%AD%97
 default_prompt = {
     "default": "如果我之后想获取帮助，请你说“输入!help获取帮助”",
@@ -160,7 +160,7 @@ prompt_submit_length = 2048
 # OpenAI补全API的参数
 # 请在下方填写模型，程序自动选择接口
 # 现已支持的模型有：
-#
+# 
 #    'gpt-4'
 #    'gpt-4-0314'
 #    'gpt-4-32k'
@@ -226,11 +226,6 @@ retry_times = 3
 # 设置为False时，向用户及管理员发送错误详细信息
 hide_exce_info_to_user = False
 
-# 消息处理出错时向用户发送的提示信息
-# 仅当hide_exce_info_to_user为True时生效
-# 设置为空字符串时，不发送提示信息
-alter_tip_message = '出错了，请稍后再试'
-
 # 线程池相关配置
 # 该参数决定机器人可以同时处理几个人的消息，超出线程池数量的请求会被阻塞，不会被丢弃
 # 如果你不清楚该参数的意义，请不要更改
@@ -259,11 +254,6 @@ rate_limitation = 60
 # - "drop": 此分钟内，若对话次数超过限速次数，则丢弃之后的对话，每自然分钟重置
 rate_limit_strategy = "wait"
 
-# drop策略时，超过限速均值时，丢弃的对话的提示信息
-# 仅当rate_limitation_strategy为"drop"时生效
-# 若设置为空字符串，则不发送提示信息
-rate_limit_drop_tip = "本分钟对话次数超过限速次数，此对话被丢弃"
-
 # 是否在启动时进行依赖库更新
 upgrade_dependencies = True
 
@@ -274,8 +264,3 @@ report_usage = True
 
 # 日志级别
 logging_level = logging.INFO
-
-# 定制帮助消息
-help_message = """此机器人通过调用大型语言模型生成回复，不具有情感。
-你可以用自然语言与其交流，回复的消息中[GPT]开头的为模型生成的语言，[bot]开头的为程序提示。
-欢迎到github.com/RockChinQ/QChatGPT 给个star"""

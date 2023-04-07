@@ -108,6 +108,7 @@ def reset_logging():
 
 # 临时函数，用于加载config和上下文，未来统一放在config类
 def load_config():
+    logging.info("检查config模块完整性.")
     # 完整性校验
     is_integrity = True
     config_template = importlib.import_module('config-template')
@@ -119,7 +120,7 @@ def load_config():
             is_integrity = False
     
     if not is_integrity:
-        logging.warning("配置文件不完整，请依据config-template.py检查config.py")
+        logging.warning("配置文件不完整，您可以依据config-template.py检查config.py")
 
     # 检查override.json覆盖
     if os.path.exists("override.json"):
@@ -132,11 +133,29 @@ def load_config():
                 logging.error("无法覆写配置[{}]为[{}]，该配置不存在，请检查override.json是否正确".format(key, override_json[key]))
 
     if not is_integrity:
-        logging.warning("以上配置已被设为默认值，将在5秒后继续启动... ")
-        time.sleep(5)
+        logging.warning("以上配置已被设为默认值，将在3秒后继续启动... ")
+        time.sleep(3)
 
     # 存进上下文
     pkg.utils.context.set_config(config)
+
+
+def complete_tips():
+    """根据tips-custom-template模块补全tips模块的属性"""
+    is_integrity = True
+    logging.info("检查tips模块完整性.")
+    tips_template = importlib.import_module('tips-custom-template')
+    tips = importlib.import_module('tips')
+    for key in dir(tips_template):
+        if not key.startswith("__") and not hasattr(tips, key):
+            setattr(tips, key, getattr(tips_template, key))
+            logging.warning("[{}]不存在".format(key))
+            is_integrity = False
+
+    if not is_integrity:
+        logging.warning("tips模块不完整，您可以依据tips-custom-template.py检查tips.py")
+        logging.warning("以上配置已被设为默认值，将在3秒后继续启动... ")
+        time.sleep(3)
 
 
 def start(first_time_init=False):
@@ -356,12 +375,6 @@ def stop():
 
 
 def check_file():
-    # 配置文件存在性校验
-    if not os.path.exists('config.py'):
-        shutil.copy('config-template.py', 'config.py')
-        print('请先在config.py中填写配置')
-        sys.exit(0)
-
     # 检查是否有banlist.py,如果没有就把banlist-template.py复制一份
     if not os.path.exists('banlist.py'):
         shutil.copy('res/templates/banlist-template.py', 'banlist.py')
@@ -378,6 +391,10 @@ def check_file():
     if not os.path.exists("cmdpriv.json"):
         shutil.copy("res/templates/cmdpriv-template.json", "cmdpriv.json")
 
+    # 检查tips_custom
+    if not os.path.exists("tips.py"):
+        shutil.copy("tips-custom-template.py", "tips.py")
+
     # 检查temp目录
     if not os.path.exists("temp/"):
         os.mkdir("temp/")
@@ -387,6 +404,12 @@ def check_file():
     for path in check_path:
         if not os.path.exists(path):
             os.mkdir(path)
+
+    # 配置文件存在性校验
+    if not os.path.exists('config.py'):
+        shutil.copy('config-template.py', 'config.py')
+        print('请先在config.py中填写配置')
+        sys.exit(0)
 
 
 def main():
@@ -400,6 +423,9 @@ def main():
     # 加载配置
     load_config()
     config = pkg.utils.context.get_config()
+
+    # 检查tips模块
+    complete_tips()
 
     # 配置线程池
     from pkg.utils import ThreadCtl

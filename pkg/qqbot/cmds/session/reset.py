@@ -1,4 +1,5 @@
 from ..aamgr import AbstractCommandNode, Context
+import tips as tips_custom
 
 import pkg.openai.session
 import pkg.utils.context
@@ -22,12 +23,12 @@ class ResetCommand(AbstractCommandNode):
 
         if len(params) == 0:
             pkg.openai.session.get_session(session_name).reset(explicit=True)
-            reply = ["[bot]会话已重置"]
+            reply = [tips_custom.command_reset_message]
         else:
             try:
                 import pkg.openai.dprompt as dprompt
                 pkg.openai.session.get_session(session_name).reset(explicit=True, use_prompt=params[0])
-                reply = ["[bot]会话已重置，使用场景预设:{}".format(dprompt.mode_inst().get_full_name(params[0]))]
+                reply = [tips_custom.command_reset_name_message+"{}".format(dprompt.mode_inst().get_full_name(params[0]))]
             except Exception as e:
                 reply = ["[bot]会话重置失败：{}".format(e)]
         
