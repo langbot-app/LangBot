@@ -23,7 +23,7 @@ class ResetCommand(AbstractCommandNode):
 
         if len(params) == 0:
             pkg.openai.session.get_session(session_name).reset(explicit=True)
-            reply = tips_custom.command_reset_message
+            reply = [tips_custom.command_reset_message]
         else:
             try:
                 import pkg.openai.dprompt as dprompt

@@ -32,9 +32,9 @@ help_message = """【可自定义】
 
 # QChatGPT/pkg/qqbot/manager.py
 # 私聊消息超时提示,line:271
-reply_message = ["私聊请求超时"]
+reply_message = "私聊请求超时"
 # 群聊消息超时提示,line:310
-replys_message = ["群聊请求超时"]
+replys_message = "群聊请求超时"
 
 # 指令权限不足/无效提示
 # QChatGPT/pkg/qqbot/command.py，line:57
@@ -46,5 +46,5 @@ command_err_message = "指令执行出错："
 
 # 会话重置提示
 # pkg/qqbot/cmds/session/reset.py，line:25,31
-command_reset_message = ["[bot]会话已重置"]
+command_reset_message = "[bot]会话已重置"
 command_reset_name_message = "[bot]会话已重置，使用场景预设:"

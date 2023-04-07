@@ -269,7 +269,7 @@ class QQBotManager:
                 if failed == self.retry:
                     pkg.openai.session.get_session('person_{}'.format(event.sender.id)).release_response_lock()
                     self.notify_admin("{} 请求超时".format("person_{}".format(event.sender.id)))
-                    reply = tips_custom.reply_message
+                    reply = [tips_custom.reply_message]
 
         if reply:
             return self.send(event, reply, check_quote=False)
@@ -309,7 +309,7 @@ class QQBotManager:
             if failed == self.retry:
                 pkg.openai.session.get_session('group_{}'.format(event.group.id)).release_response_lock()
                 self.notify_admin("{} 请求超时".format("group_{}".format(event.group.id)))
-                replys = tips_custom.replys_message
+                replys = [tips_custom.replys_message]
 
             return replys
 
