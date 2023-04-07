@@ -27,7 +27,7 @@ import pkg.plugin.models as plugin_models
 import pkg.qqbot.ignore as ignore
 import pkg.qqbot.banlist as banlist
 import pkg.qqbot.blob as blob
-import tips_custom
+import tips as tips_custom
 
 processing = []
 

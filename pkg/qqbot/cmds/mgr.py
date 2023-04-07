@@ -10,7 +10,7 @@ import json
 
 __command_list__ = {}
 
-import tips_custom
+import tips as tips_custom
 
 """命令树
 

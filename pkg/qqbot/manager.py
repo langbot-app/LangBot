@@ -19,7 +19,7 @@ import pkg.utils.context
 
 import pkg.plugin.host as plugin_host
 import pkg.plugin.models as plugin_models
-import tips_custom
+import tips as tips_custom
 
 
 # 检查消息是否符合泛响应匹配机制
