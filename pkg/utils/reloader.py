@@ -41,6 +41,7 @@ def reload_all(notify=True):
     importlib.reload(__import__('config'))
     importlib.reload(__import__('main'))
     importlib.reload(__import__('banlist'))
+    importlib.reload(__import__('tips'))
     context.context = this_context
 
     # 重载插件
