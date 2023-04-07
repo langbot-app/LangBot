@@ -375,12 +375,6 @@ def stop():
 
 
 def check_file():
-    # 配置文件存在性校验
-    if not os.path.exists('config.py'):
-        shutil.copy('config-template.py', 'config.py')
-        print('请先在config.py中填写配置')
-        sys.exit(0)
-
     # 检查是否有banlist.py,如果没有就把banlist-template.py复制一份
     if not os.path.exists('banlist.py'):
         shutil.copy('res/templates/banlist-template.py', 'banlist.py')
@@ -410,6 +404,12 @@ def check_file():
     for path in check_path:
         if not os.path.exists(path):
             os.mkdir(path)
+
+    # 配置文件存在性校验
+    if not os.path.exists('config.py'):
+        shutil.copy('config-template.py', 'config.py')
+        print('请先在config.py中填写配置')
+        sys.exit(0)
 
 
 def main():
