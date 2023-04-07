@@ -48,8 +48,8 @@ class OpenAIInteract:
 
         # 根据模型选择使用的接口
         ai: ModelRequest = create_openai_model_request(
-            config.completion_api_params['model'], 
-            'user', 
+            config.completion_api_params['model'],
+            'user',
             config.openai_config["http_proxy"] if "http_proxy" in config.openai_config else None
         )
         ai.request(
@@ -83,7 +83,7 @@ class OpenAIInteract:
             dict: 响应
         """
         config = pkg.utils.context.get_config()
-        params = config.image_api_params if hasattr(config, "image_api_params") else self.default_image_api_params
+        params = config.image_api_params
 
         response = openai.Image.create(
             prompt=prompt,

@@ -15,8 +15,7 @@ import pkg.plugin.settings as settings
 from mirai import Mirai
 
 __plugins__ = {}
-"""
-插件列表
+"""插件列表
 
 示例:
 {
@@ -35,14 +34,15 @@ __plugins__ = {}
         },
         "instance": None
     }
-}"""
+}
+"""
 
 __plugins_order__ = []
 """插件顺序"""
 
 
 def generate_plugin_order():
-    """ 根据__plugin__生成插件初始顺序，无视是否启用 """
+    """根据__plugin__生成插件初始顺序，无视是否启用"""
     global __plugins_order__
     __plugins_order__ = []
     for plugin_name in __plugins__:
@@ -50,13 +50,13 @@ def generate_plugin_order():
 
 
 def iter_plugins():
-    """ 按照顺序迭代插件 """
+    """按照顺序迭代插件"""
     for plugin_name in __plugins_order__:
         yield __plugins__[plugin_name]
 
 
 def iter_plugins_name():
-    """ 迭代插件名 """
+    """迭代插件名"""
     for plugin_name in __plugins_order__:
         yield plugin_name
 
@@ -85,7 +85,7 @@ def walk_plugin_path(module, prefix='', path_prefix=''):
 
 
 def load_plugins():
-    """ 加载插件 """
+    """加载插件"""
     logging.info("加载插件")
     PluginHost()
     walk_plugin_path(__import__('plugins'))
@@ -102,12 +102,12 @@ def load_plugins():
 
 
 def initialize_plugins():
-    """ 初始化插件 """
+    """初始化插件"""
     logging.info("初始化插件")
     import pkg.plugin.models as models
     for plugin in iter_plugins():
-        if not plugin['enabled']:
-            continue
+        # if not plugin['enabled']:
+        #     continue
         try:
             models.__current_registering_plugin__ = plugin['name']
             plugin['instance'] = plugin["class"](plugin_host=context.get_plugin_host())
@@ -117,8 +117,7 @@ def initialize_plugins():
 
 
 def unload_plugins():
-    """ 卸载插件
-    """
+    """卸载插件"""
     # 不再显式卸载插件，因为当程序结束时，插件的析构函数会被系统执行
     # for plugin in __plugins__.values():
     #     if plugin['enabled'] and plugin['instance'] is not None:
@@ -134,7 +133,7 @@ def unload_plugins():
 
 
 def install_plugin(repo_url: str):
-    """ 安装插件，从git储存库获取并解决依赖 """
+    """安装插件，从git储存库获取并解决依赖"""
     try:
         import pkg.utils.pkgmgr
         pkg.utils.pkgmgr.ensure_dulwich()
@@ -162,7 +161,7 @@ def install_plugin(repo_url: str):
 
 
 def uninstall_plugin(plugin_name: str) -> str:
-    """ 卸载插件 """
+    """卸载插件"""
     if plugin_name not in __plugins__:
         raise Exception("插件不存在")
     
@@ -178,17 +177,17 @@ def uninstall_plugin(plugin_name: str) -> str:
 
 
 class EventContext:
-    """ 事件上下文 """
+    """事件上下文"""
     eid = 0
     """事件编号"""
 
     name = ""
 
     __prevent_default__ = False
-    """ 是否阻止默认行为 """
+    """是否阻止默认行为"""
 
     __prevent_postorder__ = False
-    """ 是否阻止后续插件的执行 """
+    """是否阻止后续插件的执行"""
 
     __return_value__ = {}
     """ 返回值 
@@ -251,7 +250,7 @@ class EventContext:
 
 
 def emit(event_name: str, **kwargs) -> EventContext:
-    """ 触发事件 """
+    """触发事件"""
     import pkg.utils.context as context
     if context.get_plugin_host() is None:
         return None
@@ -290,7 +289,7 @@ class PluginHost:
         context.get_qqbot_manager().notify_admin(message)
 
     def emit(self, event_name: str, **kwargs) -> EventContext:
-        """ 触发事件 """
+        """触发事件"""
         import json
 
         event_context = EventContext(event_name)

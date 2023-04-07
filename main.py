@@ -212,12 +212,12 @@ def start(first_time_init=False):
         import pkg.openai.session
         import pkg.qqbot.manager
         import pkg.openai.dprompt
-        import pkg.qqbot.cmds.mgr
+        import pkg.qqbot.cmds.aamgr
         
         try:
             pkg.openai.dprompt.register_all()
-            pkg.qqbot.cmds.mgr.register_all()
-            pkg.qqbot.cmds.mgr.apply_privileges()
+            pkg.qqbot.cmds.aamgr.register_all()
+            pkg.qqbot.cmds.aamgr.apply_privileges()
         except Exception as e:
             logging.error(e)
             traceback.print_exc()
@@ -309,6 +309,7 @@ def start(first_time_init=False):
         
         if first_time_init:
             if not known_exception_caught:
+                logging.info("QQ: {}, MAH: {}".format(config.mirai_http_api_config['qq'], config.mirai_http_api_config['host']+":"+str(config.mirai_http_api_config['port'])))
                 logging.info('程序启动完成,如长时间未显示 ”成功登录到账号xxxxx“ ,并且不回复消息,请查看 '
                              'https://github.com/RockChinQ/QChatGPT/issues/37')
             else:
@@ -317,8 +318,7 @@ def start(first_time_init=False):
             logging.info('热重载完成')
 
     # 发送赞赏码
-    if hasattr(config, 'encourage_sponsor_at_start') \
-        and config.encourage_sponsor_at_start \
+    if config.encourage_sponsor_at_start \
         and pkg.utils.context.get_openai_manager().audit_mgr.get_total_text_length() >= 2048:
 
         logging.info("发送赞赏码")
@@ -383,11 +383,11 @@ def check_file():
 
     # 检查是否有banlist.py,如果没有就把banlist-template.py复制一份
     if not os.path.exists('banlist.py'):
-        shutil.copy('banlist-template.py', 'banlist.py')
+        shutil.copy('res/templates/banlist-template.py', 'banlist.py')
 
     # 检查是否有sensitive.json
     if not os.path.exists("sensitive.json"):
-        shutil.copy("sensitive-template.json", "sensitive.json")
+        shutil.copy("res/templates/sensitive-template.json", "sensitive.json")
 
     # 检查是否有scenario/default.json
     if not os.path.exists("scenario/default.json"):
@@ -395,7 +395,7 @@ def check_file():
 
     # 检查cmdpriv.json
     if not os.path.exists("cmdpriv.json"):
-        shutil.copy("cmdpriv-template.json", "cmdpriv.json")
+        shutil.copy("res/templates/cmdpriv-template.json", "cmdpriv.json")
 
     # 检查tips_custom
     if not os.path.exists("tips.py"):

@@ -7,7 +7,7 @@ import pkg.plugin.host as host
 
 
 def wrapper_dict_from_plugin_list() -> dict:
-    """ 将插件列表转换为开关json """
+    """将插件列表转换为开关json"""
     switch = {}
 
     for plugin_name in host.__plugins__:
@@ -30,7 +30,7 @@ def apply_switch(switch: dict):
 
 
 def dump_switch():
-    """ 保存开关数据 """
+    """保存开关数据"""
     logging.debug("保存开关数据")
     # 将开关数据写入plugins/switch.json
 
@@ -41,7 +41,7 @@ def dump_switch():
 
 
 def load_switch():
-    """ 加载开关数据 """
+    """加载开关数据"""
     logging.debug("加载开关数据")
     # 读取plugins/switch.json
 

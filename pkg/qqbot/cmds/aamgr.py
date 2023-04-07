@@ -318,12 +318,16 @@ def register_all():
 
 def apply_privileges():
     """读取cmdpriv.json并应用指令权限"""
-    with open('cmdpriv.json', 'r') as f:
-        data = json.load(f)
-        for path, priv in data.items():
-            if path == 'comment':
-                continue
-            if __command_list__[path]['privilege'] != priv:
-                logging.debug('应用权限: {} -> {}(default: {})'.format(path, priv, __command_list__[path]['privilege']))
+    # 读取内容
+    json_str = ""
+    with open('cmdpriv.json', 'r', encoding="utf-8") as f:
+        json_str = f.read()
 
-            __command_list__[path]['privilege'] = priv
+    data = json.loads(json_str)
+    for path, priv in data.items():
+        if path == 'comment':
+            continue
+        if __command_list__[path]['privilege'] != priv:
+            logging.debug('应用权限: {} -> {}(default: {})'.format(path, priv, __command_list__[path]['privilege']))
+
+        __command_list__[path]['privilege'] = priv

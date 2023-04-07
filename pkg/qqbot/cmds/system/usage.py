@@ -1,4 +1,4 @@
-from ..mgr import AbstractCommandNode, Context
+from ..aamgr import AbstractCommandNode, Context
 import logging
 
 
@@ -29,13 +29,6 @@ class UsageCommand(AbstractCommandNode):
                 .get_image_count_of_key(api_keys[key_name])
             reply_str += "{}:\n - 文本长度:{}\n - 图片数量:{}\n".format(key_name, int(text_length),
                                                                         int(image_count))
-            # 获取此key的额度
-            try:
-                http_proxy = config.openai_config["http_proxy"] if "http_proxy" in config.openai_config else None
-                credit_data = credit.fetch_credit_data(api_keys[key_name], http_proxy)
-                reply_str += " - 使用额度:{:.2f}/{:.2f}\n".format(credit_data['total_used'],credit_data['total_granted'])
-            except Exception as e:
-                logging.warning("获取额度失败:{}".format(e))
 
         reply = [reply_str]
 

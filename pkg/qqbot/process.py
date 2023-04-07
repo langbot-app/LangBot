@@ -69,7 +69,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
             return reply
 
     import config
-    if hasattr(config, 'income_msg_check') and config.income_msg_check:
+    if config.income_msg_check:
         if mgr.reply_filter.is_illegal(text_message):
             return MessageChain(Plain("[bot] 你的提问中有不合适的内容, 请更换措辞~"))
 
@@ -116,10 +116,11 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
             else:  # 消息
                 # 限速丢弃检查
                 # print(ratelimit.__crt_minute_usage__[session_name])
-                if hasattr(config, "rate_limitation") and config.rate_limit_strategy == "drop":
+                if config.rate_limit_strategy == "drop":
                     if ratelimit.is_reach_limit(session_name):
                         logging.info("根据限速策略丢弃[{}]消息: {}".format(session_name, text_message))
-                        return MessageChain(["[bot]"+tips_custom.rate_limit_drop_tip]) if hasattr(tips_custom, "rate_limit_drop_tip") and tips_custom.rate_limit_drop_tip != "" else []
+
+                        return MessageChain(["[bot]"+tips_custom.rate_limit_drop_tip]) if tips_custom.rate_limit_drop_tip != "" else []
 
                 before = time.time()
                 # 触发插件事件
@@ -145,11 +146,10 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                                                                      mgr, config, launcher_type, launcher_id, sender_id)
 
                 # 限速等待时间
-                if hasattr(config, "rate_limitation") and config.rate_limit_strategy == "wait":
+                if config.rate_limit_strategy == "wait":
                     time.sleep(ratelimit.get_rest_wait_time(session_name, time.time() - before))
                 
-                if hasattr(config, "rate_limitation"):
-                    ratelimit.add_usage(session_name)
+                ratelimit.add_usage(session_name)
 
             if reply is not None and len(reply) > 0 and (type(reply[0]) == str or type(reply[0]) == mirai.Plain):
                 if type(reply[0]) == mirai.Plain:

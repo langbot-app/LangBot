@@ -1,5 +1,5 @@
+from ..aamgr import AbstractCommandNode, Context
 import tips as tips_custom
-from ..mgr import AbstractCommandNode, Context
 
 import pkg.openai.session
 import pkg.utils.context

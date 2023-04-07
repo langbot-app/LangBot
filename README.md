@@ -2,17 +2,14 @@
 
 > 2023/3/18 现已支持GPT-4 API（内测），请查看`config-template.py`中的`completion_api_params`  
 > 2023/3/15 逆向库已支持New Bing，使用方法查看[插件文档](https://github.com/RockChinQ/revLibs)  
-> 2023/3/15 逆向库已支持GPT-4模型，使用方法查看[插件](https://github.com/RockChinQ/revLibs)   
-> 2023/3/3  现已在主线支持官方ChatGPT接口，使用方法查看[#195](https://github.com/RockChinQ/QChatGPT/issues/195)  
 
+- **客官，来都来了，不点个⭐吗？**
 - 到[项目Wiki](https://github.com/RockChinQ/QChatGPT/wiki)可了解项目详细信息
-- ~~由bilibili TheLazy制作的[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)~~（寄了，求大佬做个新的）
-- 交流、答疑群: ~~204785790~~（已满）、~~691226829~~（已满）、656285629  
+- 官方交流、答疑群: 656285629  
   - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
+- 社区群（内有一键部署包、图形化界面等资源）: 362515018
 - QQ频道机器人见[QQChannelChatGPT](https://github.com/Soulter/QQChannelChatGPT)
 - 欢迎各种形式的贡献，请查看[贡献指引](CONTRIBUTING.md)
-
-通过调用OpenAI的ChatGPT等语言模型来实现一个更加智能的QQ机器人  
 
 ## 🍺模型适配一览
 
@@ -45,7 +42,12 @@
 
 </details>
 
+安装[此插件](https://github.com/RockChinQ/Switcher)，即可在使用中切换文字模型。
+
 ## ✅功能
+
+<details>
+<summary>点击此处展开概述</summary>
 
 <details>
 <summary>✅支持敏感词过滤，避免账号风险</summary>
@@ -124,6 +126,7 @@
   - 目前已支持正向代理访问接口
   - 详细请查看config.py中的`openai_config`的说明
 </details>
+</details>
 
 详情请查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E5%8A%9F%E8%83%BD%E7%82%B9%E5%88%97%E4%B8%BE)
 
@@ -150,7 +153,7 @@
 
 #### Docker方式
 
-请查看[此文档](docker_deploy.md)  
+请查看[此文档](res/docs/docker_deploy.md)  
 由[@mikumifa](https://github.com/mikumifa)贡献
 
 #### 安装器方式
@@ -184,7 +187,7 @@ cd QChatGPT
 2. 安装依赖
 
 ```bash
-pip3 install yiri-mirai openai colorlog func_timeout dulwich Pillow
+pip3 install requests yiri-mirai openai colorlog func_timeout dulwich Pillow
 ```
 
 3. 运行一次主程序，生成配置文件
@@ -240,6 +243,7 @@ python3 main.py
 欢迎提交新的插件
 
 - [revLibs](https://github.com/RockChinQ/revLibs) - 将ChatGPT网页版接入此项目，关于[官方接口和网页版有什么区别](https://github.com/RockChinQ/QChatGPT/wiki/%E5%AE%98%E6%96%B9%E6%8E%A5%E5%8F%A3%E4%B8%8EChatGPT%E7%BD%91%E9%A1%B5%E7%89%88)
+- [Switcher](https://github.com/RockChinQ/Switcher) - 支持通过指令切换使用的模型
 - [hello_plugin](https://github.com/RockChinQ/hello_plugin) - `hello_plugin` 的储存库形式，插件开发模板
 - [dominoar/QChatPlugins](https://github.com/dominoar/QchatPlugins) - dominoar编写的诸多新功能插件（语音输出、Ranimg、屏蔽词规则等）
 - [dominoar/QCP-NovelAi](https://github.com/dominoar/QCP-NovelAi) - NovelAI 故事叙述与绘画

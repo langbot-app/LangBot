@@ -58,9 +58,6 @@ def get_rest_wait_time(session_name: str, spent: float) -> float:
 
     import config
 
-    if not hasattr(config, 'rate_limitation'):
-        return 0
-
     min_seconds_per_round = 60.0 / config.rate_limitation
 
     if session_name in __crt_minute_usage__:
@@ -74,9 +71,6 @@ def is_reach_limit(session_name: str) -> bool:
     global __crt_minute_usage__
 
     import config
-
-    if not hasattr(config, 'rate_limitation'):
-        return False
 
     if session_name in __crt_minute_usage__:
         return __crt_minute_usage__[session_name] >= config.rate_limitation

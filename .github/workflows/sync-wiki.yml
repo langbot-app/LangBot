@@ -1,0 +1,31 @@
+name: Update Wiki
+
+on:
+  push:
+    paths:
+      - 'res/wiki/**'
+
+jobs:
+  update-wiki:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Setup Git
+      run: |
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+    - name: Clone Wiki Repository
+      uses: actions/checkout@v2
+      with:
+        repository: RockChinQ/QChatGPT.wiki
+        path: wiki
+    - name: Copy res/wiki content to wiki
+      run: |
+        cp -r res/wiki/* wiki/
+    - name: Commit and Push Changes
+      run: |
+        cd wiki
+        git add .
+        git commit -m "Update wiki"
+        git push

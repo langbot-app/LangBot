@@ -14,11 +14,8 @@ def handle_exception(notify_admin: str = "", set_reply: str = "") -> list:
     """处理异常，当notify_admin不为空时，会通知管理员，返回通知用户的消息"""
     import config
     pkg.utils.context.get_qqbot_manager().notify_admin(notify_admin)
-    if hasattr(config, 'hide_exce_info_to_user') and config.hide_exce_info_to_user:
-        if hasattr(config, 'alter_tip_message'):
-            return [tips_custom.alter_tip_message] if tips_custom.alter_tip_message else []
-        else:
-            return ["[bot]出错了，请重试或联系管理员"]
+    if config.hide_exce_info_to_user:
+        return [tips_custom.alter_tip_message] if tips_custom.alter_tip_message else []
     else:
         return [set_reply]
 
@@ -41,7 +38,7 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
             reply = handle_exception(notify_admin=f"{session_name}，多次尝试失败。", set_reply=f"[bot]多次尝试失败，请重试或联系管理员")
             break
         try:
-            prefix = "[GPT]" if hasattr(config, "show_prefix") and config.show_prefix else ""
+            prefix = "[GPT]" if config.show_prefix else ""
 
             text = session.append(text_message)
 
