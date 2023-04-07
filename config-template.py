@@ -226,11 +226,6 @@ retry_times = 3
 # 设置为False时，向用户及管理员发送错误详细信息
 hide_exce_info_to_user = False
 
-# 消息处理出错时向用户发送的提示信息
-# 仅当hide_exce_info_to_user为True时生效
-# 设置为空字符串时，不发送提示信息
-alter_tip_message = '出错了，请稍后再试'
-
 # 线程池相关配置
 # 该参数决定机器人可以同时处理几个人的消息，超出线程池数量的请求会被阻塞，不会被丢弃
 # 如果你不清楚该参数的意义，请不要更改
@@ -258,11 +253,6 @@ rate_limitation = 60
 # - "wait": 每次对话获取到回复时，等待一定时间再发送回复，保证其不会超过限速均值
 # - "drop": 此分钟内，若对话次数超过限速次数，则丢弃之后的对话，每自然分钟重置
 rate_limit_strategy = "wait"
-
-# drop策略时，超过限速均值时，丢弃的对话的提示信息
-# 仅当rate_limitation_strategy为"drop"时生效
-# 若设置为空字符串，则不发送提示信息
-rate_limit_drop_tip = "本分钟对话次数超过限速次数，此对话被丢弃"
 
 # 是否在启动时进行依赖库更新
 upgrade_dependencies = True
