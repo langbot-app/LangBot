@@ -39,6 +39,11 @@ log_colors_config = {
 }
 
 
+# 是否使用override.json覆盖配置
+# 仅在启动时提供 --override 或 -r 参数时生效
+use_override = False
+
+
 def init_db():
     import pkg.database.manager
     database = pkg.database.manager.DatabaseManager()
@@ -106,6 +111,19 @@ def reset_logging():
     return sh
 
 
+def override_config():
+    import config
+    # 检查override.json覆盖
+    if os.path.exists("override.json") and use_override:
+        override_json = json.load(open("override.json", "r", encoding="utf-8"))
+        for key in override_json:
+            if hasattr(config, key):
+                setattr(config, key, override_json[key])
+                logging.info("覆写配置[{}]为[{}]".format(key, override_json[key]))
+            else:
+                logging.error("无法覆写配置[{}]为[{}]，该配置不存在，请检查override.json是否正确".format(key, override_json[key]))
+
+
 # 临时函数，用于加载config和上下文，未来统一放在config类
 def load_config():
     logging.info("检查config模块完整性.")
@@ -123,17 +141,10 @@ def load_config():
         logging.warning("配置文件不完整，您可以依据config-template.py检查config.py")
 
     # 检查override.json覆盖
-    if os.path.exists("override.json"):
-        override_json = json.load(open("override.json", "r", encoding="utf-8"))
-        for key in override_json:
-            if hasattr(config, key):
-                setattr(config, key, override_json[key])
-                logging.info("覆写配置[{}]为[{}]".format(key, override_json[key]))
-            else:
-                logging.error("无法覆写配置[{}]为[{}]，该配置不存在，请检查override.json是否正确".format(key, override_json[key]))
+    override_config()
 
     if not is_integrity:
-        logging.warning("以上配置已被设为默认值，将在3秒后继续启动... ")
+        logging.warning("以上不存在的配置已被设为默认值，将在3秒后继续启动... ")
         time.sleep(3)
 
     # 存进上下文
@@ -413,6 +424,11 @@ def check_file():
 
 
 def main():
+    global use_override
+    # 检查是否携带了 --override 或 -r 参数
+    if '--override' in sys.argv or '-r' in sys.argv:
+        use_override = True
+
     # 初始化相关文件
     check_file()
 
