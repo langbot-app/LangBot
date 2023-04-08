@@ -1,5 +1,9 @@
 # QChatGPT🤖
 
+[English](README_en.md) | 简体中文
+
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/QChatGPT?style=flat-square)](https://github.com/RockChinQ/QChatGPT/releases/latest)
+
 > 2023/3/18 现已支持GPT-4 API（内测），请查看`config-template.py`中的`completion_api_params`  
 > 2023/3/15 逆向库已支持New Bing，使用方法查看[插件文档](https://github.com/RockChinQ/revLibs)  
 

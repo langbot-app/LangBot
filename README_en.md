@@ -1,5 +1,9 @@
 # QChatGPT🤖
 
+English | [简体中文](README.md)
+
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/QChatGPT?style=flat-square)](https://github.com/RockChinQ/QChatGPT/releases/latest)
+
 - Refer to [Wiki](https://github.com/RockChinQ/QChatGPT/wiki) to get further information.  
 - Official QQ group: 656285629  
 - Community QQ group: 362515018
@@ -141,7 +145,7 @@ Any problems, please refer to the issues page.
 
 **After deployment, please read: [Commands(cn)](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4)**  
 
-**For more details, please refer to the [Wiki(cn)](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E4%BD%BF%E7%94%A8%E6%96%B9%E5%BC%8F) 
+**For more details, please refer to the [Wiki(cn)](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E4%BD%BF%E7%94%A8%E6%96%B9%E5%BC%8F)**
 
 
 ## 🧩Plugin Ecosystem
