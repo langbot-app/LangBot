@@ -257,7 +257,6 @@ python3 main.py
 - [RockChinQ/WaitYiYan](https://github.com/RockChinQ/WaitYiYan) - 实时获取百度`文心一言`等待列表人数
 - [chordfish-k/QChartGPT_Emoticon_Plugin](https://github.com/chordfish-k/QChartGPT_Emoticon_Plugin) - 使机器人根据回复内容发送表情包
 - [oliverkirk-sudo/ChatPoeBot](https://github.com/oliverkirk-sudo/ChatPoeBot) - 接入[Poe](https://poe.com/)上的机器人
-- [wenyinos/ChatAPI2D](https://github.com/wenyinos/ChatAPI2D) - 通过API2D的中转服务访问OpenAI官方接口
 </details>
 
 ## 😘致谢
