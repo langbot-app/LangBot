@@ -241,7 +241,7 @@ user_pool_num = 6
 
 # 每个会话的过期时间，单位为秒
 # 默认值20分钟
-session_expire_time = 60 * 20
+session_expire_time = 1200
 
 # 会话限速
 # 单会话内每分钟可进行的对话次数
