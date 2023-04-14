@@ -10,8 +10,6 @@ alter_tip_message = '[bot]err:出错了，请稍后再试'
 rate_limit_drop_tip = "本分钟对话次数超过限速次数，此对话被丢弃"
 
 # 指令！help帮助消息
-# config.py,line:279
-# pkg/qqbot/process.py,line:122
 help_message = """此机器人通过调用大型语言模型生成回复，不具有情感。
 你可以用自然语言与其交流，回复的消息中[GPT]开头的为模型生成的语言，[bot]开头的为程序提示。
 欢迎到github.com/RockChinQ/QChatGPT 给个star"""
