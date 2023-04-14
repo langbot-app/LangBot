@@ -1,21 +1,25 @@
 from pip._internal import main as pipmain
 
-import main
+import pkg.utils.log as log
 
 
 def install(package):
     pipmain(['install', package])
-    main.reset_logging()
+    log.reset_logging()
+
+def install_upgrade(package):
+    pipmain(['install', '--upgrade', package])
+    log.reset_logging()
 
 
 def run_pip(params: list):
     pipmain(params)
-    main.reset_logging()
+    log.reset_logging()
 
 
 def install_requirements(file):
     pipmain(['install', '-r', file, "--upgrade"])
-    main.reset_logging()
+    log.reset_logging()
 
 
 def ensure_dulwich():

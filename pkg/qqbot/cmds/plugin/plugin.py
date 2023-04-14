@@ -117,8 +117,8 @@ class PluginUpdateCommand(AbstractCommandNode):
                         import pkg.utils.pkgmgr
                         pkg.utils.pkgmgr.install_requirements("/".join(plugin['path'].split('/')[:-1])+"/requirements.txt")
 
-                        import main
-                        main.reset_logging()
+                        import pkg.utils.log as log
+                        log.reset_logging()
 
                 pkg.utils.context.get_qqbot_manager().notify_admin("已更新插件: {}".format(", ".join(updated)))
             except Exception as e:
