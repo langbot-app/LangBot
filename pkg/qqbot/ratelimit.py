@@ -10,6 +10,20 @@ __crt_minute_usage__ = {}
 __timer_thr__: threading.Thread = None
 
 
+def get_limitation(session_name: str) -> int:
+    """获取会话的限制次数"""
+    import config
+
+    if type(config.rate_limitation) == dict:
+        # 如果被指定了
+        if session_name in config.rate_limitation:
+            return config.rate_limitation[session_name]
+        else:
+            return config.rate_limitation["default"]
+    elif type(config.rate_limitation) == int:
+        return config.rate_limitation
+
+
 def add_usage(session_name: str):
     """增加会话的对话次数"""
     global __crt_minute_usage__
@@ -56,9 +70,7 @@ def get_rest_wait_time(session_name: str, spent: float) -> float:
     """获取会话此回合的剩余等待时间"""
     global __crt_minute_usage__
 
-    import config
-
-    min_seconds_per_round = 60.0 / config.rate_limitation
+    min_seconds_per_round = 60.0 / get_limitation(session_name)
 
     if session_name in __crt_minute_usage__:
         return max(0, min_seconds_per_round - spent)
@@ -70,10 +82,8 @@ def is_reach_limit(session_name: str) -> bool:
     """判断会话是否超过限制"""
     global __crt_minute_usage__
 
-    import config
-
     if session_name in __crt_minute_usage__:
-        return __crt_minute_usage__[session_name] >= config.rate_limitation
+        return __crt_minute_usage__[session_name] >= get_limitation(session_name)
     else:
         return False
 
