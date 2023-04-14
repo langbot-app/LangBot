@@ -156,8 +156,8 @@ def install_plugin(repo_url: str):
         import pkg.utils.pkgmgr
         pkg.utils.pkgmgr.install_requirements("plugins/"+repo_url.split(".git")[0].split("/")[-1]+"/requirements.txt")
 
-        import main
-        main.reset_logging()
+        import pkg.utils.log as log
+        log.reset_logging()
 
 
 def uninstall_plugin(plugin_name: str) -> str:
