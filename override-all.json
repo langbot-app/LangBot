@@ -67,8 +67,10 @@
     "admin_pool_num": 2,
     "user_pool_num": 6,
     "session_expire_time": 1200,
-    "rate_limitation": 60,
-    "rate_limit_strategy": "wait",
+    "rate_limitation": {
+        "default": 60
+    },
+    "rate_limit_strategy": "drop",
     "upgrade_dependencies": true,
     "report_usage": true,
     "logging_level": 20

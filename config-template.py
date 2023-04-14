@@ -247,12 +247,35 @@ session_expire_time = 1200
 # 单会话内每分钟可进行的对话次数
 # 若不需要限速，可以设置为一个很大的值
 # 默认值60次，基本上不会触发限速
-rate_limitation = 60
+#
+# 若要设置针对某特定群的限速，请使用如下格式：
+# {
+#   "group_<群号>": 60,
+#   "default": 60,
+# }
+# 若要设置针对某特定用户私聊的限速，请使用如下格式：
+# {
+#   "person_<用户QQ>": 60,
+#   "default": 60,
+# }
+# 同时设置多个群和私聊的限速，示例：
+# {
+#   "group_12345678": 60,
+#   "group_87654321": 60,
+#   "person_234567890": 60,
+#   "person_345678901": 60,
+#   "default": 60,
+# }
+#
+# 注意: 未指定的都使用default的限速值，default不可删除
+rate_limitation = {
+    "default": 60,
+}
 
 # 会话限速策略
 # - "wait": 每次对话获取到回复时，等待一定时间再发送回复，保证其不会超过限速均值
 # - "drop": 此分钟内，若对话次数超过限速次数，则丢弃之后的对话，每自然分钟重置
-rate_limit_strategy = "wait"
+rate_limit_strategy = "drop"
 
 # 是否在启动时进行依赖库更新
 upgrade_dependencies = True
