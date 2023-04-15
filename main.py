@@ -305,7 +305,7 @@ def start(first_time_init=False):
         new_announcement = announcement.fetch_new()
         if len(new_announcement) > 0:
             for announcement in new_announcement:
-                logging.critical("[公告] {}".format(announcement))
+                logging.critical("[公告]<{}> {}".format(announcement['time'], announcement['content']))
     except Exception as e:
         logging.warning("获取公告失败:{}".format(e))
 

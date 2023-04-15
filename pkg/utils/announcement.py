@@ -33,7 +33,7 @@ def read_saved() -> list:
 
 def write_saved(content: list):
     # 已保存的在res/announcement_saved
-    with open("res/announcement_saved", "w", encoding="utf-8") as f:
+    with open("res/announcement_saved.json", "w", encoding="utf-8") as f:
         f.write(json.dumps(content, indent=4, ensure_ascii=False))
 
 
