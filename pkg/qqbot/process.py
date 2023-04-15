@@ -59,6 +59,11 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
         logging.info("根据忽略规则忽略消息: {}".format(text_message))
         return []
 
+    import config
+
+    if not config.wait_last_done and session_name in processing:
+        return MessageChain([Plain(tips_custom.message_drop_tip)])
+
     # 检查是否被禁言
     if launcher_type == 'group':
         result = mgr.bot.member_info(target=launcher_id, member_id=mgr.bot.qq).get()
@@ -79,9 +84,6 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
 
     # 处理消息
     try:
-        if session_name in processing:
-            pkg.openai.session.get_session(session_name).release_response_lock()
-            return MessageChain([Plain("[bot]err:正在处理中，请稍后再试")])
 
         config = pkg.utils.context.get_config()
 
