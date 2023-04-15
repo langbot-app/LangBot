@@ -212,6 +212,12 @@ blob_message_threshold = 256
 # - "forward": 将长消息转换为转发消息组件发送
 blob_message_strategy = "forward"
 
+# 允许等待
+# 同一会话内，是否等待上一条消息处理完成后再处理下一条消息
+# 若设置为False，若上一条未处理完时收到了新消息，将会丢弃新消息
+# 丢弃消息时的提示信息可以在tips.py中修改
+wait_last_done = True
+
 # 文字转图片时使用的字体文件路径
 # 当策略为"image"时生效
 #   若在Windows系统下，程序会自动使用Windows自带的微软雅黑字体
@@ -233,11 +239,11 @@ hide_exce_info_to_user = False
 sys_pool_num = 8
 
 # 执行管理员请求和指令的线程池并行线程数量，一般和管理员数量相等
-admin_pool_num = 2
+admin_pool_num = 4
 
 # 执行用户请求和指令的线程池并行线程数量
 # 如需要更高的并发，可以增大该值
-user_pool_num = 6
+user_pool_num = 8
 
 # 每个会话的过期时间，单位为秒
 # 默认值20分钟
