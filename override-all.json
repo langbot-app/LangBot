@@ -60,12 +60,13 @@
     "show_prefix": false,
     "blob_message_threshold": 256,
     "blob_message_strategy": "forward",
+    "wait_last_done": true,
     "font_path": "",
     "retry_times": 3,
     "hide_exce_info_to_user": false,
     "sys_pool_num": 8,
-    "admin_pool_num": 2,
-    "user_pool_num": 6,
+    "admin_pool_num": 4,
+    "user_pool_num": 8,
     "session_expire_time": 1200,
     "rate_limitation": {
         "default": 60
