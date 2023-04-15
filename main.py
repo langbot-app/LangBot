@@ -303,8 +303,9 @@ def start(first_time_init=False):
     try:
         import pkg.utils.announcement as announcement
         new_announcement = announcement.fetch_new()
-        if new_announcement != "":
-            logging.critical("[公告] {}".format(new_announcement))
+        if len(new_announcement) > 0:
+            for announcement in new_announcement:
+                logging.critical("[公告] {}".format(announcement))
     except Exception as e:
         logging.warning("获取公告失败:{}".format(e))
 
