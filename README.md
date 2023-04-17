@@ -136,6 +136,15 @@
   - 允许用户自定义报错、帮助等提示信息
   - 请查看`tips.py`
 </details>
+
+### 🏞️截图
+
+<img alt="私聊GPT-3.5" src="res/screenshots/person_gpt3.5.png" width="400"/>
+
+<img alt="群聊GPT-3.5" src="res/screenshots/group_gpt3.5.png" width="400"/>
+
+<img alt="New Bing" src="res/screenshots/person_newbing.png" width="400"/>
+
 </details>
 
 详情请查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E5%8A%9F%E8%83%BD%E7%82%B9%E5%88%97%E4%B8%BE)
