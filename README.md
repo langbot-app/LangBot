@@ -140,9 +140,9 @@
 ### 🏞️截图
 
 <img alt="私聊GPT-3.5" src="res/screenshots/person_gpt3.5.png" width="400"/>
-
+<br/>
 <img alt="群聊GPT-3.5" src="res/screenshots/group_gpt3.5.png" width="400"/>
-
+<br/>
 <img alt="New Bing" src="res/screenshots/person_newbing.png" width="400"/>
 
 </details>
