@@ -1,8 +1,8 @@
-# QChatGPT🤖
-
 <p align="center">
 <img src="https://socialify.git.ci/RockChinQ/QChatGPT/image?description=1&font=Jost&logo=https%3A%2F%2Fraw.githubusercontent.com%2FRockChinQ%2FQChatGPT%2Fmaster%2Fres%2Flogo.png&name=1&owner=1&theme=Light" alt="QChatGPT" width="640" height="320" />
 </p>
+
+# QChatGPT🤖
 
 [English](README_en.md) | 简体中文
 
