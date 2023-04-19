@@ -1,5 +1,9 @@
 # QChatGPT🤖
 
+<p align="center">
+<img src="res/social.png" alt="QChatGPT" width="640" height="320" />
+</p>
+
 English | [简体中文](README.md)
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/QChatGPT?style=flat-square)](https://github.com/RockChinQ/QChatGPT/releases/latest)
@@ -9,10 +13,6 @@ English | [简体中文](README.md)
 - Community QQ group: 362515018
 - QQ channel robot: [QQChannelChatGPT](https://github.com/Soulter/QQChannelChatGPT)
 - Any contribution is welcome, please refer to [CONTRIBUTING.md](CONTRIBUTING.md)
-
-<p align="center">
-<img src="res/social.png" alt="QChatGPT" width="640" height="320" />
-</p>
 
 ## 🍺List of supported models
 
