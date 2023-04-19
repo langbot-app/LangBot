@@ -1,7 +1,3 @@
-<p align="center">
-<img src="https://socialify.git.ci/RockChinQ/QChatGPT/image?description=1&font=Jost&logo=https%3A%2F%2Fraw.githubusercontent.com%2FRockChinQ%2FQChatGPT%2Fmaster%2Fres%2Flogo.png&name=1&owner=1&theme=Light" alt="QChatGPT" width="640" height="320" />
-</p>
-
 # QChatGPT🤖
 
 [English](README_en.md) | 简体中文
@@ -17,6 +13,10 @@
 - 社区群（内有一键部署包、图形化界面等资源）: 362515018
 - QQ频道机器人见[QQChannelChatGPT](https://github.com/Soulter/QQChannelChatGPT)
 - 欢迎各种形式的贡献，请查看[贡献指引](CONTRIBUTING.md)
+
+<p align="center">
+<img src="res/social.png" alt="QChatGPT" width="640" height="320" />
+</p>
 
 ## 🍺模型适配一览
 

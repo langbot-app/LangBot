@@ -1,7 +1,3 @@
-<p align="center">
-<img src="https://socialify.git.ci/RockChinQ/QChatGPT/image?description=1&font=Jost&logo=https%3A%2F%2Fraw.githubusercontent.com%2FRockChinQ%2FQChatGPT%2Fmaster%2Fres%2Flogo.png&name=1&owner=1&theme=Light" alt="QChatGPT" width="640" height="320" />
-</p>
-
 # QChatGPT🤖
 
 English | [简体中文](README.md)
@@ -13,6 +9,10 @@ English | [简体中文](README.md)
 - Community QQ group: 362515018
 - QQ channel robot: [QQChannelChatGPT](https://github.com/Soulter/QQChannelChatGPT)
 - Any contribution is welcome, please refer to [CONTRIBUTING.md](CONTRIBUTING.md)
+
+<p align="center">
+<img src="res/social.png" alt="QChatGPT" width="640" height="320" />
+</p>
 
 ## 🍺List of supported models
 
