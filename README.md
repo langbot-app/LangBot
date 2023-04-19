@@ -1,7 +1,7 @@
 # QChatGPT🤖
 
 <p align="center">
-<img src="res/social.png" alt="QChatGPT" width="640" height="320" />
+<img src="res/social.png" alt="QChatGPT" width="640" />
 </p>
 
 [English](README_en.md) | 简体中文
