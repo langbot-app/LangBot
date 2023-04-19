@@ -1,5 +1,9 @@
 # QChatGPT🤖
 
+<p align="center">
+<img src="https://socialify.git.ci/RockChinQ/QChatGPT/image?description=1&font=Jost&logo=https%3A%2F%2Fraw.githubusercontent.com%2FRockChinQ%2FQChatGPT%2Fmaster%2Fres%2Flogo.png&name=1&owner=1&theme=Light" alt="QChatGPT" width="640" height="320" />
+</p>
+
 [English](README_en.md) | 简体中文
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/QChatGPT?style=flat-square)](https://github.com/RockChinQ/QChatGPT/releases/latest)
@@ -7,7 +11,6 @@
 > 2023/3/18 现已支持GPT-4 API（内测），请查看`config-template.py`中的`completion_api_params`  
 > 2023/3/15 逆向库已支持New Bing，使用方法查看[插件文档](https://github.com/RockChinQ/revLibs)  
 
-- **客官，来都来了，不点个⭐吗？**
 - 到[项目Wiki](https://github.com/RockChinQ/QChatGPT/wiki)可了解项目详细信息
 - 官方交流、答疑群: 656285629  
   - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
