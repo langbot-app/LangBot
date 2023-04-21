@@ -11,6 +11,7 @@ import traceback
 import pkg.utils.context as context
 import pkg.plugin.switch as switch
 import pkg.plugin.settings as settings
+import pkg.qqbot.adapter as msadapter
 
 from mirai import Mirai
 
@@ -275,6 +276,10 @@ class PluginHost:
     def get_bot(self) -> Mirai:
         """获取机器人对象"""
         return context.get_qqbot_manager().bot
+
+    def get_bot_adapter(self) -> msadapter.MessageSourceAdapter:
+        """获取消息源适配器"""
+        return context.get_qqbot_manager().adapter
 
     def send_person_message(self, person, message):
         """发送私聊消息"""

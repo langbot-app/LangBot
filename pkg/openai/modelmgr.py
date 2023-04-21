@@ -60,7 +60,7 @@ class ModelRequest:
         """异步请求"""
 
         try:
-            self.ret:dict = await self.request_fun(**kwargs)
+            self.ret: dict = await self.request_fun(**kwargs)
             self.request_ready = True
         except aiE.APIConnectionError as e:
             self.error_info = "{}\n请检查网络连接或代理是否正常".format(e)
