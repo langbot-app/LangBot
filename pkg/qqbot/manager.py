@@ -3,9 +3,9 @@ import json
 import os
 import threading
 
-import mirai.models.bus
+
 from mirai import At, GroupMessage, MessageEvent, Mirai, StrangerMessage, WebSocketAdapter, HTTPAdapter, \
-    FriendMessage, Image
+    FriendMessage, Image, MessageChain, Plain
 from func_timeout import func_set_timeout
 
 import pkg.openai.session
@@ -20,6 +20,8 @@ import pkg.utils.context
 import pkg.plugin.host as plugin_host
 import pkg.plugin.models as plugin_models
 import tips as tips_custom
+
+import pkg.qqbot.adapter as msadapter
 
 
 # 检查消息是否符合泛响应匹配机制
@@ -64,7 +66,9 @@ def random_responding():
 class QQBotManager:
     retry = 3
 
-    bot: Mirai = None
+    adapter: msadapter.MessageSourceAdapter = None
+
+    bot_account_id: int = 0
 
     reply_filter = None
 
@@ -79,6 +83,119 @@ class QQBotManager:
         mirai_http_api_config = config.mirai_http_api_config
         self.timeout = config.process_message_timeout
         self.retry = config.retry_times
+
+        # 由于YiriMirai的bot对象是单例的，且shutdown方法暂时无法使用
+        # 故只在第一次初始化时创建bot对象，重载之后使用原bot对象
+        # 因此，bot的配置不支持热重载
+        if first_time_init:
+            if config.msg_source_adapter == 'yirimirai':
+                from pkg.qqbot.sources.yirimirai import YiriMiraiAdapter
+                self.bot_account_id = config.mirai_http_api_config['qq']
+                self.adapter = YiriMiraiAdapter(mirai_http_api_config)
+            elif config.msg_source_adapter == 'nonebot2':
+                pass
+        else:
+            self.adapter = pkg.utils.context.get_qqbot_manager().adapter
+
+        pkg.utils.context.set_qqbot_manager(self)
+
+        # 注册诸事件
+        # Caution: 注册新的事件处理器之后，请务必在unsubscribe_all中编写相应的取消订阅代码
+        def on_friend_message(event: FriendMessage):
+
+            def friend_message_handler():
+                # 触发事件
+                args = {
+                    "launcher_type": "person",
+                    "launcher_id": event.sender.id,
+                    "sender_id": event.sender.id,
+                    "message_chain": event.message_chain,
+                }
+                plugin_event = plugin_host.emit(plugin_models.PersonMessageReceived, **args)
+
+                if plugin_event.is_prevented_default():
+                    return
+
+                self.on_person_message(event)
+
+            pkg.utils.context.get_thread_ctl().submit_user_task(
+                friend_message_handler,
+            )
+        self.adapter.register_listener(
+            FriendMessage,
+            on_friend_message
+        )
+
+        def on_stranger_message(event: StrangerMessage):
+
+            def stranger_message_handler():
+                # 触发事件
+                args = {
+                    "launcher_type": "person",
+                    "launcher_id": event.sender.id,
+                    "sender_id": event.sender.id,
+                    "message_chain": event.message_chain,
+                }
+                plugin_event = plugin_host.emit(plugin_models.PersonMessageReceived, **args)
+
+                if plugin_event.is_prevented_default():
+                    return
+
+                self.on_person_message(event)
+
+            pkg.utils.context.get_thread_ctl().submit_user_task(
+                stranger_message_handler,
+            )
+        self.adapter.register_listener(
+            StrangerMessage,
+            on_stranger_message
+        )
+
+        def on_group_message(event: GroupMessage):
+
+            def group_message_handler(event: GroupMessage):
+                # 触发事件
+                args = {
+                    "launcher_type": "group",
+                    "launcher_id": event.group.id,
+                    "sender_id": event.sender.id,
+                    "message_chain": event.message_chain,
+                }
+                plugin_event = plugin_host.emit(plugin_models.GroupMessageReceived, **args)
+
+                if plugin_event.is_prevented_default():
+                    return
+
+                self.on_group_message(event)
+
+            pkg.utils.context.get_thread_ctl().submit_user_task(
+                group_message_handler,
+                event
+            )
+        self.adapter.register_listener(
+            GroupMessage,
+            on_group_message
+        )
+
+        def unsubscribe_all():
+            """取消所有订阅
+
+            用于在热重载流程中卸载所有事件处理器
+            """
+            self.adapter.unregister_listener(
+                FriendMessage,
+                on_friend_message
+            )
+            self.adapter.unregister_listener(
+                StrangerMessage,
+                on_stranger_message
+            )
+            self.adapter.unregister_listener(
+                GroupMessage,
+                on_group_message
+            )
+
+        self.unsubscribe_all = unsubscribe_all
 
         # 加载禁用列表
         if os.path.exists("banlist.py"):
@@ -102,139 +219,20 @@ class QQBotManager:
         else:
             self.reply_filter = pkg.qqbot.filter.ReplyFilter([])
 
-        # 由于YiriMirai的bot对象是单例的，且shutdown方法暂时无法使用
-        # 故只在第一次初始化时创建bot对象，重载之后使用原bot对象
-        # 因此，bot的配置不支持热重载
-        if first_time_init:
-            self.first_time_init(mirai_http_api_config)
-        else:
-            self.bot = pkg.utils.context.get_qqbot_manager().bot
-
-        pkg.utils.context.set_qqbot_manager(self)
-
-        # Caution: 注册新的事件处理器之后，请务必在unsubscribe_all中编写相应的取消订阅代码
-        @self.bot.on(FriendMessage)
-        async def on_friend_message(event: FriendMessage):
-
-            def friend_message_handler(event: FriendMessage):
-
-                # 触发事件
-                args = {
-                    "launcher_type": "person",
-                    "launcher_id": event.sender.id,
-                    "sender_id": event.sender.id,
-                    "message_chain": event.message_chain,
-                }
-                plugin_event = plugin_host.emit(plugin_models.PersonMessageReceived, **args)
-
-                if plugin_event.is_prevented_default():
-                    return
-
-                self.on_person_message(event)
-
-            pkg.utils.context.get_thread_ctl().submit_user_task(
-                friend_message_handler,
-                event
-            )
-
-        @self.bot.on(StrangerMessage)
-        async def on_stranger_message(event: StrangerMessage):
-
-            def stranger_message_handler(event: StrangerMessage):
-                # 触发事件
-                args = {
-                    "launcher_type": "person",
-                    "launcher_id": event.sender.id,
-                    "sender_id": event.sender.id,
-                    "message_chain": event.message_chain,
-                }
-                plugin_event = plugin_host.emit(plugin_models.PersonMessageReceived, **args)
-
-                if plugin_event.is_prevented_default():
-                    return
-
-                self.on_person_message(event)
-
-            pkg.utils.context.get_thread_ctl().submit_user_task(
-                stranger_message_handler,
-                event
-            )
-
-        @self.bot.on(GroupMessage)
-        async def on_group_message(event: GroupMessage):
-
-            def group_message_handler(event: GroupMessage):
-                # 触发事件
-                args = {
-                    "launcher_type": "group",
-                    "launcher_id": event.group.id,
-                    "sender_id": event.sender.id,
-                    "message_chain": event.message_chain,
-                }
-                plugin_event = plugin_host.emit(plugin_models.GroupMessageReceived, **args)
-
-                if plugin_event.is_prevented_default():
-                    return
-
-                self.on_group_message(event)
-
-            pkg.utils.context.get_thread_ctl().submit_user_task(
-                group_message_handler,
-                event
-            )
-
-        def unsubscribe_all():
-            """取消所有订阅
-
-            用于在热重载流程中卸载所有事件处理器
-            """
-            assert isinstance(self.bot, Mirai)
-            bus = self.bot.bus
-            assert isinstance(bus, mirai.models.bus.ModelEventBus)
-
-            bus.unsubscribe(FriendMessage, on_friend_message)
-            bus.unsubscribe(StrangerMessage, on_stranger_message)
-            bus.unsubscribe(GroupMessage, on_group_message)
-
-        self.unsubscribe_all = unsubscribe_all
-
-    def first_time_init(self, mirai_http_api_config: dict):
-        """热重载后不再运行此函数"""
-        if 'adapter' not in mirai_http_api_config or mirai_http_api_config['adapter'] == "WebSocketAdapter":
-            bot = Mirai(
-                qq=mirai_http_api_config['qq'],
-                adapter=WebSocketAdapter(
-                    verify_key=mirai_http_api_config['verifyKey'],
-                    host=mirai_http_api_config['host'],
-                    port=mirai_http_api_config['port']
-                )
-            )
-        elif mirai_http_api_config['adapter'] == "HTTPAdapter":
-            bot = Mirai(
-                qq=mirai_http_api_config['qq'],
-                adapter=HTTPAdapter(
-                    verify_key=mirai_http_api_config['verifyKey'],
-                    host=mirai_http_api_config['host'],
-                    port=mirai_http_api_config['port']
-                )
-            )
-
-        else:
-            raise Exception("未知的适配器类型")
-
-        self.bot = bot
-
     def send(self, event, msg, check_quote=True):
         config = pkg.utils.context.get_config()
-        asyncio.run(
-            self.bot.send(event, msg, quote=True if config.quote_origin and check_quote else False))
+        self.adapter.reply_message(
+            event,
+            msg,
+            quote_origin=True if config.quote_origin and check_quote else False
+        )
 
     # 私聊消息处理
     def on_person_message(self, event: MessageEvent):
         import config
         reply = ''
 
-        if event.sender.id == self.bot.qq:
+        if event.sender.id == self.bot_account_id:
             pass
         else:
             if Image in event.message_chain:
@@ -277,8 +275,8 @@ class QQBotManager:
 
         def process(text=None) -> str:
             replys = ""
-            if At(self.bot.qq) in event.message_chain:
-                event.message_chain.remove(At(self.bot.qq))
+            if At(self.bot_account_id) in event.message_chain:
+                event.message_chain.remove(At(self.bot_account_id))
 
             # 超时则重试，重试超过次数则放弃
             failed = 0
@@ -312,7 +310,7 @@ class QQBotManager:
         if Image in event.message_chain:
             pass
         else:
-            if At(self.bot.qq) in event.message_chain and response_at():
+            if At(self.bot_account_id) in event.message_chain and response_at():
                 # 直接调用
                 reply = process()
             else:
@@ -334,22 +332,33 @@ class QQBotManager:
         if config.admin_qq != 0 and config.admin_qq != []:
             logging.info("通知管理员:{}".format(message))
             if type(config.admin_qq) == int:
-                send_task = self.bot.send_friend_message(config.admin_qq, "[bot]{}".format(message))
-                threading.Thread(target=asyncio.run, args=(send_task,)).start()
+                self.adapter.send_message(
+                    "person",
+                    config.admin_qq,
+                    MessageChain([Plain("[bot]{}".format(message))])
+                )
             else:
                 for adm in config.admin_qq:
-                    send_task = self.bot.send_friend_message(adm, "[bot]{}".format(message))
-                    threading.Thread(target=asyncio.run, args=(send_task,)).start()
-
+                    self.adapter.send_message(
+                        "person",
+                        adm,
+                        MessageChain([Plain("[bot]{}".format(message))])
+                    )
 
     def notify_admin_message_chain(self, message):
         config = pkg.utils.context.get_config()
         if config.admin_qq != 0 and config.admin_qq != []:
             logging.info("通知管理员:{}".format(message))
             if type(config.admin_qq) == int:
-                send_task = self.bot.send_friend_message(config.admin_qq, message)
-                threading.Thread(target=asyncio.run, args=(send_task,)).start()
+                self.adapter.send_message(
+                    "person",
+                    config.admin_qq,
+                    message
+                )
             else:
                 for adm in config.admin_qq:
-                    send_task = self.bot.send_friend_message(adm, message)
-                    threading.Thread(target=asyncio.run, args=(send_task,)).start()
+                    self.adapter.send_message(
+                        "person",
+                        adm,
+                        message
+                    )

@@ -60,7 +60,8 @@ class YiriMiraiAdapter(MessageSourceAdapter):
     def reply_message(
         self,
         message_source: mirai.MessageEvent,
-        message: mirai.MessageChain
+        message: mirai.MessageChain,
+        quote_origin: bool = False
     ):
         """回复消息
 
@@ -68,7 +69,14 @@ class YiriMiraiAdapter(MessageSourceAdapter):
             message_source (mirai.MessageEvent): YiriMirai消息源事件
             message (mirai.MessageChain): YiriMirai库的消息链
         """
-        asyncio.run(self.bot.send(message_source, message))
+        asyncio.run(self.bot.send(message_source, message, quote_origin))
+
+    def is_muted(self, group_id: int) -> bool:
+        result = self.bot.member_info(target=group_id, member_id=self.bot.qq).get()
+        result = asyncio.run(result)
+        if result.mute_time_remaining > 0:
+            return True
+        return False
 
     def register_listener(
         self,

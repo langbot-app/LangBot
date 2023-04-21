@@ -3,6 +3,7 @@ import typing
 
 import mirai
 
+
 class MessageSourceAdapter:
     def __init__(self, config: dict):
         pass
@@ -25,16 +26,22 @@ class MessageSourceAdapter:
     def reply_message(
         self,
         message_source: mirai.MessageEvent,
-        message: mirai.MessageChain
+        message: mirai.MessageChain,
+        quote_origin: bool = False
     ):
         """回复消息
 
         Args:
             message_source (mirai.MessageEvent): YiriMirai消息源事件
             message (mirai.MessageChain): YiriMirai库的消息链
+            quote_origin (bool, optional): 是否引用原消息. Defaults to False.
         """
         raise NotImplementedError
-    
+
+    def is_muted(self, group_id: int) -> bool:
+        """获取账号是否在指定群被禁言"""
+        raise NotImplementedError
+
     def register_listener(
         self,
         event_type: typing.Type[mirai.Event],
