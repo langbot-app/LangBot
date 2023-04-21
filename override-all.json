@@ -1,5 +1,6 @@
 {
     "comment": "这是override.json支持的字段全集, 关于override.json机制, 请查看https://github.com/RockChinQ/QChatGPT/pull/271",
+    "msg_source_adapter": "yirimirai",
     "mirai_http_api_config": {
         "adapter": "WebSocketAdapter",
         "host": "localhost",
@@ -7,6 +8,7 @@
         "verifyKey": "yirimirai",
         "qq": 1234567890
     },
+    "nonebot2_config": {},
     "openai_config": {
         "api_key": {
             "default": "openai_api_key"
