@@ -73,9 +73,12 @@ class QQBotManager:
     ban_person = []
     ban_group = []
 
-    def __init__(self, mirai_http_api_config: dict, timeout: int = 60, retry: int = 3, first_time_init=True):
-        self.timeout = timeout
-        self.retry = retry
+    def __init__(self, first_time_init=True):
+        import config
+
+        mirai_http_api_config = config.mirai_http_api_config
+        self.timeout = config.process_message_timeout
+        self.retry = config.retry_times
 
         # 加载禁用列表
         if os.path.exists("banlist.py"):
@@ -194,9 +197,6 @@ class QQBotManager:
             bus.unsubscribe(GroupMessage, on_group_message)
 
         self.unsubscribe_all = unsubscribe_all
-
-    def go(self, func, *args, **kwargs):
-        self.pool.submit(func, *args, **kwargs)
 
     def first_time_init(self, mirai_http_api_config: dict):
         """热重载后不再运行此函数"""

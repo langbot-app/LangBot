@@ -193,9 +193,7 @@ def start(first_time_init=False):
         pkg.openai.session.load_sessions()
 
         # 初始化qq机器人
-        qqbot = pkg.qqbot.manager.QQBotManager(mirai_http_api_config=config.mirai_http_api_config,
-                                               timeout=config.process_message_timeout, retry=config.retry_times,
-                                               first_time_init=first_time_init)
+        qqbot = pkg.qqbot.manager.QQBotManager(first_time_init=first_time_init)
 
         # 加载插件
         import pkg.plugin.host

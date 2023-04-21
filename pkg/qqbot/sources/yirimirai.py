@@ -5,6 +5,7 @@ import mirai.models.bus
 import asyncio
 import typing
 
+
 class YiriMiraiAdapter(MessageSourceAdapter):
     """YiriMirai适配器"""
     bot: mirai.Mirai
