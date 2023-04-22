@@ -4,7 +4,6 @@ import logging
 # 消息处理协议适配器
 # 目前支持以下适配器:
 # - "yirimirai": YiriMirai框架适配器, 请填写mirai_http_api_config
-# - "nonebot2": NoneBot2框架适配器, 请填写nonebot2_config
 msg_source_adapter = "yirimirai"
 
 # [必需] Mirai的配置
@@ -23,9 +22,6 @@ mirai_http_api_config = {
     "verifyKey": "yirimirai",
     "qq": 1234567890
 }
-
-# NoneBot2的配置
-nonebot2_config = {}
 
 # [必需] OpenAI的配置
 # api_key: OpenAI的API Key
