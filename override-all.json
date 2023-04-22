@@ -8,7 +8,6 @@
         "verifyKey": "yirimirai",
         "qq": 1234567890
     },
-    "nonebot2_config": {},
     "openai_config": {
         "api_key": {
             "default": "openai_api_key"
