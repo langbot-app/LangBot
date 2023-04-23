@@ -243,6 +243,8 @@ def start(first_time_init=False):
                             "mirai-api-http端口无法使用:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/22".format(
                                 e))
                     else:
+                        import traceback
+                        traceback.print_exc()
                         logging.error(
                             "捕捉到未知异常:{}, 请前往 https://github.com/RockChinQ/QChatGPT/issues 查找或提issue".format(e))
                         known_exception_caught = True
@@ -262,9 +264,11 @@ def start(first_time_init=False):
         
         if first_time_init:
             if not known_exception_caught:
-                logging.info("QQ: {}, MAH: {}".format(config.mirai_http_api_config['qq'], config.mirai_http_api_config['host']+":"+str(config.mirai_http_api_config['port'])))
-                logging.info('程序启动完成,如长时间未显示 ”成功登录到账号xxxxx“ ,并且不回复消息,请查看 '
-                             'https://github.com/RockChinQ/QChatGPT/issues/37')
+                import config
+                if config.msg_source_adapter == "yirimirai":
+                    logging.info("QQ: {}, MAH: {}".format(config.mirai_http_api_config['qq'], config.mirai_http_api_config['host']+":"+str(config.mirai_http_api_config['port'])))
+                    logging.info('程序启动完成,如长时间未显示 ”成功登录到账号xxxxx“ ,并且不回复消息,请查看 '
+                                'https://github.com/RockChinQ/QChatGPT/issues/37')
             else:
                 sys.exit(1)
         else:
