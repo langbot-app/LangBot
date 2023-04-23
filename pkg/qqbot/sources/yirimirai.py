@@ -68,6 +68,7 @@ class YiriMiraiAdapter(MessageSourceAdapter):
         Args:
             message_source (mirai.MessageEvent): YiriMirai消息源事件
             message (mirai.MessageChain): YiriMirai库的消息链
+            quote_origin (bool, optional): 是否引用原消息. Defaults to False.
         """
         asyncio.run(self.bot.send(message_source, message, quote_origin))
 

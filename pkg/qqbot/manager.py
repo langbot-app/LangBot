@@ -92,7 +92,7 @@ class QQBotManager:
                 from pkg.qqbot.sources.yirimirai import YiriMiraiAdapter
                 self.bot_account_id = config.mirai_http_api_config['qq']
                 self.adapter = YiriMiraiAdapter(mirai_http_api_config)
-            elif config.msg_source_adapter == 'nonebot2':
+            elif config.msg_source_adapter == 'nakuru':
                 pass
         else:
             self.adapter = pkg.utils.context.get_qqbot_manager().adapter

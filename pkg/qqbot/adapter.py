@@ -79,4 +79,58 @@ class MessageSourceAdapter:
             bool: 是否成功关闭，热重载时若此函数返回False则不会重载MessageSource底层
         """
         raise NotImplementedError
-    
+
+
+class MessageConverter:
+    """消息链转换器基类"""
+    @staticmethod
+    def yiri2target(message_chain: mirai.MessageChain):
+        """将YiriMirai消息链转换为目标消息链
+
+        Args:
+            message_chain (mirai.MessageChain): YiriMirai消息链
+
+        Returns:
+            typing.Any: 目标消息链
+        """
+        raise NotImplementedError
+
+    @staticmethod
+    def target2yiri(message_chain: typing.Any) -> mirai.MessageChain:
+        """将目标消息链转换为YiriMirai消息链
+
+        Args:
+            message_chain (typing.Any): 目标消息链
+
+        Returns:
+            mirai.MessageChain: YiriMirai消息链
+        """
+        raise NotImplementedError
+
+
+class EventConverter:
+    """事件转换器基类"""
+
+    @staticmethod
+    def yiri2target(event: typing.Type[mirai.Event]):
+        """将YiriMirai事件转换为目标事件
+
+        Args:
+            event (typing.Type[mirai.Event]): YiriMirai事件
+
+        Returns:
+            typing.Any: 目标事件
+        """
+        raise NotImplementedError
+
+    @staticmethod
+    def target2yiri(event: typing.Any) -> mirai.Event:
+        """将目标事件的调用参数转换为YiriMirai的事件参数对象
+
+        Args:
+            event (typing.Any): 目标事件
+
+        Returns:
+            typing.Type[mirai.Event]: YiriMirai事件
+        """
+        raise NotImplementedError
