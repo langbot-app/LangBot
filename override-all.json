@@ -8,7 +8,12 @@
         "verifyKey": "yirimirai",
         "qq": 1234567890
     },
-    "nonebot2_config": {},
+    "nakuru_config": {
+        "host": "localhost",
+        "port": 6700,
+        "http_port": 5700,
+        "token": ""
+    },
     "openai_config": {
         "api_key": {
             "default": "openai_api_key"

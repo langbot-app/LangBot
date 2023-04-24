@@ -80,7 +80,6 @@ class QQBotManager:
     def __init__(self, first_time_init=True):
         import config
 
-        mirai_http_api_config = config.mirai_http_api_config
         self.timeout = config.process_message_timeout
         self.retry = config.retry_times
 
@@ -88,12 +87,17 @@ class QQBotManager:
         # 故只在第一次初始化时创建bot对象，重载之后使用原bot对象
         # 因此，bot的配置不支持热重载
         if first_time_init:
+            logging.info("Use adapter:" + config.msg_source_adapter)
             if config.msg_source_adapter == 'yirimirai':
                 from pkg.qqbot.sources.yirimirai import YiriMiraiAdapter
+
+                mirai_http_api_config = config.mirai_http_api_config
                 self.bot_account_id = config.mirai_http_api_config['qq']
                 self.adapter = YiriMiraiAdapter(mirai_http_api_config)
-            elif config.msg_source_adapter == 'nonebot2':
-                pass
+            elif config.msg_source_adapter == 'nakuru':
+                from pkg.qqbot.sources.nakuru import NakuruProjectAdapter
+                self.adapter = NakuruProjectAdapter(config.nakuru_config)
+                self.bot_account_id = self.adapter.bot_account_id
         else:
             self.adapter = pkg.utils.context.get_qqbot_manager().adapter
 
@@ -146,10 +150,12 @@ class QQBotManager:
             pkg.utils.context.get_thread_ctl().submit_user_task(
                 stranger_message_handler,
             )
-        self.adapter.register_listener(
-            StrangerMessage,
-            on_stranger_message
-        )
+        # nakuru不区分好友和陌生人，故仅为yirimirai注册陌生人事件
+        if config.msg_source_adapter == 'yirimirai':
+            self.adapter.register_listener(
+                StrangerMessage,
+                on_stranger_message
+            )
 
         def on_group_message(event: GroupMessage):
 
@@ -182,14 +188,16 @@ class QQBotManager:
 
             用于在热重载流程中卸载所有事件处理器
             """
+            import config
             self.adapter.unregister_listener(
                 FriendMessage,
                 on_friend_message
             )
-            self.adapter.unregister_listener(
-                StrangerMessage,
-                on_stranger_message
-            )
+            if config.msg_source_adapter == 'yirimirai':
+                self.adapter.unregister_listener(
+                    StrangerMessage,
+                    on_stranger_message
+                )
             self.adapter.unregister_listener(
                 GroupMessage,
                 on_group_message
@@ -272,7 +280,6 @@ class QQBotManager:
     def on_group_message(self, event: GroupMessage):
         import config
         reply = ''
-
         def process(text=None) -> str:
             replys = ""
             if At(self.bot_account_id) in event.message_chain:

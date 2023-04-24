@@ -107,10 +107,25 @@ Use [this installer](https://github.com/RockChinQ/qcg-installer) to deploy.
 
 - Python 3.9.x or higher
 
-#### Configure Mirai
+#### 配置QQ登录框架
+
+Currently supports mirai and go-cqhttp, configure either one
+
+<details>
+<summary>mirai</summary>
 
 Follow [this tutorial(cn)](https://yiri-mirai.wybxc.cc/tutorials/01/configuration) to configure Mirai and YiriMirai.  
 After starting mirai-console, use the `login` command to log in to the QQ account, and keep the mirai-console running.
+
+</details>
+
+<details>
+<summary>go-cqhttp</summary>
+
+1. Follow [this tutorial(cn)](https://github.com/RockChinQ/QChatGPT/wiki/go-cqhttp%E9%85%8D%E7%BD%AE) to configure go-cqhttp.
+2. Start go-cqhttp, make sure it is logged in and running.
+
+</details>
 
 #### Configure QChatGPT
 
@@ -124,7 +139,7 @@ cd QChatGPT
 2. Install dependencies
 
 ```bash
-pip3 install requests yiri-mirai openai colorlog func_timeout dulwich Pillow
+pip3 install requests yiri-mirai openai colorlog func_timeout dulwich Pillow nakuru-project-idk
 ```
 
 3. Generate `config.py`

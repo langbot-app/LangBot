@@ -48,7 +48,7 @@ def reset_logging():
 
     logging.basicConfig(level=config.logging_level,  # 设置日志输出格式
                         filename=log_file_name,  # log日志输出的文件位置和文件名
-                        format="[%(asctime)s.%(msecs)03d] %(filename)s (%(lineno)d) - [%(levelname)s] : %(message)s",
+                        format="[%(asctime)s.%(msecs)03d] %(pathname)s (%(lineno)d) - [%(levelname)s] :\n%(message)s",
                         # 日志输出的格式
                         # -8表示占位符，让输出左对齐，输出长度都为8位
                         datefmt="%Y-%m-%d %H:%M:%S"  # 时间输出的格式

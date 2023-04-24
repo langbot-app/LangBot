@@ -47,7 +47,7 @@ def init_db():
 
 def ensure_dependencies():
     import pkg.utils.pkgmgr as pkgmgr
-    pkgmgr.run_pip(["install", "openai", "Pillow", "--upgrade",
+    pkgmgr.run_pip(["install", "openai", "Pillow", "nakuru-project-idk", "--upgrade",
                     "-i", "https://pypi.douban.com/simple/",
                     "--trusted-host", "pypi.douban.com"])
 
@@ -243,6 +243,8 @@ def start(first_time_init=False):
                             "mirai-api-http端口无法使用:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/22".format(
                                 e))
                     else:
+                        import traceback
+                        traceback.print_exc()
                         logging.error(
                             "捕捉到未知异常:{}, 请前往 https://github.com/RockChinQ/QChatGPT/issues 查找或提issue".format(e))
                         known_exception_caught = True
@@ -262,9 +264,14 @@ def start(first_time_init=False):
         
         if first_time_init:
             if not known_exception_caught:
-                logging.info("QQ: {}, MAH: {}".format(config.mirai_http_api_config['qq'], config.mirai_http_api_config['host']+":"+str(config.mirai_http_api_config['port'])))
-                logging.info('程序启动完成,如长时间未显示 ”成功登录到账号xxxxx“ ,并且不回复消息,请查看 '
-                             'https://github.com/RockChinQ/QChatGPT/issues/37')
+                import config
+                if config.msg_source_adapter == "yirimirai":
+                    logging.info("QQ: {}, MAH: {}".format(config.mirai_http_api_config['qq'], config.mirai_http_api_config['host']+":"+str(config.mirai_http_api_config['port'])))
+                    logging.critical('程序启动完成,如长时间未显示 "成功登录到账号xxxxx" ,并且不回复消息,请查看 '
+                                'https://github.com/RockChinQ/QChatGPT/issues/37')
+                elif config.msg_source_adapter == 'nakuru':
+                    logging.info("host: {}, port: {}, http_port: {}".format(config.nakuru_config['host'], config.nakuru_config['port'], config.nakuru_config['http_port']))
+                    logging.critical('程序启动完成,如长时间未显示 "Protocol: connected" ,并且不回复消息,请检查config.py中的nakuru_config是否正确')
             else:
                 sys.exit(1)
         else:

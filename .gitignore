@@ -20,3 +20,6 @@ res/announcement_saved
 res/announcement_saved.json
 cmdpriv.json
 tips.py
+.venv
+bin/
+.vscode

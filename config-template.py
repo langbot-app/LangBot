@@ -3,11 +3,11 @@ import logging
 
 # 消息处理协议适配器
 # 目前支持以下适配器:
-# - "yirimirai": YiriMirai框架适配器, 请填写mirai_http_api_config
-# - "nonebot2": NoneBot2框架适配器, 请填写nonebot2_config
+# - "yirimirai": mirai的通信框架，YiriMirai框架适配器, 请同时填写下方mirai_http_api_config
+# - "nakuru": go-cqhttp通信框架，请同时填写下方nakuru_config
 msg_source_adapter = "yirimirai"
 
-# [必需] Mirai的配置
+# [必需(与nakuru二选一，取决于msg_source_adapter)] Mirai的配置
 # 请到配置mirai的步骤中的教程查看每个字段的信息
 # adapter: 选择适配器，目前支持HTTPAdapter和WebSocketAdapter
 # host: 运行mirai的主机地址
@@ -24,8 +24,14 @@ mirai_http_api_config = {
     "qq": 1234567890
 }
 
-# NoneBot2的配置
-nonebot2_config = {}
+# [必需(与mirai二选一，取决于msg_source_adapter)]
+# 使用nakuru-project框架连接go-cqhttp的配置
+nakuru_config = {
+    "host": "localhost",  # go-cqhttp的地址
+    "port": 6700,  # go-cqhttp的正向websocket端口
+    "http_port": 5700,  # go-cqhttp的正向http端口
+    "token": ""  # 若在go-cqhttp的config.yml设置了access_token, 则填写此处
+}
 
 # [必需] OpenAI的配置
 # api_key: OpenAI的API Key
