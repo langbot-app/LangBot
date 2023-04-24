@@ -97,16 +97,7 @@ class QQBotManager:
             elif config.msg_source_adapter == 'nakuru':
                 from pkg.qqbot.sources.nakuru import NakuruProjectAdapter
                 self.adapter = NakuruProjectAdapter(config.nakuru_config)
-                # nakuru库有bug，这个接口没法带access_token，会失败
-                # 所以目前自行发请求
-                import requests
-                resp = requests.get(
-                    url="http://{}:{}/get_login_info".format(config.nakuru_config['host'], config.nakuru_config['http_port']),
-                    headers={
-                        'Authorization': "Bearer " + config.nakuru_config['token'] if 'token' in config.nakuru_config else ""
-                    }
-                )
-                self.bot_account_id = int(resp.json()['data']['user_id'])
+                self.bot_account_id = self.adapter.bot_account_id
         else:
             self.adapter = pkg.utils.context.get_qqbot_manager().adapter
 

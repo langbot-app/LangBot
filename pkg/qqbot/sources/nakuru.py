@@ -12,6 +12,7 @@ import json
 
 
 class NakuruProjectMessageConverter(MessageConverter):
+    """消息转换器"""
     @staticmethod
     def yiri2target(message_chain: mirai.MessageChain) -> list:
         msg_list = []
@@ -50,6 +51,7 @@ class NakuruProjectMessageConverter(MessageConverter):
 
     @staticmethod
     def target2yiri(message_chain: typing.Any) -> mirai.MessageChain:
+        """将Yiri的消息链转换为YiriMirai的消息链"""
         assert type(message_chain) is list
 
         yiri_msg_list = []
@@ -71,6 +73,7 @@ class NakuruProjectMessageConverter(MessageConverter):
 
 
 class NakuruProjectEventConverter(EventConverter):
+    """事件转换器"""
     @staticmethod
     def yiri2target(event: typing.Type[mirai.Event]):
         if event is mirai.GroupMessage:
@@ -127,16 +130,29 @@ class NakuruProjectEventConverter(EventConverter):
 class NakuruProjectAdapter(MessageSourceAdapter):
     """nakuru-project适配器"""
     bot: nakuru.CQHTTP
+    bot_account_id: int
 
     message_converter: NakuruProjectMessageConverter = NakuruProjectMessageConverter()
     event_converter: NakuruProjectEventConverter = NakuruProjectEventConverter()
 
     listener_list: list[dict]
 
-    def __init__(self, config: dict):
+    def __init__(self, cfg: dict):
         """初始化nakuru-project的对象"""
-        self.bot = nakuru.CQHTTP(**config)
+        self.bot = nakuru.CQHTTP(**cfg)
         self.listener_list = []
+        # nakuru库有bug，这个接口没法带access_token，会失败
+        # 所以目前自行发请求
+        import config
+        import requests
+        resp = requests.get(
+            url="http://{}:{}/get_login_info".format(config.nakuru_config['host'], config.nakuru_config['http_port']),
+            headers={
+                'Authorization': "Bearer " + config.nakuru_config['token'] if 'token' in config.nakuru_config else ""
+            },
+            timeout=5
+        )
+        self.bot_account_id = int(resp.json()['data']['user_id'])
 
     def send_message(
         self,
@@ -178,7 +194,9 @@ class NakuruProjectAdapter(MessageSourceAdapter):
         asyncio.run(task)
 
     def is_muted(self, group_id: int) -> bool:
-        return False
+        import time
+        group_member_info = asyncio.run(self.bot.getGroupMemberInfo(group_id, self.bot_account_id))
+        return group_member_info.shut_up_timestamp > int(time.time())
 
     def register_listener(
         self,

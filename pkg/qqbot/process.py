@@ -66,7 +66,8 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
 
     # 检查是否被禁言
     if launcher_type == 'group':
-        if mgr.adapter.is_muted(launcher_id):
+        is_muted = mgr.adapter.is_muted(launcher_id)
+        if is_muted:
             logging.info("机器人被禁言,跳过消息处理(group_{})".format(launcher_id))
             return reply
 
