@@ -10,6 +10,8 @@ import traceback
 import logging
 import json
 
+from pkg.qqbot.blob import Forward, ForwardMessageNode, ForwardMessageDiaplay
+
 
 class NakuruProjectMessageConverter(MessageConverter):
     """消息转换器"""
@@ -28,7 +30,7 @@ class NakuruProjectMessageConverter(MessageConverter):
         # 遍历并转换
         for component in msg_list:
             if type(component) is mirai.Plain:
-                nakuru_msg_list.append(nkc.Plain(component.text))
+                nakuru_msg_list.append(nkc.Plain(component.text, False))
             elif type(component) is mirai.Image:
                 if component.url is not None:
                     nakuru_msg_list.append(nkc.Image.fromURL(component.url))
@@ -44,8 +46,29 @@ class NakuruProjectMessageConverter(MessageConverter):
                 nakuru_msg_list.append(nkc.AtAll())
             elif type(component) is mirai.Voice:
                 pass
+            elif type(component) is Forward:
+                # 转发消息
+                yiri_forward_node_list = component.node_list
+                nakuru_forward_node_list = []
+
+                # 遍历并转换
+                for yiri_forward_node in yiri_forward_node_list:
+                    try:
+                        content_list = NakuruProjectMessageConverter.yiri2target(yiri_forward_node.message_chain)
+                        nakuru_forward_node = nkc.Node(
+                            name=yiri_forward_node.sender_name,
+                            uin=yiri_forward_node.sender_id,
+                            time=int(yiri_forward_node.time.timestamp()) if yiri_forward_node.time is not None else None,
+                            content=content_list
+                        )
+                        nakuru_forward_node_list.append(nakuru_forward_node)
+                    except Exception as e:
+                        import traceback
+                        traceback.print_exc()
+
+                nakuru_msg_list.append(nakuru_forward_node_list)
             else:
-                pass
+                nakuru_msg_list.append(nkc.Plain(str(component)))
         
         return nakuru_msg_list
 
@@ -163,15 +186,34 @@ class NakuruProjectAdapter(MessageSourceAdapter):
         self,
         target_type: str,
         target_id: str,
-        message: mirai.MessageChain
+        message: typing.Union[mirai.MessageChain, list],
+        converted: bool = False
     ):
         task = None
-        if target_type == "group":
-            task = self.bot.sendGroupMessage(int(target_id), self.message_converter.yiri2target(message))
-        elif target_type == "person":
-            task = self.bot.sendFriendMessage(int(target_id), self.message_converter.yiri2target(message))
+
+        converted_msg = self.message_converter.yiri2target(message) if not converted else message
+        
+        # 检查是否有转发消息
+        has_forward = False
+        for msg in converted_msg:
+            if type(msg) is list:  # 转发消息，仅回复此消息组件
+                has_forward = True
+                converted_msg = msg
+                break
+        if has_forward:
+            if target_type == "group":
+                task = self.bot.sendGroupForwardMessage(int(target_id), converted_msg)
+            elif target_type == "person":
+                task = self.bot.sendPrivateForwardMessage(int(target_id), converted_msg)
+            else:
+                raise Exception("Unknown target type: " + target_type)
         else:
-            raise Exception("Unknown target type: " + target_type)
+            if target_type == "group":
+                task = self.bot.sendGroupMessage(int(target_id), converted_msg)
+            elif target_type == "person":
+                task = self.bot.sendFriendMessage(int(target_id), converted_msg)
+            else:
+                raise Exception("Unknown target type: " + target_type)
 
         asyncio.run(task)
 
@@ -189,21 +231,21 @@ class NakuruProjectAdapter(MessageSourceAdapter):
                 )
             )
         if type(message_source) is mirai.GroupMessage:
-            task = self.bot.sendGroupMessage(
+            self.send_message(
+                "group",
                 message_source.sender.group.id,
                 message,
-                # quote=message_source.message_id if quote_origin else None
+                converted=True
             )
         elif type(message_source) is mirai.FriendMessage:
-            task = self.bot.sendFriendMessage(
+            self.send_message(
+                "person",
                 message_source.sender.id,
                 message,
-                # quote=message_source.message_id if quote_origin else None
+                converted=True
             )
         else:
             raise Exception("Unknown message source type: " + str(type(message_source)))
-
-        asyncio.run(task)
 
     def is_muted(self, group_id: int) -> bool:
         import time
