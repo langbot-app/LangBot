@@ -208,6 +208,7 @@ def start(first_time_init=False):
             def run_bot_wrapper():
                 global known_exception_caught
                 try:
+                    logging.info("使用账号: {}".format(qqbot.bot_account_id))
                     qqbot.adapter.run_sync()
                 except TypeError as e:
                     if str(e).__contains__("argument 'debug'"):
