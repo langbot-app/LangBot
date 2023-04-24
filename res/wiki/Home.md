@@ -8,6 +8,9 @@
 
 - [Mirai](https://github.com/mamoe/mirai) 高效率 QQ 机器人支持库
 - [YiriMirai](https://github.com/YiriMiraiProject/YiriMirai) 一个轻量级、低耦合的基于 mirai-api-http 的 Python SDK。
+- [go-cqhttp](https://github.com/Mrs4s/go-cqhttp) cqhttp的golang实现，轻量、原生跨平台.
+- [nakuru-project](https://github.com/Lxns-Network/nakuru-project) - 一款为 go-cqhttp 的正向 WebSocket 设计的 Python SDK，支持纯 CQ 码与消息链的转换处理
+- [nakuru-project-idk](https://github.com/idoknow/nakuru-project-idk) - 由idoknow维护的nakuru-project分支
 - [dulwich](https://github.com/jelmer/dulwich) Pure-Python Git implementation
 - [OpenAI API](https://openai.com/api/) OpenAI API
 
