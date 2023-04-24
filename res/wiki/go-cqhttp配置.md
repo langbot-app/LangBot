@@ -5,7 +5,7 @@
 ## 步骤
 
 1. 从[go-cqhttp的Release](https://github.com/Mrs4s/go-cqhttp/releases/latest)下载最新的go-cqhttp可执行文件（建议直接下载可执行文件压缩包，而不是安装器）
-2. 解压并运行，首次运行会询问需要开放的网络协议，请填入`02`并回车
+2. 解压并运行，首次运行会询问需要开放的网络协议，**请填入`02`并回车**
 
     ```
     C:\Softwares\go-cqhttp.old> .\go-cqhttp.exe
