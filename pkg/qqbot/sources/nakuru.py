@@ -50,11 +50,13 @@ class NakuruProjectMessageConverter(MessageConverter):
         return nakuru_msg_list
 
     @staticmethod
-    def target2yiri(message_chain: typing.Any) -> mirai.MessageChain:
+    def target2yiri(message_chain: typing.Any, message_id: int = -1) -> mirai.MessageChain:
         """将Yiri的消息链转换为YiriMirai的消息链"""
         assert type(message_chain) is list
 
         yiri_msg_list = []
+        import datetime
+        yiri_msg_list.append(mirai.models.message.Source(id=message_id, time=datetime.datetime.now()))
         for component in message_chain:
             if type(component) is nkc.Plain:
                 yiri_msg_list.append(mirai.Plain(text=component.text))
@@ -69,7 +71,8 @@ class NakuruProjectMessageConverter(MessageConverter):
             else:
                 pass
         logging.debug("转换后的消息链: " + str(yiri_msg_list))
-        return mirai.MessageChain(yiri_msg_list)
+        chain = mirai.MessageChain(yiri_msg_list)
+        return chain
 
 
 class NakuruProjectEventConverter(EventConverter):
@@ -85,6 +88,7 @@ class NakuruProjectEventConverter(EventConverter):
 
     @staticmethod
     def target2yiri(event: typing.Any) -> mirai.Event:
+        yiri_chain = NakuruProjectMessageConverter.target2yiri(event.message, event.message_id)
         if type(event) is nakuru.FriendMessage:
             return mirai.FriendMessage(
                 sender=mirai.models.entities.Friend(
@@ -92,7 +96,7 @@ class NakuruProjectEventConverter(EventConverter):
                     nickname=event.sender.nickname,
                     remark=event.sender.nickname
                 ),
-                message_chain=NakuruProjectMessageConverter.target2yiri(event.message),
+                message_chain=yiri_chain,
                 time=event.time
             )
         elif type(event) is nakuru.GroupMessage:
@@ -119,7 +123,7 @@ class NakuruProjectEventConverter(EventConverter):
                     last_speak_timestamp=0,
                     mute_time_remaining=0,
                 ),
-                message_chain=NakuruProjectMessageConverter.target2yiri(event.message),
+                message_chain=yiri_chain,
                 time=event.time
             )
         else:
@@ -176,16 +180,23 @@ class NakuruProjectAdapter(MessageSourceAdapter):
         message: mirai.MessageChain,
         quote_origin: bool = False
     ):
+        message = self.message_converter.yiri2target(message)
+        if quote_origin:
+            # 在前方添加引用组件
+            message.insert(0, nkc.Reply(
+                    id=message_source.message_chain.message_id,
+                )
+            )
         if type(message_source) is mirai.GroupMessage:
             task = self.bot.sendGroupMessage(
                 message_source.sender.group.id,
-                self.message_converter.yiri2target(message),
+                message,
                 # quote=message_source.message_id if quote_origin else None
             )
         elif type(message_source) is mirai.FriendMessage:
             task = self.bot.sendFriendMessage(
                 message_source.sender.id,
-                self.message_converter.yiri2target(message),
+                message,
                 # quote=message_source.message_id if quote_origin else None
             )
         else:
