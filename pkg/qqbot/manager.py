@@ -188,14 +188,16 @@ class QQBotManager:
 
             用于在热重载流程中卸载所有事件处理器
             """
+            import config
             self.adapter.unregister_listener(
                 FriendMessage,
                 on_friend_message
             )
-            self.adapter.unregister_listener(
-                StrangerMessage,
-                on_stranger_message
-            )
+            if config.msg_source_adapter == 'yirimirai':
+                self.adapter.unregister_listener(
+                    StrangerMessage,
+                    on_stranger_message
+                )
             self.adapter.unregister_listener(
                 GroupMessage,
                 on_group_message

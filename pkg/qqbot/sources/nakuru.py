@@ -56,6 +56,7 @@ class NakuruProjectMessageConverter(MessageConverter):
 
         yiri_msg_list = []
         import datetime
+        # 添加Source组件以标记message_id等信息
         yiri_msg_list.append(mirai.models.message.Source(id=message_id, time=datetime.datetime.now()))
         for component in message_chain:
             if type(component) is nkc.Plain:
@@ -89,7 +90,7 @@ class NakuruProjectEventConverter(EventConverter):
     @staticmethod
     def target2yiri(event: typing.Any) -> mirai.Event:
         yiri_chain = NakuruProjectMessageConverter.target2yiri(event.message, event.message_id)
-        if type(event) is nakuru.FriendMessage:
+        if type(event) is nakuru.FriendMessage:  # 私聊消息事件
             return mirai.FriendMessage(
                 sender=mirai.models.entities.Friend(
                     id=event.sender.user_id,
@@ -99,7 +100,7 @@ class NakuruProjectEventConverter(EventConverter):
                 message_chain=yiri_chain,
                 time=event.time
             )
-        elif type(event) is nakuru.GroupMessage:
+        elif type(event) is nakuru.GroupMessage:  # 群聊消息事件
             permission = "MEMBER"
 
             if event.sender.role == "admin":
@@ -206,6 +207,7 @@ class NakuruProjectAdapter(MessageSourceAdapter):
 
     def is_muted(self, group_id: int) -> bool:
         import time
+        # 检查是否被禁言
         group_member_info = asyncio.run(self.bot.getGroupMemberInfo(group_id, self.bot_account_id))
         return group_member_info.shut_up_timestamp > int(time.time())
 
@@ -216,8 +218,12 @@ class NakuruProjectAdapter(MessageSourceAdapter):
     ):
         try:
             logging.debug("注册监听器: " + str(event_type) + " -> " + str(callback))
+
+            # 包装函数
             async def listener_wrapper(app: nakuru.CQHTTP, source: self.event_converter.yiri2target(event_type)):
                 callback(self.event_converter.target2yiri(source))
+
+            # 将包装函数和原函数的对应关系存入列表
             self.listener_list.append(
                 {
                     "event_type": event_type,
@@ -225,6 +231,8 @@ class NakuruProjectAdapter(MessageSourceAdapter):
                     "wrapper": listener_wrapper,
                 }
             )
+
+            # 注册监听器
             self.bot.receiver(self.event_converter.yiri2target(event_type).__name__)(listener_wrapper)
             logging.debug("注册完成")
         except Exception as e:
@@ -236,7 +244,7 @@ class NakuruProjectAdapter(MessageSourceAdapter):
         event_type: typing.Type[mirai.Event],
         callback: typing.Callable[[mirai.Event], None]
     ):
-        nakuru_event_name = self.event_converter.yiri2target(event_type)
+        nakuru_event_name = self.event_converter.yiri2target(event_type).__name__
 
         new_event_list = []
 
