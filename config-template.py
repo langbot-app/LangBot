@@ -3,8 +3,8 @@ import logging
 
 # 消息处理协议适配器
 # 目前支持以下适配器:
-# - "yirimirai": YiriMirai框架适配器, 请填写mirai_http_api_config
-# - "nakuru": 通过nakuru-project框架连接go-cqhttp，请填写nakuru_config
+# - "yirimirai": mirai的通信框架，YiriMirai框架适配器, 请同时填写下方mirai_http_api_config
+# - "nakuru": go-cqhttp通信框架，请同时填写下方nakuru_config
 msg_source_adapter = "yirimirai"
 
 # [必需(与nakuru二选一，取决于msg_source_adapter)] Mirai的配置
