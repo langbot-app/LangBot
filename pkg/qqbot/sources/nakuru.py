@@ -45,7 +45,10 @@ class NakuruProjectMessageConverter(MessageConverter):
             elif type(component) is mirai.AtAll:
                 nakuru_msg_list.append(nkc.AtAll())
             elif type(component) is mirai.Voice:
-                pass
+                if component.url is not None:
+                    nakuru_msg_list.append(nkc.Record.fromURL(component.url))
+                elif component.path is not None:
+                    nakuru_msg_list.append(nkc.Record.fromFileSystem(component.path))
             elif type(component) is Forward:
                 # 转发消息
                 yiri_forward_node_list = component.node_list
