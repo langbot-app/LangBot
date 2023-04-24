@@ -124,7 +124,7 @@ cd QChatGPT
 2. Install dependencies
 
 ```bash
-pip3 install requests yiri-mirai openai colorlog func_timeout dulwich Pillow
+pip3 install requests yiri-mirai openai colorlog func_timeout dulwich Pillow nakuru-project-idk
 ```
 
 3. Generate `config.py`
