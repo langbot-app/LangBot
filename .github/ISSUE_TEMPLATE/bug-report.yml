@@ -14,6 +14,15 @@ body:
         - Docker部署
     validations:
       required: true
+  - type: dropdown
+    attributes:
+      label: 登录框架
+      description: "连接QQ使用的框架"
+      options:
+        - Mirai
+        - go-cqhttp
+    validations:
+      required: false
   - type: input
     attributes:
       label: 系统环境
