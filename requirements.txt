@@ -7,4 +7,4 @@ websockets
 urllib3~=1.26.10
 func_timeout~=4.3.5
 Pillow
-nakuru-project-test
+nakuru-project-idk
