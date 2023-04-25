@@ -27,15 +27,17 @@
     },
     "preset_mode": "normal",
     "response_rules": {
-        "at": true,
-        "prefix": [
-            "/ai",
-            "!ai",
-            "！ai",
-            "ai"
-        ],
-        "regexp": [],
-        "random_rate": 0.0
+        "default": {
+            "at": true,
+            "prefix": [
+                "/ai",
+                "!ai",
+                "！ai",
+                "ai"
+            ],
+            "regexp": [],
+            "random_rate": 0.0
+        }
     },
     "ignore_rules": {
         "prefix": [
