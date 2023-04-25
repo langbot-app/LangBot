@@ -25,10 +25,18 @@ import pkg.qqbot.adapter as msadapter
 
 
 # 检查消息是否符合泛响应匹配机制
-def check_response_rule(text: str):
+def check_response_rule(group_id:int, text: str):
     config = pkg.utils.context.get_config()
 
     rules = config.response_rules
+
+    # 检查是否有特定规则
+    if 'prefix' not in config.response_rules:
+        if str(group_id) in config.response_rules:
+            rules = config.response_rules[str(group_id)]
+        else:
+            rules = config.response_rules['default']
+
     # 检查前缀匹配
     if 'prefix' in rules:
         for rule in rules['prefix']:
@@ -46,19 +54,39 @@ def check_response_rule(text: str):
     return False, ""
 
 
-def response_at():
+def response_at(group_id: int):
     config = pkg.utils.context.get_config()
-    if 'at' not in config.response_rules:
+
+    use_response_rule = config.response_rules
+
+    # 检查是否有特定规则
+    if 'prefix' not in config.response_rules:
+        if str(group_id) in config.response_rules:
+            use_response_rule = config.response_rules[str(group_id)]
+        else:
+            use_response_rule = config.response_rules['default']
+
+    if 'at' not in use_response_rule:
         return True
 
-    return config.response_rules['at']
+    return use_response_rule['at']
 
 
-def random_responding():
+def random_responding(group_id):
     config = pkg.utils.context.get_config()
-    if 'random_rate' in config.response_rules:
+
+    use_response_rule = config.response_rules
+
+    # 检查是否有特定规则
+    if 'prefix' not in config.response_rules:
+        if str(group_id) in config.response_rules:
+            use_response_rule = config.response_rules[str(group_id)]
+        else:
+            use_response_rule = config.response_rules['default']
+
+    if 'random_rate' in use_response_rule:
         import random
-        return random.random() < config.response_rules['random_rate']
+        return random.random() < use_response_rule['random_rate']
     return False
 
 
@@ -317,16 +345,16 @@ class QQBotManager:
         if Image in event.message_chain:
             pass
         else:
-            if At(self.bot_account_id) in event.message_chain and response_at():
+            if At(self.bot_account_id) in event.message_chain and response_at(event.group.id):
                 # 直接调用
                 reply = process()
             else:
-                check, result = check_response_rule(str(event.message_chain).strip())
+                check, result = check_response_rule(event.group.id, str(event.message_chain).strip())
 
                 if check:
                     reply = process(result.strip())
                 # 检查是否随机响应
-                elif random_responding():
+                elif random_responding(event.group.id):
                     logging.info("随机响应group_{}消息".format(event.group.id))
                     reply = process()
 
