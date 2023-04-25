@@ -283,11 +283,11 @@ class PluginHost:
 
     def send_person_message(self, person, message):
         """发送私聊消息"""
-        asyncio.run(self.get_bot().send_friend_message(person, message))
+        asyncio.run(self.get_bot_adapter().send_message("person", person, message))
 
     def send_group_message(self, group, message):
         """发送群消息"""
-        asyncio.run(self.get_bot().send_group_message(group, message))
+        asyncio.run(self.get_bot_adapter().send_message("group", group, message))
 
     def notify_admin(self, message):
         """通知管理员"""
