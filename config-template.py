@@ -123,12 +123,35 @@ preset_mode = "normal"
 # 注意：由消息前缀(prefix)匹配的消息中将会删除此前缀，正则表达式(regexp)匹配的消息不会删除匹配的部分
 #      前缀匹配优先级高于正则表达式匹配
 # 正则表达式简明教程：https://www.runoob.com/regexp/regexp-tutorial.html
+# 
+# 支持针对不同群设置不同的响应规则，例如：
+# response_rules = {
+#    "default": {
+#        "at": True,
+#        "prefix": ["/ai", "!ai", "！ai", "ai"],
+#        "regexp": [],
+#        "random_rate": 0.0,
+#    },
+#    "12345678": {
+#        "at": False,
+#        "prefix": ["/ai", "!ai", "！ai", "ai"],
+#        "regexp": [],
+#        "random_rate": 0.0,
+#    },
+# }
+#
+# 以上设置将会在群号为12345678的群中关闭at响应
+# 未单独设置的群将使用default规则
 response_rules = {
-    "at": True,  # 是否响应at机器人的消息
-    "prefix": ["/ai", "!ai", "！ai", "ai"],
-    "regexp": [],  # "为什么.*", "怎么?样.*", "怎么.*", "如何.*", "[Hh]ow to.*", "[Ww]hy not.*", "[Ww]hat is.*", ".*怎么办", ".*咋办"
-    "random_rate": 0.0,  # 随机响应概率，0.0-1.0，0.0为不随机响应，1.0为响应所有消息, 仅在前几项判断不通过时生效
+    "default": {
+        "at": True,  # 是否响应at机器人的消息
+        "prefix": ["/ai", "!ai", "！ai", "ai"],
+        "regexp": [],  # "为什么.*", "怎么?样.*", "怎么.*", "如何.*", "[Hh]ow to.*", "[Ww]hy not.*", "[Ww]hat is.*", ".*怎么办", ".*咋办"
+        "random_rate": 0.0,  # 随机响应概率，0.0-1.0，0.0为不随机响应，1.0为响应所有消息, 仅在前几项判断不通过时生效
+    },
 }
+
+
 
 # 消息忽略规则
 # 适用于私聊及群聊
