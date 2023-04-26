@@ -23,7 +23,7 @@ class NakuruProjectMessageConverter(MessageConverter):
         elif type(message_chain) is list:
             msg_list = message_chain
         else:
-            raise Exception("Unknown message type: " + str(message_chain) + type(message_chain))
+            raise Exception("Unknown message type: " + str(message_chain) + str(type(message_chain)))
         
         nakuru_msg_list = []
         
