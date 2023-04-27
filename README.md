@@ -14,7 +14,7 @@
 > 2023/3/15 逆向库已支持New Bing，使用方法查看[插件文档](https://github.com/RockChinQ/revLibs)  
 
 - 到[项目Wiki](https://github.com/RockChinQ/QChatGPT/wiki)可了解项目详细信息
-- 官方交流、答疑群: 656285629  
+- 官方交流、答疑群: 195992197  
   - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
 - 社区群（内有一键部署包、图形化界面等资源）: 362515018
 - QQ频道机器人见[QQChannelChatGPT](https://github.com/Soulter/QQChannelChatGPT)
