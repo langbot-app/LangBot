@@ -14,7 +14,7 @@
 > 2023/3/15 逆向库已支持New Bing，使用方法查看[插件文档](https://github.com/RockChinQ/revLibs)  
 
 - 到[项目Wiki](https://github.com/RockChinQ/QChatGPT/wiki)可了解项目详细信息
-- 官方交流、答疑群: 195992197  
+- 官方交流、答疑群: 656285629  
   - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
 - 社区群（内有一键部署包、图形化界面等资源）: 362515018
 - QQ频道机器人见[QQChannelChatGPT](https://github.com/Soulter/QQChannelChatGPT)
@@ -176,6 +176,8 @@
 <summary>展开查看，以下方式二选一，Linux首选Docker，Windows首选安装器</summary>
 
 #### Docker方式
+
+> docker方式目前仅支持使用mirai登录，若您不**熟悉**docker的操作及相关知识，强烈建议您使用其他方式部署，我们**不会且难以**解决您主机上多个容器的连接问题。
 
 请查看[此文档](res/docs/docker_deploy.md)  
 由[@mikumifa](https://github.com/mikumifa)贡献
