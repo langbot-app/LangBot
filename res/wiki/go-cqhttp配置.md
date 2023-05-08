@@ -7,18 +7,21 @@
 1. 从[go-cqhttp的Release](https://github.com/Mrs4s/go-cqhttp/releases/latest)下载最新的go-cqhttp可执行文件（建议直接下载可执行文件压缩包，而不是安装器）
 2. 解压并运行，首次运行会询问需要开放的网络协议，**请填入`02`并回车，必须输入`02`❗❗❗❗❗❗❗**
 
-    ```
-    C:\Softwares\go-cqhttp.old> .\go-cqhttp.exe
-    未找到配置文件，正在为您生成配置文件中！
-    请选择你需要的通信方式:
-    > 0: HTTP通信
-    > 1: 云函数服务
-    > 2: 正向 Websocket 通信
-    > 3: 反向 Websocket 通信
-    请输入你需要的编号(0-9)，可输入多个，同一编号也可输入多个(如: 233)
-    您的选择是:02
-    ```
-    提示已生成`config.yml`文件，关闭go-cqhttp。
+<h1> 你这里必须得输入`02`，你懂么，`0`必须得输入，看好了，看好下面输入什么了吗？别他妈的搁那就输个`2`完了启动连不上还跑群里问，问一个我踢一个。 </h1>
+
+```
+C:\Softwares\go-cqhttp.old> .\go-cqhttp.exe
+未找到配置文件，正在为您生成配置文件中！
+请选择你需要的通信方式:
+> 0: HTTP通信
+> 1: 云函数服务
+> 2: 正向 Websocket 通信
+> 3: 反向 Websocket 通信
+请输入你需要的编号(0-9)，可输入多个，同一编号也可输入多个(如: 233)
+您的选择是:02
+```
+    
+提示已生成`config.yml`文件，关闭go-cqhttp。
 
 3. 打开go-cqhttp同目录的`config.yml`
 
