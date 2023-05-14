@@ -295,6 +295,7 @@ python3 main.py
 - [chordfish-k/QChartGPT_Emoticon_Plugin](https://github.com/chordfish-k/QChartGPT_Emoticon_Plugin) - 使机器人根据回复内容发送表情包
 - [oliverkirk-sudo/ChatPoeBot](https://github.com/oliverkirk-sudo/ChatPoeBot) - 接入[Poe](https://poe.com/)上的机器人
 - [lieyanqzu/WeatherPlugin](https://github.com/lieyanqzu/WeatherPlugin) - 天气查询插件
+- [SysStatPlugin](https://github.com/RockChinQ/SysStatPlugin) - 查看系统状态
 </details>
 
 ## 😘致谢
