@@ -27,6 +27,7 @@ English | [简体中文](README.md)
 - ChatGPT website edition (GPT-3.5), see [revLibs plugin](https://github.com/RockChinQ/revLibs)
 - ChatGPT website edition (GPT-4), ChatGPT plus subscription required, see [revLibs plugin](https://github.com/RockChinQ/revLibs)
 - New Bing, see [revLibs plugin](https://github.com/RockChinQ/revLibs)
+- HuggingChat, see [revLibs plugin](https://github.com/RockChinQ/revLibs), no accounts required, English only
 
 ### Story
 
