@@ -33,6 +33,7 @@
 - ChatGPT网页版GPT-3.5模型, 由[插件](https://github.com/RockChinQ/revLibs)接入
 - ChatGPT网页版GPT-4模型, 目前需要ChatGPT Plus订阅, 由[插件](https://github.com/RockChinQ/revLibs)接入
 - New Bing逆向库, 由[插件](https://github.com/RockChinQ/revLibs)接入
+- HuggingChat, 由[插件](https://github.com/RockChinQ/revLibs)接入, 无需账号，仅支持英文
 
 ### 故事续写
 
