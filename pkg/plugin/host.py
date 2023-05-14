@@ -79,7 +79,7 @@ def walk_plugin_path(module, prefix='', path_prefix=''):
                 __current_module_path__ = "plugins/"+path_prefix + item.name + '.py'
 
                 importlib.import_module(module.__name__ + '.' + item.name)
-                logging.info('加载模块: plugins/{} 成功'.format(path_prefix + item.name + '.py'))
+                logging.debug('加载模块: plugins/{} 成功'.format(path_prefix + item.name + '.py'))
             except:
                 logging.error('加载模块: plugins/{} 失败: {}'.format(path_prefix + item.name + '.py', sys.exc_info()))
                 traceback.print_exc()
