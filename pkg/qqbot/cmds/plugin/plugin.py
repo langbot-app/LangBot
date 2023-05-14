@@ -97,37 +97,34 @@ class PluginUpdateCommand(AbstractCommandNode):
         plugin_list = plugin_host.__plugins__
 
         reply = []
-        def closure():
-            try:
-                import pkg.utils.context
-                updated = []
-                for key in plugin_list:
-                    plugin = plugin_list[key]
-                    if updater.is_repo("/".join(plugin['path'].split('/')[:-1])):
-                        success = updater.pull_latest("/".join(plugin['path'].split('/')[:-1]))
-                        if success:
-                            updated.append(plugin['name'])
 
-                # 检查是否有requirements.txt
-                pkg.utils.context.get_qqbot_manager().notify_admin("正在安装依赖...")
-                for key in plugin_list:
-                    plugin = plugin_list[key]
-                    if os.path.exists("/".join(plugin['path'].split('/')[:-1])+"/requirements.txt"):
-                        logging.info("{}检测到requirements.txt，安装依赖".format(plugin['name']))
-                        import pkg.utils.pkgmgr
-                        pkg.utils.pkgmgr.install_requirements("/".join(plugin['path'].split('/')[:-1])+"/requirements.txt")
+        if len(ctx.crt_params) > 0:
+            def closure():
+                try:
+                    import pkg.utils.context
+                    
+                    updated = []
 
-                        import pkg.utils.log as log
-                        log.reset_logging()
+                    if ctx.crt_params[0] == 'all':
+                        for key in plugin_list:
+                            plugin_host.update_plugin(key)
+                            updated.append(key)
+                    else:
+                        if ctx.crt_params[0] in plugin_list:
+                            plugin_host.update_plugin(ctx.crt_params[0])
+                            updated.append(ctx.crt_params[0])
+                        else:
+                            raise Exception("未找到插件: {}".format(ctx.crt_params[0]))
 
-                pkg.utils.context.get_qqbot_manager().notify_admin("已更新插件: {}".format(", ".join(updated)))
-            except Exception as e:
-                logging.error("插件更新失败:{}".format(e))
-                pkg.utils.context.get_qqbot_manager().notify_admin("插件更新失败:{} 请尝试手动更新插件".format(e))
+                    pkg.utils.context.get_qqbot_manager().notify_admin("已更新插件: {}, 请发送 !reload 重载插件".format(", ".join(updated)))
+                except Exception as e:
+                    logging.error("插件更新失败:{}".format(e))
+                    pkg.utils.context.get_qqbot_manager().notify_admin("插件更新失败:{} 请尝试手动更新插件".format(e))
 
-
-        threading.Thread(target=closure).start()
-        reply = ["[bot]正在更新所有插件，请勿重复发起..."]
+            reply = ["[bot]正在更新插件，请勿重复发起..."]
+            threading.Thread(target=closure).start()
+        else:
+            reply = ["[bot]请指定要更新的插件, 或使用 !plugin update all 更新所有插件"]
         return True, reply
 
 

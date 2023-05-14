@@ -8,6 +8,7 @@ import sys
 import shutil
 import traceback
 
+import pkg.utils.updater as updater
 import pkg.utils.context as context
 import pkg.plugin.switch as switch
 import pkg.plugin.settings as settings
@@ -177,6 +178,43 @@ def uninstall_plugin(plugin_name: str) -> str:
     return "plugins/"+plugin_path
 
 
+def update_plugin(plugin_name: str):
+    """更新插件"""
+    # 检查是否有远程地址记录
+    target_plugin_dir = "plugins/" + __plugins__[plugin_name]['path'].replace("\\", "/").split("plugins/")[1].split("/")[0]
+
+    remote_url = updater.get_remote_url(target_plugin_dir)
+    if remote_url == "https://github.com/RockChinQ/QChatGPT" or remote_url == "https://gitee.com/RockChin/QChatGPT" \
+        or remote_url == "" or remote_url is None or remote_url == "http://github.com/RockChinQ/QChatGPT" or remote_url == "http://gitee.com/RockChin/QChatGPT":
+        raise Exception("插件没有远程地址记录，无法更新")
+    
+    # 把远程clone到temp/plugins/update/插件名
+    logging.info("克隆插件储存库: {}".format(remote_url))
+
+    from dulwich import porcelain
+    clone_target_dir = "temp/plugins/update/"+target_plugin_dir.split("/")[-1]+"/"
+
+    if os.path.exists(clone_target_dir):
+        shutil.rmtree(clone_target_dir)
+
+    if not os.path.exists(clone_target_dir):
+        os.makedirs(clone_target_dir)
+    repo = porcelain.clone(remote_url, clone_target_dir, checkout=True)
+
+    # 检查此目录是否包含requirements.txt
+    if os.path.exists(clone_target_dir+"requirements.txt"):
+        logging.info("检测到requirements.txt，正在安装依赖")
+        import pkg.utils.pkgmgr
+        pkg.utils.pkgmgr.install_requirements(clone_target_dir+"requirements.txt")
+
+        import pkg.utils.log as log
+        log.reset_logging()
+
+    # 将temp/plugins/update/插件名 覆盖到 plugins/插件名
+    shutil.rmtree(target_plugin_dir)
+
+    shutil.copytree(clone_target_dir, target_plugin_dir)
+
 class EventContext:
     """事件上下文"""
     eid = 0
@@ -344,3 +382,6 @@ class PluginHost:
                                                                 event_context.__return_value__))
 
         return event_context
+
+if __name__ == "__main__":
+    pass
