@@ -309,6 +309,6 @@ python3 main.py
 
 以及所有[贡献者](https://github.com/RockChinQ/QChatGPT/graphs/contributors)和其他为本项目提供支持的朋友们。
 
-<!-- ## 👍赞赏
+## 👍赞赏
 
-<img alt="赞赏码" src="res/mm_reward_qrcode_1672840549070.png" width="400" height="400"/> -->
+<img alt="赞赏码" src="res/mm_reward_qrcode_1672840549070.png" width="400" height="400"/>
