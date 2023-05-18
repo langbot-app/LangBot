@@ -68,8 +68,8 @@
     "process_message_timeout": 30,
     "show_prefix": false,
     "force_delay_range": [
-        2,
-        5
+        1.5,
+        3
     ],
     "blob_message_threshold": 256,
     "blob_message_strategy": "forward",
