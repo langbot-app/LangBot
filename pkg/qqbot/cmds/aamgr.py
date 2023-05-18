@@ -260,8 +260,8 @@ def execute(context: Context) -> list:
 
     while True:
         try:
-            logging.debug('执行指令: {}'.format(path))
             node = __command_list__[path]
+            logging.debug('执行指令: {}'.format(path))
 
             # 检查权限
             if ctx.privilege < node['privilege']:

@@ -27,7 +27,7 @@ replys_message = "[bot]err:请求超时"
 # 指令权限不足提示
 command_admin_message = "[bot]err:权限不足： "
 # 指令无效提示
-command_err_message = "[bot]err:指令执行出错："
+command_err_message = "[bot]err:指令不存在："
 
 # 会话重置提示
 command_reset_message = "[bot]:会话已重置"
