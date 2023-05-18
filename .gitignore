@@ -24,3 +24,4 @@ tips.py
 bin/
 .vscode
 test_*
+venv/
