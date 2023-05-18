@@ -80,6 +80,10 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
 
     text_message = text_message.strip()
 
+
+    # 为强制消息延迟计时
+    start_time = time.time()
+
     # 处理消息
     try:
 
@@ -167,5 +171,24 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
             processing.remove(session_name)
     finally:
         pkg.openai.session.get_session(session_name).release_response_lock()
+
+    # 检查延迟时间
+    if config.force_delay_range[1] == 0:
+        delay_time = 0
+    else:
+        import random
+
+        # 从延迟范围中随机取一个值(浮点)
+        rdm = random.uniform(config.force_delay_range[0], config.force_delay_range[1])
+
+        spent = time.time() - start_time
+
+        # 如果花费时间小于延迟时间，则延迟
+        delay_time = rdm - spent if rdm - spent > 0 else 0
+
+    # 延迟
+    if delay_time > 0:
+        logging.info("[风控] 强制延迟{:.2f}秒(如需关闭，请到config.py修改force_delay_range字段)".format(delay_time))
+        time.sleep(delay_time)
 
     return MessageChain(reply)
