@@ -128,6 +128,7 @@ class QQBotManager:
                 self.bot_account_id = self.adapter.bot_account_id
         else:
             self.adapter = pkg.utils.context.get_qqbot_manager().adapter
+            self.bot_account_id = pkg.utils.context.get_qqbot_manager().bot_account_id
 
         pkg.utils.context.set_qqbot_manager(self)
 
