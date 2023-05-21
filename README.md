@@ -161,6 +161,9 @@
 
 ### - 注册OpenAI账号
 
+<details>
+<summary>点此查看步骤</summary>
+
 > 若您要直接使用非OpenAI的模型（如New Bing），可跳过此步骤，直接进行之后的部署，完成后按照相关插件的文档进行配置即可
 
 参考以下文章自行注册
@@ -170,6 +173,8 @@
 
 注册成功后请前往[个人中心查看](https://beta.openai.com/account/api-keys)api_key  
 完成注册后，使用以下自动化或手动部署步骤
+
+</details>
 
 ### - 自动化部署
 
