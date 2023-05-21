@@ -8,7 +8,7 @@ def config_operation(cmd, params):
     config = pkg.utils.context.get_config()
     reply_str = ""
     if len(params) == 0:
-        reply = ["[bot]err:请输入配置项"]
+        reply = ["[bot]err:请输入!cmd cfg查看使用方法"]
     else:
         cfg_name = params[0]
         if cfg_name == 'all':
@@ -26,45 +26,61 @@ def config_operation(cmd, params):
                     else:
                         reply_str += "{}: {}\n".format(cfg, getattr(config, cfg))
             reply = [reply_str]
-        elif cfg_name in dir(config):
-            if len(params) == 1:
-                # 按照配置项类型进行格式化
-                if isinstance(getattr(config, cfg_name), str):
-                    reply_str = "[bot]配置项{}: \"{}\"\n".format(cfg_name, getattr(config, cfg_name))
-                elif isinstance(getattr(config, cfg_name), dict):
-                    reply_str = "[bot]配置项{}: {}\n".format(cfg_name,
-                                                             json.dumps(getattr(config, cfg_name),
-                                                                        ensure_ascii=False, indent=4))
-                else:
-                    reply_str = "[bot]配置项{}: {}\n".format(cfg_name, getattr(config, cfg_name))
-                reply = [reply_str]
-            else:
-                cfg_value = " ".join(params[1:])
-                # 类型转换，如果是json则转换为字典
-                if cfg_value == 'true':
-                    cfg_value = True
-                elif cfg_value == 'false':
-                    cfg_value = False
-                elif cfg_value.isdigit():
-                    cfg_value = int(cfg_value)
-                elif cfg_value.startswith('{') and cfg_value.endswith('}'):
-                    cfg_value = json.loads(cfg_value)
-                else:
-                    try:
-                        cfg_value = float(cfg_value)
-                    except ValueError:
-                        pass
-
-                # 检查类型是否匹配
-                if isinstance(getattr(config, cfg_name), type(cfg_value)):
-                    setattr(config, cfg_name, cfg_value)
-                    pkg.utils.context.set_config(config)
-                    reply = ["[bot]配置项{}修改成功".format(cfg_name)]
-                else:
-                    reply = ["[bot]err:配置项{}类型不匹配".format(cfg_name)]
-
         else:
-            reply = ["[bot]err:未找到配置项 {}".format(cfg_name)]
+            cfg_entry_path = cfg_name.split('.')
+
+            try:
+                if len(params) == 1:
+                    cfg_entry = getattr(config, cfg_entry_path[0])
+                    if len(cfg_entry_path) > 1:
+                        for i in range(1, len(cfg_entry_path)):
+                            cfg_entry = cfg_entry[cfg_entry_path[i]]
+
+                    if isinstance(cfg_entry, str):
+                        reply_str = "[bot]配置项{}: \"{}\"\n".format(cfg_name, cfg_entry)
+                    elif isinstance(cfg_entry, dict):
+                        reply_str = "[bot]配置项{}: {}\n".format(cfg_name,
+                                                                 json.dumps(cfg_entry,
+                                                                            ensure_ascii=False, indent=4))
+                    else:
+                        reply_str = "[bot]配置项{}: {}\n".format(cfg_name, cfg_entry)
+                    reply = [reply_str]
+                else:
+                    cfg_value = " ".join(params[1:])
+                    # 类型转换，如果是json则转换为字典
+                    # if cfg_value == 'true':
+                    #     cfg_value = True
+                    # elif cfg_value == 'false':
+                    #     cfg_value = False
+                    # elif cfg_value.isdigit():
+                    #     cfg_value = int(cfg_value)
+                    # elif cfg_value.startswith('{') and cfg_value.endswith('}'):
+                    #     cfg_value = json.loads(cfg_value)
+                    # else:
+                    #     try:
+                    #         cfg_value = float(cfg_value)
+                    #     except ValueError:
+                    #         pass
+                    cfg_value = eval(cfg_value)
+
+                    cfg_entry = getattr(config, cfg_entry_path[0])
+                    if len(cfg_entry_path) > 1:
+                        for i in range(1, len(cfg_entry_path) - 1):
+                            cfg_entry = cfg_entry[cfg_entry_path[i]]
+                        if isinstance(cfg_entry[cfg_entry_path[-1]], type(cfg_value)):
+                            cfg_entry[cfg_entry_path[-1]] = cfg_value
+                            reply = ["[bot]配置项{}修改成功".format(cfg_name)]
+                        else:
+                            reply = ["[bot]err:配置项{}类型不匹配".format(cfg_name)]
+                    else:
+                        setattr(config, cfg_entry_path[0], cfg_value)
+                        reply = ["[bot]配置项{}修改成功".format(cfg_name)]
+            except AttributeError:
+                reply = ["[bot]err:未找到配置项 {}".format(cfg_name)]
+            except ValueError:
+                reply = ["[bot]err:未找到配置项 {}".format(cfg_name)]
+        # else:
+        #     reply = ["[bot]err:未找到配置项 {}".format(cfg_name)]
 
     return reply
 

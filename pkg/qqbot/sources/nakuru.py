@@ -157,7 +157,6 @@ class NakuruProjectEventConverter(EventConverter):
             raise Exception("未支持转换的事件类型: " + str(event))
 
 
-
 class NakuruProjectAdapter(MessageSourceAdapter):
     """nakuru-project适配器"""
     bot: nakuru.CQHTTP
@@ -183,6 +182,9 @@ class NakuruProjectAdapter(MessageSourceAdapter):
             },
             timeout=5
         )
+        if resp.status_code == 403:
+            logging.error("go-cqhttp拒绝访问，请检查config.py中nakuru_config的token是否与go-cqhttp设置的access-token匹配")
+            raise Exception("go-cqhttp拒绝访问，请检查config.py中nakuru_config的token是否与go-cqhttp设置的access-token匹配")
         self.bot_account_id = int(resp.json()['data']['user_id'])
 
     def send_message(
