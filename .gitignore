@@ -25,3 +25,4 @@ bin/
 .vscode
 test_*
 venv/
+hugchat.json
