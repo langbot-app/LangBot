@@ -48,19 +48,20 @@ def config_operation(cmd, params):
                 else:
                     cfg_value = " ".join(params[1:])
                     # 类型转换，如果是json则转换为字典
-                    if cfg_value == 'true':
-                        cfg_value = True
-                    elif cfg_value == 'false':
-                        cfg_value = False
-                    elif cfg_value.isdigit():
-                        cfg_value = int(cfg_value)
-                    elif cfg_value.startswith('{') and cfg_value.endswith('}'):
-                        cfg_value = json.loads(cfg_value)
-                    else:
-                        try:
-                            cfg_value = float(cfg_value)
-                        except ValueError:
-                            pass
+                    # if cfg_value == 'true':
+                    #     cfg_value = True
+                    # elif cfg_value == 'false':
+                    #     cfg_value = False
+                    # elif cfg_value.isdigit():
+                    #     cfg_value = int(cfg_value)
+                    # elif cfg_value.startswith('{') and cfg_value.endswith('}'):
+                    #     cfg_value = json.loads(cfg_value)
+                    # else:
+                    #     try:
+                    #         cfg_value = float(cfg_value)
+                    #     except ValueError:
+                    #         pass
+                    cfg_value = eval(cfg_value)
 
                     cfg_entry = getattr(config, cfg_entry_path[0])
                     if len(cfg_entry_path) > 1:
