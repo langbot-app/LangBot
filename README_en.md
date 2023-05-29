@@ -7,6 +7,7 @@
 English | [简体中文](README.md)
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/QChatGPT?style=flat-square)](https://github.com/RockChinQ/QChatGPT/releases/latest)
+![Wakapi Count](https://wakapi.dev/api/badge/RockChinQ/interval:any/project:QChatGPT)
 
 - Refer to [Wiki](https://github.com/RockChinQ/QChatGPT/wiki) to get further information.  
 - Official QQ group: 656285629  
