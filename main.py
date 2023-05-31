@@ -134,127 +134,139 @@ def start(first_time_init=False):
 
     known_exception_caught = False
     try:
-
-        sh = reset_logging()
-        pkg.utils.context.context['logger_handler'] = sh
-
-        # 检查是否设置了管理员
-        if not (hasattr(config, 'admin_qq') and config.admin_qq != 0):
-            # logging.warning("未设置管理员QQ,管理员权限指令及运行告警将无法使用,如需设置请修改config.py中的admin_qq字段")
-            while True:
-                try:
-                    config.admin_qq = int(input("未设置管理员QQ,管理员权限指令及运行告警将无法使用,请输入管理员QQ号: "))
-                    # 写入到文件
-
-                    # 读取文件
-                    config_file_str = ""
-                    with open("config.py", "r", encoding="utf-8") as f:
-                        config_file_str = f.read()
-                    # 替换
-                    config_file_str = config_file_str.replace("admin_qq = 0", "admin_qq = " + str(config.admin_qq))
-                    # 写入
-                    with open("config.py", "w", encoding="utf-8") as f:
-                        f.write(config_file_str)
-
-                    print("管理员QQ已设置，如需修改请修改config.py中的admin_qq字段")
-                    time.sleep(4)
-                    break
-                except ValueError:
-                    print("请输入数字")
-
-        import pkg.openai.manager
-        import pkg.database.manager
-        import pkg.openai.session
-        import pkg.qqbot.manager
-        import pkg.openai.dprompt
-        import pkg.qqbot.cmds.aamgr
-        
         try:
-            pkg.openai.dprompt.register_all()
-            pkg.qqbot.cmds.aamgr.register_all()
-            pkg.qqbot.cmds.aamgr.apply_privileges()
+
+            sh = reset_logging()
+            pkg.utils.context.context['logger_handler'] = sh
+
+            # 检查是否设置了管理员
+            if not (hasattr(config, 'admin_qq') and config.admin_qq != 0):
+                # logging.warning("未设置管理员QQ,管理员权限指令及运行告警将无法使用,如需设置请修改config.py中的admin_qq字段")
+                while True:
+                    try:
+                        config.admin_qq = int(input("未设置管理员QQ,管理员权限指令及运行告警将无法使用,请输入管理员QQ号: "))
+                        # 写入到文件
+
+                        # 读取文件
+                        config_file_str = ""
+                        with open("config.py", "r", encoding="utf-8") as f:
+                            config_file_str = f.read()
+                        # 替换
+                        config_file_str = config_file_str.replace("admin_qq = 0", "admin_qq = " + str(config.admin_qq))
+                        # 写入
+                        with open("config.py", "w", encoding="utf-8") as f:
+                            f.write(config_file_str)
+
+                        print("管理员QQ已设置，如需修改请修改config.py中的admin_qq字段")
+                        time.sleep(4)
+                        break
+                    except ValueError:
+                        print("请输入数字")
+
+            import pkg.openai.manager
+            import pkg.database.manager
+            import pkg.openai.session
+            import pkg.qqbot.manager
+            import pkg.openai.dprompt
+            import pkg.qqbot.cmds.aamgr
+            
+            try:
+                pkg.openai.dprompt.register_all()
+                pkg.qqbot.cmds.aamgr.register_all()
+                pkg.qqbot.cmds.aamgr.apply_privileges()
+            except Exception as e:
+                logging.error(e)
+                traceback.print_exc()
+
+            # 配置openai api_base
+            if "reverse_proxy" in config.openai_config and config.openai_config["reverse_proxy"] is not None:
+                import openai
+                openai.api_base = config.openai_config["reverse_proxy"]
+
+            # 主启动流程
+            database = pkg.database.manager.DatabaseManager()
+
+            database.initialize_database()
+
+            openai_interact = pkg.openai.manager.OpenAIInteract(config.openai_config['api_key'])
+
+            # 加载所有未超时的session
+            pkg.openai.session.load_sessions()
+
+            # 初始化qq机器人
+            qqbot = pkg.qqbot.manager.QQBotManager(first_time_init=first_time_init)
+
+            # 加载插件
+            import pkg.plugin.host
+            pkg.plugin.host.load_plugins()
+
+            pkg.plugin.host.initialize_plugins()
+
+            if first_time_init:  # 不是热重载之后的启动,则启动新的bot线程
+
+                import mirai.exceptions
+
+                def run_bot_wrapper():
+                    global known_exception_caught
+                    try:
+                        logging.info("使用账号: {}".format(qqbot.bot_account_id))
+                        qqbot.adapter.run_sync()
+                    except TypeError as e:
+                        if str(e).__contains__("argument 'debug'"):
+                            logging.error(
+                                "连接bot失败:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/82".format(e))
+                            known_exception_caught = True
+                        elif str(e).__contains__("As of 3.10, the *loop*"):
+                            logging.error(
+                                "Websockets版本过低:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/5".format(e))
+                            known_exception_caught = True
+
+                    except websockets.exceptions.InvalidStatus as e:
+                        logging.error(
+                            "mirai-api-http端口无法使用:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/22".format(
+                                e))
+                        known_exception_caught = True
+                    except mirai.exceptions.NetworkError as e:
+                        logging.error("连接mirai-api-http失败:{}, 请检查是否已按照文档启动mirai".format(e))
+                        known_exception_caught = True
+                    except Exception as e:
+                        if str(e).__contains__("404"):
+                            logging.error(
+                                "mirai-api-http端口无法使用:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/22".format(
+                                    e))
+                            known_exception_caught = True
+                        elif str(e).__contains__("signal only works in main thread"):
+                            logging.error(
+                                "hypercorn异常:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/86".format(
+                                    e))
+                            known_exception_caught = True
+                        elif str(e).__contains__("did not receive a valid HTTP"):
+                            logging.error(
+                                "mirai-api-http端口无法使用:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/22".format(
+                                    e))
+                        else:
+                            import traceback
+                            traceback.print_exc()
+                            logging.error(
+                                "捕捉到未知异常:{}, 请前往 https://github.com/RockChinQ/QChatGPT/issues 查找或提issue".format(e))
+                            known_exception_caught = True
+                            raise e
+                    finally:
+                        time.sleep(12)
+                threading.Thread(
+                    target=run_bot_wrapper
+                ).start()
         except Exception as e:
-            logging.error(e)
             traceback.print_exc()
-
-        # 配置openai api_base
-        if "reverse_proxy" in config.openai_config and config.openai_config["reverse_proxy"] is not None:
-            import openai
-            openai.api_base = config.openai_config["reverse_proxy"]
-
-        # 主启动流程
-        database = pkg.database.manager.DatabaseManager()
-
-        database.initialize_database()
-
-        openai_interact = pkg.openai.manager.OpenAIInteract(config.openai_config['api_key'])
-
-        # 加载所有未超时的session
-        pkg.openai.session.load_sessions()
-
-        # 初始化qq机器人
-        qqbot = pkg.qqbot.manager.QQBotManager(first_time_init=first_time_init)
-
-        # 加载插件
-        import pkg.plugin.host
-        pkg.plugin.host.load_plugins()
-
-        pkg.plugin.host.initialize_plugins()
-
-        if first_time_init:  # 不是热重载之后的启动,则启动新的bot线程
-
-            import mirai.exceptions
-
-            def run_bot_wrapper():
-                global known_exception_caught
-                try:
-                    logging.info("使用账号: {}".format(qqbot.bot_account_id))
-                    qqbot.adapter.run_sync()
-                except TypeError as e:
-                    if str(e).__contains__("argument 'debug'"):
-                        logging.error(
-                            "连接bot失败:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/82".format(e))
-                        known_exception_caught = True
-                    elif str(e).__contains__("As of 3.10, the *loop*"):
-                        logging.error(
-                            "Websockets版本过低:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/5".format(e))
-                        known_exception_caught = True
-
-                except websockets.exceptions.InvalidStatus as e:
-                    logging.error(
-                        "mirai-api-http端口无法使用:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/22".format(
-                            e))
-                    known_exception_caught = True
-                except mirai.exceptions.NetworkError as e:
-                    logging.error("连接mirai-api-http失败:{}, 请检查是否已按照文档启动mirai".format(e))
-                    known_exception_caught = True
-                except Exception as e:
-                    if str(e).__contains__("404"):
-                        logging.error(
-                            "mirai-api-http端口无法使用:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/22".format(
-                                e))
-                        known_exception_caught = True
-                    elif str(e).__contains__("signal only works in main thread"):
-                        logging.error(
-                            "hypercorn异常:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/86".format(
-                                e))
-                        known_exception_caught = True
-                    elif str(e).__contains__("did not receive a valid HTTP"):
-                        logging.error(
-                            "mirai-api-http端口无法使用:{}, 解决方案: https://github.com/RockChinQ/QChatGPT/issues/22".format(
-                                e))
-                    else:
-                        import traceback
-                        traceback.print_exc()
-                        logging.error(
-                            "捕捉到未知异常:{}, 请前往 https://github.com/RockChinQ/QChatGPT/issues 查找或提issue".format(e))
-                        known_exception_caught = True
-                        raise e
-                finally:
-                    time.sleep(12)
-            threading.Thread(
-                target=run_bot_wrapper
-            ).start()
+            if isinstance(e, KeyboardInterrupt):
+                logging.info("程序被用户中止")
+                sys.exit(0)
+            elif isinstance(e, SyntaxError):
+                logging.error("配置文件存在语法错误，请检查配置文件：\n1. 是否存在中文符号\n2. 是否已按照文件中的说明填写正确")
+                sys.exit(1)
+            else:
+                logging.error("初始化失败:{}".format(e))
+                sys.exit(1)
     finally:
         # 判断若是Windows，输出选择模式可能会暂停程序的警告
         if os.name == 'nt':
