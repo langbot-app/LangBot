@@ -290,7 +290,7 @@ python3 main.py
 
 ### 更多
 
-欢迎提交新的插件
+[插件列表](https://github.com/stars/RockChinQ/lists/qchatgpt-%E6%8F%92%E4%BB%B6)，欢迎提出issue以提交新的插件
 
 - [revLibs](https://github.com/RockChinQ/revLibs) - 将ChatGPT网页版接入此项目，关于[官方接口和网页版有什么区别](https://github.com/RockChinQ/QChatGPT/wiki/%E5%AE%98%E6%96%B9%E6%8E%A5%E5%8F%A3%E3%80%81ChatGPT%E7%BD%91%E9%A1%B5%E7%89%88%E3%80%81ChatGPT-API%E5%8C%BA%E5%88%AB)
 - [Switcher](https://github.com/RockChinQ/Switcher) - 支持通过指令切换使用的模型
