@@ -1,3 +1,13 @@
+# 是否处理群聊消息
+# 为False时忽略所有群聊消息
+# 优先级高于下方禁用列表
+enable_group = True
+
+# 是否处理私聊消息
+# 为False时忽略所有私聊消息
+# 优先级高于下方禁用列表
+enable_private = True
+
 # 是否启用禁用列表
 enable = True
 
