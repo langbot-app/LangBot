@@ -34,13 +34,18 @@ def pull_latest(repo_path: str) -> bool:
     return True
 
 
-def is_newer_ignored_bugfix_ver(new_tag: str, old_tag: str):
-    """判断版本是否更新，忽略第四位版本"""
+def is_newer(new_tag: str, old_tag: str):
+    """判断版本是否更新，忽略第四位版本和第一位版本"""
     if new_tag == old_tag:
         return False
 
     new_tag = new_tag.split(".")
     old_tag = old_tag.split(".")
+    
+    # 判断主版本是否相同
+    if new_tag[0] != old_tag[0]:
+        return False
+
     if len(new_tag) < 4:
         return True
 
@@ -97,7 +102,7 @@ def update_all(cli: bool = False) -> bool:
     else:
         print("更新日志: {}".format(rls_notes))
 
-    if latest_rls == {} and not is_newer_ignored_bugfix_ver(latest_tag_name, current_tag):  # 没有新版本
+    if latest_rls == {} and not is_newer(latest_tag_name, current_tag):  # 没有新版本
         return False
 
     # 下载最新版本的zip到temp目录
@@ -254,7 +259,7 @@ def is_new_version_available() -> bool:
             latest_tag_name = rls['tag_name']
             break
 
-    return is_newer_ignored_bugfix_ver(latest_tag_name, current_tag)
+    return is_newer(latest_tag_name, current_tag)
 
 
 def get_rls_notes() -> list:
