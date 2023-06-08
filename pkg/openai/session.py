@@ -83,7 +83,7 @@ def load_sessions():
 
 
 # 获取指定名称的session，如果不存在则创建一个新的
-def get_session(session_name: str):
+def get_session(session_name: str) -> 'Session':
     global sessions
     if session_name not in sessions:
         sessions[session_name] = Session(session_name)

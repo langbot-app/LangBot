@@ -114,8 +114,12 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
                 reply = handle_exception("{}会话调用API失败:{}".format(session_name, e),
                                          "[bot]err:RateLimitError,请重试或联系作者，或等待修复")
         except openai.error.InvalidRequestError as e:
-            reply = handle_exception("{}API调用参数错误:{}\n".format(
-                             session_name, e), "[bot]err:API调用参数错误，请联系管理员，或等待修复")
+            if config.auto_reset:
+                session.reset()
+                reply = [tips_custom.session_auto_reset_message]
+            else:
+                reply = handle_exception("{}API调用参数错误:{}\n".format(
+                                session_name, e), "[bot]err:API调用参数错误，请联系管理员，或等待修复")
         except openai.error.ServiceUnavailableError as e:
             reply = handle_exception("{}API调用服务不可用:{}".format(session_name, e), "[bot]err:API调用服务不可用，请重试或联系管理员，或等待修复")
         except Exception as e:
