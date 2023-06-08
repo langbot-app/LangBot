@@ -114,7 +114,7 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
                 reply = handle_exception("{}会话调用API失败:{}".format(session_name, e),
                                          "[bot]err:RateLimitError,请重试或联系作者，或等待修复")
         except openai.error.InvalidRequestError as e:
-            if config.auto_reset:
+            if config.auto_reset and "This model's maximum context length is" in str(e):
                 session.reset()
                 reply = [tips_custom.session_auto_reset_message]
             else:
