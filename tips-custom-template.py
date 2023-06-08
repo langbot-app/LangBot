@@ -30,8 +30,8 @@ command_admin_message = "[bot]err:权限不足： "
 command_err_message = "[bot]err:指令不存在："
 
 # 会话重置提示
-command_reset_message = "[bot]:会话已重置"
-command_reset_name_message = "[bot]:会话已重置，使用场景预设:"
+command_reset_message = "[bot]会话已重置"
+command_reset_name_message = "[bot]会话已重置，使用场景预设:"
 
 # 会话自动重置时的提示
-session_auto_reset_message = "[bot]:会话token超限，已自动重置"
+session_auto_reset_message = "[bot]会话token超限，已自动重置"
