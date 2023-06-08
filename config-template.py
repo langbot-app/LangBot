@@ -195,6 +195,10 @@ encourage_sponsor_at_start = True
 # 注意：较大的prompt_submit_length会导致OpenAI账户额度消耗更快
 prompt_submit_length = 2048
 
+# 是否在token超限报错时自动重置会话
+# 可在tips.py中编辑提示语
+auto_reset = True
+
 # OpenAI补全API的参数
 # 请在下方填写模型，程序自动选择接口
 # 现已支持的模型有：
