@@ -9,11 +9,13 @@
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/QChatGPT?style=flat-square)](https://github.com/RockChinQ/QChatGPT/releases/latest)
 ![Wakapi Count](https://wakapi.dev/api/badge/RockChinQ/interval:any/project:QChatGPT)
 
-> 2023/4/27 正在对纯Python实现的QQ登录框架、YAML配置文件、异步编程等功能进行概念验证，欢迎体验[LightQChat](https://github.com/RockChinQ/LightQChat)项目  
+
 > 2023/4/24 支持使用go-cqhttp登录QQ，请查看[此文档](https://github.com/RockChinQ/QChatGPT/wiki/go-cqhttp%E9%85%8D%E7%BD%AE)  
 > 2023/3/18 现已支持GPT-4 API（内测），请查看`config-template.py`中的`completion_api_params`  
 > 2023/3/15 逆向库已支持New Bing，使用方法查看[插件文档](https://github.com/RockChinQ/revLibs)  
 
+
+**QChatGPT需要Python版本>=3.9**
 - 到[项目Wiki](https://github.com/RockChinQ/QChatGPT/wiki)可了解项目详细信息
 - 官方交流、答疑群: 656285629  
   - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
