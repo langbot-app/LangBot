@@ -22,7 +22,7 @@
 - 社区群（内有一键部署包、图形化界面等资源）: 362515018
 - QQ频道机器人见[QQChannelChatGPT](https://github.com/Soulter/QQChannelChatGPT)
 - 欢迎各种形式的贡献，请查看[贡献指引](CONTRIBUTING.md)
-- 购买ChatGPT账号: [此链接](fk.kimi.asia)
+- 购买ChatGPT账号: [此链接](https://fk.kimi.asia)
 
 ## 🍺模型适配一览
 
