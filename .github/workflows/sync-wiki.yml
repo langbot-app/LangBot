@@ -1,7 +1,14 @@
 name: Update Wiki
 
 on:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'res/wiki/**'
   push:
+    branches:
+      - master
     paths:
       - 'res/wiki/**'
 
