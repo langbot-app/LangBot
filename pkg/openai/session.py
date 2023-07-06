@@ -345,7 +345,8 @@ class Session:
             if expired:
                 pkg.utils.context.get_database_manager().set_session_expired(self.name, self.create_timestamp)
 
-        self.default_prompt = self.get_default_prompt(use_prompt)
+        if use_prompt:
+            self.default_prompt = self.get_default_prompt(use_prompt)
         self.prompt = []
         self.token_counts = []
         self.create_timestamp = int(time.time())
