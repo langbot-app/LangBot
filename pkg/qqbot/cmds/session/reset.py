@@ -22,7 +22,7 @@ class ResetCommand(AbstractCommandNode):
         reply = ""
 
         if len(params) == 0:
-            pkg.openai.session.get_session(session_name).reset(explicit=True)
+            pkg.openai.session.get_session(session_name).reset(explicit=True, persist=True)
             reply = [tips_custom.command_reset_message]
         else:
             try:
