@@ -327,7 +327,7 @@ class Session:
                                     json.dumps(self.prompt), json.dumps(self.default_prompt), json.dumps(self.token_counts))
 
     # 重置session
-    def reset(self, explicit: bool = False, expired: bool = False, schedule_new: bool = True, use_prompt: str = None):
+    def reset(self, explicit: bool = False, expired: bool = False, schedule_new: bool = True, use_prompt: str = None, persist: bool = False):
         if self.prompt:
             self.persistence()
             if explicit:
@@ -345,7 +345,7 @@ class Session:
             if expired:
                 pkg.utils.context.get_database_manager().set_session_expired(self.name, self.create_timestamp)
 
-        if use_prompt:
+        if not persist:  # 不要求保持default prompt
             self.default_prompt = self.get_default_prompt(use_prompt)
         self.prompt = []
         self.token_counts = []
