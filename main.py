@@ -47,7 +47,7 @@ def init_db():
 
 def ensure_dependencies():
     import pkg.utils.pkgmgr as pkgmgr
-    pkgmgr.run_pip(["install", "openai", "Pillow", "nakuru-project-idk", "--upgrade",
+    pkgmgr.run_pip(["install", "openai", "Pillow", "nakuru-project-idk", "CallingGPT", "--upgrade",
                     "-i", "https://pypi.tuna.tsinghua.edu.cn/simple",
                     "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
 

@@ -16,6 +16,8 @@ import pkg.qqbot.adapter as msadapter
 
 from mirai import Mirai
 
+from CallingGPT.session.session import Session
+
 __plugins__ = {}
 """插件列表
 
@@ -41,6 +43,9 @@ __plugins__ = {}
 
 __plugins_order__ = []
 """插件顺序"""
+
+__callable_functions__ = []
+"""供GPT调用的函数"""
 
 
 def generate_plugin_order():
@@ -300,7 +305,9 @@ class PluginHost:
     """插件宿主"""
 
     def __init__(self):
+        """初始化插件宿主"""
         context.set_plugin_host(self)
+        self.calling_gpt_session = Session([])
 
     def get_runtime_context(self) -> context:
         """获取运行时上下文（pkg.utils.context模块的对象）

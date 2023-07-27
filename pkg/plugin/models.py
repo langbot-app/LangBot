@@ -132,6 +132,13 @@ KeySwitched = "key_switched"
         key_list: list[str] api-key列表
 """
 
+ContentFunction = "content_function"
+"""声明此函数为一个内容函数，在对话中将发送此函数给GPT以供其调用
+    此函数可以具有任意的参数，但必须按照[此文档](https://github.com/RockChinQ/CallingGPT/wiki/1.-Function-Format#function-format)
+    所述的格式编写函数的docstring。
+    此功能仅支持在使用gpt-3.5或gpt-4系列模型时使用。
+"""
+
 
 def on(event: str):
     """注册事件监听器
@@ -161,20 +168,37 @@ class Plugin:
         """
         global __current_registering_plugin__
 
-        def wrapper(func):
-            plugin_hooks = host.__plugins__[__current_registering_plugin__]["hooks"]
+        if event != ContentFunction:
+            def wrapper(func):
+                plugin_hooks = host.__plugins__[__current_registering_plugin__]["hooks"]
 
-            if event not in plugin_hooks:
-                plugin_hooks[event] = []
-            plugin_hooks[event].append(func)
+                if event not in plugin_hooks:
+                    plugin_hooks[event] = []
+                plugin_hooks[event].append(func)
 
-            # print("registering hook: p='{}', e='{}', f={}".format(__current_registering_plugin__, event, func))
+                # print("registering hook: p='{}', e='{}', f={}".format(__current_registering_plugin__, event, func))
 
-            host.__plugins__[__current_registering_plugin__]["hooks"] = plugin_hooks
+                host.__plugins__[__current_registering_plugin__]["hooks"] = plugin_hooks
 
-            return func
+                return func
 
-        return wrapper
+            return wrapper
+        else:
+            from CallingGPT.entities.namespace import get_func_schema
+            
+            def wrapper(func):
+
+                function_schema = get_func_schema(func)
+
+                # logging.debug("registering content function: p='{}', f='{}', s={}".format(__current_registering_plugin__, func, function_schema))
+
+                host.__callable_functions__.append(
+                    function_schema
+                )
+
+                return func
+
+            return wrapper
 
 
 def register(name: str, description: str, version: str, author: str):
