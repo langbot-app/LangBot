@@ -222,22 +222,67 @@ class Session:
         for token_count in counts:
             total_token_before_query += token_count
 
+        res_text = ""
+
+        pending_msgs = []
+
+        total_tokens = 0
+
+        for resp in pkg.utils.context.get_openai_manager().request_completion(prompts):
+            if resp['choices'][0]['message']['type'] == 'text':  # 普通回复
+                res_text += resp['choices'][0]['message']['content']
+
+                total_tokens += resp['usage']['total_tokens']
+
+                pending_msgs.append(
+                    {
+                        "role": "assistant",
+                        "content": resp['choices'][0]['message']['content']
+                    }
+                )
+
+            elif resp['choices'][0]['message']['type'] == 'function_call':
+                # self.prompt.append(
+                #     {
+                #         "role": "assistant",
+                #         "content": "function call: "+json.dumps(resp['choices'][0]['message']['function_call'])
+                #     }
+                # )
+
+                total_tokens += resp['usage']['total_tokens']
+            elif resp['choices'][0]['message']['type'] == 'function_return':
+                # self.prompt.append(
+                #     {
+                #         "role": "function",
+                #         "name": resp['choices'][0]['message']['function_name'],
+                #         "content": json.dumps(resp['choices'][0]['message']['content'])
+                #     }
+                # )
+
+                # total_tokens += resp['usage']['total_tokens']
+                pass
+
+
+
         # 向API请求补全
-        message, total_token = pkg.utils.context.get_openai_manager().request_completion(
-            prompts,
-        )
+        # message, total_token = pkg.utils.context.get_openai_manager().request_completion(
+        #     prompts,
+        # )
 
         # 成功获取，处理回复
-        res_test = message
-        res_ans = res_test.strip()
+        # res_test = message
+        res_ans = res_text.strip()
 
         # 将此次对话的双方内容加入到prompt中
+        # self.prompt.append({'role': 'user', 'content': text})
+        # self.prompt.append({'role': 'assistant', 'content': res_ans})
         self.prompt.append({'role': 'user', 'content': text})
-        self.prompt.append({'role': 'assistant', 'content': res_ans})
+        # 添加pending_msgs
+        self.prompt += pending_msgs
 
         # 向token_counts中添加本回合的token数量
-        self.token_counts.append(total_token-total_token_before_query)
-        logging.debug("本回合使用token: {}, session counts: {}".format(total_token-total_token_before_query, self.token_counts))
+        self.token_counts.append(total_tokens-total_token_before_query)
+        logging.debug("本回合使用token: {}, session counts: {}".format(total_tokens-total_token_before_query, self.token_counts))
 
         if self.just_switched_to_exist_session:
             self.just_switched_to_exist_session = False

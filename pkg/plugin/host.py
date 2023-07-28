@@ -45,7 +45,10 @@ __plugins_order__ = []
 """插件顺序"""
 
 __callable_functions__ = []
-"""供GPT调用的函数"""
+"""供GPT调用的函数结构"""
+
+__function_inst_map__: dict[str, callable] = {}
+"""函数名:实例 映射"""
 
 
 def generate_plugin_order():
@@ -106,6 +109,10 @@ def load_plugins():
     generate_plugin_order()
     # 加载插件顺序
     settings.load_settings()
+
+    # 输出已注册的内容函数列表
+    logging.debug("registered content functions: {}".format(__callable_functions__))
+    logging.debug("function instance map: {}".format(__function_inst_map__))
 
 
 def initialize_plugins():

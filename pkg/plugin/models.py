@@ -189,6 +189,11 @@ class Plugin:
             def wrapper(func):
 
                 function_schema = get_func_schema(func)
+                function_schema['name'] = __current_registering_plugin__ + '-' + func.__name__
+
+                host.__function_inst_map__[function_schema['name']] = function_schema['function']
+
+                del function_schema['function']
 
                 # logging.debug("registering content function: p='{}', f='{}', s={}".format(__current_registering_plugin__, func, function_schema))
 
