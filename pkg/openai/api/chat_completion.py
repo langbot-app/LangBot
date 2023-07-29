@@ -69,12 +69,20 @@ class ChatCompletionRequest(RequestBase):
 
         if self.pending_func_call is None:  # 没有待处理的函数调用请求
 
-            resp = self._req(
-                model=self.model,
-                messages=self.messages,
-                functions=get_func_schema_list(),
-                **self.kwargs
-            )
+            args = {
+                "model": self.model,
+                "messages": self.messages,
+            }
+
+            funcs = get_func_schema_list()
+
+            if len(funcs) > 0:
+                args['functions'] = funcs
+
+            # 拼接kwargs
+            args = {**args, **self.kwargs}
+
+            resp = self._req(**args)
 
             choice0 = resp["choices"][0]
 
