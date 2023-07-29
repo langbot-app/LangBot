@@ -140,12 +140,15 @@ ContentFunction = "content_function"
 """
 
 
-def on(event: str):
+def on(*args, **kwargs):
     """注册事件监听器
-    :param
-        event: str 事件名称
     """
-    return Plugin.on(event)
+    return Plugin.on(*args, **kwargs)
+
+def func(*args, **kwargs):
+    """注册内容函数
+    """
+    return Plugin.func(*args, **kwargs)
 
 
 __current_registering_plugin__ = ""
@@ -204,6 +207,32 @@ class Plugin:
                 return func
 
             return wrapper
+
+    @classmethod
+    def func(cls, name: str=None):
+        """内容函数装饰器
+        """
+        global __current_registering_plugin__
+        from CallingGPT.entities.namespace import get_func_schema
+
+        def wrapper(func):
+
+            function_schema = get_func_schema(func)
+            function_schema['name'] = __current_registering_plugin__ + '-' + (func.__name__ if name is None else name)
+
+            host.__function_inst_map__[function_schema['name']] = function_schema['function']
+
+            del function_schema['function']
+
+            # logging.debug("registering content function: p='{}', f='{}', s={}".format(__current_registering_plugin__, func, function_schema))
+
+            host.__callable_functions__.append(
+                function_schema
+            )
+
+            return func
+
+        return wrapper
 
 
 def register(name: str, description: str, version: str, author: str):
