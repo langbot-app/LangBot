@@ -26,4 +26,3 @@ class FuncCommand(AbstractCommandNode):
         reply = [reply_str]
 
         return True, reply
-        
