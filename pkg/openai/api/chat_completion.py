@@ -1,5 +1,6 @@
 import openai
 import json
+import logging
 
 from .model import RequestBase
 
@@ -86,7 +87,7 @@ class ChatCompletionRequest(RequestBase):
 
                 self.append_message(
                     role="assistant",
-                    content="function call: "+json.dumps(self.pending_func_call)
+                    content="function call: "+json.dumps(self.pending_func_call, ensure_ascii=False)
                 )
 
                 return {
@@ -147,12 +148,16 @@ class ChatCompletionRequest(RequestBase):
                         func_schema['parameters']['required'][0]: cp_pending_func_call['arguments']
                     }
                 
+                logging.info("执行函数调用: name={}, arguments={}".format(func_name, arguments))
+
                 # 执行函数调用
                 ret = execute_function(func_name, arguments)
 
+                logging.info("函数执行完成。")
+
                 self.append_message(
                     role="function",
-                    content=json.dumps(ret),
+                    content=json.dumps(ret, ensure_ascii=False),
                     name=func_name
                 )
 
@@ -165,7 +170,7 @@ class ChatCompletionRequest(RequestBase):
                                 "role": "function",
                                 "type": "function_return",
                                 "function_name": func_name,
-                                "content": json.dumps(ret)
+                                "content": json.dumps(ret, ensure_ascii=False)
                             },
                             "finish_reason": "function_return"
                         }

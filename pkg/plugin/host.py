@@ -44,6 +44,9 @@ __plugins__ = {}
 __plugins_order__ = []
 """插件顺序"""
 
+__enable_content_functions__ = True
+"""是否启用内容函数"""
+
 __callable_functions__ = []
 """供GPT调用的函数结构"""
 

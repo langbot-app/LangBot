@@ -2,7 +2,7 @@
 import logging
 
 
-from pkg.plugin.host import __callable_functions__, __function_inst_map__
+from pkg.plugin import host
 
 
 class ContentFunctionNotFoundError(Exception):
@@ -11,19 +11,21 @@ class ContentFunctionNotFoundError(Exception):
 
 def get_func_schema_list() -> list:
     """从plugin包中的函数结构中获取并处理成受GPT支持的格式"""
+    if not host.__enable_content_functions__:
+        return []
 
-    schemas = __callable_functions__
+    schemas = host.__callable_functions__
 
     return schemas
 
 def get_func(name: str) -> callable:
-    if name not in __function_inst_map__:
+    if name not in host.__function_inst_map__:
         raise ContentFunctionNotFoundError("没有找到内容函数: {}".format(name))
 
-    return __function_inst_map__[name]
+    return host.__function_inst_map__[name]
 
 def get_func_schema(name: str) -> dict:
-    for func in __callable_functions__:
+    for func in host.__callable_functions__:
         if func['name'] == name:
             return func
     raise ContentFunctionNotFoundError("没有找到内容函数: {}".format(name))

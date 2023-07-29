@@ -16,12 +16,16 @@ class RequestBase:
         """处理代理问题"""
 
         ret: dict = {}
+        exception: Exception = None
 
         async def awrapper(**kwargs):
-            nonlocal ret
+            nonlocal ret, exception
 
-            ret = await self.req_func(**kwargs)
-            return ret
+            try:
+                ret = await self.req_func(**kwargs)
+                return ret
+            except Exception as e:
+                exception = e
             
         loop = asyncio.new_event_loop()
 
@@ -32,6 +36,9 @@ class RequestBase:
 
         thr.start()
         thr.join()
+
+        if exception is not None:
+            raise exception
 
         return ret
 
