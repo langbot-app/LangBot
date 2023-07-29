@@ -10,7 +10,7 @@ def wrapper_dict_from_runtime_context() -> dict:
     settings = {
         "order": [],
         "functions": {
-            "enable": host.__enable_content_functions__
+            "enabled": host.__enable_content_functions__
         }
     }
 
@@ -26,9 +26,9 @@ def apply_settings(settings: dict):
         host.__plugins_order__ = settings["order"]
 
     if "functions" in settings:
-        if "enable" in settings["functions"]:
-            host.__enable_content_functions__ = settings["functions"]["enable"]
-            # logging.debug("set content function enable: {}".format(host.__enable_content_functions__))
+        if "enabled" in settings["functions"]:
+            host.__enable_content_functions__ = settings["functions"]["enabled"]
+            # logging.debug("set content function enabled: {}".format(host.__enable_content_functions__))
 
 
 def dump_settings():
@@ -88,14 +88,14 @@ def load_settings():
 
     if "functions" not in settings:
         settings["functions"] = {
-            "enable": host.__enable_content_functions__
+            "enabled": host.__enable_content_functions__
         }
         settings_modified = True
-    elif "enable" not in settings["functions"]:
-        settings["functions"]["enable"] = host.__enable_content_functions__
+    elif "enabled" not in settings["functions"]:
+        settings["functions"]["enabled"] = host.__enable_content_functions__
         settings_modified = True
 
-    logging.info("已全局{}内容函数。".format("启用" if settings["functions"]["enable"] else "禁用"))
+    logging.info("已全局{}内容函数。".format("启用" if settings["functions"]["enabled"] else "禁用"))
 
     apply_settings(settings)
 
