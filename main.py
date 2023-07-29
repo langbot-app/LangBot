@@ -178,9 +178,14 @@ def start(first_time_init=False):
                 logging.error(e)
                 traceback.print_exc()
 
+            # 配置OpenAI proxy
+            import openai
+            openai.proxy = None  # 先重置，因为重载后可能需要清除proxy
+            if "http_proxy" in config.openai_config and config.openai_config["http_proxy"] is not None:
+                openai.proxy = config.openai_config["http_proxy"]
+
             # 配置openai api_base
             if "reverse_proxy" in config.openai_config and config.openai_config["reverse_proxy"] is not None:
-                import openai
                 openai.api_base = config.openai_config["reverse_proxy"]
 
             # 主启动流程
