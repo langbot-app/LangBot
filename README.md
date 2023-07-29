@@ -10,7 +10,7 @@
 ![Wakapi Count](https://wakapi.dev/api/badge/RockChinQ/interval:any/project:QChatGPT)
 
 
-> 2023/7/29 支持使用GPT的Function Calling功能实现类似ChatGPT Plugin的效果，请见[Wiki中的内容函数节](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91#%E5%86%85%E5%AE%B9%E5%87%BD%E6%95%B0)  
+> 2023/7/29 支持使用GPT的Function Calling功能实现类似ChatGPT Plugin的效果，请见[Wiki内容函数](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8-%E5%86%85%E5%AE%B9%E5%87%BD%E6%95%B0)  
 > 2023/4/24 支持使用go-cqhttp登录QQ，请查看[此文档](https://github.com/RockChinQ/QChatGPT/wiki/go-cqhttp%E9%85%8D%E7%BD%AE)  
 > 2023/3/18 现已支持GPT-4 API（内测），请查看`config-template.py`中的`completion_api_params`  
 > 2023/3/15 逆向库已支持New Bing，使用方法查看[插件文档](https://github.com/RockChinQ/revLibs)  
@@ -282,7 +282,7 @@ python3 main.py
 详见[Wiki插件使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8)  
 开发教程见[Wiki插件开发页](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91)
 
-⭐我们已经支持了[GPT的Function Calling能力](https://platform.openai.com/docs/guides/gpt/function-calling)，请查看wiki的插件开发页以查看如何在QChatGPT中使用此功能
+⭐我们已经支持了[GPT的Function Calling能力](https://platform.openai.com/docs/guides/gpt/function-calling)，请查看[Wiki内容函数](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8-%E5%86%85%E5%AE%B9%E5%87%BD%E6%95%B0)  
 
 <details>
 <summary>查看插件列表</summary>
