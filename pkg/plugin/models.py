@@ -133,12 +133,18 @@ KeySwitched = "key_switched"
 """
 
 
-def on(event: str):
+def on(*args, **kwargs):
     """注册事件监听器
-    :param
-        event: str 事件名称
     """
-    return Plugin.on(event)
+    return Plugin.on(*args, **kwargs)
+
+def func(*args, **kwargs):
+    """注册内容函数，声明此函数为一个内容函数，在对话中将发送此函数给GPT以供其调用
+    此函数可以具有任意的参数，但必须按照[此文档](https://github.com/RockChinQ/CallingGPT/wiki/1.-Function-Format#function-format)
+    所述的格式编写函数的docstring。
+    此功能仅支持在使用gpt-3.5或gpt-4系列模型时使用。
+    """
+    return Plugin.func(*args, **kwargs)
 
 
 __current_registering_plugin__ = ""
@@ -171,6 +177,34 @@ class Plugin:
             # print("registering hook: p='{}', e='{}', f={}".format(__current_registering_plugin__, event, func))
 
             host.__plugins__[__current_registering_plugin__]["hooks"] = plugin_hooks
+
+            return func
+
+        return wrapper
+
+    @classmethod
+    def func(cls, name: str=None):
+        """内容函数装饰器
+        """
+        global __current_registering_plugin__
+        from CallingGPT.entities.namespace import get_func_schema
+
+        def wrapper(func):
+
+            function_schema = get_func_schema(func)
+            function_schema['name'] = __current_registering_plugin__ + '-' + (func.__name__ if name is None else name)
+
+            function_schema['enabled'] = True
+
+            host.__function_inst_map__[function_schema['name']] = function_schema['function']
+
+            del function_schema['function']
+
+            # logging.debug("registering content function: p='{}', f='{}', s={}".format(__current_registering_plugin__, func, function_schema))
+
+            host.__callable_functions__.append(
+                function_schema
+            )
 
             return func
 

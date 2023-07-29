@@ -28,6 +28,11 @@ def apply_switch(switch: dict):
     for plugin_name in switch:
         host.__plugins__[plugin_name]["enabled"] = switch[plugin_name]["enabled"]
 
+        # 查找此插件的所有内容函数
+        for func in host.__callable_functions__:
+            if func['name'].startswith(plugin_name + '-'):
+                func['enabled'] = switch[plugin_name]["enabled"]
+
 
 def dump_switch():
     """保存开关数据"""

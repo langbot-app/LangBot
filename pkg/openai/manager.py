@@ -5,7 +5,9 @@ import openai
 import pkg.openai.keymgr
 import pkg.utils.context
 import pkg.audit.gatherer
-from pkg.openai.modelmgr import ModelRequest, create_openai_model_request
+from pkg.openai.modelmgr import select_request_cls
+
+from pkg.openai.api.model import RequestBase
 
 
 class OpenAIInteract:
@@ -33,45 +35,24 @@ class OpenAIInteract:
 
         pkg.utils.context.set_openai_manager(self)
 
-    # 请求OpenAI Completion
-    def request_completion(self, prompts) -> tuple[str, int]:
-        """请求补全接口回复
-
-        Parameters:
-            prompts (str): 提示语
-
-        Returns:
-            str: 回复
+    def request_completion(self, messages: list):
+        """请求补全接口回复=
         """
-
+        # 选择接口请求类
         config = pkg.utils.context.get_config()
 
-        # 根据模型选择使用的接口
-        ai: ModelRequest = create_openai_model_request(
-            config.completion_api_params['model'],
-            'user',
-            config.openai_config["http_proxy"] if "http_proxy" in config.openai_config else None
-        )
-        ai.request(
-            prompts,
-            **config.completion_api_params
-        )
-        response = ai.get_response()
+        request: RequestBase
 
-        logging.debug("OpenAI response: %s", response)
+        model: str = config.completion_api_params['model']
 
-        # 记录使用量
-        current_round_token = 0
-        if 'model' in config.completion_api_params:
-            self.audit_mgr.report_text_model_usage(config.completion_api_params['model'],
-                                                   ai.get_total_tokens())
-            current_round_token = ai.get_total_tokens()
-        elif 'engine' in config.completion_api_params:
-            self.audit_mgr.report_text_model_usage(config.completion_api_params['engine'],
-                                                   response['usage']['total_tokens'])
-            current_round_token = response['usage']['total_tokens']
+        cp_parmas = config.completion_api_params.copy()
+        del cp_parmas['model']
 
-        return ai.get_message(), current_round_token
+        request = select_request_cls(model, messages, cp_parmas)
+
+        # 请求接口
+        for resp in request:
+            yield resp
 
     def request_image(self, prompt) -> dict:
         """请求图片接口回复
