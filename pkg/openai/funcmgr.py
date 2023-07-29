@@ -14,7 +14,15 @@ def get_func_schema_list() -> list:
     if not host.__enable_content_functions__:
         return []
 
-    schemas = host.__callable_functions__
+    schemas = []
+
+    for func in host.__callable_functions__:
+        if func['enabled']:
+            fun_cp = func.copy()
+
+            del fun_cp['enabled']
+
+            schemas.append(fun_cp)
 
     return schemas
 

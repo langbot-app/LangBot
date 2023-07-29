@@ -132,13 +132,6 @@ KeySwitched = "key_switched"
         key_list: list[str] api-key列表
 """
 
-ContentFunction = "content_function"
-"""声明此函数为一个内容函数，在对话中将发送此函数给GPT以供其调用
-    此函数可以具有任意的参数，但必须按照[此文档](https://github.com/RockChinQ/CallingGPT/wiki/1.-Function-Format#function-format)
-    所述的格式编写函数的docstring。
-    此功能仅支持在使用gpt-3.5或gpt-4系列模型时使用。
-"""
-
 
 def on(*args, **kwargs):
     """注册事件监听器
@@ -146,7 +139,10 @@ def on(*args, **kwargs):
     return Plugin.on(*args, **kwargs)
 
 def func(*args, **kwargs):
-    """注册内容函数
+    """注册内容函数，声明此函数为一个内容函数，在对话中将发送此函数给GPT以供其调用
+    此函数可以具有任意的参数，但必须按照[此文档](https://github.com/RockChinQ/CallingGPT/wiki/1.-Function-Format#function-format)
+    所述的格式编写函数的docstring。
+    此功能仅支持在使用gpt-3.5或gpt-4系列模型时使用。
     """
     return Plugin.func(*args, **kwargs)
 
@@ -171,42 +167,20 @@ class Plugin:
         """
         global __current_registering_plugin__
 
-        if event != ContentFunction:
-            def wrapper(func):
-                plugin_hooks = host.__plugins__[__current_registering_plugin__]["hooks"]
+        def wrapper(func):
+            plugin_hooks = host.__plugins__[__current_registering_plugin__]["hooks"]
 
-                if event not in plugin_hooks:
-                    plugin_hooks[event] = []
-                plugin_hooks[event].append(func)
+            if event not in plugin_hooks:
+                plugin_hooks[event] = []
+            plugin_hooks[event].append(func)
 
-                # print("registering hook: p='{}', e='{}', f={}".format(__current_registering_plugin__, event, func))
+            # print("registering hook: p='{}', e='{}', f={}".format(__current_registering_plugin__, event, func))
 
-                host.__plugins__[__current_registering_plugin__]["hooks"] = plugin_hooks
+            host.__plugins__[__current_registering_plugin__]["hooks"] = plugin_hooks
 
-                return func
+            return func
 
-            return wrapper
-        else:
-            from CallingGPT.entities.namespace import get_func_schema
-            
-            def wrapper(func):
-
-                function_schema = get_func_schema(func)
-                function_schema['name'] = __current_registering_plugin__ + '-' + func.__name__
-
-                host.__function_inst_map__[function_schema['name']] = function_schema['function']
-
-                del function_schema['function']
-
-                # logging.debug("registering content function: p='{}', f='{}', s={}".format(__current_registering_plugin__, func, function_schema))
-
-                host.__callable_functions__.append(
-                    function_schema
-                )
-
-                return func
-
-            return wrapper
+        return wrapper
 
     @classmethod
     def func(cls, name: str=None):
@@ -219,6 +193,8 @@ class Plugin:
 
             function_schema = get_func_schema(func)
             function_schema['name'] = __current_registering_plugin__ + '-' + (func.__name__ if name is None else name)
+
+            function_schema['enabled'] = True
 
             host.__function_inst_map__[function_schema['name']] = function_schema['function']
 
