@@ -188,6 +188,11 @@ class PluginOnOffCommand(AbstractCommandNode):
             plugin_name = ctx.crt_params[0]
             if plugin_name in plugin_list:
                 plugin_list[plugin_name]['enabled'] = new_status
+
+                for func in plugin_host.__callable_functions__:
+                    if func['name'].startswith(plugin_name+"-"):
+                        func['enabled'] = new_status
+
                 plugin_switch.dump_switch()
                 reply = ["[bot]已{}插件: {}".format("启用" if new_status else "禁用", plugin_name)]
             else:
