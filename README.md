@@ -287,17 +287,9 @@ python3 main.py
 <details>
 <summary>查看插件列表</summary>
 
-### 示例插件
+[所有插件列表](https://github.com/stars/RockChinQ/lists/qchatgpt-%E6%8F%92%E4%BB%B6)，欢迎提出issue以提交新的插件
 
-在`tests/plugin_examples`目录下，将其整个目录复制到`plugins`目录下即可使用
-
-- `cmdcn` - 主程序指令中文形式
-- `hello_plugin` - 在收到消息`hello`时回复相应消息
-- `urlikethisijustsix` - 收到冒犯性消息时回复相应消息
-
-### 更多
-
-[插件列表](https://github.com/stars/RockChinQ/lists/qchatgpt-%E6%8F%92%E4%BB%B6)，欢迎提出issue以提交新的插件
+### 部分插件
 
 - [WebwlkrPlugin](https://github.com/RockChinQ/WebwlkrPlugin) - 让机器人能联网！！
 - [revLibs](https://github.com/RockChinQ/revLibs) - 将ChatGPT网页版接入此项目，关于[官方接口和网页版有什么区别](https://github.com/RockChinQ/QChatGPT/wiki/%E5%AE%98%E6%96%B9%E6%8E%A5%E5%8F%A3%E3%80%81ChatGPT%E7%BD%91%E9%A1%B5%E7%89%88%E3%80%81ChatGPT-API%E5%8C%BA%E5%88%AB)
