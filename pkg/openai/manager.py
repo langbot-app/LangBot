@@ -52,6 +52,13 @@ class OpenAIInteract:
 
         # 请求接口
         for resp in request:
+
+            if resp['usage']['total_tokens'] > 0:
+                self.audit_mgr.report_text_model_usage(
+                    model,
+                    resp['usage']['total_tokens']
+                )
+
             yield resp
 
     def request_image(self, prompt) -> dict:
