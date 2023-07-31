@@ -90,13 +90,12 @@ def load_config():
     
     if not is_integrity:
         logging.warning("以下配置字段不存在: {}".format(", ".join(non_exist_keys)))
-        logging.warning("配置文件不完整，您可以依据config-template.py检查config.py")
 
     # 检查override.json覆盖
     override_config()
 
     if not is_integrity:
-        logging.warning("以上不存在的配置已被设为默认值，将在3秒后继续启动... ")
+        logging.warning("以上不存在的配置已被设为默认值，您可以依据config-template.py检查config.py，将在3秒后继续启动... ")
         time.sleep(3)
 
     # 存进上下文
@@ -226,7 +225,7 @@ def start(first_time_init=False):
                 def run_bot_wrapper():
                     global known_exception_caught
                     try:
-                        logging.info("使用账号: {}".format(qqbot.bot_account_id))
+                        logging.debug("使用账号: {}".format(qqbot.bot_account_id))
                         qqbot.adapter.run_sync()
                     except TypeError as e:
                         if str(e).__contains__("argument 'debug'"):

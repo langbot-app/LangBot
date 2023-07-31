@@ -66,7 +66,7 @@ def load_sessions():
     session_data = db_inst.load_valid_sessions()
 
     for session_name in session_data:
-        logging.info('加载session: {}'.format(session_name))
+        logging.debug('加载session: {}'.format(session_name))
 
         temp_session = Session(session_name)
         temp_session.name = session_name

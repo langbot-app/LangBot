@@ -118,7 +118,7 @@ class QQBotManager:
         # 故只在第一次初始化时创建bot对象，重载之后使用原bot对象
         # 因此，bot的配置不支持热重载
         if first_time_init:
-            logging.info("Use adapter:" + config.msg_source_adapter)
+            logging.debug("Use adapter:" + config.msg_source_adapter)
             if config.msg_source_adapter == 'yirimirai':
                 from pkg.qqbot.sources.yirimirai import YiriMiraiAdapter
 

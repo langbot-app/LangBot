@@ -29,7 +29,7 @@ class OpenAIInteract:
         self.key_mgr = pkg.openai.keymgr.KeysManager(api_key)
         self.audit_mgr = pkg.audit.gatherer.DataGatherer()
 
-        logging.info("文字总使用量：%d", self.audit_mgr.get_total_text_length())
+        # logging.info("文字总使用量：%d", self.audit_mgr.get_total_text_length())
 
         openai.api_key = self.key_mgr.get_using_key()
 

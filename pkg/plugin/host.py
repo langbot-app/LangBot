@@ -99,7 +99,7 @@ def walk_plugin_path(module, prefix='', path_prefix=''):
 
 def load_plugins():
     """加载插件"""
-    logging.info("加载插件")
+    logging.debug("加载插件")
     PluginHost()
     walk_plugin_path(__import__('plugins'))
 
