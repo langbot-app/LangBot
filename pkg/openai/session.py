@@ -16,6 +16,8 @@ import pkg.utils.context
 import pkg.plugin.host as plugin_host
 import pkg.plugin.models as plugin_models
 
+from pkg.openai.modelmgr import count_tokens
+
 # 运行时保存的所有session
 sessions = {}
 
@@ -106,9 +108,6 @@ class Session:
 
     prompt = []
     """使用list来保存会话中的回合"""
-
-    token_counts = []
-    """每个回合的token数量"""
 
     default_prompt = []
     """本session的默认prompt"""
@@ -215,12 +214,7 @@ class Session:
         config = pkg.utils.context.get_config()
         max_length = config.prompt_submit_length
 
-        prompts, counts = self.cut_out(text, max_length)
-
-        # 计算请求前的prompt数量
-        total_token_before_query = 0
-        for token_count in counts:
-            total_token_before_query += token_count
+        prompts, _ = self.cut_out(text, max_length)
 
         res_text = ""
 
@@ -281,8 +275,8 @@ class Session:
         self.prompt += pending_msgs
 
         # 向token_counts中添加本回合的token数量
-        self.token_counts.append(total_tokens-total_token_before_query)
-        logging.debug("本回合使用token: {}, session counts: {}".format(total_tokens-total_token_before_query, self.token_counts))
+        # self.token_counts.append(total_tokens-total_token_before_query)
+        # logging.debug("本回合使用token: {}, session counts: {}".format(total_tokens-total_token_before_query, self.token_counts))
 
         if self.just_switched_to_exist_session:
             self.just_switched_to_exist_session = False
@@ -319,24 +313,19 @@ class Session:
 
         # 包装目前的对话回合内容
         changable_prompts = []
-        changable_counts = []
-        # 倒着来, 遍历prompt的步长为2, 遍历tokens_counts的步长为1
-        changable_index = len(self.prompt) - 1
-        token_count_index = len(self.token_counts) - 1
 
-        packed_tokens = 0
+        use_model = pkg.utils.context.get_config().completion_api_params['model']
 
-        while changable_index >= 0 and token_count_index >= 0:
-            if packed_tokens + self.token_counts[token_count_index] > max_tokens:
+        ptr = len(self.prompt) - 1
+
+        # 直接从后向前扫描拼接，不管是否是整回合
+        while ptr >= 0:
+            if count_tokens(self.prompt[ptr:ptr+1]+changable_prompts, use_model) > max_tokens:
                 break
 
-            changable_prompts.insert(0, self.prompt[changable_index])
-            changable_prompts.insert(0, self.prompt[changable_index - 1])
-            changable_counts.insert(0, self.token_counts[token_count_index])
-            packed_tokens += self.token_counts[token_count_index]
+            changable_prompts.insert(0, self.prompt[ptr])
 
-            changable_index -= 2
-            token_count_index -= 1
+            ptr -= 1
 
         # 将default_prompt和changable_prompts合并
         result_prompt = self.default_prompt + changable_prompts
@@ -349,12 +338,9 @@ class Session:
             }
         )
 
-        logging.debug('cut_out: {}\nchangable section tokens: {}\npacked counts: {}\nsession counts: {}'.format(json.dumps(result_prompt, ensure_ascii=False, indent=4),
-                                                                             packed_tokens,
-                                                                             changable_counts,
-                                                                             self.token_counts))
+        logging.debug("cut_out: {}".format(json.dumps(result_prompt, ensure_ascii=False, indent=4)))
 
-        return result_prompt, changable_counts
+        return result_prompt, count_tokens(changable_prompts, use_model)
 
     # 持久化session
     def persistence(self):

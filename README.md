@@ -242,7 +242,7 @@ cd QChatGPT
 2. 安装依赖
 
 ```bash
-pip3 install requests yiri-mirai openai colorlog func_timeout dulwich Pillow nakuru-project-idk
+pip3 install requests yiri-mirai openai colorlog func_timeout dulwich Pillow nakuru-project-idk CallingGPT tiktoken
 ```
 
 3. 运行一次主程序，生成配置文件
