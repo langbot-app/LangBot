@@ -12,7 +12,7 @@ import pkg.utils.updater as updater
     description="插件管理",
     usage="!plugin\n!plugin get <插件仓库地址>\n!plugin update\n!plugin del <插件名>\n!plugin on <插件名>\n!plugin off <插件名>",
     aliases=[],
-    privilege=2
+    privilege=1
 )
 class PluginCommand(AbstractCommandNode):
     @classmethod
