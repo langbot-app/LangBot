@@ -1,6 +1,7 @@
 from ..adapter import MessageSourceAdapter
 import mirai
 import mirai.models.bus
+from mirai.bot import MiraiRunner
 
 import asyncio
 import typing
@@ -110,7 +111,12 @@ class YiriMiraiAdapter(MessageSourceAdapter):
         bus.unsubscribe(event_type, callback)
 
     def run_sync(self):
-        self.bot.run()
+        """运行YiriMirai"""
+
+        # 创建新的
+        loop = asyncio.new_event_loop()
+
+        loop.run_until_complete(MiraiRunner(self.bot)._run())
 
     def kill(self) -> bool:
         return False

@@ -122,15 +122,21 @@ def initialize_plugins():
     """初始化插件"""
     logging.info("初始化插件")
     import pkg.plugin.models as models
+
+    successfully_initialized_plugins = []
+
     for plugin in iter_plugins():
         # if not plugin['enabled']:
         #     continue
         try:
             models.__current_registering_plugin__ = plugin['name']
             plugin['instance'] = plugin["class"](plugin_host=context.get_plugin_host())
-            logging.info("插件 {} 已初始化".format(plugin['name']))
+            # logging.info("插件 {} 已初始化".format(plugin['name']))
+            successfully_initialized_plugins.append(plugin['name'])
         except:
             logging.error("插件{}初始化时发生错误: {}".format(plugin['name'], sys.exc_info()))
+    
+    logging.info("以下插件已初始化: {}".format(", ".join(successfully_initialized_plugins)))
 
 
 def unload_plugins():
