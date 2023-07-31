@@ -93,10 +93,10 @@ class ChatCompletionRequest(RequestBase):
             if 'function_call' in choice0['message']:
                 self.pending_func_call = choice0['message']['function_call']
 
-                self.append_message(
-                    role="assistant",
-                    content="function call: "+json.dumps(self.pending_func_call, ensure_ascii=False)
-                )
+                # self.append_message(
+                #     role="assistant",
+                #     content="function call: "+json.dumps(self.pending_func_call, ensure_ascii=False)
+                # )
 
                 return {
                     "id": resp["id"],

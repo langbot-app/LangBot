@@ -2,10 +2,11 @@ requests~=2.31.0
 openai~=0.27.8
 dulwich~=0.21.5
 colorlog~=6.6.0
-yiri-mirai~=0.2.7
+yiri-mirai
 websockets
 urllib3~=1.26.10
 func_timeout~=4.3.5
 Pillow
 nakuru-project-idk
 CallingGPT
+tiktoken

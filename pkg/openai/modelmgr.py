@@ -7,6 +7,7 @@ Completion - text-davinci-003 等模型
 """
 import openai, logging, threading, asyncio
 import openai.error as aiE
+import tiktoken
 
 from pkg.openai.api.model import RequestBase
 from pkg.openai.api.completion import CompletionRequest
@@ -49,3 +50,70 @@ def select_request_cls(model_name: str, messages: list, args: dict) -> RequestBa
     elif model_name in COMPLETION_MODELS:
         return CompletionRequest(model_name, messages, **args)
     raise ValueError("不支持模型[{}]，请检查配置文件".format(model_name))
+
+
+def count_chat_completion_tokens(messages: list, model: str) -> int:
+    """Return the number of tokens used by a list of messages."""
+    try:
+        encoding = tiktoken.encoding_for_model(model)
+    except KeyError:
+        print("Warning: model not found. Using cl100k_base encoding.")
+        encoding = tiktoken.get_encoding("cl100k_base")
+    if model in {
+        "gpt-3.5-turbo-0613",
+        "gpt-3.5-turbo-16k-0613",
+        "gpt-4-0314",
+        "gpt-4-32k-0314",
+        "gpt-4-0613",
+        "gpt-4-32k-0613",
+        }:
+        tokens_per_message = 3
+        tokens_per_name = 1
+    elif model == "gpt-3.5-turbo-0301":
+        tokens_per_message = 4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
+        tokens_per_name = -1  # if there's a name, the role is omitted
+    elif "gpt-3.5-turbo" in model:
+        # print("Warning: gpt-3.5-turbo may update over time. Returning num tokens assuming gpt-3.5-turbo-0613.")
+        return count_chat_completion_tokens(messages, model="gpt-3.5-turbo-0613")
+    elif "gpt-4" in model:
+        # print("Warning: gpt-4 may update over time. Returning num tokens assuming gpt-4-0613.")
+        return count_chat_completion_tokens(messages, model="gpt-4-0613")
+    else:
+        raise NotImplementedError(
+            f"""count_chat_completion_tokens() is not implemented for model {model}. See https://github.com/openai/openai-python/blob/main/chatml.md for information on how messages are converted to tokens."""
+        )
+    num_tokens = 0
+    for message in messages:
+        num_tokens += tokens_per_message
+        for key, value in message.items():
+            num_tokens += len(encoding.encode(value))
+            if key == "name":
+                num_tokens += tokens_per_name
+    num_tokens += 3  # every reply is primed with <|start|>assistant<|message|>
+    return num_tokens
+
+
+def count_completion_tokens(messages: list, model: str) -> int:
+
+    try:
+        encoding = tiktoken.encoding_for_model(model)
+    except KeyError:
+        print("Warning: model not found. Using cl100k_base encoding.")
+        encoding = tiktoken.get_encoding("cl100k_base")
+
+    text = ""
+
+    for message in messages:
+        text += message['role'] + message['content'] + "\n"
+
+    text += "assistant: "
+
+    return len(encoding.encode(text))
+
+
+def count_tokens(messages: list, model: str):
+    if model in CHAT_COMPLETION_MODELS:
+        return count_chat_completion_tokens(messages, model)
+    elif model in COMPLETION_MODELS:
+        return count_completion_tokens(messages, model)
+    raise ValueError("不支持模型[{}]，请检查配置文件".format(model))
