@@ -60,28 +60,36 @@ def override_config():
     # 检查override.json覆盖
     if os.path.exists("override.json") and use_override:
         override_json = json.load(open("override.json", "r", encoding="utf-8"))
+        overrided = []
         for key in override_json:
             if hasattr(config, key):
                 setattr(config, key, override_json[key])
-                logging.info("覆写配置[{}]为[{}]".format(key, override_json[key]))
+                # logging.info("覆写配置[{}]为[{}]".format(key, override_json[key]))
+                overrided.append(key)
             else:
                 logging.error("无法覆写配置[{}]为[{}]，该配置不存在，请检查override.json是否正确".format(key, override_json[key]))
+        if len(overrided) > 0:
+            logging.info("已根据override.json覆写配置项: {}".format(", ".join(overrided)))
 
 
 # 临时函数，用于加载config和上下文，未来统一放在config类
 def load_config():
     logging.info("检查config模块完整性.")
     # 完整性校验
+    non_exist_keys = []
+
     is_integrity = True
     config_template = importlib.import_module('config-template')
     config = importlib.import_module('config')
     for key in dir(config_template):
         if not key.startswith("__") and not hasattr(config, key):
             setattr(config, key, getattr(config_template, key))
-            logging.warning("[{}]不存在".format(key))
+            # logging.warning("[{}]不存在".format(key))
+            non_exist_keys.append(key)
             is_integrity = False
     
     if not is_integrity:
+        logging.warning("以下配置字段不存在: {}".format(", ".join(non_exist_keys)))
         logging.warning("配置文件不完整，您可以依据config-template.py检查config.py")
 
     # 检查override.json覆盖
@@ -97,6 +105,8 @@ def load_config():
 
 def complete_tips():
     """根据tips-custom-template模块补全tips模块的属性"""
+    non_exist_keys = []
+
     is_integrity = True
     logging.info("检查tips模块完整性.")
     tips_template = importlib.import_module('tips-custom-template')
@@ -104,10 +114,12 @@ def complete_tips():
     for key in dir(tips_template):
         if not key.startswith("__") and not hasattr(tips, key):
             setattr(tips, key, getattr(tips_template, key))
-            logging.warning("[{}]不存在".format(key))
+            # logging.warning("[{}]不存在".format(key))
+            non_exist_keys.append(key)
             is_integrity = False
 
     if not is_integrity:
+        logging.warning("以下提示语字段不存在: {}".format(", ".join(non_exist_keys)))
         logging.warning("tips模块不完整，您可以依据tips-custom-template.py检查tips.py")
         logging.warning("以上配置已被设为默认值，将在3秒后继续启动... ")
         time.sleep(3)
@@ -318,7 +330,8 @@ def start(first_time_init=False):
         if pkg.utils.updater.is_new_version_available():
             logging.info("新版本可用，请发送 !update 进行自动更新\n更新日志:\n{}".format("\n".join(pkg.utils.updater.get_rls_notes())))
         else:
-            logging.info("当前已是最新版本")
+            # logging.info("当前已是最新版本")
+            pass
 
     except Exception as e:
         logging.warning("检查更新失败:{}".format(e))
