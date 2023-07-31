@@ -214,7 +214,29 @@ class Session:
         config = pkg.utils.context.get_config()
         max_length = config.prompt_submit_length
 
-        prompts, _ = self.cut_out(text, max_length)
+        local_default_prompt = self.default_prompt.copy()
+        local_prompt = self.prompt.copy()
+
+        # 触发PromptPreProcessing事件
+        args = {
+            'session_name': self.name,
+            'default_prompt': self.default_prompt,
+            'prompt': self.prompt,
+            'text_message': text,
+        }
+
+        event = pkg.plugin.host.emit(plugin_models.PromptPreProcessing, **args)
+        
+        if event.get_return_value('default_prompt') is not None:
+            local_default_prompt = event.get_return_value('default_prompt')
+        
+        if event.get_return_value('prompt') is not None:
+            local_prompt = event.get_return_value('prompt')
+
+        if event.get_return_value('text_message') is not None:
+            text = event.get_return_value('text_message')
+
+        prompts, _ = self.cut_out(text, max_length, local_default_prompt, local_prompt)
 
         res_text = ""
 
@@ -301,7 +323,7 @@ class Session:
         return question
 
     # 构建对话体
-    def cut_out(self, msg: str, max_tokens: int) -> tuple[list, list]:
+    def cut_out(self, msg: str, max_tokens: int, default_prompt: list, prompt: list) -> tuple[list, list]:
         """将现有prompt进行切割处理，使得新的prompt长度不超过max_tokens
 
         :return: (新的prompt, 新的token_counts)
@@ -317,19 +339,19 @@ class Session:
 
         use_model = pkg.utils.context.get_config().completion_api_params['model']
 
-        ptr = len(self.prompt) - 1
+        ptr = len(prompt) - 1
 
         # 直接从后向前扫描拼接，不管是否是整回合
         while ptr >= 0:
-            if count_tokens(self.prompt[ptr:ptr+1]+changable_prompts, use_model) > max_tokens:
+            if count_tokens(prompt[ptr:ptr+1]+changable_prompts, use_model) > max_tokens:
                 break
 
-            changable_prompts.insert(0, self.prompt[ptr])
+            changable_prompts.insert(0, prompt[ptr])
 
             ptr -= 1
 
         # 将default_prompt和changable_prompts合并
-        result_prompt = self.default_prompt + changable_prompts
+        result_prompt = default_prompt + changable_prompts
 
         # 添加当前问题
         if msg:

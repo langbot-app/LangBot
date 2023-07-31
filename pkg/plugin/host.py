@@ -266,7 +266,7 @@ class EventContext:
             self.__return_value__[key] = []
         self.__return_value__[key].append(ret)
 
-    def get_return(self, key: str):
+    def get_return(self, key: str) -> list:
         """获取key的所有返回值"""
         if key in self.__return_value__:
             return self.__return_value__[key]
