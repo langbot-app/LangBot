@@ -1,6 +1,7 @@
 # 定义不同接口请求的模型
 import threading
 import asyncio
+import logging
 
 import openai
 
@@ -23,6 +24,7 @@ class RequestBase:
 
             try:
                 ret = await self.req_func(**kwargs)
+                logging.debug("接口请求返回：%s", str(ret))
                 return ret
             except Exception as e:
                 exception = e
