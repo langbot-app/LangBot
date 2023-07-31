@@ -164,6 +164,32 @@ def func(*args, **kwargs):
 __current_registering_plugin__ = ""
 
 
+def require_ver(ge: str, le: str="v999.9.9") -> bool:
+    """插件版本要求装饰器
+
+    Args:
+        ge (str): 最低版本要求
+        le (str, optional): 最高版本要求
+
+    Returns:
+        bool: 是否满足要求, False时为无法获取版本号，True时为满足要求，报错为不满足要求
+    """
+    qchatgpt_version = ""
+    
+    from pkg.utils.updater import get_current_tag, compare_version_str
+
+    try:
+        qchatgpt_version = get_current_tag()  # 从updater模块获取版本号
+    except:
+        return False
+
+    if compare_version_str(qchatgpt_version, ge) < 0 or \
+        (compare_version_str(qchatgpt_version, le) > 0):
+        raise Exception("QChatGPT 版本不满足要求，某些功能（可能是由插件提供的）无法正常使用。（要求版本：{}-{}，但当前版本：{}）".format(ge, le, qchatgpt_version))
+
+    return True
+
+
 class Plugin:
     """插件基类"""
 

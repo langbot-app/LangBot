@@ -78,6 +78,34 @@ def get_current_tag() -> str:
     return current_tag
 
 
+def compare_version_str(v0: str, v1: str) -> int:
+    """比较两个版本号"""
+
+    # 删除版本号前的v
+    if v0.startswith("v"):
+        v0 = v0[1:]
+    if v1.startswith("v"):
+        v1 = v1[1:]
+
+    v0:list = v0.split(".")
+    v1:list = v1.split(".")
+
+    # 如果两个版本号节数不同，把短的后面用0补齐
+    if len(v0) < len(v1):
+        v0.extend(["0"]*(len(v1)-len(v0)))
+    elif len(v0) > len(v1):
+        v1.extend(["0"]*(len(v0)-len(v1)))
+
+    # 从高位向低位比较
+    for i in range(len(v0)):
+        if int(v0[i]) > int(v1[i]):
+            return 1
+        elif int(v0[i]) < int(v1[i]):
+            return -1
+    
+    return 0
+
+
 def update_all(cli: bool = False) -> bool:
     """检查更新并下载源码"""
     current_tag = get_current_tag()
