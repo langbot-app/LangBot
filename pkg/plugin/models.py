@@ -132,6 +132,20 @@ KeySwitched = "key_switched"
         key_list: list[str] api-key列表
 """
 
+PromptPreProcessing = "prompt_pre_processing"
+"""每回合调用接口前对prompt进行预处理时触发，此事件不支持阻止默认行为
+    kwargs:
+        session_name: str 会话名称(<launcher_type>_<launcher_id>)
+        default_prompt: list 此session使用的情景预设内容
+        prompt: list 此session现有的prompt内容
+        text_message: str 用户发送的消息文本
+    
+    returns (optional):
+        default_prompt: list 修改后的情景预设内容
+        prompt: list 修改后的prompt内容
+        text_message: str 修改后的消息文本
+"""
+
 
 def on(*args, **kwargs):
     """注册事件监听器
