@@ -26,3 +26,4 @@ bin/
 test_*
 venv/
 hugchat.json
+qcapi
