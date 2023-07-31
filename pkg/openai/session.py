@@ -194,7 +194,7 @@ class Session:
 
     # 请求回复
     # 这个函数是阻塞的
-    def append(self, text: str) -> str:
+    def append(self, text: str=None) -> str:
         """向session中添加一条消息，返回接口回复"""
 
         self.last_interact_timestamp = int(time.time())
@@ -270,7 +270,8 @@ class Session:
         # 将此次对话的双方内容加入到prompt中
         # self.prompt.append({'role': 'user', 'content': text})
         # self.prompt.append({'role': 'assistant', 'content': res_ans})
-        self.prompt.append({'role': 'user', 'content': text})
+        if text:
+            self.prompt.append({'role': 'user', 'content': text})
         # 添加pending_msgs
         self.prompt += pending_msgs
 
@@ -331,12 +332,13 @@ class Session:
         result_prompt = self.default_prompt + changable_prompts
 
         # 添加当前问题
-        result_prompt.append(
-            {
-                'role': 'user',
-                'content': msg
-            }
-        )
+        if msg:
+            result_prompt.append(
+                {
+                    'role': 'user',
+                    'content': msg
+                }
+            )
 
         logging.debug("cut_out: {}".format(json.dumps(result_prompt, ensure_ascii=False, indent=4)))
 

@@ -159,9 +159,14 @@ class ChatCompletionRequest(RequestBase):
                 logging.info("执行函数调用: name={}, arguments={}".format(func_name, arguments))
 
                 # 执行函数调用
-                ret = execute_function(func_name, arguments)
+                ret = ""
+                try:
+                    ret = execute_function(func_name, arguments)
 
-                logging.info("函数执行完成。")
+                    logging.info("函数执行完成。")
+                except Exception as e:
+                    ret = "error: execute function failed: {}".format(str(e))
+                    logging.error("函数执行失败: {}".format(str(e)))
 
                 self.append_message(
                     role="function",
