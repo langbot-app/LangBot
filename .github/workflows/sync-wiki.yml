@@ -30,11 +30,16 @@ jobs:
     - name: Copy res/wiki content to wiki
       run: |
         cp -r res/wiki/* wiki/
+    - name: Check for changes
+      run: |
+        cd wiki
+        if git diff --quiet; then
+          echo "No changes to commit."
+          exit 0
+        fi
     - name: Commit and Push Changes
       run: |
         cd wiki
-        if git diff --name-only; then
-          git add .
-          git commit -m "Update wiki"
-          git push
-        fi
+        git add .
+        git commit -m "Update wiki"
+        git push
