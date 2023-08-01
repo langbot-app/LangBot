@@ -152,7 +152,6 @@ response_rules = {
 }
 
 
-
 # 消息忽略规则
 # 适用于私聊及群聊
 # 符合此规则的消息将不会被响应
@@ -237,6 +236,9 @@ image_api_params = {
 
 # 群内回复消息时是否引用原消息
 quote_origin = True
+
+# 群内回复消息时是否at发送者
+at_sender = False
 
 # 回复绘图时是否包含图片描述
 include_image_description = True

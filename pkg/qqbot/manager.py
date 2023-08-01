@@ -264,8 +264,24 @@ class QQBotManager:
         else:
             self.reply_filter = pkg.qqbot.filter.ReplyFilter([])
 
-    def send(self, event, msg, check_quote=True):
+    def send(self, event, msg, check_quote=True, check_at_sender=True):
         config = pkg.utils.context.get_config()
+        
+        if check_at_sender and config.at_sender:
+            msg.insert(
+                0,
+                Plain(" \n")
+            )
+
+            # 当回复的正文中包含换行时，quote可能会自带at，此时就不再单独添加at，只添加换行
+            if "\n" not in str(msg[1]) or config.msg_source_adapter == 'nakuru':
+                msg.insert(
+                    0,
+                    At(
+                        event.sender.id
+                    )
+                )
+
         self.adapter.reply_message(
             event,
             msg,
@@ -313,7 +329,7 @@ class QQBotManager:
                     reply = [tips_custom.reply_message]
 
         if reply:
-            return self.send(event, reply, check_quote=False)
+            return self.send(event, reply, check_quote=False, check_at_sender=False)
 
     # 群消息处理
     def on_group_message(self, event: GroupMessage):
