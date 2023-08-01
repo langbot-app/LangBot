@@ -27,3 +27,4 @@ test_*
 venv/
 hugchat.json
 qcapi
+/*.yaml

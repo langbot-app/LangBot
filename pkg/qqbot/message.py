@@ -40,7 +40,7 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
         try:
             prefix = "[GPT]" if config.show_prefix else ""
 
-            text = session.append(text_message)
+            text, finish_reason = session.append(text_message)
 
             # 触发插件事件
             args = {
@@ -49,7 +49,8 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
                 "sender_id": sender_id,
                 "session": session,
                 "prefix": prefix,
-                "response_text": text
+                "response_text": text,
+                "finish_reason": finish_reason,
             }
 
             event = pkg.plugin.host.emit(plugin_models.NormalMessageResponded, **args)

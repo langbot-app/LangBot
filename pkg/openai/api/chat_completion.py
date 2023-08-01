@@ -129,7 +129,7 @@ class ChatCompletionRequest(RequestBase):
                                 "type": "text",
                                 "content": choice0['message']['content']
                             },
-                            "finish_reason": "stop"
+                            "finish_reason": choice0["finish_reason"]
                         }
                     ],
                     "usage": resp["usage"]

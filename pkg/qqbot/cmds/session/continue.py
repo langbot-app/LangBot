@@ -20,7 +20,7 @@ class ContinueCommand(AbstractCommandNode):
 
         session = pkg.openai.session.get_session(session_name)
 
-        text = session.append()
+        text, _ = session.append()
 
         reply = [text]
 
