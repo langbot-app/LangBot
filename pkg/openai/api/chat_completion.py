@@ -87,7 +87,7 @@ class ChatCompletionRequest(RequestBase):
             choice0 = resp["choices"][0]
 
             # 如果不是函数调用，且finish_reason为stop，则停止迭代
-            if 'function_call' not in choice0['message'] and choice0["finish_reason"] == "stop":
+            if 'function_call' not in choice0['message']:  #  and choice0["finish_reason"] == "stop"
                 self.stopped = True
             
             if 'function_call' in choice0['message']:
