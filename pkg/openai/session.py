@@ -194,8 +194,15 @@ class Session:
 
     # 请求回复
     # 这个函数是阻塞的
-    def append(self, text: str=None) -> str:
-        """向session中添加一条消息，返回接口回复"""
+    def append(self, text: str=None) -> tuple[str, str]:
+        """向session中添加一条消息，返回接口回复
+        
+        Args:
+            text (str): 用户消息
+
+        Returns:
+            tuple[str, str]: (接口回复, finish_reason)
+        """
 
         self.last_interact_timestamp = int(time.time())
 
@@ -209,7 +216,7 @@ class Session:
 
             event = pkg.plugin.host.emit(plugin_models.SessionFirstMessageReceived, **args)
             if event.is_prevented_default():
-                return None
+                return None, None
 
         config = pkg.utils.context.get_config()
         max_length = config.prompt_submit_length
@@ -244,7 +251,12 @@ class Session:
 
         total_tokens = 0
 
+        finish_reason: str = ""
+
         for resp in pkg.utils.context.get_openai_manager().request_completion(prompts):
+
+            finish_reason = resp['choices'][0]['finish_reason']
+
             if resp['choices'][0]['message']['type'] == 'text':  # 普通回复
                 res_text += resp['choices'][0]['message']['content']
 
@@ -305,7 +317,7 @@ class Session:
             self.just_switched_to_exist_session = False
             self.set_ongoing()
 
-        return res_ans if res_ans[0] != '\n' else res_ans[1:]
+        return res_ans if res_ans[0] != '\n' else res_ans[1:], finish_reason
 
     # 删除上一回合并返回上一回合的问题
     def undo(self) -> str:

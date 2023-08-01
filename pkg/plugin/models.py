@@ -88,6 +88,7 @@ NormalMessageResponded = "normal_message_responded"
         session: pkg.openai.session.Session 会话对象
         prefix: str 回复文字消息的前缀
         response_text: str 响应文本
+        finish_reason: str 响应结束原因
     
     returns (optional):
         prefix: str 修改后的回复文字消息的前缀
