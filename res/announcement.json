@@ -1,14 +1,8 @@
 [
     {
-        "id": 0,
-        "time": "2023-04-24 16:05:20",
-        "timestamp": 1682323520,
-        "content": "现已支持使用go-cqhttp替换mirai作为QQ登录框架, 请更新并查看 https://github.com/RockChinQ/QChatGPT/wiki/go-cqhttp%E9%85%8D%E7%BD%AE"
-    },
-    {
-        "id": 1,
-        "time": "2023-05-21 17:33:18",
-        "timestamp": 1684661598,
-        "content": "NewBing不再需要鉴权，若您正在使用revLibs逆向库插件，请立即使用!plugin update revLibs命令更新插件到最新版。"
+        "id": 2,
+        "time": "2023-08-01 10:49:26",
+        "timestamp": 1690858166,
+        "content": "现已支持GPT函数调用功能，欢迎了解：https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8-%E5%86%85%E5%AE%B9%E5%87%BD%E6%95%B0"
     }
 ]
