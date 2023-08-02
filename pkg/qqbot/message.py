@@ -40,7 +40,7 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
         try:
             prefix = "[GPT]" if config.show_prefix else ""
 
-            text, finish_reason = session.append(text_message)
+            text, finish_reason, funcs = session.append(text_message)
 
             # 触发插件事件
             args = {
@@ -51,6 +51,7 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
                 "prefix": prefix,
                 "response_text": text,
                 "finish_reason": finish_reason,
+                "funcs_called": funcs,
             }
 
             event = pkg.plugin.host.emit(plugin_models.NormalMessageResponded, **args)
@@ -63,6 +64,7 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
 
             if not event.is_prevented_default():
                 reply = [prefix + text]
+
         except openai.error.APIConnectionError as e:
             err_msg = str(e)
             if err_msg.__contains__('Error communicating with OpenAI'):

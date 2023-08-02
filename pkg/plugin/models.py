@@ -89,6 +89,7 @@ NormalMessageResponded = "normal_message_responded"
         prefix: str 回复文字消息的前缀
         response_text: str 响应文本
         finish_reason: str 响应结束原因
+        funcs_called: list[str] 此次响应中调用的函数列表
     
     returns (optional):
         prefix: str 修改后的回复文字消息的前缀
