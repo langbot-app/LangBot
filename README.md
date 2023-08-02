@@ -7,13 +7,18 @@
 
 # QChatGPT
 
-</div>
 
 [English](README_en.md) | 简体中文
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/QChatGPT?style=flat-square)](https://github.com/RockChinQ/QChatGPT/releases/latest)
 ![Wakapi Count](https://wakapi.dev/api/badge/RockChinQ/interval:any/project:QChatGPT)
+<img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="python">
+<a href="https://github.com/RockChinQ/QChatGPT/wiki">
+<img alt="Static Badge" src="https://img.shields.io/badge/%E6%9F%A5%E7%9C%8B-%E9%A1%B9%E7%9B%AEWiki-blue">
+</a>
 
+
+</div>
 
 > 2023/7/29 支持使用GPT的Function Calling功能实现类似ChatGPT Plugin的效果，请见[Wiki内容函数](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8-%E5%86%85%E5%AE%B9%E5%87%BD%E6%95%B0)  
 > 2023/4/24 支持使用go-cqhttp登录QQ，请查看[此文档](https://github.com/RockChinQ/QChatGPT/wiki/go-cqhttp%E9%85%8D%E7%BD%AE)  
@@ -21,19 +26,12 @@
 > 2023/3/15 逆向库已支持New Bing，使用方法查看[插件文档](https://github.com/RockChinQ/revLibs)  
 
 
-**QChatGPT需要Python版本>=3.9**
-- 到[项目Wiki](https://github.com/RockChinQ/QChatGPT/wiki)可了解项目详细信息
-- 官方交流、答疑群: 656285629  
-  - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
-- 社区群（内有一键部署包、图形化界面等资源）: 891448839
-- QQ频道机器人见[QQChannelChatGPT](https://github.com/Soulter/QQChannelChatGPT)
-- 欢迎各种形式的贡献，请查看[贡献指引](CONTRIBUTING.md)
-- 购买ChatGPT账号: [此链接](http://fk.kimi.asia)
+<details>
+<summary>
 
 ## 🍺模型适配一览
 
-<details>
-<summary>点击此处展开</summary>
+</summary>
 
 ### 文字对话
 
@@ -60,14 +58,16 @@
 - Plachta/VITS-Umamusume-voice-synthesizer, 由[插件](https://github.com/oliverkirk-sudo/chat_voice)接入
 
 
+安装[此插件](https://github.com/RockChinQ/Switcher)，即可在使用中切换文字模型。
+
 </details>
 
-安装[此插件](https://github.com/RockChinQ/Switcher)，即可在使用中切换文字模型。
+<details>
+<summary>
 
 ## ✅功能
 
-<details>
-<summary>点击此处展开概述</summary>
+</summary>
 
 <details>
 <summary>✅支持敏感词过滤，避免账号风险</summary>
@@ -162,13 +162,24 @@
 <br/>
 <img alt="New Bing" src="res/screenshots/person_newbing.png" width="400"/>
 
+详情请查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E5%8A%9F%E8%83%BD%E7%82%B9%E5%88%97%E4%B8%BE)
+
 </details>
 
-详情请查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E5%8A%9F%E8%83%BD%E7%82%B9%E5%88%97%E4%B8%BE)
+<details>
+
+<summary>
 
 ## 🔩部署
 
+</summary>
+
 **部署过程中遇到任何问题，请先在[QChatGPT](https://github.com/RockChinQ/QChatGPT/issues)或[qcg-installer](https://github.com/RockChinQ/qcg-installer/issues)的issue里进行搜索**  
+**QChatGPT需要Python版本>=3.9**
+
+- 官方交流、答疑群: 656285629  
+  - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
+- 社区群（内有一键部署包、图形化界面等资源）: 891448839
 
 ### - 注册OpenAI账号
 
@@ -276,21 +287,34 @@ python3 main.py
 
 </details>
 
+</details>
+
+<details>
+
+<summary>
+
 ## 🚀使用
 
+</summary>
+
 **部署完成后必看: [指令说明](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4)**  
+
 所有功能查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E4%BD%BF%E7%94%A8%E6%96%B9%E5%BC%8F)  
+
+</details>
+
+<details>
+<summary>
 
 ## 🧩插件生态
 
-现已支持自行开发插件对功能进行扩展或自定义程序行为  
-详见[Wiki插件使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8)  
-开发教程见[Wiki插件开发页](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91)
+</summary>
 
 ⭐我们已经支持了[GPT的Function Calling能力](https://platform.openai.com/docs/guides/gpt/function-calling)，请查看[Wiki内容函数](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8-%E5%86%85%E5%AE%B9%E5%87%BD%E6%95%B0)  
 
-<details>
-<summary>查看插件列表</summary>
+> 使用方法见：[Wiki插件使用](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8)  
+> 开发教程见：[Wiki插件开发](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91)
+
 
 [所有插件列表](https://github.com/stars/RockChinQ/lists/qchatgpt-%E6%8F%92%E4%BB%B6)，欢迎提出issue以提交新的插件
 
@@ -310,7 +334,13 @@ python3 main.py
 - [SysStatPlugin](https://github.com/RockChinQ/SysStatPlugin) - 查看系统状态
 </details>
 
+<details>
+
+<summary>
+
 ## 😘致谢
+
+</summary>
 
 - [@the-lazy-me](https://github.com/the-lazy-me) 为本项目制作[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)
 - [@mikumifa](https://github.com/mikumifa) 本项目Docker部署仓库开发者
@@ -320,6 +350,16 @@ python3 main.py
 
 以及所有[贡献者](https://github.com/RockChinQ/QChatGPT/graphs/contributors)和其他为本项目提供支持的朋友们。
 
+</details>
+
+<details>
+
+<summary>
+
 ## 👍赞赏
 
+</summary>
+
 <img alt="赞赏码" src="res/mm_reward_qrcode_1672840549070.png" width="400" height="400"/>
+
+</details>
