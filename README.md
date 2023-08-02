@@ -284,12 +284,19 @@ python3 main.py
 
 </details>
 
+<details>
+
+<summary>
+
 ## 🚀使用
+
+</summary>
 
 **部署完成后必看: [指令说明](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4)**  
 
 所有功能查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E4%BD%BF%E7%94%A8%E6%96%B9%E5%BC%8F)  
 
+</details>
 
 <details>
 <summary>
@@ -322,7 +329,13 @@ python3 main.py
 - [SysStatPlugin](https://github.com/RockChinQ/SysStatPlugin) - 查看系统状态
 </details>
 
+<details>
+
+<summary>
+
 ## 😘致谢
+
+</summary>
 
 - [@the-lazy-me](https://github.com/the-lazy-me) 为本项目制作[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)
 - [@mikumifa](https://github.com/mikumifa) 本项目Docker部署仓库开发者
@@ -331,6 +344,8 @@ python3 main.py
 - [@ljcduo](https://github.com/ljcduo)  GPT-4 API内测账号提供
 
 以及所有[贡献者](https://github.com/RockChinQ/QChatGPT/graphs/contributors)和其他为本项目提供支持的朋友们。
+
+</details>
 
 ## 👍赞赏
 
