@@ -13,7 +13,9 @@
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/QChatGPT?style=flat-square)](https://github.com/RockChinQ/QChatGPT/releases/latest)
 ![Wakapi Count](https://wakapi.dev/api/badge/RockChinQ/interval:any/project:QChatGPT)
 <img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="python">
-![Static Badge](https://img.shields.io/badge/%E6%9F%A5%E7%9C%8B-%E9%A1%B9%E7%9B%AEWiki-blue?link=https%3A%2F%2Fgithub.com%2FRockChinQ%2FQChatGPT%2Fwiki)
+<a href="https://github.com/RockChinQ/QChatGPT/wiki">
+<img alt="Static Badge" src="https://img.shields.io/badge/%E6%9F%A5%E7%9C%8B-%E9%A1%B9%E7%9B%AEWiki-blue">
+</a>
 
 
 </div>
