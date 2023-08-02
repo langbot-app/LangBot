@@ -30,10 +30,12 @@
 - 欢迎各种形式的贡献，请查看[贡献指引](CONTRIBUTING.md)
 - 购买ChatGPT账号: [此链接](http://fk.kimi.asia)
 
+<details>
+<summary>
+
 ## 🍺模型适配一览
 
-<details>
-<summary>点击此处展开</summary>
+</summary>
 
 ### 文字对话
 
