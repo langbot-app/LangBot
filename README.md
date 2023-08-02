@@ -347,6 +347,14 @@ python3 main.py
 
 </details>
 
+<details>
+
+<summary>
+
 ## 👍赞赏
 
+</summary>
+
 <img alt="赞赏码" src="res/mm_reward_qrcode_1672840549070.png" width="400" height="400"/>
+
+</details>
