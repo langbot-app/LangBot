@@ -7,13 +7,16 @@
 
 # QChatGPT
 
-</div>
 
 [English](README_en.md) | 简体中文
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/QChatGPT?style=flat-square)](https://github.com/RockChinQ/QChatGPT/releases/latest)
 ![Wakapi Count](https://wakapi.dev/api/badge/RockChinQ/interval:any/project:QChatGPT)
+<img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="python">
+![Static Badge](https://img.shields.io/badge/%E6%9F%A5%E7%9C%8B-%E9%A1%B9%E7%9B%AEWiki-blue?link=https%3A%2F%2Fgithub.com%2FRockChinQ%2FQChatGPT%2Fwiki)
 
+
+</div>
 
 > 2023/7/29 支持使用GPT的Function Calling功能实现类似ChatGPT Plugin的效果，请见[Wiki内容函数](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8-%E5%86%85%E5%AE%B9%E5%87%BD%E6%95%B0)  
 > 2023/4/24 支持使用go-cqhttp登录QQ，请查看[此文档](https://github.com/RockChinQ/QChatGPT/wiki/go-cqhttp%E9%85%8D%E7%BD%AE)  
