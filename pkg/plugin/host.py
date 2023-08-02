@@ -393,7 +393,7 @@ class PluginHost:
                         logging.debug("插件 {} 已要求阻止事件 {} 的默认行为".format(plugin['name'], event_name))
 
                 except Exception as e:
-                    logging.error("插件{}触发事件{}时发生错误".format(plugin['name'], event_name))
+                    logging.error("插件{}响应事件{}时发生错误".format(plugin['name'], event_name))
                     logging.error(traceback.format_exc())
 
             # print("done:{}".format(plugin['name']))
