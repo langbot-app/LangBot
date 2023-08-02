@@ -62,14 +62,16 @@
 - Plachta/VITS-Umamusume-voice-synthesizer, 由[插件](https://github.com/oliverkirk-sudo/chat_voice)接入
 
 
+安装[此插件](https://github.com/RockChinQ/Switcher)，即可在使用中切换文字模型。
+
 </details>
 
-安装[此插件](https://github.com/RockChinQ/Switcher)，即可在使用中切换文字模型。
+<details>
+<summary>
 
 ## ✅功能
 
-<details>
-<summary>点击此处展开概述</summary>
+</summary>
 
 <details>
 <summary>✅支持敏感词过滤，避免账号风险</summary>
@@ -164,11 +166,17 @@
 <br/>
 <img alt="New Bing" src="res/screenshots/person_newbing.png" width="400"/>
 
-</details>
-
 详情请查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E5%8A%9F%E8%83%BD%E7%82%B9%E5%88%97%E4%B8%BE)
 
+</details>
+
+<details>
+
+<summary>
+
 ## 🔩部署
+
+</summary>
 
 **部署过程中遇到任何问题，请先在[QChatGPT](https://github.com/RockChinQ/QChatGPT/issues)或[qcg-installer](https://github.com/RockChinQ/qcg-installer/issues)的issue里进行搜索**  
 
@@ -278,21 +286,27 @@ python3 main.py
 
 </details>
 
+</details>
+
 ## 🚀使用
 
 **部署完成后必看: [指令说明](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4)**  
+
 所有功能查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E4%BD%BF%E7%94%A8%E6%96%B9%E5%BC%8F)  
+
+
+<details>
+<summary>
 
 ## 🧩插件生态
 
-现已支持自行开发插件对功能进行扩展或自定义程序行为  
-详见[Wiki插件使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8)  
-开发教程见[Wiki插件开发页](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91)
-
 ⭐我们已经支持了[GPT的Function Calling能力](https://platform.openai.com/docs/guides/gpt/function-calling)，请查看[Wiki内容函数](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8-%E5%86%85%E5%AE%B9%E5%87%BD%E6%95%B0)  
 
-<details>
-<summary>查看插件列表</summary>
+</summary>
+
+> 使用方法见：[Wiki插件使用](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8)  
+> 开发教程见：[Wiki插件开发](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91)
+
 
 [所有插件列表](https://github.com/stars/RockChinQ/lists/qchatgpt-%E6%8F%92%E4%BB%B6)，欢迎提出issue以提交新的插件
 
