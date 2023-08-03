@@ -22,7 +22,8 @@ class FuncCommand(AbstractCommandNode):
         index = 1
         for func in host.__callable_functions__:
             reply_str += "{}. {}{}:\n{}\n\n".format(index, ("(已禁用) " if not func['enabled'] else ""), func['name'], func['description'])
-
+            index += 1
+            
         reply = [reply_str]
 
         return True, reply
