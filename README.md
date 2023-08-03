@@ -7,6 +7,7 @@
 
 # QChatGPT
 
+高稳定性/持续迭代/架构清晰/支持插件/高可自定义的 ChatGPT QQ机器人框架
 
 [English](README_en.md) | 简体中文
 
