@@ -54,7 +54,24 @@ class KeysManager:
             是否切换成功, 切换后的api-key的别名
         """
 
+        index = 0
+
         for key_name in self.api_key:
+            if self.api_key[key_name] == self.using_key:
+                break
+            
+            index += 1
+
+        # 从当前key开始向后轮询
+        start_index = index
+        index += 1
+        if index >= len(self.api_key):
+            index = 0
+
+        while index != start_index:
+            
+            key_name = list(self.api_key.keys())[index]
+
             if self.api_key[key_name] not in self.exceeded:
                 self.using_key = self.api_key[key_name]
 
@@ -69,10 +86,14 @@ class KeysManager:
 
                 return True, key_name
 
-        self.using_key = list(self.api_key.values())[0]
-        logging.info("使用api-key:" + list(self.api_key.keys())[0])
+            index += 1
+            if index >= len(self.api_key):
+                index = 0
 
-        return False, ""
+        self.using_key = list(self.api_key.values())[start_index]
+        logging.debug("使用api-key:" + list(self.api_key.keys())[start_index])
+
+        return False, list(self.api_key.keys())[start_index]
 
     def add(self, key_name, key):
         self.api_key[key_name] = key
