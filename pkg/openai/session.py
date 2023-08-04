@@ -271,7 +271,7 @@ class Session:
                 }
 
                 if 'function_call' in resp['choices'][0]['message']:
-                    msg['function_call'] = resp['choices'][0]['message']['function_call']
+                    msg['function_call'] = json.dumps(resp['choices'][0]['message']['function_call'])
 
                 pending_msgs.append(msg)
 
