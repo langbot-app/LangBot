@@ -259,17 +259,21 @@ class Session:
 
             finish_reason = resp['choices'][0]['finish_reason']
 
-            if resp['choices'][0]['message']['type'] == 'text':  # 普通回复
-                res_text += resp['choices'][0]['message']['content']
+            if resp['choices'][0]['message']['role'] == "assistant" and resp['choices'][0]['message']['content'] != None:  # 包含纯文本响应
+
+                res_text += resp['choices'][0]['message']['content'] + "\n"
 
                 total_tokens += resp['usage']['total_tokens']
 
-                pending_msgs.append(
-                    {
-                        "role": "assistant",
-                        "content": resp['choices'][0]['message']['content']
-                    }
-                )
+                msg = {
+                    "role": "assistant",
+                    "content": resp['choices'][0]['message']['content']
+                }
+
+                if 'function_call' in resp['choices'][0]['message']:
+                    msg['function_call'] = resp['choices'][0]['message']['function_call']
+
+                pending_msgs.append(msg)
 
             elif resp['choices'][0]['message']['type'] == 'function_call':
                 # self.prompt.append(
