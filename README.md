@@ -17,7 +17,12 @@
 <a href="https://github.com/RockChinQ/QChatGPT/wiki">
 <img alt="Static Badge" src="https://img.shields.io/badge/%E6%9F%A5%E7%9C%8B-%E9%A1%B9%E7%9B%AEWiki-blue">
 </a>
-
+<a href="https://www.bilibili.com/video/BV1Y14y1Q7kQ">
+<img alt="Static Badge" src="https://img.shields.io/badge/%E8%A7%86%E9%A2%91%E6%95%99%E7%A8%8B-208647">
+</a>
+<a href="https://www.bilibili.com/video/BV11h4y1y74H">
+<img alt="Static Badge" src="https://img.shields.io/badge/Linux%E9%83%A8%E7%BD%B2%E8%A7%86%E9%A2%91-208647">
+</a>
 
 </div>
 
@@ -339,7 +344,7 @@ python3 main.py
 
 </summary>
 
-- [@the-lazy-me](https://github.com/the-lazy-me) 为本项目制作[视频教程](https://www.bilibili.com/video/BV15v4y1X7aP)
+- [@the-lazy-me](https://github.com/the-lazy-me) 为本项目制作[视频教程](https://www.bilibili.com/video/BV1Y14y1Q7kQ)
 - [@mikumifa](https://github.com/mikumifa) 本项目Docker部署仓库开发者
 - [@dominoar](https://github.com/dominoar) 为本项目开发多种插件
 - [@万神的星空](https://github.com/qq255204159)  整合包发行
