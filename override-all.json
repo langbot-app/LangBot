@@ -21,6 +21,7 @@
         "http_proxy": null,
         "reverse_proxy": null
     },
+    "switch_strategy": "active",
     "admin_qq": 0,
     "default_prompt": {
         "default": "如果我之后想获取帮助，请你说“输入!help获取帮助”"
