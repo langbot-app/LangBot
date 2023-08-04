@@ -13,8 +13,15 @@ class RequestBase:
     def __init__(self, *args, **kwargs):
         raise NotImplementedError
 
+    def _next_key(self):
+        import pkg.utils.context as context
+        switched, name = context.get_openai_manager().key_mgr.auto_switch()
+        logging.debug("切换api-key: switched={}, name={}".format(switched, name))
+        openai.api_key = context.get_openai_manager().key_mgr.get_using_key()
+
     def _req(self, **kwargs):
         """处理代理问题"""
+        import config
 
         ret: dict = {}
         exception: Exception = None
@@ -25,6 +32,10 @@ class RequestBase:
             try:
                 ret = await self.req_func(**kwargs)
                 logging.debug("接口请求返回：%s", str(ret))
+                
+                if config.switch_strategy == 'active':
+                    self._next_key()
+
                 return ret
             except Exception as e:
                 exception = e

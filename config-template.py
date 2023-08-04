@@ -72,7 +72,7 @@ openai_config = {
 
 # api-key切换策略
 # active：每次请求时都会切换api-key
-# passive：当api-key超额时才会切换api-key
+# passive：仅当api-key超额时才会切换api-key
 switch_strategy = "active"
 
 # [必需] 管理员QQ号，用于接收报错等通知及执行管理员级别指令
