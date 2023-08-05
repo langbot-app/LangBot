@@ -98,7 +98,7 @@ class ChatCompletionRequest(RequestBase):
 
                 self.append_message(
                     role="assistant",
-                    content=None,
+                    content=choice0['message']['content'],
                     function_call=choice0['message']['function_call']
                 )
 
