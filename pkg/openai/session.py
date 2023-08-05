@@ -194,7 +194,7 @@ class Session:
 
     # 请求回复
     # 这个函数是阻塞的
-    def append(self, text: str=None) -> tuple[str, str, list[str]]:
+    def query(self, text: str=None) -> tuple[str, str, list[str]]:
         """向session中添加一条消息，返回接口回复
         
         Args:

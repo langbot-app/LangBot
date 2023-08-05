@@ -40,7 +40,7 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
         try:
             prefix = "[GPT]" if config.show_prefix else ""
 
-            text, finish_reason, funcs = session.append(text_message)
+            text, finish_reason, funcs = session.query(text_message)
 
             # 触发插件事件
             args = {
