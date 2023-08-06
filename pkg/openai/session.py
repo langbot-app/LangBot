@@ -194,7 +194,7 @@ class Session:
 
     # 请求回复
     # 这个函数是阻塞的
-    def append(self, text: str=None) -> tuple[str, str, list[str]]:
+    def query(self, text: str=None) -> tuple[str, str, list[str]]:
         """向session中添加一条消息，返回接口回复
         
         Args:
@@ -255,29 +255,59 @@ class Session:
 
         funcs = []
 
+        trace_func_calls = config.trace_function_calls
+        botmgr = pkg.utils.context.get_qqbot_manager()
+
+        session_name_spt: list[str] = self.name.split("_")
+
+        pending_res_text = ""
+
+        # TODO 对不起，我知道这样非常非常屎山，但我之后会重构的
         for resp in pkg.utils.context.get_openai_manager().request_completion(prompts):
+
+            if pending_res_text != "":
+                botmgr.adapter.send_message(
+                    session_name_spt[0],
+                    session_name_spt[1],
+                    pending_res_text
+                )
+                pending_res_text = ""
 
             finish_reason = resp['choices'][0]['finish_reason']
 
-            if resp['choices'][0]['message']['type'] == 'text':  # 普通回复
-                res_text += resp['choices'][0]['message']['content']
+            if resp['choices'][0]['message']['role'] == "assistant" and resp['choices'][0]['message']['content'] != None:  # 包含纯文本响应
+
+                if not trace_func_calls:
+                    res_text += resp['choices'][0]['message']['content'] + "\n"
+                else:
+                    res_text = resp['choices'][0]['message']['content']
+                    pending_res_text = resp['choices'][0]['message']['content']
 
                 total_tokens += resp['usage']['total_tokens']
 
-                pending_msgs.append(
-                    {
-                        "role": "assistant",
-                        "content": resp['choices'][0]['message']['content']
-                    }
-                )
+                msg = {
+                    "role": "assistant",
+                    "content": resp['choices'][0]['message']['content']
+                }
 
-            elif resp['choices'][0]['message']['type'] == 'function_call':
+                if 'function_call' in resp['choices'][0]['message']:
+                    msg['function_call'] = json.dumps(resp['choices'][0]['message']['function_call'])
+
+                pending_msgs.append(msg)
+
+            if resp['choices'][0]['message']['type'] == 'function_call':
                 # self.prompt.append(
                 #     {
                 #         "role": "assistant",
                 #         "content": "function call: "+json.dumps(resp['choices'][0]['message']['function_call'])
                 #     }
                 # )
+                if trace_func_calls:
+                    botmgr.adapter.send_message(
+                        session_name_spt[0],
+                        session_name_spt[1],
+                        "调用函数 "+resp['choices'][0]['message']['function_call']['name'] + "..."
+                    )
 
                 total_tokens += resp['usage']['total_tokens']
             elif resp['choices'][0]['message']['type'] == 'function_return':

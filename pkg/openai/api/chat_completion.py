@@ -30,7 +30,7 @@ class ChatCompletionRequest(RequestBase):
         )
         self.pending_msg = ""
 
-    def append_message(self, role: str, content: str, name: str=None):
+    def append_message(self, role: str, content: str, name: str=None, function_call: dict=None):
         msg = {
             "role": role,
             "content": content
@@ -38,6 +38,9 @@ class ChatCompletionRequest(RequestBase):
 
         if name is not None:
             msg['name'] = name
+
+        if function_call is not None:
+            msg['function_call'] = function_call
 
         self.messages.append(msg)
 
@@ -87,16 +90,17 @@ class ChatCompletionRequest(RequestBase):
             choice0 = resp["choices"][0]
 
             # 如果不是函数调用，且finish_reason为stop，则停止迭代
-            if 'function_call' not in choice0['message']:  #  and choice0["finish_reason"] == "stop"
+            if choice0['finish_reason'] == 'stop':  #  and choice0["finish_reason"] == "stop"
                 self.stopped = True
             
             if 'function_call' in choice0['message']:
                 self.pending_func_call = choice0['message']['function_call']
 
-                # self.append_message(
-                #     role="assistant",
-                #     content="function call: "+json.dumps(self.pending_func_call, ensure_ascii=False)
-                # )
+                self.append_message(
+                    role="assistant",
+                    content=choice0['message']['content'],
+                    function_call=choice0['message']['function_call']
+                )
 
                 return {
                     "id": resp["id"],
@@ -106,7 +110,7 @@ class ChatCompletionRequest(RequestBase):
                             "message": {
                                 "role": "assistant",
                                 "type": "function_call",
-                                "content": None,
+                                "content": choice0['message']['content'],
                                 "function_call": choice0['message']['function_call']
                             },
                             "finish_reason": "function_call"

@@ -327,6 +327,10 @@ def apply_privileges():
     for path, priv in data.items():
         if path == 'comment':
             continue
+        
+        if path not in __command_list__:
+            continue
+        
         if __command_list__[path]['privilege'] != priv:
             logging.debug('应用权限: {} -> {}(default: {})'.format(path, priv, __command_list__[path]['privilege']))
 

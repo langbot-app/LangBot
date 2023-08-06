@@ -40,7 +40,7 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
         try:
             prefix = "[GPT]" if config.show_prefix else ""
 
-            text, finish_reason, funcs = session.append(text_message)
+            text, finish_reason, funcs = session.query(text_message)
 
             # 触发插件事件
             args = {
@@ -68,7 +68,7 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
         except openai.error.APIConnectionError as e:
             err_msg = str(e)
             if err_msg.__contains__('Error communicating with OpenAI'):
-                reply = handle_exception("{}会话调用API失败:{}\n请尝试关闭网络代理来解决此问题。".format(session_name, e),
+                reply = handle_exception("{}会话调用API失败:{}\n您的网络无法访问OpenAI接口或网络代理不正常".format(session_name, e),
                                          "[bot]err:调用API失败，请重试或联系管理员，或等待修复")
             else:
                 reply = handle_exception("{}会话调用API失败:{}".format(session_name, e), "[bot]err:调用API失败，请重试或联系管理员，或等待修复")

@@ -112,6 +112,7 @@ def count_completion_tokens(messages: list, model: str) -> int:
 
 
 def count_tokens(messages: list, model: str):
+
     if model in CHAT_COMPLETION_MODELS:
         return count_chat_completion_tokens(messages, model)
     elif model in COMPLETION_MODELS:

@@ -65,6 +65,7 @@
     "image_api_params": {
         "size": "256x256"
     },
+    "trace_function_calls": false,
     "quote_origin": true,
     "at_sender": false,
     "include_image_description": true,
