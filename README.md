@@ -7,7 +7,8 @@
 
 # QChatGPT
 
-高稳定性/持续迭代/架构清晰/支持插件/高可自定义的 ChatGPT QQ机器人框架
+<!-- 高稳定性/持续迭代/架构清晰/支持插件/高可自定义的 ChatGPT QQ机器人框架 -->
+
 
 [English](README_en.md) | 简体中文
 
@@ -24,6 +25,11 @@
 <img alt="Static Badge" src="https://img.shields.io/badge/Linux%E9%83%A8%E7%BD%B2%E8%A7%86%E9%A2%91-208647">
 </a>
 
+
+<details>
+<summary>回复效果演示（带有联网插件）</summary>
+<img alt="联网演示GIF" src="res/webwlkr-demo.gif" width="300px">
+</details>
 </div>
 
 > 2023/7/29 支持使用GPT的Function Calling功能实现类似ChatGPT Plugin的效果，请见[Wiki内容函数](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8-%E5%86%85%E5%AE%B9%E5%87%BD%E6%95%B0)  
