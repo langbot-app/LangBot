@@ -242,7 +242,7 @@ image_api_params = {
 # 跟踪函数调用
 # 为True时，在每次GPT进行Function Calling时都会输出发送一条回复给用户
 # 同时，一次提问内所有的Function Calling和普通回复消息都会单独发送给用户
-trace_function_calls = True
+trace_function_calls = False
 
 # 群内回复消息时是否引用原消息
 quote_origin = True
