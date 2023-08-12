@@ -18,7 +18,7 @@
 <a href="https://github.com/RockChinQ/QChatGPT/wiki">
 <img alt="Static Badge" src="https://img.shields.io/badge/%E6%9F%A5%E7%9C%8B-%E9%A1%B9%E7%9B%AEWiki-blue">
 </a>
-<a href="https://www.bilibili.com/video/BV1Y14y1Q7kQ">
+<a href="https://www.bilibili.com/video/BV14h4y1w7TC">
 <img alt="Static Badge" src="https://img.shields.io/badge/%E8%A7%86%E9%A2%91%E6%95%99%E7%A8%8B-208647">
 </a>
 <a href="https://www.bilibili.com/video/BV11h4y1y74H">
