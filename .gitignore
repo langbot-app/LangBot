@@ -28,3 +28,5 @@ venv/
 hugchat.json
 qcapi
 /*.yaml
+claude.json
+bard.json

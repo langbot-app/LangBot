@@ -34,6 +34,7 @@
 </details>
 </div>
 
+> 2023/8/14 [逆向库插件](https://github.com/RockChinQ/revLibs)已支持Claude和Bard  
 > 2023/7/29 支持使用GPT的Function Calling功能实现类似ChatGPT Plugin的效果，请见[Wiki内容函数](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8-%E5%86%85%E5%AE%B9%E5%87%BD%E6%95%B0)  
 
 <details>
@@ -52,6 +53,8 @@
 - ChatGPT网页版GPT-4模型, 目前需要ChatGPT Plus订阅, 由[插件](https://github.com/RockChinQ/revLibs)接入
 - New Bing逆向库, 由[插件](https://github.com/RockChinQ/revLibs)接入
 - HuggingChat, 由[插件](https://github.com/RockChinQ/revLibs)接入, 仅支持英文
+- Claude, 由[插件](https://github.com/RockChinQ/revLibs)接入
+- Google Bard, 由[插件](https://github.com/RockChinQ/revLibs)接入
 
 ### 故事续写
 
