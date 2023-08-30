@@ -36,7 +36,7 @@
 
 > 2023/8/29 [逆向库插件](https://github.com/RockChinQ/revLibs)已支持 gpt4free  
 > 2023/8/14 [逆向库插件](https://github.com/RockChinQ/revLibs)已支持Claude和Bard  
-> 2023/7/29 支持使用GPT的Function Calling功能实现类似ChatGPT Plugin的效果，请见[Wiki内容函数](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8-%E5%86%85%E5%AE%B9%E5%87%BD%E6%95%B0)  
+> 2023/7/29 支持使用GPT的Function Calling功能实现类似ChatGPT Plugin的效果，请见[Wiki内容函数](https://github.com/RockChinQ/QChatGPT/wiki/6-%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8-%E5%86%85%E5%AE%B9%E5%87%BD%E6%95%B0)  
 
 <details>
 <summary>
@@ -68,7 +68,7 @@
 
 ### 图片绘制
 
-- OpenAI DALL·E模型, 本项目原生支持, 使用方法查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E5%8A%9F%E8%83%BD%E7%82%B9%E5%88%97%E4%B8%BE)
+- OpenAI DALL·E模型, 本项目原生支持, 使用方法查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/1-%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E5%8A%9F%E8%83%BD%E7%82%B9%E5%88%97%E4%B8%BE)
 - NovelAI API, 由[插件](https://github.com/dominoar/QCPNovelAi)接入
 
 ### 语音生成
@@ -117,7 +117,7 @@
 
   - 支持以自然语言预设文字，自定义机器人人格等信息
   - 详见`config.py`中的`default_prompt`部分
-  - 支持设置多个预设情景，并通过!reset、!default等指令控制，详细请查看[wiki指令](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4)
+  - 支持设置多个预设情景，并通过!reset、!default等指令控制，详细请查看[wiki指令](https://github.com/RockChinQ/QChatGPT/wiki/1-%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4)
 </details>
 
 <details>
@@ -137,7 +137,7 @@
 
   - 自行实现插件加载器及相关支持
   - 支持GPT的Function Calling功能
-  - 详细查看[插件使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8)
+  - 详细查看[插件使用页](https://github.com/RockChinQ/QChatGPT/wiki/5-%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8)
 </details>
 <details>
 <summary>✅私聊、群聊黑名单机制</summary>
@@ -181,7 +181,7 @@
 <br/>
 <img alt="New Bing" src="res/screenshots/person_newbing.png" width="400"/>
 
-详情请查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E5%8A%9F%E8%83%BD%E7%82%B9%E5%88%97%E4%B8%BE)
+详情请查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/1-%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8)
 
 </details>
 
@@ -259,7 +259,7 @@
 <details>
 <summary>go-cqhttp</summary>
 
-1. 按照[此文档](https://github.com/RockChinQ/QChatGPT/wiki/go-cqhttp%E9%85%8D%E7%BD%AE)配置go-cqhttp
+1. 按照[此文档](https://github.com/RockChinQ/QChatGPT/wiki/9-go-cqhttp%E9%85%8D%E7%BD%AE)配置go-cqhttp
 2. 启动go-cqhttp，确保登录成功，保持运行
 3. 在下一步配置主程序时请在config.py中将`msg_source_adapter`设为`nakuru`
 
@@ -316,9 +316,9 @@ python3 main.py
 
 </summary>
 
-**部署完成后必看: [指令说明](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4)**  
+**部署完成后必看: [指令说明](https://github.com/RockChinQ/QChatGPT/wiki/1-%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4)**  
 
-所有功能查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E4%BD%BF%E7%94%A8%E6%96%B9%E5%BC%8F)  
+所有功能查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/1-%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8)  
 
 </details>
 
@@ -329,10 +329,10 @@ python3 main.py
 
 </summary>
 
-⭐我们已经支持了[GPT的Function Calling能力](https://platform.openai.com/docs/guides/gpt/function-calling)，请查看[Wiki内容函数](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8-%E5%86%85%E5%AE%B9%E5%87%BD%E6%95%B0)  
+⭐我们已经支持了[GPT的Function Calling能力](https://platform.openai.com/docs/guides/gpt/function-calling)，请查看[Wiki内容函数](https://github.com/RockChinQ/QChatGPT/wiki/6-%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8-%E5%86%85%E5%AE%B9%E5%87%BD%E6%95%B0)  
 
-> 使用方法见：[Wiki插件使用](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8)  
-> 开发教程见：[Wiki插件开发](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91)
+> 使用方法见：[Wiki插件使用](https://github.com/RockChinQ/QChatGPT/wiki/5-%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8)  
+> 开发教程见：[Wiki插件开发](https://github.com/RockChinQ/QChatGPT/wiki/7-%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91)
 
 
 [所有插件列表](https://github.com/stars/RockChinQ/lists/qchatgpt-%E6%8F%92%E4%BB%B6)，欢迎提出issue以提交新的插件
@@ -340,7 +340,7 @@ python3 main.py
 ### 部分插件
 
 - [WebwlkrPlugin](https://github.com/RockChinQ/WebwlkrPlugin) - 让机器人能联网！！
-- [revLibs](https://github.com/RockChinQ/revLibs) - 将ChatGPT网页版、Claude、Bard、Hugging Chat等破解版接入此项目，关于[官方接口和网页版有什么区别](https://github.com/RockChinQ/QChatGPT/wiki/%E5%AE%98%E6%96%B9%E6%8E%A5%E5%8F%A3%E3%80%81ChatGPT%E7%BD%91%E9%A1%B5%E7%89%88%E3%80%81ChatGPT-API%E5%8C%BA%E5%88%AB)
+- [revLibs](https://github.com/RockChinQ/revLibs) - 将ChatGPT网页版、Claude、Bard、Hugging Chat等破解版接入此项目，关于[官方接口和网页版有什么区别](https://github.com/RockChinQ/QChatGPT/wiki/8-%E5%AE%98%E6%96%B9%E6%8E%A5%E5%8F%A3%E3%80%81ChatGPT%E7%BD%91%E9%A1%B5%E7%89%88%E3%80%81ChatGPT-API%E5%8C%BA%E5%88%AB)
 - [Switcher](https://github.com/RockChinQ/Switcher) - 支持通过指令切换使用的模型
 - [hello_plugin](https://github.com/RockChinQ/hello_plugin) - `hello_plugin` 的储存库形式，插件开发模板
 - [dominoar/QChatPlugins](https://github.com/dominoar/QchatPlugins) - dominoar编写的诸多新功能插件（语音输出、Ranimg、屏蔽词规则等）
