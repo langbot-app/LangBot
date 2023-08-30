@@ -27,6 +27,9 @@ jobs:
       with:
         repository: RockChinQ/QChatGPT.wiki
         path: wiki
+    - name: Delete old wiki content
+      run: |
+        rm -rf wiki/*
     - name: Copy res/wiki content to wiki
       run: |
         cp -r res/wiki/* wiki/
