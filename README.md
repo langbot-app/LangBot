@@ -186,12 +186,10 @@
 
 </summary>
 
-**部署过程中遇到任何问题，请先在[QChatGPT](https://github.com/RockChinQ/QChatGPT/issues)或[qcg-installer](https://github.com/RockChinQ/qcg-installer/issues)的issue里进行搜索**  
-**QChatGPT需要Python版本>=3.9**
-
-- 官方交流、答疑群: 656285629  
-  - **进群提问前请您`确保`已经找遍文档和issue均无法解决**  
-- 社区群（内有一键部署包、图形化界面等资源）: 891448839
+> **NOTE**  
+> - 部署过程中遇到任何问题，请先在[QChatGPT](https://github.com/RockChinQ/QChatGPT/issues)或[qcg-installer](https://github.com/RockChinQ/qcg-installer/issues)的issue里进行搜索  
+> - QChatGPT需要Python版本>=3.9  
+> - 官方群和社区群群号请见文档顶部
 
 ### - 注册OpenAI账号
 
