@@ -18,8 +18,8 @@
 <a href="https://github.com/RockChinQ/QChatGPT/wiki">
 <img alt="Static Badge" src="https://img.shields.io/badge/%E6%9F%A5%E7%9C%8B-%E9%A1%B9%E7%9B%AEWiki-blue">
 </a>
-<img alt="Static Badge" src="https://img.shields.io/badge/%E5%AE%98%E6%96%B9%E7%BE%A4-195992197-orange">
-<img alt="Static Badge" src="https://img.shields.io/badge/%E7%A4%BE%E5%8C%BA%E7%BE%A4-891448839-orange">
+<img alt="Static Badge" src="https://img.shields.io/badge/%E5%AE%98%E6%96%B9%E7%BE%A4-195992197-purple">
+<img alt="Static Badge" src="https://img.shields.io/badge/%E7%A4%BE%E5%8C%BA%E7%BE%A4-891448839-purple">
 <a href="https://www.bilibili.com/video/BV14h4y1w7TC">
 <img alt="Static Badge" src="https://img.shields.io/badge/%E8%A7%86%E9%A2%91%E6%95%99%E7%A8%8B-208647">
 </a>
@@ -34,6 +34,7 @@
 </details>
 </div>
 
+> **NOTE**  
 > 2023/8/29 [逆向库插件](https://github.com/RockChinQ/revLibs)已支持 gpt4free  
 > 2023/8/14 [逆向库插件](https://github.com/RockChinQ/revLibs)已支持Claude和Bard  
 > 2023/7/29 支持使用GPT的Function Calling功能实现类似ChatGPT Plugin的效果，请见[Wiki内容函数](https://github.com/RockChinQ/QChatGPT/wiki/6-%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8-%E5%86%85%E5%AE%B9%E5%87%BD%E6%95%B0)  
