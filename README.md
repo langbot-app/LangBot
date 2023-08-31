@@ -41,7 +41,7 @@
 <details>
 <summary>
 
-## 🍺模型适配一览
+## 🍺模型一览和功能点
 
 </summary>
 
@@ -79,14 +79,7 @@
 
 安装[此插件](https://github.com/RockChinQ/Switcher)，即可在使用中切换文字模型。
 
-</details>
-
-<details>
-<summary>
-
-## ✅功能
-
-</summary>
+### 功能点
 
 <details>
 <summary>✅支持敏感词过滤，避免账号风险</summary>
@@ -189,7 +182,7 @@
 
 <summary>
 
-## 🔩部署
+## 🚀部署和使用
 
 </summary>
 
@@ -306,16 +299,6 @@ python3 main.py
 
 </details>
 
-</details>
-
-<details>
-
-<summary>
-
-## 🚀使用
-
-</summary>
-
 **部署完成后必看: [指令说明](https://github.com/RockChinQ/QChatGPT/wiki/1-%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4)**  
 
 所有功能查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/1-%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8)  
@@ -360,7 +343,7 @@ python3 main.py
 
 <summary>
 
-## 😘致谢
+## 😘致谢和赞赏
 
 </summary>
 
@@ -371,16 +354,6 @@ python3 main.py
 - [@ljcduo](https://github.com/ljcduo)  GPT-4 API内测账号提供
 
 以及所有[贡献者](https://github.com/RockChinQ/QChatGPT/graphs/contributors)和其他为本项目提供支持的朋友们。
-
-</details>
-
-<details>
-
-<summary>
-
-## 👍赞赏
-
-</summary>
 
 <img alt="赞赏码" src="res/mm_reward_qrcode_1672840549070.png" width="400" height="400"/>
 
