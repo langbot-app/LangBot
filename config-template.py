@@ -63,7 +63,7 @@ nakuru_config = {
 #     "reverse_proxy": "http://example.com:12345/v1"
 # }
 #
-# 作者开设公用反向代理地址: http://api.openai.rockchin.top/v1
+# 作者开设公用反向代理地址: https://api.openai.rockchin.top/v1
 # 随时可能关闭，仅供测试使用，有条件建议使用正向代理或者自建反向代理
 openai_config = {
     "api_key": {
