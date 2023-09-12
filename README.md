@@ -219,14 +219,14 @@
 
 </details>
 
-### - 自动化部署
+### - Docker或自动化部署
 
 <details>
 <summary>展开查看，以下方式二选一，Linux首选Docker，Windows首选安装器</summary>
 
 #### Docker方式
 
-> docker方式目前仅支持使用mirai登录，若您不**熟悉**docker的操作及相关知识，强烈建议您使用其他方式部署，我们**不会且难以**解决您主机上多个容器的连接问题。
+> docker方式较为复杂，若您不**熟悉**docker的操作及相关知识，强烈建议您使用其他方式部署，我们**不会且难以**解决您主机上多个容器的连接问题。
 
 请查看[此文档](res/docs/docker_deployment.md)  
 
