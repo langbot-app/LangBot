@@ -10,3 +10,4 @@ Pillow
 nakuru-project-idk
 CallingGPT
 tiktoken
+PyYaml
