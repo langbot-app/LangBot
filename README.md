@@ -8,9 +8,7 @@
 # QChatGPT
 
 <!-- 高稳定性/持续迭代/架构清晰/支持插件/高可自定义的 ChatGPT QQ机器人框架 -->
-
-
-[English](README_en.md) | 简体中文
+“当然！下面是一个使用Java编写的快速排序算法的示例代码”
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/QChatGPT)](https://github.com/RockChinQ/QChatGPT/releases/latest)
 <a href="https://hub.docker.com/repository/docker/rockchin/qchatgpt">
