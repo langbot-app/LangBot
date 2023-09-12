@@ -1,0 +1,18 @@
+version: "3"
+
+services:
+  qchatgpt:
+    image: rockchin/qchatgpt:latest
+    volumes:
+      - ./config.py:/QChatGPT/config.py
+      - ./banlist.py:/QChatGPT/banlist.py
+      - ./cmdpriv.json:/QChatGPT/cmdpriv.json
+      - ./sensitive.json:/QChatGPT/sensitive.json
+      - ./tips.py:/QChatGPT/tips.py
+      # 目录映射
+      - ./plugins:/QChatGPT/plugins
+      - ./scenario:/QChatGPT/scenario
+      - ./temp:/QChatGPT/temp
+      - ./logs:/QChatGPT/logs
+    restart: always
+    # 根据具体环境配置网络
