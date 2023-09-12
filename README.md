@@ -225,8 +225,7 @@
 
 > docker方式目前仅支持使用mirai登录，若您不**熟悉**docker的操作及相关知识，强烈建议您使用其他方式部署，我们**不会且难以**解决您主机上多个容器的连接问题。
 
-请查看[此文档](res/docs/docker_deploy.md)  
-由[@mikumifa](https://github.com/mikumifa)贡献
+请查看[此文档](res/docs/docker_deployment.md)  
 
 #### 安装器方式
 
