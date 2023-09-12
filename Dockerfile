@@ -1,17 +1,14 @@
-FROM python:3.9-slim
+FROM python:3.10.13-alpine3.18
 WORKDIR /QChatGPT
-
-RUN sed -i "s/deb.debian.org/mirrors.tencent.com/g" /etc/apt/sources.list \
-    && sed -i 's|security.debian.org/debian-security|mirrors.tencent.com/debian-security|g' /etc/apt/sources.list \
-    && apt-get clean \
-    && apt-get update \
-    && apt-get -y upgrade \
-    && apt-get install -y git \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY . /QChatGPT/
 
-RUN pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+RUN ls
 
-CMD [ "python", "main.py" ] 
+RUN pip install -r requirements.txt
+RUN pip install -U websockets==10.0
+
+# 生成配置文件
+RUN python main.py
+
+CMD [ "python", "main.py" ]

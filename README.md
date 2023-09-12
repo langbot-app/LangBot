@@ -13,6 +13,9 @@
 [English](README_en.md) | 简体中文
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/QChatGPT)](https://github.com/RockChinQ/QChatGPT/releases/latest)
+<a href="https://hub.docker.com/repository/docker/rockchin/qchatgpt">
+    <img src="https://img.shields.io/docker/pulls/rockchin/qchatgpt?color=blue" alt="docker pull">
+  </a>
 ![Wakapi Count](https://wakapi.dev/api/badge/RockChinQ/interval:any/project:QChatGPT)
 <img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="python">
 <a href="https://github.com/RockChinQ/QChatGPT/wiki">
@@ -225,8 +228,7 @@
 
 > docker方式目前仅支持使用mirai登录，若您不**熟悉**docker的操作及相关知识，强烈建议您使用其他方式部署，我们**不会且难以**解决您主机上多个容器的连接问题。
 
-请查看[此文档](res/docs/docker_deploy.md)  
-由[@mikumifa](https://github.com/mikumifa)贡献
+请查看[此文档](res/docs/docker_deployment.md)  
 
 #### 安装器方式
 
