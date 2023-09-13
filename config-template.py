@@ -228,12 +228,12 @@ auto_reset = True
 #
 # 具体请查看OpenAI的文档: https://beta.openai.com/docs/api-reference/completions/create
 # 请将内容修改到config.py中，请勿修改config-template.py
+# 
+# 支持通过 One API 接入多种模型，请在上方的openai_config中设置One API的代理地址，
+# 并在此填写您要使用的模型名称，详细请参考：https://github.com/songquanpeng/one-api
 completion_api_params = {
     "model": "gpt-3.5-turbo",
     "temperature": 0.9,  # 数值越低得到的回答越理性，取值范围[0, 1]
-    "top_p": 1,  # 生成的文本的文本与要求的符合度, 取值范围[0, 1]
-    "frequency_penalty": 0.2,
-    "presence_penalty": 1.0,
 }
 
 # OpenAI的Image API的参数
