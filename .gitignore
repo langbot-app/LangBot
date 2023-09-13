@@ -29,3 +29,5 @@ hugchat.json
 qcapi
 claude.json
 bard.json
+/*yaml
+!/docker-compose.yaml
