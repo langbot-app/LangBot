@@ -33,6 +33,7 @@ CHAT_COMPLETION_MODELS = {
     'gpt-4-0613',
     'gpt-4-32k',
     'gpt-4-32k-0613',
+    # One-API 接入
     'SparkDesk',
     'chatglm_pro',
     'chatglm_std',
