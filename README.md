@@ -68,8 +68,9 @@
 
 ### 模型聚合平台
 
-- gpt4free, 免费使用多个平台的各种文字模型, 由[插件](https://github.com/RockChinQ/revLibs)接入, 无需鉴权, 稳定性较差
-- poe.com, 免费使用Poe上多个平台的模型, 由[oliverkirk-sudo/ChatPoeBot](https://github.com/oliverkirk-sudo/ChatPoeBot)接入
+- [One API](https://github.com/songquanpeng/one-api), Azure、Anthropic Claude、Google PaLM 2、智谱 ChatGLM、百度文心一言、讯飞星火认知、阿里通义千问以及 360 智脑等模型的官方接口转换成 OpenAI API 接入，QChatGPT 原生支持，您需要先配置 One API，之后在`config.py`中设置反向代理和`One API`的密钥后使用。
+- [gpt4free](https://github.com/xtekky/gpt4free), 破解以免费使用多个平台的各种文字模型, 由[插件](https://github.com/RockChinQ/revLibs)接入, 无需鉴权, 稳定性较差。
+- [Poe](https://poe.com), 破解免费使用Poe上多个平台的模型, 由[oliverkirk-sudo/ChatPoeBot](https://github.com/oliverkirk-sudo/ChatPoeBot)接入（由于 Poe 上可用的大部分模型现已通过[revLibs插件](https://github.com/RockChinQ/revLubs)或其他方式接入，此插件现已停止维护）。
 
 ### 故事续写
 
