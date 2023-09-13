@@ -7,32 +7,32 @@ on:
     types: [published]
 jobs:
   publish-docker-image:
-      runs-on: ubuntu-latest
-      name: Build image
+    runs-on: ubuntu-latest
+    name: Build image
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: judge has env GITHUB_REF  # 如果没有GITHUB_REF环境变量，则把github.ref变量赋值给GITHUB_REF
+        run: |
+          if [ -z "$GITHUB_REF" ]; then
+            export GITHUB_REF=${{ github.ref }}
+          fi
+      - name: Check GITHUB_REF env
+        run: echo $GITHUB_REF
+      - name: Get version
+        id: get_version
+        if: (startsWith(env.GITHUB_REF, 'refs/tags/')||startsWith(github.ref, 'refs/tags/')) && startsWith(github.repository, 'RockChinQ/QChatGPT')
+        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+      - name: Build  # image name: rockchin/qchatgpt:<VERSION>
+        run: docker build --network=host -t rockchin/qchatgpt:${{ steps.get_version.outputs.VERSION }} -t rockchin/qchatgpt:latest .
+      - name: Login to Registry
+        run: docker login --username=${{ secrets.DOCKER_USERNAME }} --password ${{ secrets.DOCKER_PASSWORD }}
       
-      steps:
-          - name: Checkout
-            uses: actions/checkout@v2
-          - name: judge has env GITHUB_REF  # 如果没有GITHUB_REF环境变量，则把github.ref变量赋值给GITHUB_REF
-            run: |
-              if [ -z "$GITHUB_REF" ]; then
-                export GITHUB_REF=${{ github.ref }}
-              fi
-          - name: Check GITHUB_REF env
-            run: echo $GITHUB_REF
-          - name: Get version
-            id: get_version
-            if: (startsWith(env.GITHUB_REF, 'refs/tags/')||startsWith(github.ref, 'refs/tags/')) && startsWith(github.repository, 'RockChinQ/QChatGPT')
-            run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
-          - name: Build  # image name: rockchin/qchatgpt:<VERSION>
-            run: docker build --network=host -t rockchin/qchatgpt:${{ steps.get_version.outputs.VERSION }} -t rockchin/qchatgpt:latest .
-          - name: Login to Registry
-            run: docker login --username=${{ secrets.DOCKER_USERNAME }} --password ${{ secrets.DOCKER_PASSWORD }}
-          
-          - name: Push image
-            if: (startsWith(env.GITHUB_REF, 'refs/tags/')||startsWith(github.ref, 'refs/tags/')) && startsWith(github.repository, 'RockChinQ/QChatGPT')
-            run: docker push rockchin/qchatgpt:${{ steps.get_version.outputs.VERSION }}
+      - name: Push image
+        if: (startsWith(env.GITHUB_REF, 'refs/tags/')||startsWith(github.ref, 'refs/tags/')) && startsWith(github.repository, 'RockChinQ/QChatGPT')
+        run: docker push rockchin/qchatgpt:${{ steps.get_version.outputs.VERSION }}
 
-          - name: Push image
-            if: (startsWith(env.GITHUB_REF, 'refs/tags/')||startsWith(github.ref, 'refs/tags/')) && startsWith(github.repository, 'RockChinQ/QChatGPT')
-            run: docker push rockchin/qchatgpt:latest
+      - name: Push latest image
+        if: (startsWith(env.GITHUB_REF, 'refs/tags/')||startsWith(github.ref, 'refs/tags/')) && startsWith(github.repository, 'RockChinQ/QChatGPT')
+        run: docker push rockchin/qchatgpt:latest
