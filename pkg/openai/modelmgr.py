@@ -32,7 +32,16 @@ CHAT_COMPLETION_MODELS = {
     'gpt-4',
     'gpt-4-0613',
     'gpt-4-32k',
-    'gpt-4-32k-0613'
+    'gpt-4-32k-0613',
+    # One-API 接入
+    'SparkDesk',
+    'chatglm_pro',
+    'chatglm_std',
+    'chatglm_lite',
+    'qwen-v1',
+    'qwen-plus-v1',
+    'ERNIE-Bot',
+    'ERNIE-Bot-turbo',
 }
 
 EDIT_MODELS = {
@@ -66,6 +75,14 @@ def count_chat_completion_tokens(messages: list, model: str) -> int:
         "gpt-4-32k-0314",
         "gpt-4-0613",
         "gpt-4-32k-0613",
+        "SparkDesk",
+        "chatglm_pro",
+        "chatglm_std",
+        "chatglm_lite",
+        "qwen-v1",
+        "qwen-plus-v1",
+        "ERNIE-Bot",
+        "ERNIE-Bot-turbo",
         }:
         tokens_per_message = 3
         tokens_per_name = 1
