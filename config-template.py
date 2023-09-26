@@ -257,7 +257,7 @@ at_sender = False
 include_image_description = True
 
 # 消息处理的超时时间，单位为秒
-process_message_timeout = 30
+process_message_timeout = 120
 
 # 回复消息时是否显示[GPT]前缀
 show_prefix = False
