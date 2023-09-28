@@ -117,24 +117,24 @@
 </details>
 
 <details>
-<summary>✅支持预设指令文字</summary>
+<summary>✅支持预设文字</summary>
 
   - 支持以自然语言预设文字，自定义机器人人格等信息
   - 详见`config.py`中的`default_prompt`部分
-  - 支持设置多个预设情景，并通过!reset、!default等指令控制，详细请查看[wiki指令](https://github.com/RockChinQ/QChatGPT/wiki/1-%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4)
+  - 支持设置多个预设情景，并通过!reset、!default等命令控制，详细请查看[wiki命令](https://github.com/RockChinQ/QChatGPT/wiki/1-%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4)
 </details>
 
 <details>
 <summary>✅支持对话、绘图等模型，可玩性更高</summary>
 
   - 现已支持OpenAI的对话`Completion API`和绘图`Image API`
-  - 向机器人发送指令`!draw <prompt>`即可使用绘图模型
+  - 向机器人发送命令`!draw <prompt>`即可使用绘图模型
 </details>
 <details>
-<summary>✅支持指令控制热重载、热更新</summary>
+<summary>✅支持命令控制热重载、热更新</summary>
 
-  - 允许在运行期间修改`config.py`或其他代码后，以管理员账号向机器人发送指令`!reload`进行热重载，无需重启
-  - 运行期间允许以管理员账号向机器人发送指令`!update`进行热更新，拉取远程最新代码并执行热重载
+  - 允许在运行期间修改`config.py`或其他代码后，以管理员账号向机器人发送命令`!reload`进行热重载，无需重启
+  - 运行期间允许以管理员账号向机器人发送命令`!update`进行热更新，拉取远程最新代码并执行热重载
 </details>
 <details>
 <summary>✅支持插件加载🧩</summary>
@@ -307,7 +307,7 @@ python3 main.py
 
 </details>
 
-**部署完成后必看: [指令说明](https://github.com/RockChinQ/QChatGPT/wiki/1-%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4)**  
+**部署完成后必看: [命令说明](https://github.com/RockChinQ/QChatGPT/wiki/1-%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8C%87%E4%BB%A4)**  
 
 所有功能查看[Wiki功能使用页](https://github.com/RockChinQ/QChatGPT/wiki/1-%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8)  
 
@@ -332,10 +332,8 @@ python3 main.py
 
 - [WebwlkrPlugin](https://github.com/RockChinQ/WebwlkrPlugin) - 让机器人能联网！！
 - [revLibs](https://github.com/RockChinQ/revLibs) - 将ChatGPT网页版、Claude、Bard、Hugging Chat等破解版接入此项目，关于[官方接口和网页版有什么区别](https://github.com/RockChinQ/QChatGPT/wiki/8-%E5%AE%98%E6%96%B9%E6%8E%A5%E5%8F%A3%E3%80%81ChatGPT%E7%BD%91%E9%A1%B5%E7%89%88%E3%80%81ChatGPT-API%E5%8C%BA%E5%88%AB)
-- [Switcher](https://github.com/RockChinQ/Switcher) - 支持通过指令切换使用的模型
+- [Switcher](https://github.com/RockChinQ/Switcher) - 支持通过命令切换使用的模型
 - [hello_plugin](https://github.com/RockChinQ/hello_plugin) - `hello_plugin` 的储存库形式，插件开发模板
-- [dominoar/QChatPlugins](https://github.com/dominoar/QchatPlugins) - dominoar编写的诸多新功能插件（语音输出、Ranimg、屏蔽词规则等）
-- [dominoar/QCP-NovelAi](https://github.com/dominoar/QCP-NovelAi) - NovelAI 故事叙述与绘画
 - [oliverkirk-sudo/chat_voice](https://github.com/oliverkirk-sudo/chat_voice) - 文字转语音输出，支持HuggingFace上的[VITS模型](https://huggingface.co/spaces/Plachta/VITS-Umamusume-voice-synthesizer),azure语音合成,vits本地语音合成,sovits语音合成
 - [RockChinQ/WaitYiYan](https://github.com/RockChinQ/WaitYiYan) - 实时获取百度`文心一言`等待列表人数
 - [chordfish-k/QChartGPT_Emoticon_Plugin](https://github.com/chordfish-k/QChartGPT_Emoticon_Plugin) - 使机器人根据回复内容发送表情包
