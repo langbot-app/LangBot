@@ -25,7 +25,7 @@
 <a href="http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=nC80H57wmKPwRDLFeQrDDjVl81XuC21P&authKey=2wTUTfoQ5v%2BD4C5zfpuR%2BSPMDqdXgDXA%2FS2wHI1NxTfWIG%2B%2FqK08dgyjMMOzhXa9&noverify=0&group_code=738382634">
 <img alt="Static Badge" src="https://img.shields.io/badge/%E7%A4%BE%E5%8C%BA%E7%BE%A4-738382634-purple">
 </a>
-<a href="https://qchatgpt.wiki.lazyfree.top">
+<a href="https://qchatgpt.rockchin.top">
 <img alt="Static Badge" src="https://img.shields.io/badge/%E6%9F%A5%E7%9C%8B-%E7%A4%BE%E5%8C%BA%E7%BC%96%E5%86%99%E4%BD%BF%E7%94%A8%E6%89%8B%E5%86%8C-blue">
 </a>
 <a href="https://www.bilibili.com/video/BV14h4y1w7TC">
