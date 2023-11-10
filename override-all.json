@@ -86,7 +86,7 @@
         "default": 60
     },
     "rate_limit_strategy": "drop",
-    "upgrade_dependencies": true,
+    "upgrade_dependencies": false,
     "report_usage": true,
     "logging_level": 20
 }
