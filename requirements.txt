@@ -1,5 +1,5 @@
 requests
-openai~=0.28.1
+openai==0.28.1
 dulwich~=0.21.6
 colorlog~=6.6.0
 yiri-mirai
