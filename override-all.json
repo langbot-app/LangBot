@@ -63,7 +63,7 @@
         "size": "256x256"
     },
     "trace_function_calls": false,
-    "quote_origin": true,
+    "quote_origin": false,
     "at_sender": false,
     "include_image_description": true,
     "process_message_timeout": 120,
