@@ -7,14 +7,17 @@ import pkgutil
 import sys
 import shutil
 import traceback
+import re
 
 import pkg.utils.updater as updater
 import pkg.utils.context as context
 import pkg.plugin.switch as switch
 import pkg.plugin.settings as settings
 import pkg.qqbot.adapter as msadapter
+import pkg.utils.network as network
 
 from mirai import Mirai
+import requests
 
 from CallingGPT.session.session import Session
 
@@ -155,29 +158,92 @@ def unload_plugins():
     #                 logging.error("插件{}卸载时发生错误: {}".format(plugin['name'], sys.exc_info()))
 
 
+def get_github_plugin_repo_label(repo_url: str) -> list[str]:
+    """获取username, repo"""
+
+    # 提取 username/repo , 正则表达式
+    repo =  re.findall(r'(?:https?://github\.com/|git@github\.com:)([^/]+/[^/]+?)(?:\.git|/|$)', repo_url)
+
+    if len(repo) > 0: # github
+        return repo[0].split("/")
+    else:
+        return None
+
+
+def download_plugin_source_coder(repo_url: str, target_path: str):
+    """下载插件源码"""
+    # 检查源类型
+    
+    # 提取 username/repo , 正则表达式
+    repo =  get_github_plugin_repo_label(repo_url)
+
+    if repo is not None: # github
+        logging.info("从 GitHub 下载插件源码...")
+
+        zipball_url = f"https://api.github.com/repos/{'/'.join(repo)}/zipball/HEAD"
+
+        zip_resp = requests.get(
+            url=zipball_url,
+            proxies=network.wrapper_proxies(),
+            stream=True
+        )
+
+        if zip_resp.status_code != 200:
+            raise Exception("下载源码失败: {}".format(zip_resp.text))
+        
+        if os.path.exists("temp/"+target_path):
+            shutil.rmtree("temp/"+target_path)
+
+        if os.path.exists(target_path):
+            shutil.rmtree(target_path)
+
+        os.makedirs("temp/"+target_path)
+
+        with open("temp/"+target_path+"/source.zip", "wb") as f:
+            for chunk in zip_resp.iter_content(chunk_size=1024):
+                if chunk:
+                    f.write(chunk)
+
+        logging.info("下载完成, 解压...")
+        import zipfile
+        with zipfile.ZipFile("temp/"+target_path+"/source.zip", 'r') as zip_ref:
+            zip_ref.extractall("temp/"+target_path)
+        os.remove("temp/"+target_path+"/source.zip")
+
+        # 目标是 username-repo-hash , 用正则表达式提取完整的文件夹名，复制到 plugins/repo
+        import glob
+
+        # 获取解压后的文件夹名
+        unzip_dir = glob.glob("temp/"+target_path+"/*")[0]
+
+        # 复制到 plugins/repo
+        shutil.copytree(unzip_dir, target_path+"/")
+
+        # 删除解压后的文件夹
+        shutil.rmtree(unzip_dir)
+
+        logging.info("解压完成")
+    else:
+        raise Exception("暂不支持的源类型，请使用 GitHub 仓库发行插件。")
+
+
 def install_plugin(repo_url: str):
     """安装插件，从git储存库获取并解决依赖"""
-    try:
-        import pkg.utils.pkgmgr
-        pkg.utils.pkgmgr.ensure_dulwich()
-    except:
-        pass
 
-    try:
-        import dulwich
-    except ModuleNotFoundError:
-        raise Exception("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
+    repo_label = None
 
-    from dulwich import porcelain
+    repo_label = get_github_plugin_repo_label(repo_url)
 
-    logging.info("克隆插件储存库: {}".format(repo_url))
-    repo = porcelain.clone(repo_url, "plugins/"+repo_url.split(".git")[0].split("/")[-1]+"/", checkout=True)
+    if repo_label is None:
+        raise Exception("暂不支持的源类型，请使用 GitHub 仓库发行插件。")
+
+    download_plugin_source_coder(repo_url, "plugins/"+repo_label[1])
 
     # 检查此目录是否包含requirements.txt
-    if os.path.exists("plugins/"+repo_url.split(".git")[0].split("/")[-1]+"/requirements.txt"):
+    if os.path.exists("plugins/"+repo_label[1]+"/requirements.txt"):
         logging.info("检测到requirements.txt，正在安装依赖")
         import pkg.utils.pkgmgr
-        pkg.utils.pkgmgr.install_requirements("plugins/"+repo_url.split(".git")[0].split("/")[-1]+"/requirements.txt")
+        pkg.utils.pkgmgr.install_requirements("plugins/"+repo_label[1]+"/requirements.txt")
 
         import pkg.utils.log as log
         log.reset_logging()
