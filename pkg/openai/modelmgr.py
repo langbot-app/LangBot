@@ -5,8 +5,6 @@ ChatCompletion - gpt-3.5-turbo 等模型
 Completion - text-davinci-003 等模型
 此模块封装此两个接口的请求实现，为上层提供统一的调用方式
 """
-import openai, logging, threading, asyncio
-import openai.error as aiE
 import tiktoken
 
 from pkg.openai.api.model import RequestBase
