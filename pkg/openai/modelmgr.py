@@ -5,9 +5,8 @@ ChatCompletion - gpt-3.5-turbo 等模型
 Completion - text-davinci-003 等模型
 此模块封装此两个接口的请求实现，为上层提供统一的调用方式
 """
-import openai, logging, threading, asyncio
-import openai.error as aiE
 import tiktoken
+import openai
 
 from pkg.openai.api.model import RequestBase
 from pkg.openai.api.completion import CompletionRequest
@@ -53,11 +52,11 @@ IMAGE_MODELS = {
 }
 
 
-def select_request_cls(model_name: str, messages: list, args: dict) -> RequestBase:
+def select_request_cls(client: openai.Client, model_name: str, messages: list, args: dict) -> RequestBase:
     if model_name in CHAT_COMPLETION_MODELS:
-        return ChatCompletionRequest(model_name, messages, **args)
+        return ChatCompletionRequest(client, model_name, messages, **args)
     elif model_name in COMPLETION_MODELS:
-        return CompletionRequest(model_name, messages, **args)
+        return CompletionRequest(client, model_name, messages, **args)
     raise ValueError("不支持模型[{}]，请检查配置文件".format(model_name))
 
 

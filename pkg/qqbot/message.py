@@ -65,14 +65,14 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
             if not event.is_prevented_default():
                 reply = [prefix + text]
 
-        except openai.error.APIConnectionError as e:
+        except openai.APIConnectionError as e:
             err_msg = str(e)
             if err_msg.__contains__('Error communicating with OpenAI'):
                 reply = handle_exception("{}会话调用API失败:{}\n您的网络无法访问OpenAI接口或网络代理不正常".format(session_name, e),
                                          "[bot]err:调用API失败，请重试或联系管理员，或等待修复")
             else:
                 reply = handle_exception("{}会话调用API失败:{}".format(session_name, e), "[bot]err:调用API失败，请重试或联系管理员，或等待修复")
-        except openai.error.RateLimitError as e:
+        except openai.RateLimitError as e:
             logging.debug(type(e))
             logging.debug(e.error['message'])
 
@@ -116,14 +116,14 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
             else:
                 reply = handle_exception("{}会话调用API失败:{}".format(session_name, e),
                                          "[bot]err:RateLimitError,请重试或联系作者，或等待修复")
-        except openai.error.InvalidRequestError as e:
+        except openai.BadRequestError as e:
             if config.auto_reset and "This model's maximum context length is" in str(e):
                 session.reset(persist=True)
                 reply = [tips_custom.session_auto_reset_message]
             else:
                 reply = handle_exception("{}API调用参数错误:{}\n".format(
                                 session_name, e), "[bot]err:API调用参数错误，请联系管理员，或等待修复")
-        except openai.error.ServiceUnavailableError as e:
+        except openai.APIStatusError as e:
             reply = handle_exception("{}API调用服务不可用:{}".format(session_name, e), "[bot]err:API调用服务不可用，请重试或联系管理员，或等待修复")
         except Exception as e:
             logging.exception(e)

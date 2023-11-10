@@ -248,7 +248,7 @@ image_api_params = {
 trace_function_calls = False
 
 # 群内回复消息时是否引用原消息
-quote_origin = True
+quote_origin = False
 
 # 群内回复消息时是否at发送者
 at_sender = False

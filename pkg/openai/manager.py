@@ -24,6 +24,8 @@ class OpenAIInteract:
         "size": "256x256",
     }
 
+    client: openai.Client = None
+
     def __init__(self, api_key: str):
 
         self.key_mgr = pkg.openai.keymgr.KeysManager(api_key)
@@ -31,7 +33,9 @@ class OpenAIInteract:
 
         # logging.info("文字总使用量：%d", self.audit_mgr.get_total_text_length())
 
-        openai.api_key = self.key_mgr.get_using_key()
+        self.client = openai.Client(
+            api_key=self.key_mgr.get_using_key()
+        )
 
         pkg.utils.context.set_openai_manager(self)
 
@@ -48,7 +52,7 @@ class OpenAIInteract:
         cp_parmas = config.completion_api_params.copy()
         del cp_parmas['model']
 
-        request = select_request_cls(model, messages, cp_parmas)
+        request = select_request_cls(self.client, model, messages, cp_parmas)
 
         # 请求接口
         for resp in request:
