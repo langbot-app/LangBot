@@ -351,7 +351,7 @@ rate_limitation = {
 rate_limit_strategy = "drop"
 
 # 是否在启动时进行依赖库更新
-upgrade_dependencies = True
+upgrade_dependencies = False
 
 # 是否上报统计信息
 # 用于统计机器人的使用情况，不会收集任何用户信息
