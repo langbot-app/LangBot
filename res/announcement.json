@@ -4,5 +4,11 @@
         "time": "2023-08-01 10:49:26",
         "timestamp": 1690858166,
         "content": "现已支持GPT函数调用功能，欢迎了解：https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8-%E5%86%85%E5%AE%B9%E5%87%BD%E6%95%B0"
+    },
+    {
+        "id": 3,
+        "time": "2023-11-10 12:20:09",
+        "timestamp": 1699590009,
+        "content": "OpenAI 库1.0版本已发行，若出现 OpenAI 调用问题，请更新 QChatGPT 版本。详见项目主页：https://github.com/RockChinQ/QChatGPT"
     }
 ]
