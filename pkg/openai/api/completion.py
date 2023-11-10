@@ -1,4 +1,5 @@
 import openai
+from openai.types import completion, completion_choice
 
 from .model import RequestBase
 
@@ -17,10 +18,12 @@ class CompletionRequest(RequestBase):
 
     def __init__(
         self,
+        client: openai.Client,
         model: str,
         messages: list[dict[str, str]],
         **kwargs
     ):
+        self.client = client
         self.model = model
         self.prompt = ""
         
@@ -31,7 +34,7 @@ class CompletionRequest(RequestBase):
 
         self.kwargs = kwargs
 
-        self.req_func = openai.Completion.acreate
+        self.req_func = self.client.completions.create
 
     def __iter__(self):
         return self
@@ -63,49 +66,35 @@ class CompletionRequest(RequestBase):
         if self.stopped:
             raise StopIteration()
 
-        resp = self._req(
+        resp: completion.Completion = self._req(
             model=self.model,
             prompt=self.prompt,
             **self.kwargs
         )
 
-        if resp["choices"][0]["finish_reason"] == "stop":
+        if resp.choices[0].finish_reason == "stop":
             self.stopped = True
 
-        choice0 = resp["choices"][0]
+        choice0: completion_choice.CompletionChoice = resp.choices[0]
 
-        self.prompt += choice0["text"]
+        self.prompt += choice0.text
 
         return {
-            "id": resp["id"],
+            "id": resp.id,
             "choices": [
                 {
-                    "index": choice0["index"],
+                    "index": choice0.index,
                     "message": {
                         "role": "assistant",
                         "type": "text",
-                        "content": choice0["text"]
+                        "content": choice0.text
                     },
-                    "finish_reason": choice0["finish_reason"]
+                    "finish_reason": choice0.finish_reason
                 }
             ],
-            "usage": resp["usage"]
-        }
-        
-if __name__ == "__main__":
-    import os
-
-    openai.api_key = os.environ["OPENAI_API_KEY"]
-
-    for resp in CompletionRequest(
-        model="text-davinci-003",
-        messages=[
-            {
-                "role": "user",
-                "content": "Hello, who are you?"
+            "usage": {
+                "prompt_tokens": resp.usage.prompt_tokens,
+                "completion_tokens": resp.usage.completion_tokens,
+                "total_tokens": resp.usage.total_tokens
             }
-        ]
-    ):
-        print(resp)
-        if resp["choices"][0]["finish_reason"] == "stop":
-            break
+        }

@@ -278,7 +278,7 @@ class Session:
             if resp['choices'][0]['message']['role'] == "assistant" and resp['choices'][0]['message']['content'] != None:  # 包含纯文本响应
 
                 if not trace_func_calls:
-                    res_text += resp['choices'][0]['message']['content'] + "\n"
+                    res_text += resp['choices'][0]['message']['content']
                 else:
                     res_text = resp['choices'][0]['message']['content']
                     pending_res_text = resp['choices'][0]['message']['content']

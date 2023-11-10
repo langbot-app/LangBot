@@ -1,4 +1,5 @@
 import openai
+from openai.types.chat import chat_completion_message
 import json
 import logging
 
@@ -13,13 +14,14 @@ class ChatCompletionRequest(RequestBase):
     此类保证每一次返回的角色为assistant的信息的finish_reason一定为stop。
     若有函数调用响应，本类的返回瀑布是：函数调用请求->函数调用结果->...->assistant的信息->stop。
     """
+
     model: str
     messages: list[dict[str, str]]
     kwargs: dict
 
     stopped: bool = False
 
-    pending_func_call: dict = None
+    pending_func_call: chat_completion_message.FunctionCall = None
 
     pending_msg: str
 
@@ -46,16 +48,18 @@ class ChatCompletionRequest(RequestBase):
 
     def __init__(
         self,
+        client: openai.Client,
         model: str,
         messages: list[dict[str, str]],
         **kwargs
     ):
+        self.client = client
         self.model = model
         self.messages = messages.copy()
 
         self.kwargs = kwargs
 
-        self.req_func = openai.ChatCompletion.acreate
+        self.req_func = self.client.chat.completions.create
 
         self.pending_func_call = None
 
@@ -84,39 +88,48 @@ class ChatCompletionRequest(RequestBase):
 
             # 拼接kwargs
             args = {**args, **self.kwargs}
+            
+            from openai.types.chat import chat_completion
 
-            resp = self._req(**args)
+            resp: chat_completion.ChatCompletion = self._req(**args)
 
-            choice0 = resp["choices"][0]
+            choice0 = resp.choices[0]
 
             # 如果不是函数调用，且finish_reason为stop，则停止迭代
-            if choice0['finish_reason'] == 'stop':  #  and choice0["finish_reason"] == "stop"
+            if choice0.finish_reason == 'stop':  #  and choice0["finish_reason"] == "stop"
                 self.stopped = True
             
-            if 'function_call' in choice0['message']:
-                self.pending_func_call = choice0['message']['function_call']
+            if hasattr(choice0.message, 'function_call') and choice0.message.function_call is not None:
+                self.pending_func_call = choice0.message.function_call
 
                 self.append_message(
                     role="assistant",
-                    content=choice0['message']['content'],
-                    function_call=choice0['message']['function_call']
+                    content=choice0.message.content,
+                    function_call=choice0.message.function_call
                 )
 
                 return {
-                    "id": resp["id"],
+                    "id": resp.id,
                     "choices": [
                         {
-                            "index": choice0["index"],
+                            "index": choice0.index,
                             "message": {
                                 "role": "assistant",
                                 "type": "function_call",
-                                "content": choice0['message']['content'],
-                                "function_call": choice0['message']['function_call']
+                                "content": choice0.message.content,
+                                "function_call": {
+                                    "name": choice0.message.function_call.name,
+                                    "arguments": choice0.message.function_call.arguments
+                                }
                             },
                             "finish_reason": "function_call"
                         }
                     ],
-                    "usage": resp["usage"]
+                    "usage": {
+                        "prompt_tokens": resp.usage.prompt_tokens,
+                        "completion_tokens": resp.usage.completion_tokens,
+                        "total_tokens": resp.usage.total_tokens
+                    }
                 }
             else:
 
@@ -124,19 +137,23 @@ class ChatCompletionRequest(RequestBase):
                 # 普通回复一定处于最后方，故不用再追加进内部messages
 
                 return {
-                    "id": resp["id"],
+                    "id": resp.id,
                     "choices": [
                         {
-                            "index": choice0["index"],
+                            "index": choice0.index,
                             "message": {
                                 "role": "assistant",
                                 "type": "text",
-                                "content": choice0['message']['content']
+                                "content": choice0.message.content
                             },
-                            "finish_reason": choice0["finish_reason"]
+                            "finish_reason": choice0.finish_reason
                         }
                     ],
-                    "usage": resp["usage"]
+                    "usage": {
+                        "prompt_tokens": resp.usage.prompt_tokens,
+                        "completion_tokens": resp.usage.completion_tokens,
+                        "total_tokens": resp.usage.total_tokens
+                    }
                 }
         else:  # 处理函数调用请求
 
@@ -144,20 +161,20 @@ class ChatCompletionRequest(RequestBase):
             
             self.pending_func_call = None
 
-            func_name = cp_pending_func_call['name']
+            func_name = cp_pending_func_call.name
             arguments = {}
 
             try:
 
                 try:
-                    arguments = json.loads(cp_pending_func_call['arguments'])
+                    arguments = json.loads(cp_pending_func_call.arguments)
                 # 若不是json格式的异常处理
                 except json.decoder.JSONDecodeError:
                     # 获取函数的参数列表
                     func_schema = get_func_schema(func_name)
 
                     arguments = {
-                        func_schema['parameters']['required'][0]: cp_pending_func_call['arguments']
+                        func_schema['parameters']['required'][0]: cp_pending_func_call.arguments
                     }
                 
                 logging.info("执行函数调用: name={}, arguments={}".format(func_name, arguments))
