@@ -208,29 +208,52 @@ auto_reset = True
 
 # OpenAI补全API的参数
 # 请在下方填写模型，程序自动选择接口
+# 模型文档：https://platform.openai.com/docs/models
 # 现已支持的模型有：
 # 
-#    'gpt-4'
-#    'gpt-4-0613'
-#    'gpt-4-32k'
-#    'gpt-4-32k-0613'
-#    'gpt-3.5-turbo'
-#    'gpt-3.5-turbo-16k'
-#    'gpt-3.5-turbo-0613'
-#    'gpt-3.5-turbo-16k-0613'
-#    'text-davinci-003'
-#    'text-davinci-002'
-#    'code-davinci-002'
-#    'code-cushman-001'
-#    'text-curie-001'
-#    'text-babbage-001'
-#    'text-ada-001'
+# ChatCompletions 接口：
+# # GPT 4 系列
+# "gpt-4-1106-preview",
+# "gpt-4-vision-preview",
+# "gpt-4",
+# "gpt-4-32k",
+# "gpt-4-0613",
+# "gpt-4-32k-0613",
+# "gpt-4-0314", # legacy
+# "gpt-4-32k-0314", # legacy
+# # GPT 3.5 系列
+# "gpt-3.5-turbo-1106",
+# "gpt-3.5-turbo",
+# "gpt-3.5-turbo-16k",
+# "gpt-3.5-turbo-0613", # legacy
+# "gpt-3.5-turbo-16k-0613", # legacy
+# "gpt-3.5-turbo-0301", # legacy
+# 
+# Completions接口：
+# "text-davinci-003", # legacy
+# "text-davinci-002", # legacy
+# "code-davinci-002", # legacy
+# "code-cushman-001", # legacy
+# "text-curie-001", # legacy
+# "text-babbage-001", # legacy
+# "text-ada-001", # legacy
+# "gpt-3.5-turbo-instruct",
 #
 # 具体请查看OpenAI的文档: https://beta.openai.com/docs/api-reference/completions/create
 # 请将内容修改到config.py中，请勿修改config-template.py
 # 
 # 支持通过 One API 接入多种模型，请在上方的openai_config中设置One API的代理地址，
 # 并在此填写您要使用的模型名称，详细请参考：https://github.com/songquanpeng/one-api
+# 
+# 支持的 One API 模型：
+# "SparkDesk",
+# "chatglm_pro",
+# "chatglm_std",
+# "chatglm_lite",
+# "qwen-v1",
+# "qwen-plus-v1",
+# "ERNIE-Bot",
+# "ERNIE-Bot-turbo",
 completion_api_params = {
     "model": "gpt-3.5-turbo",
     "temperature": 0.9,  # 数值越低得到的回答越理性，取值范围[0, 1]

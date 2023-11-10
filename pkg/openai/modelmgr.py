@@ -13,34 +13,42 @@ from pkg.openai.api.completion import CompletionRequest
 from pkg.openai.api.chat_completion import ChatCompletionRequest
 
 COMPLETION_MODELS = {
-    'text-davinci-003',
-    'text-davinci-002',
-    'code-davinci-002',
-    'code-cushman-001',
-    'text-curie-001',
-    'text-babbage-001',
-    'text-ada-001',
+    "text-davinci-003", # legacy
+    "text-davinci-002", # legacy
+    "code-davinci-002", # legacy
+    "code-cushman-001", # legacy
+    "text-curie-001", # legacy
+    "text-babbage-001", # legacy
+    "text-ada-001", # legacy
+    "gpt-3.5-turbo-instruct",
 }
 
 CHAT_COMPLETION_MODELS = {
-    'gpt-3.5-turbo',
-    'gpt-3.5-turbo-16k',
-    'gpt-3.5-turbo-0613',
-    'gpt-3.5-turbo-16k-0613',
-    # 'gpt-3.5-turbo-0301',
-    'gpt-4',
-    'gpt-4-0613',
-    'gpt-4-32k',
-    'gpt-4-32k-0613',
+    # GPT 4 系列
+    "gpt-4-1106-preview",
+    "gpt-4-vision-preview",
+    "gpt-4",
+    "gpt-4-32k",
+    "gpt-4-0613",
+    "gpt-4-32k-0613",
+    "gpt-4-0314", # legacy
+    "gpt-4-32k-0314", # legacy
+    # GPT 3.5 系列
+    "gpt-3.5-turbo-1106",
+    "gpt-3.5-turbo",
+    "gpt-3.5-turbo-16k",
+    "gpt-3.5-turbo-0613", # legacy
+    "gpt-3.5-turbo-16k-0613", # legacy
+    "gpt-3.5-turbo-0301", # legacy
     # One-API 接入
-    'SparkDesk',
-    'chatglm_pro',
-    'chatglm_std',
-    'chatglm_lite',
-    'qwen-v1',
-    'qwen-plus-v1',
-    'ERNIE-Bot',
-    'ERNIE-Bot-turbo',
+    "SparkDesk",
+    "chatglm_pro",
+    "chatglm_std",
+    "chatglm_lite",
+    "qwen-v1",
+    "qwen-plus-v1",
+    "ERNIE-Bot",
+    "ERNIE-Bot-turbo",
 }
 
 EDIT_MODELS = {
