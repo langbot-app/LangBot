@@ -7,6 +7,7 @@ import pkgutil
 import sys
 import shutil
 import traceback
+import time
 import re
 
 import pkg.utils.updater as updater
@@ -15,6 +16,7 @@ import pkg.plugin.switch as switch
 import pkg.plugin.settings as settings
 import pkg.qqbot.adapter as msadapter
 import pkg.utils.network as network
+import pkg.plugin.metadata as metadata
 
 from mirai import Mirai
 import requests
@@ -116,9 +118,14 @@ def load_plugins():
     # 加载插件顺序
     settings.load_settings()
 
+    logging.debug("registered plugins: {}".format(__plugins__))
+
     # 输出已注册的内容函数列表
     logging.debug("registered content functions: {}".format(__callable_functions__))
     logging.debug("function instance map: {}".format(__function_inst_map__))
+
+    # 迁移插件源地址记录
+    metadata.do_plugin_git_repo_migrate()
 
 
 def initialize_plugins():
@@ -170,12 +177,14 @@ def get_github_plugin_repo_label(repo_url: str) -> list[str]:
         return None
 
 
-def download_plugin_source_coder(repo_url: str, target_path: str):
+def download_plugin_source_code(repo_url: str, target_path: str) -> str:
     """下载插件源码"""
     # 检查源类型
     
     # 提取 username/repo , 正则表达式
     repo =  get_github_plugin_repo_label(repo_url)
+
+    target_path += repo[1]
 
     if repo is not None: # github
         logging.info("从 GitHub 下载插件源码...")
@@ -225,28 +234,29 @@ def download_plugin_source_coder(repo_url: str, target_path: str):
         logging.info("解压完成")
     else:
         raise Exception("暂不支持的源类型，请使用 GitHub 仓库发行插件。")
+    
+    return repo[1]
+
+
+def check_requirements(path: str):
+    # 检查此目录是否包含requirements.txt
+    if os.path.exists(path+"/requirements.txt"):
+        logging.info("检测到requirements.txt，正在安装依赖")
+        import pkg.utils.pkgmgr
+        pkg.utils.pkgmgr.install_requirements(path+"/requirements.txt")
+
+        import pkg.utils.log as log
+        log.reset_logging()
 
 
 def install_plugin(repo_url: str):
     """安装插件，从git储存库获取并解决依赖"""
 
-    repo_label = None
+    repo_label = download_plugin_source_code(repo_url, "plugins/")
 
-    repo_label = get_github_plugin_repo_label(repo_url)
+    check_requirements("plugins/"+repo_label)
 
-    if repo_label is None:
-        raise Exception("暂不支持的源类型，请使用 GitHub 仓库发行插件。")
-
-    download_plugin_source_coder(repo_url, "plugins/"+repo_label[1])
-
-    # 检查此目录是否包含requirements.txt
-    if os.path.exists("plugins/"+repo_label[1]+"/requirements.txt"):
-        logging.info("检测到requirements.txt，正在安装依赖")
-        import pkg.utils.pkgmgr
-        pkg.utils.pkgmgr.install_requirements("plugins/"+repo_label[1]+"/requirements.txt")
-
-        import pkg.utils.log as log
-        log.reset_logging()
+    metadata.set_plugin_metadata(repo_label, repo_url, int(time.time()), "HEAD")
 
 
 def uninstall_plugin(plugin_name: str) -> str:
@@ -268,39 +278,43 @@ def uninstall_plugin(plugin_name: str) -> str:
 def update_plugin(plugin_name: str):
     """更新插件"""
     # 检查是否有远程地址记录
-    target_plugin_dir = "plugins/" + __plugins__[plugin_name]['path'].replace("\\", "/").split("plugins/")[1].split("/")[0]
+    plugin_path_name = get_plugin_path_name_by_plugin_name(plugin_name)
 
-    remote_url = updater.get_remote_url(target_plugin_dir)
+    meta = metadata.get_plugin_metadata(plugin_path_name)
+
+    if meta == {}:
+        raise Exception("没有此插件元数据信息，无法更新")
+
+    remote_url = meta['source']
     if remote_url == "https://github.com/RockChinQ/QChatGPT" or remote_url == "https://gitee.com/RockChin/QChatGPT" \
         or remote_url == "" or remote_url is None or remote_url == "http://github.com/RockChinQ/QChatGPT" or remote_url == "http://gitee.com/RockChin/QChatGPT":
         raise Exception("插件没有远程地址记录，无法更新")
     
-    # 把远程clone到temp/plugins/update/插件名
-    logging.info("克隆插件储存库: {}".format(remote_url))
+    # 重新安装插件
+    logging.info("正在重新安装插件以进行更新...")
 
-    from dulwich import porcelain
-    clone_target_dir = "temp/plugins/update/"+target_plugin_dir.split("/")[-1]+"/"
+    install_plugin(remote_url)
 
-    if os.path.exists(clone_target_dir):
-        shutil.rmtree(clone_target_dir)
 
-    if not os.path.exists(clone_target_dir):
-        os.makedirs(clone_target_dir)
-    repo = porcelain.clone(remote_url, clone_target_dir, checkout=True)
+def get_plugin_name_by_path_name(plugin_path_name: str) -> str:
+    for k, v in __plugins__.items():
+        if v['path'] == "plugins/"+plugin_path_name+"/main.py":
+            return k
+    return None
 
-    # 检查此目录是否包含requirements.txt
-    if os.path.exists(clone_target_dir+"requirements.txt"):
-        logging.info("检测到requirements.txt，正在安装依赖")
-        import pkg.utils.pkgmgr
-        pkg.utils.pkgmgr.install_requirements(clone_target_dir+"requirements.txt")
 
-        import pkg.utils.log as log
-        log.reset_logging()
+def get_plugin_path_name_by_plugin_name(plugin_name: str) -> str:
+    if plugin_name not in __plugins__:
+        return None
+    
+    plugin_main_module_path = __plugins__[plugin_name]['path']
 
-    # 将temp/plugins/update/插件名 覆盖到 plugins/插件名
-    shutil.rmtree(target_plugin_dir)
+    plugin_main_module_path = plugin_main_module_path.replace("\\", "/")
 
-    shutil.copytree(clone_target_dir, target_plugin_dir)
+    spt = plugin_main_module_path.split("/")
+
+    return spt[1]
+
 
 class EventContext:
     """事件上下文"""

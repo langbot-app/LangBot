@@ -84,7 +84,7 @@ class PluginGetCommand(AbstractCommandNode):
 @AbstractCommandNode.register(
     parent=PluginCommand,
     name="update",
-    description="更新所有插件",
+    description="更新插件",
     usage="!plugin update",
     aliases=[],
     privilege=2
@@ -110,7 +110,9 @@ class PluginUpdateCommand(AbstractCommandNode):
                             plugin_host.update_plugin(key)
                             updated.append(key)
                     else:
-                        if ctx.crt_params[0] in plugin_list:
+                        plugin_path_name = plugin_host.get_plugin_path_name_by_plugin_name(ctx.crt_params[0])
+
+                        if ctx.crt_params[0] is not None:
                             plugin_host.update_plugin(ctx.crt_params[0])
                             updated.append(ctx.crt_params[0])
                         else:
@@ -119,7 +121,7 @@ class PluginUpdateCommand(AbstractCommandNode):
                     pkg.utils.context.get_qqbot_manager().notify_admin("已更新插件: {}, 请发送 !reload 重载插件".format(", ".join(updated)))
                 except Exception as e:
                     logging.error("插件更新失败:{}".format(e))
-                    pkg.utils.context.get_qqbot_manager().notify_admin("插件更新失败:{} 请尝试手动更新插件".format(e))
+                    pkg.utils.context.get_qqbot_manager().notify_admin("插件更新失败:{} 请使用 !plugin 命令确认插件名称或尝试手动更新插件".format(e))
 
             reply = ["[bot]正在更新插件，请勿重复发起..."]
             threading.Thread(target=closure).start()
