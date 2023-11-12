@@ -10,6 +10,6 @@ updates:
     schedule:
       interval: "weekly"
     allow:
-      - dependency-name: "yiri-mirai"
+      - dependency-name: "yiri-mirai-rc"
       - dependency-name: "dulwich"
       - dependency-name: "openai"

@@ -25,7 +25,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade  yiri-mirai openai>=1.0.0 colorlog func_timeout dulwich Pillow CallingGPT tiktoken
+        python -m pip install --upgrade  yiri-mirai-rc openai>=1.0.0 colorlog func_timeout dulwich Pillow CallingGPT tiktoken
         python -m pip install -U openai>=1.0.0
 
     - name: Copy Scripts
