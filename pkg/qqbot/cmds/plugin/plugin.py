@@ -84,7 +84,7 @@ class PluginGetCommand(AbstractCommandNode):
 @AbstractCommandNode.register(
     parent=PluginCommand,
     name="update",
-    description="更新插件",
+    description="更新指定插件或全部插件",
     usage="!plugin update",
     aliases=[],
     privilege=2
