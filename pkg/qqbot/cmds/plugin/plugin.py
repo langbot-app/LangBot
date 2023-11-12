@@ -112,7 +112,7 @@ class PluginUpdateCommand(AbstractCommandNode):
                     else:
                         plugin_path_name = plugin_host.get_plugin_path_name_by_plugin_name(ctx.crt_params[0])
 
-                        if ctx.crt_params[0] is not None:
+                        if plugin_path_name is not None:
                             plugin_host.update_plugin(ctx.crt_params[0])
                             updated.append(ctx.crt_params[0])
                         else:
