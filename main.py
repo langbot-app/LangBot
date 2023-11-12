@@ -20,7 +20,6 @@ except ImportError:
     import pkg.utils.pkgmgr as pkgmgr
     try:
         pkgmgr.install_requirements("requirements.txt")
-        pkgmgr.install_upgrade("websockets")
         import colorlog
     except ImportError:
         print("依赖不满足,请查看 https://github.com/RockChinQ/qcg-installer/issues/15")
