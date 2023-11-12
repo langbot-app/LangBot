@@ -19,7 +19,7 @@ def run_pip(params: list):
 
 
 def install_requirements(file):
-    pipmain(['install', '-r', file, "--upgrade", "-i", "https://pypi.tuna.tsinghua.edu.cn/simple",
+    pipmain(['install', '-r', file, "-i", "https://pypi.tuna.tsinghua.edu.cn/simple",
                     "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
     log.reset_logging()
 

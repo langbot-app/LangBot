@@ -13,6 +13,48 @@ sys.path.append(".")
 
 from pkg.utils.log import init_runtime_log_file, reset_logging
 
+
+def check_file():
+    # 检查是否有banlist.py,如果没有就把banlist-template.py复制一份
+    if not os.path.exists('banlist.py'):
+        shutil.copy('res/templates/banlist-template.py', 'banlist.py')
+
+    # 检查是否有sensitive.json
+    if not os.path.exists("sensitive.json"):
+        shutil.copy("res/templates/sensitive-template.json", "sensitive.json")
+
+    # 检查是否有scenario/default.json
+    if not os.path.exists("scenario/default.json"):
+        shutil.copy("scenario/default-template.json", "scenario/default.json")
+
+    # 检查cmdpriv.json
+    if not os.path.exists("cmdpriv.json"):
+        shutil.copy("res/templates/cmdpriv-template.json", "cmdpriv.json")
+
+    # 检查tips_custom
+    if not os.path.exists("tips.py"):
+        shutil.copy("tips-custom-template.py", "tips.py")
+
+    # 检查temp目录
+    if not os.path.exists("temp/"):
+        os.mkdir("temp/")
+
+    # 检查并创建plugins、prompts目录
+    check_path = ["plugins", "prompts"]
+    for path in check_path:
+        if not os.path.exists(path):
+            os.mkdir(path)
+
+    # 配置文件存在性校验
+    if not os.path.exists('config.py'):
+        shutil.copy('config-template.py', 'config.py')
+        print('请先在config.py中填写配置')
+        sys.exit(0)
+
+
+# 初始化相关文件
+check_file()
+
 try:
     import colorlog
 except ImportError:
@@ -367,52 +409,11 @@ def stop():
             raise e
 
 
-def check_file():
-    # 检查是否有banlist.py,如果没有就把banlist-template.py复制一份
-    if not os.path.exists('banlist.py'):
-        shutil.copy('res/templates/banlist-template.py', 'banlist.py')
-
-    # 检查是否有sensitive.json
-    if not os.path.exists("sensitive.json"):
-        shutil.copy("res/templates/sensitive-template.json", "sensitive.json")
-
-    # 检查是否有scenario/default.json
-    if not os.path.exists("scenario/default.json"):
-        shutil.copy("scenario/default-template.json", "scenario/default.json")
-
-    # 检查cmdpriv.json
-    if not os.path.exists("cmdpriv.json"):
-        shutil.copy("res/templates/cmdpriv-template.json", "cmdpriv.json")
-
-    # 检查tips_custom
-    if not os.path.exists("tips.py"):
-        shutil.copy("tips-custom-template.py", "tips.py")
-
-    # 检查temp目录
-    if not os.path.exists("temp/"):
-        os.mkdir("temp/")
-
-    # 检查并创建plugins、prompts目录
-    check_path = ["plugins", "prompts"]
-    for path in check_path:
-        if not os.path.exists(path):
-            os.mkdir(path)
-
-    # 配置文件存在性校验
-    if not os.path.exists('config.py'):
-        shutil.copy('config-template.py', 'config.py')
-        print('请先在config.py中填写配置')
-        sys.exit(0)
-
-
 def main():
     global use_override
     # 检查是否携带了 --override 或 -r 参数
     if '--override' in sys.argv or '-r' in sys.argv:
         use_override = True
-
-    # 初始化相关文件
-    check_file()
 
     # 初始化logging
     init_runtime_log_file()
