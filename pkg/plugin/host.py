@@ -70,6 +70,8 @@ def generate_plugin_order():
 def iter_plugins():
     """按照顺序迭代插件"""
     for plugin_name in __plugins_order__:
+        if plugin_name not in __plugins__:
+            continue
         yield __plugins__[plugin_name]
 
 

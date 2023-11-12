@@ -185,7 +185,11 @@ class NakuruProjectAdapter(MessageSourceAdapter):
         if resp.status_code == 403:
             logging.error("go-cqhttp拒绝访问，请检查config.py中nakuru_config的token是否与go-cqhttp设置的access-token匹配")
             raise Exception("go-cqhttp拒绝访问，请检查config.py中nakuru_config的token是否与go-cqhttp设置的access-token匹配")
-        self.bot_account_id = int(resp.json()['data']['user_id'])
+        try:
+            self.bot_account_id = int(resp.json()['data']['user_id'])
+        except Exception as e:
+            logging.error("获取go-cqhttp账号信息失败: {}, 请检查是否已启动go-cqhttp并配置正确".format(e))
+            raise Exception("获取go-cqhttp账号信息失败: {}, 请检查是否已启动go-cqhttp并配置正确".format(e))
 
     def send_message(
         self,
