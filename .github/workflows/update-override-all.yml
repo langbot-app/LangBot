@@ -29,7 +29,6 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # 在此处添加您的项目所需的其他依赖
 
       - name: Copy Scripts
         run: |
