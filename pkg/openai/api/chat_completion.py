@@ -1,11 +1,11 @@
-import openai
-from openai.types.chat import chat_completion_message
 import json
 import logging
 
-from .model import RequestBase
+import openai
+from openai.types.chat import chat_completion_message
 
-from ..funcmgr import get_func_schema_list, execute_function, get_func, get_func_schema, ContentFunctionNotFoundError
+from .model import RequestBase
+from .. import funcmgr
 
 
 class ChatCompletionRequest(RequestBase):
@@ -81,7 +81,7 @@ class ChatCompletionRequest(RequestBase):
                 "messages": self.messages,
             }
 
-            funcs = get_func_schema_list()
+            funcs = funcmgr.get_func_schema_list()
 
             if len(funcs) > 0:
                 args['functions'] = funcs
@@ -171,7 +171,7 @@ class ChatCompletionRequest(RequestBase):
                 # 若不是json格式的异常处理
                 except json.decoder.JSONDecodeError:
                     # 获取函数的参数列表
-                    func_schema = get_func_schema(func_name)
+                    func_schema = funcmgr.get_func_schema(func_name)
 
                     arguments = {
                         func_schema['parameters']['required'][0]: cp_pending_func_call.arguments
@@ -182,7 +182,7 @@ class ChatCompletionRequest(RequestBase):
                 # 执行函数调用
                 ret = ""
                 try:
-                    ret = execute_function(func_name, arguments)
+                    ret = funcmgr.execute_function(func_name, arguments)
 
                     logging.info("函数执行完成。")
                 except Exception as e:
@@ -216,6 +216,5 @@ class ChatCompletionRequest(RequestBase):
                     }
                 }
 
-            except ContentFunctionNotFoundError:
+            except funcmgr.ContentFunctionNotFoundError:
                 raise Exception("没有找到函数: {}".format(func_name))
-

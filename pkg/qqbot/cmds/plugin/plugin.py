@@ -1,12 +1,9 @@
-from ..aamgr import AbstractCommandNode, Context
-
-import os
-
-import pkg.plugin.host as plugin_host
-import pkg.utils.updater as updater
+from ....plugin import host as plugin_host
+from ....utils import updater
+from .. import aamgr
 
 
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=None,
     name="plugin",
     description="插件管理",
@@ -14,9 +11,9 @@ import pkg.utils.updater as updater
     aliases=[],
     privilege=1
 )
-class PluginCommand(AbstractCommandNode):
+class PluginCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         reply = []
         plugin_list = plugin_host.__plugins__
         if len(ctx.params) == 0:
@@ -48,7 +45,7 @@ class PluginCommand(AbstractCommandNode):
             return False, []
 
     
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=PluginCommand,
     name="get",
     description="安装插件",
@@ -56,9 +53,9 @@ class PluginCommand(AbstractCommandNode):
     aliases=[],
     privilege=2
 )
-class PluginGetCommand(AbstractCommandNode):
+class PluginGetCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         import threading
         import logging
         import pkg.utils.context
@@ -81,7 +78,7 @@ class PluginGetCommand(AbstractCommandNode):
         return True, reply
 
 
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=PluginCommand,
     name="update",
     description="更新指定插件或全部插件",
@@ -89,9 +86,9 @@ class PluginGetCommand(AbstractCommandNode):
     aliases=[],
     privilege=2
 )
-class PluginUpdateCommand(AbstractCommandNode):
+class PluginUpdateCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         import threading
         import logging
         plugin_list = plugin_host.__plugins__
@@ -130,7 +127,7 @@ class PluginUpdateCommand(AbstractCommandNode):
         return True, reply
 
 
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=PluginCommand,
     name="del",
     description="删除插件",
@@ -138,9 +135,9 @@ class PluginUpdateCommand(AbstractCommandNode):
     aliases=[],
     privilege=2
 )
-class PluginDelCommand(AbstractCommandNode):
+class PluginDelCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         plugin_list = plugin_host.__plugins__
         reply = []
 
@@ -157,7 +154,7 @@ class PluginDelCommand(AbstractCommandNode):
         return True, reply
 
 
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=PluginCommand,
     name="on",
     description="启用指定插件",
@@ -165,7 +162,7 @@ class PluginDelCommand(AbstractCommandNode):
     aliases=[],
     privilege=2
 )
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=PluginCommand,
     name="off",
     description="禁用指定插件",
@@ -173,9 +170,9 @@ class PluginDelCommand(AbstractCommandNode):
     aliases=[],
     privilege=2
 )
-class PluginOnOffCommand(AbstractCommandNode):
+class PluginOnOffCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         import pkg.plugin.switch as plugin_switch
 
         plugin_list = plugin_host.__plugins__

@@ -2,21 +2,21 @@
 import os
 import time
 import base64
+import typing
 
-import config
 from mirai.models.message import MessageComponent, MessageChain, Image
 from mirai.models.message import ForwardMessageNode
 from mirai.models.base import MiraiBaseModel
-from typing import List
-import pkg.utils.context as context
-import pkg.utils.text2img as text2img
+
+from ..utils import text2img
+import config
 
 
 class ForwardMessageDiaplay(MiraiBaseModel):
     title: str = "群聊的聊天记录"
     brief: str = "[聊天记录]"
     source: str = "聊天记录"
-    preview: List[str] = []
+    preview: typing.List[str] = []
     summary: str = "查看x条转发消息"
 
 
@@ -26,7 +26,7 @@ class Forward(MessageComponent):
     """消息组件类型。"""
     display: ForwardMessageDiaplay
     """显示信息"""
-    node_list: List[ForwardMessageNode]
+    node_list: typing.List[ForwardMessageNode]
     """转发消息节点列表。"""
     def __init__(self, *args, **kwargs):
         if len(args) == 1:

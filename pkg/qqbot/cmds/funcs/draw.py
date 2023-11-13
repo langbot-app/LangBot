@@ -1,11 +1,12 @@
-from ..aamgr import AbstractCommandNode, Context
 import logging
 
-from mirai import Image
+import mirai
+
+from .. import aamgr
 import config
 
 
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=None,
     name="draw",
     description="使用DALL·E生成图片",
@@ -13,9 +14,9 @@ import config
     aliases=[],
     privilege=1
 )
-class DrawCommand(AbstractCommandNode):
+class DrawCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         import pkg.openai.session
 
         reply = []
@@ -28,7 +29,7 @@ class DrawCommand(AbstractCommandNode):
             res = session.draw_image(" ".join(ctx.params))
 
             logging.debug("draw_image result:{}".format(res))
-            reply = [Image(url=res['data'][0]['url'])]
+            reply = [mirai.Image(url=res['data'][0]['url'])]
             if not (hasattr(config, 'include_image_description')
                     and not config.include_image_description):
                 reply.append(" ".join(ctx.params))

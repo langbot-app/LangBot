@@ -1,13 +1,14 @@
-from ..adapter import MessageSourceAdapter
+import asyncio
+import typing
+
 import mirai
 import mirai.models.bus
 from mirai.bot import MiraiRunner
 
-import asyncio
-import typing
+from .. import adapter as adapter_model
 
 
-class YiriMiraiAdapter(MessageSourceAdapter):
+class YiriMiraiAdapter(adapter_model.MessageSourceAdapter):
     """YiriMirai适配器"""
     bot: mirai.Mirai
 

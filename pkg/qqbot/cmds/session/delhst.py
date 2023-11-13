@@ -1,7 +1,7 @@
-from ..aamgr import AbstractCommandNode, Context
+from .. import aamgr
 
 
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=None,
     name="delhst",
     description="删除指定会话的所有历史记录",
@@ -9,9 +9,9 @@ from ..aamgr import AbstractCommandNode, Context
     aliases=[],
     privilege=2
 )
-class DelHistoryCommand(AbstractCommandNode):
+class DelHistoryCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         import pkg.openai.session
         import pkg.utils.context
         params = ctx.params
@@ -31,7 +31,7 @@ class DelHistoryCommand(AbstractCommandNode):
         return True, reply
     
 
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=DelHistoryCommand,
     name="all",
     description="删除所有会话的全部历史记录",
@@ -39,9 +39,9 @@ class DelHistoryCommand(AbstractCommandNode):
     aliases=[],
     privilege=2
 )
-class DelAllHistoryCommand(AbstractCommandNode):
+class DelAllHistoryCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         import pkg.utils.context
         reply = []
         pkg.utils.context.get_database_manager().delete_all_session_history()

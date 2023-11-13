@@ -1,7 +1,7 @@
-from ..aamgr import AbstractCommandNode, Context, __command_list__
+from .. import aamgr
 
 
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=None,
     name="cmd",
     description="显示指令列表",
@@ -9,10 +9,10 @@ from ..aamgr import AbstractCommandNode, Context, __command_list__
     aliases=[],
     privilege=1
 )
-class CmdCommand(AbstractCommandNode):
+class CmdCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
-        command_list = __command_list__
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
+        command_list = aamgr.__command_list__
 
         reply = []
 

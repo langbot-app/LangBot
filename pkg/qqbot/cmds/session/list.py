@@ -1,9 +1,10 @@
-from ..aamgr import AbstractCommandNode, Context
 import datetime
 import json
 
+from .. import aamgr
 
-@AbstractCommandNode.register(
+
+@aamgr.AbstractCommandNode.register(
     parent=None,
     name='list',
     description='列出当前会话的所有历史记录',
@@ -11,9 +12,9 @@ import json
     aliases=[],
     privilege=1
 )
-class ListCommand(AbstractCommandNode):
+class ListCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         import pkg.openai.session
         session_name = ctx.session_name
         params = ctx.params

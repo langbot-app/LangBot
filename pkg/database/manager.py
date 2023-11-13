@@ -5,11 +5,10 @@ import hashlib
 import json
 import logging
 import time
-from sqlite3 import Cursor
 
 import sqlite3
 
-import pkg.utils.context
+from ..utils import context
 
 
 class DatabaseManager:
@@ -22,7 +21,7 @@ class DatabaseManager:
 
         self.reconnect()
 
-        pkg.utils.context.set_database_manager(self)
+        context.set_database_manager(self)
 
     # 连接到数据库文件
     def reconnect(self):
@@ -33,7 +32,7 @@ class DatabaseManager:
     def close(self):
         self.conn.close()
 
-    def __execute__(self, *args, **kwargs) -> Cursor:
+    def __execute__(self, *args, **kwargs) -> sqlite3.Cursor:
         # logging.debug('SQL: {}'.format(sql))
         logging.debug('SQL: {}'.format(args))
         c = self.cursor.execute(*args, **kwargs)
@@ -145,7 +144,7 @@ class DatabaseManager:
     # 从数据库加载还没过期的session数据
     def load_valid_sessions(self) -> dict:
         # 从数据库中加载所有还没过期的session
-        config = pkg.utils.context.get_config()
+        config = context.get_config()
         self.__execute__("""
         select `name`, `type`, `number`, `create_timestamp`, `last_interact_timestamp`, `prompt`, `status`, `default_prompt`, `token_counts`
         from `sessions` where `last_interact_timestamp` > {}

@@ -1,19 +1,18 @@
-import mirai
-
-from ..adapter import MessageSourceAdapter, MessageConverter, EventConverter
-import nakuru
-import nakuru.entities.components as nkc
-
 import asyncio
 import typing
 import traceback
 import logging
-import json
 
-from pkg.qqbot.blob import Forward, ForwardMessageNode, ForwardMessageDiaplay
+import mirai
+
+import nakuru
+import nakuru.entities.components as nkc
+
+from .. import adapter as adapter_model
+from ...qqbot import blob
 
 
-class NakuruProjectMessageConverter(MessageConverter):
+class NakuruProjectMessageConverter(adapter_model.MessageConverter):
     """消息转换器"""
     @staticmethod
     def yiri2target(message_chain: mirai.MessageChain) -> list:
@@ -49,7 +48,7 @@ class NakuruProjectMessageConverter(MessageConverter):
                     nakuru_msg_list.append(nkc.Record.fromURL(component.url))
                 elif component.path is not None:
                     nakuru_msg_list.append(nkc.Record.fromFileSystem(component.path))
-            elif type(component) is Forward:
+            elif type(component) is blob.Forward:
                 # 转发消息
                 yiri_forward_node_list = component.node_list
                 nakuru_forward_node_list = []
@@ -102,7 +101,7 @@ class NakuruProjectMessageConverter(MessageConverter):
         return chain
 
 
-class NakuruProjectEventConverter(EventConverter):
+class NakuruProjectEventConverter(adapter_model.EventConverter):
     """事件转换器"""
     @staticmethod
     def yiri2target(event: typing.Type[mirai.Event]):
@@ -157,7 +156,7 @@ class NakuruProjectEventConverter(EventConverter):
             raise Exception("未支持转换的事件类型: " + str(event))
 
 
-class NakuruProjectAdapter(MessageSourceAdapter):
+class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
     """nakuru-project适配器"""
     bot: nakuru.CQHTTP
     bot_account_id: int

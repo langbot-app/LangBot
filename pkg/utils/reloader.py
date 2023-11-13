@@ -1,10 +1,9 @@
 import logging
-import threading
-
 import importlib
 import pkgutil
-import pkg.utils.context as context
-import pkg.plugin.host
+
+from . import context
+from ..plugin import host as plugin_host
 
 
 def walk(module, prefix='', path_prefix=''):
@@ -15,7 +14,7 @@ def walk(module, prefix='', path_prefix=''):
             walk(__import__(module.__name__ + '.' + item.name, fromlist=['']), prefix + item.name + '.', path_prefix + item.name + '/')
         else:
             logging.info('reload module: {}, path: {}'.format(prefix + item.name, path_prefix + item.name + '.py'))
-            pkg.plugin.host.__current_module_path__ = "plugins/" + path_prefix + item.name + '.py'
+            plugin_host.__current_module_path__ = "plugins/" + path_prefix + item.name + '.py'
             importlib.reload(__import__(module.__name__ + '.' + item.name, fromlist=['']))
 
 

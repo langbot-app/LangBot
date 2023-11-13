@@ -1,8 +1,7 @@
-from ..aamgr import AbstractCommandNode, Context
-import logging
+from .. import aamgr
 
 
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=None,
     name="usage",
     description="获取使用情况",
@@ -10,9 +9,9 @@ import logging
     aliases=[],
     privilege=1
 )
-class UsageCommand(AbstractCommandNode):
+class UsageCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         import config
         import pkg.utils.credit as credit
         import pkg.utils.context

@@ -1,32 +1,25 @@
-import asyncio
 import json
 import os
-import threading
-
+import logging
 
 from mirai import At, GroupMessage, MessageEvent, Mirai, StrangerMessage, WebSocketAdapter, HTTPAdapter, \
     FriendMessage, Image, MessageChain, Plain
-from func_timeout import func_set_timeout
+import func_timeout
 
-import pkg.openai.session
-import pkg.openai.manager
-from func_timeout import FunctionTimedOut
-import logging
+from ..openai import session as openai_session
 
-import pkg.qqbot.filter
-import pkg.qqbot.process as processor
-import pkg.utils.context
-
-import pkg.plugin.host as plugin_host
-import pkg.plugin.models as plugin_models
+from ..qqbot import filter as qqbot_filter
+from ..qqbot import process as processor
+from ..utils import context
+from ..plugin import host as plugin_host
+from ..plugin import models as plugin_models
 import tips as tips_custom
-
-import pkg.qqbot.adapter as msadapter
+from ..qqbot import adapter as msadapter
 
 
 # 检查消息是否符合泛响应匹配机制
 def check_response_rule(group_id:int, text: str):
-    config = pkg.utils.context.get_config()
+    config = context.get_config()
 
     rules = config.response_rules
 
@@ -55,7 +48,7 @@ def check_response_rule(group_id:int, text: str):
 
 
 def response_at(group_id: int):
-    config = pkg.utils.context.get_config()
+    config = context.get_config()
 
     use_response_rule = config.response_rules
 
@@ -73,7 +66,7 @@ def response_at(group_id: int):
 
 
 def random_responding(group_id):
-    config = pkg.utils.context.get_config()
+    config = context.get_config()
 
     use_response_rule = config.response_rules
 
@@ -130,10 +123,10 @@ class QQBotManager:
                 self.adapter = NakuruProjectAdapter(config.nakuru_config)
                 self.bot_account_id = self.adapter.bot_account_id
         else:
-            self.adapter = pkg.utils.context.get_qqbot_manager().adapter
-            self.bot_account_id = pkg.utils.context.get_qqbot_manager().bot_account_id
+            self.adapter = context.get_qqbot_manager().adapter
+            self.bot_account_id = context.get_qqbot_manager().bot_account_id
 
-        pkg.utils.context.set_qqbot_manager(self)
+        context.set_qqbot_manager(self)
 
         # 注册诸事件
         # Caution: 注册新的事件处理器之后，请务必在unsubscribe_all中编写相应的取消订阅代码
@@ -154,7 +147,7 @@ class QQBotManager:
 
                 self.on_person_message(event)
 
-            pkg.utils.context.get_thread_ctl().submit_user_task(
+            context.get_thread_ctl().submit_user_task(
                 friend_message_handler,
             )
         self.adapter.register_listener(
@@ -179,7 +172,7 @@ class QQBotManager:
 
                 self.on_person_message(event)
 
-            pkg.utils.context.get_thread_ctl().submit_user_task(
+            context.get_thread_ctl().submit_user_task(
                 stranger_message_handler,
             )
         # nakuru不区分好友和陌生人，故仅为yirimirai注册陌生人事件
@@ -206,7 +199,7 @@ class QQBotManager:
 
                 self.on_group_message(event)
 
-            pkg.utils.context.get_thread_ctl().submit_user_task(
+            context.get_thread_ctl().submit_user_task(
                 group_message_handler,
                 event
             )
@@ -250,22 +243,22 @@ class QQBotManager:
             if hasattr(banlist, "enable_group"):
                 self.enable_group = banlist.enable_group
 
-        config = pkg.utils.context.get_config()
+        config = context.get_config()
         if os.path.exists("sensitive.json") \
                 and config.sensitive_word_filter is not None \
                 and config.sensitive_word_filter:
             with open("sensitive.json", "r", encoding="utf-8") as f:
                 sensitive_json = json.load(f)
-                self.reply_filter = pkg.qqbot.filter.ReplyFilter(
+                self.reply_filter = qqbot_filter.ReplyFilter(
                     sensitive_words=sensitive_json['words'],
                     mask=sensitive_json['mask'] if 'mask' in sensitive_json else '*',
                     mask_word=sensitive_json['mask_word'] if 'mask_word' in sensitive_json else ''
                 )
         else:
-            self.reply_filter = pkg.qqbot.filter.ReplyFilter([])
+            self.reply_filter = qqbot_filter.ReplyFilter([])
 
     def send(self, event, msg, check_quote=True, check_at_sender=True):
-        config = pkg.utils.context.get_config()
+        config = context.get_config()
         
         if check_at_sender and config.at_sender:
             msg.insert(
@@ -306,7 +299,7 @@ class QQBotManager:
                 for i in range(self.retry):
                     try:
                         
-                        @func_set_timeout(config.process_message_timeout)
+                        @func_timeout.func_set_timeout(config.process_message_timeout)
                         def time_ctrl_wrapper():
                             reply = processor.process_message('person', event.sender.id, str(event.message_chain),
                                                             event.message_chain,
@@ -315,16 +308,16 @@ class QQBotManager:
                         
                         reply = time_ctrl_wrapper()
                         break
-                    except FunctionTimedOut:
+                    except func_timeout.FunctionTimedOut:
                         logging.warning("person_{}: 超时，重试中({})".format(event.sender.id, i))
-                        pkg.openai.session.get_session('person_{}'.format(event.sender.id)).release_response_lock()
-                        if "person_{}".format(event.sender.id) in pkg.qqbot.process.processing:
-                            pkg.qqbot.process.processing.remove('person_{}'.format(event.sender.id))
+                        openai_session.get_session('person_{}'.format(event.sender.id)).release_response_lock()
+                        if "person_{}".format(event.sender.id) in processor.processing:
+                            processor.processing.remove('person_{}'.format(event.sender.id))
                         failed += 1
                         continue
 
                 if failed == self.retry:
-                    pkg.openai.session.get_session('person_{}'.format(event.sender.id)).release_response_lock()
+                    openai_session.get_session('person_{}'.format(event.sender.id)).release_response_lock()
                     self.notify_admin("{} 请求超时".format("person_{}".format(event.sender.id)))
                     reply = [tips_custom.reply_message]
 
@@ -344,7 +337,7 @@ class QQBotManager:
             failed = 0
             for i in range(self.retry):
                 try:
-                    @func_set_timeout(config.process_message_timeout)
+                    @func_timeout.func_set_timeout(config.process_message_timeout)
                     def time_ctrl_wrapper():
                         replys = processor.process_message('group', event.group.id,
                                                         str(event.message_chain).strip() if text is None else text,
@@ -354,16 +347,16 @@ class QQBotManager:
                     
                     replys = time_ctrl_wrapper()
                     break
-                except FunctionTimedOut:
+                except func_timeout.FunctionTimedOut:
                     logging.warning("group_{}: 超时，重试中({})".format(event.group.id, i))
-                    pkg.openai.session.get_session('group_{}'.format(event.group.id)).release_response_lock()
-                    if "group_{}".format(event.group.id) in pkg.qqbot.process.processing:
-                        pkg.qqbot.process.processing.remove('group_{}'.format(event.group.id))
+                    openai_session.get_session('group_{}'.format(event.group.id)).release_response_lock()
+                    if "group_{}".format(event.group.id) in processor.processing:
+                        processor.processing.remove('group_{}'.format(event.group.id))
                     failed += 1
                     continue
 
             if failed == self.retry:
-                pkg.openai.session.get_session('group_{}'.format(event.group.id)).release_response_lock()
+                openai_session.get_session('group_{}'.format(event.group.id)).release_response_lock()
                 self.notify_admin("{} 请求超时".format("group_{}".format(event.group.id)))
                 replys = [tips_custom.replys_message]
 
@@ -392,7 +385,7 @@ class QQBotManager:
 
     # 通知系统管理员
     def notify_admin(self, message: str):
-        config = pkg.utils.context.get_config()
+        config = context.get_config()
         if config.admin_qq != 0 and config.admin_qq != []:
             logging.info("通知管理员:{}".format(message))
             if type(config.admin_qq) == int:
@@ -410,7 +403,7 @@ class QQBotManager:
                     )
 
     def notify_admin_message_chain(self, message):
-        config = pkg.utils.context.get_config()
+        config = context.get_config()
         if config.admin_qq != 0 and config.admin_qq != []:
             logging.info("通知管理员:{}".format(message))
             if type(config.admin_qq) == int:

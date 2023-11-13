@@ -1,19 +1,20 @@
 # 普通消息处理模块
 import logging
-import openai
-import pkg.utils.context
-import pkg.openai.session
 
-import pkg.plugin.host as plugin_host
-import pkg.plugin.models as plugin_models
-import pkg.qqbot.blob as blob
+import openai
+
+from ..utils import context
+from ..openai import session as openai_session
+
+from ..plugin import host as plugin_host
+from ..plugin import models as plugin_models
 import tips as tips_custom
 
 
 def handle_exception(notify_admin: str = "", set_reply: str = "") -> list:
     """处理异常，当notify_admin不为空时，会通知管理员，返回通知用户的消息"""
     import config
-    pkg.utils.context.get_qqbot_manager().notify_admin(notify_admin)
+    context.get_qqbot_manager().notify_admin(notify_admin)
     if config.hide_exce_info_to_user:
         return [tips_custom.alter_tip_message] if tips_custom.alter_tip_message else []
     else:
@@ -26,7 +27,7 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
     logging.info("[{}]发送消息:{}".format(session_name, text_message[:min(20, len(text_message))] + (
         "..." if len(text_message) > 20 else "")))
 
-    session = pkg.openai.session.get_session(session_name)
+    session = openai_session.get_session(session_name)
 
     unexpected_exception_times = 0
 
@@ -54,7 +55,7 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
                 "funcs_called": funcs,
             }
 
-            event = pkg.plugin.host.emit(plugin_models.NormalMessageResponded, **args)
+            event = plugin_host.emit(plugin_models.NormalMessageResponded, **args)
 
             if event.get_return_value("prefix") is not None:
                 prefix = event.get_return_value("prefix")
@@ -78,29 +79,29 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
 
             if 'message' in e.error and e.error['message'].__contains__('You exceeded your current quota'):
                 # 尝试切换api-key
-                current_key_name = pkg.utils.context.get_openai_manager().key_mgr.get_key_name(
-                    pkg.utils.context.get_openai_manager().key_mgr.using_key
+                current_key_name = context.get_openai_manager().key_mgr.get_key_name(
+                    context.get_openai_manager().key_mgr.using_key
                 )
-                pkg.utils.context.get_openai_manager().key_mgr.set_current_exceeded()
+                context.get_openai_manager().key_mgr.set_current_exceeded()
 
                 # 触发插件事件
                 args = {
                     'key_name': current_key_name,
-                    'usage': pkg.utils.context.get_openai_manager().audit_mgr
-                            .get_usage(pkg.utils.context.get_openai_manager().key_mgr.get_using_key_md5()),
-                    'exceeded_keys': pkg.utils.context.get_openai_manager().key_mgr.exceeded,
+                    'usage': context.get_openai_manager().audit_mgr
+                            .get_usage(context.get_openai_manager().key_mgr.get_using_key_md5()),
+                    'exceeded_keys': context.get_openai_manager().key_mgr.exceeded,
                 }
                 event = plugin_host.emit(plugin_models.KeyExceeded, **args)
 
                 if not event.is_prevented_default():
-                    switched, name = pkg.utils.context.get_openai_manager().key_mgr.auto_switch()
+                    switched, name = context.get_openai_manager().key_mgr.auto_switch()
 
                     if not switched:
                         reply = handle_exception(
                             "api-key调用额度超限({}),无可用api_key,请向OpenAI账户充值或在config.py中更换api_key；如果你认为这是误判，请尝试重启程序。".format(
                                 current_key_name), "[bot]err:API调用额度超额，请联系管理员，或等待修复")
                     else:
-                        openai.api_key = pkg.utils.context.get_openai_manager().key_mgr.get_using_key()
+                        openai.api_key = context.get_openai_manager().key_mgr.get_using_key()
                         mgr.notify_admin("api-key调用额度超限({}),接口报错,已切换到{}".format(current_key_name, name))
                         reply = ["[bot]err:API调用额度超额，已自动切换，请重新发送消息"]
                         continue

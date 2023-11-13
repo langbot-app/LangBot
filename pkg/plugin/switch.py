@@ -3,7 +3,7 @@ import json
 import logging
 import os
 
-import pkg.plugin.host as host
+from ..plugin import host
 
 
 def wrapper_dict_from_plugin_list() -> dict:

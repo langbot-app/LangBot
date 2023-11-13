@@ -1,8 +1,9 @@
-from ..aamgr import AbstractCommandNode, Context
 import datetime
 
+from .. import aamgr
 
-@AbstractCommandNode.register(
+
+@aamgr.AbstractCommandNode.register(
     parent=None,
     name="next",
     description="切换后一次对话",
@@ -10,9 +11,9 @@ import datetime
     aliases=[],
     privilege=1
 )
-class NextCommand(AbstractCommandNode):
+class NextCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         import pkg.openai.session
         session_name = ctx.session_name
         reply = []

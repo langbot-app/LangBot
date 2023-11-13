@@ -1,7 +1,6 @@
-from ..aamgr import AbstractCommandNode, Context
+from .. import aamgr
 
-
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=None,
     name="default",
     description="操作情景预设",
@@ -9,9 +8,9 @@ from ..aamgr import AbstractCommandNode, Context
     aliases=[],
     privilege=1
 )
-class DefaultCommand(AbstractCommandNode):
+class DefaultCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         import pkg.openai.session
         session_name = ctx.session_name
         params = ctx.params
@@ -45,7 +44,7 @@ class DefaultCommand(AbstractCommandNode):
         return True, reply
 
 
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=DefaultCommand,
     name="set",
     description="设置默认情景预设",
@@ -53,9 +52,9 @@ class DefaultCommand(AbstractCommandNode):
     aliases=[],
     privilege=2
 )
-class DefaultSetCommand(AbstractCommandNode):
+class DefaultSetCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         reply = []
 
         if len(ctx.crt_params) == 0:

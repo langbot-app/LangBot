@@ -8,9 +8,9 @@ Completion - text-davinci-003 等模型
 import tiktoken
 import openai
 
-from pkg.openai.api.model import RequestBase
-from pkg.openai.api.completion import CompletionRequest
-from pkg.openai.api.chat_completion import ChatCompletionRequest
+from ..openai.api import model as api_model
+from ..openai.api import completion as api_completion
+from ..openai.api import chat_completion as api_chat_completion
 
 COMPLETION_MODELS = {
     "text-davinci-003", # legacy
@@ -60,11 +60,11 @@ IMAGE_MODELS = {
 }
 
 
-def select_request_cls(client: openai.Client, model_name: str, messages: list, args: dict) -> RequestBase:
+def select_request_cls(client: openai.Client, model_name: str, messages: list, args: dict) -> api_model.RequestBase:
     if model_name in CHAT_COMPLETION_MODELS:
-        return ChatCompletionRequest(client, model_name, messages, **args)
+        return api_chat_completion.ChatCompletionRequest(client, model_name, messages, **args)
     elif model_name in COMPLETION_MODELS:
-        return CompletionRequest(client, model_name, messages, **args)
+        return api_completion.CompletionRequest(client, model_name, messages, **args)
     raise ValueError("不支持模型[{}]，请检查配置文件".format(model_name))
 
 

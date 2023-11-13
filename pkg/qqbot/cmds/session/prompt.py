@@ -1,8 +1,7 @@
-from ..aamgr import AbstractCommandNode, Context
-import datetime
+from .. import aamgr
 
 
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=None,
     name="prompt",
     description="获取当前会话的前文",
@@ -10,9 +9,9 @@ import datetime
     aliases=[],
     privilege=1
 )
-class PromptCommand(AbstractCommandNode):
+class PromptCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         import pkg.openai.session
         session_name = ctx.session_name
         params = ctx.params
