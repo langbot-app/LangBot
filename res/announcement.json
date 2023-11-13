@@ -10,5 +10,11 @@
         "time": "2023-11-10 12:20:09",
         "timestamp": 1699590009,
         "content": "OpenAI 库1.0版本已发行，若出现 OpenAI 调用问题，请更新 QChatGPT 版本。详见项目主页：https://github.com/RockChinQ/QChatGPT"
+    },
+    {
+        "id": 4,
+        "time": "2023-11-13 18:02:39",
+        "timestamp": 1699869759,
+        "content": "近期 OpenAI 接口改动频繁，正在积极适配并添加新功能，请尽快更新到最新版本，更新方式：https://github.com/RockChinQ/QChatGPT/discussions/595"
     }
 ]
