@@ -1,18 +1,18 @@
-import pkg.utils.context
+from ..utils import context
 
 
 def is_banned(launcher_type: str, launcher_id: int, sender_id: int) -> bool:
-    if not pkg.utils.context.get_qqbot_manager().enable_banlist:
+    if not context.get_qqbot_manager().enable_banlist:
         return False
     
     result = False
     
     if launcher_type == 'group':
         # 检查是否显式声明发起人QQ要被person忽略
-        if sender_id in pkg.utils.context.get_qqbot_manager().ban_person:
+        if sender_id in context.get_qqbot_manager().ban_person:
             result = True
         else:
-            for group_rule in pkg.utils.context.get_qqbot_manager().ban_group:
+            for group_rule in context.get_qqbot_manager().ban_group:
                 if type(group_rule) == int:
                     if group_rule == launcher_id:  # 此群群号被禁用
                         result = True
@@ -32,7 +32,7 @@ def is_banned(launcher_type: str, launcher_id: int, sender_id: int) -> bool:
                     
     else:
         # ban_person, 与群规则相同
-        for person_rule in pkg.utils.context.get_qqbot_manager().ban_person:
+        for person_rule in context.get_qqbot_manager().ban_person:
             if type(person_rule) == int:
                 if person_rule == launcher_id:
                     result = True

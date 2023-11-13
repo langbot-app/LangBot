@@ -1,9 +1,9 @@
 import json
 import os
 
-import pkg.plugin.host as host
 import logging
 
+from ..plugin import host
 
 def wrapper_dict_from_runtime_context() -> dict:
     """从变量中包装settings.json的数据字典"""

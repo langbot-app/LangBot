@@ -1,10 +1,10 @@
 import openai
 from openai.types import completion, completion_choice
 
-from .model import RequestBase
+from . import model
 
 
-class CompletionRequest(RequestBase):
+class CompletionRequest(model.RequestBase):
     """调用Completion接口的请求类。
     
     调用方可以一直next completion直到finish_reason为stop。

@@ -1,8 +1,7 @@
-from ..aamgr import AbstractCommandNode, Context
-import datetime
+from .. import aamgr
 
 
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=None,
     name="del",
     description="删除当前会话的历史记录",
@@ -10,9 +9,9 @@ import datetime
     aliases=[],
     privilege=1
 )
-class DelCommand(AbstractCommandNode):
+class DelCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         import pkg.openai.session
         session_name = ctx.session_name
         params = ctx.params
@@ -33,7 +32,7 @@ class DelCommand(AbstractCommandNode):
         return True, reply
 
 
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=DelCommand,
     name="all",
     description="删除当前会话的全部历史记录",
@@ -41,9 +40,9 @@ class DelCommand(AbstractCommandNode):
     aliases=[],
     privilege=1
 )
-class DelAllCommand(AbstractCommandNode):
+class DelAllCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         import pkg.openai.session
         session_name = ctx.session_name
         reply = []

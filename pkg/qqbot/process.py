@@ -5,28 +5,22 @@ import time
 import mirai
 import logging
 
-from mirai import MessageChain, Plain
-
 # 这里不使用动态引入config
 # 因为在这里动态引入会卡死程序
 # 而此模块静态引用config与动态引入的表现一致
 # 已弃用，由于超时时间现已动态使用
 # import config as config_init_import
 
-import pkg.openai.session
-import pkg.openai.manager
-import pkg.utils.reloader
-import pkg.utils.updater
-import pkg.utils.context
-import pkg.qqbot.message
-import pkg.qqbot.command
-import pkg.qqbot.ratelimit as ratelimit
+from ..qqbot import ratelimit
+from ..qqbot import command, message
+from ..openai import session as openai_session
+from ..utils import context
 
-import pkg.plugin.host as plugin_host
-import pkg.plugin.models as plugin_models
-import pkg.qqbot.ignore as ignore
-import pkg.qqbot.banlist as banlist
-import pkg.qqbot.blob as blob
+from ..plugin import host as plugin_host
+from ..plugin import models as plugin_models
+from ..qqbot import ignore
+from ..qqbot import banlist
+from ..qqbot import blob
 import tips as tips_custom
 
 processing = []
@@ -41,11 +35,11 @@ def is_admin(qq: int) -> bool:
         return qq == config.admin_qq
 
 
-def process_message(launcher_type: str, launcher_id: int, text_message: str, message_chain: MessageChain,
-                    sender_id: int) -> MessageChain:
+def process_message(launcher_type: str, launcher_id: int, text_message: str, message_chain: mirai.MessageChain,
+                    sender_id: int) -> mirai.MessageChain:
     global processing
 
-    mgr = pkg.utils.context.get_qqbot_manager()
+    mgr = context.get_qqbot_manager()
 
     reply = []
     session_name = "{}_{}".format(launcher_type, launcher_id)
@@ -62,7 +56,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
     import config
 
     if not config.wait_last_done and session_name in processing:
-        return MessageChain([Plain(tips_custom.message_drop_tip)])
+        return mirai.MessageChain([mirai.Plain(tips_custom.message_drop_tip)])
 
     # 检查是否被禁言
     if launcher_type == 'group':
@@ -74,9 +68,9 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
     import config
     if config.income_msg_check:
         if mgr.reply_filter.is_illegal(text_message):
-            return MessageChain(Plain("[bot] 消息中存在不合适的内容, 请更换措辞"))
+            return mirai.MessageChain(mirai.Plain("[bot] 消息中存在不合适的内容, 请更换措辞"))
 
-    pkg.openai.session.get_session(session_name).acquire_response_lock()
+    openai_session.get_session(session_name).acquire_response_lock()
 
     text_message = text_message.strip()
 
@@ -87,7 +81,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
     # 处理消息
     try:
 
-        config = pkg.utils.context.get_config()
+        config = context.get_config()
 
         processing.append(session_name)
         try:
@@ -114,7 +108,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                     reply = event.get_return_value("reply")
 
                 if not event.is_prevented_default():
-                    reply = pkg.qqbot.command.process_command(session_name, text_message,
+                    reply = command.process_command(session_name, text_message,
                                                               mgr, config, launcher_type, launcher_id, sender_id, is_admin(sender_id))
 
             else:  # 消息
@@ -124,7 +118,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                     if ratelimit.is_reach_limit(session_name):
                         logging.info("根据限速策略丢弃[{}]消息: {}".format(session_name, text_message))
 
-                        return MessageChain(["[bot]"+tips_custom.rate_limit_drop_tip]) if tips_custom.rate_limit_drop_tip != "" else []
+                        return mirai.MessageChain(["[bot]"+tips_custom.rate_limit_drop_tip]) if tips_custom.rate_limit_drop_tip != "" else []
 
                 before = time.time()
                 # 触发插件事件
@@ -146,7 +140,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                     reply = event.get_return_value("reply")
 
                 if not event.is_prevented_default():
-                    reply = pkg.qqbot.message.process_normal_message(text_message,
+                    reply = message.process_normal_message(text_message,
                                                                      mgr, config, launcher_type, launcher_id, sender_id)
 
                 # 限速等待时间
@@ -170,7 +164,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
         finally:
             processing.remove(session_name)
     finally:
-        pkg.openai.session.get_session(session_name).release_response_lock()
+        openai_session.get_session(session_name).release_response_lock()
 
     # 检查延迟时间
     if config.force_delay_range[1] == 0:
@@ -191,4 +185,4 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
         logging.info("[风控] 强制延迟{:.2f}秒(如需关闭，请到config.py修改force_delay_range字段)".format(delay_time))
         time.sleep(delay_time)
 
-    return MessageChain(reply)
+    return mirai.MessageChain(reply)

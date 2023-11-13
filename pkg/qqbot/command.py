@@ -1,23 +1,7 @@
 # 指令处理模块
 import logging
-import json
-import datetime
-import os
-import threading
-import traceback
 
-import pkg.openai.session
-import pkg.openai.manager
-import pkg.utils.reloader
-import pkg.utils.updater
-import pkg.utils.context
-import pkg.qqbot.message
-import pkg.utils.credit as credit
-# import pkg.qqbot.cmds.model as cmdmodel
-import pkg.qqbot.cmds.aamgr as cmdmgr
-
-from mirai import Image
-
+from ..qqbot.cmds import aamgr as cmdmgr
 
 
 def process_command(session_name: str, text_message: str, mgr, config,

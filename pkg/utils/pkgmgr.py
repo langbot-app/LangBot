@@ -1,6 +1,6 @@
 from pip._internal import main as pipmain
 
-import pkg.utils.log as log
+from . import log
 
 
 def install(package):

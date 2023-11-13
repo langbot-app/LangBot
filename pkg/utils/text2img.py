@@ -1,10 +1,10 @@
 import logging
-
-from PIL import Image, ImageDraw, ImageFont
 import re
 import os
 import config
 import traceback
+
+from PIL import Image, ImageDraw, ImageFont
 
 text_render_font: ImageFont = None
 

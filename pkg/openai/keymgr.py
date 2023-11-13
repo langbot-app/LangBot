@@ -2,8 +2,8 @@
 import hashlib
 import logging
 
-import pkg.plugin.host as plugin_host
-import pkg.plugin.models as plugin_models
+from ..plugin import host as plugin_host
+from ..plugin import models as plugin_models
 
 
 class KeysManager:

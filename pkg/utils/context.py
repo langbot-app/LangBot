@@ -1,5 +1,5 @@
 import threading
-from pkg.utils import ThreadCtl
+from . import threadctl
 
 
 context = {
@@ -87,8 +87,8 @@ def set_thread_ctl(inst):
     context_lock.release()
 
 
-def get_thread_ctl() -> ThreadCtl:
+def get_thread_ctl() -> threadctl.ThreadCtl:
     context_lock.acquire()
-    t: ThreadCtl = context['pool_ctl']
+    t: threadctl.ThreadCtl = context['pool_ctl']
     context_lock.release()
     return t

@@ -1,7 +1,9 @@
-from ..aamgr import AbstractCommandNode, Context
 import threading
 
-@AbstractCommandNode.register(
+from .. import aamgr
+
+
+@aamgr.AbstractCommandNode.register(
     parent=None,
     name="reload",
     description="执行热重载",
@@ -9,9 +11,9 @@ import threading
     aliases=[],
     privilege=2
 )
-class ReloadCommand(AbstractCommandNode):
+class ReloadCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         reply = []
 
         import pkg.utils.reloader

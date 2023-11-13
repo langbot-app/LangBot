@@ -1,9 +1,10 @@
-from ..aamgr import AbstractCommandNode, Context
 import threading
 import traceback
 
+from .. import aamgr
 
-@AbstractCommandNode.register(
+
+@aamgr.AbstractCommandNode.register(
     parent=None,
     name="update",
     description="更新程序",
@@ -11,9 +12,9 @@ import traceback
     aliases=[],
     privilege=2
 )
-class UpdateCommand(AbstractCommandNode):
+class UpdateCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         reply = []
         import pkg.utils.updater
         import pkg.utils.reloader

@@ -10,13 +10,13 @@ import traceback
 import time
 import re
 
-import pkg.utils.updater as updater
-import pkg.utils.context as context
-import pkg.plugin.switch as switch
-import pkg.plugin.settings as settings
-import pkg.qqbot.adapter as msadapter
-import pkg.utils.network as network
-import pkg.plugin.metadata as metadata
+from ..utils import updater as updater
+from ..utils import network as network
+from ..utils import context as context
+from ..plugin import switch as switch
+from ..plugin import settings as settings
+from ..qqbot import adapter as msadapter
+from ..plugin import metadata as metadata
 
 from mirai import Mirai
 import requests
@@ -147,6 +147,7 @@ def initialize_plugins():
             successfully_initialized_plugins.append(plugin['name'])
         except:
             logging.error("插件{}初始化时发生错误: {}".format(plugin['name'], sys.exc_info()))
+            logging.debug(traceback.format_exc())
     
     logging.info("以下插件已初始化: {}".format(", ".join(successfully_initialized_plugins)))
 

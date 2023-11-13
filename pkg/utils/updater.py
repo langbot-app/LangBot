@@ -3,10 +3,9 @@ import logging
 import os.path
 
 import requests
-import json
 
-import pkg.utils.constants
-import pkg.utils.network as network
+from . import constants
+from . import network
 
 
 def check_dulwich_closure():
@@ -70,7 +69,7 @@ def get_release_list() -> list:
 
 def get_current_tag() -> str:
     """获取当前tag"""
-    current_tag = pkg.utils.constants.semantic_version
+    current_tag = constants.semantic_version
     if os.path.exists("current_tag"):
         with open("current_tag", "r") as f:
             current_tag = f.read()

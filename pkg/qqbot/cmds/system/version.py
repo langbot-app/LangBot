@@ -1,7 +1,7 @@
-from ..aamgr import AbstractCommandNode, Context
+from .. import aamgr
 
 
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=None,
     name="version",
     description="查看版本信息",
@@ -9,9 +9,9 @@ from ..aamgr import AbstractCommandNode, Context
     aliases=[],
     privilege=1
 )
-class VersionCommand(AbstractCommandNode):
+class VersionCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         reply = []
         import pkg.utils.updater
     

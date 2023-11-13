@@ -9,8 +9,8 @@ import threading
 
 import requests
 
-import pkg.utils.context
-import pkg.utils.updater
+from ..utils import context
+from ..utils import updater
 
 
 class DataGatherer:
@@ -33,7 +33,7 @@ class DataGatherer:
     def __init__(self):
         self.load_from_db()
         try:
-            self.version_str = pkg.utils.updater.get_current_tag()  # 从updater模块获取版本号
+            self.version_str = updater.get_current_tag()  # 从updater模块获取版本号
         except:
             pass
 
@@ -47,7 +47,7 @@ class DataGatherer:
         def thread_func():
         
             try:
-                config = pkg.utils.context.get_config()
+                config = context.get_config()
                 if not config.report_usage:
                     return
                 res = requests.get("http://reports.rockchin.top:18989/usage?service_name=qchatgpt.{}&version={}&count={}&msg_source={}".format(subservice_name, self.version_str, count, config.msg_source_adapter))
@@ -64,7 +64,7 @@ class DataGatherer:
     def report_text_model_usage(self, model, total_tokens):
         """调用方报告文字模型请求文字使用量"""
 
-        key_md5 = pkg.utils.context.get_openai_manager().key_mgr.get_using_key_md5()  # 以key的md5进行储存
+        key_md5 = context.get_openai_manager().key_mgr.get_using_key_md5()  # 以key的md5进行储存
 
         if key_md5 not in self.usage:
             self.usage[key_md5] = {}
@@ -84,7 +84,7 @@ class DataGatherer:
     def report_image_model_usage(self, size):
         """调用方报告图片模型请求图片使用量"""
 
-        key_md5 = pkg.utils.context.get_openai_manager().key_mgr.get_using_key_md5()
+        key_md5 = context.get_openai_manager().key_mgr.get_using_key_md5()
 
         if key_md5 not in self.usage:
             self.usage[key_md5] = {}
@@ -131,9 +131,9 @@ class DataGatherer:
         return total
 
     def dump_to_db(self):
-        pkg.utils.context.get_database_manager().dump_usage_json(self.usage)
+        context.get_database_manager().dump_usage_json(self.usage)
 
     def load_from_db(self):
-        json_str = pkg.utils.context.get_database_manager().load_usage_json()
+        json_str = context.get_database_manager().load_usage_json()
         if json_str is not None:
             self.usage = json.loads(json_str)

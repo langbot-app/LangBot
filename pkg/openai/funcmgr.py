@@ -1,8 +1,7 @@
 # 封装了function calling的一些支持函数
 import logging
 
-
-from pkg.plugin import host
+from ..plugin import host
 
 
 class ContentFunctionNotFoundError(Exception):

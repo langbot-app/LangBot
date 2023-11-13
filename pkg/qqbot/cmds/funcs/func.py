@@ -1,10 +1,9 @@
-from ..aamgr import AbstractCommandNode, Context
 import logging
-
 import json
 
+from .. import aamgr
 
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=None,
     name="func",
     description="管理内容函数",
@@ -12,9 +11,9 @@ import json
     aliases=[],
     privilege=1
 )
-class FuncCommand(AbstractCommandNode):
+class FuncCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         from pkg.plugin.models import host
 
         reply = []

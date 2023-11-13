@@ -1,7 +1,7 @@
-from ..aamgr import AbstractCommandNode, Context
+from .. import aamgr
 
 
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=None,
     name="help",
     description="显示自定义的帮助信息",
@@ -9,9 +9,9 @@ from ..aamgr import AbstractCommandNode, Context
     aliases=[],
     privilege=1
 )
-class HelpCommand(AbstractCommandNode):
+class HelpCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         import tips
         reply = ["[bot] "+tips.help_message + "\n请输入 !cmd 查看指令列表"]
 

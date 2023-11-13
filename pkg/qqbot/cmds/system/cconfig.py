@@ -1,5 +1,6 @@
-from ..aamgr import AbstractCommandNode, Context
 import json
+
+from .. import aamgr
 
 
 def config_operation(cmd, params):
@@ -85,7 +86,7 @@ def config_operation(cmd, params):
     return reply
 
 
-@AbstractCommandNode.register(
+@aamgr.AbstractCommandNode.register(
     parent=None,
     name="cfg",
     description="配置项管理",
@@ -93,8 +94,8 @@ def config_operation(cmd, params):
     aliases=[],
     privilege=2
 )
-class CfgCommand(AbstractCommandNode):
+class CfgCommand(aamgr.AbstractCommandNode):
     @classmethod
-    def process(cls, ctx: Context) -> tuple[bool, list]:
+    def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         return True, config_operation(ctx.command, ctx.params)
     
