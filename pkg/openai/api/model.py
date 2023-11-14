@@ -21,6 +21,7 @@ class RequestBase:
 
     def _req(self, **kwargs):
         """处理代理问题"""
+        logging.debug("请求接口参数: %s", str(kwargs))
         import config
 
         ret = self.req_func(**kwargs)
