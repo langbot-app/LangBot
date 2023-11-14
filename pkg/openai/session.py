@@ -241,6 +241,7 @@ class Session:
         if event.get_return_value('text_message') is not None:
             text = event.get_return_value('text_message')
 
+        # 裁剪messages到合适长度
         prompts, _ = self.cut_out(text, max_length, local_default_prompt, local_prompt)
 
         res_text = ""

@@ -16,10 +16,6 @@ import os
 # __scenario_from_files__ = {}
 
 
-__universal_first_reply__ = "ok, I'll follow your commands."
-"""通用首次回复"""
-
-
 class ScenarioMode:
     """情景预设模式抽象类"""
 
@@ -66,17 +62,13 @@ class NormalScenarioMode(ScenarioMode):
     """普通情景预设模式"""
 
     def __init__(self):
-        global __universal_first_reply__
         # 加载config中的default_prompt值
         if type(config.default_prompt) == str:
             self.using_prompt_name = "default"
             self.prompts = {"default": [
                 {
-                    "role": "user",
+                    "role": "system",
                     "content": config.default_prompt
-                },{
-                    "role": "assistant",
-                    "content": __universal_first_reply__
                 }
             ]}
         
@@ -84,11 +76,8 @@ class NormalScenarioMode(ScenarioMode):
             for key in config.default_prompt:
                 self.prompts[key] = [
                     {
-                        "role": "user",
+                        "role": "system",
                         "content": config.default_prompt[key]
-                    },{
-                        "role": "assistant",
-                        "content": __universal_first_reply__
                     }
                 ]
 
@@ -98,11 +87,8 @@ class NormalScenarioMode(ScenarioMode):
             with open(os.path.join("prompts", file), encoding="utf-8") as f:
                 self.prompts[file] = [
                     {
-                        "role": "user",
+                        "role": "system",
                         "content": f.read()
-                    },{
-                        "role": "assistant",
-                        "content": __universal_first_reply__
                     }
                 ]
 

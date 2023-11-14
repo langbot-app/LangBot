@@ -114,7 +114,7 @@ admin_qq = 0
 # 
 # 还可以加载文件中的预设文字，使用方法请查看：https://github.com/RockChinQ/QChatGPT/wiki/%E5%8A%9F%E8%83%BD%E4%BD%BF%E7%94%A8#%E9%A2%84%E8%AE%BE%E6%96%87%E5%AD%97
 default_prompt = {
-    "default": "如果我之后想获取帮助，请你说“输入!help获取帮助”",
+    "default": "如果用户之后想获取帮助，请你说“输入!help获取帮助”。",
 }
 
 # 情景预设格式
