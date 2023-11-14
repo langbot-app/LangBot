@@ -24,7 +24,7 @@
     "switch_strategy": "active",
     "admin_qq": 0,
     "default_prompt": {
-        "default": "如果我之后想获取帮助，请你说“输入!help获取帮助”"
+        "default": "如果用户之后想获取帮助，请你说“输入!help获取帮助”。"
     },
     "preset_mode": "normal",
     "response_rules": {
