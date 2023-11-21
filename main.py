@@ -241,6 +241,7 @@ def start(first_time_init=False):
 
             # 配置openai api_base
             if "reverse_proxy" in config.openai_config and config.openai_config["reverse_proxy"] is not None:
+                logging.debug("设置反向代理: "+config.openai_config['reverse_proxy'])
                 openai.base_url = config.openai_config["reverse_proxy"]
 
             # 主启动流程
