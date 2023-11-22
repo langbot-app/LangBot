@@ -23,8 +23,7 @@ class UpdateCommand(aamgr.AbstractCommandNode):
         def update_task():
             try:
                 if pkg.utils.updater.update_all():
-                    pkg.utils.reloader.reload_all(notify=False)
-                    pkg.utils.context.get_qqbot_manager().notify_admin("更新完成")
+                    pkg.utils.context.get_qqbot_manager().notify_admin("更新完成, 请手动重启程序。")
                 else:
                     pkg.utils.context.get_qqbot_manager().notify_admin("无新版本")
             except Exception as e0:
