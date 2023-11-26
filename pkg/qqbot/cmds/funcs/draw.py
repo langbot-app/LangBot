@@ -3,7 +3,7 @@ import logging
 import mirai
 
 from .. import aamgr
-import config
+from ....utils import context
 
 
 @aamgr.AbstractCommandNode.register(
@@ -30,8 +30,8 @@ class DrawCommand(aamgr.AbstractCommandNode):
 
             logging.debug("draw_image result:{}".format(res))
             reply = [mirai.Image(url=res['data'][0]['url'])]
-            if not (hasattr(config, 'include_image_description')
-                    and not config.include_image_description):
+            config = context.get_config_manager().data
+            if config['include_image_description']:
                 reply.append(" ".join(ctx.params))
 
         return True, reply

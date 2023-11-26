@@ -218,6 +218,10 @@ async def start_process(first_time_init=False):
         except Exception as e:
             print("更新openai库失败:{}, 请忽略或自行更新".format(e))
 
+    # 初始化文字转图片
+    from pkg.utils import text2img
+    text2img.initialize()
+
     known_exception_caught = False
     try:
         try:

@@ -47,10 +47,10 @@ class DataGatherer:
         def thread_func():
         
             try:
-                config = context.get_config()
-                if not config.report_usage:
+                config = context.get_config_manager().data
+                if not config['report_usage']:
                     return
-                res = requests.get("http://reports.rockchin.top:18989/usage?service_name=qchatgpt.{}&version={}&count={}&msg_source={}".format(subservice_name, self.version_str, count, config.msg_source_adapter))
+                res = requests.get("http://reports.rockchin.top:18989/usage?service_name=qchatgpt.{}&version={}&count={}&msg_source={}".format(subservice_name, self.version_str, count, config['msg_source_adapter']))
                 if res.status_code != 200 or res.text != "ok":
                     logging.warning("report to server failed, status_code: {}, text: {}".format(res.status_code, res.text))
             except:

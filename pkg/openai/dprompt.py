@@ -1,8 +1,9 @@
 # 多情景预设值管理
 import json
 import logging
-import config
 import os
+
+from ..utils import context
 
 # __current__ = "default"
 # """当前默认使用的情景预设的名称
@@ -62,22 +63,24 @@ class NormalScenarioMode(ScenarioMode):
     """普通情景预设模式"""
 
     def __init__(self):
+        config = context.get_config_manager().data
+
         # 加载config中的default_prompt值
-        if type(config.default_prompt) == str:
+        if type(config['default_prompt']) == str:
             self.using_prompt_name = "default"
             self.prompts = {"default": [
                 {
                     "role": "system",
-                    "content": config.default_prompt
+                    "content": config['default_prompt']
                 }
             ]}
         
-        elif type(config.default_prompt) == dict:
-            for key in config.default_prompt:
+        elif type(config['default_prompt']) == dict:
+            for key in config['default_prompt']:
                 self.prompts[key] = [
                     {
                         "role": "system",
-                        "content": config.default_prompt[key]
+                        "content": config['default_prompt'][key]
                     }
                 ]
 
@@ -123,9 +126,9 @@ def register_all():
 
 def mode_inst() -> ScenarioMode:
     """获取指定名称的情景预设模式对象"""
-    import config
+    config = context.get_config_manager().data
 
-    if config.preset_mode == "default":
-        config.preset_mode = "normal"
+    if config['preset_mode'] == "default":
+        config['preset_mode'] = "normal"
 
-    return scenario_mode_mapping[config.preset_mode]
+    return scenario_mode_mapping[config['preset_mode']]

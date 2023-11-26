@@ -10,6 +10,7 @@ import nakuru.entities.components as nkc
 
 from .. import adapter as adapter_model
 from ...qqbot import blob
+from ...utils import context
 
 
 class NakuruProjectMessageConverter(adapter_model.MessageConverter):
@@ -172,12 +173,14 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
         self.listener_list = []
         # nakuru库有bug，这个接口没法带access_token，会失败
         # 所以目前自行发请求
-        import config
+
+        config = context.get_config_manager().data
+
         import requests
         resp = requests.get(
-            url="http://{}:{}/get_login_info".format(config.nakuru_config['host'], config.nakuru_config['http_port']),
+            url="http://{}:{}/get_login_info".format(config['nakuru_config']['host'], config['nakuru_config']['http_port']),
             headers={
-                'Authorization': "Bearer " + config.nakuru_config['token'] if 'token' in config.nakuru_config else ""
+                'Authorization': "Bearer " + config['nakuru_config']['token'] if 'token' in config['nakuru_config']else ""
             },
             timeout=5
         )
@@ -270,7 +273,7 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
             logging.debug("注册监听器: " + str(event_type) + " -> " + str(callback))
 
             # 包装函数
-            async def listener_wrapper(app: nakuru.CQHTTP, source: self.event_converter.yiri2target(event_type)):
+            async def listener_wrapper(app: nakuru.CQHTTP, source: NakuruProjectAdapter.event_converter.yiri2target(event_type)):
                 callback(self.event_converter.target2yiri(source))
 
             # 将包装函数和原函数的对应关系存入列表

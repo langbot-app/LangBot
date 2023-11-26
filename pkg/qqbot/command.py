@@ -4,7 +4,7 @@ import logging
 from ..qqbot.cmds import aamgr as cmdmgr
 
 
-def process_command(session_name: str, text_message: str, mgr, config,
+def process_command(session_name: str, text_message: str, mgr, config: dict,
                     launcher_type: str, launcher_id: int, sender_id: int, is_admin: bool) -> list:
     reply = []
     try:

@@ -1,6 +1,7 @@
 # 此模块提供了消息处理的具体逻辑的接口
 import asyncio
 import time
+import traceback
 
 import mirai
 import logging
@@ -28,11 +29,11 @@ processing = []
 
 def is_admin(qq: int) -> bool:
     """兼容list和int类型的管理员判断"""
-    import config
-    if type(config.admin_qq) == list:
-        return qq in config.admin_qq
+    config = context.get_config_manager().data
+    if type(config['admin_qq']) == list:
+        return qq in config['admin_qq']
     else:
-        return qq == config.admin_qq
+        return qq == config['admin_qq']
 
 
 def process_message(launcher_type: str, launcher_id: int, text_message: str, message_chain: mirai.MessageChain,
@@ -53,9 +54,9 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
         logging.info("根据忽略规则忽略消息: {}".format(text_message))
         return []
 
-    import config
+    config = context.get_config_manager().data
 
-    if not config.wait_last_done and session_name in processing:
+    if not config['wait_last_done'] and session_name in processing:
         return mirai.MessageChain([mirai.Plain(tips_custom.message_drop_tip)])
 
     # 检查是否被禁言
@@ -65,8 +66,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
             logging.info("机器人被禁言,跳过消息处理(group_{})".format(launcher_id))
             return reply
 
-    import config
-    if config.income_msg_check:
+    if config['income_msg_check']:
         if mgr.reply_filter.is_illegal(text_message):
             return mirai.MessageChain(mirai.Plain("[bot] 消息中存在不合适的内容, 请更换措辞"))
 
@@ -80,8 +80,6 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
 
     # 处理消息
     try:
-
-        config = context.get_config()
 
         processing.append(session_name)
         try:
@@ -114,7 +112,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
             else:  # 消息
                 # 限速丢弃检查
                 # print(ratelimit.__crt_minute_usage__[session_name])
-                if config.rate_limit_strategy == "drop":
+                if config['rate_limit_strategy'] == "drop":
                     if ratelimit.is_reach_limit(session_name):
                         logging.info("根据限速策略丢弃[{}]消息: {}".format(session_name, text_message))
 
@@ -144,7 +142,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                                                                      mgr, config, launcher_type, launcher_id, sender_id)
 
                 # 限速等待时间
-                if config.rate_limit_strategy == "wait":
+                if config['rate_limit_strategy'] == "wait":
                     time.sleep(ratelimit.get_rest_wait_time(session_name, time.time() - before))
                 
                 ratelimit.add_usage(session_name)
@@ -167,13 +165,13 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
         openai_session.get_session(session_name).release_response_lock()
 
     # 检查延迟时间
-    if config.force_delay_range[1] == 0:
+    if config['force_delay_range'][1] == 0:
         delay_time = 0
     else:
         import random
 
         # 从延迟范围中随机取一个值(浮点)
-        rdm = random.uniform(config.force_delay_range[0], config.force_delay_range[1])
+        rdm = random.uniform(config['force_delay_range'][0], config['force_delay_range'][1])
 
         spent = time.time() - start_time
 

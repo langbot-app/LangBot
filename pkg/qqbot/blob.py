@@ -9,7 +9,7 @@ from mirai.models.message import ForwardMessageNode
 from mirai.models.base import MiraiBaseModel
 
 from ..utils import text2img
-import config
+from ..utils import context
 
 
 class ForwardMessageDiaplay(MiraiBaseModel):
@@ -64,13 +64,16 @@ def text_to_image(text: str) -> MessageComponent:
 
 def check_text(text: str) -> list:
     """检查文本是否为长消息，并转换成该使用的消息链组件"""
-    if len(text) > config.blob_message_threshold:
+
+    config = context.get_config_manager().data
+
+    if len(text) > config['blob_message_threshold']:
 
         # logging.info("长消息: {}".format(text))
-        if config.blob_message_strategy == 'image':
+        if config['blob_message_strategy'] == 'image':
             # 转换成图片
             return [text_to_image(text)]
-        elif config.blob_message_strategy == 'forward':
+        elif config['blob_message_strategy'] == 'forward':
 
             # 包装转发消息
             display = ForwardMessageDiaplay(
@@ -82,7 +85,7 @@ def check_text(text: str) -> list:
             )
 
             node = ForwardMessageNode(
-                sender_id=config.mirai_http_api_config['qq'],
+                sender_id=config['mirai_http_api_config']['qq'],
                 sender_name='bot',
                 message_chain=MessageChain([text])
             )

@@ -13,15 +13,15 @@ import tips as tips_custom
 
 def handle_exception(notify_admin: str = "", set_reply: str = "") -> list:
     """处理异常，当notify_admin不为空时，会通知管理员，返回通知用户的消息"""
-    import config
+    config = context.get_config_manager().data
     context.get_qqbot_manager().notify_admin(notify_admin)
-    if config.hide_exce_info_to_user:
+    if config['hide_exce_info_to_user']:
         return [tips_custom.alter_tip_message] if tips_custom.alter_tip_message else []
     else:
         return [set_reply]
 
 
-def process_normal_message(text_message: str, mgr, config, launcher_type: str,
+def process_normal_message(text_message: str, mgr, config: dict, launcher_type: str,
                            launcher_id: int, sender_id: int) -> list:
     session_name = f"{launcher_type}_{launcher_id}"
     logging.info("[{}]发送消息:{}".format(session_name, text_message[:min(20, len(text_message))] + (
@@ -39,7 +39,7 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
             reply = handle_exception(notify_admin=f"{session_name}，多次尝试失败。", set_reply=f"[bot]多次尝试失败，请重试或联系管理员")
             break
         try:
-            prefix = "[GPT]" if config.show_prefix else ""
+            prefix = "[GPT]" if config['show_prefix'] else ""
 
             text, finish_reason, funcs = session.query(text_message)
 
@@ -118,7 +118,7 @@ def process_normal_message(text_message: str, mgr, config, launcher_type: str,
                 reply = handle_exception("{}会话调用API失败:{}".format(session_name, e),
                                          "[bot]err:RateLimitError,请重试或联系作者，或等待修复")
         except openai.BadRequestError as e:
-            if config.auto_reset and "This model's maximum context length is" in str(e):
+            if config['auto_reset'] and "This model's maximum context length is" in str(e):
                 session.reset(persist=True)
                 reply = [tips_custom.session_auto_reset_message]
             else:

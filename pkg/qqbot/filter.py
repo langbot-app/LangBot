@@ -4,6 +4,8 @@ import requests
 import json
 import logging
 
+from ..utils import context
+
 
 class ReplyFilter:
     sensitive_words = []
@@ -20,12 +22,13 @@ class ReplyFilter:
         self.sensitive_words = sensitive_words
         self.mask = mask
         self.mask_word = mask_word
-        import config
 
-        self.baidu_check = config.baidu_check
-        self.baidu_api_key = config.baidu_api_key
-        self.baidu_secret_key = config.baidu_secret_key
-        self.inappropriate_message_tips = config.inappropriate_message_tips
+        config = context.get_config_manager().data
+
+        self.baidu_check = config['baidu_check']
+        self.baidu_api_key = config['baidu_api_key']
+        self.baidu_secret_key = config['baidu_secret_key']
+        self.inappropriate_message_tips = config['inappropriate_message_tips']
 
     def is_illegal(self, message: str) -> bool:
         processed = self.process(message)

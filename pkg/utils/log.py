@@ -3,6 +3,8 @@ import time
 import logging
 import shutil
 
+from . import context
+
 
 log_file_name = "qchatgpt.log"
 
@@ -36,7 +38,6 @@ def init_runtime_log_file():
 def reset_logging():
     global log_file_name
 
-    import config
     import pkg.utils.context
     import colorlog
 
@@ -46,7 +47,11 @@ def reset_logging():
     for handler in logging.getLogger().handlers:
         logging.getLogger().removeHandler(handler)
 
-    logging.basicConfig(level=config.logging_level,  # 设置日志输出格式
+    config_mgr = context.get_config_manager()
+
+    logging_level = logging.INFO if config_mgr is None else config_mgr.data['logging_level']
+
+    logging.basicConfig(level=logging_level,  # 设置日志输出格式
                         filename=log_file_name,  # log日志输出的文件位置和文件名
                         format="[%(asctime)s.%(msecs)03d] %(pathname)s (%(lineno)d) - [%(levelname)s] :\n%(message)s",
                         # 日志输出的格式
@@ -54,7 +59,7 @@ def reset_logging():
                         datefmt="%Y-%m-%d %H:%M:%S"  # 时间输出的格式
                         )
     sh = logging.StreamHandler()
-    sh.setLevel(config.logging_level)
+    sh.setLevel(logging_level)
     sh.setFormatter(colorlog.ColoredFormatter(
         fmt="%(log_color)s[%(asctime)s.%(msecs)03d] %(filename)s (%(lineno)d) - [%(levelname)s] : "
             "%(message)s",
