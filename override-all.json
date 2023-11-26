@@ -78,9 +78,6 @@
     "font_path": "",
     "retry_times": 3,
     "hide_exce_info_to_user": false,
-    "sys_pool_num": 8,
-    "admin_pool_num": 4,
-    "user_pool_num": 8,
     "session_expire_time": 1200,
     "rate_limitation": {
         "default": 60

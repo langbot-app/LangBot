@@ -8,10 +8,13 @@ import time
 import logging
 import sys
 import traceback
+import asyncio
 
 sys.path.append(".")
 
 from pkg.utils.log import init_runtime_log_file, reset_logging
+from pkg.config import manager as config_mgr
+from pkg.config.impls import pymodule as pymodule_cfg
 
 
 def check_file():
@@ -96,51 +99,21 @@ def ensure_dependencies():
 known_exception_caught = False
 
 
-def override_config():
-    import config
-    # 检查override.json覆盖
+def override_config_manager():
+    config = pkg.utils.context.get_config_manager().data
+
     if os.path.exists("override.json") and use_override:
         override_json = json.load(open("override.json", "r", encoding="utf-8"))
         overrided = []
         for key in override_json:
-            if hasattr(config, key):
-                setattr(config, key, override_json[key])
+            if key in config:
+                config[key] = override_json[key]
                 # logging.info("覆写配置[{}]为[{}]".format(key, override_json[key]))
                 overrided.append(key)
             else:
                 logging.error("无法覆写配置[{}]为[{}]，该配置不存在，请检查override.json是否正确".format(key, override_json[key]))
         if len(overrided) > 0:
             logging.info("已根据override.json覆写配置项: {}".format(", ".join(overrided)))
-
-
-# 临时函数，用于加载config和上下文，未来统一放在config类
-def load_config():
-    logging.info("检查config模块完整性.")
-    # 完整性校验
-    non_exist_keys = []
-
-    is_integrity = True
-    config_template = importlib.import_module('config-template')
-    config = importlib.import_module('config')
-    for key in dir(config_template):
-        if not key.startswith("__") and not hasattr(config, key):
-            setattr(config, key, getattr(config_template, key))
-            # logging.warning("[{}]不存在".format(key))
-            non_exist_keys.append(key)
-            is_integrity = False
-    
-    if not is_integrity:
-        logging.warning("以下配置字段不存在: {}".format(", ".join(non_exist_keys)))
-
-    # 检查override.json覆盖
-    override_config()
-
-    if not is_integrity:
-        logging.warning("以上不存在的配置已被设为默认值，您可以依据config-template.py检查config.py，将在3秒后继续启动... ")
-        time.sleep(3)
-
-    # 存进上下文
-    pkg.utils.context.set_config(config)
 
 
 def complete_tips():
@@ -165,17 +138,29 @@ def complete_tips():
         time.sleep(3)
 
 
-def start(first_time_init=False):
+async def start_process(first_time_init=False):
     """启动流程，reload之后会被执行"""
 
     global known_exception_caught
     import pkg.utils.context
 
-    config = pkg.utils.context.get_config()
+    # 加载配置
+    cfg_inst: pymodule_cfg.PythonModuleConfigFile = pymodule_cfg.PythonModuleConfigFile(
+        'config.py',
+        'config-template.py'
+    )
+    await config_mgr.ConfigManager(cfg_inst).load_config()
+
+    override_config_manager()
+
+    # 检查tips模块
+    complete_tips()
+
+    cfg = pkg.utils.context.get_config_manager().data
     # 更新openai库到最新版本
-    if not hasattr(config, 'upgrade_dependencies') or config.upgrade_dependencies:
+    if 'upgrade_dependencies' not in cfg or cfg['upgrade_dependencies']:
         print("正在更新依赖库，请等待...")
-        if not hasattr(config, 'upgrade_dependencies'):
+        if 'upgrade_dependencies' not in cfg:
             print("这个操作不是必须的,如果不想更新,请在config.py中添加upgrade_dependencies=False")
         else:
             print("这个操作不是必须的,如果不想更新,请在config.py中将upgrade_dependencies设置为False")
@@ -183,6 +168,10 @@ def start(first_time_init=False):
             ensure_dependencies()
         except Exception as e:
             print("更新openai库失败:{}, 请忽略或自行更新".format(e))
+
+    # 初始化文字转图片
+    from pkg.utils import text2img
+    text2img.initialize()
 
     known_exception_caught = False
     try:
@@ -192,11 +181,11 @@ def start(first_time_init=False):
             pkg.utils.context.context['logger_handler'] = sh
 
             # 检查是否设置了管理员
-            if not (hasattr(config, 'admin_qq') and config.admin_qq != 0):
+            if cfg['admin_qq'] == 0:
                 # logging.warning("未设置管理员QQ,管理员权限指令及运行告警将无法使用,如需设置请修改config.py中的admin_qq字段")
                 while True:
                     try:
-                        config.admin_qq = int(input("未设置管理员QQ,管理员权限指令及运行告警将无法使用,请输入管理员QQ号: "))
+                        cfg['admin_qq'] = int(input("未设置管理员QQ,管理员权限指令及运行告警将无法使用,请输入管理员QQ号: "))
                         # 写入到文件
 
                         # 读取文件
@@ -204,7 +193,7 @@ def start(first_time_init=False):
                         with open("config.py", "r", encoding="utf-8") as f:
                             config_file_str = f.read()
                         # 替换
-                        config_file_str = config_file_str.replace("admin_qq = 0", "admin_qq = " + str(config.admin_qq))
+                        config_file_str = config_file_str.replace("admin_qq = 0", "admin_qq = " + str(cfg['admin_qq']))
                         # 写入
                         with open("config.py", "w", encoding="utf-8") as f:
                             f.write(config_file_str)
@@ -233,23 +222,23 @@ def start(first_time_init=False):
             # 配置OpenAI proxy
             import openai
             openai.proxies = None  # 先重置，因为重载后可能需要清除proxy
-            if "http_proxy" in config.openai_config and config.openai_config["http_proxy"] is not None:
+            if "http_proxy" in cfg['openai_config'] and cfg['openai_config']["http_proxy"] is not None:
                 openai.proxies = {
-                    "http": config.openai_config["http_proxy"],
-                    "https": config.openai_config["http_proxy"]
+                    "http": cfg['openai_config']["http_proxy"],
+                    "https": cfg['openai_config']["http_proxy"]
                 }
 
             # 配置openai api_base
-            if "reverse_proxy" in config.openai_config and config.openai_config["reverse_proxy"] is not None:
-                logging.debug("设置反向代理: "+config.openai_config['reverse_proxy'])
-                openai.base_url = config.openai_config["reverse_proxy"]
+            if "reverse_proxy" in cfg['openai_config'] and cfg['openai_config']["reverse_proxy"] is not None:
+                logging.debug("设置反向代理: "+cfg['openai_config']['reverse_proxy'])
+                openai.base_url = cfg['openai_config']["reverse_proxy"]
 
             # 主启动流程
             database = pkg.database.manager.DatabaseManager()
 
             database.initialize_database()
 
-            openai_interact = pkg.openai.manager.OpenAIInteract(config.openai_config['api_key'])
+            openai_interact = pkg.openai.manager.OpenAIInteract(cfg['openai_config']['api_key'])
 
             # 加载所有未超时的session
             pkg.openai.session.load_sessions()
@@ -338,13 +327,12 @@ def start(first_time_init=False):
         
         if first_time_init:
             if not known_exception_caught:
-                import config
-                if config.msg_source_adapter == "yirimirai":
-                    logging.info("QQ: {}, MAH: {}".format(config.mirai_http_api_config['qq'], config.mirai_http_api_config['host']+":"+str(config.mirai_http_api_config['port'])))
+                if cfg['msg_source_adapter'] == "yirimirai":
+                    logging.info("QQ: {}, MAH: {}".format(cfg['mirai_http_api_config']['qq'], cfg['mirai_http_api_config']['host']+":"+str(cfg['mirai_http_api_config']['port'])))
                     logging.critical('程序启动完成,如长时间未显示 "成功登录到账号xxxxx" ,并且不回复消息,解决办法(请勿到群里问): '
                                 'https://github.com/RockChinQ/QChatGPT/issues/37')
-                elif config.msg_source_adapter == 'nakuru':
-                    logging.info("host: {}, port: {}, http_port: {}".format(config.nakuru_config['host'], config.nakuru_config['port'], config.nakuru_config['http_port']))
+                elif cfg['msg_source_adapter'] == 'nakuru':
+                    logging.info("host: {}, port: {}, http_port: {}".format(cfg['nakuru_config']['host'], cfg['nakuru_config']['port'], cfg['nakuru_config']['http_port']))
                     logging.critical('程序启动完成,如长时间未显示 "Protocol: connected" ,并且不回复消息,请检查config.py中的nakuru_config是否正确')
             else:
                 sys.exit(1)
@@ -352,7 +340,7 @@ def start(first_time_init=False):
             logging.info('热重载完成')
 
     # 发送赞赏码
-    if config.encourage_sponsor_at_start \
+    if cfg['encourage_sponsor_at_start'] \
         and pkg.utils.context.get_openai_manager().audit_mgr.get_total_text_length() >= 2048:
 
         logging.info("发送赞赏码")
@@ -420,19 +408,12 @@ def main():
     init_runtime_log_file()
     pkg.utils.context.context['logger_handler'] = reset_logging()
 
-    # 加载配置
-    load_config()
-    config = pkg.utils.context.get_config()
-
-    # 检查tips模块
-    complete_tips()
-
     # 配置线程池
     from pkg.utils import ThreadCtl
     thread_ctl = ThreadCtl(
-        sys_pool_num=config.sys_pool_num,
-        admin_pool_num=config.admin_pool_num,
-        user_pool_num=config.user_pool_num
+        sys_pool_num=8,
+        admin_pool_num=4,
+        user_pool_num=8
     )
     # 存进上下文
     pkg.utils.context.set_thread_ctl(thread_ctl)
@@ -451,9 +432,11 @@ def main():
     # 关闭urllib的http警告
     requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
+    def run_wrapper():
+        asyncio.run(start_process(True))
+
     pkg.utils.context.get_thread_ctl().submit_sys_task(
-        start,
-        True
+        run_wrapper
     )
 
     # 主线程循环
@@ -463,12 +446,19 @@ def main():
         except:
             stop()
             pkg.utils.context.get_thread_ctl().shutdown()
-            import platform
-            if platform.system() == 'Windows':
-                cmd = "taskkill /F /PID {}".format(os.getpid())
-            elif platform.system() in ['Linux', 'Darwin']:
-                cmd = "kill -9 {}".format(os.getpid())
-            os.system(cmd)
+
+            launch_args = sys.argv.copy()
+
+            if "--cov-report" not in launch_args:
+                import platform
+                if platform.system() == 'Windows':
+                    cmd = "taskkill /F /PID {}".format(os.getpid())
+                elif platform.system() in ['Linux', 'Darwin']:
+                    cmd = "kill -9 {}".format(os.getpid())
+                os.system(cmd)
+            else:
+                print("正常退出以生成覆盖率报告")
+                sys.exit(0)
 
 
 if __name__ == '__main__':

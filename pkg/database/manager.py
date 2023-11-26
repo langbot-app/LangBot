@@ -144,11 +144,11 @@ class DatabaseManager:
     # 从数据库加载还没过期的session数据
     def load_valid_sessions(self) -> dict:
         # 从数据库中加载所有还没过期的session
-        config = context.get_config()
+        config = context.get_config_manager().data
         self.__execute__("""
         select `name`, `type`, `number`, `create_timestamp`, `last_interact_timestamp`, `prompt`, `status`, `default_prompt`, `token_counts`
         from `sessions` where `last_interact_timestamp` > {}
-        """.format(int(time.time()) - config.session_expire_time))
+        """.format(int(time.time()) - config['session_expire_time']))
         results = self.cursor.fetchall()
         sessions = {}
         for result in results:

@@ -1,4 +1,6 @@
 from .. import aamgr
+from ....utils import context
+
 
 @aamgr.AbstractCommandNode.register(
     parent=None,
@@ -15,12 +17,13 @@ class DefaultCommand(aamgr.AbstractCommandNode):
         session_name = ctx.session_name
         params = ctx.params
         reply = []
-        import config
+
+        config = context.get_config_manager().data
 
         if len(params) == 0:
             # 输出目前所有情景预设
             import pkg.openai.dprompt as dprompt
-            reply_str = "[bot]当前所有情景预设({}模式):\n\n".format(config.preset_mode)
+            reply_str = "[bot]当前所有情景预设({}模式):\n\n".format(config['preset_mode'])
 
             prompts = dprompt.mode_inst().list()
 

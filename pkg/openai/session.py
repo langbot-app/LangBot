@@ -36,11 +36,11 @@ def reset_session_prompt(session_name, prompt):
     f.write(prompt)
     f.close()
     # 生成新数据
-    config = context.get_config()
+    config = context.get_config_manager().data
     prompt = [
         {
             'role': 'system',
-            'content': config.default_prompt['default'] if type(config.default_prompt) == dict else config.default_prompt
+            'content': config['default_prompt']['default'] if type(config['default_prompt']) == dict else config['default_prompt']
         }
     ]
     # 警告
@@ -170,15 +170,15 @@ class Session:
             if self.create_timestamp != create_timestamp or self not in sessions.values():
                 return
 
-            config = context.get_config()
-            if int(time.time()) - self.last_interact_timestamp > config.session_expire_time:
+            config = context.get_config_manager().data
+            if int(time.time()) - self.last_interact_timestamp > config['session_expire_time']:
                 logging.info('session {} 已过期'.format(self.name))
 
                 # 触发插件事件
                 args = {
                     'session_name': self.name,
                     'session': self,
-                    'session_expire_time': config.session_expire_time
+                    'session_expire_time': config['session_expire_time']
                 }
                 event = plugin_host.emit(plugin_models.SessionExpired, **args)
                 if event.is_prevented_default():
@@ -216,8 +216,8 @@ class Session:
             if event.is_prevented_default():
                 return None, None, None
 
-        config = context.get_config()
-        max_length = config.prompt_submit_length
+        config = context.get_config_manager().data
+        max_length = config['prompt_submit_length']
 
         local_default_prompt = self.default_prompt.copy()
         local_prompt = self.prompt.copy()
@@ -254,7 +254,7 @@ class Session:
 
         funcs = []
 
-        trace_func_calls = config.trace_function_calls
+        trace_func_calls = config['trace_function_calls']
         botmgr = context.get_qqbot_manager()
 
         session_name_spt: list[str] = self.name.split("_")
@@ -381,7 +381,7 @@ class Session:
         # 包装目前的对话回合内容
         changable_prompts = []
 
-        use_model = context.get_config().completion_api_params['model']
+        use_model = context.get_config_manager().data['completion_api_params']['model']
 
         ptr = len(prompt) - 1
 

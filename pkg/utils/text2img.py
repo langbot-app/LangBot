@@ -1,37 +1,42 @@
 import logging
 import re
 import os
-import config
 import traceback
 
 from PIL import Image, ImageDraw, ImageFont
 
+from ..utils import context
+
+
 text_render_font: ImageFont = None
 
-if config.blob_message_strategy == "image":  # 仅在启用了image时才加载字体
-    use_font = config.font_path
-    try:
+def initialize():
+    config = context.get_config_manager().data
 
-        # 检查是否存在
-        if not os.path.exists(use_font):
-            # 若是windows系统，使用微软雅黑
-            if os.name == "nt":
-                use_font = "C:/Windows/Fonts/msyh.ttc"
-                if not os.path.exists(use_font):
-                    logging.warn("未找到字体文件，且无法使用Windows自带字体，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。")
-                    config.blob_message_strategy = "forward"
+    if config['blob_message_strategy'] == "image":  # 仅在启用了image时才加载字体
+        use_font = config['font_path']
+        try:
+
+            # 检查是否存在
+            if not os.path.exists(use_font):
+                # 若是windows系统，使用微软雅黑
+                if os.name == "nt":
+                    use_font = "C:/Windows/Fonts/msyh.ttc"
+                    if not os.path.exists(use_font):
+                        logging.warn("未找到字体文件，且无法使用Windows自带字体，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。")
+                        config['blob_message_strategy'] = "forward"
+                    else:
+                        logging.info("使用Windows自带字体：" + use_font)
+                        text_render_font = ImageFont.truetype(use_font, 32, encoding="utf-8")
                 else:
-                    logging.info("使用Windows自带字体：" + use_font)
-                    text_render_font = ImageFont.truetype(use_font, 32, encoding="utf-8")
+                    logging.warn("未找到字体文件，且无法使用Windows自带字体，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。")
+                    config['blob_message_strategy'] = "forward"
             else:
-                logging.warn("未找到字体文件，且无法使用Windows自带字体，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。")
-                config.blob_message_strategy = "forward"
-        else:
-            text_render_font = ImageFont.truetype(use_font, 32, encoding="utf-8")
-    except:
-        traceback.print_exc()
-        logging.error("加载字体文件失败({})，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。".format(use_font))
-        config.blob_message_strategy = "forward"
+                text_render_font = ImageFont.truetype(use_font, 32, encoding="utf-8")
+        except:
+            traceback.print_exc()
+            logging.error("加载字体文件失败({})，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。".format(use_font))
+            config['blob_message_strategy'] = "forward"
 
 
 def indexNumber(path=''):

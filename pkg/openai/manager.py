@@ -43,13 +43,13 @@ class OpenAIInteract:
         """请求补全接口回复=
         """
         # 选择接口请求类
-        config = context.get_config()
+        config = context.get_config_manager().data
 
         request: api_model.RequestBase
 
-        model: str = config.completion_api_params['model']
+        model: str = config['completion_api_params']['model']
 
-        cp_parmas = config.completion_api_params.copy()
+        cp_parmas = config['completion_api_params'].copy()
         del cp_parmas['model']
 
         request = modelmgr.select_request_cls(self.client, model, messages, cp_parmas)
@@ -74,8 +74,8 @@ class OpenAIInteract:
         Returns:
             dict: 响应
         """
-        config = context.get_config()
-        params = config.image_api_params
+        config = context.get_config_manager().data
+        params = config['image_api_params']
 
         response = openai.Image.create(
             prompt=prompt,
