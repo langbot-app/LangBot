@@ -2,7 +2,7 @@ import json
 import os
 import logging
 
-from mirai import At, GroupMessage, MessageEvent, Mirai, StrangerMessage, WebSocketAdapter, HTTPAdapter, \
+from mirai import At, GroupMessage, MessageEvent, StrangerMessage, \
     FriendMessage, Image, MessageChain, Plain
 import func_timeout
 
@@ -19,16 +19,16 @@ from ..qqbot import adapter as msadapter
 
 # 检查消息是否符合泛响应匹配机制
 def check_response_rule(group_id:int, text: str):
-    config = context.get_config()
+    config = context.get_config_manager().data
 
-    rules = config.response_rules
+    rules = config['response_rules']
 
     # 检查是否有特定规则
-    if 'prefix' not in config.response_rules:
-        if str(group_id) in config.response_rules:
-            rules = config.response_rules[str(group_id)]
+    if 'prefix' not in config['response_rules']:
+        if str(group_id) in config['response_rules']:
+            rules = config['response_rules'][str(group_id)]
         else:
-            rules = config.response_rules['default']
+            rules = config['response_rules']['default']
 
     # 检查前缀匹配
     if 'prefix' in rules:
@@ -48,16 +48,16 @@ def check_response_rule(group_id:int, text: str):
 
 
 def response_at(group_id: int):
-    config = context.get_config()
+    config = context.get_config_manager().data
 
-    use_response_rule = config.response_rules
+    use_response_rule = config['response_rules']
 
     # 检查是否有特定规则
-    if 'prefix' not in config.response_rules:
-        if str(group_id) in config.response_rules:
-            use_response_rule = config.response_rules[str(group_id)]
+    if 'prefix' not in config['response_rules']:
+        if str(group_id) in config['response_rules']:
+            use_response_rule = config['response_rules'][str(group_id)]
         else:
-            use_response_rule = config.response_rules['default']
+            use_response_rule = config['response_rules']['default']
 
     if 'at' not in use_response_rule:
         return True
@@ -66,16 +66,16 @@ def response_at(group_id: int):
 
 
 def random_responding(group_id):
-    config = context.get_config()
+    config = context.get_config_manager().data
 
-    use_response_rule = config.response_rules
+    use_response_rule = config['response_rules']
 
     # 检查是否有特定规则
-    if 'prefix' not in config.response_rules:
-        if str(group_id) in config.response_rules:
-            use_response_rule = config.response_rules[str(group_id)]
+    if 'prefix' not in config['response_rules']:
+        if str(group_id) in config['response_rules']:
+            use_response_rule = config['response_rules'][str(group_id)]
         else:
-            use_response_rule = config.response_rules['default']
+            use_response_rule = config['response_rules']['default']
 
     if 'random_rate' in use_response_rule:
         import random
@@ -102,25 +102,25 @@ class QQBotManager:
     ban_group = []
 
     def __init__(self, first_time_init=True):
-        import config
+        config = context.get_config_manager().data
 
-        self.timeout = config.process_message_timeout
-        self.retry = config.retry_times
+        self.timeout = config['process_message_timeout']
+        self.retry = config['retry_times']
 
         # 由于YiriMirai的bot对象是单例的，且shutdown方法暂时无法使用
         # 故只在第一次初始化时创建bot对象，重载之后使用原bot对象
         # 因此，bot的配置不支持热重载
         if first_time_init:
-            logging.debug("Use adapter:" + config.msg_source_adapter)
-            if config.msg_source_adapter == 'yirimirai':
+            logging.debug("Use adapter:" + config['msg_source_adapter'])
+            if config['msg_source_adapter'] == 'yirimirai':
                 from pkg.qqbot.sources.yirimirai import YiriMiraiAdapter
 
-                mirai_http_api_config = config.mirai_http_api_config
-                self.bot_account_id = config.mirai_http_api_config['qq']
+                mirai_http_api_config = config['mirai_http_api_config']
+                self.bot_account_id = config['mirai_http_api_config']['qq']
                 self.adapter = YiriMiraiAdapter(mirai_http_api_config)
-            elif config.msg_source_adapter == 'nakuru':
+            elif config['msg_source_adapter'] == 'nakuru':
                 from pkg.qqbot.sources.nakuru import NakuruProjectAdapter
-                self.adapter = NakuruProjectAdapter(config.nakuru_config)
+                self.adapter = NakuruProjectAdapter(config['nakuru_config'])
                 self.bot_account_id = self.adapter.bot_account_id
         else:
             self.adapter = context.get_qqbot_manager().adapter
@@ -176,7 +176,7 @@ class QQBotManager:
                 stranger_message_handler,
             )
         # nakuru不区分好友和陌生人，故仅为yirimirai注册陌生人事件
-        if config.msg_source_adapter == 'yirimirai':
+        if config['msg_source_adapter'] == 'yirimirai':
             self.adapter.register_listener(
                 StrangerMessage,
                 on_stranger_message
@@ -213,12 +213,11 @@ class QQBotManager:
 
             用于在热重载流程中卸载所有事件处理器
             """
-            import config
             self.adapter.unregister_listener(
                 FriendMessage,
                 on_friend_message
             )
-            if config.msg_source_adapter == 'yirimirai':
+            if config['msg_source_adapter'] == 'yirimirai':
                 self.adapter.unregister_listener(
                     StrangerMessage,
                     on_stranger_message
@@ -243,10 +242,10 @@ class QQBotManager:
             if hasattr(banlist, "enable_group"):
                 self.enable_group = banlist.enable_group
 
-        config = context.get_config()
+        config = context.get_config_manager().data
         if os.path.exists("sensitive.json") \
-                and config.sensitive_word_filter is not None \
-                and config.sensitive_word_filter:
+                and config['sensitive_word_filter'] is not None \
+                and config['sensitive_word_filter']:
             with open("sensitive.json", "r", encoding="utf-8") as f:
                 sensitive_json = json.load(f)
                 self.reply_filter = qqbot_filter.ReplyFilter(
@@ -258,16 +257,16 @@ class QQBotManager:
             self.reply_filter = qqbot_filter.ReplyFilter([])
 
     def send(self, event, msg, check_quote=True, check_at_sender=True):
-        config = context.get_config()
+        config = context.get_config_manager().data
         
-        if check_at_sender and config.at_sender:
+        if check_at_sender and config['at_sender']:
             msg.insert(
                 0,
                 Plain(" \n")
             )
 
             # 当回复的正文中包含换行时，quote可能会自带at，此时就不再单独添加at，只添加换行
-            if "\n" not in str(msg[1]) or config.msg_source_adapter == 'nakuru':
+            if "\n" not in str(msg[1]) or config['msg_source_adapter'] == 'nakuru':
                 msg.insert(
                     0,
                     At(
@@ -278,13 +277,14 @@ class QQBotManager:
         self.adapter.reply_message(
             event,
             msg,
-            quote_origin=True if config.quote_origin and check_quote else False
+            quote_origin=True if config['quote_origin'] and check_quote else False
         )
 
     # 私聊消息处理
     def on_person_message(self, event: MessageEvent):
-        import config
         reply = ''
+
+        config = context.get_config_manager().data
 
         if not self.enable_private:
             logging.debug("已在banlist.py中禁用所有私聊")
@@ -299,7 +299,7 @@ class QQBotManager:
                 for i in range(self.retry):
                     try:
                         
-                        @func_timeout.func_set_timeout(config.process_message_timeout)
+                        @func_timeout.func_set_timeout(config['process_message_timeout'])
                         def time_ctrl_wrapper():
                             reply = processor.process_message('person', event.sender.id, str(event.message_chain),
                                                             event.message_chain,
@@ -326,8 +326,10 @@ class QQBotManager:
 
     # 群消息处理
     def on_group_message(self, event: GroupMessage):
-        import config
         reply = ''
+
+        config = context.get_config_manager().data
+
         def process(text=None) -> str:
             replys = ""
             if At(self.bot_account_id) in event.message_chain:
@@ -337,7 +339,7 @@ class QQBotManager:
             failed = 0
             for i in range(self.retry):
                 try:
-                    @func_timeout.func_set_timeout(config.process_message_timeout)
+                    @func_timeout.func_set_timeout(config['process_message_timeout'])
                     def time_ctrl_wrapper():
                         replys = processor.process_message('group', event.group.id,
                                                         str(event.message_chain).strip() if text is None else text,
@@ -385,17 +387,17 @@ class QQBotManager:
 
     # 通知系统管理员
     def notify_admin(self, message: str):
-        config = context.get_config()
-        if config.admin_qq != 0 and config.admin_qq != []:
+        config = context.get_config_manager().data
+        if config['admin_qq'] != 0 and config['admin_qq'] != []:
             logging.info("通知管理员:{}".format(message))
-            if type(config.admin_qq) == int:
+            if type(config['admin_qq']) == int:
                 self.adapter.send_message(
                     "person",
-                    config.admin_qq,
+                    config['admin_qq'],
                     MessageChain([Plain("[bot]{}".format(message))])
                 )
             else:
-                for adm in config.admin_qq:
+                for adm in config['admin_qq']:
                     self.adapter.send_message(
                         "person",
                         adm,
@@ -403,17 +405,17 @@ class QQBotManager:
                     )
 
     def notify_admin_message_chain(self, message):
-        config = context.get_config()
-        if config.admin_qq != 0 and config.admin_qq != []:
+        config = context.get_config_manager().data
+        if config['admin_qq'] != 0 and config['admin_qq'] != []:
             logging.info("通知管理员:{}".format(message))
-            if type(config.admin_qq) == int:
+            if type(config['admin_qq']) == int:
                 self.adapter.send_message(
                     "person",
-                    config.admin_qq,
+                    config['admin_qq'],
                     message
                 )
             else:
-                for adm in config.admin_qq:
+                for adm in config['admin_qq']:
                     self.adapter.send_message(
                         "person",
                         adm,

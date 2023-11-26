@@ -5,6 +5,7 @@ import mirai
 
 
 class MessageSourceAdapter:
+    bot_account_id: int
     def __init__(self, config: dict):
         pass
 
