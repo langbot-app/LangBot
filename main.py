@@ -8,10 +8,13 @@ import time
 import logging
 import sys
 import traceback
+import asyncio
 
 sys.path.append(".")
 
 from pkg.utils.log import init_runtime_log_file, reset_logging
+from pkg.config import manager as config_mgr
+from pkg.config.impls import pymodule as pymodule_cfg
 
 
 def check_file():
@@ -165,7 +168,7 @@ def complete_tips():
         time.sleep(3)
 
 
-def start(first_time_init=False):
+async def start_process(first_time_init=False):
     """启动流程，reload之后会被执行"""
 
     global known_exception_caught
@@ -173,6 +176,14 @@ def start(first_time_init=False):
 
     # 加载配置
     load_config()
+
+    cfg_inst: pymodule_cfg.PythonModuleConfigFile = pymodule_cfg.PythonModuleConfigFile(
+        'config.py',
+        'config-template.py'
+    )
+    await config_mgr.ConfigManager(cfg_inst).load_config()
+
+    # TODO: override config
 
     # 检查tips模块
     complete_tips()
@@ -450,9 +461,11 @@ def main():
     # 关闭urllib的http警告
     requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
+    def run_wrapper():
+        asyncio.run(start_process(True))
+
     pkg.utils.context.get_thread_ctl().submit_sys_task(
-        start,
-        True
+        run_wrapper
     )
 
     # 主线程循环

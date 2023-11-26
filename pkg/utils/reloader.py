@@ -1,6 +1,7 @@
 import logging
 import importlib
 import pkgutil
+import asyncio
 
 from . import context
 from ..plugin import host as plugin_host
@@ -57,9 +58,12 @@ def reload_all(notify=True):
         admin_pool_num=4,
         user_pool_num=8
     )
+
+    def run_wrapper():
+        asyncio.run(main.start_process(False))
+
     context.get_thread_ctl().submit_sys_task(
-        main.start,
-        False
+        run_wrapper
     )
 
     logging.info('程序启动完成')
