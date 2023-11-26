@@ -6,6 +6,7 @@ from . import threadctl
 from ..database import manager as db_mgr
 from ..openai import manager as openai_mgr
 from ..qqbot import manager as qqbot_mgr
+from ..config import  manager as config_mgr
 from ..plugin import host as plugin_host
 
 
@@ -14,6 +15,7 @@ context = {
         'database.manager.DatabaseManager': None,
         'openai.manager.OpenAIInteract': None,
         'qqbot.manager.QQBotManager': None,
+        'config.manager.ConfigManager': None,
     },
     'pool_ctl': None,
     'logger_handler': None,
@@ -71,6 +73,19 @@ def set_qqbot_manager(inst: qqbot_mgr.QQBotManager):
 def get_qqbot_manager() -> qqbot_mgr.QQBotManager:
     context_lock.acquire()
     t = context['inst']['qqbot.manager.QQBotManager']
+    context_lock.release()
+    return t
+
+
+def set_config_manager(inst: config_mgr.ConfigManager):
+    context_lock.acquire()
+    context['inst']['config.manager.ConfigManager'] = inst
+    context_lock.release()
+
+
+def get_config_manager() -> config_mgr.ConfigManager:
+    context_lock.acquire()
+    t = context['inst']['config.manager.ConfigManager']
     context_lock.release()
     return t
 
