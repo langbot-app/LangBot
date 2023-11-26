@@ -99,23 +99,6 @@ def ensure_dependencies():
 known_exception_caught = False
 
 
-def override_config():
-    import config
-    # 检查override.json覆盖
-    if os.path.exists("override.json") and use_override:
-        override_json = json.load(open("override.json", "r", encoding="utf-8"))
-        overrided = []
-        for key in override_json:
-            if hasattr(config, key):
-                setattr(config, key, override_json[key])
-                # logging.info("覆写配置[{}]为[{}]".format(key, override_json[key]))
-                overrided.append(key)
-            else:
-                logging.error("无法覆写配置[{}]为[{}]，该配置不存在，请检查override.json是否正确".format(key, override_json[key]))
-        if len(overrided) > 0:
-            logging.info("已根据override.json覆写配置项: {}".format(", ".join(overrided)))
-
-
 def override_config_manager():
     config = pkg.utils.context.get_config_manager().data
 
@@ -131,36 +114,6 @@ def override_config_manager():
                 logging.error("无法覆写配置[{}]为[{}]，该配置不存在，请检查override.json是否正确".format(key, override_json[key]))
         if len(overrided) > 0:
             logging.info("已根据override.json覆写配置项: {}".format(", ".join(overrided)))
-
-
-# 临时函数，用于加载config和上下文，未来统一放在config类
-def load_config():
-    logging.info("检查config模块完整性.")
-    # 完整性校验
-    non_exist_keys = []
-
-    is_integrity = True
-    config_template = importlib.import_module('config-template')
-    config = importlib.import_module('config')
-    for key in dir(config_template):
-        if not key.startswith("__") and not hasattr(config, key):
-            setattr(config, key, getattr(config_template, key))
-            # logging.warning("[{}]不存在".format(key))
-            non_exist_keys.append(key)
-            is_integrity = False
-    
-    if not is_integrity:
-        logging.warning("以下配置字段不存在: {}".format(", ".join(non_exist_keys)))
-
-    # 检查override.json覆盖
-    override_config()
-
-    if not is_integrity:
-        logging.warning("以上不存在的配置已被设为默认值，您可以依据config-template.py检查config.py，将在3秒后继续启动... ")
-        time.sleep(3)
-
-    # 存进上下文
-    pkg.utils.context.set_config(config)
 
 
 def complete_tips():
@@ -192,8 +145,6 @@ async def start_process(first_time_init=False):
     import pkg.utils.context
 
     # 加载配置
-    load_config()
-
     cfg_inst: pymodule_cfg.PythonModuleConfigFile = pymodule_cfg.PythonModuleConfigFile(
         'config.py',
         'config-template.py'
