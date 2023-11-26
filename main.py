@@ -171,6 +171,12 @@ def start(first_time_init=False):
     global known_exception_caught
     import pkg.utils.context
 
+    # 加载配置
+    load_config()
+
+    # 检查tips模块
+    complete_tips()
+
     config = pkg.utils.context.get_config()
     # 更新openai库到最新版本
     if not hasattr(config, 'upgrade_dependencies') or config.upgrade_dependencies:
@@ -420,19 +426,12 @@ def main():
     init_runtime_log_file()
     pkg.utils.context.context['logger_handler'] = reset_logging()
 
-    # 加载配置
-    load_config()
-    config = pkg.utils.context.get_config()
-
-    # 检查tips模块
-    complete_tips()
-
     # 配置线程池
     from pkg.utils import ThreadCtl
     thread_ctl = ThreadCtl(
-        sys_pool_num=config.sys_pool_num,
-        admin_pool_num=config.admin_pool_num,
-        user_pool_num=config.user_pool_num
+        sys_pool_num=8,
+        admin_pool_num=4,
+        user_pool_num=8
     )
     # 存进上下文
     pkg.utils.context.set_thread_ctl(thread_ctl)

@@ -52,11 +52,10 @@ def reload_all(notify=True):
 
     # 执行启动流程
     logging.info("执行程序启动流程")
-    main.load_config()
-    main.complete_tips()
+
     context.get_thread_ctl().reload(
-        admin_pool_num=context.get_config().admin_pool_num,
-        user_pool_num=context.get_config().user_pool_num
+        admin_pool_num=4,
+        user_pool_num=8
     )
     context.get_thread_ctl().submit_sys_task(
         main.start,

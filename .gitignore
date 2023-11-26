@@ -1,4 +1,4 @@
-config.py
+/config.py
 .idea/
 __pycache__/
 database.db
