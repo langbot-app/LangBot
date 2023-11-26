@@ -463,12 +463,19 @@ def main():
         except:
             stop()
             pkg.utils.context.get_thread_ctl().shutdown()
-            import platform
-            if platform.system() == 'Windows':
-                cmd = "taskkill /F /PID {}".format(os.getpid())
-            elif platform.system() in ['Linux', 'Darwin']:
-                cmd = "kill -9 {}".format(os.getpid())
-            os.system(cmd)
+
+            launch_args = sys.argv.copy()
+
+            if "--cov-report" not in launch_args:
+                import platform
+                if platform.system() == 'Windows':
+                    cmd = "taskkill /F /PID {}".format(os.getpid())
+                elif platform.system() in ['Linux', 'Darwin']:
+                    cmd = "kill -9 {}".format(os.getpid())
+                os.system(cmd)
+            else:
+                print("正常退出以生成覆盖率报告")
+                sys.exit(0)
 
 
 if __name__ == '__main__':
