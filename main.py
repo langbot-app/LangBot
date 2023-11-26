@@ -116,6 +116,23 @@ def override_config():
             logging.info("已根据override.json覆写配置项: {}".format(", ".join(overrided)))
 
 
+def override_config_manager():
+    config = pkg.utils.context.get_config_manager().data
+
+    if os.path.exists("override.json") and use_override:
+        override_json = json.load(open("override.json", "r", encoding="utf-8"))
+        overrided = []
+        for key in override_json:
+            if key in config:
+                config[key] = override_json[key]
+                # logging.info("覆写配置[{}]为[{}]".format(key, override_json[key]))
+                overrided.append(key)
+            else:
+                logging.error("无法覆写配置[{}]为[{}]，该配置不存在，请检查override.json是否正确".format(key, override_json[key]))
+        if len(overrided) > 0:
+            logging.info("已根据override.json覆写配置项: {}".format(", ".join(overrided)))
+
+
 # 临时函数，用于加载config和上下文，未来统一放在config类
 def load_config():
     logging.info("检查config模块完整性.")
@@ -183,7 +200,7 @@ async def start_process(first_time_init=False):
     )
     await config_mgr.ConfigManager(cfg_inst).load_config()
 
-    # TODO: override config
+    override_config_manager()
 
     # 检查tips模块
     complete_tips()
