@@ -346,6 +346,7 @@ python3 main.py
 - [oliverkirk-sudo/QChatWeather](https://github.com/oliverkirk-sudo/QChatWeather) - 生成好看的天气图片，基于和风天气
 - [oliverkirk-sudo/QChatMarkdown](https://github.com/oliverkirk-sudo/QChatMarkdown) - 将机器人输出的markdown转换为图片，基于[playwright](https://playwright.dev/python/docs/intro)
 - [ruuuux/WikipediaSearch](https://github.com/ruuuux/WikipediaSearch) - Wikipedia 搜索插件
+- [zuo-shi-yun/discountAssistant](https://github.com/zuo-shi-yun/discountAssistant) - 自动筛选并发送羊毛群内的优惠券
 
 </details>
 
