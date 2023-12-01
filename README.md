@@ -7,9 +7,6 @@
 
 # QChatGPT
 
-<!-- 高稳定性/持续迭代/架构清晰/支持插件/高可自定义的 ChatGPT QQ机器人框架 -->
-<!-- “当然！下面是一个使用Java编写的快速排序算法的示例代码” -->
-
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/QChatGPT)](https://github.com/RockChinQ/QChatGPT/releases/latest)
 <a href="https://hub.docker.com/repository/docker/rockchin/qchatgpt">
     <img src="https://img.shields.io/docker/pulls/rockchin/qchatgpt?color=blue" alt="docker pull">
@@ -42,7 +39,7 @@
 </details>
 </div>
 
-> **NOTE**  
+> [!NOTE]  
 > 2023/9/13 现已支持通过[One API](https://github.com/songquanpeng/one-api)接入 Azure、Anthropic Claude、Google PaLM 2、智谱 ChatGLM、百度文心一言、讯飞星火认知、阿里通义千问以及 360 智脑等模型，欢迎测试并反馈。  
 > 2023/8/29 [逆向库插件](https://github.com/RockChinQ/revLibs)已支持 gpt4free  
 > 2023/8/14 [逆向库插件](https://github.com/RockChinQ/revLibs)已支持Claude和Bard  
@@ -197,7 +194,7 @@
 
 </summary>
 
-> **NOTE**  
+> [!NOTE]  
 > - 部署过程中遇到任何问题，请先在[QChatGPT](https://github.com/RockChinQ/QChatGPT/issues)或[qcg-installer](https://github.com/RockChinQ/qcg-installer/issues)的issue里进行搜索  
 > - QChatGPT需要Python版本>=3.9  
 > - 官方群和社区群群号请见文档顶部

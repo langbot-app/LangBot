@@ -1,6 +1,6 @@
 # QChatGPT 容器化部署指南
 
-> **Warning**  
+> [!WARNING]  
 > 请您确保您**确实**需要 Docker 部署，您**必须**具有以下能力：  
 > - 了解 `Docker` 和 `Docker Compose` 的使用  
 > - 了解容器间网络通信配置方式  
@@ -15,7 +15,7 @@
 
 QChatGPT 主程序需要连接`QQ登录框架`以与QQ通信，您可以选择 [Mirai](https://github.com/mamoe/mirai)（还需要配置mirai-api-http，请查看此仓库README中手动部署部分） 或 [go-cqhttp](https://github.com/Mrs4s/go-cqhttp)，我们仅发布 QChatGPT主程序 的镜像，您需要自行配置QQ登录框架（可以参考[README.md](https://github.com/RockChinQ/QChatGPT#-%E9%85%8D%E7%BD%AEqq%E7%99%BB%E5%BD%95%E6%A1%86%E6%9E%B6)中的教程，或自行寻找其镜像）并在 QChatGPT 的配置文件中设置连接地址。
 
-> **Note**
+> [!NOTE]
 > 请先确保 Docker 和 Docker Compose 已安装
 
 ## 准备文件

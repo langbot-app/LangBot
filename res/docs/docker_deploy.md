@@ -1,5 +1,5 @@
 
-> **Warning**
+> [!WARNING]
 > 此文档已过时，请查看[QChatGPT 容器化部署指南](docker_deployment.md)
 
 ## 操作步骤

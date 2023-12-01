@@ -49,7 +49,7 @@ English | [简体中文](README.md)
 
 Install this [plugin](https://github.com/RockChinQ/Switcher) to switch between different models.
 
-## ✅Function Points
+## ✅Features
 
 <details>
 <summary>Details</summary>
