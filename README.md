@@ -344,6 +344,7 @@ python3 main.py
 - [oliverkirk-sudo/QChatMarkdown](https://github.com/oliverkirk-sudo/QChatMarkdown) - 将机器人输出的markdown转换为图片，基于[playwright](https://playwright.dev/python/docs/intro)
 - [ruuuux/WikipediaSearch](https://github.com/ruuuux/WikipediaSearch) - Wikipedia 搜索插件
 - [zuo-shi-yun/discountAssistant](https://github.com/zuo-shi-yun/discountAssistant) - 自动筛选并发送羊毛群内的优惠券
+- [zuo-shi-yun/Gatekeeper ](https://github.com/zuo-shi-yun/Gatekeeper) - QChatGPT的看门狗，包含黑白名单、临时用户机制
 
 </details>
 
