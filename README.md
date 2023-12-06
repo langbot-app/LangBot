@@ -32,6 +32,7 @@
 <img alt="Static Badge" src="https://img.shields.io/badge/Linux%E9%83%A8%E7%BD%B2%E8%A7%86%E9%A2%91-208647">
 </a>
 
+<blockquote> 🥳 QChatGPT 一周年啦，感谢大家的支持！欢迎前往<a href="https://github.com/RockChinQ/QChatGPT/discussions/627">讨论</a>。</blockquote>
 
 <details>
 <summary>回复效果演示（带有联网插件）</summary>
