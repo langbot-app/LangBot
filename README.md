@@ -195,7 +195,7 @@
 
 </summary>
 
-> [!NOTE]  
+> **NOTE**
 > - 部署过程中遇到任何问题，请先在[QChatGPT](https://github.com/RockChinQ/QChatGPT/issues)或[qcg-installer](https://github.com/RockChinQ/qcg-installer/issues)的issue里进行搜索  
 > - QChatGPT需要Python版本>=3.9  
 > - 官方群和社区群群号请见文档顶部
