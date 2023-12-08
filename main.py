@@ -12,10 +12,6 @@ import asyncio
 
 sys.path.append(".")
 
-from pkg.utils.log import init_runtime_log_file, reset_logging
-from pkg.config import manager as config_mgr
-from pkg.config.impls import pymodule as pymodule_cfg
-
 
 def check_file():
     # 检查是否有banlist.py,如果没有就把banlist-template.py复制一份
@@ -57,6 +53,11 @@ def check_file():
 
 # 初始化相关文件
 check_file()
+
+from pkg.utils.log import init_runtime_log_file, reset_logging
+from pkg.config import manager as config_mgr
+from pkg.config.impls import pymodule as pymodule_cfg
+
 
 try:
     import colorlog
