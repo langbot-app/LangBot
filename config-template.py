@@ -260,9 +260,13 @@ completion_api_params = {
 }
 
 # OpenAI的Image API的参数
-# 具体请查看OpenAI的文档: https://beta.openai.com/docs/api-reference/images/create
+# 具体请查看OpenAI的文档: https://platform.openai.com/docs/api-reference/images/create
 image_api_params = {
-    "size": "256x256",  # 图片尺寸，支持256x256, 512x512, 1024x1024
+    "model": "dall-e-2", # 默认使用 dall-e-2 模型，也可以改为 dall-e-3
+    # 图片尺寸
+    # dall-e-2 模型支持 256x256, 512x512, 1024x1024
+    # dall-e-3 模型支持 1024x1024, 1792x1024, 1024x1792
+    "size": "256x256",
 }
 
 # 跟踪函数调用

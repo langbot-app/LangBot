@@ -29,7 +29,7 @@ class DrawCommand(aamgr.AbstractCommandNode):
             res = session.draw_image(" ".join(ctx.params))
 
             logging.debug("draw_image result:{}".format(res))
-            reply = [mirai.Image(url=res['data'][0]['url'])]
+            reply = [mirai.Image(url=res.data[0].url)]
             config = context.get_config_manager().data
             if config['include_image_description']:
                 reply.append(" ".join(ctx.params))
