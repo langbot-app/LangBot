@@ -60,6 +60,7 @@
         "temperature": 0.9
     },
     "image_api_params": {
+        "model": "dall-e-2",
         "size": "256x256"
     },
     "trace_function_calls": false,
