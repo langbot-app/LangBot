@@ -1,6 +1,7 @@
 import logging
 
 import openai
+from openai.types import images_response
 
 from ..openai import keymgr
 from ..utils import context
@@ -65,7 +66,7 @@ class OpenAIInteract:
 
             yield resp
 
-    def request_image(self, prompt) -> dict:
+    def request_image(self, prompt) -> images_response.ImagesResponse:
         """请求图片接口回复
 
         Parameters:
@@ -77,7 +78,7 @@ class OpenAIInteract:
         config = context.get_config_manager().data
         params = config['image_api_params']
 
-        response = openai.Image.create(
+        response = self.client.images.generate(
             prompt=prompt,
             n=1,
             **params
