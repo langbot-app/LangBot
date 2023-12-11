@@ -43,12 +43,6 @@
 
 </div>
 
-> [!NOTE]  
-> 2023/9/13 现已支持通过[One API](https://github.com/songquanpeng/one-api)接入 Azure、Anthropic Claude、Google PaLM 2、智谱 ChatGLM、百度文心一言、讯飞星火认知、阿里通义千问以及 360 智脑等模型，欢迎测试并反馈。  
-> 2023/8/29 [逆向库插件](https://github.com/RockChinQ/revLibs)已支持 gpt4free  
-> 2023/8/14 [逆向库插件](https://github.com/RockChinQ/revLibs)已支持Claude和Bard  
-> 2023/7/29 支持使用GPT的Function Calling功能实现类似ChatGPT Plugin的效果，请见[Wiki内容函数](https://github.com/RockChinQ/QChatGPT/wiki/6-%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8-%E5%86%85%E5%AE%B9%E5%87%BD%E6%95%B0)  
-
 <details>
 <summary>
 
