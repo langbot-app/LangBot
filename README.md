@@ -34,10 +34,13 @@
 
 <blockquote> 🥳 QChatGPT 一周年啦，感谢大家的支持！欢迎前往<a href="https://github.com/RockChinQ/QChatGPT/discussions/627">讨论</a>。</blockquote>
 
-<details>
+<!-- <details>
 <summary>回复效果演示（带有联网插件）</summary>
 <img alt="联网演示GIF" src="res/webwlkr-demo.gif" width="300px">
-</details>
+</details> -->
+
+<img alt="回复效果（带有联网插件）" src="res/QChatGPT-1211.png" width="500px"/>
+
 </div>
 
 > [!NOTE]  
