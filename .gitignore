@@ -31,3 +31,4 @@ claude.json
 bard.json
 /*yaml
 !/docker-compose.yaml
+res/instance_id.json

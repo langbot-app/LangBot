@@ -145,6 +145,11 @@ async def start_process(first_time_init=False):
     global known_exception_caught
     import pkg.utils.context
 
+    # 计算host和instance标识符
+    import pkg.audit.identifier
+    pkg.audit.identifier.init()
+    pkg.audit.identifier.print_out()
+
     # 加载配置
     cfg_inst: pymodule_cfg.PythonModuleConfigFile = pymodule_cfg.PythonModuleConfigFile(
         'config.py',

@@ -91,7 +91,7 @@ class DatabaseManager:
             `json` text not null
         )
         """)
-        print('Database initialized.')
+        # print('Database initialized.')
 
     # session持久化
     def persistence_session(self, subject_type: str, subject_number: int, create_timestamp: int,
