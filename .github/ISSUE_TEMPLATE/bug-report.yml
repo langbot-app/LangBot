@@ -45,7 +45,7 @@ body:
       required: true
   - type: textarea
     attributes:
-      label: 报错信息
-      description: 请提供完整的**控制台**报错信息（若有）
+      label: 日志信息
+      description: 请提供完整的 **登录框架 和 QChatGPT控制台**的相关日志信息（若有），不提供日志信息**无法**为您排查问题
     validations:
       required: false
