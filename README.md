@@ -343,6 +343,7 @@ python3 main.py
 - [ruuuux/WikipediaSearch](https://github.com/ruuuux/WikipediaSearch) - Wikipedia 搜索插件
 - [zuo-shi-yun/discountAssistant](https://github.com/zuo-shi-yun/discountAssistant) - 自动筛选并发送羊毛群内的优惠券
 - [zuo-shi-yun/Gatekeeper ](https://github.com/zuo-shi-yun/Gatekeeper) - QChatGPT的看门狗，包含黑白名单、临时用户机制
+- [zuo-shi-yun/AutoSwitchProxy](https://github.com/zuo-shi-yun/AutoSwitchProxy)  - 自动切换Clash代理模式以节省流量
 
 </details>
 
