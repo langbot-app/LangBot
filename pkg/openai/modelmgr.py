@@ -49,6 +49,7 @@ CHAT_COMPLETION_MODELS = {
     "qwen-plus-v1",
     "ERNIE-Bot",
     "ERNIE-Bot-turbo",
+    "gemini-pro",
 }
 
 EDIT_MODELS = {
@@ -90,6 +91,7 @@ def count_chat_completion_tokens(messages: list, model: str) -> int:
         "qwen-plus-v1",
         "ERNIE-Bot",
         "ERNIE-Bot-turbo",
+        "gemini-pro",
         }:
         tokens_per_message = 3
         tokens_per_name = 1
