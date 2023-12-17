@@ -254,6 +254,7 @@ auto_reset = True
 # "qwen-plus-v1",
 # "ERNIE-Bot",
 # "ERNIE-Bot-turbo",
+# "gemini-pro",
 completion_api_params = {
     "model": "gpt-3.5-turbo",
     "temperature": 0.9,  # 数值越低得到的回答越理性，取值范围[0, 1]
