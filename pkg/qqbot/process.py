@@ -83,7 +83,9 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
 
         processing.append(session_name)
         try:
+            msg_type = ''
             if text_message.startswith('!') or text_message.startswith("！"):  # 指令
+                msg_type = 'command'
                 # 触发插件事件
                 args = {
                     'launcher_type': launcher_type,
@@ -110,6 +112,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                                                               mgr, config, launcher_type, launcher_id, sender_id, is_admin(sender_id))
 
             else:  # 消息
+                msg_type = 'message'
                 # 限速丢弃检查
                 # print(ratelimit.__crt_minute_usage__[session_name])
                 if config['rate_limit_strategy'] == "drop":
@@ -154,7 +157,9 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
                     "回复[{}]文字消息:{}".format(session_name,
                                                  reply[0][:min(100, len(reply[0]))] + (
                                                      "..." if len(reply[0]) > 100 else "")))
-                reply = [mgr.reply_filter.process(reply[0])]
+                if msg_type == 'message':
+                    reply = [mgr.reply_filter.process(reply[0])]
+                    
                 reply = blob.check_text(reply[0])
             else:
                 logging.info("回复[{}]消息".format(session_name))
