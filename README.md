@@ -33,8 +33,8 @@
 <a href="https://qchatgpt.rockchin.top">项目主页</a> ｜
 <a href="https://qchatgpt.rockchin.top/posts/deploy/">部署文档</a> ｜
 <a href="https://qchatgpt.rockchin.top/posts/feature.html">功能介绍</a> ｜
-<a href="https://qchatgpt.rockchin.top/posts/errors/">常见问题</a> ｜
-<a href="https://qchatgpt.rockchin.top/posts/plugins/pluginsIntro.html">插件介绍</a>
+<a href="https://qchatgpt.rockchin.top/posts/error/">常见问题</a> ｜
+<a href="https://qchatgpt.rockchin.top/posts/plugin/intro.html">插件介绍</a>
 
 <img alt="回复效果（带有联网插件）" src="https://qchatgpt.rockchin.top/assets/image/QChatGPT-1211.png" width="500px"/>
 
