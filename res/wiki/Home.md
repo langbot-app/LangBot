@@ -1,3 +1,6 @@
+> [!WARNING]
+> 此 Wiki 已弃用，所有文档已迁移到 [项目主页](https://qchatgpt.rockchin.top)
+
 欢迎查看QChatGPT的Wiki页。
 
 ## 简介
