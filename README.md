@@ -36,6 +36,7 @@
 <a href="https://qchatgpt.rockchin.top/posts/errors/">常见问题</a> ｜
 <a href="https://qchatgpt.rockchin.top/posts/plugins/pluginsIntro.html">插件介绍</a>
 
-<img alt="回复效果（带有联网插件）" src="res/QChatGPT-1211.png" width="500px"/>
+<img alt="回复效果（带有联网插件）" src="https://qchatgpt.rockchin.top/assets/image/QChatGPT-1211.png" width="500px"/>
+
 
 </div>
