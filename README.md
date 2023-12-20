@@ -13,17 +13,12 @@
   </a>
 ![Wakapi Count](https://wakapi.dev/api/badge/RockChinQ/interval:any/project:QChatGPT)
 <img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="python">
-<a href="https://github.com/RockChinQ/QChatGPT/wiki">
-<img alt="Static Badge" src="https://img.shields.io/badge/%E6%9F%A5%E7%9C%8B-%E9%A1%B9%E7%9B%AEWiki-blue">
-</a><br/>
+<br/>
 <a href="http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=66-aWvn8cbP4c1ut_1YYkvvGVeEtyTH8&authKey=pTaKBK5C%2B8dFzQ4XlENf6MHTCLaHnlKcCRx7c14EeVVlpX2nRSaS8lJm8YeM4mCU&noverify=0&group_code=195992197">
 <img alt="Static Badge" src="https://img.shields.io/badge/%E5%AE%98%E6%96%B9%E7%BE%A4-195992197-purple">
 </a>
 <a href="http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=nC80H57wmKPwRDLFeQrDDjVl81XuC21P&authKey=2wTUTfoQ5v%2BD4C5zfpuR%2BSPMDqdXgDXA%2FS2wHI1NxTfWIG%2B%2FqK08dgyjMMOzhXa9&noverify=0&group_code=738382634">
 <img alt="Static Badge" src="https://img.shields.io/badge/%E7%A4%BE%E5%8C%BA%E7%BE%A4-738382634-purple">
-</a>
-<a href="https://qchatgpt.rockchin.top">
-<img alt="Static Badge" src="https://img.shields.io/badge/%E6%9F%A5%E7%9C%8B-%E7%A4%BE%E5%8C%BA%E7%BC%96%E5%86%99%E4%BD%BF%E7%94%A8%E6%89%8B%E5%86%8C-blue">
 </a>
 <a href="https://www.bilibili.com/video/BV14h4y1w7TC">
 <img alt="Static Badge" src="https://img.shields.io/badge/%E8%A7%86%E9%A2%91%E6%95%99%E7%A8%8B-208647">
@@ -34,14 +29,18 @@
 
 <blockquote> 🥳 QChatGPT 一周年啦，感谢大家的支持！欢迎前往<a href="https://github.com/RockChinQ/QChatGPT/discussions/627">讨论</a>。</blockquote>
 
-<!-- <details>
-<summary>回复效果演示（带有联网插件）</summary>
-<img alt="联网演示GIF" src="res/webwlkr-demo.gif" width="300px">
-</details> -->
+<a href="https://qchatgpt.rockchin.top">项目主页</a> ｜
+<a href="https://qchatgpt.rockchin.top/posts/deploy/">部署文档</a> ｜
+<a href="https://qchatgpt.rockchin.top/posts/Features.html">功能介绍</a> ｜
+<a href="https://qchatgpt.rockchin.top/posts/errors/">常见问题</a> ｜
+<a href="https://qchatgpt.rockchin.top/posts/plugins/pluginsIntro.html">插件介绍</a>
 
 <img alt="回复效果（带有联网插件）" src="res/QChatGPT-1211.png" width="500px"/>
 
 </div>
+
+<details>
+<summary>旧版文档</summary>
 
 <details>
 <summary>
@@ -365,5 +364,7 @@ python3 main.py
 以及所有[贡献者](https://github.com/RockChinQ/QChatGPT/graphs/contributors)和其他为本项目提供支持的朋友们。
 
 <img alt="赞赏码" src="res/mm_reward_qrcode_1672840549070.png" width="400" height="400"/>
+
+</details>
 
 </details>
