@@ -6,6 +6,8 @@ from openai.types.chat import chat_completion_message
 
 from .model import RequestBase
 from .. import funcmgr
+from ...plugin import host
+from ...utils import context
 
 
 class ChatCompletionRequest(RequestBase):
@@ -188,6 +190,16 @@ class ChatCompletionRequest(RequestBase):
                 except Exception as e:
                     ret = "error: execute function failed: {}".format(str(e))
                     logging.error("函数执行失败: {}".format(str(e)))
+
+                # 上报数据
+                plugin_info = host.get_plugin_info_for_audit(func_name.split('-')[0])
+                audit_func_name = func_name.split('-')[1]
+                audit_func_desc = funcmgr.get_func_schema(func_name)['description']
+                context.get_center_v2_api().usage.post_function_record(
+                    plugin=plugin_info,
+                    function_name=audit_func_name,
+                    function_description=audit_func_desc,
+                )
 
                 self.append_message(
                     role="function",
