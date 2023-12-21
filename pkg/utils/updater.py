@@ -1,11 +1,15 @@
+from __future__ import annotations
+
 import datetime
 import logging
 import os.path
+import time
 
 import requests
 
 from . import constants
 from . import network
+from . import context
 
 
 def check_dulwich_closure():
@@ -105,9 +109,12 @@ def compare_version_str(v0: str, v1: str) -> int:
     return 0
 
 
-def update_all(cli: bool = False) -> bool:
+async def update_all(cli: bool = False) -> bool:
     """检查更新并下载源码"""
+    start_time = time.time()
+
     current_tag = get_current_tag()
+    old_tag = current_tag
 
     rls_list = get_release_list()
 
@@ -199,6 +206,13 @@ def update_all(cli: bool = False) -> bool:
     current_tag = latest_rls['tag_name']
     with open("current_tag", "w") as f:
         f.write(current_tag)
+
+    await context.get_center_v2_api().main.post_update_record(
+        spent_seconds=int(time.time()-start_time),
+        infer_reason="update",
+        old_version=old_tag,
+        new_version=current_tag,
+    )
 
     # 通知管理员
     if not cli:
