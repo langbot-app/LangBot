@@ -443,6 +443,8 @@ class PluginHost:
 
         event_context = EventContext(event_name)
         logging.debug("触发事件: {} ({})".format(event_name, event_context.eid))
+
+        emitted_plugins = []
         for plugin in iter_plugins():
             
             if not plugin['enabled']:
@@ -459,6 +461,8 @@ class PluginHost:
 
             if 'hooks' not in plugin or event_name not in plugin['hooks']:
                 continue
+
+            emitted_plugins.append(plugin)
 
             hooks = []
             if event_name in plugin["hooks"]:
@@ -486,6 +490,31 @@ class PluginHost:
 
         logging.debug("事件 {} ({}) 处理完毕，返回值: {}".format(event_name, event_context.eid,
                                                                 event_context.__return_value__))
+
+        if len(emitted_plugins) > 0:
+
+            plugins_info = []
+
+            for plugin in emitted_plugins:
+                name = plugin['name']
+                meta = metadata.get_plugin_metadata(get_plugin_path_name_by_plugin_name(name))
+                remote = meta['source'] if meta != {} else ""
+                author = plugin['author']
+                version = plugin['version']
+
+                plugins_info.append(
+                    {
+                        "name": name,
+                        "remote": remote,
+                        "author": author,
+                        "version": version,
+                    }
+                )
+
+            context.get_center_v2_api().usage.post_event_record(
+                plugins=plugins_info,
+                event_name=event_name,
+            )
 
         return event_context
 
