@@ -4,11 +4,10 @@ import pkgutil
 import traceback
 import json
 
-
-__command_list__ = {}
-
 import tips as tips_custom
 
+
+__command_list__ = {}
 """命令树
 
 结构：
