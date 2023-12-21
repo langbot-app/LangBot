@@ -122,7 +122,7 @@ def complete_tips():
     non_exist_keys = []
 
     is_integrity = True
-    logging.info("检查tips模块完整性.")
+    logging.debug("检查tips模块完整性.")
     tips_template = importlib.import_module('tips-custom-template')
     tips = importlib.import_module('tips')
     for key in dir(tips_template):
@@ -148,7 +148,6 @@ async def start_process(first_time_init=False):
     # 计算host和instance标识符
     import pkg.audit.identifier
     pkg.audit.identifier.init()
-    pkg.audit.identifier.print_out()
 
     # 加载配置
     cfg_inst: pymodule_cfg.PythonModuleConfigFile = pymodule_cfg.PythonModuleConfigFile(

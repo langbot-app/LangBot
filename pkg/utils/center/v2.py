@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from . import apigroup
 from .groups import main
 from .groups import usage
@@ -23,8 +25,8 @@ class V2CenterAPI:
     def __init__(self, basic_info: dict = None, runtime_info: dict = None):
         """初始化"""
 
-        print("basic_info:", basic_info)
-        print("runtime_info:", runtime_info)
+        logging.debug("basic_info: %s, runtime_info: %s", basic_info, runtime_info)
+        
         apigroup.APIGroup._basic_info = basic_info
         apigroup.APIGroup._runtime_info = runtime_info
 

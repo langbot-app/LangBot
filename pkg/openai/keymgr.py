@@ -75,7 +75,7 @@ class KeysManager:
             if self.api_key[key_name] not in self.exceeded:
                 self.using_key = self.api_key[key_name]
 
-                logging.info("使用api-key:" + key_name)
+                logging.debug("使用api-key:" + key_name)
 
                 # 触发插件事件
                 args = {

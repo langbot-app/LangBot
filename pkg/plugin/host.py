@@ -132,7 +132,7 @@ def load_plugins():
 
 def initialize_plugins():
     """初始化插件"""
-    logging.info("初始化插件")
+    logging.debug("初始化插件")
     import pkg.plugin.models as models
 
     successfully_initialized_plugins = []
