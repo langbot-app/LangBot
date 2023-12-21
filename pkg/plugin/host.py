@@ -276,11 +276,23 @@ def install_plugin(repo_url: str):
 
     metadata.set_plugin_metadata(repo_label, repo_url, int(time.time()), "HEAD")
 
+    # 上报安装记录
+    context.get_center_v2_api().plugin.post_install_record(
+        plugin={
+            "name": "unknown",
+            "remote": repo_url,
+            "author": "unknown",
+            "version": "HEAD",
+        }
+    )
+
 
 def uninstall_plugin(plugin_name: str) -> str:
     """卸载插件"""
     if plugin_name not in __plugins__:
         raise Exception("插件不存在")
+    
+    plugin_info = get_plugin_info_for_audit(plugin_name)
 
     # 获取文件夹路径
     plugin_path = __plugins__[plugin_name]["path"].replace("\\", "/")
@@ -290,6 +302,12 @@ def uninstall_plugin(plugin_name: str) -> str:
 
     # 删除文件夹
     shutil.rmtree("plugins/" + plugin_path)
+
+    # 上报卸载记录
+    context.get_center_v2_api().plugin.post_remove_record(
+        plugin=plugin_info
+    )
+
     return "plugins/" + plugin_path
 
 
@@ -302,6 +320,14 @@ def update_plugin(plugin_name: str):
 
     if meta == {}:
         raise Exception("没有此插件元数据信息，无法更新")
+    
+    old_plugin_info = get_plugin_info_for_audit(plugin_name)
+
+    context.get_center_v2_api().plugin.post_update_record(
+        plugin=old_plugin_info,
+        old_version=old_plugin_info['version'],
+        new_version='HEAD',
+    )
 
     remote_url = meta["source"]
     if (
