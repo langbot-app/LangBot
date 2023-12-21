@@ -125,6 +125,10 @@ class QQBotManager:
         else:
             self.adapter = context.get_qqbot_manager().adapter
             self.bot_account_id = context.get_qqbot_manager().bot_account_id
+        
+        # 保存 account_id 到审计模块
+        from ..utils.center import apigroup
+        apigroup.APIGroup._runtime_info['account_id'] = self.bot_account_id
 
         context.set_qqbot_manager(self)
 
