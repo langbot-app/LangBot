@@ -9,7 +9,7 @@ class V2MainDataAPI(apigroup.APIGroup):
     def __init__(self, prefix: str):
         super().__init__(prefix+"/main")
 
-    async def post_update_record(
+    def post_update_record(
         self,
         spent_seconds: int,
         infer_reason: str,
@@ -17,7 +17,7 @@ class V2MainDataAPI(apigroup.APIGroup):
         new_version: str,
     ):
         """提交更新记录"""
-        return await self.do(
+        return self.do(
             "POST",
             "/update",
             data={
@@ -31,12 +31,12 @@ class V2MainDataAPI(apigroup.APIGroup):
             }
         )
     
-    async def post_announcement_showed(
+    def post_announcement_showed(
         self,
         ids: list[int],
     ):
         """提交公告已阅"""
-        return await self.do(
+        return self.do(
             "POST",
             "/announcement",
             data={

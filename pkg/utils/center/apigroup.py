@@ -2,7 +2,7 @@ import abc
 import uuid
 import json
 
-import aiohttp
+import requests
 
 
 class APIGroup(metaclass=abc.ABCMeta):
@@ -28,16 +28,15 @@ class APIGroup(metaclass=abc.ABCMeta):
         url = self.prefix + path
         data = json.dumps(data)
         headers['Content-Type'] = 'application/json'
-        async with aiohttp.ClientSession() as session:
-            async with session.request(
-                method,
-                url,
-                data=data,
-                params=params,
-                headers=headers,
-                **kwargs
-            ) as resp:
-                return await resp.json()
+        
+        return requests.request(
+            method,
+            url,
+            data=data,
+            params=params,
+            headers=headers,
+            **kwargs
+        )
             
     def gen_rid(
         self

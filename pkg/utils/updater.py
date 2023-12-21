@@ -109,7 +109,7 @@ def compare_version_str(v0: str, v1: str) -> int:
     return 0
 
 
-async def update_all(cli: bool = False) -> bool:
+def update_all(cli: bool = False) -> bool:
     """检查更新并下载源码"""
     start_time = time.time()
 
@@ -207,7 +207,7 @@ async def update_all(cli: bool = False) -> bool:
     with open("current_tag", "w") as f:
         f.write(current_tag)
 
-    await context.get_center_v2_api().main.post_update_record(
+    context.get_center_v2_api().main.post_update_record(
         spent_seconds=int(time.time()-start_time),
         infer_reason="update",
         old_version=old_tag,

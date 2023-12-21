@@ -9,7 +9,7 @@ class V2UsageDataAPI(apigroup.APIGroup):
     def __init__(self, prefix: str):
         super().__init__(prefix+"/usage")
         
-    async def post_query_record(
+    def post_query_record(
         self,
         session_type: str,
         session_id: str,
@@ -20,7 +20,7 @@ class V2UsageDataAPI(apigroup.APIGroup):
         retry_times: int,
     ):
         """提交请求记录"""
-        return await self.do(
+        return self.do(
             "POST",
             "/query",
             data={
@@ -40,13 +40,13 @@ class V2UsageDataAPI(apigroup.APIGroup):
             }
         )
     
-    async def post_event_record(
+    def post_event_record(
         self,
         plugins: list[dict],
         event_name: str,
     ):
         """提交事件触发记录"""
-        return await self.do(
+        return self.do(
             "POST",
             "/event",
             data={
@@ -59,14 +59,14 @@ class V2UsageDataAPI(apigroup.APIGroup):
             }
         )
     
-    async def post_function_record(
+    def post_function_record(
         self,
         plugin: dict,
         function_name: str,
         function_description: str,
     ):
         """提交内容函数使用记录"""
-        return await self.do(
+        return self.do(
             "POST",
             "/function",
             data={

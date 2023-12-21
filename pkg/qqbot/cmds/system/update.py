@@ -1,5 +1,4 @@
 import threading
-import asyncio
 import traceback
 
 from .. import aamgr
@@ -21,9 +20,9 @@ class UpdateCommand(aamgr.AbstractCommandNode):
         import pkg.utils.reloader
         import pkg.utils.context
 
-        async def update_task():
+        def update_task():
             try:
-                if await pkg.utils.updater.update_all():
+                if pkg.utils.updater.update_all():
                     pkg.utils.context.get_qqbot_manager().notify_admin("更新完成, 请手动重启程序。")
                 else:
                     pkg.utils.context.get_qqbot_manager().notify_admin("无新版本")
@@ -32,10 +31,7 @@ class UpdateCommand(aamgr.AbstractCommandNode):
                 pkg.utils.context.get_qqbot_manager().notify_admin("更新失败:{}".format(e0))
                 return
 
-        def wrapper():
-            asyncio.run(update_task())
-
-        threading.Thread(target=wrapper).start()
+        threading.Thread(target=update_task, daemon=True).start()
 
         reply = ["[bot]正在更新，请耐心等待，请勿重复发起更新..."]
 

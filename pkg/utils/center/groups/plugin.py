@@ -9,12 +9,12 @@ class V2PluginDataAPI(apigroup.APIGroup):
     def __init__(self, prefix: str):
         super().__init__(prefix+"/plugin")
 
-    async def post_install_record(
+    def post_install_record(
         self,
         plugin: dict
     ):
         """提交插件安装记录"""
-        return await self.do(
+        return self.do(
             "POST",
             "/install",
             data={
@@ -23,12 +23,12 @@ class V2PluginDataAPI(apigroup.APIGroup):
             }
         )
 
-    async def post_remove_record(
+    def post_remove_record(
         self,
         plugin: dict
     ):
         """提交插件卸载记录"""
-        return await self.do(
+        return self.do(
             "POST",
             "/remove",
             data={
@@ -37,14 +37,14 @@ class V2PluginDataAPI(apigroup.APIGroup):
             }
         )
 
-    async def post_update_record(
+    def post_update_record(
         self,
         plugin: dict,
         old_version: str,
         new_version: str,
     ):
         """提交插件更新记录"""
-        return await self.do(
+        return self.do(
             "POST",
             "/update",
             data={

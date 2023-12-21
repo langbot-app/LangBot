@@ -422,7 +422,7 @@ def stop():
             raise e
 
 
-async def main():
+def main():
     global use_override
     # 检查是否携带了 --override 或 -r 参数
     if '--override' in sys.argv or '-r' in sys.argv:
@@ -450,7 +450,7 @@ async def main():
     elif len(sys.argv) > 1 and sys.argv[1] == 'update':
         print("正在进行程序更新...")
         import pkg.utils.updater as updater
-        await updater.update_all(cli=True)
+        updater.update_all(cli=True)
         sys.exit(0)
 
     # 关闭urllib的http警告
@@ -486,5 +486,5 @@ async def main():
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    main()
 
