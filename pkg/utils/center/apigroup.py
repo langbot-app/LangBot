@@ -2,6 +2,7 @@ import abc
 import uuid
 import json
 import logging
+import threading
 
 import requests
 
@@ -26,23 +27,45 @@ class APIGroup(metaclass=abc.ABCMeta):
         **kwargs
     ):
         """执行一个请求"""
-        url = self.prefix + path
-        data = json.dumps(data)
-        headers['Content-Type'] = 'application/json'
-        
-        ret =  requests.request(
-            method,
-            url,
-            data=data,
-            params=params,
-            headers=headers,
+        def thr_wrapper(
+            self,
+            method: str,
+            path: str,
+            data: dict = None,
+            params: dict = None,
+            headers: dict = {},
             **kwargs
-        )
+        ):
+            try:
+                url = self.prefix + path
+                data = json.dumps(data)
+                headers['Content-Type'] = 'application/json'
+                
+                ret =  requests.request(
+                    method,
+                    url,
+                    data=data,
+                    params=params,
+                    headers=headers,
+                    **kwargs
+                )
 
-        logging.debug("data: %s", data)
+                logging.debug("data: %s", data)
 
-        logging.debug("ret: %s", ret.json())
-        return ret
+                logging.debug("ret: %s", ret.json())
+            except Exception as e:
+                logging.debug("上报数据失败: %s", e)
+        
+        thr = threading.Thread(target=thr_wrapper, args=(
+            self,
+            method,
+            path,
+            data,
+            params,
+            headers,
+        ), kwargs=kwargs)
+        thr.start()
+
             
     def gen_rid(
         self
