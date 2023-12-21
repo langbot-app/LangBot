@@ -163,6 +163,7 @@ async def start_process(first_time_init=False):
     complete_tips()
 
     cfg = pkg.utils.context.get_config_manager().data
+
     # 更新openai库到最新版本
     if 'upgrade_dependencies' not in cfg or cfg['upgrade_dependencies']:
         print("正在更新依赖库，请等待...")
@@ -209,6 +210,24 @@ async def start_process(first_time_init=False):
                         break
                     except ValueError:
                         print("请输入数字")
+            
+            # 初始化中央服务器 API 交互实例
+            from pkg.utils.center import apigroup
+            from pkg.utils.center import v2 as center_v2
+
+            center_v2_api = center_v2.V2CenterAPI(
+                basic_info={
+                    "host_id": pkg.audit.identifier.identifier['host_id'],
+                    "instance_id": pkg.audit.identifier.identifier['instance_id'],
+                    "semantic_version": pkg.utils.updater.get_current_tag(),
+                    "platform": sys.platform,
+                },
+                runtime_info={
+                    "admin_qq": cfg['admin_qq'],
+                    "msg_source": cfg['msg_source_adapter'],
+                }
+            )
+            pkg.utils.context.set_center_v2_api(center_v2_api)
 
             import pkg.openai.manager
             import pkg.database.manager
