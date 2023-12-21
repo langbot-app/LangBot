@@ -1,6 +1,7 @@
 import abc
 import uuid
 import json
+import logging
 
 import requests
 
@@ -15,13 +16,13 @@ class APIGroup(metaclass=abc.ABCMeta):
     def __init__(self, prefix: str):
         self.prefix = prefix
 
-    async def do(
+    def do(
         self,
         method: str,
         path: str,
         data: dict = None,
         params: dict = None,
-        headers: dict = None,
+        headers: dict = {},
         **kwargs
     ):
         """执行一个请求"""
@@ -29,7 +30,7 @@ class APIGroup(metaclass=abc.ABCMeta):
         data = json.dumps(data)
         headers['Content-Type'] = 'application/json'
         
-        return requests.request(
+        ret =  requests.request(
             method,
             url,
             data=data,
@@ -37,6 +38,11 @@ class APIGroup(metaclass=abc.ABCMeta):
             headers=headers,
             **kwargs
         )
+
+        logging.debug("data: %s", data)
+
+        logging.debug("ret: %s", ret.json())
+        return ret
             
     def gen_rid(
         self
@@ -50,7 +56,7 @@ class APIGroup(metaclass=abc.ABCMeta):
         """获取基本信息"""
         basic_info = APIGroup._basic_info.copy()
         basic_info['rid'] = self.gen_rid()
-        return APIGroup._basic_info
+        return basic_info
     
     def runtime_info(
         self
