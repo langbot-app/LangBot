@@ -128,7 +128,7 @@ class QQBotManager:
         
         # 保存 account_id 到审计模块
         from ..utils.center import apigroup
-        apigroup.APIGroup._runtime_info['account_id'] = self.bot_account_id
+        apigroup.APIGroup._runtime_info['account_id'] = "{}".format(self.bot_account_id)
 
         context.set_qqbot_manager(self)
 

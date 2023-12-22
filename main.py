@@ -222,7 +222,7 @@ async def start_process(first_time_init=False):
                     "platform": sys.platform,
                 },
                 runtime_info={
-                    "admin_qq": cfg['admin_qq'],
+                    "admin_id": "{}".format(cfg['admin_qq']),
                     "msg_source": cfg['msg_source_adapter'],
                 }
             )
