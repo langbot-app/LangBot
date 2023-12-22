@@ -122,7 +122,7 @@ def complete_tips():
     non_exist_keys = []
 
     is_integrity = True
-    logging.info("检查tips模块完整性.")
+    logging.debug("检查tips模块完整性.")
     tips_template = importlib.import_module('tips-custom-template')
     tips = importlib.import_module('tips')
     for key in dir(tips_template):
@@ -145,6 +145,10 @@ async def start_process(first_time_init=False):
     global known_exception_caught
     import pkg.utils.context
 
+    # 计算host和instance标识符
+    import pkg.audit.identifier
+    pkg.audit.identifier.init()
+
     # 加载配置
     cfg_inst: pymodule_cfg.PythonModuleConfigFile = pymodule_cfg.PythonModuleConfigFile(
         'config.py',
@@ -158,6 +162,7 @@ async def start_process(first_time_init=False):
     complete_tips()
 
     cfg = pkg.utils.context.get_config_manager().data
+
     # 更新openai库到最新版本
     if 'upgrade_dependencies' not in cfg or cfg['upgrade_dependencies']:
         print("正在更新依赖库，请等待...")
@@ -204,6 +209,24 @@ async def start_process(first_time_init=False):
                         break
                     except ValueError:
                         print("请输入数字")
+            
+            # 初始化中央服务器 API 交互实例
+            from pkg.utils.center import apigroup
+            from pkg.utils.center import v2 as center_v2
+
+            center_v2_api = center_v2.V2CenterAPI(
+                basic_info={
+                    "host_id": pkg.audit.identifier.identifier['host_id'],
+                    "instance_id": pkg.audit.identifier.identifier['instance_id'],
+                    "semantic_version": pkg.utils.updater.get_current_tag(),
+                    "platform": sys.platform,
+                },
+                runtime_info={
+                    "admin_id": "{}".format(cfg['admin_qq']),
+                    "msg_source": cfg['msg_source_adapter'],
+                }
+            )
+            pkg.utils.context.set_center_v2_api(center_v2_api)
 
             import pkg.openai.manager
             import pkg.database.manager
@@ -375,6 +398,12 @@ async def start_process(first_time_init=False):
         if len(new_announcement) > 0:
             for announcement in new_announcement:
                 logging.critical("[公告]<{}> {}".format(announcement['time'], announcement['content']))
+            
+            # 发送统计数据
+            pkg.utils.context.get_center_v2_api().main.post_announcement_showed(
+                [announcement['id'] for announcement in new_announcement]
+            )
+
     except Exception as e:
         logging.warning("获取公告失败:{}".format(e))
 

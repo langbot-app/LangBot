@@ -261,6 +261,8 @@ class Session:
 
         pending_res_text = ""
 
+        start_time = time.time()
+
         # TODO 对不起，我知道这样非常非常屎山，但我之后会重构的
         for resp in context.get_openai_manager().request_completion(prompts):
 
@@ -348,6 +350,26 @@ class Session:
         if self.just_switched_to_exist_session:
             self.just_switched_to_exist_session = False
             self.set_ongoing()
+
+        # 上报使用量数据
+        session_type = session_name_spt[0]
+        session_id = session_name_spt[1]
+
+        ability_provider = "QChatGPT.Text"
+        usage = total_tokens
+        model_name = context.get_config_manager().data['completion_api_params']['model']
+        response_seconds = int(time.time() - start_time)
+        retry_times = -1 # 暂不记录
+
+        context.get_center_v2_api().usage.post_query_record(
+            session_type=session_type,
+            session_id=session_id,
+            query_ability_provider=ability_provider,
+            usage=usage,
+            model_name=model_name,
+            response_seconds=response_seconds,
+            retry_times=retry_times
+        )
 
         return res_ans if res_ans[0] != '\n' else res_ans[1:], finish_reason, funcs
 

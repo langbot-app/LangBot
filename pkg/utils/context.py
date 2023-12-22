@@ -8,6 +8,7 @@ from ..openai import manager as openai_mgr
 from ..qqbot import manager as qqbot_mgr
 from ..config import  manager as config_mgr
 from ..plugin import host as plugin_host
+from .center import v2 as center_v2
 
 
 context = {
@@ -112,5 +113,18 @@ def set_thread_ctl(inst: threadctl.ThreadCtl):
 def get_thread_ctl() -> threadctl.ThreadCtl:
     context_lock.acquire()
     t: threadctl.ThreadCtl = context['pool_ctl']
+    context_lock.release()
+    return t
+
+
+def set_center_v2_api(inst: center_v2.V2CenterAPI):
+    context_lock.acquire()
+    context['center_v2_api'] = inst
+    context_lock.release()
+
+
+def get_center_v2_api() -> center_v2.V2CenterAPI:
+    context_lock.acquire()
+    t: center_v2.V2CenterAPI = context['center_v2_api']
     context_lock.release()
     return t

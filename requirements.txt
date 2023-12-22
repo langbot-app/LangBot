@@ -11,3 +11,4 @@ nakuru-project-idk
 CallingGPT
 tiktoken
 PyYaml
+aiohttp
