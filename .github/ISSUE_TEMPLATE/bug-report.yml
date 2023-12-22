@@ -37,15 +37,28 @@ body:
       placeholder: 例如： Python 3.10
     validations:
       required: true
+  - type: input
+    attributes:
+      label: QChatGPT版本
+      description: QChatGPT版本号
+      placeholder: 例如： v2.6.0，可以使用`!version`命令查看
+    validations:
+      required: true
   - type: textarea
     attributes:
       label: 异常情况
-      description: 完整描述异常情况，什么时候发生的、发生了什么
+      description: 完整描述异常情况，什么时候发生的、发生了什么，尽可能详细
     validations:
       required: true
   - type: textarea
     attributes:
       label: 日志信息
-      description: 请提供完整的 **登录框架 和 QChatGPT控制台**的相关日志信息（若有），不提供日志信息**无法**为您排查问题
+      description: 请提供完整的 **登录框架 和 QChatGPT控制台**的相关日志信息（若有），不提供日志信息**无法**为您排查问题，请尽可能详细
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: 启用的插件
+      description: 有些情况可能和插件功能有关，建议提供插件启用情况。可以使用`!plugin`命令查看已启用的插件
     validations:
       required: false
