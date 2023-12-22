@@ -566,7 +566,6 @@ class PluginHost:
                 event_name, event_context.eid, event_context.__return_value__
             )
         )
-        print(emitted_plugins)
 
         if len(emitted_plugins) > 0:
             plugins_info = [get_plugin_info_for_audit(p) for p in emitted_plugins]
