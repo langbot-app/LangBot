@@ -26,8 +26,8 @@ body:
   - type: input
     attributes:
       label: 系统环境
-      description: 操作系统、系统架构。
-      placeholder: 例如： CentOS x64、Windows11
+      description: 操作系统、系统架构、**主机地理位置**，地理位置最好写清楚，涉及网络问题排查。
+      placeholder: 例如： CentOS x64 中国大陆、Windows11 美国
     validations:
       required: true
   - type: input
