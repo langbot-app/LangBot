@@ -53,7 +53,7 @@
     "baidu_secret_key": "",
     "inappropriate_message_tips": "[百度云]请珍惜机器人，当前返回内容不合规",
     "encourage_sponsor_at_start": true,
-    "prompt_submit_length": 2048,
+    "prompt_submit_length": 3072,
     "auto_reset": true,
     "completion_api_params": {
         "model": "gpt-3.5-turbo",
