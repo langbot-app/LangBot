@@ -200,7 +200,7 @@ encourage_sponsor_at_start = True
 # 每次向OpenAI接口发送对话记录上下文的字符数
 # 最大不超过(4096 - max_tokens)个字符，max_tokens为下方completion_api_params中的max_tokens
 # 注意：较大的prompt_submit_length会导致OpenAI账户额度消耗更快
-prompt_submit_length = 2048
+prompt_submit_length = 3072
 
 # 是否在token超限报错时自动重置会话
 # 可在tips.py中编辑提示语
