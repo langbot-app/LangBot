@@ -8,7 +8,7 @@ on:
       - '**.py'
   pull_request_review:
     types: [submitted]
-  pull_request_review_comment:
+  issue_comment:
     types: [created]
   # 允许手动触发
   workflow_dispatch:
@@ -21,7 +21,7 @@ jobs:
       github.event_name == 'pull_request' ||
       (github.event_name == 'pull_request_review' && github.event.review.state == 'APPROVED') ||
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '/test') && github.event.comment.user.login == 'RockChinQ')
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request != '' && contains(github.event.comment.body, '/test') && github.event.comment.user.login == 'RockChinQ')
     steps:
       # 签出测试工程仓库代码
       - name: Checkout
