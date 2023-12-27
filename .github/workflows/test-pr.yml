@@ -1,0 +1,45 @@
+name: Test Pull Request
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+    paths:
+      # 任何py文件改动都会触发
+      - '**.py'
+  # 允许手动触发
+  workflow_dispatch:
+
+jobs:
+  perform-test:
+    runs-on: ubuntu-latest
+    steps:
+      # 签出测试工程仓库代码
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          # 仓库地址
+          repository: RockChinQ/qcg-tester
+          # 仓库路径
+          path: qcg-tester
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          cd qcg-tester
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Set PR Branch as bash env
+        run: |
+          echo "BRANCH=${{ github.head_ref }}" >> $GITHUB_ENV
+      - name: Set OpenAI API Key from Secrets
+        run: |
+          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> $GITHUB_ENV
+      - name: Set OpenAI Reverse Proxy URL from Secrets
+        run: |
+          echo "OPENAI_REVERSE_PROXY=${{ secrets.OPENAI_REVERSE_PROXY }}" >> $GITHUB_ENV
+      - name: Run test
+        run: |
+          cd qcg-tester
+          python main.py
