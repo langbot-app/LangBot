@@ -2,16 +2,26 @@ name: Test Pull Request
 
 on:
   pull_request:
-    types: [opened, ready_for_review]
+    types: [ready_for_review]
     paths:
       # 任何py文件改动都会触发
       - '**.py'
+  pull_request_review:
+    types: [submitted]
+  pull_request_review_comment:
+    types: [created]
   # 允许手动触发
   workflow_dispatch:
 
 jobs:
   perform-test:
     runs-on: ubuntu-latest
+    # 如果事件为pull_request_review且review状态为approved，则执行
+    if: >
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'pull_request_review' && github.event.review.state == 'APPROVED') ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '/test') && github.event.comment.user.login == 'RockChinQ')
     steps:
       # 签出测试工程仓库代码
       - name: Checkout
