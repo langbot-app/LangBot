@@ -6,6 +6,8 @@ on:
     paths:
       # 任何py文件改动都会触发
       - '**.py'
+  # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   perform-test:
