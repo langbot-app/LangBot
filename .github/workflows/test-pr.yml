@@ -36,9 +36,6 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-        
       - name: Install dependencies
         run: |
           cd qcg-tester
@@ -69,7 +66,7 @@ jobs:
       - name: Set PR source branch as env variable
         if: github.event_name == 'issue_comment'
         run: |
-          PR_SOURCE_BRANCH=$(echo ${{ steps.get-pr.outputs.data }} | jq -r '.head.ref')
+          PR_SOURCE_BRANCH=$(echo "${{ steps.get-pr.outputs.data }}" | jq -r '.head.ref')
           echo "BRANCH=$PR_SOURCE_BRANCH" >> $GITHUB_ENV
 
       - name: Set PR Branch as bash env
