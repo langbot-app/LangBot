@@ -40,19 +40,33 @@ jobs:
           cd qcg-tester
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      # - name: Get PR details
+      #   if: github.event_name == 'issue_comment'
+      #   id: get-pr
+      #   uses: octokit/request-action@v2.x
+      #   with:
+      #     route: GET /repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}
+      #     mediaType: '{"previews": ["shadow-cat"]}'
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # - name: Set Got PR Branch as bash env
+      #   if: github.event_name == 'issue_comment'
+      #   run: |
+      #     echo "BRANCH=${{ steps.get-pr.outputs.data.head.ref }}" >> $GITHUB_ENV
       - name: Get PR details
-        if: github.event_name == 'issue_comment'
         id: get-pr
+        if: github.event_name == 'issue_comment'
         uses: octokit/request-action@v2.x
         with:
           route: GET /repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}
-          mediaType: '{"previews": ["shadow-cat"]}'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Set Got PR Branch as bash env
-        if: github.event_name == 'issue_comment'
+
+      - name: Set PR source branch as env variable
+        if: github.event_name != 'issue_comment'
         run: |
-          echo "BRANCH=${{ steps.get-pr.outputs.data.head.ref }}" >> $GITHUB_ENV
+          PR_SOURCE_BRANCH=$(echo ${{ steps.get-pr.outputs.data }} | jq -r '.head.ref')
+          echo "BRANCH=$PR_SOURCE_BRANCH" >> $GITHUB_ENV
       - name: Set PR Branch as bash env
         if: github.event_name != 'issue_comment'
         run: |
