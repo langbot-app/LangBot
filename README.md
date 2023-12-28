@@ -14,8 +14,11 @@
     <img src="https://img.shields.io/docker/pulls/rockchin/qchatgpt?color=blue" alt="docker pull">
   </a>
 ![Wakapi Count](https://wakapi.dev/api/badge/RockChinQ/interval:any/project:QChatGPT)
-<img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="python">
+<a href="https://codecov.io/gh/RockChinQ/QChatGPT" > 
+ <img src="https://codecov.io/gh/RockChinQ/QChatGPT/graph/badge.svg?token=pjxYIL2kbC"/> 
+ </a>
 <br/>
+<img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="python">
 <a href="http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=66-aWvn8cbP4c1ut_1YYkvvGVeEtyTH8&authKey=pTaKBK5C%2B8dFzQ4XlENf6MHTCLaHnlKcCRx7c14EeVVlpX2nRSaS8lJm8YeM4mCU&noverify=0&group_code=195992197">
 <img alt="Static Badge" src="https://img.shields.io/badge/%E5%AE%98%E6%96%B9%E7%BE%A4-195992197-purple">
 </a>
