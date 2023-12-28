@@ -71,3 +71,10 @@ jobs:
         run: |
           cd qcg-tester
           python main.py
+
+      - name: Upload coverage reports to Codecov
+        run: |
+          cd qcg-tester/resource/QChatGPT
+          curl -Os https://uploader.codecov.io/latest/linux/codecov
+          chmod +x codecov
+          ./codecov -t ${{ secrets.CODECOV_TOKEN }}
