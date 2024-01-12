@@ -84,7 +84,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
         processing.append(session_name)
         try:
             msg_type = ''
-            if text_message.startswith('!') or text_message.startswith("！"):  # 指令
+            if text_message.startswith('!') or text_message.startswith("！"):  # 命令
                 msg_type = 'command'
                 # 触发插件事件
                 args = {

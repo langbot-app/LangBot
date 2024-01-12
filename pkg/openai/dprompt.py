@@ -8,7 +8,7 @@ from ..utils import context
 # __current__ = "default"
 # """当前默认使用的情景预设的名称
 
-# 由管理员使用`!default <名称>`指令切换
+# 由管理员使用`!default <名称>`命令切换
 # """
 
 # __prompts_from_files__ = {}

@@ -68,7 +68,7 @@ class PluginGetCommand(aamgr.AbstractCommandNode):
         def closure():
             try:
                 plugin_host.install_plugin(ctx.crt_params[0])
-                pkg.utils.context.get_qqbot_manager().notify_admin("插件安装成功，请发送 !reload 指令重载插件")
+                pkg.utils.context.get_qqbot_manager().notify_admin("插件安装成功，请发送 !reload 命令重载插件")
             except Exception as e:
                 logging.error("插件安装失败:{}".format(e))
                 pkg.utils.context.get_qqbot_manager().notify_admin("插件安装失败:{}".format(e))
@@ -149,7 +149,7 @@ class PluginDelCommand(aamgr.AbstractCommandNode):
                 unin_path = plugin_host.uninstall_plugin(plugin_name)
                 reply = ["[bot]已删除插件: {} ({}), 请发送 !reload 重载插件".format(plugin_name, unin_path)]
             else:
-                reply = ["[bot]err:未找到插件: {}, 请使用!plugin指令查看插件列表".format(plugin_name)]
+                reply = ["[bot]err:未找到插件: {}, 请使用!plugin命令查看插件列表".format(plugin_name)]
         
         return True, reply
 
@@ -195,7 +195,7 @@ class PluginOnOffCommand(aamgr.AbstractCommandNode):
                 plugin_switch.dump_switch()
                 reply = ["[bot]已{}插件: {}".format("启用" if new_status else "禁用", plugin_name)]
             else:
-                reply = ["[bot]err:未找到插件: {}, 请使用!plugin指令查看插件列表".format(plugin_name)]
+                reply = ["[bot]err:未找到插件: {}, 请使用!plugin命令查看插件列表".format(plugin_name)]
         
         return True, reply
 

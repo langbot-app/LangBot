@@ -1,4 +1,4 @@
-# 指令处理模块
+# 命令处理模块
 import logging
 
 from ..qqbot.cmds import aamgr as cmdmgr
@@ -9,7 +9,7 @@ def process_command(session_name: str, text_message: str, mgr, config: dict,
     reply = []
     try:
         logging.info(
-            "[{}]发起指令:{}".format(session_name, text_message[:min(20, len(text_message))] + (
+            "[{}]发起命令:{}".format(session_name, text_message[:min(20, len(text_message))] + (
                 "..." if len(text_message) > 20 else "")))
 
         cmd = text_message[1:].strip().split(' ')[0]
@@ -42,7 +42,7 @@ def process_command(session_name: str, text_message: str, mgr, config: dict,
 
         return reply
     except Exception as e:
-        mgr.notify_admin("{}指令执行失败:{}".format(session_name, e))
+        mgr.notify_admin("{}命令执行失败:{}".format(session_name, e))
         logging.exception(e)
         reply = ["[bot]err:{}".format(e)]
 

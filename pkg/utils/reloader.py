@@ -28,7 +28,7 @@ def reload_all(notify=True):
     import main
     main.stop()
 
-    # 删除所有已注册的指令
+    # 删除所有已注册的命令
     import pkg.qqbot.cmds.aamgr as cmdsmgr
     cmdsmgr.__command_list__ = {}
     cmdsmgr.__tree_index__ = {}

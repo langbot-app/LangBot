@@ -13,7 +13,7 @@ class HelpCommand(aamgr.AbstractCommandNode):
     @classmethod
     def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         import tips
-        reply = ["[bot] "+tips.help_message + "\n请输入 !cmd 查看指令列表"]
+        reply = ["[bot] "+tips.help_message + "\n请输入 !cmd 查看命令列表"]
 
         # 警告config.help_message过时
         import config

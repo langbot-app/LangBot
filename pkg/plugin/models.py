@@ -35,18 +35,18 @@ PersonNormalMessageReceived = "person_normal_message_received"
 """
 
 PersonCommandSent = "person_command_sent"
-"""判断为应该处理的私聊指令时触发
+"""判断为应该处理的私聊命令时触发
     kwargs:
         launcher_type: str 发起对象类型(group/person)
         launcher_id: int 发起对象ID(群号/QQ号)
         sender_id: int 发送者ID(QQ号)
-        command: str 指令
+        command: str 命令
         params: list[str] 参数列表
-        text_message: str 完整指令文本
+        text_message: str 完整命令文本
         is_admin: bool 是否为管理员
     
     returns (optional):
-        alter: str 修改后的完整指令文本
+        alter: str 修改后的完整命令文本
         reply: list 回复消息组件列表
 """
 
@@ -64,18 +64,18 @@ GroupNormalMessageReceived = "group_normal_message_received"
 """
 
 GroupCommandSent = "group_command_sent"
-"""判断为应该处理的群聊指令时触发
+"""判断为应该处理的群聊命令时触发
     kwargs:
         launcher_type: str 发起对象类型(group/person)
         launcher_id: int 发起对象ID(群号/QQ号)
         sender_id: int 发送者ID(QQ号)
-        command: str 指令
+        command: str 命令
         params: list[str] 参数列表
-        text_message: str 完整指令文本
+        text_message: str 完整命令文本
         is_admin: bool 是否为管理员
     
     returns (optional):
-        alter: str 修改后的完整指令文本
+        alter: str 修改后的完整命令文本
         reply: list 回复消息组件列表
 """
 

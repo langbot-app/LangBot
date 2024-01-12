@@ -4,8 +4,8 @@ from .. import aamgr
 @aamgr.AbstractCommandNode.register(
     parent=None,
     name="cmd",
-    description="显示指令列表",
-    usage="!cmd\n!cmd <指令名称>",
+    description="显示命令列表",
+    usage="!cmd\n!cmd <命令名称>",
     aliases=[],
     privilege=1
 )
@@ -17,15 +17,15 @@ class CmdCommand(aamgr.AbstractCommandNode):
         reply = []
 
         if len(ctx.params) == 0:
-            reply_str = "[bot]当前所有指令:\n\n"
+            reply_str = "[bot]当前所有命令:\n\n"
 
-            # 遍历顶级指令
+            # 遍历顶级命令
             for key in command_list:
                 command = command_list[key]
                 if command['parent'] is None:
                     reply_str += "!{} - {}\n".format(key, command['description'])
 
-            reply_str += "\n请使用 !cmd <指令名称> 来查看指令的详细信息"
+            reply_str += "\n请使用 !cmd <命令名称> 来查看命令的详细信息"
 
             reply = [reply_str]
         else:
@@ -33,7 +33,7 @@ class CmdCommand(aamgr.AbstractCommandNode):
             if command_name in command_list:
                 reply = [command_list[command_name]['cls'].help()]
             else:
-                reply = ["[bot]指令 {} 不存在".format(command_name)]
+                reply = ["[bot]命令 {} 不存在".format(command_name)]
 
         return True, reply
     

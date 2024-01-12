@@ -14,7 +14,7 @@ rate_limit_drop_tip = "本分钟对话次数超过限速次数，此对话被丢
 # 若设置为空字符串，则不发送提示信息
 message_drop_tip = "[bot]当前有一条消息正在处理，请等待处理完成"
 
-# 指令！help帮助消息
+# 命令 !help帮助消息
 help_message = """此机器人通过调用大型语言模型生成回复，不具有情感。
 你可以用自然语言与其交流，回复的消息中[GPT]开头的为模型生成的语言，[bot]开头的为程序提示。
 欢迎到github.com/RockChinQ/QChatGPT 给个star"""
@@ -24,10 +24,10 @@ reply_message = "[bot]err:请求超时"
 # 群聊消息超时提示
 replys_message = "[bot]err:请求超时"
 
-# 指令权限不足提示
+# 命令权限不足提示
 command_admin_message = "[bot]err:权限不足： "
-# 指令无效提示
-command_err_message = "[bot]err:指令不存在："
+# 命令无效提示
+command_err_message = "[bot]err:命令不存在："
 
 # 会话重置提示
 command_reset_message = "[bot]会话已重置"

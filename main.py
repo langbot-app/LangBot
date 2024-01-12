@@ -188,10 +188,10 @@ async def start_process(first_time_init=False):
 
             # 检查是否设置了管理员
             if cfg['admin_qq'] == 0:
-                # logging.warning("未设置管理员QQ,管理员权限指令及运行告警将无法使用,如需设置请修改config.py中的admin_qq字段")
+                # logging.warning("未设置管理员QQ,管理员权限命令及运行告警将无法使用,如需设置请修改config.py中的admin_qq字段")
                 while True:
                     try:
-                        cfg['admin_qq'] = int(input("未设置管理员QQ,管理员权限指令及运行告警将无法使用,请输入管理员QQ号: "))
+                        cfg['admin_qq'] = int(input("未设置管理员QQ,管理员权限命令及运行告警将无法使用,请输入管理员QQ号: "))
                         # 写入到文件
 
                         # 读取文件

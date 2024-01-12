@@ -71,7 +71,7 @@ __tree_index__: dict[str, list] = {}
 
 结构：
 {
-    'pkg.qqbot.cmds.cmd1.CommandCmd1': 'cmd1',  # 顶级指令
+    'pkg.qqbot.cmds.cmd1.CommandCmd1': 'cmd1',  # 顶级命令
     'pkg.qqbot.cmds.cmd1.CommandCmd1_1': 'cmd1.cmd1-1',  # 类名: 节点路径
     'pkg.qqbot.cmds.cmd2.CommandCmd2': 'cmd2',
     'pkg.qqbot.cmds.cmd2.CommandCmd2_1': 'cmd2.cmd2-1',
@@ -83,79 +83,79 @@ __tree_index__: dict[str, list] = {}
 class Context:
     """命令执行上下文"""
     command: str
-    """顶级指令文本"""
+    """顶级命令文本"""
 
     crt_command: str
-    """当前子指令文本"""
+    """当前子命令文本"""
 
     params: list
     """完整参数列表"""
 
     crt_params: list
-    """当前子指令参数列表"""
+    """当前子命令参数列表"""
 
     session_name: str
     """会话名"""
 
     text_message: str
-    """指令完整文本"""
+    """命令完整文本"""
 
     launcher_type: str
-    """指令发起者类型"""
+    """命令发起者类型"""
 
     launcher_id: int
-    """指令发起者ID"""
+    """命令发起者ID"""
 
     sender_id: int
-    """指令发送者ID"""
+    """命令发送者ID"""
 
     is_admin: bool
-    """[过时]指令发送者是否为管理员"""
+    """[过时]命令发送者是否为管理员"""
 
     privilege: int
-    """指令发送者权限等级"""
+    """命令发送者权限等级"""
 
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
 
 
 class AbstractCommandNode:
-    """指令抽象类"""
+    """命令抽象类"""
 
     parent: type
-    """父指令类"""
+    """父命令类"""
 
     name: str
-    """指令名"""
+    """命令名"""
 
     description: str
-    """指令描述"""
+    """命令描述"""
 
     usage: str
-    """指令用法"""
+    """命令用法"""
 
     aliases: list[str]
-    """指令别名"""
+    """命令别名"""
 
     privilege: int
-    """指令权限等级, 权限大于等于此值的用户才能执行指令"""
+    """命令权限等级, 权限大于等于此值的用户才能执行命令"""
 
     @classmethod
     def process(cls, ctx: Context) -> tuple[bool, list]:
-        """指令处理函数
+        """命令处理函数
         
-        :param ctx: 指令执行上下文
+        :param ctx: 命令执行上下文
 
         :return: (是否执行, 回复列表(若执行))
 
-        若未执行，将自动以下一个参数查找并执行子指令
+        若未执行，将自动以下一个参数查找并执行子命令
         """
         raise NotImplementedError
     
     @classmethod
     def help(cls) -> str:
-        """获取指令帮助信息"""
-        return '指令: {}\n描述: {}\n用法: \n{}\n别名: {}\n权限: {}'.format(
+        """获取命令帮助信息"""
+        return '命令: {}\n描述: {}\n用法: \n{}\n别名: {}\n权限: {}'.format(
             cls.name,
             cls.description,
             cls.usage,
@@ -172,11 +172,11 @@ class AbstractCommandNode:
         aliases: list[str] = None,
         privilege: int = 0
     ):
-        """注册指令
+        """注册命令
         
-        :param cls: 指令类
-        :param name: 指令名
-        :param parent: 父指令类
+        :param cls: 命令类
+        :param name: 命令名
+        :param parent: 父命令类
         """
         global __command_list__, __tree_index__
         
@@ -191,7 +191,7 @@ class AbstractCommandNode:
             logging.debug("cls: {}, name: {}, parent: {}".format(cls, name, parent))
 
             if parent is None:
-                # 顶级指令注册
+                # 顶级命令注册
                 __command_list__[name] = {
                     'description': cls.description,
                     'usage': cls.usage,
@@ -208,9 +208,9 @@ class AbstractCommandNode:
                 path = __tree_index__[parent.__module__ + '.' + parent.__name__]
                 
                 parent_node = __command_list__[path]
-                # 链接父子指令
+                # 链接父子命令
                 __command_list__[path]['sub'].append(name)
-                # 注册子指令
+                # 注册子命令
                 __command_list__[path + '.' + name] = {
                     'description': cls.description,
                     'usage': cls.usage,
@@ -229,18 +229,18 @@ class AbstractCommandNode:
 
 
 class CommandPrivilegeError(Exception):
-    """指令权限不足或不存在异常"""
+    """命令权限不足或不存在异常"""
     pass
 
 
 # 传入Context对象，广搜命令树，返回执行结果
 # 若命令被处理，返回reply列表
-# 若命令未被处理，继续执行下一级指令
+# 若命令未被处理，继续执行下一级命令
 # 若命令不存在，报异常
 def execute(context: Context) -> list:
-    """执行指令
+    """执行命令
     
-    :param ctx: 指令执行上下文
+    :param ctx: 命令执行上下文
 
     :return: 回复列表
     """
@@ -249,7 +249,7 @@ def execute(context: Context) -> list:
     # 拷贝ctx
     ctx: Context = copy.deepcopy(context)
 
-    # 从树取出顶级指令
+    # 从树取出顶级命令
     node = __command_list__
     
     path = ctx.command
@@ -257,7 +257,7 @@ def execute(context: Context) -> list:
     while True:
         try:
             node = __command_list__[path]
-            logging.debug('执行指令: {}'.format(path))
+            logging.debug('执行命令: {}'.format(path))
 
             # 检查权限
             if ctx.privilege < node['privilege']:
@@ -278,7 +278,7 @@ def execute(context: Context) -> list:
 
 
 def register_all():
-    """启动时调用此函数注册所有指令
+    """启动时调用此函数注册所有命令
     
     递归处理pkg.qqbot.cmds包下及其子包下所有模块的所有继承于AbstractCommand的类
     """
@@ -304,7 +304,7 @@ def register_all():
             else:
                 m = __import__(module.__name__ + '.' + item.name, fromlist=[''])
                 # for name, cls in inspect.getmembers(m, inspect.isclass):
-                #     # 检查是否为指令类
+                #     # 检查是否为命令类
                 #     if cls.__module__ == m.__name__ and issubclass(cls, AbstractCommandNode) and cls != AbstractCommandNode:
                 #         cls.register(cls, cls.name, cls.parent)
 
@@ -313,7 +313,7 @@ def register_all():
 
 
 def apply_privileges():
-    """读取cmdpriv.json并应用指令权限"""
+    """读取cmdpriv.json并应用命令权限"""
     # 读取内容
     json_str = ""
     with open('cmdpriv.json', 'r', encoding="utf-8") as f:

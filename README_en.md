@@ -180,7 +180,7 @@ Plugin [usage](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%
 
 在`tests/plugin_examples`目录下，将其整个目录复制到`plugins`目录下即可使用
 
-- `cmdcn` - 主程序指令中文形式
+- `cmdcn` - 主程序命令中文形式
 - `hello_plugin` - 在收到消息`hello`时回复相应消息
 - `urlikethisijustsix` - 收到冒犯性消息时回复相应消息
 
@@ -189,7 +189,7 @@ Plugin [usage](https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%
 欢迎提交新的插件
 
 - [revLibs](https://github.com/RockChinQ/revLibs) - 将ChatGPT网页版接入此项目，关于[官方接口和网页版有什么区别](https://github.com/RockChinQ/QChatGPT/wiki/%E5%AE%98%E6%96%B9%E6%8E%A5%E5%8F%A3%E4%B8%8EChatGPT%E7%BD%91%E9%A1%B5%E7%89%88)
-- [Switcher](https://github.com/RockChinQ/Switcher) - 支持通过指令切换使用的模型
+- [Switcher](https://github.com/RockChinQ/Switcher) - 支持通过命令切换使用的模型
 - [hello_plugin](https://github.com/RockChinQ/hello_plugin) - `hello_plugin` 的储存库形式，插件开发模板
 - [dominoar/QChatPlugins](https://github.com/dominoar/QchatPlugins) - dominoar编写的诸多新功能插件（语音输出、Ranimg、屏蔽词规则等）
 - [dominoar/QCP-NovelAi](https://github.com/dominoar/QCP-NovelAi) - NovelAI 故事叙述与绘画
