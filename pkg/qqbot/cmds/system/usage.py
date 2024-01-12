@@ -13,7 +13,6 @@ class UsageCommand(aamgr.AbstractCommandNode):
     @classmethod
     def process(cls, ctx: aamgr.Context) -> tuple[bool, list]:
         import config
-        import pkg.utils.credit as credit
         import pkg.utils.context
 
         reply = []
