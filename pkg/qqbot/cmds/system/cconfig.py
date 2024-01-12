@@ -71,7 +71,7 @@ def config_operation(cmd, params):
             except KeyError:
                 reply = ["[bot]err:未找到配置项 {}".format(cfg_name)]
             except NameError:
-                reply = ["[bot]err:配置项{}值不合法（字符串需要使用双引号包裹）".format(cfg_name)]
+                reply = ["[bot]err:值{}不合法（字符串需要使用双引号包裹）".format(cfg_value)]
             except ValueError:
                 reply = ["[bot]err:未找到配置项 {}".format(cfg_name)]
 
