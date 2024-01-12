@@ -21,7 +21,7 @@ class DataGatherer:
     
     以key值md5为key,{
         "text": {
-            "text-davinci-003": 文字量:int,
+            "gpt-3.5-turbo": 文字量:int,
         },
         "image": {
             "256x256": 图片数量:int,

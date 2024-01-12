@@ -230,13 +230,6 @@ auto_reset = True
 # "gpt-3.5-turbo-0301", # legacy
 # 
 # Completions接口：
-# "text-davinci-003", # legacy
-# "text-davinci-002", # legacy
-# "code-davinci-002", # legacy
-# "code-cushman-001", # legacy
-# "text-curie-001", # legacy
-# "text-babbage-001", # legacy
-# "text-ada-001", # legacy
 # "gpt-3.5-turbo-instruct",
 #
 # 具体请查看OpenAI的文档: https://beta.openai.com/docs/api-reference/completions/create

@@ -13,13 +13,6 @@ from ..openai.api import completion as api_completion
 from ..openai.api import chat_completion as api_chat_completion
 
 COMPLETION_MODELS = {
-    "text-davinci-003", # legacy
-    "text-davinci-002", # legacy
-    "code-davinci-002", # legacy
-    "code-cushman-001", # legacy
-    "text-curie-001", # legacy
-    "text-babbage-001", # legacy
-    "text-ada-001", # legacy
     "gpt-3.5-turbo-instruct",
 }
 
