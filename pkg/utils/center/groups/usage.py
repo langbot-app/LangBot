@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .. import apigroup
+from ... import context
 
 
 class V2UsageDataAPI(apigroup.APIGroup):
@@ -8,6 +9,12 @@ class V2UsageDataAPI(apigroup.APIGroup):
 
     def __init__(self, prefix: str):
         super().__init__(prefix+"/usage")
+
+    def do(self, *args, **kwargs):
+        config = context.get_config_manager().data
+        if not config['report_usage']:
+            return None
+        return super().do(*args, **kwargs)
         
     def post_query_record(
         self,
