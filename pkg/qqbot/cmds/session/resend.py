@@ -15,7 +15,7 @@ class ResendCommand(aamgr.AbstractCommandNode):
         from ....openai import session as openai_session
         from ....utils import context
         from ....qqbot import message
-        import config
+
         session_name = ctx.session_name
         reply = []
 
@@ -23,6 +23,8 @@ class ResendCommand(aamgr.AbstractCommandNode):
         to_send = session.undo()
 
         mgr = context.get_qqbot_manager()
+
+        config = context.get_config_manager().data
 
         reply = message.process_normal_message(to_send, mgr, config,
                                                         ctx.launcher_type, ctx.launcher_id,
