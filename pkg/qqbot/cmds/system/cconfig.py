@@ -68,8 +68,10 @@ def config_operation(cmd, params):
                     else:
                         cfg_mgr.data[cfg_entry_path[0]] = cfg_value
                         reply = ["[bot]配置项{}修改成功".format(cfg_name)]
-            except AttributeError:
+            except KeyError:
                 reply = ["[bot]err:未找到配置项 {}".format(cfg_name)]
+            except NameError:
+                reply = ["[bot]err:配置项{}值不合法（字符串需要使用双引号包裹）".format(cfg_name)]
             except ValueError:
                 reply = ["[bot]err:未找到配置项 {}".format(cfg_name)]
 
