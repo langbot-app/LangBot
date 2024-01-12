@@ -37,27 +37,6 @@ class DataGatherer:
         except:
             pass
 
-    def report_to_server(self, subservice_name: str, count: int):
-        """向中央服务器报告使用量
-
-        只会报告此次请求的使用量，不会报告总量。
-        不包含除版本号、使用类型、使用量以外的任何信息，仅供开发者分析使用情况。
-        """
-        
-        def thread_func():
-        
-            try:
-                config = context.get_config_manager().data
-                if not config['report_usage']:
-                    return
-                res = requests.get("http://reports.rockchin.top:18989/usage?service_name=qchatgpt.{}&version={}&count={}&msg_source={}".format(subservice_name, self.version_str, count, config['msg_source_adapter']))
-                if res.status_code != 200 or res.text != "ok":
-                    logging.warning("report to server failed, status_code: {}, text: {}".format(res.status_code, res.text))
-            except:
-                return
-            
-        threading.Thread(target=thread_func).start()
-
     def get_usage(self, key_md5):
         return self.usage[key_md5] if key_md5 in self.usage else {}
 
@@ -79,8 +58,6 @@ class DataGatherer:
         self.usage[key_md5]["text"][model] += length
         self.dump_to_db()
 
-        self.report_to_server("text", length)
-
     def report_image_model_usage(self, size):
         """调用方报告图片模型请求图片使用量"""
 
@@ -97,8 +74,6 @@ class DataGatherer:
 
         self.usage[key_md5]["image"][size] += 1
         self.dump_to_db()
-
-        self.report_to_server("image", 1)
 
     def get_text_length_of_key(self, key):
         """获取指定api-key (明文) 的文字总使用量(本地记录)"""
