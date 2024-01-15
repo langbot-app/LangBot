@@ -25,18 +25,6 @@ def check_dulwich_closure():
         raise Exception("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
 
 
-def pull_latest(repo_path: str) -> bool:
-    """拉取最新代码"""
-    check_dulwich_closure()
-
-    from dulwich import porcelain
-
-    repo = porcelain.open_repo(repo_path)
-    porcelain.pull(repo)
-
-    return True
-
-
 def is_newer(new_tag: str, old_tag: str):
     """判断版本是否更新，忽略第四位版本和第一位版本"""
     if new_tag == old_tag:
@@ -252,35 +240,6 @@ def get_current_version_info() -> str:
         if rls['tag_name'] == current_tag:
             return rls['name'] + "\n" + rls['body']
     return "未知版本"
-
-
-def get_commit_id_and_time_and_msg() -> str:
-    """获取当前提交id和时间和提交信息"""
-    check_dulwich_closure()
-
-    from dulwich import porcelain
-
-    repo = porcelain.open_repo('.')
-
-    for entry in repo.get_walker():
-        tz = datetime.timezone(datetime.timedelta(hours=entry.commit.commit_timezone // 3600))
-        dt = datetime.datetime.fromtimestamp(entry.commit.commit_time, tz)
-        return str(entry.commit.id)[2:9] + " " + dt.strftime('%Y-%m-%d %H:%M:%S') + " [" + str(entry.commit.message, encoding="utf-8").strip()+"]"
-
-
-def get_current_commit_id() -> str:
-    """检查是否有新版本"""
-    check_dulwich_closure()
-
-    from dulwich import porcelain
-
-    repo = porcelain.open_repo('.')
-    current_commit_id = ""
-    for entry in repo.get_walker():
-        current_commit_id = str(entry.commit.id)[2:-1]
-        break
-
-    return current_commit_id
 
 
 def is_new_version_available() -> bool:
