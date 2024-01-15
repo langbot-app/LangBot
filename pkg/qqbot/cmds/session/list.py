@@ -31,7 +31,7 @@ class ListCommand(aamgr.AbstractCommandNode):
 
         results = pkg.openai.session.get_session(session_name).list_history(page=page)
         if len(results) == 0:
-            reply = ["[bot]第{}页没有历史会话".format(page)]
+            reply_str = "[bot]第{}页没有历史会话".format(page)
         else:
             reply_str = "[bot]历史会话 第{}页：\n".format(page)
             current = -1
