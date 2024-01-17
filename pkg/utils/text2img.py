@@ -11,6 +11,8 @@ from ..utils import context
 text_render_font: ImageFont = None
 
 def initialize():
+    global text_render_font
+    logging.debug("初始化文字转图片模块...")
     config = context.get_config_manager().data
 
     if config['blob_message_strategy'] == "image":  # 仅在启用了image时才加载字体
@@ -37,6 +39,8 @@ def initialize():
             traceback.print_exc()
             logging.error("加载字体文件失败({})，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。".format(use_font))
             config['blob_message_strategy'] = "forward"
+        
+        logging.debug("字体文件加载完成。")
 
 
 def indexNumber(path=''):
@@ -119,6 +123,8 @@ def compress_image(infile, outfile='', kb=100, step=20, quality=90):
 def text_to_image(text_str: str, save_as="temp.png", width=800):
     global text_render_font
 
+    logging.debug("正在将文本转换为图片...")
+
     text_str = text_str.replace("\t", "    ")
     
     # 分行
@@ -128,9 +134,13 @@ def text_to_image(text_str: str, save_as="temp.png", width=800):
     final_lines = []
 
     text_width = width-80
+
+    logging.debug("lines: {}, text_width: {}".format(lines, text_width))
     for line in lines:
+        logging.debug(type(text_render_font))
         # 如果长了就分割
         line_width = text_render_font.getlength(line)
+        logging.debug("line_width: {}".format(line_width))
         if line_width < text_width:
             final_lines.append(line)
             continue
@@ -160,7 +170,7 @@ def text_to_image(text_str: str, save_as="temp.png", width=800):
     img = Image.new('RGBA', (width, max(280, len(final_lines) * 35 + 65)), (255, 255, 255, 255))
     draw = ImageDraw.Draw(img, mode='RGBA')
 
-    
+    logging.debug("正在绘制图片...")
     # 绘制正文
     line_number = 0
     offset_x = 20
@@ -192,7 +202,7 @@ def text_to_image(text_str: str, save_as="temp.png", width=800):
 
         line_number += 1
 
-    
+    logging.debug("正在保存图片...")
     img.save(save_as)
 
     return save_as

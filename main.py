@@ -175,16 +175,16 @@ async def start_process(first_time_init=False):
         except Exception as e:
             print("更新openai库失败:{}, 请忽略或自行更新".format(e))
 
-    # 初始化文字转图片
-    from pkg.utils import text2img
-    text2img.initialize()
-
     known_exception_caught = False
     try:
         try:
 
             sh = reset_logging()
             pkg.utils.context.context['logger_handler'] = sh
+
+            # 初始化文字转图片
+            from pkg.utils import text2img
+            text2img.initialize()
 
             # 检查是否设置了管理员
             if cfg['admin_qq'] == 0:
