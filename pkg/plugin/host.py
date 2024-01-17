@@ -576,7 +576,3 @@ class PluginHost:
             )
 
         return event_context
-
-
-if __name__ == "__main__":
-    pass

@@ -32,16 +32,9 @@ class KeysManager:
         return hashlib.md5(self.using_key.encode('utf-8')).hexdigest()
 
     def __init__(self, api_key):
-
-        if type(api_key) is dict:
-            self.api_key = api_key
-        elif type(api_key) is str:
-            self.api_key = {
-                "default": api_key
-            }
-        elif type(api_key) is list:
-            for i in range(len(api_key)):
-                self.api_key[str(i)] = api_key[i]
+        
+        assert type(api_key) == dict
+        self.api_key = api_key
         # 从usage中删除未加载的api-key的记录
         # 不删了，也许会运行时添加曾经有记录的api-key
 

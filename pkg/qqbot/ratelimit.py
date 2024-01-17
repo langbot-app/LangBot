@@ -17,14 +17,10 @@ def get_limitation(session_name: str) -> int:
     """获取会话的限制次数"""
     config = context.get_config_manager().data
 
-    if type(config['rate_limitation']) == dict:
-        # 如果被指定了
-        if session_name in config['rate_limitation']:
-            return config['rate_limitation'][session_name]
-        else:
-            return config['rate_limitation']["default"]
-    elif type(config['rate_limitation']) == int:
-        return config['rate_limitation']
+    if session_name in config['rate_limitation']:
+        return config['rate_limitation'][session_name]
+    else:
+        return config['rate_limitation']["default"]
 
 
 def add_usage(session_name: str):

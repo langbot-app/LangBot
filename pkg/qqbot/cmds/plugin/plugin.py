@@ -38,9 +38,6 @@ class PluginCommand(aamgr.AbstractCommandNode):
 
             reply = [reply_str]
             return True, reply
-        elif ctx.params[0].startswith("http"):
-            reply = ["[bot]err: 此命令已弃用，请使用 !plugin get <插件仓库地址> 进行安装"]
-            return True, reply
         else:
             return False, []
 

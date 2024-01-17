@@ -28,10 +28,6 @@ def init_runtime_log_file():
     if not os.path.exists("logs"):
         os.mkdir("logs")
 
-    # 检查本目录是否有qchatgpt.log，若有，移动到logs目录
-    if os.path.exists("qchatgpt.log"):
-        shutil.move("qchatgpt.log", "logs/qchatgpt.legacy.log")
-
     log_file_name = "logs/qchatgpt-%s.log" % time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
     
 
