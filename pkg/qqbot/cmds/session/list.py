@@ -39,12 +39,9 @@ class ListCommand(aamgr.AbstractCommandNode):
                 # 时间(使用create_timestamp转换) 序号 部分内容
                 datetime_obj = datetime.datetime.fromtimestamp(results[i]['create_timestamp'])
                 msg = ""
-                try:
-                    msg = json.loads(results[i]['prompt'])
-                except json.decoder.JSONDecodeError:
-                    msg = pkg.openai.session.reset_session_prompt(session_name, results[i]['prompt'])
-                    # 持久化
-                    pkg.openai.session.get_session(session_name).persistence()
+                
+                msg = json.loads(results[i]['prompt'])
+
                 if len(msg) >= 2:
                     reply_str += "#{} 创建:{} {}\n".format(i + page * 10,
                                                         datetime_obj.strftime("%Y-%m-%d %H:%M:%S"),
