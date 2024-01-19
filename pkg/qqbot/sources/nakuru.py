@@ -182,7 +182,8 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
             headers={
                 'Authorization': "Bearer " + config['nakuru_config']['token'] if 'token' in config['nakuru_config']else ""
             },
-            timeout=5
+            timeout=5,
+            proxies=None
         )
         if resp.status_code == 403:
             logging.error("go-cqhttp拒绝访问，请检查config.py中nakuru_config的token是否与go-cqhttp设置的access-token匹配")
