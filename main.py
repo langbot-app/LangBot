@@ -82,14 +82,6 @@ import pkg.utils.context
 # 仅在启动时提供 --override 或 -r 参数时生效
 use_override = False
 
-
-def init_db():
-    import pkg.database.manager
-    database = pkg.database.manager.DatabaseManager()
-
-    database.initialize_database()
-
-
 def ensure_dependencies():
     import pkg.utils.pkgmgr as pkgmgr
     pkgmgr.run_pip(["install", "openai", "Pillow", "nakuru-project-idk", "CallingGPT", "tiktoken", "--upgrade",
@@ -448,12 +440,7 @@ def main():
     # 存进上下文
     pkg.utils.context.set_thread_ctl(thread_ctl)
 
-    # 启动指令处理
-    if len(sys.argv) > 1 and sys.argv[1] == 'init_db':
-        init_db()
-        sys.exit(0)
-
-    elif len(sys.argv) > 1 and sys.argv[1] == 'update':
+    if len(sys.argv) > 1 and sys.argv[1] == 'update':
         print("正在进行程序更新...")
         import pkg.utils.updater as updater
         updater.update_all(cli=True)
