@@ -74,7 +74,6 @@ async def process_message(launcher_type: str, launcher_id: int, text_message: st
 
     text_message = text_message.strip()
 
-
     # 为强制消息延迟计时
     start_time = time.time()
 

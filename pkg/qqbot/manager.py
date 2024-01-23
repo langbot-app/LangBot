@@ -157,10 +157,6 @@ class QQBotManager:
                 await self.on_person_message(event)
 
             asyncio.create_task(friend_message_handler())
-            # TODO delete this
-            # context.get_thread_ctl().submit_user_task(
-            #     friend_message_handler,
-            # )
         self.adapter.register_listener(
             FriendMessage,
             on_friend_message
@@ -184,10 +180,6 @@ class QQBotManager:
                 await self.on_person_message(event)
 
             asyncio.create_task(stranger_message_handler())
-            # TODO delete this 
-            # context.get_thread_ctl().submit_user_task(
-            #     stranger_message_handler,
-            # )
         # nakuru不区分好友和陌生人，故仅为yirimirai注册陌生人事件
         if config['msg_source_adapter'] == 'yirimirai':
             self.adapter.register_listener(
@@ -213,11 +205,6 @@ class QQBotManager:
                 await self.on_group_message(event)
 
             asyncio.create_task(group_message_handler(event))
-            # TODO delete this 
-            # context.get_thread_ctl().submit_user_task(
-            #     group_message_handler,
-            #     event
-            # )
         self.adapter.register_listener(
             GroupMessage,
             on_group_message
