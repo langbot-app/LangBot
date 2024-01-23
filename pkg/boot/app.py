@@ -7,6 +7,7 @@ from ..openai import manager as openai_mgr
 from ..config import manager as config_mgr
 from ..database import manager as database_mgr
 from ..utils.center import v2 as center_mgr
+from ..plugin import host as plugin_host
 
 
 class Application:
@@ -28,4 +29,7 @@ class Application:
         pass
 
     async def run(self):
-        pass
+        # TODO make it async
+        plugin_host.initialize_plugins()
+
+        await self.im_mgr.run()

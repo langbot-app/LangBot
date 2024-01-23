@@ -36,7 +36,7 @@ def is_admin(qq: int) -> bool:
         return qq == config['admin_qq']
 
 
-def process_message(launcher_type: str, launcher_id: int, text_message: str, message_chain: mirai.MessageChain,
+async def process_message(launcher_type: str, launcher_id: int, text_message: str, message_chain: mirai.MessageChain,
                     sender_id: int) -> mirai.MessageChain:
     global processing
 
@@ -61,7 +61,7 @@ def process_message(launcher_type: str, launcher_id: int, text_message: str, mes
 
     # 检查是否被禁言
     if launcher_type == 'group':
-        is_muted = mgr.adapter.is_muted(launcher_id)
+        is_muted = await mgr.adapter.is_muted(launcher_id)
         if is_muted:
             logging.info("机器人被禁言,跳过消息处理(group_{})".format(launcher_id))
             return reply

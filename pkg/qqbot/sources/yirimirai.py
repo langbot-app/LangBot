@@ -36,7 +36,7 @@ class YiriMiraiAdapter(adapter_model.MessageSourceAdapter):
         else:
             raise Exception('Unknown adapter for YiriMirai: ' + config['adapter'])
     
-    def send_message(
+    async def send_message(
         self,
         target_type: str,
         target_id: str,
@@ -57,9 +57,9 @@ class YiriMiraiAdapter(adapter_model.MessageSourceAdapter):
         else:
             raise Exception('Unknown target type: ' + target_type)
 
-        asyncio.run(task)
+        await task
 
-    def reply_message(
+    async def reply_message(
         self,
         message_source: mirai.MessageEvent,
         message: mirai.MessageChain,
@@ -72,11 +72,10 @@ class YiriMiraiAdapter(adapter_model.MessageSourceAdapter):
             message (mirai.MessageChain): YiriMirai库的消息链
             quote_origin (bool, optional): 是否引用原消息. Defaults to False.
         """
-        asyncio.run(self.bot.send(message_source, message, quote_origin))
+        await self.bot.send(message_source, message, quote_origin)
 
-    def is_muted(self, group_id: int) -> bool:
-        result = self.bot.member_info(target=group_id, member_id=self.bot.qq).get()
-        result = asyncio.run(result)
+    async def is_muted(self, group_id: int) -> bool:
+        result = await self.bot.member_info(target=group_id, member_id=self.bot.qq).get()
         if result.mute_time_remaining > 0:
             return True
         return False
@@ -111,13 +110,8 @@ class YiriMiraiAdapter(adapter_model.MessageSourceAdapter):
         
         bus.unsubscribe(event_type, callback)
 
-    def run_sync(self):
-        """运行YiriMirai"""
-
-        # 创建新的
-        loop = asyncio.new_event_loop()
-
-        loop.run_until_complete(MiraiRunner(self.bot)._run())
+    async def run_async(self):
+        return await MiraiRunner(self.bot)._run()
 
     def kill(self) -> bool:
         return False

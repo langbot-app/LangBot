@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import logging
+import asyncio
 
 from mirai import At, GroupMessage, MessageEvent, StrangerMessage, \
     FriendMessage, Image, MessageChain, Plain
@@ -138,9 +139,9 @@ class QQBotManager:
 
         # 注册诸事件
         # Caution: 注册新的事件处理器之后，请务必在unsubscribe_all中编写相应的取消订阅代码
-        def on_friend_message(event: FriendMessage):
+        async def on_friend_message(event: FriendMessage):
 
-            def friend_message_handler():
+            async def friend_message_handler():
                 # 触发事件
                 args = {
                     "launcher_type": "person",
@@ -153,19 +154,21 @@ class QQBotManager:
                 if plugin_event.is_prevented_default():
                     return
 
-                self.on_person_message(event)
+                await self.on_person_message(event)
 
-            context.get_thread_ctl().submit_user_task(
-                friend_message_handler,
-            )
+            asyncio.create_task(friend_message_handler())
+            # TODO delete this
+            # context.get_thread_ctl().submit_user_task(
+            #     friend_message_handler,
+            # )
         self.adapter.register_listener(
             FriendMessage,
             on_friend_message
         )
 
-        def on_stranger_message(event: StrangerMessage):
+        async def on_stranger_message(event: StrangerMessage):
 
-            def stranger_message_handler():
+            async def stranger_message_handler():
                 # 触发事件
                 args = {
                     "launcher_type": "person",
@@ -178,11 +181,13 @@ class QQBotManager:
                 if plugin_event.is_prevented_default():
                     return
 
-                self.on_person_message(event)
+                await self.on_person_message(event)
 
-            context.get_thread_ctl().submit_user_task(
-                stranger_message_handler,
-            )
+            asyncio.create_task(stranger_message_handler())
+            # TODO delete this 
+            # context.get_thread_ctl().submit_user_task(
+            #     stranger_message_handler,
+            # )
         # nakuru不区分好友和陌生人，故仅为yirimirai注册陌生人事件
         if config['msg_source_adapter'] == 'yirimirai':
             self.adapter.register_listener(
@@ -190,9 +195,9 @@ class QQBotManager:
                 on_stranger_message
             )
 
-        def on_group_message(event: GroupMessage):
+        async def on_group_message(event: GroupMessage):
 
-            def group_message_handler(event: GroupMessage):
+            async def group_message_handler(event: GroupMessage):
                 # 触发事件
                 args = {
                     "launcher_type": "group",
@@ -205,12 +210,14 @@ class QQBotManager:
                 if plugin_event.is_prevented_default():
                     return
 
-                self.on_group_message(event)
+                await self.on_group_message(event)
 
-            context.get_thread_ctl().submit_user_task(
-                group_message_handler,
-                event
-            )
+            asyncio.create_task(group_message_handler(event))
+            # TODO delete this 
+            # context.get_thread_ctl().submit_user_task(
+            #     group_message_handler,
+            #     event
+            # )
         self.adapter.register_listener(
             GroupMessage,
             on_group_message
@@ -264,7 +271,7 @@ class QQBotManager:
         else:
             self.reply_filter = qqbot_filter.ReplyFilter([])
 
-    def send(self, event, msg, check_quote=True, check_at_sender=True):
+    async def send(self, event, msg, check_quote=True, check_at_sender=True):
         config = context.get_config_manager().data
         
         if check_at_sender and config['at_sender']:
@@ -282,14 +289,14 @@ class QQBotManager:
                     )
                 )
 
-        self.adapter.reply_message(
+        await self.adapter.reply_message(
             event,
             msg,
             quote_origin=True if config['quote_origin'] and check_quote else False
         )
 
     # 私聊消息处理
-    def on_person_message(self, event: MessageEvent):
+    async def on_person_message(self, event: MessageEvent):
         reply = ''
 
         config = context.get_config_manager().data
@@ -307,14 +314,14 @@ class QQBotManager:
                 for i in range(self.retry):
                     try:
                         
-                        @func_timeout.func_set_timeout(config['process_message_timeout'])
-                        def time_ctrl_wrapper():
-                            reply = processor.process_message('person', event.sender.id, str(event.message_chain),
+                        # @func_timeout.func_set_timeout(config['process_message_timeout'])
+                        async def time_ctrl_wrapper():
+                            reply = await processor.process_message('person', event.sender.id, str(event.message_chain),
                                                             event.message_chain,
                                                             event.sender.id)
                             return reply
                         
-                        reply = time_ctrl_wrapper()
+                        reply = await time_ctrl_wrapper()
                         break
                     except func_timeout.FunctionTimedOut:
                         logging.warning("person_{}: 超时，重试中({})".format(event.sender.id, i))
@@ -330,15 +337,15 @@ class QQBotManager:
                     reply = [tips_custom.reply_message]
 
         if reply:
-            return self.send(event, reply, check_quote=False, check_at_sender=False)
+            await self.send(event, reply, check_quote=False, check_at_sender=False)
 
     # 群消息处理
-    def on_group_message(self, event: GroupMessage):
+    async def on_group_message(self, event: GroupMessage):
         reply = ''
 
         config = context.get_config_manager().data
 
-        def process(text=None) -> str:
+        async def process(text=None) -> str:
             replys = ""
             if At(self.bot_account_id) in event.message_chain:
                 event.message_chain.remove(At(self.bot_account_id))
@@ -347,15 +354,15 @@ class QQBotManager:
             failed = 0
             for i in range(self.retry):
                 try:
-                    @func_timeout.func_set_timeout(config['process_message_timeout'])
-                    def time_ctrl_wrapper():
-                        replys = processor.process_message('group', event.group.id,
+                    # @func_timeout.func_set_timeout(config['process_message_timeout'])
+                    async def time_ctrl_wrapper():
+                        replys = await processor.process_message('group', event.group.id,
                                                         str(event.message_chain).strip() if text is None else text,
                                                         event.message_chain,
                                                         event.sender.id)
                         return replys
                     
-                    replys = time_ctrl_wrapper()
+                    replys = await time_ctrl_wrapper()
                     break
                 except func_timeout.FunctionTimedOut:
                     logging.warning("group_{}: 超时，重试中({})".format(event.group.id, i))
@@ -379,22 +386,22 @@ class QQBotManager:
         else:
             if At(self.bot_account_id) in event.message_chain and response_at(event.group.id):
                 # 直接调用
-                reply = process()
+                reply = await process()
             else:
                 check, result = check_response_rule(event.group.id, str(event.message_chain).strip())
 
                 if check:
-                    reply = process(result.strip())
+                    reply = await process(result.strip())
                 # 检查是否随机响应
                 elif random_responding(event.group.id):
                     logging.info("随机响应group_{}消息".format(event.group.id))
-                    reply = process()
+                    reply = await process()
 
         if reply:
-            return self.send(event, reply)
+            await self.send(event, reply)
 
     # 通知系统管理员
-    def notify_admin(self, message: str):
+    async def notify_admin(self, message: str):
         config = context.get_config_manager().data
         if config['admin_qq'] != 0 and config['admin_qq'] != []:
             logging.info("通知管理员:{}".format(message))
@@ -412,7 +419,7 @@ class QQBotManager:
                         MessageChain([Plain("[bot]{}".format(message))])
                     )
 
-    def notify_admin_message_chain(self, message):
+    async def notify_admin_message_chain(self, message):
         config = context.get_config_manager().data
         if config['admin_qq'] != 0 and config['admin_qq'] != []:
             logging.info("通知管理员:{}".format(message))
@@ -429,3 +436,6 @@ class QQBotManager:
                         adm,
                         message
                     )
+
+    async def run(self):
+        await self.adapter.run_async()

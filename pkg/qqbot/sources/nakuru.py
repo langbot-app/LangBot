@@ -324,5 +324,8 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
         asyncio.set_event_loop(loop)
         self.bot.run()
 
+    async def run_async(self):
+        return await self.bot._run()
+
     def kill(self) -> bool:
         return False

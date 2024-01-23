@@ -1,15 +1,16 @@
 # MessageSource的适配器
 import typing
+import abc
 
 import mirai
 
 
-class MessageSourceAdapter:
+class MessageSourceAdapter(metaclass=abc.ABCMeta):
     bot_account_id: int
     def __init__(self, config: dict):
         pass
 
-    def send_message(
+    async def send_message(
         self,
         target_type: str,
         target_id: str,
@@ -24,7 +25,7 @@ class MessageSourceAdapter:
         """
         raise NotImplementedError
 
-    def reply_message(
+    async def reply_message(
         self,
         message_source: mirai.MessageEvent,
         message: mirai.MessageChain,
@@ -39,7 +40,7 @@ class MessageSourceAdapter:
         """
         raise NotImplementedError
 
-    def is_muted(self, group_id: int) -> bool:
+    async def is_muted(self, group_id: int) -> bool:
         """获取账号是否在指定群被禁言"""
         raise NotImplementedError
 
@@ -69,8 +70,8 @@ class MessageSourceAdapter:
         """
         raise NotImplementedError
 
-    def run_sync(self):
-        """以阻塞的方式运行适配器"""
+    async def run_async(self):
+        """异步运行"""
         raise NotImplementedError
 
     def kill(self) -> bool:
