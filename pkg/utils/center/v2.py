@@ -6,6 +6,7 @@ from . import apigroup
 from .groups import main
 from .groups import usage
 from .groups import plugin
+from ...utils import context
 
 
 BACKEND_URL = "https://api.qchatgpt.rockchin.top/api/v2"
@@ -33,3 +34,5 @@ class V2CenterAPI:
         self.main = main.V2MainDataAPI(BACKEND_URL)
         self.usage = usage.V2UsageDataAPI(BACKEND_URL)
         self.plugin = plugin.V2PluginDataAPI(BACKEND_URL)
+        
+        context.set_center_v2_api(self)

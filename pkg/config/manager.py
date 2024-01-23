@@ -14,7 +14,6 @@ class ConfigManager:
     def __init__(self, cfg_file: file_model.ConfigFile) -> None:
         self.file = cfg_file
         self.data = {}
-        context.set_config_manager(self)
 
     async def load_config(self):
         self.data = await self.file.load()

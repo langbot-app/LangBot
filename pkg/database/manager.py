@@ -17,7 +17,7 @@ class DatabaseManager:
     conn = None
     cursor = None
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
 
         self.reconnect()
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import os
 import logging
@@ -15,6 +17,8 @@ from ..plugin import host as plugin_host
 from ..plugin import models as plugin_models
 import tips as tips_custom
 from ..qqbot import adapter as msadapter
+
+from ..boot import app
 
 
 # 检查消息是否符合泛响应匹配机制
@@ -101,7 +105,7 @@ class QQBotManager:
     ban_person = []
     ban_group = []
 
-    def __init__(self, first_time_init=True):
+    def __init__(self, first_time_init=True, ap: app.Application = None):
         config = context.get_config_manager().data
 
         self.timeout = config['process_message_timeout']

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 
 import openai
@@ -8,6 +10,7 @@ from ..utils import context
 from ..audit import gatherer
 from ..openai import modelmgr
 from ..openai.api import model as api_model
+from ..boot import app
 
 
 class OpenAIInteract:
@@ -26,12 +29,27 @@ class OpenAIInteract:
 
     client: openai.Client = None
 
-    def __init__(self, api_key: str):
+    def __init__(self, ap: app.Application):
+
+        cfg= ap.cfg_mgr.data
+        api_key = cfg['openai_config']['api_key']
 
         self.key_mgr = keymgr.KeysManager(api_key)
         self.audit_mgr = gatherer.DataGatherer()
 
-        # logging.info("文字总使用量：%d", self.audit_mgr.get_total_text_length())
+        # 配置OpenAI proxy
+        openai.proxies = None  # 先重置，因为重载后可能需要清除proxy
+        if "http_proxy" in cfg['openai_config'] and cfg['openai_config']["http_proxy"] is not None:
+            openai.proxies = {
+                "http": cfg['openai_config']["http_proxy"],
+                "https": cfg['openai_config']["http_proxy"]
+            }
+
+        # 配置openai api_base
+        if "reverse_proxy" in cfg['openai_config'] and cfg['openai_config']["reverse_proxy"] is not None:
+            logging.debug("设置反向代理: "+cfg['openai_config']['reverse_proxy'])
+            openai.base_url = cfg['openai_config']["reverse_proxy"]
+
 
         self.client = openai.Client(
             api_key=self.key_mgr.get_using_key(),
