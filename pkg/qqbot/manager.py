@@ -48,24 +48,17 @@ class QQBotManager:
         self.timeout = config['process_message_timeout']
         self.retry = config['retry_times']
 
-        # 由于YiriMirai的bot对象是单例的，且shutdown方法暂时无法使用
-        # 故只在第一次初始化时创建bot对象，重载之后使用原bot对象
-        # 因此，bot的配置不支持热重载
-        if first_time_init:
-            logging.debug("Use adapter:" + config['msg_source_adapter'])
-            if config['msg_source_adapter'] == 'yirimirai':
-                from pkg.qqbot.sources.yirimirai import YiriMiraiAdapter
+        logging.debug("Use adapter:" + config['msg_source_adapter'])
+        if config['msg_source_adapter'] == 'yirimirai':
+            from pkg.qqbot.sources.yirimirai import YiriMiraiAdapter
 
-                mirai_http_api_config = config['mirai_http_api_config']
-                self.bot_account_id = config['mirai_http_api_config']['qq']
-                self.adapter = YiriMiraiAdapter(mirai_http_api_config)
-            elif config['msg_source_adapter'] == 'nakuru':
-                from pkg.qqbot.sources.nakuru import NakuruProjectAdapter
-                self.adapter = NakuruProjectAdapter(config['nakuru_config'])
-                self.bot_account_id = self.adapter.bot_account_id
-        else:
-            self.adapter = context.get_qqbot_manager().adapter
-            self.bot_account_id = context.get_qqbot_manager().bot_account_id
+            mirai_http_api_config = config['mirai_http_api_config']
+            self.bot_account_id = config['mirai_http_api_config']['qq']
+            self.adapter = YiriMiraiAdapter(mirai_http_api_config)
+        elif config['msg_source_adapter'] == 'nakuru':
+            from pkg.qqbot.sources.nakuru import NakuruProjectAdapter
+            self.adapter = NakuruProjectAdapter(config['nakuru_config'])
+            self.bot_account_id = self.adapter.bot_account_id
         
         # 保存 account_id 到审计模块
         from ..utils.center import apigroup
@@ -259,8 +252,6 @@ class QQBotManager:
     # 私聊消息处理
     async def on_person_message(self, event: MessageEvent):
         reply = ''
-
-        config = context.get_config_manager().data
 
         if not self.enable_private:
             logging.debug("已在banlist.py中禁用所有私聊")
