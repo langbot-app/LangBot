@@ -7,7 +7,7 @@ import sys
 
 required_files = {
     "config.py": "config-template.py",
-    "banlist.py": "res/templates/banlist-template.py",
+    "banlist.py": "banlist-template.py",
     "tips.py": "tips-custom-template.py",
     "sensitive.json": "res/templates/sensitive-template.json",
     "scenario/default.json": "scenario/default-template.json",
