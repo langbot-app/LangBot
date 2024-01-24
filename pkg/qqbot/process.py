@@ -1,16 +1,11 @@
 # 此模块提供了消息处理的具体逻辑的接口
+from __future__ import annotations
 import asyncio
 import time
 import traceback
 
 import mirai
 import logging
-
-# 这里不使用动态引入config
-# 因为在这里动态引入会卡死程序
-# 而此模块静态引用config与动态引入的表现一致
-# 已弃用，由于超时时间现已动态使用
-# import config as config_init_import
 
 from ..qqbot import ratelimit
 from ..qqbot import command, message
@@ -20,9 +15,9 @@ from ..utils import context
 from ..plugin import host as plugin_host
 from ..plugin import models as plugin_models
 from ..qqbot import ignore
-from ..qqbot import banlist
 from ..qqbot import blob
 import tips as tips_custom
+from ..boot import app
 
 processing = []
 
@@ -44,11 +39,6 @@ async def process_message(launcher_type: str, launcher_id: int, text_message: st
 
     reply = []
     session_name = "{}_{}".format(launcher_type, launcher_id)
-
-    # 检查发送方是否被禁用
-    if banlist.is_banned(launcher_type, launcher_id, sender_id):
-        logging.info("根据禁用列表忽略{}_{}的消息".format(launcher_type, launcher_id))
-        return []
 
     if ignore.ignore(text_message):
         logging.info("根据忽略规则忽略消息: {}".format(text_message))

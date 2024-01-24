@@ -20,6 +20,7 @@ from ..plugin import models as plugin_models
 import tips as tips_custom
 from ..qqbot import adapter as msadapter
 from . import resprule
+from .bansess import bansess
 
 from ..boot import app
 
@@ -42,11 +43,24 @@ class QQBotManager:
     ban_person = []
     ban_group = []
 
+    # modern
+    ap: app.Application = None
+
+    bansess_mgr: bansess.SessionBanManager = None
+
     def __init__(self, first_time_init=True, ap: app.Application = None):
         config = context.get_config_manager().data
 
+        self.ap = ap
+        self.bansess_mgr = bansess.SessionBanManager(ap)
+
         self.timeout = config['process_message_timeout']
         self.retry = config['retry_times']
+    
+    async def initialize(self):
+        await self.bansess_mgr.initialize()
+
+        config = context.get_config_manager().data
 
         logging.debug("Use adapter:" + config['msg_source_adapter'])
         if config['msg_source_adapter'] == 'yirimirai':
@@ -160,19 +174,6 @@ class QQBotManager:
 
         self.unsubscribe_all = unsubscribe_all
 
-        # 加载禁用列表
-        if os.path.exists("banlist.py"):
-            import banlist
-            self.enable_banlist = banlist.enable
-            self.ban_person = banlist.person
-            self.ban_group = banlist.group
-            logging.info("加载禁用列表: person: {}, group: {}".format(self.ban_person, self.ban_group))
-
-            if hasattr(banlist, "enable_private"):
-                self.enable_private = banlist.enable_private
-            if hasattr(banlist, "enable_group"):
-                self.enable_group = banlist.enable_group
-
         config = context.get_config_manager().data
         if os.path.exists("sensitive.json") \
                 and config['sensitive_word_filter'] is not None \
@@ -222,6 +223,11 @@ class QQBotManager:
         """
         私聊群聊通用消息处理方法
         """
+        # 检查bansess
+        if await self.bansess_mgr.is_banned(launcher_type, launcher_id, sender_id):
+            self.ap.logger.info("根据禁用列表忽略{}_{}的消息".format(launcher_type, launcher_id))
+            return []
+
         if mirai.Image in message_chain:
             return []
         elif sender_id == self.bot_account_id:
