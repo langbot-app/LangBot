@@ -7,7 +7,6 @@ import traceback
 import mirai
 import logging
 
-from ..qqbot import ratelimit
 from ..qqbot import command, message
 from ..openai import session as openai_session
 from ..utils import context
@@ -103,12 +102,10 @@ async def process_message(launcher_type: str, launcher_id: int, text_message: st
             else:  # 消息
                 msg_type = 'message'
                 # 限速丢弃检查
-                # print(ratelimit.__crt_minute_usage__[session_name])
-                if config['rate_limit_strategy'] == "drop":
-                    if ratelimit.is_reach_limit(session_name):
-                        logging.info("根据限速策略丢弃[{}]消息: {}".format(session_name, text_message))
+                if not await mgr.ratelimiter.require(launcher_type, launcher_id):
+                    logging.info("根据限速策略丢弃[{}]消息: {}".format(session_name, text_message))
 
-                        return mirai.MessageChain(["[bot]"+tips_custom.rate_limit_drop_tip]) if tips_custom.rate_limit_drop_tip != "" else []
+                    return mirai.MessageChain(["[bot]"+tips_custom.rate_limit_drop_tip]) if tips_custom.rate_limit_drop_tip != "" else []
 
                 before = time.time()
                 # 触发插件事件
@@ -132,12 +129,6 @@ async def process_message(launcher_type: str, launcher_id: int, text_message: st
                 if not event.is_prevented_default():
                     reply = message.process_normal_message(text_message,
                                                                      mgr, config, launcher_type, launcher_id, sender_id)
-
-                # 限速等待时间
-                if config['rate_limit_strategy'] == "wait":
-                    time.sleep(ratelimit.get_rest_wait_time(session_name, time.time() - before))
-                
-                ratelimit.add_usage(session_name)
 
             if reply is not None and len(reply) > 0 and (type(reply[0]) == str or type(reply[0]) == mirai.Plain):
                 if type(reply[0]) == mirai.Plain:
