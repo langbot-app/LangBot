@@ -18,7 +18,7 @@ from ..plugin import host as plugin_host
 from ..plugin import models as plugin_models
 import tips as tips_custom
 from ..qqbot import adapter as msadapter
-from . import resprule
+from .resprule import resprule
 from .bansess import bansess
 from .cntfilter import cntfilter
 from .longtext import longtext
@@ -34,11 +34,6 @@ class QQBotManager:
 
     bot_account_id: int = 0
 
-    enable_banlist = False
-
-    enable_private = True
-    enable_group = True
-
     ban_person = []
     ban_group = []
 
@@ -48,6 +43,7 @@ class QQBotManager:
     bansess_mgr: bansess.SessionBanManager = None
     cntfilter_mgr: cntfilter.ContentFilterManager = None
     longtext_pcs: longtext.LongTextProcessor = None
+    resprule_chkr: resprule.GroupRespondRuleChecker = None
 
     def __init__(self, first_time_init=True, ap: app.Application = None):
         config = context.get_config_manager().data
@@ -56,6 +52,7 @@ class QQBotManager:
         self.bansess_mgr = bansess.SessionBanManager(ap)
         self.cntfilter_mgr = cntfilter.ContentFilterManager(ap)
         self.longtext_pcs = longtext.LongTextProcessor(ap)
+        self.resprule_chkr = resprule.GroupRespondRuleChecker(ap)
 
         self.timeout = config['process_message_timeout']
         self.retry = config['retry_times']
@@ -64,6 +61,7 @@ class QQBotManager:
         await self.bansess_mgr.initialize()
         await self.cntfilter_mgr.initialize()
         await self.longtext_pcs.initialize()
+        await self.resprule_chkr.initialize()
 
         config = context.get_config_manager().data
 
@@ -251,17 +249,13 @@ class QQBotManager:
     async def on_person_message(self, event: MessageEvent):
         reply = ''
 
-        if not self.enable_private:
-            logging.debug("已在banlist.py中禁用所有私聊")
-
-        else:
-            reply = await self.common_process(
-                launcher_type="person",
-                launcher_id=event.sender.id,
-                text_message=str(event.message_chain),
-                message_chain=event.message_chain,
-                sender_id=event.sender.id
-            )
+        reply = await self.common_process(
+            launcher_type="person",
+            launcher_id=event.sender.id,
+            text_message=str(event.message_chain),
+            message_chain=event.message_chain,
+            sender_id=event.sender.id
+        )
 
         if reply:
             await self.send(event, reply, check_quote=False, check_at_sender=False)
@@ -269,39 +263,25 @@ class QQBotManager:
     # 群消息处理
     async def on_group_message(self, event: GroupMessage):
         reply = ''
-        
-        if not self.enable_group:
-            logging.debug("已在banlist.py中禁用所有群聊")
 
-        else:
-            do_req = False
-            text = str(event.message_chain).strip()
-            if At(self.bot_account_id) in event.message_chain and resprule.response_at(event.group.id):
-                # 直接调用
-                # reply = await process()
-                event.message_chain.remove(At(self.bot_account_id))
-                text = str(event.message_chain).strip()
-                do_req = True
-            else:
-                check, result = resprule.check_response_rule(event.group.id, str(event.message_chain).strip())
+        text = str(event.message_chain).strip()
 
-                if check:
-                    do_req = True
-                    text = result.strip()
-                # 检查是否随机响应
-                elif resprule.random_responding(event.group.id):
-                    logging.info("随机响应group_{}消息".format(event.group.id))
-                    # reply = await process()
-                    do_req = True
+        rule_check_res = await self.resprule_chkr.check(
+            text,
+            event.message_chain,
+            event.group.id,
+            event.sender.id
+        )
 
-            if do_req:
-                reply = await self.common_process(
-                    launcher_type="group",
-                    launcher_id=event.group.id,
-                    text_message=text,
-                    message_chain=event.message_chain,
-                    sender_id=event.sender.id
-                )
+        if rule_check_res.matching:
+            text = str(rule_check_res.replacement).strip()
+            reply = await self.common_process(
+                launcher_type="group",
+                launcher_id=event.group.id,
+                text_message=text,
+                message_chain=rule_check_res.replacement,
+                sender_id=event.sender.id
+            )
 
         if reply:
             await self.send(event, reply)
