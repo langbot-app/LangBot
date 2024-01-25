@@ -71,11 +71,6 @@ async def make_app() -> app.Application:
         "tips-custom-template.py"
     )
 
-    # 初始化文字转图片
-    from pkg.utils import text2img
-    # TODO make it async
-    text2img.initialize()
-
     # 检查管理员QQ号
     if cfg_mgr.data['admin_qq'] == 0:
         qcg_logger.warning("未设置管理员QQ号，将无法使用管理员命令，请在 config.py 中修改 admin_qq")

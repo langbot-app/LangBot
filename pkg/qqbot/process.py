@@ -14,7 +14,6 @@ from ..utils import context
 
 from ..plugin import host as plugin_host
 from ..plugin import models as plugin_models
-from ..qqbot import blob
 import tips as tips_custom
 from ..boot import app
 from .cntfilter import entities
@@ -158,8 +157,8 @@ async def process_message(launcher_type: str, launcher_id: int, text_message: st
                             return []
                     else:
                         reply = [cntfilter_res.replacement]
-                    
-                reply = blob.check_text(reply[0])
+
+                reply = await mgr.longtext_pcs.check_and_process(reply[0])
             else:
                 logging.info("回复[{}]消息".format(session_name))
 
