@@ -14,10 +14,10 @@ from ..utils import context
 
 from ..plugin import host as plugin_host
 from ..plugin import models as plugin_models
-from ..qqbot import ignore
 from ..qqbot import blob
 import tips as tips_custom
 from ..boot import app
+from .cntfilter import entities
 
 processing = []
 
@@ -32,7 +32,7 @@ def is_admin(qq: int) -> bool:
 
 
 async def process_message(launcher_type: str, launcher_id: int, text_message: str, message_chain: mirai.MessageChain,
-                    sender_id: int) -> mirai.MessageChain:
+                    sender_id: int) -> list:
     global processing
 
     mgr = context.get_qqbot_manager()
@@ -40,14 +40,10 @@ async def process_message(launcher_type: str, launcher_id: int, text_message: st
     reply = []
     session_name = "{}_{}".format(launcher_type, launcher_id)
 
-    if ignore.ignore(text_message):
-        logging.info("根据忽略规则忽略消息: {}".format(text_message))
-        return []
-
     config = context.get_config_manager().data
 
     if not config['wait_last_done'] and session_name in processing:
-        return mirai.MessageChain([mirai.Plain(tips_custom.message_drop_tip)])
+        return [mirai.Plain(tips_custom.message_drop_tip)]
 
     # 检查是否被禁言
     if launcher_type == 'group':
@@ -56,9 +52,14 @@ async def process_message(launcher_type: str, launcher_id: int, text_message: st
             logging.info("机器人被禁言,跳过消息处理(group_{})".format(launcher_id))
             return reply
 
-    if config['income_msg_check']:
-        if mgr.reply_filter.is_illegal(text_message):
-            return mirai.MessageChain(mirai.Plain("[bot] 消息中存在不合适的内容, 请更换措辞"))
+    cntfilter_res = await mgr.cntfilter_mgr.pre_process(text_message)
+    if cntfilter_res.level == entities.ManagerResultLevel.INTERRUPT:
+        if cntfilter_res.console_notice:
+            mgr.ap.logger.info(cntfilter_res.console_notice)
+        if cntfilter_res.user_notice:
+            return [mirai.Plain(cntfilter_res.user_notice)]
+        else:
+            return []
 
     openai_session.get_session(session_name).acquire_response_lock()
 
@@ -147,7 +148,16 @@ async def process_message(launcher_type: str, launcher_id: int, text_message: st
                                                  reply[0][:min(100, len(reply[0]))] + (
                                                      "..." if len(reply[0]) > 100 else "")))
                 if msg_type == 'message':
-                    reply = [mgr.reply_filter.process(reply[0])]
+                    cntfilter_res = await mgr.cntfilter_mgr.post_process(reply[0])
+                    if cntfilter_res.level == entities.ManagerResultLevel.INTERRUPT:
+                        if cntfilter_res.console_notice:
+                            mgr.ap.logger.info(cntfilter_res.console_notice)
+                        if cntfilter_res.user_notice:
+                            return [mirai.Plain(cntfilter_res.user_notice)]
+                        else:
+                            return []
+                    else:
+                        reply = [cntfilter_res.replacement]
                     
                 reply = blob.check_text(reply[0])
             else:

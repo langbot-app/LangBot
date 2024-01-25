@@ -167,6 +167,8 @@ response_rules = {
 # 此设置优先级高于response_rules
 # 用以过滤mirai等其他层级的命令
 # @see https://github.com/RockChinQ/QChatGPT/issues/165
+#
+# *需要同时开启下方 income_msg_check 才会生效
 ignore_rules = {
     "prefix": ["/"],
     "regexp": []

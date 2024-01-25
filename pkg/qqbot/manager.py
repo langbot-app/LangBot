@@ -12,7 +12,6 @@ import func_timeout
 
 from ..openai import session as openai_session
 
-from ..qqbot import filter as qqbot_filter
 from ..qqbot import process as processor
 from ..utils import context
 from ..plugin import host as plugin_host
@@ -21,6 +20,7 @@ import tips as tips_custom
 from ..qqbot import adapter as msadapter
 from . import resprule
 from .bansess import bansess
+from .cntfilter import cntfilter
 
 from ..boot import app
 
@@ -32,8 +32,6 @@ class QQBotManager:
     adapter: msadapter.MessageSourceAdapter = None
 
     bot_account_id: int = 0
-
-    reply_filter = None
 
     enable_banlist = False
 
@@ -47,18 +45,21 @@ class QQBotManager:
     ap: app.Application = None
 
     bansess_mgr: bansess.SessionBanManager = None
+    cntfilter_mgr: cntfilter.ContentFilterManager = None
 
     def __init__(self, first_time_init=True, ap: app.Application = None):
         config = context.get_config_manager().data
 
         self.ap = ap
         self.bansess_mgr = bansess.SessionBanManager(ap)
+        self.cntfilter_mgr = cntfilter.ContentFilterManager(ap)
 
         self.timeout = config['process_message_timeout']
         self.retry = config['retry_times']
     
     async def initialize(self):
         await self.bansess_mgr.initialize()
+        await self.cntfilter_mgr.initialize()
 
         config = context.get_config_manager().data
 
@@ -173,20 +174,6 @@ class QQBotManager:
             )
 
         self.unsubscribe_all = unsubscribe_all
-
-        config = context.get_config_manager().data
-        if os.path.exists("sensitive.json") \
-                and config['sensitive_word_filter'] is not None \
-                and config['sensitive_word_filter']:
-            with open("sensitive.json", "r", encoding="utf-8") as f:
-                sensitive_json = json.load(f)
-                self.reply_filter = qqbot_filter.ReplyFilter(
-                    sensitive_words=sensitive_json['words'],
-                    mask=sensitive_json['mask'] if 'mask' in sensitive_json else '*',
-                    mask_word=sensitive_json['mask_word'] if 'mask_word' in sensitive_json else ''
-                )
-        else:
-            self.reply_filter = qqbot_filter.ReplyFilter([])
 
     async def send(self, event, msg, check_quote=True, check_at_sender=True):
         config = context.get_config_manager().data

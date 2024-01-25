@@ -4,7 +4,6 @@ from __future__ import annotations
 import re
 
 from ...boot import app
-from ...boot import config as config_util
 from ...config import manager as cfg_mgr
 
 
@@ -18,7 +17,7 @@ class SessionBanManager:
         self.ap = ap
 
     async def initialize(self):
-        self.banlist_mgr = await config_util.load_python_module_config(
+        self.banlist_mgr = await cfg_mgr.load_python_module_config(
             "banlist.py",
             "res/templates/banlist-template.py"
         )
