@@ -28,6 +28,9 @@ class Application:
     def __init__(self):
         pass
 
+    async def initialize(self):
+        await self.im_mgr.initialize()
+
     async def run(self):
         # TODO make it async
         plugin_host.initialize_plugins()

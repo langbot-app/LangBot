@@ -7,85 +7,24 @@ import asyncio
 
 from mirai import At, GroupMessage, MessageEvent, StrangerMessage, \
     FriendMessage, Image, MessageChain, Plain
+import mirai
 import func_timeout
 
 from ..openai import session as openai_session
 
-from ..qqbot import filter as qqbot_filter
 from ..qqbot import process as processor
 from ..utils import context
 from ..plugin import host as plugin_host
 from ..plugin import models as plugin_models
 import tips as tips_custom
 from ..qqbot import adapter as msadapter
+from .resprule import resprule
+from .bansess import bansess
+from .cntfilter import cntfilter
+from .longtext import longtext
+from .ratelim import ratelim
 
 from ..boot import app
-
-
-# 检查消息是否符合泛响应匹配机制
-def check_response_rule(group_id:int, text: str):
-    config = context.get_config_manager().data
-
-    rules = config['response_rules']
-
-    # 检查是否有特定规则
-    if 'prefix' not in config['response_rules']:
-        if str(group_id) in config['response_rules']:
-            rules = config['response_rules'][str(group_id)]
-        else:
-            rules = config['response_rules']['default']
-
-    # 检查前缀匹配
-    if 'prefix' in rules:
-        for rule in rules['prefix']:
-            if text.startswith(rule):
-                return True, text.replace(rule, "", 1)
-
-    # 检查正则表达式匹配
-    if 'regexp' in rules:
-        for rule in rules['regexp']:
-            import re
-            match = re.match(rule, text)
-            if match:
-                return True, text
-
-    return False, ""
-
-
-def response_at(group_id: int):
-    config = context.get_config_manager().data
-
-    use_response_rule = config['response_rules']
-
-    # 检查是否有特定规则
-    if 'prefix' not in config['response_rules']:
-        if str(group_id) in config['response_rules']:
-            use_response_rule = config['response_rules'][str(group_id)]
-        else:
-            use_response_rule = config['response_rules']['default']
-
-    if 'at' not in use_response_rule:
-        return True
-
-    return use_response_rule['at']
-
-
-def random_responding(group_id):
-    config = context.get_config_manager().data
-
-    use_response_rule = config['response_rules']
-
-    # 检查是否有特定规则
-    if 'prefix' not in config['response_rules']:
-        if str(group_id) in config['response_rules']:
-            use_response_rule = config['response_rules'][str(group_id)]
-        else:
-            use_response_rule = config['response_rules']['default']
-
-    if 'random_rate' in use_response_rule:
-        import random
-        return random.random() < use_response_rule['random_rate']
-    return False
 
 
 # 控制QQ消息输入输出的类
@@ -96,40 +35,51 @@ class QQBotManager:
 
     bot_account_id: int = 0
 
-    reply_filter = None
-
-    enable_banlist = False
-
-    enable_private = True
-    enable_group = True
-
     ban_person = []
     ban_group = []
+
+    # modern
+    ap: app.Application = None
+
+    bansess_mgr: bansess.SessionBanManager = None
+    cntfilter_mgr: cntfilter.ContentFilterManager = None
+    longtext_pcs: longtext.LongTextProcessor = None
+    resprule_chkr: resprule.GroupRespondRuleChecker = None
+    ratelimiter: ratelim.RateLimiter = None
 
     def __init__(self, first_time_init=True, ap: app.Application = None):
         config = context.get_config_manager().data
 
+        self.ap = ap
+        self.bansess_mgr = bansess.SessionBanManager(ap)
+        self.cntfilter_mgr = cntfilter.ContentFilterManager(ap)
+        self.longtext_pcs = longtext.LongTextProcessor(ap)
+        self.resprule_chkr = resprule.GroupRespondRuleChecker(ap)
+        self.ratelimiter = ratelim.RateLimiter(ap)
+
         self.timeout = config['process_message_timeout']
         self.retry = config['retry_times']
+    
+    async def initialize(self):
+        await self.bansess_mgr.initialize()
+        await self.cntfilter_mgr.initialize()
+        await self.longtext_pcs.initialize()
+        await self.resprule_chkr.initialize()
+        await self.ratelimiter.initialize()
 
-        # 由于YiriMirai的bot对象是单例的，且shutdown方法暂时无法使用
-        # 故只在第一次初始化时创建bot对象，重载之后使用原bot对象
-        # 因此，bot的配置不支持热重载
-        if first_time_init:
-            logging.debug("Use adapter:" + config['msg_source_adapter'])
-            if config['msg_source_adapter'] == 'yirimirai':
-                from pkg.qqbot.sources.yirimirai import YiriMiraiAdapter
+        config = context.get_config_manager().data
 
-                mirai_http_api_config = config['mirai_http_api_config']
-                self.bot_account_id = config['mirai_http_api_config']['qq']
-                self.adapter = YiriMiraiAdapter(mirai_http_api_config)
-            elif config['msg_source_adapter'] == 'nakuru':
-                from pkg.qqbot.sources.nakuru import NakuruProjectAdapter
-                self.adapter = NakuruProjectAdapter(config['nakuru_config'])
-                self.bot_account_id = self.adapter.bot_account_id
-        else:
-            self.adapter = context.get_qqbot_manager().adapter
-            self.bot_account_id = context.get_qqbot_manager().bot_account_id
+        logging.debug("Use adapter:" + config['msg_source_adapter'])
+        if config['msg_source_adapter'] == 'yirimirai':
+            from pkg.qqbot.sources.yirimirai import YiriMiraiAdapter
+
+            mirai_http_api_config = config['mirai_http_api_config']
+            self.bot_account_id = config['mirai_http_api_config']['qq']
+            self.adapter = YiriMiraiAdapter(mirai_http_api_config)
+        elif config['msg_source_adapter'] == 'nakuru':
+            from pkg.qqbot.sources.nakuru import NakuruProjectAdapter
+            self.adapter = NakuruProjectAdapter(config['nakuru_config'])
+            self.bot_account_id = self.adapter.bot_account_id
         
         # 保存 account_id 到审计模块
         from ..utils.center import apigroup
@@ -205,6 +155,7 @@ class QQBotManager:
                 await self.on_group_message(event)
 
             asyncio.create_task(group_message_handler(event))
+
         self.adapter.register_listener(
             GroupMessage,
             on_group_message
@@ -231,33 +182,6 @@ class QQBotManager:
 
         self.unsubscribe_all = unsubscribe_all
 
-        # 加载禁用列表
-        if os.path.exists("banlist.py"):
-            import banlist
-            self.enable_banlist = banlist.enable
-            self.ban_person = banlist.person
-            self.ban_group = banlist.group
-            logging.info("加载禁用列表: person: {}, group: {}".format(self.ban_person, self.ban_group))
-
-            if hasattr(banlist, "enable_private"):
-                self.enable_private = banlist.enable_private
-            if hasattr(banlist, "enable_group"):
-                self.enable_group = banlist.enable_group
-
-        config = context.get_config_manager().data
-        if os.path.exists("sensitive.json") \
-                and config['sensitive_word_filter'] is not None \
-                and config['sensitive_word_filter']:
-            with open("sensitive.json", "r", encoding="utf-8") as f:
-                sensitive_json = json.load(f)
-                self.reply_filter = qqbot_filter.ReplyFilter(
-                    sensitive_words=sensitive_json['words'],
-                    mask=sensitive_json['mask'] if 'mask' in sensitive_json else '*',
-                    mask_word=sensitive_json['mask_word'] if 'mask_word' in sensitive_json else ''
-                )
-        else:
-            self.reply_filter = qqbot_filter.ReplyFilter([])
-
     async def send(self, event, msg, check_quote=True, check_at_sender=True):
         config = context.get_config_manager().data
         
@@ -282,46 +206,60 @@ class QQBotManager:
             quote_origin=True if config['quote_origin'] and check_quote else False
         )
 
+    async def common_process(
+        self,
+        launcher_type: str,
+        launcher_id: int,
+        text_message: str,
+        message_chain: MessageChain,
+        sender_id: int
+    ) -> mirai.MessageChain:
+        """
+        私聊群聊通用消息处理方法
+        """
+        # 检查bansess
+        if await self.bansess_mgr.is_banned(launcher_type, launcher_id, sender_id):
+            self.ap.logger.info("根据禁用列表忽略{}_{}的消息".format(launcher_type, launcher_id))
+            return []
+
+        if mirai.Image in message_chain:
+            return []
+        elif sender_id == self.bot_account_id:
+            return []
+        else:
+            # 超时则重试，重试超过次数则放弃
+            failed = 0
+            for i in range(self.retry):
+                try:
+                    reply = await processor.process_message(launcher_type, launcher_id, text_message, message_chain,
+                                                        sender_id)
+                    return reply
+                
+                # TODO openai 超时处理
+                except func_timeout.FunctionTimedOut:
+                    logging.warning("{}_{}: 超时，重试中({})".format(launcher_type, launcher_id, i))
+                    openai_session.get_session("{}_{}".format(launcher_type, launcher_id)).release_response_lock()
+                    if "{}_{}".format(launcher_type, launcher_id) in processor.processing:
+                        processor.processing.remove("{}_{}".format(launcher_type, launcher_id))
+                    failed += 1
+                    continue
+
+            if failed == self.retry:
+                openai_session.get_session("{}_{}".format(launcher_type, launcher_id)).release_response_lock()
+                await self.notify_admin("{} 请求超时".format("{}_{}".format(launcher_type, launcher_id)))
+                reply = [tips_custom.reply_message]
+
     # 私聊消息处理
     async def on_person_message(self, event: MessageEvent):
         reply = ''
 
-        config = context.get_config_manager().data
-
-        if not self.enable_private:
-            logging.debug("已在banlist.py中禁用所有私聊")
-        elif event.sender.id == self.bot_account_id:
-            pass
-        else:
-            if Image in event.message_chain:
-                pass
-            else:
-                # 超时则重试，重试超过次数则放弃
-                failed = 0
-                for i in range(self.retry):
-                    try:
-                        
-                        # @func_timeout.func_set_timeout(config['process_message_timeout'])
-                        async def time_ctrl_wrapper():
-                            reply = await processor.process_message('person', event.sender.id, str(event.message_chain),
-                                                            event.message_chain,
-                                                            event.sender.id)
-                            return reply
-                        
-                        reply = await time_ctrl_wrapper()
-                        break
-                    except func_timeout.FunctionTimedOut:
-                        logging.warning("person_{}: 超时，重试中({})".format(event.sender.id, i))
-                        openai_session.get_session('person_{}'.format(event.sender.id)).release_response_lock()
-                        if "person_{}".format(event.sender.id) in processor.processing:
-                            processor.processing.remove('person_{}'.format(event.sender.id))
-                        failed += 1
-                        continue
-
-                if failed == self.retry:
-                    openai_session.get_session('person_{}'.format(event.sender.id)).release_response_lock()
-                    self.notify_admin("{} 请求超时".format("person_{}".format(event.sender.id)))
-                    reply = [tips_custom.reply_message]
+        reply = await self.common_process(
+            launcher_type="person",
+            launcher_id=event.sender.id,
+            text_message=str(event.message_chain),
+            message_chain=event.message_chain,
+            sender_id=event.sender.id
+        )
 
         if reply:
             await self.send(event, reply, check_quote=False, check_at_sender=False)
@@ -330,99 +268,48 @@ class QQBotManager:
     async def on_group_message(self, event: GroupMessage):
         reply = ''
 
-        config = context.get_config_manager().data
+        text = str(event.message_chain).strip()
 
-        async def process(text=None) -> str:
-            replys = ""
-            if At(self.bot_account_id) in event.message_chain:
-                event.message_chain.remove(At(self.bot_account_id))
+        rule_check_res = await self.resprule_chkr.check(
+            text,
+            event.message_chain,
+            event.group.id,
+            event.sender.id
+        )
 
-            # 超时则重试，重试超过次数则放弃
-            failed = 0
-            for i in range(self.retry):
-                try:
-                    # @func_timeout.func_set_timeout(config['process_message_timeout'])
-                    async def time_ctrl_wrapper():
-                        replys = await processor.process_message('group', event.group.id,
-                                                        str(event.message_chain).strip() if text is None else text,
-                                                        event.message_chain,
-                                                        event.sender.id)
-                        return replys
-                    
-                    replys = await time_ctrl_wrapper()
-                    break
-                except func_timeout.FunctionTimedOut:
-                    logging.warning("group_{}: 超时，重试中({})".format(event.group.id, i))
-                    openai_session.get_session('group_{}'.format(event.group.id)).release_response_lock()
-                    if "group_{}".format(event.group.id) in processor.processing:
-                        processor.processing.remove('group_{}'.format(event.group.id))
-                    failed += 1
-                    continue
-
-            if failed == self.retry:
-                openai_session.get_session('group_{}'.format(event.group.id)).release_response_lock()
-                self.notify_admin("{} 请求超时".format("group_{}".format(event.group.id)))
-                replys = [tips_custom.replys_message]
-
-            return replys
-        
-        if not self.enable_group:
-            logging.debug("已在banlist.py中禁用所有群聊")
-        elif Image in event.message_chain:
-            pass
-        else:
-            if At(self.bot_account_id) in event.message_chain and response_at(event.group.id):
-                # 直接调用
-                reply = await process()
-            else:
-                check, result = check_response_rule(event.group.id, str(event.message_chain).strip())
-
-                if check:
-                    reply = await process(result.strip())
-                # 检查是否随机响应
-                elif random_responding(event.group.id):
-                    logging.info("随机响应group_{}消息".format(event.group.id))
-                    reply = await process()
+        if rule_check_res.matching:
+            text = str(rule_check_res.replacement).strip()
+            reply = await self.common_process(
+                launcher_type="group",
+                launcher_id=event.group.id,
+                text_message=text,
+                message_chain=rule_check_res.replacement,
+                sender_id=event.sender.id
+            )
 
         if reply:
             await self.send(event, reply)
 
     # 通知系统管理员
     async def notify_admin(self, message: str):
-        config = context.get_config_manager().data
-        if config['admin_qq'] != 0 and config['admin_qq'] != []:
-            logging.info("通知管理员:{}".format(message))
-            if type(config['admin_qq']) == int:
-                self.adapter.send_message(
-                    "person",
-                    config['admin_qq'],
-                    MessageChain([Plain("[bot]{}".format(message))])
-                )
-            else:
-                for adm in config['admin_qq']:
-                    self.adapter.send_message(
-                        "person",
-                        adm,
-                        MessageChain([Plain("[bot]{}".format(message))])
-                    )
+        await self.notify_admin_message_chain(MessageChain([Plain("[bot]{}".format(message))]))
 
-    async def notify_admin_message_chain(self, message):
+    async def notify_admin_message_chain(self, message: mirai.MessageChain):
         config = context.get_config_manager().data
         if config['admin_qq'] != 0 and config['admin_qq'] != []:
             logging.info("通知管理员:{}".format(message))
+
+            admin_list = []
+
             if type(config['admin_qq']) == int:
+                admin_list.append(config['admin_qq'])
+            
+            for adm in admin_list:
                 self.adapter.send_message(
                     "person",
-                    config['admin_qq'],
+                    adm,
                     message
                 )
-            else:
-                for adm in config['admin_qq']:
-                    self.adapter.send_message(
-                        "person",
-                        adm,
-                        message
-                    )
 
     async def run(self):
         await self.adapter.run_async()

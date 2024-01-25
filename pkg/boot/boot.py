@@ -50,7 +50,10 @@ async def make_app() -> app.Application:
     # 生成标识符
     identifier.init()
 
-    cfg_mgr = await config.load_config()
+    cfg_mgr = await config.load_python_module_config(
+        "config.py",
+        "config-template.py"
+    )
     context.set_config_manager(cfg_mgr)
     cfg = cfg_mgr.data
 
@@ -63,12 +66,10 @@ async def make_app() -> app.Application:
         if overrided:
             qcg_logger.info("以下配置项已使用 override.json 覆盖：" + ",".join(overrided))
     
-    tips_mgr = await config.load_tips()
-
-    # 初始化文字转图片
-    from pkg.utils import text2img
-    # TODO make it async
-    text2img.initialize()
+    tips_mgr = await config.load_python_module_config(
+        "tips.py",
+        "tips-custom-template.py"
+    )
 
     # 检查管理员QQ号
     if cfg_mgr.data['admin_qq'] == 0:
@@ -121,4 +122,5 @@ async def make_app() -> app.Application:
 
 async def main():
     app_inst = await make_app()
+    await app_inst.initialize()
     await app_inst.run()

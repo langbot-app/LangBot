@@ -16,7 +16,7 @@ sys.path.append(".")
 def check_file():
     # 检查是否有banlist.py,如果没有就把banlist-template.py复制一份
     if not os.path.exists('banlist.py'):
-        shutil.copy('res/templates/banlist-template.py', 'banlist.py')
+        shutil.copy('banlist-template.py', 'banlist.py')
 
     # 检查是否有sensitive.json
     if not os.path.exists("sensitive.json"):
