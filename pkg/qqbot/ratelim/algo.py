@@ -1,7 +1,7 @@
 from __future__ import annotations
 import abc
 
-from ...boot import app
+from ...core import app
 
 
 class ReteLimitAlgo(metaclass=abc.ABCMeta):

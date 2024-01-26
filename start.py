@@ -1,6 +1,6 @@
 import asyncio
 
-from pkg.boot import boot
+from pkg.core import boot
 
 
 if __name__ == '__main__':

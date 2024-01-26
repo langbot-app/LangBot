@@ -3,12 +3,15 @@ from __future__ import print_function
 import os
 import sys
 
-from . import files
-from . import deps
-from . import log
-from . import config
+from .bootutils import files
+from .bootutils import deps
+from .bootutils import log
+from .bootutils import config
 
 from . import app
+from . import pool
+from . import controller
+from ..pipeline import stagemgr
 from ..audit import identifier
 from ..database import manager as db_mgr
 from ..openai import manager as llm_mgr
@@ -86,6 +89,8 @@ async def make_app() -> app.Application:
     ap.cfg_mgr = cfg_mgr
     ap.tips_mgr = tips_mgr
 
+    ap.query_pool = pool.QueryPool()
+
     center_v2_api = center_v2.V2CenterAPI(
         basic_info={
             "host_id": identifier.identifier['host_id'],
@@ -111,7 +116,15 @@ async def make_app() -> app.Application:
     llm_session.load_sessions()
 
     im_mgr_inst = im_mgr.QQBotManager(first_time_init=True, ap=ap)
+    await im_mgr_inst.initialize()
     ap.im_mgr = im_mgr_inst
+
+    stage_mgr = stagemgr.StageManager(ap)
+    await stage_mgr.initialize()
+    ap.stage_mgr = stage_mgr
+
+    ctrl = controller.Controller(ap)
+    ap.ctrl = ctrl
 
     # TODO make it async
     plugin_host.load_plugins()
@@ -122,5 +135,4 @@ async def make_app() -> app.Application:
 
 async def main():
     app_inst = await make_app()
-    await app_inst.initialize()
     await app_inst.run()

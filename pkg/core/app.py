@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import asyncio
 
 from ..qqbot import manager as qqbot_mgr
 from ..openai import manager as openai_mgr
@@ -8,6 +9,8 @@ from ..config import manager as config_mgr
 from ..database import manager as database_mgr
 from ..utils.center import v2 as center_mgr
 from ..plugin import host as plugin_host
+from . import pool, controller
+from ..pipeline import stagemgr
 
 
 class Application:
@@ -23,16 +26,24 @@ class Application:
 
     ctr_mgr: center_mgr.V2CenterAPI = None
 
+    query_pool: pool.QueryPool = None
+
+    ctrl: controller.Controller = None
+
+    stage_mgr: stagemgr.StageManager = None
+
     logger: logging.Logger = None
 
     def __init__(self):
         pass
 
-    async def initialize(self):
-        await self.im_mgr.initialize()
-
     async def run(self):
         # TODO make it async
         plugin_host.initialize_plugins()
 
-        await self.im_mgr.run()
+        tasks = [
+            asyncio.create_task(self.im_mgr.run()),
+            asyncio.create_task(self.ctrl.run())
+        ]
+
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)

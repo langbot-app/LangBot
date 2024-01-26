@@ -3,21 +3,20 @@ import os
 import traceback
 
 from PIL import Image, ImageDraw, ImageFont
-from mirai.models.message import MessageComponent, Plain
+from mirai.models.message import MessageComponent, Plain, MessageChain
 
 from ...core import app
 from . import strategy
 from .strategies import image, forward
+from .. import stage, entities, stagemgr
+from ...core import entities as core_entities
+from ...config import manager as cfg_mgr
 
 
-class LongTextProcessor:
-    
-    ap: app.Application
+@stage.stage_class("LongTextProcessStage")
+class LongTextProcessStage(stage.PipelineStage):
 
     strategy_impl: strategy.LongTextStrategy
-
-    def __init__(self, ap: app.Application):
-        self.ap = ap
 
     async def initialize(self):
         config = self.ap.cfg_mgr.data
@@ -48,9 +47,11 @@ class LongTextProcessor:
         elif self.ap.cfg_mgr.data['blob_message_strategy'] == 'forward':
             self.strategy_impl = forward.ForwardComponentStrategy(self.ap)
         await self.strategy_impl.initialize()
-
-    async def check_and_process(self, message: str) -> list[MessageComponent]:
-        if len(message) > self.ap.cfg_mgr.data['blob_message_threshold']:
-            return await self.strategy_impl.process(message)
-        else:
-            return [Plain(message)]
+    
+    async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:
+        if len(str(query.resp_message_chain)) > self.ap.cfg_mgr.data['blob_message_threshold']:
+            query.message_chain = MessageChain(await self.strategy_impl.process(str(query.resp_message_chain)))
+        return entities.StageProcessResult(
+            result_type=entities.ResultType.CONTINUE,
+            new_query=query
+        )

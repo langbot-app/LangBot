@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ...boot import app
+from ...core import app
 from . import entities
 from . import filter
 from .filters import cntignore, banwords, baiduexamine

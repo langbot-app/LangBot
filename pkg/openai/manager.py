@@ -10,7 +10,7 @@ from ..utils import context
 from ..audit import gatherer
 from ..openai import modelmgr
 from ..openai.api import model as api_model
-from ..boot import app
+from ..core import app
 
 
 class OpenAIInteract:

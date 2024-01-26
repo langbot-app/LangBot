@@ -24,7 +24,7 @@ from .cntfilter import cntfilter
 from .longtext import longtext
 from .ratelim import ratelim
 
-from ..boot import app
+from ..core import app, entities as core_entities
 
 
 # 控制QQ消息输入输出的类
@@ -91,45 +91,29 @@ class QQBotManager:
         # Caution: 注册新的事件处理器之后，请务必在unsubscribe_all中编写相应的取消订阅代码
         async def on_friend_message(event: FriendMessage):
 
-            async def friend_message_handler():
-                # 触发事件
-                args = {
-                    "launcher_type": "person",
-                    "launcher_id": event.sender.id,
-                    "sender_id": event.sender.id,
-                    "message_chain": event.message_chain,
-                }
-                plugin_event = plugin_host.emit(plugin_models.PersonMessageReceived, **args)
+            await self.ap.query_pool.add_query(
+                launcher_type=core_entities.LauncherTypes.PERSON,
+                launcher_id=event.sender.id,
+                sender_id=event.sender.id,
+                message_event=event,
+                message_chain=event.message_chain
+            )
 
-                if plugin_event.is_prevented_default():
-                    return
-
-                await self.on_person_message(event)
-
-            asyncio.create_task(friend_message_handler())
         self.adapter.register_listener(
             FriendMessage,
             on_friend_message
         )
 
         async def on_stranger_message(event: StrangerMessage):
+            
+            await self.ap.query_pool.add_query(
+                launcher_type=core_entities.LauncherTypes.PERSON,
+                launcher_id=event.sender.id,
+                sender_id=event.sender.id,
+                message_event=event,
+                message_chain=event.message_chain
+            )
 
-            async def stranger_message_handler():
-                # 触发事件
-                args = {
-                    "launcher_type": "person",
-                    "launcher_id": event.sender.id,
-                    "sender_id": event.sender.id,
-                    "message_chain": event.message_chain,
-                }
-                plugin_event = plugin_host.emit(plugin_models.PersonMessageReceived, **args)
-
-                if plugin_event.is_prevented_default():
-                    return
-
-                await self.on_person_message(event)
-
-            asyncio.create_task(stranger_message_handler())
         # nakuru不区分好友和陌生人，故仅为yirimirai注册陌生人事件
         if config['msg_source_adapter'] == 'yirimirai':
             self.adapter.register_listener(
@@ -139,48 +123,18 @@ class QQBotManager:
 
         async def on_group_message(event: GroupMessage):
 
-            async def group_message_handler(event: GroupMessage):
-                # 触发事件
-                args = {
-                    "launcher_type": "group",
-                    "launcher_id": event.group.id,
-                    "sender_id": event.sender.id,
-                    "message_chain": event.message_chain,
-                }
-                plugin_event = plugin_host.emit(plugin_models.GroupMessageReceived, **args)
-
-                if plugin_event.is_prevented_default():
-                    return
-
-                await self.on_group_message(event)
-
-            asyncio.create_task(group_message_handler(event))
+            await self.ap.query_pool.add_query(
+                launcher_type=core_entities.LauncherTypes.GROUP,
+                launcher_id=event.group.id,
+                sender_id=event.sender.id,
+                message_event=event,
+                message_chain=event.message_chain
+            )
 
         self.adapter.register_listener(
             GroupMessage,
             on_group_message
         )
-
-        def unsubscribe_all():
-            """取消所有订阅
-
-            用于在热重载流程中卸载所有事件处理器
-            """
-            self.adapter.unregister_listener(
-                FriendMessage,
-                on_friend_message
-            )
-            if config['msg_source_adapter'] == 'yirimirai':
-                self.adapter.unregister_listener(
-                    StrangerMessage,
-                    on_stranger_message
-                )
-            self.adapter.unregister_listener(
-                GroupMessage,
-                on_group_message
-            )
-
-        self.unsubscribe_all = unsubscribe_all
 
     async def send(self, event, msg, check_quote=True, check_at_sender=True):
         config = context.get_config_manager().data

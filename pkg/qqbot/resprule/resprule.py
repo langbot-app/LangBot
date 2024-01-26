@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import mirai
 
-from ...boot import app
+from ...core import app
 from . import entities, rule
 from .rules import atbot, prefix, regexp, random
 
