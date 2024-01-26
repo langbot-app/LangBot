@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import abc
+import typing
 
 from ..core import app, entities as core_entities
 from . import entities
@@ -37,7 +38,10 @@ class PipelineStage(metaclass=abc.ABCMeta):
         self,
         query: core_entities.Query,
         stage_inst_name: str,
-    ) -> entities.StageProcessResult:
+    ) -> typing.Union[
+        entities.StageProcessResult,
+        typing.AsyncGenerator[entities.StageProcessResult, None],
+    ]:
         """处理
         """
         raise NotImplementedError

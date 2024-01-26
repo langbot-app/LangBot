@@ -7,7 +7,20 @@ from . import stage
 from .resprule import resprule
 from .bansess import bansess
 from .cntfilter import cntfilter
+from .process import process
 from .longtext import longtext
+from .respback import respback
+
+
+stage_order = [
+    "GroupRespondRuleCheckStage",
+    "BanSessionCheckStage",
+    "PreContentFilterStage",
+    "MessageProcessor",
+    "PostContentFilterStage",
+    "LongTextProcessStage",
+    "SendResponseBackStage",
+]
 
 
 class StageInstContainer():
@@ -45,3 +58,6 @@ class StageManager:
             
         for stage_containers in self.stage_containers:
             await stage_containers.inst.initialize()
+
+        # 按照 stage_order 排序
+        self.stage_containers.sort(key=lambda x: stage_order.index(x.inst_name))

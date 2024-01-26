@@ -5,6 +5,9 @@ import asyncio
 
 from ..qqbot import manager as qqbot_mgr
 from ..openai import manager as openai_mgr
+from ..openai.session import sessionmgr as llm_session_mgr
+from ..openai.requester import modelmgr as llm_model_mgr
+from ..openai.sysprompt import sysprompt as llm_prompt_mgr
 from ..config import manager as config_mgr
 from ..database import manager as database_mgr
 from ..utils.center import v2 as center_mgr
@@ -17,6 +20,12 @@ class Application:
     im_mgr: qqbot_mgr.QQBotManager = None
 
     llm_mgr: openai_mgr.OpenAIInteract = None
+
+    sess_mgr: llm_session_mgr.SessionManager = None
+
+    model_mgr: llm_model_mgr.ModelManager = None
+
+    prompt_mgr: llm_prompt_mgr.PromptManager = None
 
     cfg_mgr: config_mgr.ConfigManager = None
 

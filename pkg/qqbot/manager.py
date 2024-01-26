@@ -18,10 +18,6 @@ from ..plugin import host as plugin_host
 from ..plugin import models as plugin_models
 import tips as tips_custom
 from ..qqbot import adapter as msadapter
-from .resprule import resprule
-from .bansess import bansess
-from .cntfilter import cntfilter
-from .longtext import longtext
 from .ratelim import ratelim
 
 from ..core import app, entities as core_entities
@@ -41,30 +37,18 @@ class QQBotManager:
     # modern
     ap: app.Application = None
 
-    bansess_mgr: bansess.SessionBanManager = None
-    cntfilter_mgr: cntfilter.ContentFilterManager = None
-    longtext_pcs: longtext.LongTextProcessor = None
-    resprule_chkr: resprule.GroupRespondRuleChecker = None
     ratelimiter: ratelim.RateLimiter = None
 
     def __init__(self, first_time_init=True, ap: app.Application = None):
         config = context.get_config_manager().data
 
         self.ap = ap
-        self.bansess_mgr = bansess.SessionBanManager(ap)
-        self.cntfilter_mgr = cntfilter.ContentFilterManager(ap)
-        self.longtext_pcs = longtext.LongTextProcessor(ap)
-        self.resprule_chkr = resprule.GroupRespondRuleChecker(ap)
         self.ratelimiter = ratelim.RateLimiter(ap)
 
         self.timeout = config['process_message_timeout']
         self.retry = config['retry_times']
     
     async def initialize(self):
-        await self.bansess_mgr.initialize()
-        await self.cntfilter_mgr.initialize()
-        await self.longtext_pcs.initialize()
-        await self.resprule_chkr.initialize()
         await self.ratelimiter.initialize()
 
         config = context.get_config_manager().data

@@ -15,7 +15,7 @@ from ..plugin import host as plugin_host
 from ..plugin import models as plugin_models
 import tips as tips_custom
 from ..core import app
-from .cntfilter import entities
+# from .cntfilter import entities
 
 processing = []
 

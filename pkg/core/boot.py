@@ -15,7 +15,9 @@ from ..pipeline import stagemgr
 from ..audit import identifier
 from ..database import manager as db_mgr
 from ..openai import manager as llm_mgr
-from ..openai import session as llm_session
+from ..openai.session import sessionmgr as llm_session_mgr
+from ..openai.requester import modelmgr as llm_model_mgr
+from ..openai.sysprompt import sysprompt as llm_prompt_mgr
 from ..openai import dprompt as llm_dprompt
 from ..qqbot import manager as im_mgr
 from ..qqbot.cmds import aamgr as im_cmd_aamgr
@@ -112,8 +114,18 @@ async def make_app() -> app.Application:
 
     llm_mgr_inst = llm_mgr.OpenAIInteract(ap)
     ap.llm_mgr = llm_mgr_inst
-    # TODO make it async
-    llm_session.load_sessions()
+
+    llm_model_mgr_inst = llm_model_mgr.ModelManager(ap)
+    await llm_model_mgr_inst.initialize()
+    ap.model_mgr = llm_model_mgr_inst
+
+    llm_session_mgr_inst = llm_session_mgr.SessionManager(ap)
+    await llm_session_mgr_inst.initialize()
+    ap.sess_mgr = llm_session_mgr_inst
+
+    llm_prompt_mgr_inst = llm_prompt_mgr.PromptManager(ap)
+    await llm_prompt_mgr_inst.initialize()
+    ap.prompt_mgr = llm_prompt_mgr_inst
 
     im_mgr_inst = im_mgr.QQBotManager(first_time_init=True, ap=ap)
     await im_mgr_inst.initialize()
