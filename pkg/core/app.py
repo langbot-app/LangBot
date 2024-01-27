@@ -12,6 +12,7 @@ from ..openai.tools import toolmgr as llm_tool_mgr
 from ..config import manager as config_mgr
 from ..database import manager as database_mgr
 from ..utils.center import v2 as center_mgr
+from ..command import cmdmgr
 from ..plugin import host as plugin_host
 from . import pool, controller
 from ..pipeline import stagemgr
@@ -21,6 +22,8 @@ class Application:
     im_mgr: qqbot_mgr.QQBotManager = None
 
     llm_mgr: openai_mgr.OpenAIInteract = None
+
+    cmd_mgr: cmdmgr.CommandManager = None
 
     sess_mgr: llm_session_mgr.SessionManager = None
 
@@ -54,7 +57,6 @@ class Application:
 
         # 把现有的所有内容函数加到toolmgr里
         for func in plugin_host.__callable_functions__:
-            print(func)
             self.tool_mgr.register_legacy_function(
                 name=func['name'],
                 description=func['description'],

@@ -16,20 +16,31 @@ class CommandHandler(handler.MessageHandler):
     ) -> typing.AsyncGenerator[entities.StageProcessResult, None]:
         """处理
         """
-        query.resp_message_chain = mirai.MessageChain([
-            mirai.Plain('CommandHandler')
-        ])
+        session = await self.ap.sess_mgr.get_session(query)
 
-        yield entities.StageProcessResult(
-            result_type=entities.ResultType.CONTINUE,
-            new_query=query
-        )
+        command_text = str(query.message_chain).strip()[1:]
 
-        query.resp_message_chain = mirai.MessageChain([
-            mirai.Plain('The Second Message')
-        ])
+        async for ret in self.ap.cmd_mgr.execute(
+            command_text=command_text,
+            query=query,
+            session=session
+        ):
+            if ret.error is not None:
+                query.resp_message_chain = mirai.MessageChain([
+                    mirai.Plain(str(ret.error))
+                ])
 
-        yield entities.StageProcessResult(
-            result_type=entities.ResultType.CONTINUE,
-            new_query=query
-        )
+                yield entities.StageProcessResult(
+                    result_type=entities.ResultType.CONTINUE,
+                    new_query=query
+                )
+            else:
+                if ret.text is not None:
+                    query.resp_message_chain = mirai.MessageChain([
+                        mirai.Plain(ret.text)
+                    ])
+
+                    yield entities.StageProcessResult(
+                        result_type=entities.ResultType.CONTINUE,
+                        new_query=query
+                    )

@@ -19,9 +19,8 @@ from ..openai.session import sessionmgr as llm_session_mgr
 from ..openai.requester import modelmgr as llm_model_mgr
 from ..openai.sysprompt import sysprompt as llm_prompt_mgr
 from ..openai.tools import toolmgr as llm_tool_mgr
-from ..openai import dprompt as llm_dprompt
 from ..qqbot import manager as im_mgr
-from ..qqbot.cmds import aamgr as im_cmd_aamgr
+from ..command import cmdmgr
 from ..plugin import host as plugin_host
 from ..utils.center import v2 as center_v2
 from ..utils import updater
@@ -81,11 +80,6 @@ async def make_app() -> app.Application:
     if cfg_mgr.data['admin_qq'] == 0:
         qcg_logger.warning("未设置管理员QQ号，将无法使用管理员命令，请在 config.py 中修改 admin_qq")
 
-    # TODO make it async
-    llm_dprompt.register_all()
-    im_cmd_aamgr.register_all()
-    im_cmd_aamgr.apply_privileges()
-
     # 构建组建实例
     ap = app.Application()
     ap.logger = qcg_logger
@@ -115,6 +109,10 @@ async def make_app() -> app.Application:
 
     llm_mgr_inst = llm_mgr.OpenAIInteract(ap)
     ap.llm_mgr = llm_mgr_inst
+
+    cmd_mgr_inst = cmdmgr.CommandManager(ap)
+    await cmd_mgr_inst.initialize()
+    ap.cmd_mgr = cmd_mgr_inst
 
     llm_model_mgr_inst = llm_model_mgr.ModelManager(ap)
     await llm_model_mgr_inst.initialize()
