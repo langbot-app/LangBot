@@ -19,7 +19,8 @@ class ModelManager:
 
     async def initialize(self):
         openai_chat_completion = chatcmpl.OpenAIChatCompletion(self.ap)
-        openai_token_mgr = token.TokenManager(self.ap, self.ap.cfg_mgr.data['openai_config']['api_key'].values())
+        await openai_chat_completion.initialize()
+        openai_token_mgr = token.TokenManager(self.ap, list(self.ap.cfg_mgr.data['openai_config']['api_key'].values()))
 
         self.model_list.append(
             entities.LLMModelInfo(

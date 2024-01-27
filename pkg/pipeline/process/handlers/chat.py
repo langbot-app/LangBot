@@ -26,13 +26,11 @@ class ChatMessageHandler(handler.MessageHandler):
         conversation = await self.ap.sess_mgr.get_conversation(session)
 
         async for result in conversation.use_model.requester.request(query, conversation):
+            conversation.messages.append(result)
+
             query.resp_message_chain = mirai.MessageChain([mirai.Plain(str(result))])
 
             yield entities.StageProcessResult(
                 result_type=entities.ResultType.CONTINUE,
                 new_query=query
             )
-
-                
-
-

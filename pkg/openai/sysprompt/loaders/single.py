@@ -19,7 +19,7 @@ class SingleSystemPromptLoader(loader.PromptLoader):
                 name=name,
                 messages=[
                     llm_entities.Message(
-                        role=llm_entities.MessageRole.SYSTEM,
+                        role='system',
                         content=cnt
                     )
                 ]
@@ -34,7 +34,7 @@ class SingleSystemPromptLoader(loader.PromptLoader):
                     name=file_name,
                     messages=[
                         llm_entities.Message(
-                            role=llm_entities.MessageRole.SYSTEM,
+                            role='system',
                             content=file_str
                         )
                     ]

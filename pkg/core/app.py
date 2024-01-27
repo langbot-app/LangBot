@@ -8,6 +8,7 @@ from ..openai import manager as openai_mgr
 from ..openai.session import sessionmgr as llm_session_mgr
 from ..openai.requester import modelmgr as llm_model_mgr
 from ..openai.sysprompt import sysprompt as llm_prompt_mgr
+from ..openai.tools import toolmgr as llm_tool_mgr
 from ..config import manager as config_mgr
 from ..database import manager as database_mgr
 from ..utils.center import v2 as center_mgr
@@ -26,6 +27,8 @@ class Application:
     model_mgr: llm_model_mgr.ModelManager = None
 
     prompt_mgr: llm_prompt_mgr.PromptManager = None
+
+    tool_mgr: llm_tool_mgr.ToolManager = None
 
     cfg_mgr: config_mgr.ConfigManager = None
 
@@ -46,9 +49,20 @@ class Application:
     def __init__(self):
         pass
 
-    async def run(self):
-        # TODO make it async
+    async def initialize(self):
         plugin_host.initialize_plugins()
+
+        # 把现有的所有内容函数加到toolmgr里
+        for func in plugin_host.__callable_functions__:
+            print(func)
+            self.tool_mgr.register_legacy_function(
+                name=func['name'],
+                description=func['description'],
+                parameters=func['parameters'],
+                func=plugin_host.__function_inst_map__[func['name']]
+            )
+
+    async def run(self):
 
         tasks = [
             asyncio.create_task(self.im_mgr.run()),

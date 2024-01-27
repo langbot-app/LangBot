@@ -5,27 +5,29 @@ import enum
 import pydantic
 
 
-class MessageRole(enum.Enum):
-
-    SYSTEM = 'system'
-
-    USER = 'user'
-
-    ASSISTANT = 'assistant'
-
-    FUNCTION = 'function'
-
-
 class FunctionCall(pydantic.BaseModel):
     name: str
 
-    args: dict[str, typing.Any]
+    arguments: str
+
+
+class ToolCall(pydantic.BaseModel):
+    id: str
+
+    type: str
+
+    function: FunctionCall
 
 
 class Message(pydantic.BaseModel):
+    role: str
 
-    role: MessageRole
+    name: typing.Optional[str] = None
 
     content: typing.Optional[str] = None
 
     function_call: typing.Optional[FunctionCall] = None
+
+    tool_calls: typing.Optional[list[ToolCall]] = None
+
+    tool_call_id: typing.Optional[str] = None

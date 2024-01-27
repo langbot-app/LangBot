@@ -18,6 +18,7 @@ from ..openai import manager as llm_mgr
 from ..openai.session import sessionmgr as llm_session_mgr
 from ..openai.requester import modelmgr as llm_model_mgr
 from ..openai.sysprompt import sysprompt as llm_prompt_mgr
+from ..openai.tools import toolmgr as llm_tool_mgr
 from ..openai import dprompt as llm_dprompt
 from ..qqbot import manager as im_mgr
 from ..qqbot.cmds import aamgr as im_cmd_aamgr
@@ -127,6 +128,10 @@ async def make_app() -> app.Application:
     await llm_prompt_mgr_inst.initialize()
     ap.prompt_mgr = llm_prompt_mgr_inst
 
+    llm_tool_mgr_inst = llm_tool_mgr.ToolManager(ap)
+    await llm_tool_mgr_inst.initialize()
+    ap.tool_mgr = llm_tool_mgr_inst
+
     im_mgr_inst = im_mgr.QQBotManager(first_time_init=True, ap=ap)
     await im_mgr_inst.initialize()
     ap.im_mgr = im_mgr_inst
@@ -140,7 +145,8 @@ async def make_app() -> app.Application:
 
     # TODO make it async
     plugin_host.load_plugins()
-    # plugin_host.initialize_plugins()
+    
+    await ap.initialize()
 
     return ap
 

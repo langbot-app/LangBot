@@ -10,6 +10,7 @@ from ..sysprompt import entities as sysprompt_entities
 from .. import entities as llm_entities
 from ..requester import entities
 from ...core import entities as core_entities
+from ..tools import entities as tools_entities
 
 
 class Conversation(pydantic.BaseModel):
@@ -24,6 +25,8 @@ class Conversation(pydantic.BaseModel):
     update_time: typing.Optional[datetime.datetime] = pydantic.Field(default_factory=datetime.datetime.now)
 
     use_model: entities.LLMModelInfo
+
+    use_funcs: typing.Optional[list[tools_entities.LLMFunction]]
 
 
 class Session(pydantic.BaseModel):

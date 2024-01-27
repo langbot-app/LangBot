@@ -21,14 +21,9 @@ class ScenarioPromptLoader(loader.PromptLoader):
                 file_json = json.loads(file_str)
                 messages = []
                 for msg in file_json["prompt"]:
-                    role = llm_entities.MessageRole.SYSTEM
+                    role = 'system'
                     if "role" in msg:
-                        if msg["role"] == "user":
-                            role = llm_entities.MessageRole.USER
-                        elif msg["role"] == "system":
-                            role = llm_entities.MessageRole.SYSTEM
-                        elif msg["role"] == "function":
-                            role = llm_entities.MessageRole.FUNCTION
+                        role = msg['role']
                     messages.append(
                         llm_entities.Message(
                             role=role,
