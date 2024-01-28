@@ -6,7 +6,7 @@ import pydantic
 import mirai
 
 from ..core import app, entities as core_entities
-from ..gai.session import entities as session_entities
+from ..provider.session import entities as session_entities
 from . import errors, operator
 
 

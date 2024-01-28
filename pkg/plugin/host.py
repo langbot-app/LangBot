@@ -15,7 +15,7 @@ from ..utils import network as network
 from ..utils import context as context
 from ..plugin import switch as switch
 from ..plugin import settings as settings
-from ..im import adapter as msadapter
+from ..platform import adapter as msadapter
 from ..plugin import metadata as metadata
 
 from mirai import Mirai

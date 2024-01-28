@@ -9,7 +9,7 @@ import nakuru
 import nakuru.entities.components as nkc
 
 from .. import adapter as adapter_model
-from ...im import blob
+from ...platform import blob
 from ...utils import context
 
 

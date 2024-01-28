@@ -3,7 +3,7 @@ from __future__ import annotations
 import typing
 import pydantic
 
-from ...gai import entities
+from ...provider import entities
 
 
 class Prompt(pydantic.BaseModel):

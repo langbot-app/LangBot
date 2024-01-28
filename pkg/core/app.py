@@ -3,11 +3,11 @@ from __future__ import annotations
 import logging
 import asyncio
 
-from ..im import manager as qqbot_mgr
-from ..gai.session import sessionmgr as llm_session_mgr
-from ..gai.requester import modelmgr as llm_model_mgr
-from ..gai.sysprompt import sysprompt as llm_prompt_mgr
-from ..gai.tools import toolmgr as llm_tool_mgr
+from ..platform import manager as qqbot_mgr
+from ..provider.session import sessionmgr as llm_session_mgr
+from ..provider.requester import modelmgr as llm_model_mgr
+from ..provider.sysprompt import sysprompt as llm_prompt_mgr
+from ..provider.tools import toolmgr as llm_tool_mgr
 from ..config import manager as config_mgr
 from ..database import manager as database_mgr
 from ..utils.center import v2 as center_mgr

@@ -10,11 +10,11 @@ from mirai import At, GroupMessage, MessageEvent, StrangerMessage, \
 import mirai
 import func_timeout
 
-from ..gai import session as openai_session
+from ..provider import session as openai_session
 
 from ..utils import context
 import tips as tips_custom
-from ..im import adapter as msadapter
+from ..platform import adapter as msadapter
 from .ratelim import ratelim
 
 from ..core import app, entities as core_entities
@@ -44,13 +44,13 @@ class QQBotManager:
 
         logging.debug("Use adapter:" + config['msg_source_adapter'])
         if config['msg_source_adapter'] == 'yirimirai':
-            from pkg.im.sources.yirimirai import YiriMiraiAdapter
+            from pkg.platform.sources.yirimirai import YiriMiraiAdapter
 
             mirai_http_api_config = config['mirai_http_api_config']
             self.bot_account_id = config['mirai_http_api_config']['qq']
             self.adapter = YiriMiraiAdapter(mirai_http_api_config)
         elif config['msg_source_adapter'] == 'nakuru':
-            from pkg.im.sources.nakuru import NakuruProjectAdapter
+            from pkg.platform.sources.nakuru import NakuruProjectAdapter
             self.adapter = NakuruProjectAdapter(config['nakuru_config'])
             self.bot_account_id = self.adapter.bot_account_id
         

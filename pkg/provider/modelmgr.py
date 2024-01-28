@@ -8,9 +8,9 @@ Completion - text-davinci-003 等模型
 import tiktoken
 import openai
 
-from ..gai.api import model as api_model
-from ..gai.api import completion as api_completion
-from ..gai.api import chat_completion as api_chat_completion
+from ..provider.api import model as api_model
+from ..provider.api import completion as api_completion
+from ..provider.api import chat_completion as api_chat_completion
 
 COMPLETION_MODELS = {
     "gpt-3.5-turbo-instruct",

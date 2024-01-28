@@ -3,7 +3,7 @@ import os
 
 from .. import loader
 from .. import entities
-from ....gai import entities as llm_entities
+from ....provider import entities as llm_entities
 
 
 class SingleSystemPromptLoader(loader.PromptLoader):
