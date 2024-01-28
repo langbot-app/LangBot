@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import threading
-from . import threadctl
 
 from ..database import manager as db_mgr
-from ..openai import manager as openai_mgr
 from ..qqbot import manager as qqbot_mgr
 from ..config import  manager as config_mgr
 from ..plugin import host as plugin_host

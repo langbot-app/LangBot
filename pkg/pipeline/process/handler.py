@@ -1,10 +1,13 @@
 from __future__ import annotations
+
 import abc
 
 from ...core import app
+from ...core import entities as core_entities
+from .. import entities
 
 
-class ReteLimitAlgo(metaclass=abc.ABCMeta):
+class MessageHandler(metaclass=abc.ABCMeta):
     
     ap: app.Application
 
@@ -15,10 +18,8 @@ class ReteLimitAlgo(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    async def require_access(self, launcher_type: str, launcher_id: int) -> bool:
+    async def handle(
+        self,
+        query: core_entities.Query,
+    ) -> entities.StageProcessResult:
         raise NotImplementedError
-    
-    @abc.abstractmethod
-    async def release_access(self, launcher_type: str, launcher_id: int):
-        raise NotImplementedError
- 

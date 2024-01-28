@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from . import algo
 from .algos import fixedwin
-from ...boot import app
+from ...core import app
 
 
 class RateLimiter:
