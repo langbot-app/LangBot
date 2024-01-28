@@ -7,7 +7,7 @@ import mirai
 from .. import handler
 from ... import entities
 from ....core import entities as core_entities
-from ....openai import entities as llm_entities
+from ....gai import entities as llm_entities
 
 
 class ChatMessageHandler(handler.MessageHandler):

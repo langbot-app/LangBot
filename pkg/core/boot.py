@@ -14,11 +14,11 @@ from . import controller
 from ..pipeline import stagemgr
 from ..audit import identifier
 from ..database import manager as db_mgr
-from ..openai.session import sessionmgr as llm_session_mgr
-from ..openai.requester import modelmgr as llm_model_mgr
-from ..openai.sysprompt import sysprompt as llm_prompt_mgr
-from ..openai.tools import toolmgr as llm_tool_mgr
-from ..qqbot import manager as im_mgr
+from ..gai.session import sessionmgr as llm_session_mgr
+from ..gai.requester import modelmgr as llm_model_mgr
+from ..gai.sysprompt import sysprompt as llm_prompt_mgr
+from ..gai.tools import toolmgr as llm_tool_mgr
+from ..im import manager as im_mgr
 from ..command import cmdmgr
 from ..plugin import host as plugin_host
 from ..utils.center import v2 as center_v2

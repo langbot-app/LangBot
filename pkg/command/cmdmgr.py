@@ -3,8 +3,8 @@ from __future__ import annotations
 import typing
 
 from ..core import app, entities as core_entities
-from ..openai import entities as llm_entities
-from ..openai.session import entities as session_entities
+from ..gai import entities as llm_entities
+from ..gai.session import entities as session_entities
 from . import entities, operator, errors
 
 from .operators import func, plugin, default, reset, list as list_cmd, last, next, delc, resend, prompt, cfg, cmd, help, version, update

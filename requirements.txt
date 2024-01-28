@@ -12,3 +12,4 @@ CallingGPT
 tiktoken
 PyYaml
 aiohttp
+pydantic

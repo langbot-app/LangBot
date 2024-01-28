@@ -3,7 +3,7 @@ import os
 
 from .. import loader
 from .. import entities
-from ....openai import entities as llm_entities
+from ....gai import entities as llm_entities
 
 
 class SingleSystemPromptLoader(loader.PromptLoader):

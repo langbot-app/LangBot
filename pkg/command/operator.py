@@ -4,7 +4,7 @@ import typing
 import abc
 
 from ..core import app, entities as core_entities
-from ..openai.session import entities as session_entities
+from ..gai.session import entities as session_entities
 from . import entities
 
 
