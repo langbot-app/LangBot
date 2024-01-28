@@ -7,7 +7,7 @@ from ..openai import entities as llm_entities
 from ..openai.session import entities as session_entities
 from . import entities, operator, errors
 
-from .operators import func, plugin, default, reset, list as list_cmd, last, next, delc, resend, prompt, cfg, cmd, help, version
+from .operators import func, plugin, default, reset, list as list_cmd, last, next, delc, resend, prompt, cfg, cmd, help, version, update
 
 
 class CommandManager:
