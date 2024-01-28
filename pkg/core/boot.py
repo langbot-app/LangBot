@@ -14,7 +14,6 @@ from . import controller
 from ..pipeline import stagemgr
 from ..audit import identifier
 from ..database import manager as db_mgr
-from ..openai import manager as llm_mgr
 from ..openai.session import sessionmgr as llm_session_mgr
 from ..openai.requester import modelmgr as llm_model_mgr
 from ..openai.sysprompt import sysprompt as llm_prompt_mgr
@@ -107,9 +106,6 @@ async def make_app() -> app.Application:
     db_mgr_inst.initialize_database()
     ap.db_mgr = db_mgr_inst
 
-    llm_mgr_inst = llm_mgr.OpenAIInteract(ap)
-    ap.llm_mgr = llm_mgr_inst
-
     cmd_mgr_inst = cmdmgr.CommandManager(ap)
     await cmd_mgr_inst.initialize()
     ap.cmd_mgr = cmd_mgr_inst
@@ -130,7 +126,7 @@ async def make_app() -> app.Application:
     await llm_tool_mgr_inst.initialize()
     ap.tool_mgr = llm_tool_mgr_inst
 
-    im_mgr_inst = im_mgr.QQBotManager(first_time_init=True, ap=ap)
+    im_mgr_inst = im_mgr.QQBotManager(ap=ap)
     await im_mgr_inst.initialize()
     ap.im_mgr = im_mgr_inst
 

@@ -12,10 +12,7 @@ import func_timeout
 
 from ..openai import session as openai_session
 
-from ..qqbot import process as processor
 from ..utils import context
-from ..plugin import host as plugin_host
-from ..plugin import models as plugin_models
 import tips as tips_custom
 from ..qqbot import adapter as msadapter
 from .ratelim import ratelim
@@ -25,28 +22,20 @@ from ..core import app, entities as core_entities
 
 # 控制QQ消息输入输出的类
 class QQBotManager:
-    retry = 3
-
+    
     adapter: msadapter.MessageSourceAdapter = None
 
     bot_account_id: int = 0
-
-    ban_person = []
-    ban_group = []
 
     # modern
     ap: app.Application = None
 
     ratelimiter: ratelim.RateLimiter = None
 
-    def __init__(self, first_time_init=True, ap: app.Application = None):
-        config = context.get_config_manager().data
+    def __init__(self, ap: app.Application = None):
 
         self.ap = ap
         self.ratelimiter = ratelim.RateLimiter(ap)
-
-        self.timeout = config['process_message_timeout']
-        self.retry = config['retry_times']
     
     async def initialize(self):
         await self.ratelimiter.initialize()
@@ -69,10 +58,6 @@ class QQBotManager:
         from ..utils.center import apigroup
         apigroup.APIGroup._runtime_info['account_id'] = "{}".format(self.bot_account_id)
 
-        context.set_qqbot_manager(self)
-
-        # 注册诸事件
-        # Caution: 注册新的事件处理器之后，请务必在unsubscribe_all中编写相应的取消订阅代码
         async def on_friend_message(event: FriendMessage):
 
             await self.ap.query_pool.add_query(
@@ -143,90 +128,6 @@ class QQBotManager:
             msg,
             quote_origin=True if config['quote_origin'] and check_quote else False
         )
-
-    async def common_process(
-        self,
-        launcher_type: str,
-        launcher_id: int,
-        text_message: str,
-        message_chain: MessageChain,
-        sender_id: int
-    ) -> mirai.MessageChain:
-        """
-        私聊群聊通用消息处理方法
-        """
-        # 检查bansess
-        if await self.bansess_mgr.is_banned(launcher_type, launcher_id, sender_id):
-            self.ap.logger.info("根据禁用列表忽略{}_{}的消息".format(launcher_type, launcher_id))
-            return []
-
-        if mirai.Image in message_chain:
-            return []
-        elif sender_id == self.bot_account_id:
-            return []
-        else:
-            # 超时则重试，重试超过次数则放弃
-            failed = 0
-            for i in range(self.retry):
-                try:
-                    reply = await processor.process_message(launcher_type, launcher_id, text_message, message_chain,
-                                                        sender_id)
-                    return reply
-                
-                # TODO openai 超时处理
-                except func_timeout.FunctionTimedOut:
-                    logging.warning("{}_{}: 超时，重试中({})".format(launcher_type, launcher_id, i))
-                    openai_session.get_session("{}_{}".format(launcher_type, launcher_id)).release_response_lock()
-                    if "{}_{}".format(launcher_type, launcher_id) in processor.processing:
-                        processor.processing.remove("{}_{}".format(launcher_type, launcher_id))
-                    failed += 1
-                    continue
-
-            if failed == self.retry:
-                openai_session.get_session("{}_{}".format(launcher_type, launcher_id)).release_response_lock()
-                await self.notify_admin("{} 请求超时".format("{}_{}".format(launcher_type, launcher_id)))
-                reply = [tips_custom.reply_message]
-
-    # 私聊消息处理
-    async def on_person_message(self, event: MessageEvent):
-        reply = ''
-
-        reply = await self.common_process(
-            launcher_type="person",
-            launcher_id=event.sender.id,
-            text_message=str(event.message_chain),
-            message_chain=event.message_chain,
-            sender_id=event.sender.id
-        )
-
-        if reply:
-            await self.send(event, reply, check_quote=False, check_at_sender=False)
-
-    # 群消息处理
-    async def on_group_message(self, event: GroupMessage):
-        reply = ''
-
-        text = str(event.message_chain).strip()
-
-        rule_check_res = await self.resprule_chkr.check(
-            text,
-            event.message_chain,
-            event.group.id,
-            event.sender.id
-        )
-
-        if rule_check_res.matching:
-            text = str(rule_check_res.replacement).strip()
-            reply = await self.common_process(
-                launcher_type="group",
-                launcher_id=event.group.id,
-                text_message=text,
-                message_chain=rule_check_res.replacement,
-                sender_id=event.sender.id
-            )
-
-        if reply:
-            await self.send(event, reply)
 
     # 通知系统管理员
     async def notify_admin(self, message: str):
