@@ -35,9 +35,16 @@ class PromptManager:
         """
         return self.loader_inst.get_prompts()
     
-    async def  get_prompt(self, name: str) -> loader.entities.Prompt:
+    async def get_prompt(self, name: str) -> loader.entities.Prompt:
         """获取Prompt
         """
         for prompt in self.get_all_prompts():
             if prompt.name == name:
+                return prompt
+
+    async def get_prompt_by_prefix(self, prefix: str) -> loader.entities.Prompt:
+        """通过前缀获取Prompt
+        """
+        for prompt in self.get_all_prompts():
+            if prompt.name.startswith(prefix):
                 return prompt

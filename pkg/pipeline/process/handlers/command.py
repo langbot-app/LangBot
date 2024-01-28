@@ -34,13 +34,17 @@ class CommandHandler(handler.MessageHandler):
                     result_type=entities.ResultType.CONTINUE,
                     new_query=query
                 )
-            else:
-                if ret.text is not None:
-                    query.resp_message_chain = mirai.MessageChain([
-                        mirai.Plain(ret.text)
-                    ])
+            elif ret.text is not None:
+                query.resp_message_chain = mirai.MessageChain([
+                    mirai.Plain(ret.text)
+                ])
 
-                    yield entities.StageProcessResult(
-                        result_type=entities.ResultType.CONTINUE,
-                        new_query=query
-                    )
+                yield entities.StageProcessResult(
+                    result_type=entities.ResultType.CONTINUE,
+                    new_query=query
+                )
+            else:
+                yield entities.StageProcessResult(
+                    result_type=entities.ResultType.INTERRUPT,
+                    new_query=query
+                )

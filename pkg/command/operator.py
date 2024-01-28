@@ -13,8 +13,9 @@ preregistered_operators: list[typing.Type[CommandOperator]] = []
 
 def operator_class(
     name: str,
-    alias: list[str],
     help: str,
+    usage: str = None,
+    alias: list[str] = [],
     privilege: int=1,  # 1为普通用户，2为管理员
     parent_class: typing.Type[CommandOperator] = None
 ) -> typing.Callable[[typing.Type[CommandOperator]], typing.Type[CommandOperator]]:
@@ -22,6 +23,7 @@ def operator_class(
         cls.name = name
         cls.alias = alias
         cls.help = help
+        cls.usage = usage
         cls.parent_class = parent_class
 
         preregistered_operators.append(cls)
@@ -46,7 +48,9 @@ class CommandOperator(metaclass=abc.ABCMeta):
     help: str
     """此节点的帮助信息"""
 
-    parent_class: typing.Type[CommandOperator]
+    usage: str = None
+
+    parent_class: typing.Type[CommandOperator] | None = None
     """父节点类。标记以供管理器在初始化时编织父子关系。"""
 
     lowest_privilege: int = 0

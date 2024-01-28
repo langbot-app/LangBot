@@ -102,7 +102,7 @@ class OpenAIChatCompletion(api.LLMAPIRequester):
             m.dict(exclude_none=True) for m in conversation.prompt.messages
         ] + [m.dict(exclude_none=True) for m in conversation.messages]
 
-        req_messages.append({"role": "user", "content": str(query.message_chain)})
+        # req_messages.append({"role": "user", "content": str(query.message_chain)})
 
         msg = await self._closure(req_messages, conversation)
 

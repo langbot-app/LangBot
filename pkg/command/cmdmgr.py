@@ -7,7 +7,7 @@ from ..openai import entities as llm_entities
 from ..openai.session import entities as session_entities
 from . import entities, operator, errors
 
-from .operators import func
+from .operators import func, plugin, default, reset, list as list_cmd, last, next, delc, resend, prompt, cfg, cmd, help, version
 
 
 class CommandManager:
@@ -41,31 +41,35 @@ class CommandManager:
     ) -> typing.AsyncGenerator[entities.CommandReturn, None]:
         """执行命令
         """
+
         found = False
         if len(context.crt_params) > 0:
-            for operator in operator_list:
-                if context.crt_params[0] == operator.name \
-                    or context.crt_params[0] in operator.alias:
+            for oper in operator_list:
+                if (context.crt_params[0] == oper.name \
+                    or context.crt_params[0] in oper.alias) \
+                    and (oper.parent_class is None or oper.parent_class == operator.__class__):
                     found = True
-                    context.crt_command = context.params[0]
-                    context.crt_params = context.params[1:]
+
+                    context.crt_command = context.crt_params[0]
+                    context.crt_params = context.crt_params[1:]
 
                     async for ret in self._execute(
                         context,
-                        operator.children,
-                        operator
+                        oper.children,
+                        oper
                     ):
                         yield ret
+                    break
 
         if not found:
             if operator is None:
                 yield entities.CommandReturn(
-                    error=errors.CommandNotFoundError(context.crt_command)
+                    error=errors.CommandNotFoundError(context.crt_params[0])
                 )
             else:
                 if operator.lowest_privilege > context.privilege:
                     yield entities.CommandReturn(
-                        error=errors.CommandPrivilegeError(context.crt_command)
+                        error=errors.CommandPrivilegeError(operator.name)
                     )
                 else:
                     async for ret in operator.execute(context):
