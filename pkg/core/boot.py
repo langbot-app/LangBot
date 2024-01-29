@@ -92,6 +92,10 @@ async def make_app() -> app.Application:
     await ver_mgr.initialize()
     ap.ver_mgr = ver_mgr
 
+    plugin_mgr_inst = plugin_mgr.PluginManager(ap)
+    await plugin_mgr_inst.initialize()
+    ap.plugin_mgr = plugin_mgr_inst
+
     center_v2_api = center_v2.V2CenterAPI(
         ap,
         basic_info={
@@ -137,11 +141,6 @@ async def make_app() -> app.Application:
 
     ctrl = controller.Controller(ap)
     ap.ctrl = ctrl
-
-    # TODO make it async
-    plugin_mgr_inst = plugin_mgr.PluginManager(ap)
-    await plugin_mgr_inst.initialize()
-    ap.plugin_mgr = plugin_mgr_inst
     
     await ap.initialize()
 

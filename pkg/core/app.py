@@ -67,6 +67,7 @@ class Application:
 
     async def run(self):
         await self.plugin_mgr.load_plugins()
+        await self.plugin_mgr.initialize_plugins()
 
         tasks = [
             asyncio.create_task(self.im_mgr.run()),

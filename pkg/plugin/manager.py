@@ -47,7 +47,13 @@ class PluginManager:
         self.plugins.sort(key=lambda x: x.priority, reverse=True)
 
     async def initialize_plugins(self):
-        pass
+        for plugin in self.plugins:
+            try:
+                plugin.plugin_inst = plugin.plugin_class(self.api_host)
+            except Exception as e:
+                self.ap.logger.error(f'插件 {plugin.plugin_name} 初始化失败: {e}')
+                self.ap.logger.exception(e)
+                continue
 
     async def install_plugin(
         self,

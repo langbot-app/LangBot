@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typing
+import traceback
 
 from ...core import app, entities as core_entities
 from . import entities
@@ -65,17 +66,21 @@ class ToolManager:
         """执行函数调用
         """
 
-        # return "i'm not sure for the args "+str(parameters)
+        try:
 
-        function = await self.get_function(name)
-        if function is None:
-            return None
-        
-        parameters = parameters.copy()
+            function = await self.get_function(name)
+            if function is None:
+                return None
+            
+            parameters = parameters.copy()
 
-        parameters = {
-            "query": query,
-            **parameters
-        }
-        
-        return await function.func(**parameters)
+            parameters = {
+                "query": query,
+                **parameters
+            }
+            
+            return await function.func(**parameters)
+        except Exception as e:
+            self.ap.logger.error(f'执行函数 {name} 时发生错误: {e}')
+            traceback.print_exc()
+            return f'error occurred when executing function {name}: {e}'
