@@ -4,7 +4,6 @@ import typing
 import abc
 
 from ..core import app, entities as core_entities
-from ..provider.session import entities as session_entities
 from . import entities
 
 

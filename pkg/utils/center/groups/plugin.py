@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+from ....core import app
 from .. import apigroup
-from ... import context
 
 
 class V2PluginDataAPI(apigroup.APIGroup):
     """插件数据相关 API"""
 
-    def __init__(self, prefix: str):
-        super().__init__(prefix+"/plugin")
+    ap: app.Application
+
+    def __init__(self, prefix: str, ap: app.Application):
+        self.ap = ap
+        super().__init__(prefix+"/usage")
 
     def do(self, *args, **kwargs):
-        config = context.get_config_manager().data
+        config = self.ap.cfg_mgr.data
         if not config['report_usage']:
             return None
         return super().do(*args, **kwargs)

@@ -8,21 +8,6 @@ import time
 import requests
 
 from . import constants
-from . import network
-from . import context
-
-
-def check_dulwich_closure():
-    try:
-        import pkg.utils.pkgmgr
-        pkg.utils.pkgmgr.ensure_dulwich()
-    except:
-        pass
-
-    try:
-        import dulwich
-    except ModuleNotFoundError:
-        raise Exception("dulwich模块未安装,请查看 https://github.com/RockChinQ/QChatGPT/issues/77")
 
 
 def is_newer(new_tag: str, old_tag: str):
@@ -45,28 +30,6 @@ def is_newer(new_tag: str, old_tag: str):
     old_tag = ".".join(old_tag[:3])
 
     return new_tag != old_tag
-
-
-def get_release_list() -> list:
-    """获取发行列表"""
-    rls_list_resp = requests.get(
-        url="https://api.github.com/repos/RockChinQ/QChatGPT/releases",
-        proxies=network.wrapper_proxies()
-    )
-
-    rls_list = rls_list_resp.json()
-
-    return rls_list
-
-
-def get_current_tag() -> str:
-    """获取当前tag"""
-    current_tag = constants.semantic_version
-    if os.path.exists("current_tag"):
-        with open("current_tag", "r") as f:
-            current_tag = f.read()
-
-    return current_tag
 
 
 def compare_version_str(v0: str, v1: str) -> int:
@@ -209,79 +172,3 @@ def update_all(cli: bool = False) -> bool:
     else:
         print("已更新到最新版本: {}\n更新日志:\n{}\n完整的更新日志请前往 https://github.com/RockChinQ/QChatGPT/releases 查看。请手动重启程序以使用新版本。".format(current_tag, "\n".join(rls_notes[:-1])))
     return True
-
-
-def is_repo(path: str) -> bool:
-    """检查是否是git仓库"""
-    check_dulwich_closure()
-
-    from dulwich import porcelain
-    try:
-        porcelain.open_repo(path)
-        return True
-    except:
-        return False
-
-
-def get_remote_url(repo_path: str) -> str:
-    """获取远程仓库地址"""
-    check_dulwich_closure()
-
-    from dulwich import porcelain
-    repo = porcelain.open_repo(repo_path)
-    return str(porcelain.get_remote_repo(repo, "origin")[1])
-
-
-def get_current_version_info() -> str:
-    """获取当前版本信息"""
-    rls_list = get_release_list()
-    current_tag = get_current_tag()
-    for rls in rls_list:
-        if rls['tag_name'] == current_tag:
-            return rls['name'] + "\n" + rls['body']
-    return "未知版本"
-
-
-def is_new_version_available() -> bool:
-    """检查是否有新版本"""
-    # 从github获取release列表
-    rls_list = get_release_list()
-    if rls_list is None:
-        return False
-
-    # 获取当前版本
-    current_tag = get_current_tag()
-
-    # 检查是否有新版本
-    latest_tag_name = ""
-    for rls in rls_list:
-        if latest_tag_name == "":
-            latest_tag_name = rls['tag_name']
-            break
-
-    return is_newer(latest_tag_name, current_tag)
-
-
-def get_rls_notes() -> list:
-    """获取更新日志"""
-    # 从github获取release列表
-    rls_list = get_release_list()
-    if rls_list is None:
-        return None
-
-    # 获取当前版本
-    current_tag = get_current_tag()
-
-    # 检查是否有新版本
-    rls_notes = []
-    for rls in rls_list:
-        if rls['tag_name'] == current_tag:
-            break
-
-        rls_notes.append(rls['name'])
-
-    return rls_notes
-
-
-if __name__ == "__main__":
-    update_all()

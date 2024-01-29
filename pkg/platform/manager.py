@@ -12,7 +12,6 @@ import func_timeout
 
 from ..provider import session as openai_session
 
-from ..utils import context
 import tips as tips_custom
 from ..platform import adapter as msadapter
 from .ratelim import ratelim
@@ -40,7 +39,7 @@ class QQBotManager:
     async def initialize(self):
         await self.ratelimiter.initialize()
 
-        config = context.get_config_manager().data
+        config = self.ap.cfg_mgr.data
 
         logging.debug("Use adapter:" + config['msg_source_adapter'])
         if config['msg_source_adapter'] == 'yirimirai':
@@ -106,7 +105,7 @@ class QQBotManager:
         )
 
     async def send(self, event, msg, check_quote=True, check_at_sender=True):
-        config = context.get_config_manager().data
+        config = self.ap.cfg_mgr.data
         
         if check_at_sender and config['at_sender']:
             msg.insert(
@@ -134,7 +133,7 @@ class QQBotManager:
         await self.notify_admin_message_chain(MessageChain([Plain("[bot]{}".format(message))]))
 
     async def notify_admin_message_chain(self, message: mirai.MessageChain):
-        config = context.get_config_manager().data
+        config = self.ap.cfg_mgr.data
         if config['admin_qq'] != 0 and config['admin_qq'] != []:
             logging.info("通知管理员:{}".format(message))
 

@@ -6,7 +6,6 @@ import pydantic
 import mirai
 
 from ..core import app, entities as core_entities
-from ..provider.session import entities as session_entities
 from . import errors, operator
 
 
@@ -28,7 +27,7 @@ class ExecuteContext(pydantic.BaseModel):
 
     query: core_entities.Query
 
-    session: session_entities.Session
+    session: core_entities.Session
 
     command_text: str
 

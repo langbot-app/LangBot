@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 from .. import apigroup
-from ... import context
+from ....core import app
 
 
 class V2MainDataAPI(apigroup.APIGroup):
     """主程序相关 数据API"""
 
-    def __init__(self, prefix: str):
-        super().__init__(prefix+"/main")
+    ap: app.Application
+
+    def __init__(self, prefix: str, ap: app.Application):
+        self.ap = ap
+        super().__init__(prefix+"/usage")
 
     def do(self, *args, **kwargs):
-        config = context.get_config_manager().data
+        config = self.ap.cfg_mgr.data
         if not config['report_usage']:
             return None
         return super().do(*args, **kwargs)

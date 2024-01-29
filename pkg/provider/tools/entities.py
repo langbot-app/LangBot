@@ -6,6 +6,8 @@ import asyncio
 
 import pydantic
 
+from ...core import entities as core_entities
+
 
 class LLMFunction(pydantic.BaseModel):
     """函数"""

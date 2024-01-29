@@ -3,22 +3,22 @@ from __future__ import annotations
 import logging
 import asyncio
 
-from ..platform import manager as qqbot_mgr
+from ..platform import manager as im_mgr
 from ..provider.session import sessionmgr as llm_session_mgr
 from ..provider.requester import modelmgr as llm_model_mgr
 from ..provider.sysprompt import sysprompt as llm_prompt_mgr
 from ..provider.tools import toolmgr as llm_tool_mgr
 from ..config import manager as config_mgr
-from ..database import manager as database_mgr
-from ..utils.center import v2 as center_mgr
+# from ..utils.center import v2 as center_mgr
 from ..command import cmdmgr
-from ..plugin import host as plugin_host
+from ..plugin import manager as plugin_mgr
 from . import pool, controller
 from ..pipeline import stagemgr
+from ..utils import version as version_mgr, proxy as proxy_mgr
 
 
 class Application:
-    im_mgr: qqbot_mgr.QQBotManager = None
+    im_mgr: im_mgr.QQBotManager = None
 
     cmd_mgr: cmdmgr.CommandManager = None
 
@@ -34,9 +34,9 @@ class Application:
 
     tips_mgr: config_mgr.ConfigManager = None
 
-    db_mgr: database_mgr.DatabaseManager = None
+    # ctr_mgr: center_mgr.V2CenterAPI = None
 
-    ctr_mgr: center_mgr.V2CenterAPI = None
+    plugin_mgr: plugin_mgr.PluginManager = None
 
     query_pool: pool.QueryPool = None
 
@@ -44,24 +44,29 @@ class Application:
 
     stage_mgr: stagemgr.StageManager = None
 
+    ver_mgr: version_mgr.VersionManager = None
+
+    proxy_mgr: proxy_mgr.ProxyManager = None
+
     logger: logging.Logger = None
 
     def __init__(self):
         pass
 
     async def initialize(self):
-        plugin_host.initialize_plugins()
+        pass
 
         # 把现有的所有内容函数加到toolmgr里
-        for func in plugin_host.__callable_functions__:
-            self.tool_mgr.register_legacy_function(
-                name=func['name'],
-                description=func['description'],
-                parameters=func['parameters'],
-                func=plugin_host.__function_inst_map__[func['name']]
-            )
+        # for func in plugin_host.__callable_functions__:
+        #     self.tool_mgr.register_legacy_function(
+        #         name=func['name'],
+        #         description=func['description'],
+        #         parameters=func['parameters'],
+        #         func=plugin_host.__function_inst_map__[func['name']]
+        #     )
 
     async def run(self):
+        await self.plugin_mgr.load_plugins()
 
         tasks = [
             asyncio.create_task(self.im_mgr.run()),

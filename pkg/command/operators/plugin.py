@@ -3,8 +3,6 @@ import typing
 import traceback
 
 from .. import operator, entities, cmdmgr, errors
-from ...plugin import host as plugin_host
-from ...utils import updater
 from ...core import app
 
 
@@ -20,16 +18,15 @@ class PluginOperator(operator.CommandOperator):
         context: entities.ExecuteContext
     ) -> typing.AsyncGenerator[entities.CommandReturn, None]:
         
-        plugin_list = plugin_host.__plugins__
-        reply_str = "所有插件({}):\n".format(len(plugin_host.__plugins__))
+        plugin_list = self.ap.plugin_mgr.plugins
+        reply_str = "所有插件({}):\n".format(len(plugin_list))
         idx = 0
-        for key in plugin_host.iter_plugins_name():
-            plugin = plugin_list[key]
+        for plugin in plugin_list:
             reply_str += "\n#{} {} {}\n{}\nv{}\n作者: {}\n"\
-                .format((idx+1), plugin['name'],
-                        "[已禁用]" if not plugin['enabled'] else "",
-                        plugin['description'],
-                        plugin['version'], plugin['author'])
+                .format((idx+1), plugin.plugin_name,
+                        "[已禁用]" if not plugin.enabled else "",
+                        plugin.plugin_description,
+                        plugin.plugin_version, plugin.plugin_author)
 
             # TODO 从元数据调远程地址
             # if updater.is_repo("/".join(plugin['path'].split('/')[:-1])):
@@ -63,7 +60,7 @@ class PluginGetOperator(operator.CommandOperator):
             yield entities.CommandReturn(text="正在安装插件...")
 
             try:
-                plugin_host.install_plugin(repo)
+                await self.ap.plugin_mgr.install_plugin(repo)
                 yield entities.CommandReturn(text="插件安装成功，请重启程序以加载插件")
             except Exception as e:
                 traceback.print_exc()
@@ -89,11 +86,11 @@ class PluginUpdateOperator(operator.CommandOperator):
             plugin_name = context.crt_params[0]
 
             try:
-                plugin_path_name = plugin_host.get_plugin_path_name_by_plugin_name(plugin_name)
+                plugin_container = self.ap.plugin_mgr.get_plugin_by_name(plugin_name)
 
-                if plugin_path_name is not None:
+                if plugin_container is not None:
                     yield entities.CommandReturn(text="正在更新插件...")
-                    plugin_host.update_plugin(plugin_name)
+                    await self.ap.plugin_mgr.update_plugin(plugin_name)
                     yield entities.CommandReturn(text="插件更新成功，请重启程序以加载插件")
                 else:
                     yield entities.CommandReturn(error=errors.CommandError("插件更新失败: 未找到插件"))
@@ -115,17 +112,17 @@ class PluginUpdateAllOperator(operator.CommandOperator):
     ) -> typing.AsyncGenerator[entities.CommandReturn, None]:
 
         try:
-            plugins = []
-
-            for key in plugin_host.__plugins__:
-                plugins.append(key)
+            plugins = [
+                p.plugin_name
+                for p in self.ap.plugin_mgr.plugins
+            ]
 
             if plugins:
                 yield entities.CommandReturn(text="正在更新插件...")
                 updated = []
                 try:
                     for plugin_name in plugins:
-                        plugin_host.update_plugin(plugin_name)
+                        await self.ap.plugin_mgr.update_plugin(plugin_name)
                         updated.append(plugin_name)
                 except Exception as e:
                     traceback.print_exc()
@@ -157,11 +154,11 @@ class PluginDelOperator(operator.CommandOperator):
             plugin_name = context.crt_params[0]
 
             try:
-                plugin_path_name = plugin_host.get_plugin_path_name_by_plugin_name(plugin_name)
+                plugin_container = self.ap.plugin_mgr.get_plugin_by_name(plugin_name)
 
-                if plugin_path_name is not None:
+                if plugin_container is not None:
                     yield entities.CommandReturn(text="正在删除插件...")
-                    plugin_host.uninstall_plugin(plugin_name)
+                    await self.ap.plugin_mgr.uninstall_plugin(plugin_name)
                     yield entities.CommandReturn(text="插件删除成功，请重启程序以加载插件")
                 else:
                     yield entities.CommandReturn(error=errors.CommandError("插件删除失败: 未找到插件"))
@@ -171,12 +168,15 @@ class PluginDelOperator(operator.CommandOperator):
 
 
 def update_plugin_status(plugin_name: str, new_status: bool, ap: app.Application):
-    if plugin_name in plugin_host.__plugins__:
-        plugin_host.__plugins__[plugin_name]['enabled'] = new_status
+    if ap.plugin_mgr.get_plugin_by_name(plugin_name) is not None:
+        for plugin in ap.plugin_mgr.plugins:
+            if plugin.plugin_name == plugin_name:
+                plugin.enabled = new_status
 
-        for func in ap.tool_mgr.all_functions:
-            if func.name.startswith(plugin_name+'-'):
-                func.enable = new_status
+                for func in plugin.content_functions:
+                    func.enable = new_status
+                
+                break
 
         return True
     else:

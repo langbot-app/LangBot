@@ -13,17 +13,15 @@ from . import pool
 from . import controller
 from ..pipeline import stagemgr
 from ..audit import identifier
-from ..database import manager as db_mgr
 from ..provider.session import sessionmgr as llm_session_mgr
 from ..provider.requester import modelmgr as llm_model_mgr
 from ..provider.sysprompt import sysprompt as llm_prompt_mgr
 from ..provider.tools import toolmgr as llm_tool_mgr
 from ..platform import manager as im_mgr
 from ..command import cmdmgr
-from ..plugin import host as plugin_host
+from ..plugin import manager as plugin_mgr
 from ..utils.center import v2 as center_v2
-from ..utils import updater
-from ..utils import context
+from ..utils import version, proxy
 
 use_override = False
 
@@ -58,7 +56,6 @@ async def make_app() -> app.Application:
         "config.py",
         "config-template.py"
     )
-    context.set_config_manager(cfg_mgr)
     cfg = cfg_mgr.data
 
     # 检查是否携带了 --override 或 -r 参数
@@ -87,11 +84,20 @@ async def make_app() -> app.Application:
 
     ap.query_pool = pool.QueryPool()
 
+    proxy_mgr = proxy.ProxyManager(ap)
+    await proxy_mgr.initialize()
+    ap.proxy_mgr = proxy_mgr
+
+    ver_mgr = version.VersionManager(ap)
+    await ver_mgr.initialize()
+    ap.ver_mgr = ver_mgr
+
     center_v2_api = center_v2.V2CenterAPI(
+        ap,
         basic_info={
             "host_id": identifier.identifier['host_id'],
             "instance_id": identifier.identifier['instance_id'],
-            "semantic_version": updater.get_current_tag(),
+            "semantic_version": ver_mgr.get_current_version(),
             "platform": sys.platform,
         },
         runtime_info={
@@ -99,12 +105,7 @@ async def make_app() -> app.Application:
             "msg_source": cfg['msg_source_adapter'],
         }
     )
-    ap.ctr_mgr = center_v2_api
-
-    db_mgr_inst = db_mgr.DatabaseManager(ap)
-    # TODO make it async
-    db_mgr_inst.initialize_database()
-    ap.db_mgr = db_mgr_inst
+    # ap.ctr_mgr = center_v2_api
 
     cmd_mgr_inst = cmdmgr.CommandManager(ap)
     await cmd_mgr_inst.initialize()
@@ -138,7 +139,9 @@ async def make_app() -> app.Application:
     ap.ctrl = ctrl
 
     # TODO make it async
-    plugin_host.load_plugins()
+    plugin_mgr_inst = plugin_mgr.PluginManager(ap)
+    await plugin_mgr_inst.initialize()
+    ap.plugin_mgr = plugin_mgr_inst
     
     await ap.initialize()
 

@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import typing
 
 import pydantic
 
 from . import api
-from . import token
+from . import token, tokenizer
 
 
 class LLMModelInfo(pydantic.BaseModel):
@@ -17,7 +19,9 @@ class LLMModelInfo(pydantic.BaseModel):
 
     requester: api.LLMAPIRequester
 
-    function_call_supported: typing.Optional[bool] = False
+    tokenizer: 'tokenizer.LLMTokenizer'
+
+    tool_call_supported: typing.Optional[bool] = False
 
     class Config:
         arbitrary_types_allowed = True

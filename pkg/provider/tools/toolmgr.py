@@ -4,7 +4,6 @@ import typing
 
 from ...core import app, entities as core_entities
 from . import entities
-from ..session import entities as session_entities
 
 
 class ToolManager:
@@ -12,8 +11,6 @@ class ToolManager:
     """
 
     ap: app.Application
-
-    all_functions: list[entities.LLMFunction]
     
     def __init__(self, ap: app.Application):
         self.ap = ap
@@ -22,30 +19,10 @@ class ToolManager:
     async def initialize(self):
         pass
 
-    def register_legacy_function(self, name: str, description: str, parameters: dict, func: callable):
-        """注册函数
-        """
-        async def wrapper(query, **kwargs):
-            return func(**kwargs)
-        function = entities.LLMFunction(
-            name=name,
-            description=description,
-            human_desc='',
-            enable=True,
-            parameters=parameters,
-            func=wrapper
-        )
-        self.all_functions.append(function)
-
-    async def register_function(self, function: entities.LLMFunction):
-        """添加函数
-        """
-        self.all_functions.append(function)
-
     async def get_function(self, name: str) -> entities.LLMFunction:
         """获取函数
         """
-        for function in self.all_functions:
+        for function in await self.get_all_functions():
             if function.name == name:
                 return function
         return None
@@ -53,9 +30,14 @@ class ToolManager:
     async def get_all_functions(self) -> list[entities.LLMFunction]:
         """获取所有函数
         """
-        return self.all_functions
+        all_functions: list[entities.LLMFunction] = []
     
-    async def generate_tools_for_openai(self, conversation: session_entities.Conversation) -> str:
+        for plugin in self.ap.plugin_mgr.plugins:
+            all_functions.extend(plugin.content_functions)
+        
+        return all_functions
+
+    async def generate_tools_for_openai(self, conversation: core_entities.Conversation) -> str:
         """生成函数列表
         """
         tools = []

@@ -4,7 +4,6 @@ import typing
 
 from ..core import app, entities as core_entities
 from ..provider import entities as llm_entities
-from ..provider.session import entities as session_entities
 from . import entities, operator, errors
 
 from .operators import func, plugin, default, reset, list as list_cmd, last, next, delc, resend, prompt, cfg, cmd, help, version, update
@@ -80,7 +79,7 @@ class CommandManager:
         self,
         command_text: str,
         query: core_entities.Query,
-        session: session_entities.Session
+        session: core_entities.Session
     ) -> typing.AsyncGenerator[entities.CommandReturn, None]:
         """执行命令
         """

@@ -26,6 +26,9 @@ class JSONConfigFile(file_model.ConfigFile):
 
     async def load(self) -> dict:
 
+        if not self.exists():
+            await self.create()
+
         with open(self.config_file_name, 'r', encoding='utf-8') as f:
             cfg = json.load(f)
 

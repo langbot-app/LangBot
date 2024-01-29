@@ -3,7 +3,6 @@ from __future__ import annotations
 import typing
 
 from .. import operator, cmdmgr, entities, errors
-from ...utils import updater
 
 
 @operator.operator_class(
@@ -17,10 +16,10 @@ class VersionCommand(operator.CommandOperator):
         self,
         context: entities.ExecuteContext
     ) -> typing.AsyncGenerator[entities.CommandReturn, None]:
-        reply_str = f"当前版本: \n{updater.get_current_version_info()}"
+        reply_str = f"当前版本: \n{await self.ap.ver_mgr.get_current_version_info()}"
 
         try:
-            if updater.is_new_version_available():
+            if await self.ap.ver_mgr.is_new_version_available():
                 reply_str += "\n\n有新版本可用, 使用 !update 更新"
         except:
             pass

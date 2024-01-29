@@ -10,7 +10,6 @@ import openai.types.chat.chat_completion as chat_completion
 from .. import api
 from ....core import entities as core_entities
 from ... import entities as llm_entities
-from ...session import entities as session_entities
 
 
 class OpenAIChatCompletion(api.LLMAPIRequester):
@@ -43,41 +42,18 @@ class OpenAIChatCompletion(api.LLMAPIRequester):
     async def _closure(
         self,
         req_messages: list[dict],
-        conversation: session_entities.Conversation,
-        user_text: str = None,
-        function_ret: str = None,
+        conversation: core_entities.Conversation,
     ) -> llm_entities.Message:
         self.client.api_key = conversation.use_model.token_mgr.get_token()
 
         args = self.ap.cfg_mgr.data["completion_api_params"].copy()
         args["model"] = conversation.use_model.name
 
-        tools = await self.ap.tool_mgr.generate_tools_for_openai(conversation)
-        # tools = [
-        #     {
-        #         "type": "function",
-        #         "function": {
-        #             "name": "get_current_weather",
-        #             "description": "Get the current weather in a given location",
-        #             "parameters": {
-        #                 "type": "object",
-        #                 "properties": {
-        #                     "location": {
-        #                         "type": "string",
-        #                         "description": "The city and state, e.g. San Francisco, CA",
-        #                     },
-        #                     "unit": {
-        #                         "type": "string",
-        #                         "enum": ["celsius", "fahrenheit"],
-        #                     },
-        #                 },
-        #                 "required": ["location"],
-        #             },
-        #         },
-        #     }
-        # ]
-        if tools:
-            args["tools"] = tools
+        if conversation.use_model.tool_call_supported:
+            tools = await self.ap.tool_mgr.generate_tools_for_openai(conversation)
+
+            if tools:
+                args["tools"] = tools
 
         # 设置此次请求中的messages
         messages = req_messages
@@ -92,7 +68,7 @@ class OpenAIChatCompletion(api.LLMAPIRequester):
         return message
 
     async def request(
-        self, query: core_entities.Query, conversation: session_entities.Conversation
+        self, query: core_entities.Query, conversation: core_entities.Conversation
     ) -> typing.AsyncGenerator[llm_entities.Message, None]:
         """请求"""
 

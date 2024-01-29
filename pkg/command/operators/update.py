@@ -4,7 +4,6 @@ import typing
 import traceback
 
 from .. import operator, entities, cmdmgr, errors
-from ...utils import updater
 
 
 @operator.operator_class(
@@ -22,7 +21,7 @@ class UpdateCommand(operator.CommandOperator):
        
         try:
             yield entities.CommandReturn(text="正在进行更新...")
-            if updater.update_all():
+            if await self.ap.ver_mgr.update_all():
                 yield entities.CommandReturn(text="更新完成，请重启程序以应用更新")
             else:
                 yield entities.CommandReturn(text="当前已是最新版本")

@@ -6,7 +6,6 @@ import typing
 from ...core import app
 from ...core import entities as core_entities
 from .. import entities as llm_entities
-from ..session import entities as session_entities
 
 class LLMAPIRequester(metaclass=abc.ABCMeta):
     """LLM API请求器
@@ -24,7 +23,7 @@ class LLMAPIRequester(metaclass=abc.ABCMeta):
     async def request(
         self,
         query: core_entities.Query,
-        conversation: session_entities.Conversation,
+        conversation: core_entities.Conversation,
     ) -> typing.AsyncGenerator[llm_entities.Message, None]:
         """请求
         """
