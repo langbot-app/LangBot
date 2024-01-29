@@ -56,15 +56,6 @@ class Application:
     async def initialize(self):
         pass
 
-        # 把现有的所有内容函数加到toolmgr里
-        # for func in plugin_host.__callable_functions__:
-        #     self.tool_mgr.register_legacy_function(
-        #         name=func['name'],
-        #         description=func['description'],
-        #         parameters=func['parameters'],
-        #         func=plugin_host.__function_inst_map__[func['name']]
-        #     )
-
     async def run(self):
         await self.plugin_mgr.load_plugins()
         await self.plugin_mgr.initialize_plugins()

@@ -20,7 +20,7 @@ from ..provider.tools import toolmgr as llm_tool_mgr
 from ..platform import manager as im_mgr
 from ..command import cmdmgr
 from ..plugin import manager as plugin_mgr
-from ..utils.center import v2 as center_v2
+from ..audit.center import v2 as center_v2
 from ..utils import version, proxy
 
 use_override = False

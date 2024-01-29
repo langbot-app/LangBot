@@ -7,19 +7,17 @@ from ....core import app
 class V2UsageDataAPI(apigroup.APIGroup):
     """使用量数据相关 API"""
 
-    ap: app.Application
-
     def __init__(self, prefix: str, ap: app.Application):
         self.ap = ap
-        super().__init__(prefix+"/usage")
+        super().__init__(prefix+"/usage", ap)
 
-    def do(self, *args, **kwargs):
+    async def do(self, *args, **kwargs):
         config = self.ap.cfg_mgr.data
         if not config['report_usage']:
             return None
-        return super().do(*args, **kwargs)
-        
-    def post_query_record(
+        return await super().do(*args, **kwargs)
+
+    async def post_query_record(
         self,
         session_type: str,
         session_id: str,
@@ -30,7 +28,7 @@ class V2UsageDataAPI(apigroup.APIGroup):
         retry_times: int,
     ):
         """提交请求记录"""
-        return self.do(
+        return await self.do(
             "POST",
             "/query",
             data={
@@ -50,13 +48,13 @@ class V2UsageDataAPI(apigroup.APIGroup):
             }
         )
     
-    def post_event_record(
+    async def post_event_record(
         self,
         plugins: list[dict],
         event_name: str,
     ):
         """提交事件触发记录"""
-        return self.do(
+        return await self.do(
             "POST",
             "/event",
             data={
@@ -69,14 +67,14 @@ class V2UsageDataAPI(apigroup.APIGroup):
             }
         )
     
-    def post_function_record(
+    async def post_function_record(
         self,
         plugin: dict,
         function_name: str,
         function_description: str,
     ):
         """提交内容函数使用记录"""
-        return self.do(
+        return await self.do(
             "POST",
             "/function",
             data={

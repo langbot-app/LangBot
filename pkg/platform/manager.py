@@ -54,7 +54,7 @@ class QQBotManager:
             self.bot_account_id = self.adapter.bot_account_id
         
         # 保存 account_id 到审计模块
-        from ..utils.center import apigroup
+        from ..audit.center import apigroup
         apigroup.APIGroup._runtime_info['account_id'] = "{}".format(self.bot_account_id)
 
         async def on_friend_message(event: FriendMessage):

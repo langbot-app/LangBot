@@ -7,19 +7,17 @@ from ....core import app
 class V2MainDataAPI(apigroup.APIGroup):
     """主程序相关 数据API"""
 
-    ap: app.Application
-
     def __init__(self, prefix: str, ap: app.Application):
         self.ap = ap
-        super().__init__(prefix+"/usage")
+        super().__init__(prefix+"/usage", ap)
 
-    def do(self, *args, **kwargs):
+    async def do(self, *args, **kwargs):
         config = self.ap.cfg_mgr.data
         if not config['report_usage']:
             return None
-        return super().do(*args, **kwargs)
+        return await super().do(*args, **kwargs)
 
-    def post_update_record(
+    async def post_update_record(
         self,
         spent_seconds: int,
         infer_reason: str,
@@ -27,7 +25,7 @@ class V2MainDataAPI(apigroup.APIGroup):
         new_version: str,
     ):
         """提交更新记录"""
-        return self.do(
+        return await self.do(
             "POST",
             "/update",
             data={
@@ -41,12 +39,12 @@ class V2MainDataAPI(apigroup.APIGroup):
             }
         )
     
-    def post_announcement_showed(
+    async def post_announcement_showed(
         self,
         ids: list[int],
     ):
         """提交公告已阅"""
-        return self.do(
+        return await self.do(
             "POST",
             "/announcement",
             data={

@@ -7,24 +7,22 @@ from .. import apigroup
 class V2PluginDataAPI(apigroup.APIGroup):
     """插件数据相关 API"""
 
-    ap: app.Application
-
     def __init__(self, prefix: str, ap: app.Application):
         self.ap = ap
-        super().__init__(prefix+"/usage")
+        super().__init__(prefix+"/usage", ap)
 
-    def do(self, *args, **kwargs):
+    async def do(self, *args, **kwargs):
         config = self.ap.cfg_mgr.data
         if not config['report_usage']:
             return None
-        return super().do(*args, **kwargs)
+        return await super().do(*args, **kwargs)
 
-    def post_install_record(
+    async def post_install_record(
         self,
         plugin: dict
     ):
         """提交插件安装记录"""
-        return self.do(
+        return await self.do(
             "POST",
             "/install",
             data={
@@ -33,12 +31,12 @@ class V2PluginDataAPI(apigroup.APIGroup):
             }
         )
 
-    def post_remove_record(
+    async def post_remove_record(
         self,
         plugin: dict
     ):
         """提交插件卸载记录"""
-        return self.do(
+        return await self.do(
             "POST",
             "/remove",
             data={
@@ -47,14 +45,14 @@ class V2PluginDataAPI(apigroup.APIGroup):
             }
         )
 
-    def post_update_record(
+    async def post_update_record(
         self,
         plugin: dict,
         old_version: str,
         new_version: str,
     ):
         """提交插件更新记录"""
-        return self.do(
+        return await self.do(
             "POST",
             "/update",
             data={

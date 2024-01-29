@@ -2,9 +2,12 @@ import abc
 import uuid
 import json
 import logging
-import threading
+import asyncio
 
+import aiohttp
 import requests
+
+from ...core import app
 
 
 class APIGroup(metaclass=abc.ABCMeta):
@@ -14,10 +17,13 @@ class APIGroup(metaclass=abc.ABCMeta):
 
     prefix = None
 
-    def __init__(self, prefix: str):
-        self.prefix = prefix
+    ap: app.Application
 
-    def do(
+    def __init__(self, prefix: str, ap: app.Application):
+        self.prefix = prefix
+        self.ap = ap
+
+    async def _do(
         self,
         method: str,
         path: str,
@@ -26,47 +32,38 @@ class APIGroup(metaclass=abc.ABCMeta):
         headers: dict = {},
         **kwargs
     ):
-        """执行一个请求"""
-        def thr_wrapper(
-            self,
-            method: str,
-            path: str,
-            data: dict = None,
-            params: dict = None,
-            headers: dict = {},
-            **kwargs
-        ):
-            try:
-                url = self.prefix + path
-                data = json.dumps(data)
-                headers['Content-Type'] = 'application/json'
-                
-                ret =  requests.request(
+        
+        url = self.prefix + path
+        data = json.dumps(data)
+        headers['Content-Type'] = 'application/json'
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.request(
                     method,
                     url,
                     data=data,
                     params=params,
                     headers=headers,
                     **kwargs
-                )
+                ) as resp:
+                    self.ap.logger.debug("data: %s", data)
+                    self.ap.logger.debug("ret: %s", await resp.json())
 
-                logging.debug("data: %s", data)
+        except Exception as e:
+            self.ap.logger.debug(f'上报失败: {e}')
+    
+    async def do(
+        self,
+        method: str,
+        path: str,
+        data: dict = None,
+        params: dict = None,
+        headers: dict = {},
+        **kwargs
+    ) -> asyncio.Task:
+        """执行请求"""
+        asyncio.create_task(self._do(method, path, data, params, headers, **kwargs))
 
-                logging.debug("ret: %s", ret.json())
-            except Exception as e:
-                logging.debug("上报数据失败: %s", e)
-        
-        thr = threading.Thread(target=thr_wrapper, args=(
-            self,
-            method,
-            path,
-            data,
-            params,
-            headers,
-        ), kwargs=kwargs)
-        thr.start()
-
-            
     def gen_rid(
         self
     ):
