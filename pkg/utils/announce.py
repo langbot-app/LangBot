@@ -104,3 +104,20 @@ class AnnouncementManager:
 
         await self.write_saved(all)
         return to_show
+
+    async def show_announcements(
+        self
+    ):
+        """显示公告"""
+        try:
+            announcements = await self.fetch_new()
+            for ann in announcements:
+                self.ap.logger.info(f'[公告] {ann.time}: {ann.content}')
+
+            if announcements:
+
+                await self.ap.ctr_mgr.main.post_announcement_showed(
+                    ids=[item.id for item in announcements]
+                )
+        except Exception as e:
+            self.ap.logger.warning(f'获取公告时出错: {e}')

@@ -35,7 +35,7 @@ async def make_app() -> app.Application:
         print("以下文件不存在，已自动生成，请修改配置文件后重启：")
         for file in generated_files:
             print("-", file)
-        
+
         sys.exit(0)
 
     missing_deps = await deps.check_deps()
@@ -52,28 +52,24 @@ async def make_app() -> app.Application:
     # 生成标识符
     identifier.init()
 
-    cfg_mgr = await config.load_python_module_config(
-        "config.py",
-        "config-template.py"
-    )
+    cfg_mgr = await config.load_python_module_config("config.py", "config-template.py")
     cfg = cfg_mgr.data
 
     # 检查是否携带了 --override 或 -r 参数
-    if '--override' in sys.argv or '-r' in sys.argv:
+    if "--override" in sys.argv or "-r" in sys.argv:
         use_override = True
 
     if use_override:
         overrided = await config.override_config_manager(cfg_mgr)
         if overrided:
             qcg_logger.info("以下配置项已使用 override.json 覆盖：" + ",".join(overrided))
-    
+
     tips_mgr = await config.load_python_module_config(
-        "tips.py",
-        "tips-custom-template.py"
+        "tips.py", "tips-custom-template.py"
     )
 
     # 检查管理员QQ号
-    if cfg_mgr.data['admin_qq'] == 0:
+    if cfg_mgr.data["admin_qq"] == 0:
         qcg_logger.warning("未设置管理员QQ号，将无法使用管理员命令，请在 config.py 中修改 admin_qq")
 
     # 构建组建实例
@@ -85,49 +81,37 @@ async def make_app() -> app.Application:
     proxy_mgr = proxy.ProxyManager(ap)
     await proxy_mgr.initialize()
     ap.proxy_mgr = proxy_mgr
-
-    # 发送公告
-    ann_mgr = announce.AnnouncementManager(ap)
-    try:
-        announcements = await ann_mgr.fetch_new()
-
-        for ann in announcements:
-            ap.logger.info(f'[公告] {ann.time}: {ann.content}')
-    except Exception as e:
-        ap.logger.warning(f'获取公告时出错: {e}')
-
-    ap.query_pool = pool.QueryPool()
-
+    
     ver_mgr = version.VersionManager(ap)
     await ver_mgr.initialize()
     ap.ver_mgr = ver_mgr
 
-    try:
-
-        if await ap.ver_mgr.is_new_version_available():
-            ap.logger.info("有新版本可用，请使用 !update 命令更新")
-    
-    except Exception as e:
-        ap.logger.warning(f"检查版本更新时出错: {e}")
-
-    plugin_mgr_inst = plugin_mgr.PluginManager(ap)
-    await plugin_mgr_inst.initialize()
-    ap.plugin_mgr = plugin_mgr_inst
-
     center_v2_api = center_v2.V2CenterAPI(
         ap,
         basic_info={
-            "host_id": identifier.identifier['host_id'],
-            "instance_id": identifier.identifier['instance_id'],
+            "host_id": identifier.identifier["host_id"],
+            "instance_id": identifier.identifier["instance_id"],
             "semantic_version": ver_mgr.get_current_version(),
             "platform": sys.platform,
         },
         runtime_info={
-            "admin_id": "{}".format(cfg['admin_qq']),
-            "msg_source": cfg['msg_source_adapter'],
-        }
+            "admin_id": "{}".format(cfg["admin_qq"]),
+            "msg_source": cfg["msg_source_adapter"],
+        },
     )
     ap.ctr_mgr = center_v2_api
+
+    # 发送公告
+    ann_mgr = announce.AnnouncementManager(ap)
+    await ann_mgr.show_announcements()
+
+    ap.query_pool = pool.QueryPool()
+
+    await ap.ver_mgr.show_version_update()
+
+    plugin_mgr_inst = plugin_mgr.PluginManager(ap)
+    await plugin_mgr_inst.initialize()
+    ap.plugin_mgr = plugin_mgr_inst
 
     cmd_mgr_inst = cmdmgr.CommandManager(ap)
     await cmd_mgr_inst.initialize()
@@ -159,7 +143,7 @@ async def make_app() -> app.Application:
 
     ctrl = controller.Controller(ap)
     ap.ctrl = ctrl
-    
+
     await ap.initialize()
 
     return ap

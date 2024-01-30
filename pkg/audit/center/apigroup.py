@@ -38,6 +38,7 @@ class APIGroup(metaclass=abc.ABCMeta):
         url = self.prefix + path
         data = json.dumps(data)
         headers['Content-Type'] = 'application/json'
+
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.request(
@@ -49,7 +50,7 @@ class APIGroup(metaclass=abc.ABCMeta):
                     **kwargs
                 ) as resp:
                     self.ap.logger.debug("data: %s", data)
-                    self.ap.logger.debug("ret: %s", await resp.json())
+                    self.ap.logger.debug("ret: %s", await resp.text())
 
         except Exception as e:
             self.ap.logger.debug(f'上报失败: {e}')

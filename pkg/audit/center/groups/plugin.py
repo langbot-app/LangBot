@@ -9,7 +9,7 @@ class V2PluginDataAPI(apigroup.APIGroup):
 
     def __init__(self, prefix: str, ap: app.Application):
         self.ap = ap
-        super().__init__(prefix+"/usage", ap)
+        super().__init__(prefix+"/plugin", ap)
 
     async def do(self, *args, **kwargs):
         config = self.ap.cfg_mgr.data

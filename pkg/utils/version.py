@@ -148,7 +148,7 @@ class VersionManager:
         with open("current_tag", "w") as f:
             f.write(current_tag)
 
-        self.ap.ctr_mgr.main.post_update_record(
+        await self.ap.ctr_mgr.main.post_update_record(
             spent_seconds=int(time.time()-start_time),
             infer_reason="update",
             old_version=old_tag,
@@ -224,3 +224,13 @@ class VersionManager:
         
         return 0
 
+    async def show_version_update(
+        self
+    ):
+        try:
+
+            if await self.ap.ver_mgr.is_new_version_available():
+                self.ap.logger.info("有新版本可用，请使用 !update 命令更新")
+        
+        except Exception as e:
+            self.ap.logger.warning(f"检查版本更新时出错: {e}")

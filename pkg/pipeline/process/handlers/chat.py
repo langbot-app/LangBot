@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typing
+import time
 
 import mirai
 
@@ -84,8 +85,15 @@ class ChatMessageHandler(handler.MessageHandler):
 
             called_functions = []
 
+            text_length = 0
+
+            start_time = time.time()
+
             async for result in conversation.use_model.requester.request(query, conversation):
                 conversation.messages.append(result)
+
+                if result.content is not None:
+                    text_length += len(result.content)
 
                 # 转换成可读消息
                 if result.role == 'assistant':
@@ -172,3 +180,13 @@ class ChatMessageHandler(handler.MessageHandler):
                                     result_type=entities.ResultType.CONTINUE,
                                     new_query=query
                                 )
+        
+            await self.ap.ctr_mgr.usage.post_query_record(
+                session_type=session.launcher_type.value,
+                session_id=str(session.launcher_id),
+                query_ability_provider="QChatGPT.Chat",
+                usage=text_length,
+                model_name=conversation.use_model.name,
+                response_seconds=int(time.time() - start_time),
+                retry_times=-1,
+            )

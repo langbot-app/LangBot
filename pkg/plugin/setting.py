@@ -59,6 +59,25 @@ class SettingManager:
 
         await self.settings.dump_config()
 
+    async def dump_container_setting(
+        self,
+        plugin_containers: list[context.RuntimeContainer]
+    ):
+        """保存插件容器设置
+        """
+
+        for plugin in plugin_containers:
+            for ps in self.settings.data['plugins']:
+                if ps['name'] == plugin.plugin_name:
+                    plugin_dict = plugin.to_setting_dict()
+
+                    for key in plugin_dict:
+                        ps[key] = plugin_dict[key]
+
+                    break
+
+        await self.settings.dump_config()
+
     async def record_installed_plugin_source(
         self,
         pkg_path: str,

@@ -84,3 +84,24 @@ class ToolManager:
             self.ap.logger.error(f'执行函数 {name} 时发生错误: {e}')
             traceback.print_exc()
             return f'error occurred when executing function {name}: {e}'
+        finally:
+
+            plugin = None
+
+            for p in self.ap.plugin_mgr.plugins:
+                if function in p.content_functions:
+                    plugin = p
+                    break
+
+            if plugin is not None:
+
+                await self.ap.ctr_mgr.usage.post_function_record(
+                    plugin={
+                        'name': plugin.plugin_name,
+                        'remote': plugin.plugin_source,
+                        'version': plugin.plugin_version,
+                        'author': plugin.plugin_author
+                    },
+                    function_name=function.name,
+                    function_description=function.description,
+                )

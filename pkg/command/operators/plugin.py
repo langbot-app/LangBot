@@ -167,7 +167,7 @@ class PluginDelOperator(operator.CommandOperator):
                 yield entities.CommandReturn(error=errors.CommandError("插件删除失败: "+str(e)))
 
 
-def update_plugin_status(plugin_name: str, new_status: bool, ap: app.Application):
+async def update_plugin_status(plugin_name: str, new_status: bool, ap: app.Application):
     if ap.plugin_mgr.get_plugin_by_name(plugin_name) is not None:
         for plugin in ap.plugin_mgr.plugins:
             if plugin.plugin_name == plugin_name:
@@ -176,6 +176,8 @@ def update_plugin_status(plugin_name: str, new_status: bool, ap: app.Application
                 for func in plugin.content_functions:
                     func.enable = new_status
                 
+                await ap.plugin_mgr.setting.dump_container_setting(ap.plugin_mgr.plugins)
+
                 break
 
         return True
@@ -202,7 +204,7 @@ class PluginEnableOperator(operator.CommandOperator):
             plugin_name = context.crt_params[0]
 
             try:
-                if update_plugin_status(plugin_name, True, self.ap):
+                if await update_plugin_status(plugin_name, True, self.ap):
                     yield entities.CommandReturn(text="已启用插件: {}".format(plugin_name))
                 else:
                     yield entities.CommandReturn(error=errors.CommandError("插件状态修改失败: 未找到插件 {}".format(plugin_name)))
@@ -230,7 +232,7 @@ class PluginDisableOperator(operator.CommandOperator):
             plugin_name = context.crt_params[0]
 
             try:
-                if update_plugin_status(plugin_name, False, self.ap):
+                if await update_plugin_status(plugin_name, False, self.ap):
                     yield entities.CommandReturn(text="已禁用插件: {}".format(plugin_name))
                 else:
                     yield entities.CommandReturn(error=errors.CommandError("插件状态修改失败: 未找到插件 {}".format(plugin_name)))

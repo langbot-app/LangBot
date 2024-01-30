@@ -64,6 +64,15 @@ class PluginManager:
         """
         await self.installer.install_plugin(plugin_source)
 
+        await self.ap.ctr_mgr.plugin.post_install_record(
+            {
+                "name": "unknown",
+                "remote": plugin_source,
+                "author": "unknown",
+                "version": "HEAD"
+            }
+        )
+
     async def uninstall_plugin(
         self,
         plugin_name: str,
@@ -71,6 +80,17 @@ class PluginManager:
         """卸载插件
         """
         await self.installer.uninstall_plugin(plugin_name)
+
+        plugin_container = self.get_plugin_by_name(plugin_name)
+
+        await self.ap.ctr_mgr.plugin.post_remove_record(
+            {
+                "name": plugin_name,
+                "remote": plugin_container.plugin_source,
+                "author": plugin_container.plugin_author,
+                "version": plugin_container.plugin_version
+            }
+        )
 
     async def update_plugin(
         self,
@@ -80,6 +100,19 @@ class PluginManager:
         """更新插件
         """
         await self.installer.update_plugin(plugin_name, plugin_source)
+        
+        plugin_container = self.get_plugin_by_name(plugin_name)
+
+        await self.ap.ctr_mgr.plugin.post_update_record(
+            plugin={
+                "name": plugin_name,
+                "remote": plugin_container.plugin_source,
+                "author": plugin_container.plugin_author,
+                "version": plugin_container.plugin_version
+            },
+            old_version=plugin_container.plugin_version,
+            new_version="HEAD"
+        )
 
     def get_plugin_by_name(self, plugin_name: str) -> context.RuntimeContainer:
         """通过插件名获取插件
@@ -98,10 +131,14 @@ class PluginManager:
             event=event
         )
         
+        emitted_plugins: list[context.RuntimeContainer] = []
+
         for plugin in self.plugins:
             if plugin.enabled:
                 if event.__class__ in plugin.event_handlers:
                     
+                    emitted_plugins.append(plugin)
+
                     is_prevented_default_before_call = ctx.is_prevented_default()
 
                     try:
@@ -125,5 +162,20 @@ class PluginManager:
                 setattr(ctx.event, key, ctx.__return_value__[key][0])
         
         self.ap.logger.debug(f'事件 {event.__class__.__name__}({ctx.eid}) 处理完成，返回值 {ctx.__return_value__}')
+
+        if emitted_plugins:
+            plugins_info: list[dict] = [
+                {
+                    'name': plugin.plugin_name,
+                    'remote': plugin.plugin_source,
+                    'version': plugin.plugin_version,
+                    'author': plugin.plugin_author
+                } for plugin in emitted_plugins
+            ]
+
+            await self.ap.ctr_mgr.usage.post_event_record(
+                plugins=plugins_info,
+                event_name=event.__class__.__name__
+            )
 
         return ctx
