@@ -47,95 +47,113 @@ class ModelManager:
                 token_mgr=openai_token_mgr,
                 requester=openai_chat_completion,
                 tool_call_supported=True,
-                tokenizer=tiktoken_tokenizer
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=16385
             ),
             entities.LLMModelInfo(
                 name="gpt-3.5-turbo-16k",
                 token_mgr=openai_token_mgr,
                 requester=openai_chat_completion,
                 tool_call_supported=True,
-                tokenizer=tiktoken_tokenizer
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=16385
             ),
             entities.LLMModelInfo(
                 name="gpt-3.5-turbo-0613",
                 token_mgr=openai_token_mgr,
                 requester=openai_chat_completion,
                 tool_call_supported=True,
-                tokenizer=tiktoken_tokenizer
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=4096
             ),
             entities.LLMModelInfo(
                 name="gpt-3.5-turbo-16k-0613",
                 token_mgr=openai_token_mgr,
                 requester=openai_chat_completion,
                 tool_call_supported=True,
-                tokenizer=tiktoken_tokenizer
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=16385
             ),
             entities.LLMModelInfo(
                 name="gpt-3.5-turbo-0301",
                 token_mgr=openai_token_mgr,
                 requester=openai_chat_completion,
                 tool_call_supported=True,
-                tokenizer=tiktoken_tokenizer
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=4096
+            )
+        ]
+
+        self.model_list.extend(model_list)
+
+        gpt4_model_list = [
+            entities.LLMModelInfo(
+                name="gpt-4-0125-preview",
+                token_mgr=openai_token_mgr,
+                requester=openai_chat_completion,
+                tool_call_supported=True,
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=128000
+            ),
+            entities.LLMModelInfo(
+                name="gpt-4-turbo-preview",
+                token_mgr=openai_token_mgr,
+                requester=openai_chat_completion,
+                tool_call_supported=True,
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=128000
             ),
             entities.LLMModelInfo(
                 name="gpt-4-1106-preview",
                 token_mgr=openai_token_mgr,
                 requester=openai_chat_completion,
                 tool_call_supported=True,
-                tokenizer=tiktoken_tokenizer
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=128000
             ),
             entities.LLMModelInfo(
                 name="gpt-4-vision-preview",
                 token_mgr=openai_token_mgr,
                 requester=openai_chat_completion,
                 tool_call_supported=True,
-                tokenizer=tiktoken_tokenizer
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=128000
             ),
             entities.LLMModelInfo(
                 name="gpt-4",
                 token_mgr=openai_token_mgr,
                 requester=openai_chat_completion,
                 tool_call_supported=True,
-                tokenizer=tiktoken_tokenizer
-            ),
-            entities.LLMModelInfo(
-                name="gpt-4-32k",
-                token_mgr=openai_token_mgr,
-                requester=openai_chat_completion,
-                tool_call_supported=True,
-                tokenizer=tiktoken_tokenizer
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=8192
             ),
             entities.LLMModelInfo(
                 name="gpt-4-0613",
                 token_mgr=openai_token_mgr,
                 requester=openai_chat_completion,
                 tool_call_supported=True,
-                tokenizer=tiktoken_tokenizer
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=8192
+            ),
+            entities.LLMModelInfo(
+                name="gpt-4-32k",
+                token_mgr=openai_token_mgr,
+                requester=openai_chat_completion,
+                tool_call_supported=True,
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=32768
             ),
             entities.LLMModelInfo(
                 name="gpt-4-32k-0613",
                 token_mgr=openai_token_mgr,
                 requester=openai_chat_completion,
                 tool_call_supported=True,
-                tokenizer=tiktoken_tokenizer
-            ),
-            entities.LLMModelInfo(
-                name="gpt-4-0314",
-                token_mgr=openai_token_mgr,
-                requester=openai_chat_completion,
-                tool_call_supported=True,
-                tokenizer=tiktoken_tokenizer
-            ),
-            entities.LLMModelInfo(
-                name="gpt-4-32k-0314",
-                token_mgr=openai_token_mgr,
-                requester=openai_chat_completion,
-                tool_call_supported=True,
-                tokenizer=tiktoken_tokenizer
-            ),
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=32768
+            )
         ]
 
-        self.model_list.extend(model_list)
+        self.model_list.extend(gpt4_model_list)
 
         one_api_model_list = [
             entities.LLMModelInfo(
@@ -144,7 +162,8 @@ class ModelManager:
                 token_mgr=openai_token_mgr,
                 requester=openai_chat_completion,
                 tool_call_supported=False,
-                tokenizer=tiktoken_tokenizer
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=8192
             ),
             entities.LLMModelInfo(
                 name="OneAPI/chatglm_pro",
@@ -152,7 +171,8 @@ class ModelManager:
                 token_mgr=openai_token_mgr,
                 requester=openai_chat_completion,
                 tool_call_supported=False,
-                tokenizer=tiktoken_tokenizer
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=128000
             ),
             entities.LLMModelInfo(
                 name="OneAPI/chatglm_std",
@@ -160,7 +180,8 @@ class ModelManager:
                 token_mgr=openai_token_mgr,
                 requester=openai_chat_completion,
                 tool_call_supported=False,
-                tokenizer=tiktoken_tokenizer
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=128000
             ),
             entities.LLMModelInfo(
                 name="OneAPI/chatglm_lite",
@@ -168,7 +189,8 @@ class ModelManager:
                 token_mgr=openai_token_mgr,
                 requester=openai_chat_completion,
                 tool_call_supported=False,
-                tokenizer=tiktoken_tokenizer
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=128000
             ),
             entities.LLMModelInfo(
                 name="OneAPI/qwen-v1",
@@ -176,7 +198,8 @@ class ModelManager:
                 token_mgr=openai_token_mgr,
                 requester=openai_chat_completion,
                 tool_call_supported=False,
-                tokenizer=tiktoken_tokenizer
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=6000
             ),
             entities.LLMModelInfo(
                 name="OneAPI/qwen-plus-v1",
@@ -184,7 +207,8 @@ class ModelManager:
                 token_mgr=openai_token_mgr,
                 requester=openai_chat_completion,
                 tool_call_supported=False,
-                tokenizer=tiktoken_tokenizer
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=30000
             ),
             entities.LLMModelInfo(
                 name="OneAPI/ERNIE-Bot",
@@ -192,7 +216,8 @@ class ModelManager:
                 token_mgr=openai_token_mgr,
                 requester=openai_chat_completion,
                 tool_call_supported=False,
-                tokenizer=tiktoken_tokenizer
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=2000
             ),
             entities.LLMModelInfo(
                 name="OneAPI/ERNIE-Bot-turbo",
@@ -200,7 +225,8 @@ class ModelManager:
                 token_mgr=openai_token_mgr,
                 requester=openai_chat_completion,
                 tool_call_supported=False,
-                tokenizer=tiktoken_tokenizer
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=7000
             ),
             entities.LLMModelInfo(
                 name="OneAPI/gemini-pro",
@@ -208,7 +234,8 @@ class ModelManager:
                 token_mgr=openai_token_mgr,
                 requester=openai_chat_completion,
                 tool_call_supported=False,
-                tokenizer=tiktoken_tokenizer
+                tokenizer=tiktoken_tokenizer,
+                max_tokens=30720
             ),
         ]
 
