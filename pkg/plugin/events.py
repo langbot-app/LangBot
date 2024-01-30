@@ -157,20 +157,6 @@ class NormalMessageResponded(BaseEventModel):
     """回复消息组件列表"""
 
 
-class ConversationFirstMessageReceived(BaseEventModel):
-    """会话中收到第一条消息时触发"""
-    
-    session_name: str
-
-    session: core_entities.Session
-
-    default_prompt: str
-
-
-SessionFirstMessageReceived = ConversationFirstMessageReceived
-"""[过时]"""
-
-
 class SessionExplicitReset(BaseEventModel):
     """会话被显式重置时触发"""
 
@@ -187,18 +173,6 @@ class SessionExpired(BaseEventModel):
     session: core_entities.Session
 
     session_expire_time: int
-
-
-class KeyExceeded(BaseEventModel):
-    """[过时]会话中使用的Key超过限制时触发"""
-
-    key_name: str
-
-
-class KeySwitched(BaseEventModel):
-    """[过时]会话中使用的Key切换时触发"""
-
-    key_name: str
 
 
 class PromptPreProcessing(BaseEventModel):
