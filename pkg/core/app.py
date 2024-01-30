@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import asyncio
+import traceback
 
 from ..platform import manager as im_mgr
 from ..provider.session import sessionmgr as llm_session_mgr
@@ -65,4 +66,12 @@ class Application:
             asyncio.create_task(self.ctrl.run())
         ]
 
-        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        try:
+
+            await asyncio.wait(tasks)
+
+        except asyncio.CancelledError:
+            self.logger.info("程序退出.")
+        except Exception as e:
+            self.logger.error(f"应用运行致命异常: {e}")
+            self.logger.debug(f"Traceback: {traceback.format_exc()}")

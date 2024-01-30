@@ -61,8 +61,9 @@ class Controller:
                     
                     asyncio.create_task(_process_query(selected_query))
         except Exception as e:
-            self.ap.logger.error(f"事件处理循环出错: {e}")
-            traceback.print_exc()
+            # traceback.print_exc()
+            self.ap.logger.error(f"控制器循环出错: {e}")
+            self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
 
     async def _check_output(self, result: pipeline_entities.StageProcessResult):
         """检查输出
@@ -144,7 +145,7 @@ class Controller:
             await self._execute_from_stage(0, query)
         except Exception as e:
             self.ap.logger.error(f"处理请求时出错 {query}: {e}")
-            traceback.print_exc()
+            self.ap.logger.debug(f"处理请求时出错 {query}: {e}", exc_info=True)
         finally:
             self.ap.logger.debug(f"Query {query} processed")
 

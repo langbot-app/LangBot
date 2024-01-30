@@ -4,6 +4,7 @@ import json
 import os
 import logging
 import asyncio
+import traceback
 
 from mirai import At, GroupMessage, MessageEvent, StrangerMessage, \
     FriendMessage, Image, MessageChain, Plain
@@ -150,4 +151,8 @@ class QQBotManager:
                 )
 
     async def run(self):
-        await self.adapter.run_async()
+        try:
+            await self.adapter.run_async()
+        except Exception as e:
+            self.ap.logger.error('平台适配器运行出错: ' + str(e))
+            self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
