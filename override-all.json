@@ -63,7 +63,7 @@
         "model": "dall-e-2",
         "size": "256x256"
     },
-    "trace_function_calls": false,
+    "trace_function_calls": true,
     "quote_origin": false,
     "at_sender": false,
     "include_image_description": true,
