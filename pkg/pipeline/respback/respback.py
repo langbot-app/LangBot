@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import random
+import asyncio
+
 import mirai
 
 from ...core import app
@@ -17,6 +20,14 @@ class SendResponseBackStage(stage.PipelineStage):
     async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:
         """处理
         """
+        random_delay = random.uniform(*self.ap.cfg_mgr.data['force_delay_range'])
+
+        self.ap.logger.debug(
+            "根据规则强制延迟回复: %s s",
+            random_delay
+        )
+
+        await asyncio.sleep(random_delay)
 
         await self.ap.im_mgr.send(
             query.message_event,
