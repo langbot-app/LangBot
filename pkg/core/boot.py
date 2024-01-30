@@ -21,7 +21,7 @@ from ..platform import manager as im_mgr
 from ..command import cmdmgr
 from ..plugin import manager as plugin_mgr
 from ..audit.center import v2 as center_v2
-from ..utils import version, proxy
+from ..utils import version, proxy, announce
 
 use_override = False
 
@@ -82,15 +82,25 @@ async def make_app() -> app.Application:
     ap.cfg_mgr = cfg_mgr
     ap.tips_mgr = tips_mgr
 
-    ap.query_pool = pool.QueryPool()
-
     proxy_mgr = proxy.ProxyManager(ap)
     await proxy_mgr.initialize()
     ap.proxy_mgr = proxy_mgr
 
+    # 发送公告
+    ann_mgr = announce.AnnouncementManager(ap)
+    announcements = await ann_mgr.fetch_new()
+
+    for ann in announcements:
+        ap.logger.info(f'[公告] {ann.time}: {ann.content}')
+
+    ap.query_pool = pool.QueryPool()
+
     ver_mgr = version.VersionManager(ap)
     await ver_mgr.initialize()
     ap.ver_mgr = ver_mgr
+
+    if await ap.ver_mgr.is_new_version_available():
+        ap.logger.info("有新版本可用，请使用 !update 命令更新")
 
     plugin_mgr_inst = plugin_mgr.PluginManager(ap)
     await plugin_mgr_inst.initialize()
@@ -109,7 +119,7 @@ async def make_app() -> app.Application:
             "msg_source": cfg['msg_source_adapter'],
         }
     )
-    # ap.ctr_mgr = center_v2_api
+    ap.ctr_mgr = center_v2_api
 
     cmd_mgr_inst = cmdmgr.CommandManager(ap)
     await cmd_mgr_inst.initialize()

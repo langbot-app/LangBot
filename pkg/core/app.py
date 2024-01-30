@@ -10,7 +10,7 @@ from ..provider.requester import modelmgr as llm_model_mgr
 from ..provider.sysprompt import sysprompt as llm_prompt_mgr
 from ..provider.tools import toolmgr as llm_tool_mgr
 from ..config import manager as config_mgr
-# from ..utils.center import v2 as center_mgr
+from ..audit.center import v2 as center_mgr
 from ..command import cmdmgr
 from ..plugin import manager as plugin_mgr
 from . import pool, controller
@@ -35,7 +35,7 @@ class Application:
 
     tips_mgr: config_mgr.ConfigManager = None
 
-    # ctr_mgr: center_mgr.V2CenterAPI = None
+    ctr_mgr: center_mgr.V2CenterAPI = None
 
     plugin_mgr: plugin_mgr.PluginManager = None
 
@@ -61,13 +61,11 @@ class Application:
         await self.plugin_mgr.load_plugins()
         await self.plugin_mgr.initialize_plugins()
 
-        tasks = [
-            asyncio.create_task(self.im_mgr.run()),
-            asyncio.create_task(self.ctrl.run())
-        ]
-
         try:
-
+            tasks = [
+                asyncio.create_task(self.im_mgr.run()),
+                asyncio.create_task(self.ctrl.run())
+            ]
             await asyncio.wait(tasks)
 
         except asyncio.CancelledError:

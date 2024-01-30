@@ -49,7 +49,8 @@ class VersionManager:
         """获取发行列表"""
         rls_list_resp = requests.get(
             url="https://api.github.com/repos/RockChinQ/QChatGPT/releases",
-            proxies=self.ap.proxy_mgr.get_forward_proxies()
+            proxies=self.ap.proxy_mgr.get_forward_proxies(),
+            timeout=5
         )
 
         rls_list = rls_list_resp.json()
