@@ -13,7 +13,7 @@ class LLMModelInfo(pydantic.BaseModel):
 
     name: str
 
-    provider: str
+    model_name: typing.Optional[str] = None
 
     token_mgr: token.TokenManager
 
@@ -22,6 +22,8 @@ class LLMModelInfo(pydantic.BaseModel):
     tokenizer: 'tokenizer.LLMTokenizer'
 
     tool_call_supported: typing.Optional[bool] = False
+
+    max_tokens: typing.Optional[int] = 2048
 
     class Config:
         arbitrary_types_allowed = True

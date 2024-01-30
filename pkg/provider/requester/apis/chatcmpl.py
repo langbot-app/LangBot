@@ -47,7 +47,7 @@ class OpenAIChatCompletion(api.LLMAPIRequester):
         self.client.api_key = conversation.use_model.token_mgr.get_token()
 
         args = self.ap.cfg_mgr.data["completion_api_params"].copy()
-        args["model"] = conversation.use_model.name
+        args["model"] = conversation.use_model.name if conversation.use_model.model_name is None else conversation.use_model.model_name
 
         if conversation.use_model.tool_call_supported:
             tools = await self.ap.tool_mgr.generate_tools_for_openai(conversation)
