@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typing
+import traceback
 
 from ..core import app
 from . import context, loader, events, installer, setting, models
@@ -100,6 +101,9 @@ class PluginManager:
         for plugin in self.plugins:
             if plugin.enabled:
                 if event.__class__ in plugin.event_handlers:
+                    
+                    is_prevented_default_before_call = ctx.is_prevented_default()
+
                     try:
                         await plugin.event_handlers[event.__class__](
                             plugin.plugin_inst,
@@ -107,11 +111,18 @@ class PluginManager:
                         )
                     except Exception as e:
                         self.ap.logger.error(f'插件 {plugin.plugin_name} 触发事件 {event.__class__.__name__} 时发生错误: {e}')
-                        self.ap.logger.exception(e)
+                        self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
                     
+                    if not is_prevented_default_before_call and ctx.is_prevented_default():
+                        self.ap.logger.debug(f'插件 {plugin.plugin_name} 阻止了默认行为执行')
+
                     if ctx.is_prevented_postorder():
                         self.ap.logger.debug(f'插件 {plugin.plugin_name} 阻止了后序插件的执行')
                         break
+
+        for key in ctx.__return_value__.keys():
+            if hasattr(ctx.event, key):
+                setattr(ctx.event, key, ctx.__return_value__[key][0])
         
         self.ap.logger.debug(f'事件 {event.__class__.__name__}({ctx.eid}) 处理完成，返回值 {ctx.__return_value__}')
 

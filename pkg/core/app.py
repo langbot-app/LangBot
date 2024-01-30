@@ -19,7 +19,7 @@ from ..utils import version as version_mgr, proxy as proxy_mgr
 
 
 class Application:
-    im_mgr: im_mgr.QQBotManager = None
+    im_mgr: im_mgr.PlatformManager = None
 
     cmd_mgr: cmdmgr.CommandManager = None
 

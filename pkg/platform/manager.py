@@ -18,10 +18,11 @@ from ..platform import adapter as msadapter
 from .ratelim import ratelim
 
 from ..core import app, entities as core_entities
+from ..plugin import events
 
 
 # 控制QQ消息输入输出的类
-class QQBotManager:
+class PlatformManager:
     
     adapter: msadapter.MessageSourceAdapter = None
 
@@ -60,13 +61,25 @@ class QQBotManager:
 
         async def on_friend_message(event: FriendMessage):
 
-            await self.ap.query_pool.add_query(
-                launcher_type=core_entities.LauncherTypes.PERSON,
-                launcher_id=event.sender.id,
-                sender_id=event.sender.id,
-                message_event=event,
-                message_chain=event.message_chain
+            event_ctx = await self.ap.plugin_mgr.emit_event(
+                event=events.PersonMessageReceived(
+                    launcher_type='person',
+                    launcher_id=event.sender.id,
+                    sender_id=event.sender.id,
+                    message_chain=event.message_chain,
+                    query=None
+                )
             )
+
+            if not event_ctx.is_prevented_default():
+
+                await self.ap.query_pool.add_query(
+                    launcher_type=core_entities.LauncherTypes.PERSON,
+                    launcher_id=event.sender.id,
+                    sender_id=event.sender.id,
+                    message_event=event,
+                    message_chain=event.message_chain
+                )
 
         self.adapter.register_listener(
             FriendMessage,
@@ -75,13 +88,25 @@ class QQBotManager:
 
         async def on_stranger_message(event: StrangerMessage):
             
-            await self.ap.query_pool.add_query(
-                launcher_type=core_entities.LauncherTypes.PERSON,
-                launcher_id=event.sender.id,
-                sender_id=event.sender.id,
-                message_event=event,
-                message_chain=event.message_chain
+            event_ctx = await self.ap.plugin_mgr.emit_event(
+                event=events.PersonMessageReceived(
+                    launcher_type='person',
+                    launcher_id=event.sender.id,
+                    sender_id=event.sender.id,
+                    message_chain=event.message_chain,
+                    query=None
+                )
             )
+
+            if not event_ctx.is_prevented_default():
+
+                await self.ap.query_pool.add_query(
+                    launcher_type=core_entities.LauncherTypes.PERSON,
+                    launcher_id=event.sender.id,
+                    sender_id=event.sender.id,
+                    message_event=event,
+                    message_chain=event.message_chain
+                )
 
         # nakuru不区分好友和陌生人，故仅为yirimirai注册陌生人事件
         if config['msg_source_adapter'] == 'yirimirai':
@@ -92,13 +117,25 @@ class QQBotManager:
 
         async def on_group_message(event: GroupMessage):
 
-            await self.ap.query_pool.add_query(
-                launcher_type=core_entities.LauncherTypes.GROUP,
-                launcher_id=event.group.id,
-                sender_id=event.sender.id,
-                message_event=event,
-                message_chain=event.message_chain
+            event_ctx = await self.ap.plugin_mgr.emit_event(
+                event=events.GroupMessageReceived(
+                    launcher_type='person',
+                    launcher_id=event.sender.id,
+                    sender_id=event.sender.id,
+                    message_chain=event.message_chain,
+                    query=None
+                )
             )
+
+            if not event_ctx.is_prevented_default():
+
+                await self.ap.query_pool.add_query(
+                    launcher_type=core_entities.LauncherTypes.GROUP,
+                    launcher_id=event.group.id,
+                    sender_id=event.sender.id,
+                    message_event=event,
+                    message_chain=event.message_chain
+                )
 
         self.adapter.register_listener(
             GroupMessage,

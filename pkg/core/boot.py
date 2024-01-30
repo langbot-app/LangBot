@@ -88,10 +88,13 @@ async def make_app() -> app.Application:
 
     # 发送公告
     ann_mgr = announce.AnnouncementManager(ap)
-    announcements = await ann_mgr.fetch_new()
+    try:
+        announcements = await ann_mgr.fetch_new()
 
-    for ann in announcements:
-        ap.logger.info(f'[公告] {ann.time}: {ann.content}')
+        for ann in announcements:
+            ap.logger.info(f'[公告] {ann.time}: {ann.content}')
+    except Exception as e:
+        ap.logger.warning(f'获取公告时出错: {e}')
 
     ap.query_pool = pool.QueryPool()
 
@@ -99,8 +102,13 @@ async def make_app() -> app.Application:
     await ver_mgr.initialize()
     ap.ver_mgr = ver_mgr
 
-    if await ap.ver_mgr.is_new_version_available():
-        ap.logger.info("有新版本可用，请使用 !update 命令更新")
+    try:
+
+        if await ap.ver_mgr.is_new_version_available():
+            ap.logger.info("有新版本可用，请使用 !update 命令更新")
+    
+    except Exception as e:
+        ap.logger.warning(f"检查版本更新时出错: {e}")
 
     plugin_mgr_inst = plugin_mgr.PluginManager(ap)
     await plugin_mgr_inst.initialize()
@@ -141,7 +149,7 @@ async def make_app() -> app.Application:
     await llm_tool_mgr_inst.initialize()
     ap.tool_mgr = llm_tool_mgr_inst
 
-    im_mgr_inst = im_mgr.QQBotManager(ap=ap)
+    im_mgr_inst = im_mgr.PlatformManager(ap=ap)
     await im_mgr_inst.initialize()
     ap.im_mgr = im_mgr_inst
 

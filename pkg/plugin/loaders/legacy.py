@@ -75,7 +75,7 @@ class PluginLoader(loader.PluginLoader):
                 for k, v in ctx.event.dict().items():
                     args[k] = v 
 
-                await func(plugin, **args)
+                func(plugin, **args)
             
             self._current_container.event_handlers[event] = handler
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import typing
 
 from .context import BasePlugin as Plugin
-from . import events
+from .events import *
 
 def register(
     name: str,
@@ -15,7 +15,7 @@ def register(
 
 
 def on(
-    event: typing.Type[events.BaseEventModel]
+    event: typing.Type[BaseEventModel]
 ) -> typing.Callable[[typing.Callable], typing.Callable]:
     pass
 

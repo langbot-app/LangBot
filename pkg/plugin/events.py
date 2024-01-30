@@ -5,14 +5,13 @@ import typing
 import pydantic
 import mirai
 
-from . import context
 from ..core import entities as core_entities
 from ..provider import entities as llm_entities
 
 
 class BaseEventModel(pydantic.BaseModel):
 
-    query: core_entities.Query
+    query: core_entities.Query | None
 
     class Config:
         arbitrary_types_allowed = True
@@ -142,7 +141,7 @@ class NormalMessageResponded(BaseEventModel):
     """会话对象"""
 
     prefix: str
-    """回复消息的前缀，可修改"""
+    """回复消息的前缀"""
 
     response_text: str
     """回复消息的文本"""
@@ -157,24 +156,6 @@ class NormalMessageResponded(BaseEventModel):
     """回复消息组件列表"""
 
 
-class SessionExplicitReset(BaseEventModel):
-    """会话被显式重置时触发"""
-
-    session_name: str
-
-    session: core_entities.Session
-
-
-class SessionExpired(BaseEventModel):
-    """会话过期时触发"""
-
-    session_name: str
-
-    session: core_entities.Session
-
-    session_expire_time: int
-
-
 class PromptPreProcessing(BaseEventModel):
     """会话中的Prompt预处理时触发"""
 
@@ -185,6 +166,3 @@ class PromptPreProcessing(BaseEventModel):
 
     prompt: list[llm_entities.Message]
     """此对话现有消息记录，可修改"""
-    
-    text_message: str
-    """消息文本，可修改"""

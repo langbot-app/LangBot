@@ -6,6 +6,7 @@ import traceback
 
 from . import app, entities
 from ..pipeline import entities as pipeline_entities
+from ..plugin import events
 
 DEFAULT_QUERY_CONCURRENCY = 10
 
