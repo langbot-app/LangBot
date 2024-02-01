@@ -12,6 +12,7 @@ from .longtext import longtext
 from .respback import respback
 from .wrapper import wrapper
 from .preproc import preproc
+from .ratelimit import ratelimit
 
 
 stage_order = [
@@ -19,7 +20,9 @@ stage_order = [
     "BanSessionCheckStage",
     "PreContentFilterStage",
     "PreProcessor",
+    "RequireRateLimitOccupancy",
     "MessageProcessor",
+    "ReleaseRateLimitOccupancy",
     "PostContentFilterStage",
     "ResponseWrapper",
     "LongTextProcessStage",

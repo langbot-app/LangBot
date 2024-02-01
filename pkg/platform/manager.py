@@ -9,13 +9,7 @@ import traceback
 from mirai import At, GroupMessage, MessageEvent, StrangerMessage, \
     FriendMessage, Image, MessageChain, Plain
 import mirai
-import func_timeout
-
-from ..provider import session as openai_session
-
-import tips as tips_custom
 from ..platform import adapter as msadapter
-from .ratelim import ratelim
 
 from ..core import app, entities as core_entities
 from ..plugin import events
@@ -31,15 +25,11 @@ class PlatformManager:
     # modern
     ap: app.Application = None
 
-    ratelimiter: ratelim.RateLimiter = None
-
     def __init__(self, ap: app.Application = None):
 
         self.ap = ap
-        self.ratelimiter = ratelim.RateLimiter(ap)
     
     async def initialize(self):
-        await self.ratelimiter.initialize()
 
         config = self.ap.cfg_mgr.data
 
