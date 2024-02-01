@@ -62,27 +62,27 @@ class ChatMessageHandler(handler.MessageHandler):
                 query.user_message
             )
 
-            query.session.using_conversation.messages.append(
-                query.user_message
-            )
-
             text_length = 0
 
             start_time = time.time()
 
-            async for result in query.use_model.requester.request(query):
-                query.resp_messages.append(result)
+            try:
 
-                # 消息同步到会话
-                query.session.using_conversation.messages.append(result)
+                async for result in query.use_model.requester.request(query):
+                    query.resp_messages.append(result)
 
-                if result.content is not None:
-                    text_length += len(result.content)
+                    if result.content is not None:
+                        text_length += len(result.content)
 
-                yield entities.StageProcessResult(
-                    result_type=entities.ResultType.CONTINUE,
-                    new_query=query
-                )
+                    yield entities.StageProcessResult(
+                        result_type=entities.ResultType.CONTINUE,
+                        new_query=query
+                    )
+            finally:
+                query.session.using_conversation.messages.append(query.user_message)
+                query.session.using_conversation.messages.extend(query.resp_messages)
+
+                print(query.session.using_conversation.messages)
 
             await self.ap.ctr_mgr.usage.post_query_record(
                 session_type=query.session.launcher_type.value,
