@@ -82,14 +82,12 @@ class ChatMessageHandler(handler.MessageHandler):
                 query.session.using_conversation.messages.append(query.user_message)
                 query.session.using_conversation.messages.extend(query.resp_messages)
 
-                print(query.session.using_conversation.messages)
-
-            await self.ap.ctr_mgr.usage.post_query_record(
-                session_type=query.session.launcher_type.value,
-                session_id=str(query.session.launcher_id),
-                query_ability_provider="QChatGPT.Chat",
-                usage=text_length,
-                model_name=query.use_model.name,
-                response_seconds=int(time.time() - start_time),
-                retry_times=-1,
-            )
+                await self.ap.ctr_mgr.usage.post_query_record(
+                    session_type=query.session.launcher_type.value,
+                    session_id=str(query.session.launcher_id),
+                    query_ability_provider="QChatGPT.Chat",
+                    usage=text_length,
+                    model_name=query.use_model.name,
+                    response_seconds=int(time.time() - start_time),
+                    retry_times=-1,
+                )

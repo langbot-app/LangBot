@@ -149,7 +149,8 @@ class Controller:
             await self._execute_from_stage(0, query)
         except Exception as e:
             self.ap.logger.error(f"处理请求时出错 {query}: {e}")
-            self.ap.logger.debug(f"处理请求时出错 {query}: {e}", exc_info=True)
+            # self.ap.logger.debug(f"处理请求时出错 {query}: {e}", exc_info=True)
+            traceback.print_exc()
         finally:
             self.ap.logger.debug(f"Query {query} processed")
 

@@ -23,6 +23,6 @@ class Tiktoken(tokenizer.LLMTokenizer):
         num_tokens = 0
         for message in messages:
                 num_tokens += len(encoding.encode(message.role))
-                num_tokens += len(encoding.encode(message.content))
+                num_tokens += len(encoding.encode(message.content if message.content is not None else ''))
         num_tokens += 3  # every reply is primed with <|start|>assistant<|message|>
         return num_tokens

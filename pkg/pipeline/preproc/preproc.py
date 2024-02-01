@@ -52,6 +52,26 @@ class PreProcessor(stage.PipelineStage):
         query.messages = event_ctx.event.prompt
 
         # 根据模型max_tokens剪裁
+        max_tokens = min(query.use_model.max_tokens, self.ap.cfg_mgr.data['prompt_submit_length'])
+
+        test_messages = query.prompt.messages + query.messages + [query.user_message]
+
+        while await query.use_model.tokenizer.count_token(test_messages, query.use_model) > max_tokens:
+            # 前文都pop完了，还是大于max_tokens，由于prompt和user_messages不能删减，报错
+            if len(query.prompt.messages) == 0:
+                return entities.StageProcessResult(
+                    result_type=entities.ResultType.INTERRUPT,
+                    new_query=query,
+                    user_notice='输入内容过长，请减少情景预设或者输入内容长度',
+                    console_notice='输入内容过长，请减少情景预设或者输入内容长度，或者增大配置文件中的 prompt_submit_length 项（但不能超过所用模型最大tokens数）'
+                )
+
+            query.messages.pop(0) # pop第一个肯定是role=user的
+            # 继续pop到第二个role=user前一个
+            while len(query.messages) > 0 and query.messages[0].role != 'user':
+                query.messages.pop(0)
+
+            test_messages = query.prompt.messages + query.messages + [query.user_message]
 
         return entities.StageProcessResult(
             result_type=entities.ResultType.CONTINUE,
