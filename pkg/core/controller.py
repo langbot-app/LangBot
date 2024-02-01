@@ -66,11 +66,12 @@ class Controller:
             self.ap.logger.error(f"控制器循环出错: {e}")
             self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
 
-    async def _check_output(self, result: pipeline_entities.StageProcessResult):
+    async def _check_output(self, query: entities.Query, result: pipeline_entities.StageProcessResult):
         """检查输出
         """
         if result.user_notice:
             await self.ap.im_mgr.send(
+                query.message_event,
                 result.user_notice
             )
         if result.debug_notice:
@@ -108,12 +109,14 @@ class Controller:
         while i < len(self.ap.stage_mgr.stage_containers):
             stage_container = self.ap.stage_mgr.stage_containers[i]
             
-            result = await stage_container.inst.process(query, stage_container.inst_name)
+            result = stage_container.inst.process(query, stage_container.inst_name)
 
+            if isinstance(result, typing.Coroutine):
+                result = await result
 
             if isinstance(result, pipeline_entities.StageProcessResult):  # 直接返回结果
                 self.ap.logger.debug(f"Stage {stage_container.inst_name} processed query {query} res {result}")
-                await self._check_output(result)
+                await self._check_output(query, result)
 
                 if result.result_type == pipeline_entities.ResultType.INTERRUPT:
                     self.ap.logger.debug(f"Stage {stage_container.inst_name} interrupted query {query}")
@@ -125,7 +128,7 @@ class Controller:
 
                 async for sub_result in result:
                     self.ap.logger.debug(f"Stage {stage_container.inst_name} processed query {query} res {sub_result}")
-                    await self._check_output(sub_result)
+                    await self._check_output(query, sub_result)
 
                     if sub_result.result_type == pipeline_entities.ResultType.INTERRUPT:
                         self.ap.logger.debug(f"Stage {stage_container.inst_name} interrupted query {query}")

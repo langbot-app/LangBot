@@ -38,7 +38,9 @@ class QueryPool:
                 launcher_id=launcher_id,
                 sender_id=sender_id,
                 message_event=message_event,
-                message_chain=message_chain
+                message_chain=message_chain,
+                resp_messages=[],
+                resp_message_chain=None
             )
             self.queries.append(query)
             self.query_id_counter += 1

@@ -105,7 +105,7 @@ class PlatformManager:
                     launcher_id=event.sender.id,
                     sender_id=event.sender.id,
                     message_event=event,
-                    message_chain=event.message_chain
+                    message_chain=event.message_chain,
                 )
 
         # nakuru不区分好友和陌生人，故仅为yirimirai注册陌生人事件

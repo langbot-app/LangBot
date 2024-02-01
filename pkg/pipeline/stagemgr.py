@@ -10,6 +10,7 @@ from .cntfilter import cntfilter
 from .process import process
 from .longtext import longtext
 from .respback import respback
+from .wrapper import wrapper
 
 
 stage_order = [
@@ -18,6 +19,7 @@ stage_order = [
     "PreContentFilterStage",
     "MessageProcessor",
     "PostContentFilterStage",
+    "ResponseWrapper",
     "LongTextProcessStage",
     "SendResponseBackStage",
 ]

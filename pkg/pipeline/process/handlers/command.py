@@ -6,6 +6,7 @@ import mirai
 from .. import handler
 from ... import entities
 from ....core import entities as core_entities
+from ....provider import entities as llm_entities
 from ....plugin import events
 
 
@@ -44,7 +45,14 @@ class CommandHandler(handler.MessageHandler):
         if event_ctx.is_prevented_default():
 
             if event_ctx.event.reply is not None:
-                query.resp_message_chain = mirai.MessageChain(event_ctx.event.reply)
+                mc = mirai.MessageChain(event_ctx.event.reply)
+
+                query.resp_messages.append(
+                    llm_entities.Message(
+                        role='command',
+                        content=str(mc),
+                    )
+                )
 
                 yield entities.StageProcessResult(
                     result_type=entities.ResultType.CONTINUE,
@@ -73,18 +81,30 @@ class CommandHandler(handler.MessageHandler):
                 session=session
             ):
                 if ret.error is not None:
-                    query.resp_message_chain = mirai.MessageChain([
-                        mirai.Plain(str(ret.error))
-                    ])
+                    # query.resp_message_chain = mirai.MessageChain([
+                    #     mirai.Plain(str(ret.error))
+                    # ])
+                    query.resp_messages.append(
+                        llm_entities.Message(
+                            role='command',
+                            content=str(ret.error),
+                        )
+                    )
 
                     yield entities.StageProcessResult(
                         result_type=entities.ResultType.CONTINUE,
                         new_query=query
                     )
                 elif ret.text is not None:
-                    query.resp_message_chain = mirai.MessageChain([
-                        mirai.Plain(ret.text)
-                    ])
+                    # query.resp_message_chain = mirai.MessageChain([
+                    #     mirai.Plain(ret.text)
+                    # ])
+                    query.resp_messages.append(
+                        llm_entities.Message(
+                            role='command',
+                            content=ret.text,
+                        )
+                    )
 
                     yield entities.StageProcessResult(
                         result_type=entities.ResultType.CONTINUE,

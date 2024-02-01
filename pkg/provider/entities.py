@@ -20,7 +20,7 @@ class ToolCall(pydantic.BaseModel):
 
 
 class Message(pydantic.BaseModel):
-    role: str
+    role: str  # user, system, assistant, tool, command
 
     name: typing.Optional[str] = None
 

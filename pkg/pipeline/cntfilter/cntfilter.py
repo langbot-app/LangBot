@@ -81,31 +81,36 @@ class ContentFilterStage(stage.PipelineStage):
         """请求llm后处理响应
         只要是 PASS 或者 MASKED 的就通过此 filter，将其 replacement 设置为message，进入下一个 filter
         """
-        for filter in self.filter_chain:
-            if filter_entities.EnableStage.POST in filter.enable_stages:
-                result = await filter.process(message)
+        if message is None:
+            return entities.StageProcessResult(
+                result_type=entities.ResultType.CONTINUE,
+                new_query=query
+            )
+        else:
+            message = message.strip()
+            for filter in self.filter_chain:
+                if filter_entities.EnableStage.POST in filter.enable_stages:
+                    result = await filter.process(message)
 
-                if result.level == filter_entities.ResultLevel.BLOCK:
-                    return entities.StageProcessResult(
-                        result_type=entities.ResultType.INTERRUPT,
-                        new_query=query,
-                        user_notice=result.user_notice,
-                        console_notice=result.console_notice
-                    )
-                elif result.level in [
-                    filter_entities.ResultLevel.PASS,
-                    filter_entities.ResultLevel.MASKED
-                ]:
-                    message = result.replacement
+                    if result.level == filter_entities.ResultLevel.BLOCK:
+                        return entities.StageProcessResult(
+                            result_type=entities.ResultType.INTERRUPT,
+                            new_query=query,
+                            user_notice=result.user_notice,
+                            console_notice=result.console_notice
+                        )
+                    elif result.level in [
+                        filter_entities.ResultLevel.PASS,
+                        filter_entities.ResultLevel.MASKED
+                    ]:
+                        message = result.replacement
 
-        query.message_chain = mirai.MessageChain(
-            mirai.Plain(message)
-        )
+            query.resp_messages[-1].content = message
 
-        return entities.StageProcessResult(
-            result_type=entities.ResultType.CONTINUE,
-            new_query=query
-        )
+            return entities.StageProcessResult(
+                result_type=entities.ResultType.CONTINUE,
+                new_query=query
+            )
 
     async def process(
         self,
@@ -121,7 +126,7 @@ class ContentFilterStage(stage.PipelineStage):
             )
         elif stage_inst_name == 'PostContentFilterStage':
             return await self._post_process(
-                str(query.message_chain).strip(),
+                query.resp_messages[-1].content,
                 query
             )
         else:

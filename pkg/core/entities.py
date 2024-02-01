@@ -27,25 +27,30 @@ class Query(pydantic.BaseModel):
     """一次请求的信息封装"""
 
     query_id: int
-    """请求ID"""
+    """请求ID，添加进请求池时生成"""
 
     launcher_type: LauncherTypes
-    """会话类型"""
+    """会话类型，platform设置"""
 
     launcher_id: int
-    """会话ID"""
+    """会话ID，platform设置"""
 
     sender_id: int
-    """发送者ID"""
+    """发送者ID，platform设置"""
 
     message_event: mirai.MessageEvent
-    """事件"""
+    """事件，platform收到的事件"""
 
     message_chain: mirai.MessageChain
-    """消息链"""
+    """消息链，platform收到的消息链"""
+
+    session: typing.Optional[Session] = None
+
+    resp_messages: typing.Optional[list[llm_entities.Message]] = []
+    """由provider生成的回复消息对象列表"""
 
     resp_message_chain: typing.Optional[mirai.MessageChain] = None
-    """回复消息链"""
+    """回复消息链，从resp_messages包装而得"""
 
 
 class Conversation(pydantic.BaseModel):
