@@ -11,12 +11,14 @@ from .process import process
 from .longtext import longtext
 from .respback import respback
 from .wrapper import wrapper
+from .preproc import preproc
 
 
 stage_order = [
     "GroupRespondRuleCheckStage",
     "BanSessionCheckStage",
     "PreContentFilterStage",
+    "PreProcessor",
     "MessageProcessor",
     "PostContentFilterStage",
     "ResponseWrapper",

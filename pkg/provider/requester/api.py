@@ -23,7 +23,6 @@ class LLMAPIRequester(metaclass=abc.ABCMeta):
     async def request(
         self,
         query: core_entities.Query,
-        conversation: core_entities.Conversation,
     ) -> typing.AsyncGenerator[llm_entities.Message, None]:
         """请求
         """

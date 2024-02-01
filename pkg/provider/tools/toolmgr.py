@@ -38,12 +38,12 @@ class ToolManager:
         
         return all_functions
 
-    async def generate_tools_for_openai(self, conversation: core_entities.Conversation) -> str:
+    async def generate_tools_for_openai(self, use_funcs: entities.LLMFunction) -> str:
         """生成函数列表
         """
         tools = []
 
-        for function in conversation.use_funcs:
+        for function in use_funcs:
             if function.enable:
                 function_schema = {
                     "type": "function",

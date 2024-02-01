@@ -7,9 +7,10 @@ import json
 import openai
 import openai.types.chat.chat_completion as chat_completion
 
-from .. import api
+from .. import api, entities
 from ....core import entities as core_entities
 from ... import entities as llm_entities
+from ...tools import entities as tools_entities
 
 
 class OpenAIChatCompletion(api.LLMAPIRequester):
@@ -42,15 +43,16 @@ class OpenAIChatCompletion(api.LLMAPIRequester):
     async def _closure(
         self,
         req_messages: list[dict],
-        conversation: core_entities.Conversation,
+        use_model: entities.LLMModelInfo,
+        use_funcs: list[tools_entities.LLMFunction] = None,
     ) -> llm_entities.Message:
-        self.client.api_key = conversation.use_model.token_mgr.get_token()
+        self.client.api_key = use_model.token_mgr.get_token()
 
         args = self.ap.cfg_mgr.data["completion_api_params"].copy()
-        args["model"] = conversation.use_model.name if conversation.use_model.model_name is None else conversation.use_model.model_name
+        args["model"] = use_model.name if use_model.model_name is None else use_model.model_name
 
-        if conversation.use_model.tool_call_supported:
-            tools = await self.ap.tool_mgr.generate_tools_for_openai(conversation)
+        if use_model.tool_call_supported:
+            tools = await self.ap.tool_mgr.generate_tools_for_openai(use_funcs)
 
             if tools:
                 args["tools"] = tools
@@ -68,19 +70,19 @@ class OpenAIChatCompletion(api.LLMAPIRequester):
         return message
 
     async def request(
-        self, query: core_entities.Query, conversation: core_entities.Conversation
+        self, query: core_entities.Query
     ) -> typing.AsyncGenerator[llm_entities.Message, None]:
         """请求"""
 
         pending_tool_calls = []
 
-        req_messages = [
-            m.dict(exclude_none=True) for m in conversation.prompt.messages
-        ] + [m.dict(exclude_none=True) for m in conversation.messages]
+        req_messages = [  # req_messages 仅用于类内，外部同步由 query.messages 进行
+            m.dict(exclude_none=True) for m in query.prompt.messages
+        ] + [m.dict(exclude_none=True) for m in query.messages]
 
         # req_messages.append({"role": "user", "content": str(query.message_chain)})
 
-        msg = await self._closure(req_messages, conversation)
+        msg = await self._closure(req_messages, query.use_model, query.use_funcs)
 
         yield msg
 
@@ -107,7 +109,7 @@ class OpenAIChatCompletion(api.LLMAPIRequester):
                 req_messages.append(msg.dict(exclude_none=True))
 
             # 处理完所有调用，继续请求
-            msg = await self._closure(req_messages, conversation)
+            msg = await self._closure(req_messages, query.use_model, query.use_funcs)
 
             yield msg
 

@@ -58,37 +58,23 @@ class ChatMessageHandler(handler.MessageHandler):
                     mirai.Plain(event_ctx.event.alter)
                 ])
 
-            session = await self.ap.sess_mgr.get_session(query)
-
-            conversation = await self.ap.sess_mgr.get_conversation(session)
-
-            # =========== 触发事件 PromptPreProcessing
-
-            event_ctx = await self.ap.plugin_mgr.emit_event(
-                event=events.PromptPreProcessing(
-                    session_name=f'{session.launcher_type.value}_{session.launcher_id}',
-                    default_prompt=conversation.prompt.messages,
-                    prompt=conversation.messages,
-                    query=query
-                )
+            query.messages.append(
+                query.user_message
             )
 
-            conversation.prompt.messages = event_ctx.event.default_prompt
-            conversation.messages = event_ctx.event.prompt
-
-            conversation.messages.append(
-                llm_entities.Message(
-                    role="user",
-                    content=str(query.message_chain)
-                )
+            query.session.using_conversation.messages.append(
+                query.user_message
             )
 
             text_length = 0
 
             start_time = time.time()
 
-            async for result in conversation.use_model.requester.request(query, conversation):
+            async for result in query.use_model.requester.request(query):
                 query.resp_messages.append(result)
+
+                # 消息同步到会话
+                query.session.using_conversation.messages.append(result)
 
                 if result.content is not None:
                     text_length += len(result.content)
@@ -99,11 +85,11 @@ class ChatMessageHandler(handler.MessageHandler):
                 )
 
             await self.ap.ctr_mgr.usage.post_query_record(
-                session_type=session.launcher_type.value,
-                session_id=str(session.launcher_id),
+                session_type=query.session.launcher_type.value,
+                session_id=str(query.session.launcher_id),
                 query_ability_provider="QChatGPT.Chat",
                 usage=text_length,
-                model_name=conversation.use_model.name,
+                model_name=query.use_model.name,
                 response_seconds=int(time.time() - start_time),
                 retry_times=-1,
             )
