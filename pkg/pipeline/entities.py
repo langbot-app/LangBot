@@ -35,4 +35,7 @@ class StageProcessResult(pydantic.BaseModel):
     """只要设置了就会输出到控制台"""
 
     debug_notice: typing.Optional[str] = ''
+
+    error_notice: typing.Optional[str] = ''
+    
     

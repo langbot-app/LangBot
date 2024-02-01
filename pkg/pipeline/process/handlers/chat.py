@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import typing
 import time
+import traceback
 
 import mirai
 
@@ -78,6 +79,14 @@ class ChatMessageHandler(handler.MessageHandler):
                         result_type=entities.ResultType.CONTINUE,
                         new_query=query
                     )
+            except Exception as e:
+                yield entities.StageProcessResult(
+                    result_type=entities.ResultType.INTERRUPT,
+                    new_query=query,
+                    user_notice=self.ap.tips_mgr.data['alter_tip_message'] if self.ap.cfg_mgr.data['hide_exce_info_to_user'] else f'{e}',
+                    error_notice=f'{e}',
+                    debug_notice=traceback.format_exc()
+                )
             finally:
                 query.session.using_conversation.messages.append(query.user_message)
                 query.session.using_conversation.messages.extend(query.resp_messages)

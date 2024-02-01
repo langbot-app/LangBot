@@ -1,14 +1,14 @@
 import config
 import unittest
-import pkg.openai.session
-import pkg.openai.manager
+import pkg.provider.session
+import pkg.provider.manager
 
 
 class TestOpenAISession(unittest.TestCase):
     def test_session_console(self):
-        interact = pkg.openai.manager.OpenAIInteract(config.openai_config['api_key'], config.completion_api_params)
+        interact = pkg.provider.manager.OpenAIInteract(config.openai_config['api_key'], config.completion_api_params)
 
-        session = pkg.openai.session.Session('test')
+        session = pkg.provider.session.Session('test')
         print(session.append('你好'))
         print("#{}#".format(session.prompt))
 

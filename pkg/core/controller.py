@@ -78,6 +78,8 @@ class Controller:
             self.ap.logger.debug(result.debug_notice)
         if result.console_notice:
             self.ap.logger.info(result.console_notice)
+        if result.error_notice:
+            self.ap.logger.error(result.error_notice)
 
     async def _execute_from_stage(
         self,

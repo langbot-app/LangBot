@@ -1,6 +1,6 @@
 from mirai import Mirai
 
-import pkg.qqbot.manager
+import pkg.platform.manager
 from pkg.plugin.models import *
 from pkg.plugin.host import PluginHost
 
@@ -23,13 +23,13 @@ class AutoApproval(Plugin):
     # 插件加载时触发
     def __init__(self, plugin_host: PluginHost):
         qqmgr = plugin_host.get_runtime_context().get_qqbot_manager()
-        assert isinstance(qqmgr, pkg.qqbot.manager.QQBotManager)
+        assert isinstance(qqmgr, pkg.platform.manager.PlatformManager)
         self.bot = qqmgr.bot
 
         # 向YiriMirai注册 加群申请 事件处理函数
         @qqmgr.bot.on(MemberJoinRequestEvent)
         async def process(event: MemberJoinRequestEvent):
-            assert isinstance(qqmgr, pkg.qqbot.manager.QQBotManager)
+            assert isinstance(qqmgr, pkg.platform.manager.PlatformManager)
             if event.group_id == __group_id__:
                 if any([x in event.message for x in __application_contains__]):
                     logging.info("自动同意加群申请")

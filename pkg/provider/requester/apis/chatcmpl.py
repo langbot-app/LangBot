@@ -3,11 +3,14 @@ from __future__ import annotations
 import asyncio
 import typing
 import json
+from typing import AsyncGenerator
 
 import openai
 import openai.types.chat.chat_completion as chat_completion
 
-from .. import api, entities
+from pkg.provider.entities import Message
+
+from .. import api, entities, errors
 from ....core import entities as core_entities
 from ... import entities as llm_entities
 from ...tools import entities as tools_entities
@@ -69,7 +72,7 @@ class OpenAIChatCompletion(api.LLMAPIRequester):
 
         return message
 
-    async def request(
+    async def _request(
         self, query: core_entities.Query
     ) -> typing.AsyncGenerator[llm_entities.Message, None]:
         """请求"""
@@ -116,3 +119,20 @@ class OpenAIChatCompletion(api.LLMAPIRequester):
             pending_tool_calls = msg.tool_calls
 
             req_messages.append(msg.dict(exclude_none=True))
+
+    async def request(self, query: core_entities.Query) -> AsyncGenerator[Message, None]:
+        try:
+            async for msg in self._request(query):
+                yield msg
+        except asyncio.TimeoutError:
+            raise errors.RequesterError('请求超时')
+        except openai.BadRequestError as e:
+            raise errors.RequesterError(f'请求错误: {e.message}')
+        except openai.AuthenticationError as e:
+            raise errors.RequesterError(f'无效的 api-key: {e.message}')
+        except openai.NotFoundError as e:
+            raise errors.RequesterError(f'请求路径错误: {e.message}')
+        except openai.RateLimitError as e:
+            raise errors.RequesterError(f'请求过于频繁: {e.message}')
+        except openai.APIError as e:
+            raise errors.RequesterError(f'请求错误: {e.message}')
