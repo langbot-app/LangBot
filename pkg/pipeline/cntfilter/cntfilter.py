@@ -24,10 +24,10 @@ class ContentFilterStage(stage.PipelineStage):
     async def initialize(self):
         self.filter_chain.append(cntignore.ContentIgnore(self.ap))
 
-        if self.ap.cfg_mgr.data['sensitive_word_filter']:
+        if self.ap.pipeline_cfg.data['check-sensitive-words']:
             self.filter_chain.append(banwords.BanWordFilter(self.ap))
         
-        if self.ap.cfg_mgr.data['baidu_check']:
+        if self.ap.pipeline_cfg.data['baidu-cloud-examine']['enable']:
             self.filter_chain.append(baiduexamine.BaiduCloudExamine(self.ap))
 
         for filter in self.filter_chain:
@@ -41,7 +41,7 @@ class ContentFilterStage(stage.PipelineStage):
         """请求llm前处理消息
         只要有一个不通过就不放行，只放行 PASS 的消息
         """
-        if not self.ap.cfg_mgr.data['income_msg_check']:
+        if not self.ap.pipeline_cfg.data['income-msg-check']:
             return entities.StageProcessResult(
                 result_type=entities.ResultType.CONTINUE,
                 new_query=query

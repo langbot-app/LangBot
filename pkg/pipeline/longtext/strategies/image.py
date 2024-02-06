@@ -19,7 +19,7 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
     text_render_font: ImageFont.FreeTypeFont
 
     async def initialize(self):
-        self.text_render_font = ImageFont.truetype(self.ap.cfg_mgr.data['font_path'], 32, encoding="utf-8")
+        self.text_render_font = ImageFont.truetype(self.ap.platform_cfg.data['long-text-process']['font-path'], 32, encoding="utf-8")
     
     async def process(self, message: str) -> list[MessageComponent]:
         img_path = self.text_to_image(

@@ -14,7 +14,7 @@ class RandomRespRule(rule_model.GroupRespondRule):
         message_chain: mirai.MessageChain,
         rule_dict: dict
     ) -> entities.RuleJudgeResult:
-        random_rate = rule_dict['random_rate']
+        random_rate = rule_dict['random']
         
         return entities.RuleJudgeResult(
             matching=random.random() < random_rate,

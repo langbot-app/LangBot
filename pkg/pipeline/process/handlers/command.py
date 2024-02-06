@@ -23,8 +23,8 @@ class CommandHandler(handler.MessageHandler):
 
 
         privilege = 1
-        if query.sender_id == self.ap.cfg_mgr.data['admin_qq'] \
-            or query.sender_id in self.ap.cfg_mgr['admin_qq']:
+        
+        if f'{query.launcher_type.value}_{query.launcher_id}' in self.ap.system_cfg.data['admin-sessions']:
             privilege = 2
 
         spt = str(query.message_chain).strip().split(' ')

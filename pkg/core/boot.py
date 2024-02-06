@@ -32,7 +32,7 @@ async def make_app() -> app.Application:
     generated_files = await files.generate_files()
 
     if generated_files:
-        print("以下文件不存在，已自动生成，请修改配置文件后重启：")
+        print("以下文件不存在，已自动生成，请按需修改配置文件后重启：")
         for file in generated_files:
             print("-", file)
 
@@ -52,31 +52,23 @@ async def make_app() -> app.Application:
     # 生成标识符
     identifier.init()
 
-    cfg_mgr = await config.load_python_module_config("config.py", "config-template.py")
-    cfg = cfg_mgr.data
+    # ========== 加载配置文件 ==========
 
-    # 检查是否携带了 --override 或 -r 参数
-    if "--override" in sys.argv or "-r" in sys.argv:
-        use_override = True
+    command_cfg = await config.load_json_config("data/config/command.json", "templates/command.json")
+    pipeline_cfg = await config.load_json_config("data/config/pipeline.json", "templates/pipeline.json")
+    platform_cfg = await config.load_json_config("data/config/platform.json", "templates/platform.json")
+    provider_cfg = await config.load_json_config("data/config/provider.json", "templates/provider.json")
+    system_cfg = await config.load_json_config("data/config/system.json", "templates/system.json")
 
-    if use_override:
-        overrided = await config.override_config_manager(cfg_mgr)
-        if overrided:
-            qcg_logger.info("以下配置项已使用 override.json 覆盖：" + ",".join(overrided))
-
-    tips_mgr = await config.load_python_module_config(
-        "tips.py", "tips-custom-template.py"
-    )
-
-    # 检查管理员QQ号
-    if cfg_mgr.data["admin_qq"] == 0:
-        qcg_logger.warning("未设置管理员QQ号，将无法使用管理员命令，请在 config.py 中修改 admin_qq")
-
-    # 构建组建实例
+    # ========== 构建应用实例 ==========
     ap = app.Application()
     ap.logger = qcg_logger
-    ap.cfg_mgr = cfg_mgr
-    ap.tips_mgr = tips_mgr
+
+    ap.command_cfg = command_cfg
+    ap.pipeline_cfg = pipeline_cfg
+    ap.platform_cfg = platform_cfg
+    ap.provider_cfg = provider_cfg
+    ap.system_cfg = system_cfg
 
     proxy_mgr = proxy.ProxyManager(ap)
     await proxy_mgr.initialize()
@@ -95,8 +87,8 @@ async def make_app() -> app.Application:
             "platform": sys.platform,
         },
         runtime_info={
-            "admin_id": "{}".format(cfg["admin_qq"]),
-            "msg_source": cfg["msg_source_adapter"],
+            "admin_id": "{}".format(system_cfg.data["admin-sessions"]),
+            "msg_source": platform_cfg.data["platform-adapter"],
         },
     )
     ap.ctr_mgr = center_v2_api

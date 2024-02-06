@@ -16,7 +16,7 @@ class HelpOperator(operator.CommandOperator):
         self,
         context: entities.ExecuteContext
     ) -> typing.AsyncGenerator[entities.CommandReturn, None]:
-        help = self.ap.tips_mgr.data['help_message']
+        help = self.ap.system_cfg.data['help-message']
 
         help += '\n发送命令 !cmd 可查看命令列表'
 

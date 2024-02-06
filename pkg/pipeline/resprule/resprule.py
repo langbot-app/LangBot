@@ -33,13 +33,13 @@ class GroupRespondRuleCheckStage(stage.PipelineStage):
 
     async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:
         
-        if query.launcher_type != 'group':
+        if query.launcher_type.value != 'group':
             return entities.StageProcessResult(
                 result_type=entities.ResultType.CONTINUE,
                 new_query=query
             )
 
-        rules = self.ap.cfg_mgr.data['response_rules']
+        rules = self.ap.pipeline_cfg.data['respond-rules']
 
         use_rule = rules['default']
 

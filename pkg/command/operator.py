@@ -24,6 +24,7 @@ def operator_class(
         cls.help = help
         cls.usage = usage
         cls.parent_class = parent_class
+        cls.lowest_privilege = privilege
 
         preregistered_operators.append(cls)
 

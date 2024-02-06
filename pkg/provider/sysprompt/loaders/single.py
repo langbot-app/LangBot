@@ -14,7 +14,7 @@ class SingleSystemPromptLoader(loader.PromptLoader):
         """加载Prompt
         """
         
-        for name, cnt in self.ap.cfg_mgr.data['default_prompt'].items():
+        for name, cnt in self.ap.provider_cfg.data['prompt'].items():
             prompt = entities.Prompt(
                 name=name,
                 messages=[
@@ -26,8 +26,8 @@ class SingleSystemPromptLoader(loader.PromptLoader):
             )
             self.prompts.append(prompt)
 
-        for file in os.listdir("prompts"):
-            with open("prompts/{}".format(file), "r", encoding="utf-8") as f:
+        for file in os.listdir("data/prompts"):
+            with open("data/prompts/{}".format(file), "r", encoding="utf-8") as f:
                 file_str = f.read()
                 file_name = file.split(".")[0]
                 prompt = entities.Prompt(

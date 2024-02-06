@@ -33,3 +33,4 @@ bard.json
 !/docker-compose.yaml
 res/instance_id.json
 .DS_Store
+/data

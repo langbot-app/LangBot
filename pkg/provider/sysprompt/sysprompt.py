@@ -23,7 +23,7 @@ class PromptManager:
             "full_scenario": scenario.ScenarioPromptLoader
         }
 
-        loader_cls = loader_map[self.ap.cfg_mgr.data['preset_mode']]
+        loader_cls = loader_map[self.ap.provider_cfg.data['prompt-mode']]
 
         self.loader_inst: loader.PromptLoader = loader_cls(self.ap)
 

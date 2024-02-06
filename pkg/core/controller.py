@@ -8,8 +8,6 @@ from . import app, entities
 from ..pipeline import entities as pipeline_entities
 from ..plugin import events
 
-DEFAULT_QUERY_CONCURRENCY = 10
-
 
 class Controller:
     """总控制器
@@ -21,7 +19,7 @@ class Controller:
 
     def __init__(self, ap: app.Application):
         self.ap = ap
-        self.semaphore = asyncio.Semaphore(DEFAULT_QUERY_CONCURRENCY)
+        self.semaphore = asyncio.Semaphore(self.ap.system_cfg.data['pipeline-concurrency'])
 
     async def consumer(self):
         """事件处理循环
@@ -150,9 +148,9 @@ class Controller:
         try:
             await self._execute_from_stage(0, query)
         except Exception as e:
-            self.ap.logger.error(f"处理请求时出错 {query}: {e}")
-            # self.ap.logger.debug(f"处理请求时出错 {query}: {e}", exc_info=True)
-            traceback.print_exc()
+            self.ap.logger.error(f"处理请求时出错 query_id={query.query_id}: {e}")
+            self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
+            # traceback.print_exc()
         finally:
             self.ap.logger.debug(f"Query {query} processed")
 

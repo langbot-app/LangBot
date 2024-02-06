@@ -55,16 +55,16 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
             # 获取当前分钟的访问次数
             count = container.records.get(now, 0)
 
-            limitation = self.ap.cfg_mgr.data['rate_limitation']['default']
+            limitation = self.ap.pipeline_cfg.data['rate-limit']['fixwin']['default']
 
-            if session_name in self.ap.cfg_mgr.data['rate_limitation']:
-                limitation = self.ap.cfg_mgr.data['rate_limitation'][session_name]
+            if session_name in self.ap.pipeline_cfg.data['rate-limit']['fixwin']:
+                limitation = self.ap.pipeline_cfg.data['rate-limit']['fixwin'][session_name]
 
             # 如果访问次数超过了限制
             if count >= limitation:
-                if self.ap.cfg_mgr.data['rate_limit_strategy'] == 'drop':
+                if self.ap.pipeline_cfg.data['rate-limit']['strategy'] == 'drop':
                     return False
-                elif self.ap.cfg_mgr.data['rate_limit_strategy'] == 'wait':
+                elif self.ap.pipeline_cfg.data['rate-limit']['strategy'] == 'wait':
                     # 等待下一分钟
                     await asyncio.sleep(60 - time.time() % 60)
     

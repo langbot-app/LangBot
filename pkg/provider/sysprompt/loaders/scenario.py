@@ -14,8 +14,8 @@ class ScenarioPromptLoader(loader.PromptLoader):
     async def load(self):
         """加载Prompt
         """
-        for file in os.listdir("scenarios"):
-            with open("scenarios/{}".format(file), "r", encoding="utf-8") as f:
+        for file in os.listdir("data/scenarios"):
+            with open("data/scenarios/{}".format(file), "r", encoding="utf-8") as f:
                 file_str = f.read()
                 file_name = file.split(".")[0]
                 file_json = json.loads(file_str)

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import sys
+
 from ..core import app
 
 
@@ -14,17 +17,15 @@ class ProxyManager:
         self.forward_proxies = {}
 
     async def initialize(self):
-        config = self.ap.cfg_mgr.data
+        self.forward_proxies = {
+            "http": os.getenv("HTTP_PROXY") or os.getenv("http_proxy"),
+            "https": os.getenv("HTTPS_PROXY") or os.getenv("https_proxy"),
+        }
 
-        return (
-            {
-                "http": config["openai_config"]["proxy"],
-                "https": config["openai_config"]["proxy"],
-            }
-            if "proxy" in config["openai_config"]
-            and (config["openai_config"]["proxy"] is not None)
-            else None
-        )
+        if 'http' in self.ap.system_cfg.data['network-proxies']:
+            self.forward_proxies['http'] = self.ap.system_cfg.data['network-proxies']['http']
+        if 'https' in self.ap.system_cfg.data['network-proxies']:
+            self.forward_proxies['https'] = self.ap.system_cfg.data['network-proxies']['https']
 
-    def get_forward_proxies(self) -> str:
+    def get_forward_proxies(self) -> dict:
         return self.forward_proxies

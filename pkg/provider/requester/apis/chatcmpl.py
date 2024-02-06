@@ -22,8 +22,8 @@ class OpenAIChatCompletion(api.LLMAPIRequester):
     async def initialize(self):
         self.client = openai.AsyncClient(
             api_key="",
-            base_url=self.ap.cfg_mgr.data["openai_config"]["reverse_proxy"],
-            timeout=self.ap.cfg_mgr.data["process_message_timeout"],
+            base_url=self.ap.provider_cfg.data['openai-config']['base_url'],
+            timeout=self.ap.provider_cfg.data['openai-config']['request-timeout'],
         )
 
     async def _req(
@@ -51,7 +51,7 @@ class OpenAIChatCompletion(api.LLMAPIRequester):
     ) -> llm_entities.Message:
         self.client.api_key = use_model.token_mgr.get_token()
 
-        args = self.ap.cfg_mgr.data["completion_api_params"].copy()
+        args = self.ap.provider_cfg.data['openai-config']['chat-completions-params'].copy()
         args["model"] = use_model.name if use_model.model_name is None else use_model.model_name
 
         if use_model.tool_call_supported:

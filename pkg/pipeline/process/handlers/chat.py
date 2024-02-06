@@ -54,6 +54,12 @@ class ChatMessageHandler(handler.MessageHandler):
                 )
         else:
 
+            if not self.ap.provider_cfg.data['enable-chat']:
+                yield entities.StageProcessResult(
+                    result_type=entities.ResultType.INTERRUPT,
+                    new_query=query,
+                )
+
             if event_ctx.event.alter is not None:
                 query.message_chain = mirai.MessageChain([
                     mirai.Plain(event_ctx.event.alter)
@@ -83,7 +89,7 @@ class ChatMessageHandler(handler.MessageHandler):
                 yield entities.StageProcessResult(
                     result_type=entities.ResultType.INTERRUPT,
                     new_query=query,
-                    user_notice=self.ap.tips_mgr.data['alter_tip_message'] if self.ap.cfg_mgr.data['hide_exce_info_to_user'] else f'{e}',
+                    user_notice='请求失败' if self.ap.platform_cfg.data['hide-exception-info'] else f'{e}',
                     error_notice=f'{e}',
                     debug_notice=traceback.format_exc()
                 )
