@@ -5,6 +5,7 @@ import typing
 from ..core import app, entities as core_entities
 from ..provider import entities as llm_entities
 from . import entities, operator, errors
+from ..config import manager as cfg_mgr
 
 from .operators import func, plugin, default, reset, list as list_cmd, last, next, delc, resend, prompt, cmd, help, version, update
 
@@ -21,6 +22,23 @@ class CommandManager:
         self.ap = ap
 
     async def initialize(self):
+
+        # 设置各个类的路径
+        def set_path(cls: operator.CommandOperator, ancestors: list[str]):
+            cls.path = '.'.join(ancestors + [cls.name])
+            for op in operator.preregistered_operators:
+                if op.parent_class == cls:
+                    set_path(op, ancestors + [cls.name])
+        
+        for cls in operator.preregistered_operators:
+            if cls.parent_class is None:
+                set_path(cls, [])
+
+        # 应用命令权限配置
+        for cls in operator.preregistered_operators:
+            if cls.path in self.ap.command_cfg.data['privilege']:
+                cls.lowest_privilege = self.ap.command_cfg.data['privilege'][cls.path]
+
         # 实例化所有类
         self.cmd_list = [cls(self.ap) for cls in operator.preregistered_operators]
 

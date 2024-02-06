@@ -131,14 +131,11 @@ class PlatformManager:
 
     async def send(self, event, msg, check_quote=True, check_at_sender=True):
         
-        if check_at_sender and self.ap.platform_cfg.data['at-sender']:
+        if check_at_sender and self.ap.platform_cfg.data['at-sender'] and isinstance(event, GroupMessage):
             msg.insert(
                 0,
                 Plain(" \n")
             )
-
-            # 当回复的正文中包含换行时，quote可能会自带at，此时就不再单独添加at，只添加换行
-            # if "\n" not in str(msg[1]) or self.ap.platform_cfg.data['platform-adapter'] == 'nakuru':
             msg.insert(
                 0,
                 At(

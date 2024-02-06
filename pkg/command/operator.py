@@ -42,6 +42,9 @@ class CommandOperator(metaclass=abc.ABCMeta):
     name: str
     """名称，搜索到时若符合则使用"""
 
+    path: str
+    """路径，所有父节点的name的连接，用于定义命令权限"""
+
     alias: list[str]
     """同name"""
 

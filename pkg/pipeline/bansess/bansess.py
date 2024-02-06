@@ -9,13 +9,8 @@ from ...config import manager as cfg_mgr
 @stage.stage_class('BanSessionCheckStage')
 class BanSessionCheckStage(stage.PipelineStage):
 
-    banlist_mgr: cfg_mgr.ConfigManager
-
     async def initialize(self):
-        self.banlist_mgr = await cfg_mgr.load_python_module_config(
-            "banlist.py",
-            "res/templates/banlist-template.py"
-        )
+        pass
 
     async def process(
         self,
