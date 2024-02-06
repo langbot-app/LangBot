@@ -25,10 +25,15 @@ class SessionManager:
             if query.launcher_type == session.launcher_type and query.launcher_id == session.launcher_id:
                 return session
 
+        session_concurrency = self.ap.system_cfg.data['session-concurrency']['default']
+
+        if f'{query.launcher_type.value}_{query.launcher_id}' in self.ap.system_cfg.data['session-concurrency']:
+            session_concurrency = self.ap.system_cfg.data['session-concurrency'][f'{query.launcher_type.value}_{query.launcher_id}']
+
         session = core_entities.Session(
             launcher_type=query.launcher_type,
             launcher_id=query.launcher_id,
-            semaphore=asyncio.Semaphore(1) if self.ap.cfg_mgr.data['wait_last_done'] else asyncio.Semaphore(10000),
+            semaphore=asyncio.Semaphore(session_concurrency),
         )
         self.session_list.append(session)
         return session
@@ -41,7 +46,7 @@ class SessionManager:
             conversation = core_entities.Conversation(
                 prompt=await self.ap.prompt_mgr.get_prompt(session.use_prompt_name),
                 messages=[],
-                use_model=await self.ap.model_mgr.get_model_by_name(self.ap.cfg_mgr.data['completion_api_params']['model']),
+                use_model=await self.ap.model_mgr.get_model_by_name(self.ap.provider_cfg.data['openai-config']['chat-completions-params']['model']),
                 use_funcs=await self.ap.tool_mgr.get_all_functions(),
             )
             session.conversations.append(conversation)

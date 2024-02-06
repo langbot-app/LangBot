@@ -6,19 +6,25 @@ import sys
 
 
 required_files = {
-    "config.py": "config-template.py",
-    "banlist.py": "banlist-template.py",
-    "tips.py": "tips-custom-template.py",
-    "sensitive.json": "res/templates/sensitive-template.json",
-    "scenario/default.json": "scenario/default-template.json",
-    "cmdpriv.json": "res/templates/cmdpriv-template.json",
+    "plugins/__init__.py": "templates/__init__.py",
+    "plugins/plugins.json": "templates/plugin-settings.json",
+    "data/config/command.json": "templates/command.json",
+    "data/config/pipeline.json": "templates/pipeline.json",
+    "data/config/platform.json": "templates/platform.json",
+    "data/config/provider.json": "templates/provider.json",
+    "data/config/system.json": "templates/system.json",
+    "data/config/sensitive-words.json": "templates/sensitive-words.json",
+    "data/scenario/default.json": "templates/scenario-template.json",
 }
 
 required_paths = [
-    "plugins",
-    "prompts",
     "temp",
-    "logs"
+    "data",
+    "data/prompts",
+    "data/scenario",
+    "data/logs",
+    "data/config",
+    "plugins"
 ]
 
 async def generate_files() -> list[str]:

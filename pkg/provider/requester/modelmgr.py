@@ -29,7 +29,7 @@ class ModelManager:
     async def initialize(self):
         openai_chat_completion = chatcmpl.OpenAIChatCompletion(self.ap)
         await openai_chat_completion.initialize()
-        openai_token_mgr = token.TokenManager(self.ap, list(self.ap.cfg_mgr.data['openai_config']['api_key'].values()))
+        openai_token_mgr = token.TokenManager(self.ap, list(self.ap.provider_cfg.data['openai-config']['api-keys']))
 
         tiktoken_tokenizer = tiktoken.Tiktoken(self.ap)
 

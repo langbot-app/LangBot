@@ -17,7 +17,7 @@ class SettingManager:
     async def initialize(self):
         self.settings = await cfg_mgr.load_json_config(
             'plugins/plugins.json',
-            'res/templates/plugin-setting-template.json'
+            'templates/plugin-settings.json'
         )
 
     async def sync_setting(

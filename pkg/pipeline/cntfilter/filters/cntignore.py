@@ -15,8 +15,8 @@ class ContentIgnore(filter_model.ContentFilter):
         ]
 
     async def process(self, message: str) -> entities.FilterResult:
-        if 'prefix' in self.ap.cfg_mgr.data['ignore_rules']:
-            for rule in self.ap.cfg_mgr.data['ignore_rules']['prefix']:
+        if 'prefix' in self.ap.pipeline_cfg.data['ignore-rules']:
+            for rule in self.ap.pipeline_cfg.data['ignore-rules']['prefix']:
                 if message.startswith(rule):
                     return entities.FilterResult(
                         level=entities.ResultLevel.BLOCK,
@@ -25,8 +25,8 @@ class ContentIgnore(filter_model.ContentFilter):
                         console_notice='根据 ignore_rules 中的 prefix 规则，忽略消息'
                     )
         
-        if 'regexp' in self.ap.cfg_mgr.data['ignore_rules']:
-            for rule in self.ap.cfg_mgr.data['ignore_rules']['regexp']:
+        if 'regexp' in self.ap.pipeline_cfg.data['ignore-rules']:
+            for rule in self.ap.pipeline_cfg.data['ignore-rules']['regexp']:
                 if re.search(rule, message):
                     return entities.FilterResult(
                         level=entities.ResultLevel.BLOCK,

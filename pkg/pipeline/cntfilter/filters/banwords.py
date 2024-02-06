@@ -13,8 +13,8 @@ class BanWordFilter(filter_model.ContentFilter):
 
     async def initialize(self):
         self.sensitive = await cfg_mgr.load_json_config(
-            "sensitive.json",
-            "res/templates/sensitive-template.json"
+            "data/config/sensitive-words.json",
+            "templates/sensitive-words.json"
         )
 
     async def process(self, message: str) -> entities.FilterResult:
@@ -39,6 +39,6 @@ class BanWordFilter(filter_model.ContentFilter):
         return entities.FilterResult(
             level=entities.ResultLevel.MASKED if found else entities.ResultLevel.PASS,
             replacement=message,
-            user_notice='[bot] 消息中存在不合适的内容, 请更换措辞' if found else '',
+            user_notice='消息中存在不合适的内容, 请修改' if found else '',
             console_notice=''
         )

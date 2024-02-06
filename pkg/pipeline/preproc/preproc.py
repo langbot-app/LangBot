@@ -52,7 +52,7 @@ class PreProcessor(stage.PipelineStage):
         query.messages = event_ctx.event.prompt
 
         # 根据模型max_tokens剪裁
-        max_tokens = min(query.use_model.max_tokens, self.ap.cfg_mgr.data['prompt_submit_length'])
+        max_tokens = min(query.use_model.max_tokens, self.ap.pipeline_cfg.data['submit-messages-tokens'])
 
         test_messages = query.prompt.messages + query.messages + [query.user_message]
 
@@ -63,7 +63,7 @@ class PreProcessor(stage.PipelineStage):
                     result_type=entities.ResultType.INTERRUPT,
                     new_query=query,
                     user_notice='输入内容过长，请减少情景预设或者输入内容长度',
-                    console_notice='输入内容过长，请减少情景预设或者输入内容长度，或者增大配置文件中的 prompt_submit_length 项（但不能超过所用模型最大tokens数）'
+                    console_notice='输入内容过长，请减少情景预设或者输入内容长度，或者增大配置文件中的 submit-messages-tokens 项（但不能超过所用模型最大tokens数）'
                 )
 
             query.messages.pop(0) # pop第一个肯定是role=user的

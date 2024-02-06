@@ -21,7 +21,7 @@ async def init_logging() -> logging.Logger:
     if "DEBUG" in os.environ and os.environ["DEBUG"] in ["true", "1"]:
         level = logging.DEBUG
 
-    log_file_name = "logs/qcg-%s.log" % time.strftime(
+    log_file_name = "data/logs/qcg-%s.log" % time.strftime(
         "%Y-%m-%d-%H-%M-%S", time.localtime()
     )
 

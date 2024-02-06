@@ -12,8 +12,7 @@ class V2MainDataAPI(apigroup.APIGroup):
         super().__init__(prefix+"/main", ap)
 
     async def do(self, *args, **kwargs):
-        config = self.ap.cfg_mgr.data
-        if not config['report_usage']:
+        if not self.ap.system_cfg.data['report-usage']:
             return None
         return await super().do(*args, **kwargs)
 

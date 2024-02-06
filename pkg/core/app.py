@@ -31,9 +31,15 @@ class Application:
 
     tool_mgr: llm_tool_mgr.ToolManager = None
 
-    cfg_mgr: config_mgr.ConfigManager = None
+    command_cfg: config_mgr.ConfigManager = None
 
-    tips_mgr: config_mgr.ConfigManager = None
+    pipeline_cfg: config_mgr.ConfigManager = None
+
+    platform_cfg: config_mgr.ConfigManager = None
+
+    provider_cfg: config_mgr.ConfigManager = None
+
+    system_cfg: config_mgr.ConfigManager = None
 
     ctr_mgr: center_mgr.V2CenterAPI = None
 

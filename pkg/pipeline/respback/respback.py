@@ -20,7 +20,7 @@ class SendResponseBackStage(stage.PipelineStage):
     async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:
         """处理
         """
-        random_delay = random.uniform(*self.ap.cfg_mgr.data['force_delay_range'])
+        random_delay = random.uniform(*self.ap.platform_cfg.data['force-delay'])
 
         self.ap.logger.debug(
             "根据规则强制延迟回复: %s s",

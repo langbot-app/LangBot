@@ -31,19 +31,16 @@ class PlatformManager:
     
     async def initialize(self):
 
-        config = self.ap.cfg_mgr.data
-
-        logging.debug("Use adapter:" + config['msg_source_adapter'])
-        if config['msg_source_adapter'] == 'yirimirai':
+        if self.ap.platform_cfg.data['platform-adapter'] == 'yiri-mirai':
             from pkg.platform.sources.yirimirai import YiriMiraiAdapter
 
-            mirai_http_api_config = config['mirai_http_api_config']
-            self.bot_account_id = config['mirai_http_api_config']['qq']
+            mirai_http_api_config = self.ap.platform_cfg.data['yiri-mirai-config']
+            self.bot_account_id = mirai_http_api_config['qq']
             self.adapter = YiriMiraiAdapter(mirai_http_api_config)
-        elif config['msg_source_adapter'] == 'nakuru':
-            from pkg.platform.sources.nakuru import NakuruProjectAdapter
-            self.adapter = NakuruProjectAdapter(config['nakuru_config'])
-            self.bot_account_id = self.adapter.bot_account_id
+        # elif config['msg_source_adapter'] == 'nakuru':
+        #     from pkg.platform.sources.nakuru import NakuruProjectAdapter
+        #     self.adapter = NakuruProjectAdapter(config['nakuru_config'])
+        #     self.bot_account_id = self.adapter.bot_account_id
         
         # 保存 account_id 到审计模块
         from ..audit.center import apigroup
@@ -99,7 +96,7 @@ class PlatformManager:
                 )
 
         # nakuru不区分好友和陌生人，故仅为yirimirai注册陌生人事件
-        if config['msg_source_adapter'] == 'yirimirai':
+        if self.ap.platform_cfg.data['platform-adapter'] == 'yiri-mirai':
             self.adapter.register_listener(
                 StrangerMessage,
                 on_stranger_message
@@ -133,27 +130,23 @@ class PlatformManager:
         )
 
     async def send(self, event, msg, check_quote=True, check_at_sender=True):
-        config = self.ap.cfg_mgr.data
         
-        if check_at_sender and config['at_sender']:
+        if check_at_sender and self.ap.platform_cfg.data['at-sender'] and isinstance(event, GroupMessage):
             msg.insert(
                 0,
                 Plain(" \n")
             )
-
-            # 当回复的正文中包含换行时，quote可能会自带at，此时就不再单独添加at，只添加换行
-            if "\n" not in str(msg[1]) or config['msg_source_adapter'] == 'nakuru':
-                msg.insert(
-                    0,
-                    At(
-                        event.sender.id
-                    )
+            msg.insert(
+                0,
+                At(
+                    event.sender.id
                 )
+            )
 
         await self.adapter.reply_message(
             event,
             msg,
-            quote_origin=True if config['quote_origin'] and check_quote else False
+            quote_origin=True if self.ap.platform_cfg.data['quote-origin'] and check_quote else False
         )
 
     # 通知系统管理员
@@ -161,19 +154,16 @@ class PlatformManager:
         await self.notify_admin_message_chain(MessageChain([Plain("[bot]{}".format(message))]))
 
     async def notify_admin_message_chain(self, message: mirai.MessageChain):
-        config = self.ap.cfg_mgr.data
-        if config['admin_qq'] != 0 and config['admin_qq'] != []:
-            logging.info("通知管理员:{}".format(message))
+        if self.ap.system_cfg.data['admin-sessions'] != []:
 
             admin_list = []
-
-            if type(config['admin_qq']) == int:
-                admin_list.append(config['admin_qq'])
+            for admin in self.ap.system_cfg.data['admin-sessions']:
+                admin_list.append(admin)
             
             for adm in admin_list:
                 self.adapter.send_message(
-                    "person",
-                    adm,
+                    adm.split("_")[0],
+                    adm.split("_")[1],
                     message
                 )
 

@@ -1,0 +1,20 @@
+{
+    "platform-adapter": "yiri-mirai",
+    "yiri-mirai-config": {
+        "adapter": "WebSocketAdapter",
+        "host": "localhost",
+        "port": 8080,
+        "verifyKey": "yirimirai",
+        "qq": 123456789
+    },
+    "track-function-calls": true,
+    "quote-origin": false,
+    "at-sender": false,
+    "force-delay": [0, 0],
+    "long-text-process": {
+        "threshold": 256,
+        "strategy": "forward",
+        "font-path": ""
+    },
+    "hide-exception-info": true
+}

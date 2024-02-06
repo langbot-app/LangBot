@@ -4,6 +4,9 @@ from . import model as file_model
 from .impls import pymodule, json as json_file
 
 
+managers: ConfigManager = []
+
+
 class ConfigManager:
     """配置文件管理器"""
 

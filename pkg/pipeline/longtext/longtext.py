@@ -19,9 +19,9 @@ class LongTextProcessStage(stage.PipelineStage):
     strategy_impl: strategy.LongTextStrategy
 
     async def initialize(self):
-        config = self.ap.cfg_mgr.data
-        if self.ap.cfg_mgr.data['blob_message_strategy'] == 'image':
-            use_font = config['font_path']
+        config = self.ap.platform_cfg.data['long-text-process']
+        if config['strategy'] == 'image':
+            use_font = config['font-path']
             try:
                 # 检查是否存在
                 if not os.path.exists(use_font):
@@ -33,23 +33,25 @@ class LongTextProcessStage(stage.PipelineStage):
                             config['blob_message_strategy'] = "forward"
                         else:
                             self.ap.logger.info("使用Windows自带字体：" + use_font)
-                            self.ap.cfg_mgr.data['font_path'] = use_font
+                            config['font-path'] = use_font
                     else:
                         self.ap.logger.warn("未找到字体文件，且无法使用系统自带字体，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。")
-                        self.ap.cfg_mgr.data['blob_message_strategy'] = "forward"
+
+                        self.ap.platform_cfg.data['long-text-process']['strategy'] = "forward"
             except:
                 traceback.print_exc()
                 self.ap.logger.error("加载字体文件失败({})，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。".format(use_font))
-                self.ap.cfg_mgr.data['blob_message_strategy'] = "forward"
+
+                self.ap.platform_cfg.data['long-text-process']['strategy'] = "forward"
         
-        if self.ap.cfg_mgr.data['blob_message_strategy'] == 'image':
+        if config['strategy'] == 'image':
             self.strategy_impl = image.Text2ImageStrategy(self.ap)
-        elif self.ap.cfg_mgr.data['blob_message_strategy'] == 'forward':
+        elif config['strategy'] == 'forward':
             self.strategy_impl = forward.ForwardComponentStrategy(self.ap)
         await self.strategy_impl.initialize()
     
     async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:
-        if len(str(query.resp_message_chain)) > self.ap.cfg_mgr.data['blob_message_threshold']:
+        if len(str(query.resp_message_chain)) > self.ap.platform_cfg.data['long-text-process']['threshold']:
             query.resp_message_chain = MessageChain(await self.strategy_impl.process(str(query.resp_message_chain)))
         return entities.StageProcessResult(
             result_type=entities.ResultType.CONTINUE,

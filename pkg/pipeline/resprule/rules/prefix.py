@@ -16,6 +16,7 @@ class PrefixRule(rule_model.GroupRespondRule):
 
         for prefix in prefixes:
             if message_text.startswith(prefix):
+
                 return entities.RuleJudgeResult(
                     matching=True,
                     replacement=mirai.MessageChain([

@@ -85,7 +85,7 @@ class ResponseWrapper(stage.PipelineStage):
 
                     query.resp_message_chain = mirai.MessageChain([mirai.Plain(reply_text)])
 
-                    if self.ap.cfg_mgr.data['trace_function_calls']:
+                    if self.ap.platform_cfg.data['track-function-calls']:
                         
                         event_ctx = await self.ap.plugin_mgr.emit_event(
                             event=events.NormalMessageResponded(

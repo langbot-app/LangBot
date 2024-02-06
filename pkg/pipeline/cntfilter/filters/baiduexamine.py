@@ -19,8 +19,8 @@ class BaiduCloudExamine(filter_model.ContentFilter):
                 BAIDU_EXAMINE_TOKEN_URL,
                 params={
                     "grant_type": "client_credentials",
-                    "client_id": self.ap.cfg_mgr.data['baidu_api_key'],
-                    "client_secret": self.ap.cfg_mgr.data['baidu_secret_key']
+                    "client_id": self.ap.pipeline_cfg.data['baidu-cloud-examine']['api-key'],
+                    "client_secret": self.ap.pipeline_cfg.data['baidu-cloud-examine']['api-secret']
                 }
             ) as resp:
                 return (await resp.json())['access_token']
@@ -56,6 +56,6 @@ class BaiduCloudExamine(filter_model.ContentFilter):
                         return entities.FilterResult(
                             level=entities.ResultLevel.BLOCK,
                             replacement=message,
-                            user_notice=self.ap.cfg_mgr.data['inappropriate_message_tips'],
+                            user_notice="消息中存在不合适的内容, 请修改",
                             console_notice=f"百度云判定结果：{conclusion}"
                         )
