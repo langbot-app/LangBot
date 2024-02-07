@@ -106,8 +106,6 @@ class CommandManager:
 
         if f'{query.launcher_type.value}_{query.launcher_id}' in self.ap.system_cfg.data['admin-sessions']:
             privilege = 2
-        
-        print(f'privilege: {privilege}')
 
         ctx = entities.ExecuteContext(
             query=query,

@@ -42,14 +42,11 @@ class PlatformManager:
 
             aiocqhttp_config = self.ap.platform_cfg.data['aiocqhttp-config']
             self.adapter = AiocqhttpAdapter(aiocqhttp_config, self.ap)
-        # elif config['msg_source_adapter'] == 'nakuru':
-        #     from pkg.platform.sources.nakuru import NakuruProjectAdapter
-        #     self.adapter = NakuruProjectAdapter(config['nakuru_config'])
-        #     self.bot_account_id = self.adapter.bot_account_id
-        
-        # 保存 account_id 到审计模块
-        from ..audit.center import apigroup
-        apigroup.APIGroup._runtime_info['account_id'] = "{}".format(self.bot_account_id)
+        elif self.ap.platform_cfg.data['platform-adapter'] == 'qq-botpy':
+            from pkg.platform.sources.qqbotpy import OfficialAdapter
+
+            qqbotpy_config = self.ap.platform_cfg.data['qq-botpy-config']
+            self.adapter = OfficialAdapter(qqbotpy_config, self.ap)
 
         async def on_friend_message(event: FriendMessage):
 
@@ -137,10 +134,7 @@ class PlatformManager:
     async def send(self, event, msg, check_quote=True, check_at_sender=True):
         
         if check_at_sender and self.ap.platform_cfg.data['at-sender'] and isinstance(event, GroupMessage):
-            msg.insert(
-                0,
-                Plain(" \n")
-            )
+
             msg.insert(
                 0,
                 At(
