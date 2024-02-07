@@ -18,14 +18,14 @@ class ProxyManager:
 
     async def initialize(self):
         self.forward_proxies = {
-            "http": os.getenv("HTTP_PROXY") or os.getenv("http_proxy"),
-            "https": os.getenv("HTTPS_PROXY") or os.getenv("https_proxy"),
+            "http://": os.getenv("HTTP_PROXY") or os.getenv("http_proxy"),
+            "https://": os.getenv("HTTPS_PROXY") or os.getenv("https_proxy"),
         }
 
         if 'http' in self.ap.system_cfg.data['network-proxies']:
-            self.forward_proxies['http'] = self.ap.system_cfg.data['network-proxies']['http']
+            self.forward_proxies['http://'] = self.ap.system_cfg.data['network-proxies']['http']
         if 'https' in self.ap.system_cfg.data['network-proxies']:
-            self.forward_proxies['https'] = self.ap.system_cfg.data['network-proxies']['https']
+            self.forward_proxies['https://'] = self.ap.system_cfg.data['network-proxies']['https']
 
     def get_forward_proxies(self) -> dict:
-        return self.forward_proxies
+        return self.forward_proxies.copy()

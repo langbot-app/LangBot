@@ -7,6 +7,7 @@ from typing import AsyncGenerator
 
 import openai
 import openai.types.chat.chat_completion as chat_completion
+import httpx
 
 from pkg.provider.entities import Message
 
@@ -24,6 +25,9 @@ class OpenAIChatCompletion(api.LLMAPIRequester):
             api_key="",
             base_url=self.ap.provider_cfg.data['openai-config']['base_url'],
             timeout=self.ap.provider_cfg.data['openai-config']['request-timeout'],
+            http_client=httpx.AsyncClient(
+                proxies=self.ap.proxy_mgr.get_forward_proxies()
+            )
         )
 
     async def _req(
