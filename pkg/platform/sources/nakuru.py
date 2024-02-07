@@ -9,8 +9,7 @@ import nakuru
 import nakuru.entities.components as nkc
 
 from .. import adapter as adapter_model
-from ...platform import blob
-from ...utils import context
+from ...pipeline.longtext.strategies import forward
 
 
 class NakuruProjectMessageConverter(adapter_model.MessageConverter):
@@ -49,7 +48,7 @@ class NakuruProjectMessageConverter(adapter_model.MessageConverter):
                     nakuru_msg_list.append(nkc.Record.fromURL(component.url))
                 elif component.path is not None:
                     nakuru_msg_list.append(nkc.Record.fromFileSystem(component.path))
-            elif type(component) is blob.Forward:
+            elif type(component) is forward.Forward:
                 # 转发消息
                 yiri_forward_node_list = component.node_list
                 nakuru_forward_node_list = []
@@ -323,9 +322,6 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         self.bot.run()
-
-    async def run_async(self):
-        return await self.bot._run()
 
     def kill(self) -> bool:
         return False

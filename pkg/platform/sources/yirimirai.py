@@ -113,5 +113,5 @@ class YiriMiraiAdapter(adapter_model.MessageSourceAdapter):
     async def run_async(self):
         return await MiraiRunner(self.bot)._run()
 
-    def kill(self) -> bool:
+    async def kill(self) -> bool:
         return False
