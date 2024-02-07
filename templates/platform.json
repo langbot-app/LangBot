@@ -2,10 +2,14 @@
     "platform-adapter": "yiri-mirai",
     "yiri-mirai-config": {
         "adapter": "WebSocketAdapter",
-        "host": "localhost",
+        "host": "127.0.0.1",
         "port": 8080,
         "verifyKey": "yirimirai",
         "qq": 123456789
+    },
+    "aiocqhttp-config": {
+        "host": "127.0.0.1",
+        "port": 8080
     },
     "track-function-calls": true,
     "quote-origin": false,

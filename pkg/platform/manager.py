@@ -37,6 +37,11 @@ class PlatformManager:
             mirai_http_api_config = self.ap.platform_cfg.data['yiri-mirai-config']
             self.bot_account_id = mirai_http_api_config['qq']
             self.adapter = YiriMiraiAdapter(mirai_http_api_config)
+        elif self.ap.platform_cfg.data['platform-adapter'] == 'aiocqhttp':
+            from pkg.platform.sources.aiocqhttp import AiocqhttpAdapter
+
+            aiocqhttp_config = self.ap.platform_cfg.data['aiocqhttp-config']
+            self.adapter = AiocqhttpAdapter(aiocqhttp_config, self.ap)
         # elif config['msg_source_adapter'] == 'nakuru':
         #     from pkg.platform.sources.nakuru import NakuruProjectAdapter
         #     self.adapter = NakuruProjectAdapter(config['nakuru_config'])

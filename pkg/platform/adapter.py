@@ -74,7 +74,7 @@ class MessageSourceAdapter(metaclass=abc.ABCMeta):
         """异步运行"""
         raise NotImplementedError
 
-    def kill(self) -> bool:
+    async def kill(self) -> bool:
         """关闭适配器
         
         Returns:

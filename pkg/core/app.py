@@ -63,19 +63,24 @@ class Application:
     async def initialize(self):
         pass
 
+    # async def wait_loop(self):
+
     async def run(self):
         await self.plugin_mgr.load_plugins()
         await self.plugin_mgr.initialize_plugins()
+
+        tasks = []
 
         try:
             tasks = [
                 asyncio.create_task(self.im_mgr.run()),
                 asyncio.create_task(self.ctrl.run())
             ]
-            await asyncio.wait(tasks)
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
 
         except asyncio.CancelledError:
-            self.logger.info("程序退出.")
+            pass
         except Exception as e:
             self.logger.error(f"应用运行致命异常: {e}")
             self.logger.debug(f"Traceback: {traceback.format_exc()}")
+        self.logger.info("程序退出.")

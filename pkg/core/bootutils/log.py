@@ -44,6 +44,7 @@ async def init_logging() -> logging.Logger:
         handler.setFormatter(color_formatter)
         qcg_logger.addHandler(handler)
 
+    qcg_logger.debug("日志初始化完成，日志级别：%s" % level)
     logging.basicConfig(
         level=logging.INFO,  # 设置日志输出格式
         format="[DEPR][%(asctime)s.%(msecs)03d] %(pathname)s (%(lineno)d) - [%(levelname)s] :\n%(message)s",

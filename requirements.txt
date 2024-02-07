@@ -3,11 +3,11 @@ openai
 dulwich~=0.21.6
 colorlog~=6.6.0
 yiri-mirai-rc
+aiocqhttp
 websockets
 urllib3
 func_timeout~=4.3.5
 Pillow
-nakuru-project-idk
 CallingGPT
 tiktoken
 PyYaml
