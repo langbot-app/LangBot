@@ -213,6 +213,7 @@ class AiocqhttpAdapter(adapter.MessageSourceAdapter):
     async def send_message(
         self, target_type: str, target_id: str, message: mirai.MessageChain
     ):
+        # TODO 实现发送消息
         return super().send_message(target_type, target_id, message)
 
     async def reply_message(

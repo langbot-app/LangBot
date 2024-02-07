@@ -11,6 +11,14 @@
         "host": "127.0.0.1",
         "port": 8080
     },
+    "qq-botpy-config": {
+        "appid": "",
+        "secret": "",
+        "intents": [
+            "public_guild_messages",
+            "direct_message"
+        ]
+    },
     "track-function-calls": true,
     "quote-origin": false,
     "at-sender": false,
