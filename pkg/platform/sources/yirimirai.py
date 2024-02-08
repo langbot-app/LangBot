@@ -6,14 +6,18 @@ import mirai.models.bus
 from mirai.bot import MiraiRunner
 
 from .. import adapter as adapter_model
+from ...core import app
 
 
+@adapter_model.adapter_class("yiri-mirai")
 class YiriMiraiAdapter(adapter_model.MessageSourceAdapter):
     """YiriMirai适配器"""
     bot: mirai.Mirai
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, ap: app.Application):
         """初始化YiriMirai的对象"""
+        self.ap = ap
+        self.config = config
         if 'adapter' not in config or \
             config['adapter'] == 'WebSocketAdapter':
             self.bot = mirai.Mirai(
@@ -111,6 +115,7 @@ class YiriMiraiAdapter(adapter_model.MessageSourceAdapter):
         bus.unsubscribe(event_type, callback)
 
     async def run_async(self):
+        self.bot_account_id = self.bot.qq
         return await MiraiRunner(self.bot)._run()
 
     async def kill(self) -> bool:

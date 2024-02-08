@@ -7,6 +7,12 @@
         "verifyKey": "yirimirai",
         "qq": 123456789
     },
+    "nakuru-config": {
+        "host": "127.0.0.1",
+        "ws_port": 8080,
+        "http_port": 5700,
+        "token": ""
+    },
     "aiocqhttp-config": {
         "host": "127.0.0.1",
         "port": 8080

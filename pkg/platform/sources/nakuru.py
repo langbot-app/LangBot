@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import typing
 import traceback
@@ -10,6 +12,7 @@ import nakuru.entities.components as nkc
 
 from .. import adapter as adapter_model
 from ...pipeline.longtext.strategies import forward
+from ...core import app
 
 
 class NakuruProjectMessageConverter(adapter_model.MessageConverter):
@@ -96,7 +99,7 @@ class NakuruProjectMessageConverter(adapter_model.MessageConverter):
                 yiri_msg_list.append(mirai.AtAll())
             else:
                 pass
-        logging.debug("转换后的消息链: " + str(yiri_msg_list))
+        # logging.debug("转换后的消息链: " + str(yiri_msg_list))
         chain = mirai.MessageChain(yiri_msg_list)
         return chain
 
@@ -156,6 +159,7 @@ class NakuruProjectEventConverter(adapter_model.EventConverter):
             raise Exception("未支持转换的事件类型: " + str(event))
 
 
+@adapter_model.adapter_class("nakuru")
 class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
     """nakuru-project适配器"""
     bot: nakuru.CQHTTP
@@ -166,34 +170,20 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
 
     listener_list: list[dict]
 
-    def __init__(self, cfg: dict):
+    ap: app.Application
+
+    cfg: dict
+
+    def __init__(self, cfg: dict, ap: app.Application):
         """初始化nakuru-project的对象"""
-        self.bot = nakuru.CQHTTP(**cfg)
+        cfg['port'] = cfg['ws_port']
+        del cfg['ws_port']
+        self.cfg = cfg
+        self.ap = ap
         self.listener_list = []
-        # nakuru库有bug，这个接口没法带access_token，会失败
-        # 所以目前自行发请求
+        self.bot = nakuru.CQHTTP(**self.cfg)
 
-        config = context.get_config_manager().data
-
-        import requests
-        resp = requests.get(
-            url="http://{}:{}/get_login_info".format(config['nakuru_config']['host'], config['nakuru_config']['http_port']),
-            headers={
-                'Authorization': "Bearer " + config['nakuru_config']['token'] if 'token' in config['nakuru_config']else ""
-            },
-            timeout=5,
-            proxies=None
-        )
-        if resp.status_code == 403:
-            logging.error("go-cqhttp拒绝访问，请检查config.py中nakuru_config的token是否与go-cqhttp设置的access-token匹配")
-            raise Exception("go-cqhttp拒绝访问，请检查config.py中nakuru_config的token是否与go-cqhttp设置的access-token匹配")
-        try:
-            self.bot_account_id = int(resp.json()['data']['user_id'])
-        except Exception as e:
-            logging.error("获取go-cqhttp账号信息失败: {}, 请检查是否已启动go-cqhttp并配置正确".format(e))
-            raise Exception("获取go-cqhttp账号信息失败: {}, 请检查是否已启动go-cqhttp并配置正确".format(e))
-
-    def send_message(
+    async def send_message(
         self,
         target_type: str,
         target_id: str,
@@ -226,9 +216,9 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
             else:
                 raise Exception("Unknown target type: " + target_type)
 
-        asyncio.run(task)
+        await task
 
-    def reply_message(
+    async def reply_message(
         self,
         message_source: mirai.MessageEvent,
         message: mirai.MessageChain,
@@ -242,14 +232,14 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
                 )
             )
         if type(message_source) is mirai.GroupMessage:
-            self.send_message(
+            await self.send_message(
                 "group",
                 message_source.sender.group.id,
                 message,
                 converted=True
             )
         elif type(message_source) is mirai.FriendMessage:
-            self.send_message(
+            await self.send_message(
                 "person",
                 message_source.sender.id,
                 message,
@@ -270,11 +260,11 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
         callback: typing.Callable[[mirai.Event], None]
     ):
         try:
-            logging.debug("注册监听器: " + str(event_type) + " -> " + str(callback))
 
             # 包装函数
             async def listener_wrapper(app: nakuru.CQHTTP, source: NakuruProjectAdapter.event_converter.yiri2target(event_type)):
-                callback(self.event_converter.target2yiri(source))
+                print(1111)
+                await callback(self.event_converter.target2yiri(source))
 
             # 将包装函数和原函数的对应关系存入列表
             self.listener_list.append(
@@ -287,7 +277,6 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
 
             # 注册监听器
             self.bot.receiver(self.event_converter.yiri2target(event_type).__name__)(listener_wrapper)
-            logging.debug("注册完成")
         except Exception as e:
             traceback.print_exc()
             raise e
@@ -318,10 +307,26 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
 
         self.bot.event[nakuru_event_name] = new_event_list
 
-    def run_sync(self):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        self.bot.run()
+    async def run_async(self):
+        try:
+            import requests
+            resp = requests.get(
+                url="http://{}:{}/get_login_info".format(self.cfg['host'], self.cfg['http_port']),
+                headers={
+                    'Authorization': "Bearer " + self.cfg['token'] if 'token' in self.cfg else ""
+                },
+                timeout=5,
+                proxies=None
+            )
+            if resp.status_code == 403:
+                raise Exception("go-cqhttp拒绝访问，请检查config.py中nakuru_config的token是否与go-cqhttp设置的access-token匹配")
+            self.bot_account_id = int(resp.json()['data']['user_id'])
+        except Exception as e:
+            raise Exception("获取go-cqhttp账号信息失败, 请检查是否已启动go-cqhttp并配置正确")
+        await self.bot._run()
+        self.ap.logger.info("运行 Nakuru 适配器")
+        while True:
+            await asyncio.sleep(100)
 
     def kill(self) -> bool:
         return False

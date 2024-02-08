@@ -1,6 +1,9 @@
 {
     "admin-sessions": [],
-    "network-proxies": {},
+    "network-proxies": {
+        "http": null,
+        "https": null
+    },
     "report-usage": true,
     "logging-level": "info",
     "session-concurrency": {

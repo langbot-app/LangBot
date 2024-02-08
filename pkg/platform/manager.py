@@ -14,13 +14,14 @@ from ..platform import adapter as msadapter
 from ..core import app, entities as core_entities
 from ..plugin import events
 
-
 # 控制QQ消息输入输出的类
 class PlatformManager:
     
     adapter: msadapter.MessageSourceAdapter = None
 
-    bot_account_id: int = 0
+    @property
+    def bot_account_id(self):
+        return self.adapter.bot_account_id
 
     # modern
     ap: app.Application = None
@@ -31,22 +32,43 @@ class PlatformManager:
     
     async def initialize(self):
 
-        if self.ap.platform_cfg.data['platform-adapter'] == 'yiri-mirai':
-            from pkg.platform.sources.yirimirai import YiriMiraiAdapter
+        # if self.ap.platform_cfg.data['platform-adapter'] == 'yiri-mirai':
+        #     from pkg.platform.sources.yirimirai import YiriMiraiAdapter
 
-            mirai_http_api_config = self.ap.platform_cfg.data['yiri-mirai-config']
-            self.bot_account_id = mirai_http_api_config['qq']
-            self.adapter = YiriMiraiAdapter(mirai_http_api_config)
-        elif self.ap.platform_cfg.data['platform-adapter'] == 'aiocqhttp':
-            from pkg.platform.sources.aiocqhttp import AiocqhttpAdapter
+        #     mirai_http_api_config = self.ap.platform_cfg.data['yiri-mirai-config']
+        #     self.adapter = YiriMiraiAdapter(mirai_http_api_config, self.ap)
+        # elif self.ap.platform_cfg.data['platform-adapter'] == 'nakuru':
+        #     from pkg.platform.sources.nakuru import NakuruProjectAdapter
 
-            aiocqhttp_config = self.ap.platform_cfg.data['aiocqhttp-config']
-            self.adapter = AiocqhttpAdapter(aiocqhttp_config, self.ap)
-        elif self.ap.platform_cfg.data['platform-adapter'] == 'qq-botpy':
-            from pkg.platform.sources.qqbotpy import OfficialAdapter
+        #     nakuru_config = self.ap.platform_cfg.data['nakuru-config']
+        #     self.adapter = NakuruProjectAdapter(nakuru_config, self.ap)
+        # elif self.ap.platform_cfg.data['platform-adapter'] == 'aiocqhttp':
+        #     from pkg.platform.sources.aiocqhttp import AiocqhttpAdapter
 
-            qqbotpy_config = self.ap.platform_cfg.data['qq-botpy-config']
-            self.adapter = OfficialAdapter(qqbotpy_config, self.ap)
+        #     aiocqhttp_config = self.ap.platform_cfg.data['aiocqhttp-config']
+        #     self.adapter = AiocqhttpAdapter(aiocqhttp_config, self.ap)
+        # elif self.ap.platform_cfg.data['platform-adapter'] == 'qq-botpy':
+        #     from pkg.platform.sources.qqbotpy import OfficialAdapter
+
+        #     qqbotpy_config = self.ap.platform_cfg.data['qq-botpy-config']
+        #     self.adapter = OfficialAdapter(qqbotpy_config, self.ap)
+
+        from .sources import yirimirai, nakuru, aiocqhttp, qqbotpy
+
+        adapter_cls = None
+
+        for adapter in msadapter.preregistered_adapters:
+            if adapter.name == self.ap.platform_cfg.data['platform-adapter']:
+                adapter_cls = adapter
+                break
+        if adapter_cls is None:
+            raise Exception('未知的平台适配器: ' + self.ap.platform_cfg.data['platform-adapter'])
+
+        cfg_key = self.ap.platform_cfg.data['platform-adapter'] + '-config'
+        self.adapter = adapter_cls(
+            self.ap.platform_cfg.data[cfg_key],
+            self.ap
+        )
 
         async def on_friend_message(event: FriendMessage):
 
