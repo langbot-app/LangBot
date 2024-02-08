@@ -5,4 +5,4 @@ COPY . .
 
 RUN python -m pip install -r requirements.txt
 
-CMD [ "python", "start.py" ]
+CMD [ "python", "main.py" ]
