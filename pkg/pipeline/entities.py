@@ -28,7 +28,8 @@ class StageProcessResult(pydantic.BaseModel):
     user_notice: typing.Optional[typing.Union[str, list[mirai_message.MessageComponent], mirai.MessageChain, None]] = []
     """只要设置了就会发送给用户"""
 
-    admin_notice: typing.Optional[typing.Union[str, list[mirai_message.MessageComponent], mirai.MessageChain, None]] = []
+    # TODO delete
+    # admin_notice: typing.Optional[typing.Union[str, list[mirai_message.MessageComponent], mirai.MessageChain, None]] = []
     """只要设置了就会发送给管理员"""
 
     console_notice: typing.Optional[str] = ''
@@ -37,5 +38,3 @@ class StageProcessResult(pydantic.BaseModel):
     debug_notice: typing.Optional[str] = ''
 
     error_notice: typing.Optional[str] = ''
-    
-    

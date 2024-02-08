@@ -29,10 +29,6 @@ class PluginOperator(operator.CommandOperator):
                         plugin.plugin_version, plugin.plugin_author)
 
             # TODO 从元数据调远程地址
-            # if updater.is_repo("/".join(plugin['path'].split('/')[:-1])):
-            #     remote_url = updater.get_remote_url("/".join(plugin['path'].split('/')[:-1]))
-            #     if remote_url != "https://github.com/RockChinQ/QChatGPT" and remote_url != "https://gitee.com/RockChin/QChatGPT":
-            #         reply_str += "源码: "+remote_url+"\n"
 
             idx += 1
 
