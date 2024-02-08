@@ -263,6 +263,7 @@ class OfficialEventConverter(adapter_model.EventConverter):
             )
 
 
+@adapter_model.adapter_class("qq-botpy")
 class OfficialAdapter(adapter_model.MessageSourceAdapter):
     """QQ 官方消息适配器"""
     bot: botpy.Client = None
@@ -297,8 +298,6 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
         intents = botpy.Intents(**switchs)
 
         self.bot = botpy.Client(intents=intents)
-
-        # TODO 获取机器人id和昵称
 
     async def send_message(
         self,

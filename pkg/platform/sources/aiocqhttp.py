@@ -191,6 +191,7 @@ class AiocqhttpEventConverter(adapter.EventConverter):
             )
 
 
+@adapter.adapter_class("aiocqhttp")
 class AiocqhttpAdapter(adapter.MessageSourceAdapter):
 
     bot: aiocqhttp.CQHttp
@@ -243,7 +244,6 @@ class AiocqhttpAdapter(adapter.MessageSourceAdapter):
     ):
         async def on_message(event: aiocqhttp.Event):
             self.bot_account_id = event.self_id
-            self.ap.im_mgr.bot_account_id = event.self_id
             try:
                 return await callback(self.event_converter.target2yiri(event))
             except:

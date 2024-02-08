@@ -1,14 +1,38 @@
+from __future__ import annotations
+
 # MessageSource的适配器
 import typing
 import abc
 
 import mirai
 
+from ..core import app
+
+
+preregistered_adapters: list[typing.Type[MessageSourceAdapter]] = []
+
+def adapter_class(
+    name: str
+):
+    def decorator(cls: typing.Type[MessageSourceAdapter]) -> typing.Type[MessageSourceAdapter]:
+        cls.name = name
+        preregistered_adapters.append(cls)
+        return cls
+    return decorator
+
 
 class MessageSourceAdapter(metaclass=abc.ABCMeta):
+    name: str
+
     bot_account_id: int
-    def __init__(self, config: dict):
-        pass
+    
+    config: dict
+
+    ap: app.Application
+
+    def __init__(self, config: dict, ap: app.Application):
+        self.config = config
+        self.ap = ap
 
     async def send_message(
         self,
