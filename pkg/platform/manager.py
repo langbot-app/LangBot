@@ -32,27 +32,6 @@ class PlatformManager:
     
     async def initialize(self):
 
-        # if self.ap.platform_cfg.data['platform-adapter'] == 'yiri-mirai':
-        #     from pkg.platform.sources.yirimirai import YiriMiraiAdapter
-
-        #     mirai_http_api_config = self.ap.platform_cfg.data['yiri-mirai-config']
-        #     self.adapter = YiriMiraiAdapter(mirai_http_api_config, self.ap)
-        # elif self.ap.platform_cfg.data['platform-adapter'] == 'nakuru':
-        #     from pkg.platform.sources.nakuru import NakuruProjectAdapter
-
-        #     nakuru_config = self.ap.platform_cfg.data['nakuru-config']
-        #     self.adapter = NakuruProjectAdapter(nakuru_config, self.ap)
-        # elif self.ap.platform_cfg.data['platform-adapter'] == 'aiocqhttp':
-        #     from pkg.platform.sources.aiocqhttp import AiocqhttpAdapter
-
-        #     aiocqhttp_config = self.ap.platform_cfg.data['aiocqhttp-config']
-        #     self.adapter = AiocqhttpAdapter(aiocqhttp_config, self.ap)
-        # elif self.ap.platform_cfg.data['platform-adapter'] == 'qq-botpy':
-        #     from pkg.platform.sources.qqbotpy import OfficialAdapter
-
-        #     qqbotpy_config = self.ap.platform_cfg.data['qq-botpy-config']
-        #     self.adapter = OfficialAdapter(qqbotpy_config, self.ap)
-
         from .sources import yirimirai, nakuru, aiocqhttp, qqbotpy
 
         adapter_cls = None
