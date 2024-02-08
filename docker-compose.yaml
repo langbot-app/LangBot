@@ -6,5 +6,5 @@ services:
     volumes:
       - ./data:/app/data
       - ./plugins:/app/plugins
-    restart: always
+    restart: on-failure
     # 根据具体环境配置网络
