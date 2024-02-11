@@ -14,3 +14,4 @@ tiktoken
 PyYaml
 aiohttp
 pydantic
+aioconsole

@@ -4,6 +4,8 @@ import logging
 import asyncio
 import traceback
 
+import aioconsole
+
 from ..platform import manager as im_mgr
 from ..provider.session import sessionmgr as llm_session_mgr
 from ..provider.requester import modelmgr as llm_model_mgr
@@ -72,11 +74,21 @@ class Application:
         tasks = []
 
         try:
+
+                    
             tasks = [
                 asyncio.create_task(self.im_mgr.run()),
                 asyncio.create_task(self.ctrl.run())
             ]
-            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+
+            async def interrupt(tasks):
+                await asyncio.sleep(1.5)
+                while await aioconsole.ainput("使用 exit 退出程序 > ") != 'exit':
+                    pass
+                for task in tasks:
+                    task.cancel()
+            
+            await interrupt(tasks)
 
         except asyncio.CancelledError:
             pass

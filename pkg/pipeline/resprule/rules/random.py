@@ -13,7 +13,8 @@ class RandomRespRule(rule_model.GroupRespondRule):
         self,
         message_text: str,
         message_chain: mirai.MessageChain,
-        rule_dict: dict
+        rule_dict: dict,
+        query: core_entities.Query
     ) -> entities.RuleJudgeResult:
         random_rate = rule_dict['random']
         

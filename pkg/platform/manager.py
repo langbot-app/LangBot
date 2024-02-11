@@ -78,13 +78,6 @@ class PlatformManager:
                     adapter=adapter
                 )
 
-        # nakuru不区分好友和陌生人，故仅为yirimirai注册陌生人事件
-        # if self.ap.platform_cfg.data['platform-adapter'] == 'yiri-mirai':
-        #     self.adapter.register_listener(
-        #         StrangerMessage,
-        #         on_stranger_message
-        #     )
-
         async def on_group_message(event: GroupMessage, adapter: msadapter.MessageSourceAdapter):
 
             event_ctx = await self.ap.plugin_mgr.emit_event(
@@ -187,7 +180,10 @@ class PlatformManager:
             tasks = []
             for adapter in self.adapters:
                 tasks.append(adapter.run_async())
-            await asyncio.gather(*tasks)
+            
+            for task in tasks:
+                asyncio.create_task(task)
+
         except Exception as e:
             self.ap.logger.error('平台适配器运行出错: ' + str(e))
             self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")

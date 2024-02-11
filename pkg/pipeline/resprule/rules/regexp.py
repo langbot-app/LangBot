@@ -13,7 +13,8 @@ class RegExpRule(rule_model.GroupRespondRule):
         self,
         message_text: str,
         message_chain: mirai.MessageChain,
-        rule_dict: dict
+        rule_dict: dict,
+        query: core_entities.Query
     ) -> entities.RuleJudgeResult:
         regexps = rule_dict['regexp']
 
