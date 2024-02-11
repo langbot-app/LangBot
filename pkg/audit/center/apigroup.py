@@ -34,7 +34,7 @@ class APIGroup(metaclass=abc.ABCMeta):
         headers: dict = {},
         **kwargs
     ):
-        self._runtime_info['account_id'] = "{}".format(self.ap.im_mgr.bot_account_id)
+        self._runtime_info['account_id'] = "-1"
         
         url = self.prefix + path
         data = json.dumps(data)

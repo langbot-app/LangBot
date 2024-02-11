@@ -52,7 +52,7 @@ class LongTextProcessStage(stage.PipelineStage):
     
     async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:
         if len(str(query.resp_message_chain)) > self.ap.platform_cfg.data['long-text-process']['threshold']:
-            query.resp_message_chain = MessageChain(await self.strategy_impl.process(str(query.resp_message_chain)))
+            query.resp_message_chain = MessageChain(await self.strategy_impl.process(str(query.resp_message_chain), query))
         return entities.StageProcessResult(
             result_type=entities.ResultType.CONTINUE,
             new_query=query

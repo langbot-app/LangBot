@@ -70,7 +70,8 @@ class Controller:
         if result.user_notice:
             await self.ap.im_mgr.send(
                 query.message_event,
-                result.user_notice
+                result.user_notice,
+                query.adapter
             )
         if result.debug_notice:
             self.ap.logger.debug(result.debug_notice)

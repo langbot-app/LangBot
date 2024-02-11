@@ -257,14 +257,13 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
     def register_listener(
         self,
         event_type: typing.Type[mirai.Event],
-        callback: typing.Callable[[mirai.Event], None]
+        callback: typing.Callable[[mirai.Event, adapter_model.MessageSourceAdapter], None]
     ):
         try:
 
             # 包装函数
             async def listener_wrapper(app: nakuru.CQHTTP, source: NakuruProjectAdapter.event_converter.yiri2target(event_type)):
-                print(1111)
-                await callback(self.event_converter.target2yiri(source))
+                await callback(self.event_converter.target2yiri(source), self)
 
             # 将包装函数和原函数的对应关系存入列表
             self.listener_list.append(
@@ -284,7 +283,7 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
     def unregister_listener(
         self,
         event_type: typing.Type[mirai.Event],
-        callback: typing.Callable[[mirai.Event], None]
+        callback: typing.Callable[[mirai.Event, adapter_model.MessageSourceAdapter], None]
     ):
         nakuru_event_name = self.event_converter.yiri2target(event_type).__name__
 

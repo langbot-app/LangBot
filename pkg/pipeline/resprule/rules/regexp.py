@@ -4,6 +4,7 @@ import mirai
 
 from .. import rule as rule_model
 from .. import entities
+from ....core import entities as core_entities
 
 
 class RegExpRule(rule_model.GroupRespondRule):

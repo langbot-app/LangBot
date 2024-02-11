@@ -25,6 +25,40 @@
             "direct_message"
         ]
     },
+    "platform-adapters": [
+        {
+            "adapter": "yiri-mirai",
+            "enable": false,
+            "host": "127.0.0.1",
+            "port": 8080,
+            "verifyKey": "yirimirai",
+            "qq": 123456789
+        },
+        {
+            "adapter": "nakuru",
+            "enable": false,
+            "host": "127.0.0.1",
+            "ws_port": 8080,
+            "http_port": 5700,
+            "token": ""
+        },
+        {
+            "adapter": "aiocqhttp",
+            "enable": false,
+            "host": "127.0.0.1",
+            "port": 8080
+        },
+        {
+            "adapter": "qq-botpy",
+            "enable": false,
+            "appid": "",
+            "secret": "",
+            "intents": [
+                "public_guild_messages",
+                "direct_message"
+            ]
+        }
+    ],
     "track-function-calls": true,
     "quote-origin": false,
     "at-sender": false,
