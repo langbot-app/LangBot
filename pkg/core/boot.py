@@ -88,7 +88,10 @@ async def make_app() -> app.Application:
         },
         runtime_info={
             "admin_id": "{}".format(system_cfg.data["admin-sessions"]),
-            "msg_source": platform_cfg.data["platform-adapter"],
+            "msg_source": [
+                adapter_cfg['adapter'] if 'adapter' in adapter_cfg else 'unknown'
+                for adapter_cfg in platform_cfg.data['platform-adapters'] if adapter_cfg['enable']
+            ],
         },
     )
     ap.ctr_mgr = center_v2_api
