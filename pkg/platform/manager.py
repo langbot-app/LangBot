@@ -101,8 +101,12 @@ class PlatformManager:
                     adapter=adapter
                 )
         
+        index = 0
+
         for adap_cfg in self.ap.platform_cfg.data['platform-adapters']:
             if adap_cfg['enable']:
+                self.ap.logger.info(f'初始化平台适配器 {index}: {adap_cfg["adapter"]}')
+                index += 1
                 cfg_copy = adap_cfg.copy()
                 del cfg_copy['enable']
                 adapter_name = cfg_copy['adapter']
@@ -179,7 +183,14 @@ class PlatformManager:
         try:
             tasks = []
             for adapter in self.adapters:
-                tasks.append(adapter.run_async())
+                async def exception_wrapper(adapter):
+                    try:
+                        await adapter.run_async()
+                    except Exception as e:
+                        self.ap.logger.error('平台适配器运行出错: ' + str(e))
+                        self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
+
+                tasks.append(exception_wrapper(adapter))
             
             for task in tasks:
                 asyncio.create_task(task)
@@ -187,3 +198,4 @@ class PlatformManager:
         except Exception as e:
             self.ap.logger.error('平台适配器运行出错: ' + str(e))
             self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
+
