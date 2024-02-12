@@ -71,7 +71,7 @@ class MessageSourceAdapter(metaclass=abc.ABCMeta):
     def register_listener(
         self,
         event_type: typing.Type[mirai.Event],
-        callback: typing.Callable[[mirai.Event], None]
+        callback: typing.Callable[[mirai.Event, MessageSourceAdapter], None]
     ):
         """注册事件监听器
         
@@ -84,7 +84,7 @@ class MessageSourceAdapter(metaclass=abc.ABCMeta):
     def unregister_listener(
         self,
         event_type: typing.Type[mirai.Event],
-        callback: typing.Callable[[mirai.Event], None]
+        callback: typing.Callable[[mirai.Event, MessageSourceAdapter], None]
     ):
         """注销事件监听器
         

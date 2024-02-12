@@ -6,6 +6,7 @@ import mirai
 from mirai.models.message import MessageComponent
 
 from ...core import app
+from ...core import entities as core_entities
 
 
 class LongTextStrategy(metaclass=abc.ABCMeta):
@@ -18,5 +19,5 @@ class LongTextStrategy(metaclass=abc.ABCMeta):
         pass
     
     @abc.abstractmethod
-    async def process(self, message: str) -> list[MessageComponent]:
+    async def process(self, message: str, query: core_entities.Query) -> list[MessageComponent]:
         return []

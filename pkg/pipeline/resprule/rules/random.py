@@ -4,6 +4,7 @@ import mirai
 
 from .. import rule as rule_model
 from .. import entities
+from ....core import entities as core_entities
 
 
 class RandomRespRule(rule_model.GroupRespondRule):
@@ -12,7 +13,8 @@ class RandomRespRule(rule_model.GroupRespondRule):
         self,
         message_text: str,
         message_chain: mirai.MessageChain,
-        rule_dict: dict
+        rule_dict: dict,
+        query: core_entities.Query
     ) -> entities.RuleJudgeResult:
         random_rate = rule_dict['random']
         

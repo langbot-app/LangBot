@@ -1,4 +1,5 @@
-from __future__ import annotations
+# 加了之后会导致：https://github.com/Lxns-Network/nakuru-project/issues/25
+# from __future__ import annotations
 
 import asyncio
 import typing
@@ -12,7 +13,6 @@ import nakuru.entities.components as nkc
 
 from .. import adapter as adapter_model
 from ...pipeline.longtext.strategies import forward
-from ...core import app
 
 
 class NakuruProjectMessageConverter(adapter_model.MessageConverter):
@@ -170,11 +170,11 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
 
     listener_list: list[dict]
 
-    ap: app.Application
+    # ap: app.Application
 
     cfg: dict
 
-    def __init__(self, cfg: dict, ap: app.Application):
+    def __init__(self, cfg: dict, ap):
         """初始化nakuru-project的对象"""
         cfg['port'] = cfg['ws_port']
         del cfg['ws_port']
@@ -257,14 +257,15 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
     def register_listener(
         self,
         event_type: typing.Type[mirai.Event],
-        callback: typing.Callable[[mirai.Event], None]
+        callback: typing.Callable[[mirai.Event, adapter_model.MessageSourceAdapter], None]
     ):
         try:
 
+            source_cls = NakuruProjectEventConverter.yiri2target(event_type)
+
             # 包装函数
-            async def listener_wrapper(app: nakuru.CQHTTP, source: NakuruProjectAdapter.event_converter.yiri2target(event_type)):
-                print(1111)
-                await callback(self.event_converter.target2yiri(source))
+            async def listener_wrapper(app: nakuru.CQHTTP, source: source_cls):
+                await callback(self.event_converter.target2yiri(source), self)
 
             # 将包装函数和原函数的对应关系存入列表
             self.listener_list.append(
@@ -276,7 +277,7 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
             )
 
             # 注册监听器
-            self.bot.receiver(self.event_converter.yiri2target(event_type).__name__)(listener_wrapper)
+            self.bot.receiver(source_cls.__name__)(listener_wrapper)
         except Exception as e:
             traceback.print_exc()
             raise e
@@ -284,7 +285,7 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
     def unregister_listener(
         self,
         event_type: typing.Type[mirai.Event],
-        callback: typing.Callable[[mirai.Event], None]
+        callback: typing.Callable[[mirai.Event, adapter_model.MessageSourceAdapter], None]
     ):
         nakuru_event_name = self.event_converter.yiri2target(event_type).__name__
 
@@ -326,7 +327,7 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
         await self.bot._run()
         self.ap.logger.info("运行 Nakuru 适配器")
         while True:
-            await asyncio.sleep(100)
+            await asyncio.sleep(1)
 
     def kill(self) -> bool:
         return False

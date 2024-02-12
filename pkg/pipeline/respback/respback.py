@@ -31,7 +31,8 @@ class SendResponseBackStage(stage.PipelineStage):
 
         await self.ap.im_mgr.send(
             query.message_event,
-            query.resp_message_chain
+            query.resp_message_chain,
+            adapter=query.adapter
         )
 
         return entities.StageProcessResult(

@@ -70,7 +70,8 @@ class Controller:
         if result.user_notice:
             await self.ap.im_mgr.send(
                 query.message_event,
-                result.user_notice
+                result.user_notice,
+                query.adapter
             )
         if result.debug_notice:
             self.ap.logger.debug(result.debug_notice)
@@ -150,7 +151,7 @@ class Controller:
         except Exception as e:
             self.ap.logger.error(f"处理请求时出错 query_id={query.query_id}: {e}")
             self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
-            # traceback.print_exc()
+            traceback.print_exc()
         finally:
             self.ap.logger.debug(f"Query {query} processed")
 

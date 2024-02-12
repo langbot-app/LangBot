@@ -240,12 +240,12 @@ class AiocqhttpAdapter(adapter.MessageSourceAdapter):
     def register_listener(
         self,
         event_type: typing.Type[mirai.Event],
-        callback: typing.Callable[[mirai.Event], None],
+        callback: typing.Callable[[mirai.Event, adapter.MessageSourceAdapter], None],
     ):
         async def on_message(event: aiocqhttp.Event):
             self.bot_account_id = event.self_id
             try:
-                return await callback(self.event_converter.target2yiri(event))
+                return await callback(self.event_converter.target2yiri(event), self)
             except:
                 traceback.print_exc()
 
@@ -257,7 +257,7 @@ class AiocqhttpAdapter(adapter.MessageSourceAdapter):
     def unregister_listener(
         self,
         event_type: typing.Type[mirai.Event],
-        callback: typing.Callable[[mirai.Event], None],
+        callback: typing.Callable[[mirai.Event, adapter.MessageSourceAdapter], None],
     ):
         return super().unregister_listener(event_type, callback)
 

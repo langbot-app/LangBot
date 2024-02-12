@@ -17,11 +17,8 @@ from ..plugin import events
 # 控制QQ消息输入输出的类
 class PlatformManager:
     
-    adapter: msadapter.MessageSourceAdapter = None
-
-    @property
-    def bot_account_id(self):
-        return self.adapter.bot_account_id
+    # adapter: msadapter.MessageSourceAdapter = None
+    adapters: list[msadapter.MessageSourceAdapter] = []
 
     # modern
     ap: app.Application = None
@@ -29,27 +26,13 @@ class PlatformManager:
     def __init__(self, ap: app.Application = None):
 
         self.ap = ap
+        self.adapters = []
     
     async def initialize(self):
 
         from .sources import yirimirai, nakuru, aiocqhttp, qqbotpy
 
-        adapter_cls = None
-
-        for adapter in msadapter.preregistered_adapters:
-            if adapter.name == self.ap.platform_cfg.data['platform-adapter']:
-                adapter_cls = adapter
-                break
-        if adapter_cls is None:
-            raise Exception('未知的平台适配器: ' + self.ap.platform_cfg.data['platform-adapter'])
-
-        cfg_key = self.ap.platform_cfg.data['platform-adapter'] + '-config'
-        self.adapter = adapter_cls(
-            self.ap.platform_cfg.data[cfg_key],
-            self.ap
-        )
-
-        async def on_friend_message(event: FriendMessage):
+        async def on_friend_message(event: FriendMessage, adapter: msadapter.MessageSourceAdapter):
 
             event_ctx = await self.ap.plugin_mgr.emit_event(
                 event=events.PersonMessageReceived(
@@ -68,15 +51,11 @@ class PlatformManager:
                     launcher_id=event.sender.id,
                     sender_id=event.sender.id,
                     message_event=event,
-                    message_chain=event.message_chain
+                    message_chain=event.message_chain,
+                    adapter=adapter
                 )
 
-        self.adapter.register_listener(
-            FriendMessage,
-            on_friend_message
-        )
-
-        async def on_stranger_message(event: StrangerMessage):
+        async def on_stranger_message(event: StrangerMessage, adapter: msadapter.MessageSourceAdapter):
             
             event_ctx = await self.ap.plugin_mgr.emit_event(
                 event=events.PersonMessageReceived(
@@ -96,16 +75,10 @@ class PlatformManager:
                     sender_id=event.sender.id,
                     message_event=event,
                     message_chain=event.message_chain,
+                    adapter=adapter
                 )
 
-        # nakuru不区分好友和陌生人，故仅为yirimirai注册陌生人事件
-        if self.ap.platform_cfg.data['platform-adapter'] == 'yiri-mirai':
-            self.adapter.register_listener(
-                StrangerMessage,
-                on_stranger_message
-            )
-
-        async def on_group_message(event: GroupMessage):
+        async def on_group_message(event: GroupMessage, adapter: msadapter.MessageSourceAdapter):
 
             event_ctx = await self.ap.plugin_mgr.emit_event(
                 event=events.GroupMessageReceived(
@@ -124,15 +97,53 @@ class PlatformManager:
                     launcher_id=event.group.id,
                     sender_id=event.sender.id,
                     message_event=event,
-                    message_chain=event.message_chain
+                    message_chain=event.message_chain,
+                    adapter=adapter
                 )
+        
+        index = 0
 
-        self.adapter.register_listener(
-            GroupMessage,
-            on_group_message
-        )
+        for adap_cfg in self.ap.platform_cfg.data['platform-adapters']:
+            if adap_cfg['enable']:
+                self.ap.logger.info(f'初始化平台适配器 {index}: {adap_cfg["adapter"]}')
+                index += 1
+                cfg_copy = adap_cfg.copy()
+                del cfg_copy['enable']
+                adapter_name = cfg_copy['adapter']
+                del cfg_copy['adapter']
 
-    async def send(self, event, msg, check_quote=True, check_at_sender=True):
+                found = False
+
+                for adapter in msadapter.preregistered_adapters:
+                    if adapter.name == adapter_name:
+                        found = True
+                        adapter_cls = adapter
+                        
+                        adapter_inst = adapter_cls(
+                            cfg_copy,
+                            self.ap
+                        )
+                        self.adapters.append(adapter_inst)
+
+                        if adapter_name == 'yiri-mirai':
+                            adapter_inst.register_listener(
+                                StrangerMessage,
+                                on_stranger_message
+                            )
+
+                        adapter_inst.register_listener(
+                            FriendMessage,
+                            on_friend_message
+                        )
+                        adapter_inst.register_listener(
+                            GroupMessage,
+                            on_group_message
+                        )
+                
+                if not found:
+                    raise Exception('platform.json 中启用了未知的平台适配器: ' + adapter_name)
+
+    async def send(self, event, msg, adapter: msadapter.MessageSourceAdapter, check_quote=True, check_at_sender=True):
         
         if check_at_sender and self.ap.platform_cfg.data['at-sender'] and isinstance(event, GroupMessage):
 
@@ -143,7 +154,7 @@ class PlatformManager:
                 )
             )
 
-        await self.adapter.reply_message(
+        await adapter.reply_message(
             event,
             msg,
             quote_origin=True if self.ap.platform_cfg.data['quote-origin'] and check_quote else False
@@ -170,7 +181,21 @@ class PlatformManager:
 
     async def run(self):
         try:
-            await self.adapter.run_async()
+            tasks = []
+            for adapter in self.adapters:
+                async def exception_wrapper(adapter):
+                    try:
+                        await adapter.run_async()
+                    except Exception as e:
+                        self.ap.logger.error('平台适配器运行出错: ' + str(e))
+                        self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
+
+                tasks.append(exception_wrapper(adapter))
+            
+            for task in tasks:
+                asyncio.create_task(task)
+
         except Exception as e:
             self.ap.logger.error('平台适配器运行出错: ' + str(e))
             self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
+

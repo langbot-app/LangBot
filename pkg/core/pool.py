@@ -5,6 +5,7 @@ import asyncio
 import mirai
 
 from . import entities
+from ..platform import adapter as msadapter
 
 
 class QueryPool:
@@ -29,7 +30,8 @@ class QueryPool:
         launcher_id: int,
         sender_id: int,
         message_event: mirai.MessageEvent,
-        message_chain: mirai.MessageChain
+        message_chain: mirai.MessageChain,
+        adapter: msadapter.MessageSourceAdapter
     ) -> entities.Query:
         async with self.condition:
             query = entities.Query(
@@ -40,7 +42,8 @@ class QueryPool:
                 message_event=message_event,
                 message_chain=message_chain,
                 resp_messages=[],
-                resp_message_chain=None
+                resp_message_chain=None,
+                adapter=adapter
             )
             self.queries.append(query)
             self.query_id_counter += 1

@@ -87,7 +87,7 @@ class YiriMiraiAdapter(adapter_model.MessageSourceAdapter):
     def register_listener(
         self,
         event_type: typing.Type[mirai.Event],
-        callback: typing.Callable[[mirai.Event], None]
+        callback: typing.Callable[[mirai.Event, adapter_model.MessageSourceAdapter], None]
     ):
         """注册事件监听器
         
@@ -95,12 +95,14 @@ class YiriMiraiAdapter(adapter_model.MessageSourceAdapter):
             event_type (typing.Type[mirai.Event]): YiriMirai事件类型
             callback (typing.Callable[[mirai.Event], None]): 回调函数，接收一个参数，为YiriMirai事件
         """
-        self.bot.on(event_type)(callback)
+        async def wrapper(event: mirai.Event):
+            await callback(event, self)
+        self.bot.on(event_type)(wrapper)
 
     def unregister_listener(
         self,
         event_type: typing.Type[mirai.Event],
-        callback: typing.Callable[[mirai.Event], None]
+        callback: typing.Callable[[mirai.Event, adapter_model.MessageSourceAdapter], None]
     ):
         """注销事件监听器
         

@@ -12,6 +12,7 @@ from ..provider import entities as llm_entities
 from ..provider.requester import entities
 from ..provider.sysprompt import entities as sysprompt_entities
 from ..provider.tools import entities as tools_entities
+from ..platform import adapter as msadapter
 
 
 class LauncherTypes(enum.Enum):
@@ -44,6 +45,9 @@ class Query(pydantic.BaseModel):
     message_chain: mirai.MessageChain
     """消息链，platform收到的消息链"""
 
+    adapter: msadapter.MessageSourceAdapter
+    """适配器对象"""
+
     session: typing.Optional[Session] = None
     """会话对象，由前置处理器设置"""
 
@@ -67,6 +71,9 @@ class Query(pydantic.BaseModel):
 
     resp_message_chain: typing.Optional[mirai.MessageChain] = None
     """回复消息链，从resp_messages包装而得"""
+
+    class Config:
+        arbitrary_types_allowed = True
 
 
 class Conversation(pydantic.BaseModel):

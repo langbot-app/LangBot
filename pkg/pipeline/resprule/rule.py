@@ -3,7 +3,7 @@ import abc
 
 import mirai
 
-from ...core import app
+from ...core import app, entities as core_entities
 from . import entities
 
 
@@ -24,7 +24,8 @@ class GroupRespondRule(metaclass=abc.ABCMeta):
         self,
         message_text: str,
         message_chain: mirai.MessageChain,
-        rule_dict: dict
+        rule_dict: dict,
+        query: core_entities.Query
     ) -> entities.RuleJudgeResult:
         """判断消息是否匹配规则
         """

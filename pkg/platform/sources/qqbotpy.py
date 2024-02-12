@@ -362,14 +362,14 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
     def register_listener(
         self,
         event_type: typing.Type[mirai.Event],
-        callback: typing.Callable[[mirai.Event], None]
+        callback: typing.Callable[[mirai.Event, adapter_model.MessageSourceAdapter], None]
     ):
         
         try:
 
             async def wrapper(message: typing.Union[botpy_message.Message, botpy_message.DirectMessage, botpy_message.GroupMessage]):
                 self.cached_official_messages[str(message.id)] = message
-                await callback(OfficialEventConverter.target2yiri(message))
+                await callback(OfficialEventConverter.target2yiri(message), self)
 
             for event_handler in event_handler_mapping[event_type]:
                 setattr(self.bot, event_handler, wrapper)
@@ -380,7 +380,7 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
     def unregister_listener(
         self,
         event_type: typing.Type[mirai.Event],
-        callback: typing.Callable[[mirai.Event], None]
+        callback: typing.Callable[[mirai.Event, adapter_model.MessageSourceAdapter], None]
     ):
         delattr(self.bot, event_handler_mapping[event_type])
 

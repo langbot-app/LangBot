@@ -12,6 +12,7 @@ from mirai.models import MessageChain, Image as ImageComponent
 from mirai.models.message import MessageComponent
 
 from .. import strategy as strategy_model
+from ....core import entities as core_entities
 
 
 class Text2ImageStrategy(strategy_model.LongTextStrategy):
@@ -21,7 +22,7 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
     async def initialize(self):
         self.text_render_font = ImageFont.truetype(self.ap.platform_cfg.data['long-text-process']['font-path'], 32, encoding="utf-8")
     
-    async def process(self, message: str) -> list[MessageComponent]:
+    async def process(self, message: str, query: core_entities.Query) -> list[MessageComponent]:
         img_path = self.text_to_image(
             text_str=message,
             save_as='temp/{}.png'.format(int(time.time()))

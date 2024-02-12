@@ -7,6 +7,7 @@ from mirai.models.message import MessageComponent, ForwardMessageNode
 from mirai.models.base import MiraiBaseModel
 
 from .. import strategy as strategy_model
+from ....core import entities as core_entities
 
 
 class ForwardMessageDiaplay(MiraiBaseModel):
@@ -37,7 +38,7 @@ class Forward(MessageComponent):
 
 class ForwardComponentStrategy(strategy_model.LongTextStrategy):
 
-    async def process(self, message: str) -> list[MessageComponent]:
+    async def process(self, message: str, query: core_entities.Query) -> list[MessageComponent]:
         display = ForwardMessageDiaplay(
             title="群聊的聊天记录",
             brief="[聊天记录]",
@@ -48,7 +49,7 @@ class ForwardComponentStrategy(strategy_model.LongTextStrategy):
 
         node_list = [
             ForwardMessageNode(
-                sender_id=self.ap.im_mgr.bot_account_id,
+                sender_id=query.adapter.bot_account_id,
                 sender_name='QQ用户',
                 message_chain=MessageChain([message])
             )
