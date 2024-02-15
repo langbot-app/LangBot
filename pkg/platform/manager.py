@@ -142,6 +142,9 @@ class PlatformManager:
                 
                 if not found:
                     raise Exception('platform.json 中启用了未知的平台适配器: ' + adapter_name)
+                
+        if len(self.adapters) == 0:
+            self.ap.logger.warning('未运行平台适配器，请根据文档配置并启用平台适配器。')
 
     async def send(self, event, msg, adapter: msadapter.MessageSourceAdapter, check_quote=True, check_at_sender=True):
         
