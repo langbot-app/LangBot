@@ -65,8 +65,6 @@ class Application:
     async def initialize(self):
         pass
 
-    # async def wait_loop(self):
-
     async def run(self):
         await self.plugin_mgr.load_plugins()
         await self.plugin_mgr.initialize_plugins()
@@ -83,7 +81,7 @@ class Application:
 
             async def interrupt(tasks):
                 await asyncio.sleep(1.5)
-                while await aioconsole.ainput("使用 exit 退出程序 > ") != 'exit':
+                while await aioconsole.ainput("使用 ctrl+c 或 'exit' 退出程序 > ") != 'exit':
                     pass
                 for task in tasks:
                     task.cancel()

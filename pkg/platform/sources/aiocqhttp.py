@@ -207,6 +207,12 @@ class AiocqhttpAdapter(adapter.MessageSourceAdapter):
 
     def __init__(self, config: dict, ap: app.Application):
         self.config = config
+
+        async def shutdown_trigger_placeholder():
+            return None
+        
+        self.config['shutdown_trigger'] = shutdown_trigger_placeholder
+
         self.ap = ap
 
         self.bot = aiocqhttp.CQHttp()
