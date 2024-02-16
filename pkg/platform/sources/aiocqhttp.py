@@ -209,7 +209,8 @@ class AiocqhttpAdapter(adapter.MessageSourceAdapter):
         self.config = config
 
         async def shutdown_trigger_placeholder():
-            return None
+            while True:
+                await asyncio.sleep(1)
         
         self.config['shutdown_trigger'] = shutdown_trigger_placeholder
 
