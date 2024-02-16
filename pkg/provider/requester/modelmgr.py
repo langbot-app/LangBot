@@ -24,7 +24,7 @@ class ModelManager:
         for model in self.model_list:
             if model.name == name:
                 return model
-        raise ValueError(f"Model {name} not found")
+        raise ValueError(f"不支持模型: {name} , 请检查配置文件")
 
     async def initialize(self):
         openai_chat_completion = chatcmpl.OpenAIChatCompletion(self.ap)

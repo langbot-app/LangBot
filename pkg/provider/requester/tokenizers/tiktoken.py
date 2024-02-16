@@ -17,7 +17,7 @@ class Tiktoken(tokenizer.LLMTokenizer):
         try:
             encoding = tiktoken.encoding_for_model(model.name)
         except KeyError:
-            print("Warning: model not found. Using cl100k_base encoding.")
+            # print("Warning: model not found. Using cl100k_base encoding.")
             encoding = tiktoken.get_encoding("cl100k_base")
 
         num_tokens = 0

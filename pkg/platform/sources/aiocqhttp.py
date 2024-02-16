@@ -40,7 +40,7 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
             elif type(msg) is mirai.Voice:
                 msg_list.append(aiocqhttp.MessageSegment.record(msg.path))
             elif type(msg) is forward.Forward:
-                print("aiocqhttp 暂不支持转发消息组件的转换，使用普通消息链发送")
+                # print("aiocqhttp 暂不支持转发消息组件的转换，使用普通消息链发送")
 
                 for node in msg.node_list:
                     msg_list.extend(AiocqhttpMessageConverter.yiri2target(node.message_chain)[0])

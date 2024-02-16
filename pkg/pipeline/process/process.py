@@ -32,6 +32,8 @@ class Processor(stage.PipelineStage):
         """
         message_text = str(query.message_chain).strip()
 
+        self.ap.logger.info(f"处理 {query.launcher_type.value}_{query.launcher_id} 的请求({query.query_id}): {message_text}")
+
         if message_text.startswith('!') or message_text.startswith('！'):
             return self.cmd_handler.handle(query)
         else:
