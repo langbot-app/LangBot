@@ -79,18 +79,30 @@ class Application:
                 asyncio.create_task(self.ctrl.run())
             ]
 
-            async def interrupt(tasks):
-                await asyncio.sleep(1.5)
-                while await aioconsole.ainput("使用 ctrl+c 或 'exit' 退出程序 > ") != 'exit':
-                    pass
+            # async def interrupt(tasks):
+            #     await asyncio.sleep(1.5)
+            #     while await aioconsole.ainput("使用 ctrl+c 或 'exit' 退出程序 > ") != 'exit':
+            #         pass
+            #     for task in tasks:
+            #         task.cancel()
+            
+            # await interrupt(tasks)
+
+            import signal
+
+            def signal_handler(sig, frame):
                 for task in tasks:
                     task.cancel()
-            
-            await interrupt(tasks)
+                self.logger.info("程序退出.")
+                exit(0)
+
+            signal.signal(signal.SIGINT, signal_handler)
+
+            await asyncio.gather(*tasks, return_exceptions=True)
 
         except asyncio.CancelledError:
             pass
         except Exception as e:
             self.logger.error(f"应用运行致命异常: {e}")
             self.logger.debug(f"Traceback: {traceback.format_exc()}")
-        self.logger.info("程序退出.")
+
