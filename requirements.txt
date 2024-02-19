@@ -7,6 +7,7 @@ qq-botpy
 websockets
 urllib3
 Pillow
+nakuru-project-idk
 CallingGPT
 tiktoken
 PyYaml
