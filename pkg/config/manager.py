@@ -1,5 +1,10 @@
+from __future__ import annotations
+
 from . import model as file_model
-from ..utils import context
+from .impls import pymodule, json as json_file
+
+
+managers: ConfigManager = []
 
 
 class ConfigManager:
@@ -14,10 +19,35 @@ class ConfigManager:
     def __init__(self, cfg_file: file_model.ConfigFile) -> None:
         self.file = cfg_file
         self.data = {}
-        context.set_config_manager(self)
 
     async def load_config(self):
         self.data = await self.file.load()
 
     async def dump_config(self):
         await self.file.save(self.data)
+
+
+async def load_python_module_config(config_name: str, template_name: str) -> ConfigManager:
+    """加载Python模块配置文件"""
+    cfg_inst = pymodule.PythonModuleConfigFile(
+        config_name,
+        template_name
+    )
+
+    cfg_mgr = ConfigManager(cfg_inst)
+    await cfg_mgr.load_config()
+
+    return cfg_mgr
+
+
+async def load_json_config(config_name: str, template_name: str) -> ConfigManager:
+    """加载JSON配置文件"""
+    cfg_inst = json_file.JSONConfigFile(
+        config_name,
+        template_name
+    )
+
+    cfg_mgr = ConfigManager(cfg_inst)
+    await cfg_mgr.load_config()
+
+    return cfg_mgr

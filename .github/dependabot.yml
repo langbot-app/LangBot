@@ -11,5 +11,4 @@ updates:
       interval: "weekly"
     allow:
       - dependency-name: "yiri-mirai-rc"
-      - dependency-name: "dulwich"
       - dependency-name: "openai"
