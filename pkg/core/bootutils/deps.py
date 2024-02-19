@@ -3,10 +3,8 @@ import pip
 required_deps = {
     "requests": "requests",
     "openai": "openai",
-    "dulwich": "dulwich",
     "colorlog": "colorlog",
     "mirai": "yiri-mirai-rc",
-    "func_timeout": "func_timeout",
     "PIL": "pillow",
     "nakuru": "nakuru-project-idk",
     "CallingGPT": "CallingGPT",

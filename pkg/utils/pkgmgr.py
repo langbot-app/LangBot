@@ -24,18 +24,6 @@ def install_requirements(file):
     # log.reset_logging()
 
 
-def ensure_dulwich():
-    # 尝试三次
-    for i in range(3):
-        try:
-            import dulwich
-            return
-        except ImportError:
-            install('dulwich')
-
-    raise ImportError("无法自动安装dulwich库")
-
-
 if __name__ == "__main__":
     try:
         install("openai11")
