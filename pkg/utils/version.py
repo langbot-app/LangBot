@@ -28,35 +28,8 @@ class VersionManager:
         self
     ) -> str:
         current_tag = constants.semantic_version
-        if os.path.exists("current_tag"):
-            with open("current_tag", "r") as f:
-                current_tag = f.read()
 
         return current_tag
-    
-    async def get_current_version_info(
-        self
-    ) -> str:
-            
-        """获取当前版本信息"""
-        rls_list = await self.get_release_list()
-        current_tag = self.get_current_version()
-        for rls in rls_list:
-            if rls['tag_name'] == current_tag:
-                return rls['name'] + "\n" + rls['body']
-        return "未知版本"
-    
-    async def get_release_list(self) -> list:
-        """获取发行列表"""
-        rls_list_resp = requests.get(
-            url="https://api.github.com/repos/RockChinQ/QChatGPT/releases",
-            proxies=self.ap.proxy_mgr.get_forward_proxies(),
-            timeout=5
-        )
-
-        rls_list = rls_list_resp.json()
-
-        return rls_list
     
     async def update_all(self):
         """检查更新并下载源码"""

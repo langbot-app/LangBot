@@ -16,7 +16,7 @@ class VersionCommand(operator.CommandOperator):
         self,
         context: entities.ExecuteContext
     ) -> typing.AsyncGenerator[entities.CommandReturn, None]:
-        reply_str = f"当前版本: \n{await self.ap.ver_mgr.get_current_version_info()}"
+        reply_str = f"当前版本: \n{self.ap.ver_mgr.get_current_version()}"
 
         try:
             if await self.ap.ver_mgr.is_new_version_available():
