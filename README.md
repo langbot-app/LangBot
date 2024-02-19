@@ -7,8 +7,6 @@
 
 # QChatGPT
 
-<blockquote> 🥳 QChatGPT 一周年啦，感谢大家的支持！欢迎前往<a href="https://github.com/RockChinQ/QChatGPT/discussions/627">讨论</a>。</blockquote>
-
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/QChatGPT)](https://github.com/RockChinQ/QChatGPT/releases/latest)
 <a href="https://hub.docker.com/repository/docker/rockchin/qchatgpt">
     <img src="https://img.shields.io/docker/pulls/rockchin/qchatgpt?color=blue" alt="docker pull">
