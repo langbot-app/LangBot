@@ -1,5 +1,5 @@
 requests
-openai
+openai>1.0.0
 colorlog~=6.6.0
 yiri-mirai-rc
 aiocqhttp

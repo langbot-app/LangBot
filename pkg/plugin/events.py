@@ -11,7 +11,7 @@ from ..provider import entities as llm_entities
 
 class BaseEventModel(pydantic.BaseModel):
 
-    query: core_entities.Query | None
+    query: typing.Union[core_entities.Query, None]
 
     class Config:
         arbitrary_types_allowed = True
