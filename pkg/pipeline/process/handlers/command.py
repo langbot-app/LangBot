@@ -91,6 +91,8 @@ class CommandHandler(handler.MessageHandler):
                         )
                     )
 
+                    self.ap.logger.info(f'命令({query.query_id})报错: {self.cut_str(str(ret.error))}')
+
                     yield entities.StageProcessResult(
                         result_type=entities.ResultType.CONTINUE,
                         new_query=query
@@ -105,6 +107,8 @@ class CommandHandler(handler.MessageHandler):
                             content=ret.text,
                         )
                     )
+
+                    self.ap.logger.info(f'命令返回: {self.cut_str(ret.text)}')
 
                     yield entities.StageProcessResult(
                         result_type=entities.ResultType.CONTINUE,

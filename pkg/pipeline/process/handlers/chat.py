@@ -78,6 +78,8 @@ class ChatMessageHandler(handler.MessageHandler):
                 async for result in query.use_model.requester.request(query):
                     query.resp_messages.append(result)
 
+                    self.ap.logger.info(f'对话({query.query_id})响应: {self.cut_str(result.readable_str())}')
+
                     if result.content is not None:
                         text_length += len(result.content)
 
@@ -86,6 +88,9 @@ class ChatMessageHandler(handler.MessageHandler):
                         new_query=query
                     )
             except Exception as e:
+                
+                self.ap.logger.error(f'对话({query.query_id})请求失败: {str(e)}')
+
                 yield entities.StageProcessResult(
                     result_type=entities.ResultType.INTERRUPT,
                     new_query=query,
