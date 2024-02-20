@@ -53,7 +53,7 @@ class CommandOperator(metaclass=abc.ABCMeta):
 
     usage: str = None
 
-    parent_class: typing.Type[CommandOperator] | None = None
+    parent_class: typing.Union[typing.Type[CommandOperator], None] = None
     """父节点类。标记以供管理器在初始化时编织父子关系。"""
 
     lowest_privilege: int = 0
