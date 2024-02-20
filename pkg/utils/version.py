@@ -31,6 +31,18 @@ class VersionManager:
 
         return current_tag
     
+    async def get_release_list(self) -> list:
+        """获取发行列表"""
+        rls_list_resp = requests.get(
+            url="https://api.github.com/repos/RockChinQ/QChatGPT/releases",
+            proxies=self.ap.proxy_mgr.get_forward_proxies(),
+            timeout=5
+        )
+
+        rls_list = rls_list_resp.json()
+
+        return rls_list
+    
     async def update_all(self):
         """检查更新并下载源码"""
         start_time = time.time()
