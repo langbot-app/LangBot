@@ -25,9 +25,14 @@ jobs:
         id: get_version
         if: (startsWith(env.GITHUB_REF, 'refs/tags/')||startsWith(github.ref, 'refs/tags/')) && startsWith(github.repository, 'RockChinQ/QChatGPT')
         run: export GITHUB_REF=${GITHUB_REF/refs\/tags\//}
+      - name: Check version
+        id: check_version
+        run: |
+          echo $GITHUB_REF
+          echo ::set-output name=version::${GITHUB_REF}
       - name: Login to Registry
         run: docker login --username=${{ secrets.DOCKER_USERNAME }} --password ${{ secrets.DOCKER_PASSWORD }}
       - name: Create Buildx
         run: docker buildx create --name mybuilder --use
       - name: Build  # image name: rockchin/qchatgpt:<VERSION>
-        run: docker buildx build --platform linux/arm64,linux/amd64 -t rockchin/qchatgpt:${{ env.GITHUB_REF }} -t rockchin/qchatgpt:latest . --push
+        run: docker buildx build --platform linux/arm64,linux/amd64 -t rockchin/qchatgpt:${{ steps.check_version.outputs.version }} -t rockchin/qchatgpt:latest . --push
