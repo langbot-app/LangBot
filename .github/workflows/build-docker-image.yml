@@ -19,17 +19,27 @@ jobs:
             export GITHUB_REF=${{ github.ref }}
             echo $GITHUB_REF
           fi
-      - name: Check GITHUB_REF env
-        run: echo $GITHUB_REF
-      - name: Get version  # 在 GitHub Actions 运行环境
-        id: get_version
-        if: (startsWith(env.GITHUB_REF, 'refs/tags/')||startsWith(github.ref, 'refs/tags/')) && startsWith(github.repository, 'RockChinQ/QChatGPT')
-        run: export GITHUB_REF=${GITHUB_REF/refs\/tags\//}
+      # - name: Check GITHUB_REF env
+      #   run: echo $GITHUB_REF
+      # - name: Get version  # 在 GitHub Actions 运行环境
+      #   id: get_version
+      #   if: (startsWith(env.GITHUB_REF, 'refs/tags/')||startsWith(github.ref, 'refs/tags/')) && startsWith(github.repository, 'RockChinQ/QChatGPT')
+      #   run: export GITHUB_REF=${GITHUB_REF/refs\/tags\//}
       - name: Check version
         id: check_version
         run: |
           echo $GITHUB_REF
-          echo ::set-output name=version::${GITHUB_REF}
+          # 如果是tag，则去掉refs/tags/前缀
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            echo "It's a tag"
+            echo $GITHUB_REF
+            echo $GITHUB_REF | awk -F '/' '{print $3}'
+            echo ::set-output name=version::$(echo $GITHUB_REF | awk -F '/' '{print $3}')
+          else
+            echo "It's not a tag"
+            echo $GITHUB_REF
+            echo ::set-output name=version::${GITHUB_REF}
+          fi
       - name: Login to Registry
         run: docker login --username=${{ secrets.DOCKER_USERNAME }} --password ${{ secrets.DOCKER_PASSWORD }}
       - name: Create Buildx
