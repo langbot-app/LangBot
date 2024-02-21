@@ -17,22 +17,17 @@ jobs:
         run: |
           if [ -z "$GITHUB_REF" ]; then
             export GITHUB_REF=${{ github.ref }}
+            echo $GITHUB_REF
           fi
       - name: Check GITHUB_REF env
         run: echo $GITHUB_REF
-      - name: Get version
+      - name: Get version  # 在 GitHub Actions 运行环境
         id: get_version
         if: (startsWith(env.GITHUB_REF, 'refs/tags/')||startsWith(github.ref, 'refs/tags/')) && startsWith(github.repository, 'RockChinQ/QChatGPT')
-        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
-      - name: Build  # image name: rockchin/qchatgpt:<VERSION>
-        run: docker build --network=host -t rockchin/qchatgpt:${{ steps.get_version.outputs.VERSION }} -t rockchin/qchatgpt:latest .
+        run: export GITHUB_REF=${GITHUB_REF/refs\/tags\//}
       - name: Login to Registry
         run: docker login --username=${{ secrets.DOCKER_USERNAME }} --password ${{ secrets.DOCKER_PASSWORD }}
-      
-      - name: Push image
-        if: (startsWith(env.GITHUB_REF, 'refs/tags/')||startsWith(github.ref, 'refs/tags/')) && startsWith(github.repository, 'RockChinQ/QChatGPT')
-        run: docker push rockchin/qchatgpt:${{ steps.get_version.outputs.VERSION }}
-
-      - name: Push latest image
-        if: (startsWith(env.GITHUB_REF, 'refs/tags/')||startsWith(github.ref, 'refs/tags/')) && startsWith(github.repository, 'RockChinQ/QChatGPT')
-        run: docker push rockchin/qchatgpt:latest
+      - name: Create Buildx
+        run: docker buildx create --name mybuilder --use
+      - name: Build  # image name: rockchin/qchatgpt:<VERSION>
+        run: docker buildx build --platform linux/arm64,linux/amd64 -t rockchin/qchatgpt:${{ env.GITHUB_REF }} -t rockchin/qchatgpt:latest . --push
