@@ -13,7 +13,7 @@ from ..config import manager as config_mgr
 from ..audit.center import v2 as center_mgr
 from ..command import cmdmgr
 from ..plugin import manager as plugin_mgr
-from . import pool
+from ..pipeline import pool
 from ..pipeline import controller, stagemgr
 from ..utils import version as version_mgr, proxy as proxy_mgr
 

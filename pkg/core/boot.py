@@ -9,7 +9,7 @@ from .bootutils import log
 from .bootutils import config
 
 from . import app
-from . import pool
+from ..pipeline import pool
 from ..pipeline import controller
 from ..pipeline import stagemgr
 from ..audit import identifier
