@@ -10,7 +10,7 @@ from .bootutils import config
 
 from . import app
 from . import pool
-from . import controller
+from ..pipeline import controller
 from ..pipeline import stagemgr
 from ..audit import identifier
 from ..provider.session import sessionmgr as llm_session_mgr
