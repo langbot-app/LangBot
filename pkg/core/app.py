@@ -4,8 +4,6 @@ import logging
 import asyncio
 import traceback
 
-import aioconsole
-
 from ..platform import manager as im_mgr
 from ..provider.session import sessionmgr as llm_session_mgr
 from ..provider.requester import modelmgr as llm_model_mgr

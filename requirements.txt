@@ -4,13 +4,12 @@ colorlog~=6.6.0
 yiri-mirai-rc
 aiocqhttp
 qq-botpy
-websockets
-urllib3
-Pillow
 nakuru-project-idk
+Pillow
 CallingGPT
 tiktoken
 PyYaml
 aiohttp
 pydantic
-aioconsole
+websockets
+urllib3
