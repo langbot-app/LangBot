@@ -1,10 +1,8 @@
 from __future__ import print_function
 
-import os
 import sys
 
 from .bootutils import files
-from .bootutils import deps
 from .bootutils import log
 from .bootutils import config
 
@@ -36,15 +34,6 @@ async def make_app() -> app.Application:
         for file in generated_files:
             print("-", file)
 
-        sys.exit(0)
-
-    missing_deps = await deps.check_deps()
-
-    if missing_deps:
-        print("以下依赖包未安装，将自动安装，请完成后重启程序：")
-        for dep in missing_deps:
-            print("-", dep)
-        await deps.install_deps(missing_deps)
         sys.exit(0)
 
     qcg_logger = await log.init_logging()
