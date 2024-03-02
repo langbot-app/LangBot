@@ -170,7 +170,7 @@ class AiocqhttpEventConverter(adapter.EventConverter):
                         name=event.sender["nickname"],
                         permission=mirai.models.entities.Permission.Member,
                     ),
-                    special_title=event.sender["title"],
+                    special_title=event.sender["title"] if "title" in event.sender else "",
                     join_timestamp=0,
                     last_speak_timestamp=0,
                     mute_time_remaining=0,
