@@ -3,6 +3,7 @@ from __future__ import print_function
 from . import app
 from ..audit import identifier
 from . import stage
+from .stages import load_config, setup_logger, build_app
 
 
 stage_order = [
