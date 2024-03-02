@@ -17,6 +17,8 @@ async def main_entry():
 
     import sys
 
+    # 检查依赖
+
     from pkg.core.bootutils import deps
 
     missing_deps = await deps.check_deps()
@@ -27,6 +29,19 @@ async def main_entry():
             print("-", dep)
         await deps.install_deps(missing_deps)
         print("已自动安装缺失的依赖包，请重启程序。")
+        sys.exit(0)
+
+    # 检查配置文件
+        
+    from pkg.core.bootutils import files
+
+    generated_files = await files.generate_files()
+
+    if generated_files:
+        print("以下文件不存在，已自动生成，请按需修改配置文件后重启：")
+        for file in generated_files:
+            print("-", file)
+
         sys.exit(0)
 
     from pkg.core import boot

@@ -21,20 +21,8 @@ from ..plugin import manager as plugin_mgr
 from ..audit.center import v2 as center_v2
 from ..utils import version, proxy, announce
 
-use_override = False
-
 
 async def make_app() -> app.Application:
-    global use_override
-
-    generated_files = await files.generate_files()
-
-    if generated_files:
-        print("以下文件不存在，已自动生成，请按需修改配置文件后重启：")
-        for file in generated_files:
-            print("-", file)
-
-        sys.exit(0)
 
     qcg_logger = await log.init_logging()
 
