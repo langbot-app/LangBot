@@ -6,7 +6,7 @@ import typing
 from . import app
 
 
-preregistered_stages: list[typing.Type[BootingStage]] = {}
+preregistered_stages: dict[str, typing.Type[BootingStage]] = {}
 
 def stage_class(
     name: str
