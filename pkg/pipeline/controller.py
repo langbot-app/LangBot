@@ -4,8 +4,8 @@ import asyncio
 import typing
 import traceback
 
-from . import app, entities
-from ..pipeline import entities as pipeline_entities
+from ..core import app, entities
+from . import entities as pipeline_entities
 from ..plugin import events
 
 

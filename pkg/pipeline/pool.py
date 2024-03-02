@@ -4,7 +4,7 @@ import asyncio
 
 import mirai
 
-from . import entities
+from ..core import entities
 from ..platform import adapter as msadapter
 
 
