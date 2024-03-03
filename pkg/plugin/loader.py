@@ -9,7 +9,7 @@ from . import context, events
 
 
 class PluginLoader(metaclass=abc.ABCMeta):
-    """插件加载器"""
+    """插件加载器抽象类"""
 
     ap: app.Application
 

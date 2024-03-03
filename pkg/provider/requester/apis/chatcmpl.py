@@ -18,6 +18,8 @@ from ...tools import entities as tools_entities
 
 
 class OpenAIChatCompletion(api.LLMAPIRequester):
+    """OpenAI ChatCompletion API 请求器"""
+
     client: openai.AsyncClient
 
     async def initialize(self):

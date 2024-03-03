@@ -34,6 +34,9 @@ class APIGroup(metaclass=abc.ABCMeta):
         headers: dict = {},
         **kwargs
     ):
+        """
+        执行请求
+        """
         self._runtime_info['account_id'] = "-1"
         
         url = self.prefix + path

@@ -7,6 +7,9 @@ from ..core import app
 
 
 class ProxyManager:
+    """代理管理器
+    """
+
     ap: app.Application
 
     forward_proxies: dict[str, str]

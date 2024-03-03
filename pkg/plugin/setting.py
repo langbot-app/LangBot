@@ -6,6 +6,7 @@ from . import context
 
 
 class SettingManager:
+    """插件设置管理器"""
 
     ap: app.Application
 

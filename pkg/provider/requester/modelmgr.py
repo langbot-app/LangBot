@@ -9,6 +9,7 @@ from .tokenizers import tiktoken
 
 
 class ModelManager:
+    """模型管理器"""
 
     ap: app.Application
 

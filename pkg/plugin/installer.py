@@ -7,6 +7,7 @@ from ..core import app
 
 
 class PluginInstaller(metaclass=abc.ABCMeta):
+    """插件安装器抽象类"""
 
     ap: app.Application
 

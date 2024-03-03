@@ -11,6 +11,7 @@ from ...config import manager as cfg_mgr
 
 @stage.stage_class("MessageProcessor")
 class Processor(stage.PipelineStage):
+    """请求实际处理阶段"""
 
     cmd_handler: handler.MessageHandler
 

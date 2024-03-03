@@ -15,6 +15,8 @@ from ...config import manager as cfg_mgr
 
 @stage.stage_class("LongTextProcessStage")
 class LongTextProcessStage(stage.PipelineStage):
+    """长消息处理阶段
+    """
 
     strategy_impl: strategy.LongTextStrategy
 

@@ -22,7 +22,7 @@ class BuildAppStage(stage.BootingStage):
     """
 
     async def run(self, ap: app.Application):
-        """启动
+        """构建app对象的各个组件对象并初始化
         """
 
         proxy_mgr = proxy.ProxyManager(ap)

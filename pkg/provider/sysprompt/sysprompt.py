@@ -6,6 +6,8 @@ from .loaders import single, scenario
 
 
 class PromptManager:
+    """Prompt管理器
+    """
 
     ap: app.Application
 

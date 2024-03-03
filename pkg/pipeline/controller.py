@@ -85,7 +85,7 @@ class Controller:
         stage_index: int,
         query: entities.Query,
     ):
-        """从指定阶段开始执行
+        """从指定阶段开始执行，实现了责任链模式和基于生成器的阶段分叉功能。
 
         如何看懂这里为什么这么写？
         去问 GPT-4:

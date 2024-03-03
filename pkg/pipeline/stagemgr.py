@@ -15,6 +15,7 @@ from .preproc import preproc
 from .ratelimit import ratelimit
 
 
+# 请求处理阶段顺序
 stage_order = [
     "GroupRespondRuleCheckStage",
     "BanSessionCheckStage",

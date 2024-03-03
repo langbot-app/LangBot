@@ -8,6 +8,7 @@ from . import entities
 
 
 preregistered_operators: list[typing.Type[CommandOperator]] = []
+"""预注册算子列表。在初始化时，所有算子类会被注册到此列表中。"""
 
 
 def operator_class(
@@ -34,7 +35,7 @@ def operator_class(
 
 
 class CommandOperator(metaclass=abc.ABCMeta):
-    """命令算子
+    """命令算子抽象类
     """
 
     ap: app.Application

@@ -8,7 +8,7 @@ from ...plugin import events
 
 @stage.stage_class("PreProcessor")
 class PreProcessor(stage.PipelineStage):
-    """预处理器
+    """请求预处理阶段
     """
 
     async def process(

@@ -10,6 +10,8 @@ from . import errors, operator
 
 
 class CommandReturn(pydantic.BaseModel):
+    """命令返回值
+    """
 
     text: typing.Optional[str]
     """文本
@@ -24,6 +26,8 @@ class CommandReturn(pydantic.BaseModel):
 
 
 class ExecuteContext(pydantic.BaseModel):
+    """单次命令执行上下文
+    """
 
     query: core_entities.Query
 
