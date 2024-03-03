@@ -14,6 +14,7 @@ from .filters import cntignore, banwords, baiduexamine
 @stage.stage_class('PostContentFilterStage')
 @stage.stage_class('PreContentFilterStage')
 class ContentFilterStage(stage.PipelineStage):
+    """内容过滤阶段"""
 
     filter_chain: list[filter.ContentFilter]
 

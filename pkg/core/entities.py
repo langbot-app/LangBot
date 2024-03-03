@@ -16,6 +16,7 @@ from ..platform import adapter as msadapter
 
 
 class LauncherTypes(enum.Enum):
+    """一个请求的发起者类型"""
 
     PERSON = 'person'
     """私聊"""
@@ -77,7 +78,7 @@ class Query(pydantic.BaseModel):
 
 
 class Conversation(pydantic.BaseModel):
-    """对话"""
+    """对话，包含于 Session 中，一个 Session 可以有多个历史 Conversation，但只有一个当前使用的 Conversation""" 
 
     prompt: sysprompt_entities.Prompt
 
@@ -93,7 +94,7 @@ class Conversation(pydantic.BaseModel):
 
 
 class Session(pydantic.BaseModel):
-    """会话"""
+    """会话，一个 Session 对应一个 {launcher_type}_{launcher_id}"""
     launcher_type: LauncherTypes
 
     launcher_id: int
@@ -111,6 +112,7 @@ class Session(pydantic.BaseModel):
     update_time: typing.Optional[datetime.datetime] = pydantic.Field(default_factory=datetime.datetime.now)
 
     semaphore: typing.Optional[asyncio.Semaphore] = None
+    """当前会话的信号量，用于限制并发"""
 
     class Config:
         arbitrary_types_allowed = True

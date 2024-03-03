@@ -19,6 +19,8 @@ from ..utils import version as version_mgr, proxy as proxy_mgr
 
 
 class Application:
+    """运行时应用对象和上下文"""
+
     im_mgr: im_mgr.PlatformManager = None
 
     cmd_mgr: cmdmgr.CommandManager = None
@@ -77,14 +79,7 @@ class Application:
                 asyncio.create_task(self.ctrl.run())
             ]
 
-            # async def interrupt(tasks):
-            #     await asyncio.sleep(1.5)
-            #     while await aioconsole.ainput("使用 ctrl+c 或 'exit' 退出程序 > ") != 'exit':
-            #         pass
-            #     for task in tasks:
-            #         task.cancel()
-            
-            # await interrupt(tasks)
+            # 挂信号处理
 
             import signal
 

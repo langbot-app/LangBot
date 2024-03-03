@@ -10,6 +10,7 @@ from .installers import github
 
 
 class PluginManager:
+    """插件管理器"""
 
     ap: app.Application
 

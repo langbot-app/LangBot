@@ -12,6 +12,8 @@ from ...utils import pkgmgr
 
 
 class GitHubRepoInstaller(installer.PluginInstaller):
+    """GitHub仓库插件安装器
+    """
 
     def get_github_plugin_repo_label(self, repo_url: str) -> list[str]:
         """获取username, repo"""

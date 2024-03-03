@@ -7,6 +7,7 @@ from ..provider import entities as llm_entities
 from . import entities, operator, errors
 from ..config import manager as cfg_mgr
 
+# 引入所有算子以便注册
 from .operators import func, plugin, default, reset, list as list_cmd, last, next, delc, resend, prompt, cmd, help, version, update
 
 
@@ -17,6 +18,9 @@ class CommandManager:
     ap: app.Application
 
     cmd_list: list[operator.CommandOperator]
+    """
+    运行时命令列表，扁平存储，各个对象包含对应的子节点引用
+    """
 
     def __init__(self, ap: app.Application):
         self.ap = ap
@@ -60,7 +64,7 @@ class CommandManager:
         """
 
         found = False
-        if len(context.crt_params) > 0:
+        if len(context.crt_params) > 0:  # 查找下一个参数是否对应此节点的某个子节点名
             for oper in operator_list:
                 if (context.crt_params[0] == oper.name \
                     or context.crt_params[0] in oper.alias) \
@@ -78,7 +82,7 @@ class CommandManager:
                         yield ret
                     break
 
-        if not found:
+        if not found:  # 如果下一个参数未在此节点的子节点中找到，则执行此节点或者报错
             if operator is None:
                 yield entities.CommandReturn(
                     error=errors.CommandNotFoundError(context.crt_params[0])

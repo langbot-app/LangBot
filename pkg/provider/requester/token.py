@@ -6,6 +6,8 @@ import pydantic
 
 
 class TokenManager():
+    """鉴权 Token 管理器
+    """
 
     provider: str
 

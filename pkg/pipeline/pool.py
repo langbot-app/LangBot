@@ -9,6 +9,7 @@ from ..platform import adapter as msadapter
 
 
 class QueryPool:
+    """请求池，请求获得调度进入pipeline之前，保存在这里"""
 
     query_id_counter: int = 0
 

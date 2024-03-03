@@ -9,6 +9,7 @@ from . import entities
 
 
 class LLMTokenizer(metaclass=abc.ABCMeta):
+    """LLM分词器抽象类"""
 
     ap: app.Application
 

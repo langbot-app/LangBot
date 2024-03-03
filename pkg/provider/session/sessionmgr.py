@@ -6,6 +6,8 @@ from ...core import app, entities as core_entities
 
 
 class SessionManager:
+    """会话管理器
+    """
 
     ap: app.Application
 
@@ -39,6 +41,8 @@ class SessionManager:
         return session
 
     async def get_conversation(self, session: core_entities.Session) -> core_entities.Conversation:
+        """获取对话或创建对话"""
+
         if not session.conversations:
             session.conversations = []
 

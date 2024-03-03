@@ -8,6 +8,7 @@ from ...config import manager as cfg_mgr
 
 @stage.stage_class('BanSessionCheckStage')
 class BanSessionCheckStage(stage.PipelineStage):
+    """访问控制处理阶段"""
 
     async def initialize(self):
         pass

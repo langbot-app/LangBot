@@ -10,6 +10,8 @@ from . import constants
 
 
 class VersionManager:
+    """版本管理器
+    """
 
     ap: app.Application
 

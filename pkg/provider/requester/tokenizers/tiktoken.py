@@ -8,6 +8,8 @@ from .. import entities
 
 
 class Tiktoken(tokenizer.LLMTokenizer):
+    """TikToken分词器
+    """
 
     async def count_token(
         self,
