@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 
 from .. import stage, app
-from ...utils import version, proxy, announce
+from ...utils import version, proxy, announce, platform
 from ...audit.center import v2 as center_v2
 from ...audit import identifier
 from ...pipeline import pool, controller, stagemgr
@@ -39,7 +39,7 @@ class BuildAppStage(stage.BootingStage):
                 "host_id": identifier.identifier["host_id"],
                 "instance_id": identifier.identifier["instance_id"],
                 "semantic_version": ver_mgr.get_current_version(),
-                "platform": sys.platform,
+                "platform": platform.get_platform(),
             },
             runtime_info={
                 "admin_id": "{}".format(ap.system_cfg.data["admin-sessions"]),
