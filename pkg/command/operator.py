@@ -20,6 +20,8 @@ def operator_class(
     parent_class: typing.Type[CommandOperator] = None
 ) -> typing.Callable[[typing.Type[CommandOperator]], typing.Type[CommandOperator]]:
     def decorator(cls: typing.Type[CommandOperator]) -> typing.Type[CommandOperator]:
+        assert issubclass(cls, CommandOperator)
+        
         cls.name = name
         cls.alias = alias
         cls.help = help
