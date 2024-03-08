@@ -1,26 +1,8 @@
 [
     {
-        "id": 2,
-        "time": "2023-08-01 10:49:26",
-        "timestamp": 1690858166,
-        "content": "现已支持GPT函数调用功能，欢迎了解：https://github.com/RockChinQ/QChatGPT/wiki/%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8-%E5%86%85%E5%AE%B9%E5%87%BD%E6%95%B0"
-    },
-    {
-        "id": 3,
-        "time": "2023-11-10 12:20:09",
-        "timestamp": 1699590009,
-        "content": "OpenAI 库1.0版本已发行，若出现 OpenAI 调用问题，请更新 QChatGPT 版本。详见项目主页：https://github.com/RockChinQ/QChatGPT"
-    },
-    {
-        "id": 4,
-        "time": "2023-11-13 18:02:39",
-        "timestamp": 1699869759,
-        "content": "近期 OpenAI 接口改动频繁，正在积极适配并添加新功能，请尽快更新到最新版本，更新方式：https://github.com/RockChinQ/QChatGPT/discussions/595"
-    },
-    {
-        "id": 5,
-        "time": "2023-12-07 9:20:00",
-        "timestamp": 1701912000,
-        "content": "QChatGPT 一周年啦！感谢大家的选择和支持，RockChinQ 在此衷心感谢素未谋面但又至关重要的你们每一个人，愿 AI 与我们同在！欢迎前往：https://github.com/RockChinQ/QChatGPT/discussions/627 参与讨论。"
+        "id": 6,
+        "time": "2024-03-08 22:30:00",
+        "timestamp": 1709908200,
+        "content": "QChatGPT 3.x 已发布，若您仍在使用不再维护的 2.x 版本，请尽快迁移至 3.x 版本：https://github.com/RockChinQ/QChatGPT/discussions/690"
     }
 ]
