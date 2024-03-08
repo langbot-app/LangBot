@@ -19,15 +19,16 @@ class CommandHandler(handler.MessageHandler):
         """处理
         """
 
-        event_class = events.PersonCommandSent if query.launcher_type == core_entities.LauncherTypes.PERSON else events.GroupCommandSent
-
+        command_text = str(query.message_chain).strip()[1:]
 
         privilege = 1
         
         if f'{query.launcher_type.value}_{query.launcher_id}' in self.ap.system_cfg.data['admin-sessions']:
             privilege = 2
 
-        spt = str(query.message_chain).strip().split(' ')
+        spt = command_text.split(' ')
+
+        event_class = events.PersonCommandSent if query.launcher_type == core_entities.LauncherTypes.PERSON else events.GroupCommandSent
 
         event_ctx = await self.ap.plugin_mgr.emit_event(
             event=event_class(
@@ -72,8 +73,6 @@ class CommandHandler(handler.MessageHandler):
                 ])
 
             session = await self.ap.sess_mgr.get_session(query)
-
-            command_text = str(query.message_chain).strip()[1:]
 
             async for ret in self.ap.cmd_mgr.execute(
                 command_text=command_text,

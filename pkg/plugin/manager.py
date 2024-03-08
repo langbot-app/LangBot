@@ -137,9 +137,8 @@ class PluginManager:
         for plugin in self.plugins:
             if plugin.enabled:
                 if event.__class__ in plugin.event_handlers:
+                    self.ap.logger.debug(f'插件 {plugin.plugin_name} 触发事件 {event.__class__.__name__}')
                     
-                    emitted_plugins.append(plugin)
-
                     is_prevented_default_before_call = ctx.is_prevented_default()
 
                     try:
@@ -151,6 +150,8 @@ class PluginManager:
                         self.ap.logger.error(f'插件 {plugin.plugin_name} 触发事件 {event.__class__.__name__} 时发生错误: {e}')
                         self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
                     
+                    emitted_plugins.append(plugin)
+
                     if not is_prevented_default_before_call and ctx.is_prevented_default():
                         self.ap.logger.debug(f'插件 {plugin.plugin_name} 阻止了默认行为执行')
 
