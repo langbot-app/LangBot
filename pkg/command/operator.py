@@ -8,17 +8,31 @@ from . import entities
 
 
 preregistered_operators: list[typing.Type[CommandOperator]] = []
-"""预注册算子列表。在初始化时，所有算子类会被注册到此列表中。"""
+"""预注册命令算子列表。在初始化时，所有算子类会被注册到此列表中。"""
 
 
 def operator_class(
     name: str,
-    help: str,
+    help: str = "",
     usage: str = None,
     alias: list[str] = [],
     privilege: int=1,  # 1为普通用户，2为管理员
     parent_class: typing.Type[CommandOperator] = None
 ) -> typing.Callable[[typing.Type[CommandOperator]], typing.Type[CommandOperator]]:
+    """命令类装饰器
+    
+    Args:
+        name (str): 名称
+        help (str, optional): 帮助信息. Defaults to "".
+        usage (str, optional): 使用说明. Defaults to None.
+        alias (list[str], optional): 别名. Defaults to [].
+        privilege (int, optional): 权限，1为普通用户可用，2为仅管理员可用. Defaults to 1.
+        parent_class (typing.Type[CommandOperator], optional): 父节点，若为None则为顶级命令. Defaults to None.
+
+    Returns:
+        typing.Callable[[typing.Type[CommandOperator]], typing.Type[CommandOperator]]: 注册后的命令类
+    """
+
     def decorator(cls: typing.Type[CommandOperator]) -> typing.Type[CommandOperator]:
         assert issubclass(cls, CommandOperator)
         
