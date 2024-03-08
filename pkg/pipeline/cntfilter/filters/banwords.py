@@ -6,7 +6,7 @@ from .. import entities
 from ....config import manager as cfg_mgr
 
 
-@filter_model.filter_class("BanWordFilter")
+@filter_model.filter_class("ban-word-filter")
 class BanWordFilter(filter_model.ContentFilter):
     """根据内容禁言"""
 

@@ -25,14 +25,14 @@ class ContentFilterStage(stage.PipelineStage):
     async def initialize(self):
 
         filters_required = [
-            "ContentIgnore"
+            "content-filter"
         ]
 
         if self.ap.pipeline_cfg.data['check-sensitive-words']:
-            filters_required.append("BanWordFilter")
+            filters_required.append("ban-word-filter")
 
         if self.ap.pipeline_cfg.data['baidu-cloud-examine']['enable']:
-            filters_required.append("BaiduCloudExamine")
+            filters_required.append("baidu-cloud-examine")
 
         for filter in filter_model.preregistered_filters:
             if filter.name in filters_required:

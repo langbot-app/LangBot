@@ -10,7 +10,7 @@ BAIDU_EXAMINE_URL = "https://aip.baidubce.com/rest/2.0/solution/v1/text_censor/v
 BAIDU_EXAMINE_TOKEN_URL = "https://aip.baidubce.com/oauth/2.0/token"
 
 
-@filter_model.filter_class("BaiduCloudExamine")
+@filter_model.filter_class("baidu-cloud-examine")
 class BaiduCloudExamine(filter_model.ContentFilter):
     """百度云内容审核"""
 
