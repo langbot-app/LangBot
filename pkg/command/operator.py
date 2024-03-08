@@ -30,7 +30,7 @@ def operator_class(
         parent_class (typing.Type[CommandOperator], optional): 父节点，若为None则为顶级命令. Defaults to None.
 
     Returns:
-        typing.Callable[[typing.Type[CommandOperator]], typing.Type[CommandOperator]]: 注册后的命令类
+        typing.Callable[[typing.Type[CommandOperator]], typing.Type[CommandOperator]]: 装饰器
     """
 
     def decorator(cls: typing.Type[CommandOperator]) -> typing.Type[CommandOperator]:
