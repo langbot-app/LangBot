@@ -19,6 +19,7 @@ class SessionContainer:
         self.records = {}
 
 
+@algo.algo_class("fixwin")
 class FixedWindowAlgo(algo.ReteLimitAlgo):
 
     containers_lock: asyncio.Lock
