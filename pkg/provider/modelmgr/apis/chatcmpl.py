@@ -17,6 +17,7 @@ from ... import entities as llm_entities
 from ...tools import entities as tools_entities
 
 
+@api.requester_class("openai-chat-completion")
 class OpenAIChatCompletion(api.LLMAPIRequester):
     """OpenAI ChatCompletion API 请求器"""
 
@@ -133,7 +134,10 @@ class OpenAIChatCompletion(api.LLMAPIRequester):
         except asyncio.TimeoutError:
             raise errors.RequesterError('请求超时')
         except openai.BadRequestError as e:
-            raise errors.RequesterError(f'请求错误: {e.message}')
+            if 'context_length_exceeded' in e.message:
+                raise errors.RequesterError(f'上文过长，请重置会话: {e.message}')
+            else:
+                raise errors.RequesterError(f'请求参数错误: {e.message}')
         except openai.AuthenticationError as e:
             raise errors.RequesterError(f'无效的 api-key: {e.message}')
         except openai.NotFoundError as e:

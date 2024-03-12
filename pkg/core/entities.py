@@ -9,7 +9,7 @@ import pydantic
 import mirai
 
 from ..provider import entities as llm_entities
-from ..provider.requester import entities
+from ..provider.modelmgr import entities
 from ..provider.sysprompt import entities as sysprompt_entities
 from ..provider.tools import entities as tools_entities
 from ..platform import adapter as msadapter
