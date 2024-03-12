@@ -8,6 +8,7 @@ from .. import entities
 from ....provider import entities as llm_entities
 
 
+@loader.loader_class("full_scenario")
 class ScenarioPromptLoader(loader.PromptLoader):
     """加载scenario目录下的json"""
 
