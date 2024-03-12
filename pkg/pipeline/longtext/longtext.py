@@ -45,11 +45,14 @@ class LongTextProcessStage(stage.PipelineStage):
                 self.ap.logger.error("加载字体文件失败({})，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。".format(use_font))
 
                 self.ap.platform_cfg.data['long-text-process']['strategy'] = "forward"
-        
-        if config['strategy'] == 'image':
-            self.strategy_impl = image.Text2ImageStrategy(self.ap)
-        elif config['strategy'] == 'forward':
-            self.strategy_impl = forward.ForwardComponentStrategy(self.ap)
+
+        for strategy_cls in strategy.preregistered_strategies:
+            if strategy_cls.name == config['strategy']:
+                self.strategy_impl = strategy_cls(self.ap)
+                break
+        else:
+            raise ValueError(f"未找到名为 {config['strategy']} 的长消息处理策略")
+
         await self.strategy_impl.initialize()
     
     async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:

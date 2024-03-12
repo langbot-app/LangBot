@@ -5,6 +5,7 @@ from .. import entities
 from .. import filter as filter_model
 
 
+@filter_model.filter_class("content-ignore")
 class ContentIgnore(filter_model.ContentFilter):
     """根据内容忽略消息"""
 

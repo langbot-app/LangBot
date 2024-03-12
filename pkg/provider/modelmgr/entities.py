@@ -5,7 +5,7 @@ import typing
 import pydantic
 
 from . import api
-from . import token, tokenizer
+from . import token
 
 
 class LLMModelInfo(pydantic.BaseModel):
@@ -19,11 +19,7 @@ class LLMModelInfo(pydantic.BaseModel):
 
     requester: api.LLMAPIRequester
 
-    tokenizer: 'tokenizer.LLMTokenizer'
-
     tool_call_supported: typing.Optional[bool] = False
-
-    max_tokens: typing.Optional[int] = 2048
 
     class Config:
         arbitrary_types_allowed = True

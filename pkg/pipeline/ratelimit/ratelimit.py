@@ -16,7 +16,19 @@ class RateLimit(stage.PipelineStage):
     algo: algo.ReteLimitAlgo
 
     async def initialize(self):
-        self.algo = fixedwin.FixedWindowAlgo(self.ap)
+
+        algo_name = self.ap.pipeline_cfg.data['rate-limit']['algo']
+
+        algo_class = None
+
+        for algo_cls in algo.preregistered_algos:
+            if algo_cls.name == algo_name:
+                algo_class = algo_cls
+                break
+        else:
+            raise ValueError(f'未知的限速算法: {algo_name}')
+
+        self.algo = algo_class(self.ap)
         await self.algo.initialize()
 
     async def process(

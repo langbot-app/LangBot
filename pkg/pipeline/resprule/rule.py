@@ -1,5 +1,6 @@
 from __future__ import annotations
 import abc
+import typing
 
 import mirai
 
@@ -7,9 +8,20 @@ from ...core import app, entities as core_entities
 from . import entities
 
 
+preregisetered_rules: list[typing.Type[GroupRespondRule]] = []
+
+def rule_class(name: str):
+    def decorator(cls: typing.Type[GroupRespondRule]) -> typing.Type[GroupRespondRule]:
+        cls.name = name
+        preregisetered_rules.append(cls)
+        return cls
+    return decorator
+
+
 class GroupRespondRule(metaclass=abc.ABCMeta):
     """群组响应规则的抽象类
     """
+    name: str
 
     ap: app.Application
 

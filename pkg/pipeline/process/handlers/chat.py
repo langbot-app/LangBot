@@ -21,8 +21,6 @@ class ChatMessageHandler(handler.MessageHandler):
     ) -> typing.AsyncGenerator[entities.StageProcessResult, None]:
         """处理
         """
-        # 取session
-        # 取conversation
         # 调API
         #   生成器
 

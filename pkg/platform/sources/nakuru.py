@@ -24,6 +24,8 @@ class NakuruProjectMessageConverter(adapter_model.MessageConverter):
             msg_list = message_chain.__root__
         elif type(message_chain) is list:
             msg_list = message_chain
+        elif type(message_chain) is str:
+            msg_list = [mirai.Plain(message_chain)]
         else:
             raise Exception("Unknown message type: " + str(message_chain) + str(type(message_chain)))
         

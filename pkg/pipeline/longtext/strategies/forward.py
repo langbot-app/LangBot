@@ -36,6 +36,7 @@ class Forward(MessageComponent):
         return '[聊天记录]'
 
 
+@strategy_model.strategy_class("forward")
 class ForwardComponentStrategy(strategy_model.LongTextStrategy):
 
     async def process(self, message: str, query: core_entities.Query) -> list[MessageComponent]:

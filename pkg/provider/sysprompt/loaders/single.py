@@ -6,6 +6,7 @@ from .. import entities
 from ....provider import entities as llm_entities
 
 
+@loader.loader_class("normal")
 class SingleSystemPromptLoader(loader.PromptLoader):
     """配置文件中的单条system prompt的prompt加载器
     """

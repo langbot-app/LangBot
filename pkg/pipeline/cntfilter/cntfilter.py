@@ -7,7 +7,7 @@ from ...core import app
 from .. import stage, entities, stagemgr
 from ...core import entities as core_entities
 from ...config import manager as cfg_mgr
-from . import filter, entities as filter_entities
+from . import filter as filter_model, entities as filter_entities
 from .filters import cntignore, banwords, baiduexamine
 
 
@@ -16,20 +16,29 @@ from .filters import cntignore, banwords, baiduexamine
 class ContentFilterStage(stage.PipelineStage):
     """内容过滤阶段"""
 
-    filter_chain: list[filter.ContentFilter]
+    filter_chain: list[filter_model.ContentFilter]
 
     def __init__(self, ap: app.Application):
         self.filter_chain = []
         super().__init__(ap)
 
     async def initialize(self):
-        self.filter_chain.append(cntignore.ContentIgnore(self.ap))
+
+        filters_required = [
+            "content-filter"
+        ]
 
         if self.ap.pipeline_cfg.data['check-sensitive-words']:
-            self.filter_chain.append(banwords.BanWordFilter(self.ap))
-        
+            filters_required.append("ban-word-filter")
+
         if self.ap.pipeline_cfg.data['baidu-cloud-examine']['enable']:
-            self.filter_chain.append(baiduexamine.BaiduCloudExamine(self.ap))
+            filters_required.append("baidu-cloud-examine")
+
+        for filter in filter_model.preregistered_filters:
+            if filter.name in filters_required:
+                self.filter_chain.append(
+                    filter(self.ap)
+                )
 
         for filter in self.filter_chain:
             await filter.initialize()

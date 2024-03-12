@@ -163,25 +163,6 @@ class PlatformManager:
             quote_origin=True if self.ap.platform_cfg.data['quote-origin'] and check_quote else False
         )
 
-    # 通知系统管理员
-    # TODO delete
-    # async def notify_admin(self, message: str):
-    #     await self.notify_admin_message_chain(MessageChain([Plain("[bot]{}".format(message))]))
-
-    # async def notify_admin_message_chain(self, message: mirai.MessageChain):
-    #     if self.ap.system_cfg.data['admin-sessions'] != []:
-
-    #         admin_list = []
-    #         for admin in self.ap.system_cfg.data['admin-sessions']:
-    #             admin_list.append(admin)
-            
-    #         for adm in admin_list:
-    #             self.adapter.send_message(
-    #                 adm.split("_")[0],
-    #                 adm.split("_")[1],
-    #                 message
-    #             )
-
     async def run(self):
         try:
             tasks = []

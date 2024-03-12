@@ -20,14 +20,18 @@ class PromptManager:
 
     async def initialize(self):
 
-        loader_map = {
-            "normal": single.SingleSystemPromptLoader,
-            "full_scenario": scenario.ScenarioPromptLoader
-        }
+        mode_name = self.ap.provider_cfg.data['prompt-mode']
 
-        loader_cls = loader_map[self.ap.provider_cfg.data['prompt-mode']]
+        loader_class = None
 
-        self.loader_inst: loader.PromptLoader = loader_cls(self.ap)
+        for loader_cls in loader.preregistered_loaders:
+            if loader_cls.name == mode_name:
+                loader_class = loader_cls
+                break
+        else:
+            raise ValueError(f'未知的 Prompt 加载器: {mode_name}')
+
+        self.loader_inst: loader.PromptLoader = loader_class(self.ap)
 
         await self.loader_inst.initialize()
         await self.loader_inst.load()

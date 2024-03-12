@@ -15,6 +15,7 @@ from .. import strategy as strategy_model
 from ....core import entities as core_entities
 
 
+@strategy_model.strategy_class("image")
 class Text2ImageStrategy(strategy_model.LongTextStrategy):
 
     text_render_font: ImageFont.FreeTypeFont

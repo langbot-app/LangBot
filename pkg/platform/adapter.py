@@ -22,6 +22,8 @@ def adapter_class(
 
 
 class MessageSourceAdapter(metaclass=abc.ABCMeta):
+    """消息平台适配器基类"""
+
     name: str
 
     bot_account_id: int
@@ -40,7 +42,7 @@ class MessageSourceAdapter(metaclass=abc.ABCMeta):
         target_id: str,
         message: mirai.MessageChain
     ):
-        """发送消息
+        """主动发送消息
         
         Args:
             target_type (str): 目标类型，`person`或`group`

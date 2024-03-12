@@ -10,7 +10,7 @@ from ...pipeline import pool, controller, stagemgr
 from ...plugin import manager as plugin_mgr
 from ...command import cmdmgr
 from ...provider.session import sessionmgr as llm_session_mgr
-from ...provider.requester import modelmgr as llm_model_mgr
+from ...provider.modelmgr import modelmgr as llm_model_mgr
 from ...provider.sysprompt import sysprompt as llm_prompt_mgr
 from ...provider.tools import toolmgr as llm_tool_mgr
 from ...platform import manager as im_mgr

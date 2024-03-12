@@ -7,6 +7,7 @@ from .. import entities
 from ....core import entities as core_entities
 
 
+@rule_model.rule_class("at-bot")
 class AtBotRule(rule_model.GroupRespondRule):
 
     async def match(
