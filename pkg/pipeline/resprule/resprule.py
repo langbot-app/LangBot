@@ -21,15 +21,13 @@ class GroupRespondRuleCheckStage(stage.PipelineStage):
     async def initialize(self):
         """初始化检查器
         """
-        self.rule_matchers = [
-            atbot.AtBotRule(self.ap),
-            prefix.PrefixRule(self.ap),
-            regexp.RegExpRule(self.ap),
-            random.RandomRespRule(self.ap),
-        ]
 
-        for rule_matcher in self.rule_matchers:
-            await rule_matcher.initialize()
+        self.rule_matchers = []
+
+        for rule_matcher in rule.preregisetered_rules:
+            rule_inst = rule_matcher(self.ap)
+            await rule_inst.initialize()
+            self.rule_matchers.append(rule_inst)
 
     async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:
         

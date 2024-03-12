@@ -7,6 +7,7 @@ from .. import entities
 from ....core import entities as core_entities
 
 
+@rule_model.rule_class("random")
 class RandomRespRule(rule_model.GroupRespondRule):
 
     async def match(
