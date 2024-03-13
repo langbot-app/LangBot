@@ -20,6 +20,10 @@ class AtBotRule(rule_model.GroupRespondRule):
         
         if message_chain.has(mirai.At(query.adapter.bot_account_id)) and rule_dict['at']:
             message_chain.remove(mirai.At(query.adapter.bot_account_id))
+
+            if message_chain.has(mirai.At(query.adapter.bot_account_id)):  # 回复消息时会at两次，检查并删除重复的
+                message_chain.remove(mirai.At(query.adapter.bot_account_id))
+
             return entities.RuleJudgeResult(
                 matching=True,
                 replacement=message_chain,
