@@ -216,7 +216,7 @@ class AiocqhttpAdapter(adapter.MessageSourceAdapter):
 
         self.ap = ap
 
-        if "access-token" in config and config["access-token"]:
+        if "access-token" in config:
             self.bot = aiocqhttp.CQHttp(access_token=config["access-token"])
             del self.config["access-token"]
         else:
