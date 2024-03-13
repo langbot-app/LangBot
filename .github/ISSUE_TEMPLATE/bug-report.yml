@@ -16,11 +16,13 @@ body:
       required: true
   - type: dropdown
     attributes:
-      label: 登录框架
+      label: 消息平台适配器
       description: "连接QQ使用的框架"
       options:
-        - Mirai
-        - go-cqhttp
+        - yiri-mirai（Mirai）
+        - Nakuru（go-cqhttp）
+        - aiocqhttp（使用 OneBot 协议接入的）
+        - qq-botpy（QQ官方API）
     validations:
       required: false
   - type: input
