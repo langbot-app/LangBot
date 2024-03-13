@@ -216,7 +216,11 @@ class AiocqhttpAdapter(adapter.MessageSourceAdapter):
 
         self.ap = ap
 
-        self.bot = aiocqhttp.CQHttp()
+        if "access-token" in config and config["access-token"]:
+            self.bot = aiocqhttp.CQHttp(access_token=config["access-token"])
+            del self.config["access-token"]
+        else:
+            self.bot = aiocqhttp.CQHttp()
 
     async def send_message(
         self, target_type: str, target_id: str, message: mirai.MessageChain
