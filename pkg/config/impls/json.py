@@ -45,3 +45,7 @@ class JSONConfigFile(file_model.ConfigFile):
     async def save(self, cfg: dict):
         with open(self.config_file_name, 'w', encoding='utf-8') as f:
             json.dump(cfg, f, indent=4, ensure_ascii=False)
+
+    def save_sync(self, cfg: dict):
+        with open(self.config_file_name, 'w', encoding='utf-8') as f:
+            json.dump(cfg, f, indent=4, ensure_ascii=False)

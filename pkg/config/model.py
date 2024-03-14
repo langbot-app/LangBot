@@ -25,3 +25,7 @@ class ConfigFile(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     async def save(self, data: dict):
         pass
+
+    @abc.abstractmethod
+    def save_sync(self, data: dict):
+        pass

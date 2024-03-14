@@ -26,6 +26,9 @@ class ConfigManager:
     async def dump_config(self):
         await self.file.save(self.data)
 
+    def dump_config_sync(self):
+        self.file.save_sync(self.data)
+
 
 async def load_python_module_config(config_name: str, template_name: str) -> ConfigManager:
     """加载Python模块配置文件"""

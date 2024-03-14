@@ -60,3 +60,6 @@ class PythonModuleConfigFile(file_model.ConfigFile):
 
     async def save(self, data: dict):
         logging.warning('Python模块配置文件不支持保存')
+
+    def save_sync(self, data: dict):
+        logging.warning('Python模块配置文件不支持保存')
