@@ -32,7 +32,7 @@ async def main_entry():
         sys.exit(0)
 
     # 检查配置文件
-        
+
     from pkg.core.bootutils import files
 
     generated_files = await files.generate_files()

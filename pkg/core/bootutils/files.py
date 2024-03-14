@@ -20,6 +20,7 @@ required_files = {
 required_paths = [
     "temp",
     "data",
+    "data/metadata",
     "data/prompts",
     "data/scenario",
     "data/logs",
