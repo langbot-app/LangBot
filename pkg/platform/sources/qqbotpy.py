@@ -387,7 +387,28 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
     async def send_message(
         self, target_type: str, target_id: str, message: mirai.MessageChain
     ):
-        pass
+        message_list = self.message_converter.yiri2target(message)
+
+        for msg in message_list:
+            args = {}
+
+            if msg["type"] == "text":
+                args["content"] = msg["content"]
+            elif msg["type"] == "image":
+                args["image"] = msg["content"]
+            elif msg["type"] == "file_image":
+                args["file_image"] = msg["content"]
+            else:
+                continue
+
+            if target_type == "group":
+                args["channel_id"] = str(target_id)
+
+                await self.bot.api.post_message(**args)
+            elif target_type == "person":
+                args["guild_id"] = str(target_id)
+
+                await self.bot.api.post_dms(**args)
 
     async def reply_message(
         self,
@@ -395,8 +416,8 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
         message: mirai.MessageChain,
         quote_origin: bool = False,
     ):
+        
         message_list = self.message_converter.yiri2target(message)
-        tasks = []
 
         msg_seq = 1
 
@@ -432,9 +453,6 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
                 ]
                 await self.bot.api.post_dms(**args)
             elif type(message_source) == OfficialGroupMessage:
-                # args['guild_id'] = str(message_source.sender.group.id)
-                # args['msg_id'] = cached_message_ids[str(message_source.message_chain.message_id)]
-                # await self.bot.api.post_message(**args)
                 if "image" in args or "file_image" in args:
                     continue
                 args["group_openid"] = self.group_openid_mapping.getkey(

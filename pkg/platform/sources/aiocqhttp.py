@@ -40,7 +40,6 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
             elif type(msg) is mirai.Voice:
                 msg_list.append(aiocqhttp.MessageSegment.record(msg.path))
             elif type(msg) is forward.Forward:
-                # print("aiocqhttp 暂不支持转发消息组件的转换，使用普通消息链发送")
 
                 for node in msg.node_list:
                     msg_list.extend(AiocqhttpMessageConverter.yiri2target(node.message_chain)[0])
@@ -225,16 +224,19 @@ class AiocqhttpAdapter(adapter.MessageSourceAdapter):
     async def send_message(
         self, target_type: str, target_id: str, message: mirai.MessageChain
     ):
-        # TODO 实现发送消息
-        return super().send_message(target_type, target_id, message)
+        aiocq_msg = AiocqhttpMessageConverter.yiri2target(message)[0]
+
+        if target_type == "group":
+            await self.bot.send_group_msg(group_id=int(target_id), message=aiocq_msg)
+        elif target_type == "person":
+            await self.bot.send_private_msg(user_id=int(target_id), message=aiocq_msg)
 
     async def reply_message(
         self,
         message_source: mirai.MessageEvent,
         message: mirai.MessageChain,
         quote_origin: bool = False,
-    ):
-        
+    ):  
         aiocq_event = AiocqhttpEventConverter.yiri2target(message_source, self.bot_account_id)
         aiocq_msg = AiocqhttpMessageConverter.yiri2target(message)[0]
         if quote_origin:
