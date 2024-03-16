@@ -18,7 +18,6 @@ class LoadConfigStage(stage.BootingStage):
         ap.provider_cfg = await config.load_json_config("data/config/provider.json", "templates/provider.json")
         ap.system_cfg = await config.load_json_config("data/config/system.json", "templates/system.json")
 
-
         ap.plugin_setting_meta = await config.load_json_config("plugins/plugins.json", "templates/plugin-settings.json")
         await ap.plugin_setting_meta.dump_config()
 
@@ -27,3 +26,6 @@ class LoadConfigStage(stage.BootingStage):
 
         ap.adapter_qq_botpy_meta = await config.load_json_config("data/metadata/adapter-qq-botpy.json", "templates/metadata/adapter-qq-botpy.json")
         await ap.adapter_qq_botpy_meta.dump_config()
+
+        ap.llm_models_meta = await config.load_json_config("data/metadata/llm-models.json", "templates/metadata/llm-models.json")
+        await ap.llm_models_meta.dump_config()
