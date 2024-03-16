@@ -53,6 +53,10 @@ class ModelManager:
                 async with session.request(
                     method="GET",
                     url=FETCH_MODEL_LIST_URL,
+                    # 参数
+                    params={
+                        "version": self.ap.ver_mgr.get_current_version()
+                    },
                 ) as resp:
                     model_list = (await resp.json())['data']['list']
 
