@@ -13,7 +13,6 @@ required_files = {
     "data/config/platform.json": "templates/platform.json",
     "data/config/provider.json": "templates/provider.json",
     "data/config/system.json": "templates/system.json",
-    "data/config/sensitive-words.json": "templates/sensitive-words.json",
     "data/scenario/default.json": "templates/scenario-template.json",
 }
 

@@ -10,31 +10,26 @@ from ....config import manager as cfg_mgr
 class BanWordFilter(filter_model.ContentFilter):
     """根据内容禁言"""
 
-    sensitive: cfg_mgr.ConfigManager
-
     async def initialize(self):
-        self.sensitive = await cfg_mgr.load_json_config(
-            "data/config/sensitive-words.json",
-            "templates/sensitive-words.json"
-        )
+        pass
 
     async def process(self, message: str) -> entities.FilterResult:
         found = False
 
-        for word in self.sensitive.data['words']:
+        for word in self.ap.sensitive_meta.data['words']:
             match = re.findall(word, message)
 
             if len(match) > 0:
                 found = True
 
                 for i in range(len(match)):
-                    if self.sensitive.data['mask_word'] == "":
+                    if self.ap.sensitive_meta.data['mask_word'] == "":
                         message = message.replace(
-                            match[i], self.sensitive.data['mask'] * len(match[i])
+                            match[i], self.ap.sensitive_meta.data['mask'] * len(match[i])
                         )
                     else:
                         message = message.replace(
-                            match[i], self.sensitive.data['mask_word']
+                            match[i], self.ap.sensitive_meta.data['mask_word']
                         )
 
         return entities.FilterResult(
