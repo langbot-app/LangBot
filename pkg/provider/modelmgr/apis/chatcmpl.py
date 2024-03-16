@@ -17,8 +17,8 @@ from ... import entities as llm_entities
 from ...tools import entities as tools_entities
 
 
-@api.requester_class("openai-chat-completion")
-class OpenAIChatCompletion(api.LLMAPIRequester):
+@api.requester_class("openai-chat-completions")
+class OpenAIChatCompletions(api.LLMAPIRequester):
     """OpenAI ChatCompletion API 请求器"""
 
     client: openai.AsyncClient
@@ -26,8 +26,8 @@ class OpenAIChatCompletion(api.LLMAPIRequester):
     async def initialize(self):
         self.client = openai.AsyncClient(
             api_key="",
-            base_url=self.ap.provider_cfg.data['openai-config']['base_url'],
-            timeout=self.ap.provider_cfg.data['openai-config']['request-timeout'],
+            base_url=self.ap.provider_cfg.data['requester']['openai-chat-completions']['base-url'],
+            timeout=self.ap.provider_cfg.data['requester']['openai-chat-completions']['timeout'],
             http_client=httpx.AsyncClient(
                 proxies=self.ap.proxy_mgr.get_forward_proxies()
             )
@@ -58,7 +58,7 @@ class OpenAIChatCompletion(api.LLMAPIRequester):
     ) -> llm_entities.Message:
         self.client.api_key = use_model.token_mgr.get_token()
 
-        args = self.ap.provider_cfg.data['openai-config']['chat-completions-params'].copy()
+        args = self.ap.provider_cfg.data['requester']['openai-chat-completions']['args'].copy()
         args["model"] = use_model.name if use_model.model_name is None else use_model.model_name
 
         if use_model.tool_call_supported:

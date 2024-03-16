@@ -50,7 +50,7 @@ class SessionManager:
             conversation = core_entities.Conversation(
                 prompt=await self.ap.prompt_mgr.get_prompt(session.use_prompt_name),
                 messages=[],
-                use_model=await self.ap.model_mgr.get_model_by_name(self.ap.provider_cfg.data['openai-config']['chat-completions-params']['model']),
+                use_model=await self.ap.model_mgr.get_model_by_name(self.ap.provider_cfg.data['model']),
                 use_funcs=await self.ap.tool_mgr.get_all_functions(),
             )
             session.conversations.append(conversation)

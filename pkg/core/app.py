@@ -53,6 +53,8 @@ class Application:
 
     plugin_setting_meta: config_mgr.ConfigManager = None
 
+    llm_models_meta: config_mgr.ConfigManager = None
+
     # =========================
 
     ctr_mgr: center_mgr.V2CenterAPI = None

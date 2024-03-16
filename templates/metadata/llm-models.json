@@ -1,0 +1,34 @@
+{
+    "list": [
+        {
+            "name": "default",
+            "requester": "openai-chat-completions",
+            "token_mgr": "openai",
+            "tool_call_supported": false
+        },
+        {
+            "name": "gpt-3.5-turbo",
+            "tool_call_supported": true
+        },
+        {
+            "name": "gpt-4",
+            "tool_call_supported": true
+        },
+        {
+            "name": "gpt-4-turbo-preview",
+            "tool_call_supported": true
+        },
+        {
+            "name": "gpt-4-32k",
+            "tool_call_supported": true
+        },
+        {
+            "model_name": "SparkDesk",
+            "name": "OneAPI/SparkDesk"
+        },
+        {
+            "model_name": "gemini-pro",
+            "name": "OneAPI/gemini-pro"
+        }
+    ]
+}

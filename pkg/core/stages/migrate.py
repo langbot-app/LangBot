@@ -4,7 +4,7 @@ import importlib
 
 from .. import stage, app
 from ...config import migration
-from ...config.migrations import m1_sensitive_word_migration
+from ...config.migrations import m1_sensitive_word_migration, m2_openai_config_migration
 
 
 @stage.stage_class("MigrationStage")
