@@ -506,10 +506,7 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
 
     async def run_async(self):
 
-        self.metadata = await cfg_mgr.load_json_config(
-            "data/metadata/adapter-qq-botpy.json",
-            "templates/metadata/adapter-qq-botpy.json",
-        )
+        self.metadata = self.ap.adapter_qq_botpy_meta
 
         self.member_openid_mapping = OpenIDMapping(
             map=self.metadata.data["mapping"]["members"],

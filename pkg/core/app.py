@@ -33,6 +33,8 @@ class Application:
 
     tool_mgr: llm_tool_mgr.ToolManager = None
 
+    # ======= 配置管理器 =======
+
     command_cfg: config_mgr.ConfigManager = None
 
     pipeline_cfg: config_mgr.ConfigManager = None
@@ -42,6 +44,16 @@ class Application:
     provider_cfg: config_mgr.ConfigManager = None
 
     system_cfg: config_mgr.ConfigManager = None
+
+    # ======= 元数据配置管理器 =======
+
+    sensitive_meta: config_mgr.ConfigManager = None
+
+    adapter_qq_botpy_meta: config_mgr.ConfigManager = None
+
+    plugin_setting_meta: config_mgr.ConfigManager = None
+
+    # =========================
 
     ctr_mgr: center_mgr.V2CenterAPI = None
 
