@@ -2,7 +2,7 @@
     "list": [
         {
             "name": "default",
-            "requester": "openai-chat-completion",
+            "requester": "openai-chat-completions",
             "token_mgr": "openai",
             "tool_call_supported": false
         },

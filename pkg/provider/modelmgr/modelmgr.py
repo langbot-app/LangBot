@@ -39,9 +39,8 @@ class ModelManager:
     async def initialize(self):
         
         # 初始化token_mgr, requester
-        self.token_mgrs = {
-            "openai": token.TokenManager("openai", list(self.ap.provider_cfg.data['openai-config']['api-keys']))
-        }
+        for k, v in self.ap.provider_cfg.data['keys'].items():
+            self.token_mgrs[k] = token.TokenManager(k, v)
 
         for api_cls in api.preregistered_requesters:
             api_inst = api_cls(self.ap)
