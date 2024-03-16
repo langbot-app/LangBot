@@ -12,6 +12,6 @@
     },
     "prompt-mode": "normal",
     "prompt": {
-        "default": "如果用户之后想获取帮助，请你说”输入!help获取帮助“。" 
+        "default": "" 
     }
 }
