@@ -9,8 +9,6 @@ import openai
 import openai.types.chat.chat_completion as chat_completion
 import httpx
 
-from pkg.provider.entities import Message
-
 from .. import api, entities, errors
 from ....core import entities as core_entities
 from ... import entities as llm_entities
@@ -127,7 +125,7 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
 
             req_messages.append(msg.dict(exclude_none=True))
 
-    async def request(self, query: core_entities.Query) -> AsyncGenerator[Message, None]:
+    async def request(self, query: core_entities.Query) -> AsyncGenerator[llm_entities.Message, None]:
         try:
             async for msg in self._request(query):
                 yield msg
