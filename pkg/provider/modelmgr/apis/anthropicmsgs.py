@@ -55,6 +55,11 @@ class AnthropicMessages(api.LLMAPIRequester):
             for i in system_role_index[::-1]:
                 req_messages.insert(i + 1, {"role": "assistant", "content": "Okay, I'll follow."})
 
+        # 忽略掉空消息，用户可能发送空消息，而上层未过滤
+        req_messages = [
+            m for m in req_messages if m["content"].strip() != ""
+        ]
+
         args["messages"] = req_messages
 
         resp = await self.client.messages.create(**args)
