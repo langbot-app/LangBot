@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typing
+import traceback
 
 import anthropic
 
@@ -62,9 +63,20 @@ class AnthropicMessages(api.LLMAPIRequester):
 
         args["messages"] = req_messages
 
-        resp = await self.client.messages.create(**args)
+        try:
 
-        yield llm_entities.Message(
-            content=resp.content[0].text,
-            role=resp.role
-        )
+            resp = await self.client.messages.create(**args)
+
+            yield llm_entities.Message(
+                content=resp.content[0].text,
+                role=resp.role
+            )
+        except anthropic.AuthenticationError as e:
+            raise errors.RequesterError(f'api-key 无效: {e.message}')
+        except anthropic.BadRequestError as e:
+            raise errors.RequesterError(str(e.message))
+        except anthropic.NotFoundError as e:
+            if 'model: ' in str(e):
+                raise errors.RequesterError(f'模型无效: {e.message}')
+            else:
+                raise errors.RequesterError(f'请求地址无效: {e.message}')
