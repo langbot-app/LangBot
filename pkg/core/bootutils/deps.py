@@ -3,6 +3,7 @@ import pip
 required_deps = {
     "requests": "requests",
     "openai": "openai",
+    "anthropic": "anthropic",
     "colorlog": "colorlog",
     "mirai": "yiri-mirai-rc",
     "aiocqhttp": "aiocqhttp",

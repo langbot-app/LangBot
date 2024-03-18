@@ -29,6 +29,21 @@
         {
             "model_name": "gemini-pro",
             "name": "OneAPI/gemini-pro"
+        },
+        {
+            "name": "claude-3-opus-20240229",
+            "requester": "anthropic-messages",
+            "token_mgr": "anthropic"
+        },
+        {
+            "name": "claude-3-sonnet-20240229",
+            "requester": "anthropic-messages",
+            "token_mgr": "anthropic"
+        },
+        {
+            "name": "claude-3-haiku-20240307",
+            "requester": "anthropic-messages",
+            "token_mgr": "anthropic"
         }
     ]
 }
