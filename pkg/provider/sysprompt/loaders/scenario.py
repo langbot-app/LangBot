@@ -8,15 +8,15 @@ from .. import entities
 from ....provider import entities as llm_entities
 
 
-@loader.loader_class("full_scenario")
+@loader.loader_class("full-scenario")
 class ScenarioPromptLoader(loader.PromptLoader):
     """加载scenario目录下的json"""
 
     async def load(self):
         """加载Prompt
         """
-        for file in os.listdir("data/scenarios"):
-            with open("data/scenarios/{}".format(file), "r", encoding="utf-8") as f:
+        for file in os.listdir("data/scenario"):
+            with open("data/scenario/{}".format(file), "r", encoding="utf-8") as f:
                 file_str = f.read()
                 file_name = file.split(".")[0]
                 file_json = json.loads(file_str)
