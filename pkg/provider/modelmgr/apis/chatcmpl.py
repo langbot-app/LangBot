@@ -10,7 +10,7 @@ import openai.types.chat.chat_completion as chat_completion
 import httpx
 
 from .. import api, entities, errors
-from ....core import entities as core_entities
+from ....core import entities as core_entities, app
 from ... import entities as llm_entities
 from ...tools import entities as tools_entities
 
@@ -21,11 +21,19 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
 
     client: openai.AsyncClient
 
+    requester_cfg: dict
+
+    def __init__(self, ap: app.Application):
+        self.ap = ap
+
+        self.requester_cfg = self.ap.provider_cfg.data['requester']['openai-chat-completions']
+
     async def initialize(self):
+
         self.client = openai.AsyncClient(
             api_key="",
-            base_url=self.ap.provider_cfg.data['requester']['openai-chat-completions']['base-url'],
-            timeout=self.ap.provider_cfg.data['requester']['openai-chat-completions']['timeout'],
+            base_url=self.requester_cfg['base-url'],
+            timeout=self.requester_cfg['timeout'],
             http_client=httpx.AsyncClient(
                 proxies=self.ap.proxy_mgr.get_forward_proxies()
             )
@@ -56,7 +64,7 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
     ) -> llm_entities.Message:
         self.client.api_key = use_model.token_mgr.get_token()
 
-        args = self.ap.provider_cfg.data['requester']['openai-chat-completions']['args'].copy()
+        args = self.requester_cfg['args'].copy()
         args["model"] = use_model.name if use_model.model_name is None else use_model.model_name
 
         if use_model.tool_call_supported:
