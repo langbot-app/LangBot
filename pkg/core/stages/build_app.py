@@ -62,6 +62,7 @@ class BuildAppStage(stage.BootingStage):
         plugin_mgr_inst = plugin_mgr.PluginManager(ap)
         await plugin_mgr_inst.initialize()
         ap.plugin_mgr = plugin_mgr_inst
+        await plugin_mgr_inst.load_plugins()
 
         cmd_mgr_inst = cmdmgr.CommandManager(ap)
         await cmd_mgr_inst.initialize()

@@ -80,7 +80,6 @@ class Application:
         pass
 
     async def run(self):
-        await self.plugin_mgr.load_plugins()
         await self.plugin_mgr.initialize_plugins()
 
         tasks = []
