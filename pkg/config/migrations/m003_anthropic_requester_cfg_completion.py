@@ -19,7 +19,7 @@ class AnthropicRequesterConfigCompletionMigration(migration.Migration):
         """
         if 'anthropic-messages' not in self.ap.provider_cfg.data['requester']:
             self.ap.provider_cfg.data['requester']['anthropic-messages'] = {
-                'base-url': 'https://api.anthropic.com/v1',
+                'base-url': 'https://api.anthropic.com',
                 'args': {
                     'max_tokens': 1024
                 },

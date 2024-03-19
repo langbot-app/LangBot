@@ -44,6 +44,21 @@
             "name": "claude-3-haiku-20240307",
             "requester": "anthropic-messages",
             "token_mgr": "anthropic"
+        },
+        {
+            "name": "moonshot-v1-8k",
+            "requester": "moonshot-chat-completions",
+            "token_mgr": "moonshot"
+        },
+        {
+            "name": "moonshot-v1-32k",
+            "requester": "moonshot-chat-completions",
+            "token_mgr": "moonshot"
+        },
+        {
+            "name": "moonshot-v1-128k",
+            "requester": "moonshot-chat-completions",
+            "token_mgr": "moonshot"
         }
     ]
 }
