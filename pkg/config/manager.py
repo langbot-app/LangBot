@@ -43,11 +43,12 @@ async def load_python_module_config(config_name: str, template_name: str) -> Con
     return cfg_mgr
 
 
-async def load_json_config(config_name: str, template_name: str) -> ConfigManager:
+async def load_json_config(config_name: str, template_name: str=None, template_data: dict=None) -> ConfigManager:
     """加载JSON配置文件"""
     cfg_inst = json_file.JSONConfigFile(
         config_name,
-        template_name
+        template_name,
+        template_data
     )
 
     cfg_mgr = ConfigManager(cfg_inst)

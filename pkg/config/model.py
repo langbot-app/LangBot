@@ -10,6 +10,9 @@ class ConfigFile(metaclass=abc.ABCMeta):
     template_file_name: str = None
     """模板文件名"""
 
+    template_data: dict = None
+    """模板数据"""
+
     @abc.abstractmethod
     def exists(self) -> bool:
         pass
