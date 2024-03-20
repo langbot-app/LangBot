@@ -9,6 +9,26 @@ from ..provider.tools import entities as tools_entities
 from ..core import app
 
 
+def register(
+    name: str,
+    description: str,
+    version: str,
+    author
+) -> typing.Callable[[typing.Type[BasePlugin]], typing.Type[BasePlugin]]:
+    pass
+
+def handler(
+    event: typing.Type[events.BaseEventModel]
+) -> typing.Callable[[typing.Callable], typing.Callable]:
+    pass
+
+
+def llm_func(
+    name: str=None,
+) -> typing.Callable:
+    pass
+
+
 class BasePlugin(metaclass=abc.ABCMeta):
     """插件基类"""
 

@@ -85,8 +85,7 @@ class Application:
         tasks = []
 
         try:
-
-                    
+   
             tasks = [
                 asyncio.create_task(self.im_mgr.run()),
                 asyncio.create_task(self.ctrl.run())

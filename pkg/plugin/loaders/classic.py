@@ -28,8 +28,9 @@ class PluginLoader(loader.PluginLoader):
         setattr(models, 'on', self.on)
         setattr(models, 'func', self.func)
 
-        setattr(models, 'handler', self.handler)
-        setattr(models, 'llm_func', self.llm_func)
+        setattr(context, 'register', self.register)
+        setattr(context, 'handler', self.handler)
+        setattr(context, 'llm_func', self.llm_func)
 
     def register(
         self,
