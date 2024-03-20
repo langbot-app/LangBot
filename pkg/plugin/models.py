@@ -24,3 +24,15 @@ def func(
     name: str=None,
 ) -> typing.Callable:
     pass
+
+
+def handler(
+    event: typing.Type[BaseEventModel]
+) -> typing.Callable[[typing.Callable], typing.Callable]:
+    pass
+
+
+def llm_func(
+    name: str=None,
+) -> typing.Callable:
+    pass

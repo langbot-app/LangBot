@@ -13,6 +13,17 @@ class BasePlugin(metaclass=abc.ABCMeta):
     """插件基类"""
 
     host: APIHost
+    """API宿主"""
+
+    ap: app.Application
+    """应用程序对象"""
+
+    def __init__(self, host: APIHost):
+        self.host = host
+
+    async def initialize(self):
+        """初始化插件"""
+        pass
 
 
 class APIHost:
@@ -61,8 +72,10 @@ class EventContext:
     """事件编号"""
 
     host: APIHost = None
+    """API宿主"""
 
     event: events.BaseEventModel = None
+    """此次事件的对象，具体类型为handler注册时指定监听的类型，可查看events.py中的定义"""
 
     __prevent_default__ = False
     """是否阻止默认行为"""

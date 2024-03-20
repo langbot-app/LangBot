@@ -5,7 +5,7 @@ import traceback
 
 from ..core import app
 from . import context, loader, events, installer, setting, models
-from .loaders import legacy
+from .loaders import classic
 from .installers import github
 
 
@@ -26,7 +26,7 @@ class PluginManager:
 
     def __init__(self, ap: app.Application):
         self.ap = ap
-        self.loader = legacy.PluginLoader(ap)
+        self.loader = classic.PluginLoader(ap)
         self.installer = github.GitHubRepoInstaller(ap)
         self.setting = setting.SettingManager(ap)
         self.api_host = context.APIHost(ap)
@@ -52,6 +52,9 @@ class PluginManager:
         for plugin in self.plugins:
             try:
                 plugin.plugin_inst = plugin.plugin_class(self.api_host)
+                plugin.plugin_inst.ap = self.ap
+                plugin.plugin_inst.host = self.api_host
+                await plugin.plugin_inst.initialize()
             except Exception as e:
                 self.ap.logger.error(f'插件 {plugin.plugin_name} 初始化失败: {e}')
                 self.ap.logger.exception(e)

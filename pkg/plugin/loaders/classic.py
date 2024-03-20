@@ -5,11 +5,10 @@ import pkgutil
 import importlib
 import traceback
 
-from CallingGPT.entities.namespace import get_func_schema
-
 from .. import loader, events, context, models, host
 from ...core import entities as core_entities
 from ...provider.tools import entities as tools_entities
+from ...utils import funcschema
 
 
 class PluginLoader(loader.PluginLoader):
@@ -28,6 +27,9 @@ class PluginLoader(loader.PluginLoader):
         setattr(models, 'register', self.register)
         setattr(models, 'on', self.on)
         setattr(models, 'func', self.func)
+
+        setattr(models, 'handler', self.handler)
+        setattr(models, 'llm_func', self.llm_func)
 
     def register(
         self,
@@ -57,6 +59,8 @@ class PluginLoader(loader.PluginLoader):
         
         return wrapper
 
+    # 过时
+    # 最早将于 v3.4 版本移除
     def on(
         self,
         event: typing.Type[events.BaseEventModel]
@@ -83,6 +87,8 @@ class PluginLoader(loader.PluginLoader):
 
         return wrapper
 
+    # 过时
+    # 最早将于 v3.4 版本移除
     def func(
         self,
         name: str=None,
@@ -91,10 +97,11 @@ class PluginLoader(loader.PluginLoader):
         self.ap.logger.debug(f'注册内容函数 {name}')
         def wrapper(func: typing.Callable) -> typing.Callable:
             
-            function_schema = get_func_schema(func)
+            function_schema = funcschema.get_func_schema(func)
             function_name = self._current_container.plugin_name + '-' + (func.__name__ if name is None else name)
 
             async def handler(
+                plugin: context.BasePlugin,
                 query: core_entities.Query,
                 *args,
                 **kwargs
@@ -108,6 +115,46 @@ class PluginLoader(loader.PluginLoader):
                 enable=True,
                 parameters=function_schema['parameters'],
                 func=handler,
+            )
+
+            self._current_container.content_functions.append(llm_function)
+
+            return func
+        
+        return wrapper
+    
+    def handler(
+        self,
+        event: typing.Type[events.BaseEventModel]
+    ) -> typing.Callable[[typing.Callable], typing.Callable]:
+        """注册事件处理器"""
+        self.ap.logger.debug(f'注册事件处理器 {event.__name__}')
+        def wrapper(func: typing.Callable) -> typing.Callable:
+            
+            self._current_container.event_handlers[event] = func
+
+            return func
+
+        return wrapper
+
+    def llm_func(
+        self,
+        name: str=None,
+    ) -> typing.Callable:
+        """注册内容函数"""
+        self.ap.logger.debug(f'注册内容函数 {name}')
+        def wrapper(func: typing.Callable) -> typing.Callable:
+            
+            function_schema = funcschema.get_func_schema(func)
+            function_name = self._current_container.plugin_name + '-' + (func.__name__ if name is None else name)
+
+            llm_function = tools_entities.LLMFunction(
+                name=function_name,
+                human_desc='',
+                description=function_schema['description'],
+                enable=True,
+                parameters=function_schema['parameters'],
+                func=func,
             )
 
             self._current_container.content_functions.append(llm_function)
