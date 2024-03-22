@@ -52,6 +52,11 @@ def operator_class(
 
 class CommandOperator(metaclass=abc.ABCMeta):
     """命令算子抽象类
+
+    以下的参数均不需要在子类中设置，只需要在使用装饰器注册类时作为参数传递即可。
+    命令支持级联，即一个命令可以有多个子命令，子命令可以有子命令，以此类推。
+    处理命令时，若有子命令，会以当前参数列表的第一个参数去匹配子命令，若匹配成功，则转移到子命令中执行。
+    若没有匹配成功或没有子命令，则执行当前命令。
     """
 
     ap: app.Application
@@ -60,7 +65,8 @@ class CommandOperator(metaclass=abc.ABCMeta):
     """名称，搜索到时若符合则使用"""
 
     path: str
-    """路径，所有父节点的name的连接，用于定义命令权限"""
+    """路径，所有父节点的name的连接，用于定义命令权限，由管理器在初始化时自动设置。
+    """
 
     alias: list[str]
     """同name"""
@@ -69,6 +75,7 @@ class CommandOperator(metaclass=abc.ABCMeta):
     """此节点的帮助信息"""
 
     usage: str = None
+    """用法"""
 
     parent_class: typing.Union[typing.Type[CommandOperator], None] = None
     """父节点类。标记以供管理器在初始化时编织父子关系。"""
@@ -92,4 +99,15 @@ class CommandOperator(metaclass=abc.ABCMeta):
         self,
         context: entities.ExecuteContext
     ) -> typing.AsyncGenerator[entities.CommandReturn, None]:
+        """实现此方法以执行命令
+
+        支持多次yield以返回多个结果。
+        例如：一个安装插件的命令，可能会有下载、解压、安装等多个步骤，每个步骤都可以返回一个结果。
+        
+        Args:
+            context (entities.ExecuteContext): 命令执行上下文
+
+        Yields:
+            entities.CommandReturn: 命令返回封装
+        """
         pass

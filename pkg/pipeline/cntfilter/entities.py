@@ -31,15 +31,24 @@ class EnableStage(enum.Enum):
 
 class FilterResult(pydantic.BaseModel):
     level: ResultLevel
+    """结果等级
+
+    对于前置处理阶段，只要有任意一个返回 非PASS 的内容过滤器结果，就会中断处理。
+    对于后置处理阶段，当且内容过滤器返回 BLOCK 时，会中断处理。
+    """
 
     replacement: str
-    """替换后的消息"""
+    """替换后的消息
+    
+    内容过滤器可以进行一些遮掩处理，然后把遮掩后的消息返回。
+    若没有修改内容，也需要返回原消息。
+    """
 
     user_notice: str
-    """不通过时，用户提示消息"""
+    """不通过时，若此值不为空，将对用户提示消息"""
 
     console_notice: str
-    """不通过时，控制台提示消息"""
+    """不通过时，若此值不为空，将在控制台提示消息"""
 
 
 class ManagerResultLevel(enum.Enum):

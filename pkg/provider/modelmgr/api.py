@@ -38,6 +38,15 @@ class LLMAPIRequester(metaclass=abc.ABCMeta):
         self,
         query: core_entities.Query,
     ) -> typing.AsyncGenerator[llm_entities.Message, None]:
-        """请求
+        """请求API
+
+        对话前文可以从 query 对象中获取。
+        可以多次yield消息对象。
+
+        Args:
+            query (core_entities.Query): 本次请求的上下文对象
+
+        Yields:
+            pkg.provider.entities.Message: 返回消息对象
         """
         raise NotImplementedError

@@ -7,7 +7,10 @@ from . import app
 
 
 preregistered_stages: dict[str, typing.Type[BootingStage]] = {}
-"""预注册的请求处理阶段。在初始化时，所有请求处理阶段类会被注册到此字典中。"""
+"""预注册的请求处理阶段。在初始化时，所有请求处理阶段类会被注册到此字典中。
+
+当前阶段暂不支持扩展
+"""
 
 def stage_class(
     name: str
