@@ -68,7 +68,7 @@ class Controller:
         """检查输出
         """
         if result.user_notice:
-            await self.ap.im_mgr.send(
+            await self.ap.platform_mgr.send(
                 query.message_event,
                 result.user_notice,
                 query.adapter

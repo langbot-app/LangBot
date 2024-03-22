@@ -86,7 +86,7 @@ class BuildAppStage(stage.BootingStage):
 
         im_mgr_inst = im_mgr.PlatformManager(ap=ap)
         await im_mgr_inst.initialize()
-        ap.im_mgr = im_mgr_inst
+        ap.platform_mgr = im_mgr_inst
 
         stage_mgr = stagemgr.StageManager(ap)
         await stage_mgr.initialize()

@@ -21,7 +21,7 @@ from ..utils import version as version_mgr, proxy as proxy_mgr
 class Application:
     """运行时应用对象和上下文"""
 
-    im_mgr: im_mgr.PlatformManager = None
+    platform_mgr: im_mgr.PlatformManager = None
 
     cmd_mgr: cmdmgr.CommandManager = None
 
@@ -87,7 +87,7 @@ class Application:
         try:
    
             tasks = [
-                asyncio.create_task(self.im_mgr.run()),
+                asyncio.create_task(self.platform_mgr.run()),
                 asyncio.create_task(self.ctrl.run())
             ]
 
