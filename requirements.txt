@@ -7,7 +7,6 @@ aiocqhttp
 qq-botpy
 nakuru-project-idk
 Pillow
-CallingGPT
 tiktoken
 PyYaml
 aiohttp

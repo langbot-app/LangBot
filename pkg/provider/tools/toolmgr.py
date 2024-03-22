@@ -5,6 +5,7 @@ import traceback
 
 from ...core import app, entities as core_entities
 from . import entities
+from ...plugin import context as plugin_context
 
 
 class ToolManager:
@@ -27,6 +28,15 @@ class ToolManager:
             if function.name == name:
                 return function
         return None
+    
+    async def get_function_and_plugin(self, name: str) -> typing.Tuple[entities.LLMFunction, plugin_context.BasePlugin]:
+        """获取函数和插件
+        """
+        for plugin in self.ap.plugin_mgr.plugins:
+            for function in plugin.content_functions:
+                if function.name == name:
+                    return function, plugin
+        return None, None
     
     async def get_all_functions(self) -> list[entities.LLMFunction]:
         """获取所有函数
@@ -68,7 +78,7 @@ class ToolManager:
 
         try:
 
-            function = await self.get_function(name)
+            function, plugin = await self.get_function_and_plugin(name)
             if function is None:
                 return None
             
@@ -79,7 +89,7 @@ class ToolManager:
                 **parameters
             }
             
-            return await function.func(**parameters)
+            return await function.func(plugin, **parameters)
         except Exception as e:
             self.ap.logger.error(f'执行函数 {name} 时发生错误: {e}')
             traceback.print_exc()

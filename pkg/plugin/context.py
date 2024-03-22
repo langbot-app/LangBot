@@ -9,10 +9,86 @@ from ..provider.tools import entities as tools_entities
 from ..core import app
 
 
+def register(
+    name: str,
+    description: str,
+    version: str,
+    author: str
+) -> typing.Callable[[typing.Type[BasePlugin]], typing.Type[BasePlugin]]:
+    """注册插件类
+    
+    使用示例：
+
+    @register(
+        name="插件名称",
+        description="插件描述",
+        version="插件版本",
+        author="插件作者"
+    )
+    class MyPlugin(BasePlugin):
+        pass
+    """
+    pass
+
+def handler(
+    event: typing.Type[events.BaseEventModel]
+) -> typing.Callable[[typing.Callable], typing.Callable]:
+    """注册事件监听器
+    
+    使用示例：
+
+    class MyPlugin(BasePlugin):
+    
+        @handler(NormalMessageResponded)
+        async def on_normal_message_responded(self, ctx: EventContext):
+            pass
+    """
+    pass
+
+
+def llm_func(
+    name: str=None,
+) -> typing.Callable:
+    """注册内容函数
+    
+    使用示例：
+
+    class MyPlugin(BasePlugin):
+    
+        @llm_func("access_the_web_page")
+        async def _(self, query, url: str, brief_len: int):
+            \"""Call this function to search about the question before you answer any questions.
+            - Do not search through google.com at any time.
+            - If you need to search somthing, visit https://www.sogou.com/web?query=<something>.
+            - If user ask you to open a url (start with http:// or https://), visit it directly.
+            - Summary the plain content result by yourself, DO NOT directly output anything in the result you got.
+
+            Args:
+                url(str): url to visit
+                brief_len(int): max length of the plain text content, recommend 1024-4096, prefer 4096
+
+            Returns:
+                str: plain text content of the web page or error message(starts with 'error:')
+            \"""
+    """
+    pass
+
+
 class BasePlugin(metaclass=abc.ABCMeta):
     """插件基类"""
 
     host: APIHost
+    """API宿主"""
+
+    ap: app.Application
+    """应用程序对象"""
+
+    def __init__(self, host: APIHost):
+        self.host = host
+
+    async def initialize(self):
+        """初始化插件"""
+        pass
 
 
 class APIHost:
@@ -61,8 +137,10 @@ class EventContext:
     """事件编号"""
 
     host: APIHost = None
+    """API宿主"""
 
     event: events.BaseEventModel = None
+    """此次事件的对象，具体类型为handler注册时指定监听的类型，可查看events.py中的定义"""
 
     __prevent_default__ = False
     """是否阻止默认行为"""

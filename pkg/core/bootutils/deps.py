@@ -10,7 +10,6 @@ required_deps = {
     "botpy": "qq-botpy",
     "PIL": "pillow",
     "nakuru": "nakuru-project-idk",
-    "CallingGPT": "CallingGPT",
     "tiktoken": "tiktoken",
     "yaml": "pyyaml",
     "aiohttp": "aiohttp",

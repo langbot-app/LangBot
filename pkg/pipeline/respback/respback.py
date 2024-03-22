@@ -29,7 +29,7 @@ class SendResponseBackStage(stage.PipelineStage):
 
         await asyncio.sleep(random_delay)
 
-        await self.ap.im_mgr.send(
+        await self.ap.platform_mgr.send(
             query.message_event,
             query.resp_message_chain,
             adapter=query.adapter

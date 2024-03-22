@@ -32,43 +32,43 @@ class Query(pydantic.BaseModel):
     """请求ID，添加进请求池时生成"""
 
     launcher_type: LauncherTypes
-    """会话类型，platform设置"""
+    """会话类型，platform处理阶段设置"""
 
     launcher_id: int
-    """会话ID，platform设置"""
+    """会话ID，platform处理阶段设置"""
 
     sender_id: int
-    """发送者ID，platform设置"""
+    """发送者ID，platform处理阶段设置"""
 
     message_event: mirai.MessageEvent
-    """事件，platform收到的事件"""
+    """事件，platform收到的原始事件"""
 
     message_chain: mirai.MessageChain
-    """消息链，platform收到的消息链"""
+    """消息链，platform收到的原始消息链"""
 
     adapter: msadapter.MessageSourceAdapter
-    """适配器对象"""
+    """消息平台适配器对象，单个app中可能启用了多个消息平台适配器，此对象表明发起此query的适配器"""
 
     session: typing.Optional[Session] = None
-    """会话对象，由前置处理器设置"""
+    """会话对象，由前置处理器阶段设置"""
 
     messages: typing.Optional[list[llm_entities.Message]] = []
-    """历史消息列表，由前置处理器设置"""
+    """历史消息列表，由前置处理器阶段设置"""
 
     prompt: typing.Optional[sysprompt_entities.Prompt] = None
-    """情景预设内容，由前置处理器设置"""
+    """情景预设内容，由前置处理器阶段设置"""
 
     user_message: typing.Optional[llm_entities.Message] = None
-    """此次请求的用户消息对象，由前置处理器设置"""
+    """此次请求的用户消息对象，由前置处理器阶段设置"""
 
     use_model: typing.Optional[entities.LLMModelInfo] = None
-    """使用的模型，由前置处理器设置"""
+    """使用的模型，由前置处理器阶段设置"""
 
     use_funcs: typing.Optional[list[tools_entities.LLMFunction]] = None
-    """使用的函数，由前置处理器设置"""
+    """使用的函数，由前置处理器阶段设置"""
 
     resp_messages: typing.Optional[list[llm_entities.Message]] = []
-    """由provider生成的回复消息对象列表"""
+    """由Process阶段生成的回复消息对象列表"""
 
     resp_message_chain: typing.Optional[mirai.MessageChain] = None
     """回复消息链，从resp_messages包装而得"""

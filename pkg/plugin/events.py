@@ -10,8 +10,10 @@ from ..provider import entities as llm_entities
 
 
 class BaseEventModel(pydantic.BaseModel):
+    """事件模型基类"""
 
     query: typing.Union[core_entities.Query, None]
+    """此次请求的query对象，非请求过程的事件时为None"""
 
     class Config:
         arbitrary_types_allowed = True

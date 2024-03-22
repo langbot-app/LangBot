@@ -14,6 +14,14 @@ preregistered_adapters: list[typing.Type[MessageSourceAdapter]] = []
 def adapter_class(
     name: str
 ):
+    """消息平台适配器类装饰器
+
+    Args:
+        name (str): 适配器名称
+
+    Returns:
+        typing.Callable[[typing.Type[MessageSourceAdapter]], typing.Type[MessageSourceAdapter]]: 装饰器
+    """
     def decorator(cls: typing.Type[MessageSourceAdapter]) -> typing.Type[MessageSourceAdapter]:
         cls.name = name
         preregistered_adapters.append(cls)
@@ -27,12 +35,19 @@ class MessageSourceAdapter(metaclass=abc.ABCMeta):
     name: str
 
     bot_account_id: int
+    """机器人账号ID，需要在初始化时设置"""
     
     config: dict
 
     ap: app.Application
 
     def __init__(self, config: dict, ap: app.Application):
+        """初始化适配器
+
+        Args:
+            config (dict): 对应的配置
+            ap (app.Application): 应用上下文
+        """
         self.config = config
         self.ap = ap
 

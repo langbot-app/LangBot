@@ -7,6 +7,7 @@ from ..core import app
 
 
 preregistered_migrations: list[typing.Type[Migration]] = []
+"""当前阶段暂不支持扩展"""
 
 def migration_class(name: str, number: int):
     """注册一个迁移

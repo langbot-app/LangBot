@@ -1,3 +1,7 @@
+# 此模块已过时，请引入 pkg.plugin.context 中的 register, handler 和 llm_func 来注册插件、事件处理函数和内容函数
+# 各个事件模型请从 pkg.plugin.events 引入
+# 最早将于 v3.4 移除此模块
+
 from __future__ import annotations
 
 import typing

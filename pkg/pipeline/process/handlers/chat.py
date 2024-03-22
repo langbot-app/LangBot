@@ -39,7 +39,14 @@ class ChatMessageHandler(handler.MessageHandler):
 
         if event_ctx.is_prevented_default():
             if event_ctx.event.reply is not None:
-                query.resp_message_chain = mirai.MessageChain(event_ctx.event.reply)
+                mc = mirai.MessageChain(event_ctx.event.reply)
+
+                query.resp_messages.append(
+                    llm_entities.Message(
+                        role='plugin',
+                        content=str(mc),
+                    )
+                )
 
                 yield entities.StageProcessResult(
                     result_type=entities.ResultType.CONTINUE,

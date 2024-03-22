@@ -36,7 +36,7 @@ class PromptLoader(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     async def load(self):
-        """加载Prompt
+        """加载Prompt，存放到prompts列表中
         """
         raise NotImplementedError
 
