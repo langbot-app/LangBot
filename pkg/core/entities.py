@@ -94,7 +94,7 @@ class Conversation(pydantic.BaseModel):
 
 
 class Session(pydantic.BaseModel):
-    """会话，一个 Session 对应一个 {launcher_type}_{launcher_id}"""
+    """会话，一个 Session 对应一个 {launcher_type.value}_{launcher_id}"""
     launcher_type: LauncherTypes
 
     launcher_id: int

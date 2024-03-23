@@ -59,7 +59,7 @@ class RateLimit(stage.PipelineStage):
                 )
         elif stage_inst_name == "ReleaseRateLimitOccupancy":
             await self.algo.release_access(
-                query.launcher_type,
+                query.launcher_type.value,
                 query.launcher_id,
             )
             return entities.StageProcessResult(

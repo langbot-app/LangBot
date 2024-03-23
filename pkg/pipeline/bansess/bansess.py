@@ -25,22 +25,24 @@ class BanSessionCheckStage(stage.PipelineStage):
 
         sess_list = self.ap.pipeline_cfg.data['access-control'][mode]
 
-        if (query.launcher_type == 'group' and 'group_*' in sess_list) \
-            or (query.launcher_type == 'person' and 'person_*' in sess_list):
+        if (query.launcher_type.value == 'group' and 'group_*' in sess_list) \
+            or (query.launcher_type.value == 'person' and 'person_*' in sess_list):
             found = True
         else:
             for sess in sess_list:
-                if sess == f"{query.launcher_type}_{query.launcher_id}":
+                if sess == f"{query.launcher_type.value}_{query.launcher_id}":
                     found = True
                     break
+            
+        ctn = False
 
-        result = False
-
-        if mode == 'blacklist':
-            result = found
+        if mode == 'whitelist':
+            ctn = found
+        else:
+            ctn = not found
 
         return entities.StageProcessResult(
-            result_type=entities.ResultType.CONTINUE if not result else entities.ResultType.INTERRUPT,
+            result_type=entities.ResultType.CONTINUE if ctn else entities.ResultType.INTERRUPT,
             new_query=query,
-            debug_notice=f'根据访问控制忽略消息: {query.launcher_type}_{query.launcher_id}' if result else ''
+            console_notice=f'根据访问控制忽略消息: {query.launcher_type.value}_{query.launcher_id}' if not ctn else ''
         )
