@@ -14,7 +14,7 @@ class SensitiveWordMigration(migration.Migration):
     async def need_migrate(self) -> bool:
         """判断当前环境是否需要运行此迁移
         """
-        return os.path.exists("data/config/sensitive-words.json")
+        return os.path.exists("data/config/sensitive-words.json") and not os.path.exists("data/metadata/sensitive-words.json")
 
     async def run(self):
         """执行迁移
