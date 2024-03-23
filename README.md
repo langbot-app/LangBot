@@ -11,7 +11,7 @@
 <a href="https://hub.docker.com/repository/docker/rockchin/qchatgpt">
     <img src="https://img.shields.io/docker/pulls/rockchin/qchatgpt?color=blue" alt="docker pull">
   </a>
-![Wakapi Count](https://wakapi.dev/api/badge/RockChinQ/interval:any/project:QChatGPT)
+![Wakapi Count](https://wakapi.rockchin.top/api/badge/RockChinQ/interval:any/project:QChatGPT)
 <a href="https://codecov.io/gh/RockChinQ/QChatGPT" > 
  <img src="https://codecov.io/gh/RockChinQ/QChatGPT/graph/badge.svg?token=pjxYIL2kbC"/> 
  </a>
