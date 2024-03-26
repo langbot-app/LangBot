@@ -11,10 +11,8 @@
 <a href="https://hub.docker.com/repository/docker/rockchin/qchatgpt">
     <img src="https://img.shields.io/docker/pulls/rockchin/qchatgpt?color=blue" alt="docker pull">
   </a>
+ ![Dynamic JSON Badge](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.qchatgpt.rockchin.top%2Fapi%2Fv2%2Fview%2Frealtime%2Fcount_query%3Fminute%3D10080&query=%24.data.count&label=%E4%BD%BF%E7%94%A8%E9%87%8F%EF%BC%887%E6%97%A5%EF%BC%89)
 ![Wakapi Count](https://wakapi.rockchin.top/api/badge/RockChinQ/interval:any/project:QChatGPT)
-<a href="https://codecov.io/gh/RockChinQ/QChatGPT" > 
- <img src="https://codecov.io/gh/RockChinQ/QChatGPT/graph/badge.svg?token=pjxYIL2kbC"/> 
- </a>
 <br/>
 <img src="https://img.shields.io/badge/python-3.9 | 3.10 | 3.11-blue.svg" alt="python">
 <a href="http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=66-aWvn8cbP4c1ut_1YYkvvGVeEtyTH8&authKey=pTaKBK5C%2B8dFzQ4XlENf6MHTCLaHnlKcCRx7c14EeVVlpX2nRSaS8lJm8YeM4mCU&noverify=0&group_code=195992197">
@@ -23,13 +21,10 @@
 <a href="http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=nC80H57wmKPwRDLFeQrDDjVl81XuC21P&authKey=2wTUTfoQ5v%2BD4C5zfpuR%2BSPMDqdXgDXA%2FS2wHI1NxTfWIG%2B%2FqK08dgyjMMOzhXa9&noverify=0&group_code=248432104">
 <img alt="Static Badge" src="https://img.shields.io/badge/%E7%A4%BE%E5%8C%BA%E7%BE%A4-248432104-purple">
 </a>
-<a href="https://www.bilibili.com/video/BV14h4y1w7TC">
-<img alt="Static Badge" src="https://img.shields.io/badge/%E8%A7%86%E9%A2%91%E6%95%99%E7%A8%8B-208647">
-</a>
-<a href="https://www.bilibili.com/video/BV11h4y1y74H">
-<img alt="Static Badge" src="https://img.shields.io/badge/Linux%E9%83%A8%E7%BD%B2%E8%A7%86%E9%A2%91-208647">
-</a>
-
+<a href="https://codecov.io/gh/RockChinQ/QChatGPT" > 
+ <img src="https://codecov.io/gh/RockChinQ/QChatGPT/graph/badge.svg?token=pjxYIL2kbC"/> 
+ </a>
+ 
 ## 使用文档
 
 <a href="https://qchatgpt.rockchin.top">项目主页</a> ｜
