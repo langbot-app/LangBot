@@ -25,7 +25,7 @@ class ContentFilterStage(stage.PipelineStage):
     async def initialize(self):
 
         filters_required = [
-            "content-filter"
+            "content-ignore",
         ]
 
         if self.ap.pipeline_cfg.data['check-sensitive-words']:
