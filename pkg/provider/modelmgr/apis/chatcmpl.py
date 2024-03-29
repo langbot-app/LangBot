@@ -93,7 +93,7 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
         pending_tool_calls = []
 
         req_messages = [  # req_messages 仅用于类内，外部同步由 query.messages 进行
-            m.dict(exclude_none=True) for m in query.prompt.messages
+            m.dict(exclude_none=True) for m in query.prompt.messages if m.content.strip() != ""
         ] + [m.dict(exclude_none=True) for m in query.messages]
 
         # req_messages.append({"role": "user", "content": str(query.message_chain)})
