@@ -19,7 +19,13 @@ class JSONConfigFile(file_model.ConfigFile):
         return os.path.exists(self.config_file_name)
 
     async def create(self):
-        shutil.copyfile(self.template_file_name, self.config_file_name)
+        if self.template_file_name is not None:
+            shutil.copyfile(self.template_file_name, self.config_file_name)
+        elif self.template_data is not None:
+            with open(self.config_file_name, "w", encoding="utf-8") as f:
+                json.dump(self.template_data, f, indent=4, ensure_ascii=False)
+        else:
+            raise ValueError("template_file_name or template_data must be provided")
 
     async def load(self) -> dict:
 
@@ -27,12 +33,11 @@ class JSONConfigFile(file_model.ConfigFile):
             await self.create()
 
         if self.template_file_name is not None:
-            with open(self.config_file_name, "r", encoding="utf-8") as f:
-                cfg = json.load(f)
+            with open(self.template_file_name, "r", encoding="utf-8") as f:
+                self.template_data = json.load(f)
 
-        # 从模板文件中进行补全
-        with open(self.template_file_name, "r", encoding="utf-8") as f:
-            self.template_data = json.load(f)
+        with open(self.config_file_name, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
 
         for key in self.template_data:
             if key not in cfg:
