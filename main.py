@@ -1,5 +1,6 @@
 # QChatGPT 终端启动入口
 # 在此层级解决依赖项检查。
+# QChatGPT/main.py
 
 asciiart = r"""
   ___   ___ _         _    ___ ___ _____ 
@@ -61,6 +62,21 @@ if __name__ == '__main__':
             print("请在命令行中运行此程序。")
             input("按任意键退出...")
             exit(0)
+
+    # 检查本目录是否有main.py，且包含QChatGPT字符串
+    invalid_pwd = False
+
+    if not os.path.exists('main.py'):
+        invalid_pwd = True
+    else:
+        with open('main.py', 'r', encoding='utf-8') as f:
+            content = f.read()
+            if "QChatGPT/main.py" not in content:
+                invalid_pwd = True
+    if invalid_pwd:
+        print("请在QChatGPT项目根目录下运行此程序。")
+        input("按任意键退出...")
+        exit(0)
 
     import asyncio
 
