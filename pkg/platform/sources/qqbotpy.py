@@ -368,10 +368,14 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
     member_openid_mapping: OpenIDMapping[str, int] = None
     group_openid_mapping: OpenIDMapping[str, int] = None
 
+    group_msg_seq = None
+
     def __init__(self, cfg: dict, ap: app.Application):
         """初始化适配器"""
         self.cfg = cfg
         self.ap = ap
+
+        self.group_msg_seq = 1
 
         switchs = {}
 
@@ -419,8 +423,6 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
         
         message_list = self.message_converter.yiri2target(message)
 
-        msg_seq = 1
-
         for msg in message_list:
             args = {}
 
@@ -462,8 +464,8 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
                 args["msg_id"] = cached_message_ids[
                     str(message_source.message_chain.message_id)
                 ]
-                args["msg_seq"] = msg_seq
-                msg_seq += 1
+                args["msg_seq"] = self.group_msg_seq
+                self.group_msg_seq += 1
                 await self.bot.api.post_group_message(**args)
 
     async def is_muted(self, group_id: int) -> bool:
