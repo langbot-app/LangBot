@@ -98,6 +98,7 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
 
         # req_messages.append({"role": "user", "content": str(query.message_chain)})
 
+        # 首次请求
         msg = await self._closure(req_messages, query.use_model, query.use_funcs)
 
         yield msg
@@ -106,23 +107,36 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
 
         req_messages.append(msg.dict(exclude_none=True))
 
+        # 持续请求，只要还有待处理的工具调用就继续处理调用
         while pending_tool_calls:
             for tool_call in pending_tool_calls:
-                func = tool_call.function
+                try:
+                    func = tool_call.function
 
-                parameters = json.loads(func.arguments)
+                    parameters = json.loads(func.arguments)
 
-                func_ret = await self.ap.tool_mgr.execute_func_call(
-                    query, func.name, parameters
-                )
+                    func_ret = await self.ap.tool_mgr.execute_func_call(
+                        query, func.name, parameters
+                    )
 
-                msg = llm_entities.Message(
-                    role="tool", content=json.dumps(func_ret, ensure_ascii=False), tool_call_id=tool_call.id
-                )
+                    msg = llm_entities.Message(
+                        role="tool", content=json.dumps(func_ret, ensure_ascii=False), tool_call_id=tool_call.id
+                    )
 
-                yield msg
+                    yield msg
 
-                req_messages.append(msg.dict(exclude_none=True))
+                    req_messages.append(msg.dict(exclude_none=True))
+                except Exception as e:
+                    # 出错，添加一个报错信息到 req_messages
+                    err_msg = llm_entities.Message(
+                        role="tool", content=f"err: {e}", tool_call_id=tool_call.id
+                    )
+
+                    yield err_msg
+
+                    req_messages.append(
+                        err_msg.dict(exclude_none=True)
+                    )
 
             # 处理完所有调用，继续请求
             msg = await self._closure(req_messages, query.use_model, query.use_funcs)
