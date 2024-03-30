@@ -49,6 +49,19 @@ async def main_entry():
 
 
 if __name__ == '__main__':
+    import os
+    import psutil
+
+    if os.name == 'nt':
+        allowed_parent_process = ['cmd.exe', 'powershell.exe', 'wsl.exe']
+
+        parent_process = psutil.Process(os.getppid()).name()
+
+        if parent_process not in allowed_parent_process:
+            print("请在命令行中运行此程序。")
+            input("按任意键退出...")
+            exit(0)
+
     import asyncio
 
     asyncio.run(main_entry())
