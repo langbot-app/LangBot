@@ -4,6 +4,8 @@ import typing
 import enum
 import pydantic
 
+import mirai
+
 
 class FunctionCall(pydantic.BaseModel):
     name: str
@@ -28,7 +30,7 @@ class Message(pydantic.BaseModel):
     name: typing.Optional[str] = None
     """名称，仅函数调用返回时设置"""
 
-    content: typing.Optional[str] = None
+    content: typing.Optional[str] | typing.Optional[mirai.MessageChain] = None
     """内容"""
 
     function_call: typing.Optional[FunctionCall] = None
@@ -41,7 +43,7 @@ class Message(pydantic.BaseModel):
 
     def readable_str(self) -> str:
         if self.content is not None:
-            return self.content
+            return str(self.content)
         elif self.function_call is not None:
             return f'{self.function_call.name}({self.function_call.arguments})'
         elif self.tool_calls is not None:

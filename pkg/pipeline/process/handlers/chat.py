@@ -44,7 +44,7 @@ class ChatMessageHandler(handler.MessageHandler):
                 query.resp_messages.append(
                     llm_entities.Message(
                         role='plugin',
-                        content=str(mc),
+                        content=mc,
                     )
                 )
 

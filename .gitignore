@@ -34,4 +34,4 @@ bard.json
 res/instance_id.json
 .DS_Store
 /data
-botpy.log
+botpy.log*

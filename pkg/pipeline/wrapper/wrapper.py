@@ -34,7 +34,10 @@ class ResponseWrapper(stage.PipelineStage):
                 new_query=query
             )
         elif query.resp_messages[-1].role == 'plugin':
-            query.resp_message_chain = mirai.MessageChain(query.resp_messages[-1].content)
+            if not isinstance(query.resp_messages[-1].content, mirai.MessageChain):
+                query.resp_message_chain = mirai.MessageChain(query.resp_messages[-1].content)
+            else:
+                query.resp_message_chain = query.resp_messages[-1].content
 
             yield entities.StageProcessResult(
                 result_type=entities.ResultType.CONTINUE,
