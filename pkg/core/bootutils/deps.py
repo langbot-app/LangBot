@@ -13,6 +13,7 @@ required_deps = {
     "tiktoken": "tiktoken",
     "yaml": "pyyaml",
     "aiohttp": "aiohttp",
+    "psutil": "psutil",
 }
 
 

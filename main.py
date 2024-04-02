@@ -32,6 +32,20 @@ async def main_entry():
         print("已自动安装缺失的依赖包，请重启程序。")
         sys.exit(0)
 
+    # 检查命令行
+    import os
+
+    if os.name == 'nt':
+        import psutil
+        allowed_parent_process = ['cmd.exe', 'powershell.exe', 'wsl.exe']
+
+        parent_process = psutil.Process(os.getppid()).name()
+
+        if parent_process not in allowed_parent_process:
+            print("请在命令行中运行此程序。")
+            input("按任意键退出...")
+            exit(0)
+
     # 检查配置文件
 
     from pkg.core.bootutils import files
@@ -51,17 +65,6 @@ async def main_entry():
 
 if __name__ == '__main__':
     import os
-    import psutil
-
-    if os.name == 'nt':
-        allowed_parent_process = ['cmd.exe', 'powershell.exe', 'wsl.exe']
-
-        parent_process = psutil.Process(os.getppid()).name()
-
-        if parent_process not in allowed_parent_process:
-            print("请在命令行中运行此程序。")
-            input("按任意键退出...")
-            exit(0)
 
     # 检查本目录是否有main.py，且包含QChatGPT字符串
     invalid_pwd = False

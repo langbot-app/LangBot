@@ -13,3 +13,4 @@ aiohttp
 pydantic
 websockets
 urllib3
+psutil
