@@ -35,7 +35,7 @@ class ToolManager:
         for plugin in self.ap.plugin_mgr.plugins:
             for function in plugin.content_functions:
                 if function.name == name:
-                    return function, plugin
+                    return function, plugin.plugin_inst
         return None, None
     
     async def get_all_functions(self) -> list[entities.LLMFunction]:
