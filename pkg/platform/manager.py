@@ -82,8 +82,8 @@ class PlatformManager:
 
             event_ctx = await self.ap.plugin_mgr.emit_event(
                 event=events.GroupMessageReceived(
-                    launcher_type='person',
-                    launcher_id=event.sender.id,
+                    launcher_type='group',
+                    launcher_id=event.group.id,
                     sender_id=event.sender.id,
                     message_chain=event.message_chain,
                     query=None
