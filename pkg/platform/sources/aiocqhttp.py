@@ -30,7 +30,14 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
                 msg_id = msg.id
                 msg_time = msg.time
             elif type(msg) is mirai.Image:
-                msg_list.append(aiocqhttp.MessageSegment.image(msg.path))
+                arg = ''
+
+                if msg.url:
+                    arg = msg.url
+                elif msg.path:
+                    arg = msg.path
+
+                msg_list.append(aiocqhttp.MessageSegment.image(arg))
             elif type(msg) is mirai.At:
                 msg_list.append(aiocqhttp.MessageSegment.at(msg.target))
             elif type(msg) is mirai.AtAll:
