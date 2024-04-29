@@ -2,10 +2,11 @@
 <p align="center">
 <img src="https://qchatgpt.rockchin.top/logo.png" alt="QChatGPT" width="180" />
 </p>
-
 <div align="center">
 
 # QChatGPT
+
+<a href="https://trendshift.io/repositories/6187" target="_blank"><img src="https://trendshift.io/api/badge/repositories/6187" alt="RockChinQ%2FQChatGPT | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/QChatGPT)](https://github.com/RockChinQ/QChatGPT/releases/latest)
 <a href="https://hub.docker.com/repository/docker/rockchin/qchatgpt">
