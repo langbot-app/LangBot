@@ -25,7 +25,6 @@
         "api-key": "",
         "api-secret": ""
     },
-    "submit-messages-tokens": 3072,
     "rate-limit": {
         "strategy": "drop",
         "algo": "fixwin",
