@@ -9,6 +9,9 @@
         ],
         "moonshot": [
             "sk-1234567890"
+        ],
+        "deepseek": [
+            "sk-1234567890"
         ]
     },
     "requester": {
@@ -26,6 +29,11 @@
         },
         "moonshot-chat-completions": {
             "base-url": "https://api.moonshot.cn/v1",
+            "args": {},
+            "timeout": 120
+        },
+        "deepseek-chat-completions": {
+            "base-url": "https://api.deepseek.com",
             "args": {},
             "timeout": 120
         }
