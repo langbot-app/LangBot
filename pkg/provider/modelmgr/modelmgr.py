@@ -6,7 +6,7 @@ from . import entities
 from ...core import app
 
 from . import token, api
-from .apis import chatcmpl, anthropicmsgs, moonshotchatcmpl
+from .apis import chatcmpl, anthropicmsgs, moonshotchatcmpl, deepseekchatcmpl
 
 FETCH_MODEL_LIST_URL = "https://api.qchatgpt.rockchin.top/api/v2/fetch/model_list"
 

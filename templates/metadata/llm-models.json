@@ -59,6 +59,11 @@
             "name": "moonshot-v1-128k",
             "requester": "moonshot-chat-completions",
             "token_mgr": "moonshot"
+        },
+        {
+            "name": "deepseek-chat",
+            "requester": "deepseek-chat-completions",
+            "token_mgr": "deepseek"
         }
     ]
 }
