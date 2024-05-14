@@ -89,6 +89,9 @@ class ChatMessageHandler(handler.MessageHandler):
                         result_type=entities.ResultType.CONTINUE,
                         new_query=query
                     )
+
+                query.session.using_conversation.messages.append(query.user_message)
+                query.session.using_conversation.messages.extend(query.resp_messages)
             except Exception as e:
                 
                 self.ap.logger.error(f'对话({query.query_id})请求失败: {str(e)}')
@@ -101,8 +104,6 @@ class ChatMessageHandler(handler.MessageHandler):
                     debug_notice=traceback.format_exc()
                 )
             finally:
-                query.session.using_conversation.messages.append(query.user_message)
-                query.session.using_conversation.messages.extend(query.resp_messages)
 
                 await self.ap.ctr_mgr.usage.post_query_record(
                     session_type=query.session.launcher_type.value,
