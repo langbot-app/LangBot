@@ -21,6 +21,16 @@ class ToolCall(pydantic.BaseModel):
     function: FunctionCall
 
 
+class Content(pydantic.BaseModel):
+
+    type: str
+    """内容类型"""
+
+    text: typing.Optional[str] = None
+
+    image_url: typing.Optional[str] = None
+
+
 class Message(pydantic.BaseModel):
     """消息"""
 
@@ -33,9 +43,6 @@ class Message(pydantic.BaseModel):
     content: typing.Optional[str] | typing.Optional[mirai.MessageChain] = None
     """内容"""
 
-    function_call: typing.Optional[FunctionCall] = None
-    """函数调用，不再受支持，请使用tool_calls"""
-
     tool_calls: typing.Optional[list[ToolCall]] = None
     """工具调用"""
 
@@ -43,9 +50,7 @@ class Message(pydantic.BaseModel):
 
     def readable_str(self) -> str:
         if self.content is not None:
-            return str(self.content)
-        elif self.function_call is not None:
-            return f'{self.function_call.name}({self.function_call.arguments})'
+            return str(self.role) + ": " + str(self.content)
         elif self.tool_calls is not None:
             return f'调用工具: {self.tool_calls[0].id}'
         else:

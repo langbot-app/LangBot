@@ -6,6 +6,8 @@ import typing
 from ...core import app
 from ...core import entities as core_entities
 from .. import entities as llm_entities
+from . import entities as modelmgr_entities
+from ..tools import entities as tools_entities
 
 
 preregistered_requesters: list[typing.Type[LLMAPIRequester]] = []
@@ -33,20 +35,31 @@ class LLMAPIRequester(metaclass=abc.ABCMeta):
     async def initialize(self):
         pass
 
-    @abc.abstractmethod
-    async def request(
+    async def preprocess(
         self,
         query: core_entities.Query,
-    ) -> typing.AsyncGenerator[llm_entities.Message, None]:
-        """请求API
+    ):
+        """预处理
+        
+        在这里处理特定API对Query对象的兼容性问题。
+        """
+        pass
 
-        对话前文可以从 query 对象中获取。
-        可以多次yield消息对象。
+    @abc.abstractmethod
+    async def call(
+        self,
+        model: modelmgr_entities.LLMModelInfo,
+        messages: typing.List[llm_entities.Message],
+        funcs: typing.List[tools_entities.LLMFunction] = None,
+    ) -> llm_entities.Message:
+        """调用API
 
         Args:
-            query (core_entities.Query): 本次请求的上下文对象
+            model (modelmgr_entities.LLMModelInfo): 使用的模型信息
+            messages (typing.List[llm_entities.Message]): 消息对象列表
+            funcs (typing.List[tools_entities.LLMFunction], optional): 使用的工具函数列表. Defaults to None.
 
-        Yields:
-            pkg.provider.entities.Message: 返回消息对象
+        Returns:
+            llm_entities.Message: 返回消息对象
         """
-        raise NotImplementedError
+        pass

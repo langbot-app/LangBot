@@ -14,7 +14,18 @@ from .filters import cntignore, banwords, baiduexamine
 @stage.stage_class('PostContentFilterStage')
 @stage.stage_class('PreContentFilterStage')
 class ContentFilterStage(stage.PipelineStage):
-    """内容过滤阶段"""
+    """内容过滤阶段
+    
+    前置：
+        检查消息是否符合规则，不符合则拦截。
+        改写：
+            message_chain
+
+    后置：
+        检查AI回复消息是否符合规则，可能进行改写，不符合则拦截。
+        改写：
+            query.resp_messages
+    """
 
     filter_chain: list[filter_model.ContentFilter]
 

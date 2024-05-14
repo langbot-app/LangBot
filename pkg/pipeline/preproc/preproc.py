@@ -9,6 +9,16 @@ from ...plugin import events
 @stage.stage_class("PreProcessor")
 class PreProcessor(stage.PipelineStage):
     """请求预处理阶段
+
+    签出会话、prompt、上文、模型、内容函数。
+
+    改写：
+        - session
+        - prompt
+        - messages
+        - user_message
+        - use_model
+        - use_funcs
     """
 
     async def process(
@@ -27,7 +37,7 @@ class PreProcessor(stage.PipelineStage):
         query.prompt = conversation.prompt.copy()
         query.messages = conversation.messages.copy()
 
-        query.user_message = llm_entities.Message(
+        query.user_message = llm_entities.Message(  # TODO 适配多模态输入
             role='user',
             content=str(query.message_chain).strip()
         )
@@ -37,11 +47,10 @@ class PreProcessor(stage.PipelineStage):
         query.use_funcs = conversation.use_funcs
 
         # =========== 触发事件 PromptPreProcessing
-        session = query.session
 
         event_ctx = await self.ap.plugin_mgr.emit_event(
             event=events.PromptPreProcessing(
-                session_name=f'{session.launcher_type.value}_{session.launcher_id}',
+                session_name=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
                 default_prompt=query.prompt.messages,
                 prompt=query.messages,
                 query=query

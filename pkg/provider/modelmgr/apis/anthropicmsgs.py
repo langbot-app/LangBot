@@ -27,20 +27,22 @@ class AnthropicMessages(api.LLMAPIRequester):
             proxies=self.ap.proxy_mgr.get_forward_proxies()
         )
 
-    async def request(
+    async def call(
         self,
-        query: core_entities.Query,
-    ) -> typing.AsyncGenerator[llm_entities.Message, None]:
-        self.client.api_key = query.use_model.token_mgr.get_token()
+        model: entities.LLMModelInfo,
+        messages: typing.List[llm_entities.Message],
+        funcs: typing.List[tools_entities.LLMFunction] = None,
+    ) -> llm_entities.Message:
+        self.client.api_key = model.token_mgr.get_token()
 
         args = self.ap.provider_cfg.data['requester']['anthropic-messages']['args'].copy()
-        args["model"] = query.use_model.name if query.use_model.model_name is None else query.use_model.model_name
+        args["model"] = model.name if model.model_name is None else model.model_name
 
-        req_messages = [  # req_messages 仅用于类内，外部同步由 query.messages 进行
-            m.dict(exclude_none=True) for m in query.prompt.messages if m.content.strip() != ""
-        ] + [m.dict(exclude_none=True) for m in query.messages]
+        req_messages = [
+            m.dict(exclude_none=True) for m in messages if m.content.strip() != ""
+        ]
 
-        # 删除所有 role=system & content='' 的消息
+        # 删除所有 role=system & content='' 的消息  
         req_messages = [
             m for m in req_messages if not (m["role"] == "system" and m["content"].strip() == "")
         ]
@@ -64,10 +66,9 @@ class AnthropicMessages(api.LLMAPIRequester):
         args["messages"] = req_messages
 
         try:
-
             resp = await self.client.messages.create(**args)
 
-            yield llm_entities.Message(
+            return llm_entities.Message(
                 content=resp.content[0].text,
                 role=resp.role
             )

@@ -14,6 +14,13 @@ from ...plugin import events
 
 @stage.stage_class("ResponseWrapper")
 class ResponseWrapper(stage.PipelineStage):
+    """回复包装阶段
+
+    把回复的 message 包装成人类识读的形式。
+    
+    改写：
+        - resp_message_chain
+    """
 
     async def initialize(self):
         pass

@@ -24,7 +24,7 @@ class DefaultOperator(operator.CommandOperator):
 
             content = ""
             for msg in prompt.messages:
-                content += f"  {msg.role}: {msg.content}"
+                content += f"  {msg.readable_str()}\n"
 
             reply_str += f"名称: {prompt.name}\n内容: \n{content}\n\n"
 
@@ -45,18 +45,18 @@ class DefaultSetOperator(operator.CommandOperator):
         context: entities.ExecuteContext
     ) -> typing.AsyncGenerator[entities.CommandReturn, None]:
             
-            if len(context.crt_params) == 0:
-                yield entities.CommandReturn(error=errors.ParamNotEnoughError('请提供情景预设名称'))
-            else:
-                prompt_name = context.crt_params[0]
-        
-                try:
-                    prompt = await self.ap.prompt_mgr.get_prompt_by_prefix(prompt_name)
-                    if prompt is None:
-                        yield entities.CommandReturn(error=errors.CommandError("设置当前会话默认情景预设失败: 未找到情景预设 {}".format(prompt_name)))
-                    else:
-                        context.session.use_prompt_name = prompt.name
-                        yield entities.CommandReturn(text=f"已设置当前会话默认情景预设为 {prompt_name}, !reset 后生效")
-                except Exception as e:
-                    traceback.print_exc()
-                    yield entities.CommandReturn(error=errors.CommandError("设置当前会话默认情景预设失败: "+str(e)))
+        if len(context.crt_params) == 0:
+            yield entities.CommandReturn(error=errors.ParamNotEnoughError('请提供情景预设名称'))
+        else:
+            prompt_name = context.crt_params[0]
+    
+            try:
+                prompt = await self.ap.prompt_mgr.get_prompt_by_prefix(prompt_name)
+                if prompt is None:
+                    yield entities.CommandReturn(error=errors.CommandError("设置当前会话默认情景预设失败: 未找到情景预设 {}".format(prompt_name)))
+                else:
+                    context.session.use_prompt_name = prompt.name
+                    yield entities.CommandReturn(text=f"已设置当前会话默认情景预设为 {prompt_name}, !reset 后生效")
+            except Exception as e:
+                traceback.print_exc()
+                yield entities.CommandReturn(error=errors.CommandError("设置当前会话默认情景预设失败: "+str(e)))

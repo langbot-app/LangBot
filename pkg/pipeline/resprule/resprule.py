@@ -14,9 +14,12 @@ from ...config import manager as cfg_mgr
 @stage.stage_class("GroupRespondRuleCheckStage")
 class GroupRespondRuleCheckStage(stage.PipelineStage):
     """群组响应规则检查器
+
+    仅检查群消息是否符合规则。
     """
 
     rule_matchers: list[rule.GroupRespondRule]
+    """检查器实例"""
 
     async def initialize(self):
         """初始化检查器
@@ -31,7 +34,7 @@ class GroupRespondRuleCheckStage(stage.PipelineStage):
 
     async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:
         
-        if query.launcher_type.value != 'group':
+        if query.launcher_type.value != 'group':  # 只处理群消息
             return entities.StageProcessResult(
                 result_type=entities.ResultType.CONTINUE,
                 new_query=query

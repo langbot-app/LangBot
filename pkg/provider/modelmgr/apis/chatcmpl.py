@@ -84,73 +84,19 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
         message = await self._make_msg(resp)
 
         return message
-
-    async def _request(
-        self, query: core_entities.Query
-    ) -> typing.AsyncGenerator[llm_entities.Message, None]:
-        """请求"""
-
-        pending_tool_calls = []
-
+    
+    async def call(
+        self,
+        model: entities.LLMModelInfo,
+        messages: typing.List[llm_entities.Message],
+        funcs: typing.List[tools_entities.LLMFunction] = None,
+    ) -> llm_entities.Message:
         req_messages = [  # req_messages 仅用于类内，外部同步由 query.messages 进行
-            m.dict(exclude_none=True) for m in query.prompt.messages if m.content.strip() != ""
-        ] + [m.dict(exclude_none=True) for m in query.messages]
+            m.dict(exclude_none=True) for m in messages
+        ]
 
-        # req_messages.append({"role": "user", "content": str(query.message_chain)})
-
-        # 首次请求
-        msg = await self._closure(req_messages, query.use_model, query.use_funcs)
-
-        yield msg
-
-        pending_tool_calls = msg.tool_calls
-
-        req_messages.append(msg.dict(exclude_none=True))
-
-        # 持续请求，只要还有待处理的工具调用就继续处理调用
-        while pending_tool_calls:
-            for tool_call in pending_tool_calls:
-                try:
-                    func = tool_call.function
-
-                    parameters = json.loads(func.arguments)
-
-                    func_ret = await self.ap.tool_mgr.execute_func_call(
-                        query, func.name, parameters
-                    )
-
-                    msg = llm_entities.Message(
-                        role="tool", content=json.dumps(func_ret, ensure_ascii=False), tool_call_id=tool_call.id
-                    )
-
-                    yield msg
-
-                    req_messages.append(msg.dict(exclude_none=True))
-                except Exception as e:
-                    # 出错，添加一个报错信息到 req_messages
-                    err_msg = llm_entities.Message(
-                        role="tool", content=f"err: {e}", tool_call_id=tool_call.id
-                    )
-
-                    yield err_msg
-
-                    req_messages.append(
-                        err_msg.dict(exclude_none=True)
-                    )
-
-            # 处理完所有调用，继续请求
-            msg = await self._closure(req_messages, query.use_model, query.use_funcs)
-
-            yield msg
-
-            pending_tool_calls = msg.tool_calls
-
-            req_messages.append(msg.dict(exclude_none=True))
-
-    async def request(self, query: core_entities.Query) -> AsyncGenerator[llm_entities.Message, None]:
         try:
-            async for msg in self._request(query):
-                yield msg
+            return await self._closure(req_messages, model, funcs)
         except asyncio.TimeoutError:
             raise errors.RequesterError('请求超时')
         except openai.BadRequestError as e:
@@ -163,6 +109,6 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
         except openai.NotFoundError as e:
             raise errors.RequesterError(f'请求路径错误: {e.message}')
         except openai.RateLimitError as e:
-            raise errors.RequesterError(f'请求过于频繁: {e.message}')
+            raise errors.RequesterError(f'请求过于频繁或余额不足: {e.message}')
         except openai.APIError as e:
             raise errors.RequesterError(f'请求错误: {e.message}')
