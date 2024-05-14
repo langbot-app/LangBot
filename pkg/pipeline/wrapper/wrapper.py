@@ -34,7 +34,7 @@ class ResponseWrapper(stage.PipelineStage):
         """
         
         if query.resp_messages[-1].role == 'command':
-            query.resp_message_chain = mirai.MessageChain("[bot] "+query.resp_messages[-1].content)
+            query.resp_message_chain.append(mirai.MessageChain("[bot] "+query.resp_messages[-1].content))
 
             yield entities.StageProcessResult(
                 result_type=entities.ResultType.CONTINUE,
@@ -42,9 +42,9 @@ class ResponseWrapper(stage.PipelineStage):
             )
         elif query.resp_messages[-1].role == 'plugin':
             if not isinstance(query.resp_messages[-1].content, mirai.MessageChain):
-                query.resp_message_chain = mirai.MessageChain(query.resp_messages[-1].content)
+                query.resp_message_chain.append(mirai.MessageChain(query.resp_messages[-1].content))
             else:
-                query.resp_message_chain = query.resp_messages[-1].content
+                query.resp_message_chain.append(query.resp_messages[-1].content)
 
             yield entities.StageProcessResult(
                 result_type=entities.ResultType.CONTINUE,
@@ -83,11 +83,11 @@ class ResponseWrapper(stage.PipelineStage):
                     else:
                         if event_ctx.event.reply is not None:
                             
-                            query.resp_message_chain = mirai.MessageChain(event_ctx.event.reply)
+                            query.resp_message_chain.append(mirai.MessageChain(event_ctx.event.reply))
 
                         else:
 
-                            query.resp_message_chain = mirai.MessageChain([mirai.Plain(reply_text)])
+                            query.resp_message_chain.append(mirai.MessageChain([mirai.Plain(reply_text)]))
 
                         yield entities.StageProcessResult(
                             result_type=entities.ResultType.CONTINUE,
@@ -100,7 +100,7 @@ class ResponseWrapper(stage.PipelineStage):
 
                     reply_text = f'调用函数 {".".join(function_names)}...'
 
-                    query.resp_message_chain = mirai.MessageChain([mirai.Plain(reply_text)])
+                    query.resp_message_chain.append(mirai.MessageChain([mirai.Plain(reply_text)]))
 
                     if self.ap.platform_cfg.data['track-function-calls']:
                         
@@ -126,11 +126,11 @@ class ResponseWrapper(stage.PipelineStage):
                         else:
                             if event_ctx.event.reply is not None:
                                 
-                                query.resp_message_chain = mirai.MessageChain(event_ctx.event.reply)
+                                query.resp_message_chain.append(mirai.MessageChain(event_ctx.event.reply))
 
                             else:
 
-                                query.resp_message_chain = mirai.MessageChain([mirai.Plain(reply_text)])
+                                query.resp_message_chain.append(mirai.MessageChain([mirai.Plain(reply_text)]))
 
                             yield entities.StageProcessResult(
                                 result_type=entities.ResultType.CONTINUE,

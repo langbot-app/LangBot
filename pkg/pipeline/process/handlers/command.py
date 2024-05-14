@@ -80,9 +80,6 @@ class CommandHandler(handler.MessageHandler):
                 session=session
             ):
                 if ret.error is not None:
-                    # query.resp_message_chain = mirai.MessageChain([
-                    #     mirai.Plain(str(ret.error))
-                    # ])
                     query.resp_messages.append(
                         llm_entities.Message(
                             role='command',
@@ -97,9 +94,6 @@ class CommandHandler(handler.MessageHandler):
                         new_query=query
                     )
                 elif ret.text is not None:
-                    # query.resp_message_chain = mirai.MessageChain([
-                    #     mirai.Plain(ret.text)
-                    # ])
                     query.resp_messages.append(
                         llm_entities.Message(
                             role='command',

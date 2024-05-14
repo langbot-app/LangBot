@@ -43,7 +43,7 @@ class QueryPool:
                 message_event=message_event,
                 message_chain=message_chain,
                 resp_messages=[],
-                resp_message_chain=None,
+                resp_message_chain=[],
                 adapter=adapter
             )
             self.queries.append(query)

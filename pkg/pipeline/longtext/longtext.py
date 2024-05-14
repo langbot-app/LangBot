@@ -62,15 +62,15 @@ class LongTextProcessStage(stage.PipelineStage):
         # 检查是否包含非 Plain 组件
         contains_non_plain = False
 
-        for msg in query.resp_message_chain:
+        for msg in query.resp_message_chain[-1]:
             if not isinstance(msg, Plain):
                 contains_non_plain = True
                 break
         
         if contains_non_plain:
             self.ap.logger.debug("消息中包含非 Plain 组件，跳过长消息处理。")
-        elif len(str(query.resp_message_chain)) > self.ap.platform_cfg.data['long-text-process']['threshold']:
-            query.resp_message_chain = MessageChain(await self.strategy_impl.process(str(query.resp_message_chain), query))
+        elif len(str(query.resp_message_chain[-1])) > self.ap.platform_cfg.data['long-text-process']['threshold']:
+            query.resp_message_chain[-1] = MessageChain(await self.strategy_impl.process(str(query.resp_message_chain[-1]), query))
 
         return entities.StageProcessResult(
             result_type=entities.ResultType.CONTINUE,

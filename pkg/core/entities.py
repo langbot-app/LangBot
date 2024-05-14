@@ -70,7 +70,7 @@ class Query(pydantic.BaseModel):
     resp_messages: typing.Optional[list[llm_entities.Message]] = []
     """由Process阶段生成的回复消息对象列表"""
 
-    resp_message_chain: typing.Optional[mirai.MessageChain] = None
+    resp_message_chain: typing.Optional[list[mirai.MessageChain]] = None
     """回复消息链，从resp_messages包装而得"""
 
     class Config:
