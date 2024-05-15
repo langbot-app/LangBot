@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import mirai
+
 from .. import stage, entities, stagemgr
 from ...core import entities as core_entities
 from ...provider import entities as llm_entities
@@ -37,9 +39,31 @@ class PreProcessor(stage.PipelineStage):
         query.prompt = conversation.prompt.copy()
         query.messages = conversation.messages.copy()
 
+        # 检查vision是否启用，没启用就删除所有图片
+        if not self.ap.provider_cfg.data['enable-vision']:
+            for msg in query.messages:
+                if isinstance(msg.content, list):
+                    for me in msg.content:
+                        if me.type == 'image_url':
+                            msg.content.remove(me)
+
+        content_list = []
+
+        for me in query.message_chain:
+            if isinstance(me, mirai.Plain):
+                content_list.append(
+                    llm_entities.ContentElement.from_text(me.text)
+                )
+            elif isinstance(me, mirai.Image):
+                if self.ap.provider_cfg.data['enable-vision']:
+                    if me.url is not None:
+                        content_list.append(
+                            llm_entities.ContentElement.from_image_url(str(me.url))
+                        )
+
         query.user_message = llm_entities.Message(  # TODO 适配多模态输入
             role='user',
-            content=str(query.message_chain).strip()
+            content=content_list
         )
 
         query.use_model = conversation.use_model

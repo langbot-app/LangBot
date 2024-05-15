@@ -1,5 +1,17 @@
 {
     "admin-sessions": [],
+    "oss": [
+        {
+            "type": "aliyun",
+            "endpoint": "https://oss-cn-hangzhou.aliyuncs.com",
+            "public-read-base-url": "https://qchatgpt.oss-cn-hangzhou.aliyuncs.com",
+            "access-key-id": "LTAI5tJ5Q5J8J6J5J5J5J5J5",
+            "access-key-secret": "xxxxxx",
+            "bucket": "qchatgpt",
+            "prefix": "qchatgpt",
+            "enable": false
+        }
+    ],
     "network-proxies": {
         "http": null,
         "https": null

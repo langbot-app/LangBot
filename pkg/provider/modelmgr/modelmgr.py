@@ -37,6 +37,10 @@ class ModelManager:
         raise ValueError(f"无法确定模型 {name} 的信息，请在元数据中配置")
     
     async def initialize(self):
+
+        # 检查是否启用了vision但是没有配置oss
+        if self.ap.provider_cfg.data['enable-vision'] and not self.ap.oss_mgr.available():
+            self.ap.logger.warn("启用了视觉但是没有配置可用的oss服务，基于 URL 传递图片的视觉 API 将无法正常使用")
         
         # 初始化token_mgr, requester
         for k, v in self.ap.provider_cfg.data['keys'].items():

@@ -25,7 +25,7 @@ class PythonModuleConfigFile(file_model.ConfigFile):
     async def create(self):
         shutil.copyfile(self.template_file_name, self.config_file_name)
 
-    async def load(self) -> dict:
+    async def load(self, completion: bool=True) -> dict:
         module_name = os.path.splitext(os.path.basename(self.config_file_name))[0]
         module = importlib.import_module(module_name)
         
@@ -43,18 +43,19 @@ class PythonModuleConfigFile(file_model.ConfigFile):
             cfg[key] = getattr(module, key)
 
         # 从模板模块文件中进行补全
-        module_name = os.path.splitext(os.path.basename(self.template_file_name))[0]
-        module = importlib.import_module(module_name)
+        if completion:
+            module_name = os.path.splitext(os.path.basename(self.template_file_name))[0]
+            module = importlib.import_module(module_name)
 
-        for key in dir(module):
-            if key.startswith('__'):
-                continue
+            for key in dir(module):
+                if key.startswith('__'):
+                    continue
 
-            if not isinstance(getattr(module, key), allowed_types):
-                continue
+                if not isinstance(getattr(module, key), allowed_types):
+                    continue
 
-            if key not in cfg:
-                cfg[key] = getattr(module, key)
+                if key not in cfg:
+                    cfg[key] = getattr(module, key)
 
         return cfg
 

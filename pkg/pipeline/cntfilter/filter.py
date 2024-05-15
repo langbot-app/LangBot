@@ -5,6 +5,7 @@ import typing
 
 from ...core import app
 from . import entities
+from ...provider import entities as llm_entities
 
 
 preregistered_filters: list[typing.Type[ContentFilter]] = []
@@ -56,6 +57,16 @@ class ContentFilter(metaclass=abc.ABCMeta):
             entities.EnableStage.PRE,
             entities.EnableStage.POST
         ]
+    
+    @property
+    def accept_content(self):
+        """本过滤器接受的模态
+        
+        默认仅接受纯文本
+        """
+        return [
+            entities.AcceptContent.TEXT
+        ]
 
     async def initialize(self):
         """初始化过滤器
@@ -63,7 +74,7 @@ class ContentFilter(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    async def process(self, message: str) -> entities.FilterResult:
+    async def process(self, message: str=None, image_url=None) -> entities.FilterResult:
         """处理消息
 
         分为前后阶段，具体取决于 enable_stages 的值。
@@ -71,6 +82,7 @@ class ContentFilter(metaclass=abc.ABCMeta):
         
         Args:
             message (str): 需要检查的内容
+            image_url (str): 要检查的图片的 URL
 
         Returns:
             entities.FilterResult: 过滤结果，具体内容请查看 entities.FilterResult 类的文档

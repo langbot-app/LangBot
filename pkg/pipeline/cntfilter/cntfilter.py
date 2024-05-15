@@ -9,6 +9,7 @@ from ...core import entities as core_entities
 from ...config import manager as cfg_mgr
 from . import filter as filter_model, entities as filter_entities
 from .filters import cntignore, banwords, baiduexamine
+from ...provider import entities as llm_entities
 
 
 @stage.stage_class('PostContentFilterStage')
@@ -141,6 +142,21 @@ class ContentFilterStage(stage.PipelineStage):
         """处理
         """
         if stage_inst_name == 'PreContentFilterStage':
+            
+            contain_non_text = False
+
+            for me in query.message_chain:
+                if not isinstance(me, mirai.Plain):
+                    contain_non_text = True
+                    break
+            
+            if contain_non_text:
+                self.ap.logger.debug(f"消息中包含非文本消息，跳过内容过滤器检查。")
+                return entities.StageProcessResult(
+                    result_type=entities.ResultType.CONTINUE,
+                    new_query=query
+                )
+
             return await self._pre_process(
                 str(query.message_chain).strip(),
                 query

@@ -27,7 +27,7 @@ class JSONConfigFile(file_model.ConfigFile):
         else:
             raise ValueError("template_file_name or template_data must be provided")
 
-    async def load(self) -> dict:
+    async def load(self, completion: bool=True) -> dict:
 
         if not self.exists():
             await self.create()
@@ -39,9 +39,11 @@ class JSONConfigFile(file_model.ConfigFile):
         with open(self.config_file_name, "r", encoding="utf-8") as f:
             cfg = json.load(f)
 
-        for key in self.template_data:
-            if key not in cfg:
-                cfg[key] = self.template_data[key]
+        if completion:
+
+            for key in self.template_data:
+                if key not in cfg:
+                    cfg[key] = self.template_data[key]
 
         return cfg
 

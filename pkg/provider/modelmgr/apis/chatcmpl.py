@@ -23,8 +23,17 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
 
     requester_cfg: dict
 
+    cached_image_oss_url: dict[str, str] = {}
+    """缓存的OSS服务的图片URL
+    
+    key: 前文message中的原图片URL（QQ图片）
+    value: OSS服务的图片URL
+    """
+
     def __init__(self, ap: app.Application):
         self.ap = ap
+
+        self.cached_image_oss_url = {}
 
         self.requester_cfg = self.ap.provider_cfg.data['requester']['openai-chat-completions']
 
@@ -74,7 +83,16 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
                 args["tools"] = tools
 
         # 设置此次请求中的messages
-        messages = req_messages
+        messages = req_messages.copy()
+
+        # 检查vision
+        if self.ap.oss_mgr.available():
+            for msg in messages:
+                if isinstance(msg["content"], list):
+                    for me in msg["content"]:
+                        if me["type"] == "image_url":
+                            me["image_url"]['url'] = await self.get_oss_url(me["image_url"]['url'])
+
         args["messages"] = messages
 
         # 发送请求
@@ -112,3 +130,17 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
             raise errors.RequesterError(f'请求过于频繁或余额不足: {e.message}')
         except openai.APIError as e:
             raise errors.RequesterError(f'请求错误: {e.message}')
+
+    async def get_oss_url(
+        self,
+        original_url: str,
+    ) -> str:
+
+        if original_url in self.cached_image_oss_url:
+            return self.cached_image_oss_url[original_url]
+
+        oss_url = await self.ap.oss_mgr.upload_url_image(original_url)
+
+        self.cached_image_oss_url[original_url] = oss_url
+
+        return oss_url

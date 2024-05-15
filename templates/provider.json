@@ -1,5 +1,6 @@
 {
     "enable-chat": true,
+    "enable-vision": false,
     "keys": {
         "openai": [
             "sk-1234567890"

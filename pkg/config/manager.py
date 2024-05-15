@@ -20,8 +20,8 @@ class ConfigManager:
         self.file = cfg_file
         self.data = {}
 
-    async def load_config(self):
-        self.data = await self.file.load()
+    async def load_config(self, completion: bool=True):
+        self.data = await self.file.load(completion=completion)
 
     async def dump_config(self):
         await self.file.save(self.data)
@@ -30,7 +30,7 @@ class ConfigManager:
         self.file.save_sync(self.data)
 
 
-async def load_python_module_config(config_name: str, template_name: str) -> ConfigManager:
+async def load_python_module_config(config_name: str, template_name: str, completion: bool=True) -> ConfigManager:
     """加载Python模块配置文件"""
     cfg_inst = pymodule.PythonModuleConfigFile(
         config_name,
@@ -38,12 +38,12 @@ async def load_python_module_config(config_name: str, template_name: str) -> Con
     )
 
     cfg_mgr = ConfigManager(cfg_inst)
-    await cfg_mgr.load_config()
+    await cfg_mgr.load_config(completion=completion)
 
     return cfg_mgr
 
 
-async def load_json_config(config_name: str, template_name: str=None, template_data: dict=None) -> ConfigManager:
+async def load_json_config(config_name: str, template_name: str=None, template_data: dict=None, completion: bool=True) -> ConfigManager:
     """加载JSON配置文件"""
     cfg_inst = json_file.JSONConfigFile(
         config_name,
@@ -52,6 +52,6 @@ async def load_json_config(config_name: str, template_name: str=None, template_d
     )
 
     cfg_mgr = ConfigManager(cfg_inst)
-    await cfg_mgr.load_config()
+    await cfg_mgr.load_config(completion=completion)
 
     return cfg_mgr

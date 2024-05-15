@@ -21,14 +21,34 @@ class ToolCall(pydantic.BaseModel):
     function: FunctionCall
 
 
-class Content(pydantic.BaseModel):
+class ImageURLContentObject(pydantic.BaseModel):
+    url: str
+
+
+class ContentElement(pydantic.BaseModel):
 
     type: str
     """内容类型"""
 
     text: typing.Optional[str] = None
 
-    image_url: typing.Optional[str] = None
+    image_url: typing.Optional[ImageURLContentObject] = None
+
+    def __str__(self):
+        if self.type == 'text':
+            return self.text
+        elif self.type == 'image_url':
+            return f'[图片]({self.image_url})'
+        else:
+            return '未知内容'
+
+    @classmethod
+    def from_text(cls, text: str):
+        return cls(type='text', text=text)
+
+    @classmethod
+    def from_image_url(cls, image_url: str):
+        return cls(type='image_url', image_url=ImageURLContentObject(url=image_url))
 
 
 class Message(pydantic.BaseModel):
@@ -40,7 +60,7 @@ class Message(pydantic.BaseModel):
     name: typing.Optional[str] = None
     """名称，仅函数调用返回时设置"""
 
-    content: typing.Optional[str] | typing.Optional[mirai.MessageChain] = None
+    content: typing.Optional[list[ContentElement]] | typing.Optional[str] = None
     """内容"""
 
     tool_calls: typing.Optional[list[ToolCall]] = None
@@ -50,8 +70,38 @@ class Message(pydantic.BaseModel):
 
     def readable_str(self) -> str:
         if self.content is not None:
-            return str(self.role) + ": " + str(self.content)
+            return str(self.role) + ": " + str(self.get_content_mirai_message_chain())
         elif self.tool_calls is not None:
             return f'调用工具: {self.tool_calls[0].id}'
         else:
             return '未知消息'
+
+    def get_content_mirai_message_chain(self, prefix_text: str="") -> mirai.MessageChain | None:
+        """将内容转换为 Mirai MessageChain 对象
+        
+        Args:
+            prefix_text (str): 首个文字组件的前缀文本
+        """
+
+        if self.content is None:
+            return None
+        elif isinstance(self.content, str):
+            return mirai.MessageChain([mirai.Plain(prefix_text+self.content)])
+        elif isinstance(self.content, list):
+            mc = []
+            for ce in self.content:
+                if ce.type == 'text':
+                    mc.append(mirai.Plain(ce.text))
+                elif ce.type == 'image':
+                    mc.append(mirai.Image(url=ce.image_url))
+            
+            # 找第一个文字组件
+            if prefix_text:
+                for i, c in enumerate(mc):
+                    if isinstance(c, mirai.Plain):
+                        mc[i] = mirai.Plain(prefix_text+c.text)
+                        break
+                else:
+                    mc.insert(0, mirai.Plain(prefix_text))
+
+            return mirai.MessageChain(mc)

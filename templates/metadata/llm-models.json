@@ -23,6 +23,10 @@
             "tool_call_supported": true
         },
         {
+            "name": "gpt-4o",
+            "tool_call_supported": true
+        },
+        {
             "model_name": "SparkDesk",
             "name": "OneAPI/SparkDesk"
         },
