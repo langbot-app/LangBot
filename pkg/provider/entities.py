@@ -24,6 +24,9 @@ class ToolCall(pydantic.BaseModel):
 class ImageURLContentObject(pydantic.BaseModel):
     url: str
 
+    def __str__(self):
+        return self.url[:128] + ('...' if len(self.url) > 128 else '')
+
 
 class ContentElement(pydantic.BaseModel):
 

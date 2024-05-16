@@ -14,6 +14,7 @@ required_deps = {
     "yaml": "pyyaml",
     "aiohttp": "aiohttp",
     "psutil": "psutil",
+    "async_lru": "async-lru",
 }
 
 

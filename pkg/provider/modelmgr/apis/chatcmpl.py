@@ -10,6 +10,7 @@ import openai
 import openai.types.chat.chat_completion as chat_completion
 import httpx
 import aiohttp
+import async_lru
 
 from .. import api, entities, errors
 from ....core import entities as core_entities, app
@@ -46,7 +47,6 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
         self,
         args: dict,
     ) -> chat_completion.ChatCompletion:
-        self.ap.logger.debug(f"req chat_completion with args {args}")
         return await self.client.chat.completions.create(**args)
 
     async def _make_msg(
@@ -124,6 +124,7 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
         except openai.APIError as e:
             raise errors.RequesterError(f'请求错误: {e.message}')
 
+    @async_lru.alru_cache(maxsize=128)
     async def get_base64_str(
         self,
         original_url: str,
