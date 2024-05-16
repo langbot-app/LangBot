@@ -3,16 +3,19 @@ from __future__ import annotations
 import asyncio
 import typing
 import json
+import base64
 from typing import AsyncGenerator
 
 import openai
 import openai.types.chat.chat_completion as chat_completion
 import httpx
+import aiohttp
 
 from .. import api, entities, errors
 from ....core import entities as core_entities, app
 from ... import entities as llm_entities
 from ...tools import entities as tools_entities
+from ....utils import image
 
 
 @api.requester_class("openai-chat-completions")
@@ -91,7 +94,8 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
                 if 'content' in msg and isinstance(msg["content"], list):
                     for me in msg["content"]:
                         if me["type"] == "image_url":
-                            me["image_url"]['url'] = await self.get_oss_url(me["image_url"]['url'])
+                            # me["image_url"]['url'] = await self.get_oss_url(me["image_url"]['url'])
+                            me["image_url"]['url'] = await self.get_base64_str(me["image_url"]['url'])
 
         args["messages"] = messages
 
@@ -144,3 +148,12 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
         self.cached_image_oss_url[original_url] = oss_url
 
         return oss_url
+
+    async def get_base64_str(
+        self,
+        original_url: str,
+    ) -> str:
+        
+        base64_image = await image.qq_image_url_to_base64(original_url)
+
+        return f"data:image/jpeg;base64,{base64_image}"

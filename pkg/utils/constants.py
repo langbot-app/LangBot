@@ -1,1 +1,1 @@
-semantic_version = "v3.1.1"
+semantic_version = "v3.2.0"
