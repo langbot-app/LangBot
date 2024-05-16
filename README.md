@@ -41,5 +41,5 @@
 <a href="https://github.com/RockChinQ/qcg-tester">测试工程源码</a> ｜
 <a href="https://github.com/the-lazy-me/QChatGPT-Wiki">官方文档储存库</a>
 
-<img alt="回复效果（带有联网插件）" src="https://qchatgpt.rockchin.top/assets/image/QChatGPT-1211.png" width="500px"/>
+<img alt="回复效果（带有联网插件）" src="https://qchatgpt.rockchin.top/assets/image/QChatGPT-0516.png" width="500px"/>
 </div>
