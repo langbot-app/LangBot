@@ -57,16 +57,6 @@ class ContentFilter(metaclass=abc.ABCMeta):
             entities.EnableStage.PRE,
             entities.EnableStage.POST
         ]
-    
-    @property
-    def accept_content(self):
-        """本过滤器接受的模态
-        
-        默认仅接受纯文本
-        """
-        return [
-            entities.AcceptContent.TEXT
-        ]
 
     async def initialize(self):
         """初始化过滤器

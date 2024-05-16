@@ -31,13 +31,6 @@ class EnableStage(enum.Enum):
     """后处理"""
 
 
-class AcceptContent(enum.Enum):
-    """过滤器接受的内容模态"""
-
-    TEXT = enum.auto()
-
-    IMAGE_URL = enum.auto()
-
 class FilterResult(pydantic.BaseModel):
     level: ResultLevel
     """结果等级

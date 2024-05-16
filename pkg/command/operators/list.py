@@ -42,7 +42,7 @@ class ListOperator(operator.CommandOperator):
                 using_conv_index = index
 
             if index >= page * record_per_page and index < (page + 1) * record_per_page:
-                content += f"{index} {time_str}: {conv.messages[0].content if len(conv.messages) > 0 else '无内容'}\n"
+                content += f"{index} {time_str}: {conv.messages[0].readable_str() if len(conv.messages) > 0 else '无内容'}\n"
             index += 1
 
         if content == '':
@@ -51,6 +51,6 @@ class ListOperator(operator.CommandOperator):
             if context.session.using_conversation is None:
                 content += "\n当前处于新会话"
             else:
-                content += f"\n当前会话: {using_conv_index} {context.session.using_conversation.create_time.strftime('%Y-%m-%d %H:%M:%S')}: {context.session.using_conversation.messages[0].content if len(context.session.using_conversation.messages) > 0 else '无内容'}"
+                content += f"\n当前会话: {using_conv_index} {context.session.using_conversation.create_time.strftime('%Y-%m-%d %H:%M:%S')}: {context.session.using_conversation.messages[0].readable_str() if len(context.session.using_conversation.messages) > 0 else '无内容'}"
         
         yield entities.CommandReturn(text=f"第 {page + 1} 页 (时间倒序):\n{content}")
