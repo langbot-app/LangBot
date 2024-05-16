@@ -11,7 +11,10 @@ from ...core import entities as core_entities
 @stage.stage_class("RequireRateLimitOccupancy")
 @stage.stage_class("ReleaseRateLimitOccupancy")
 class RateLimit(stage.PipelineStage):
-    """限速器控制阶段"""
+    """限速器控制阶段
+    
+    不改写query，只检查是否需要限速。
+    """
 
     algo: algo.ReteLimitAlgo
 

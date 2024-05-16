@@ -14,3 +14,4 @@ pydantic
 websockets
 urllib3
 psutil
+async-lru

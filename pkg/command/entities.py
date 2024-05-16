@@ -13,11 +13,16 @@ class CommandReturn(pydantic.BaseModel):
     """命令返回值
     """
 
-    text: typing.Optional[str]
+    text: typing.Optional[str] = None
     """文本
     """
 
-    image: typing.Optional[mirai.Image]
+    image: typing.Optional[mirai.Image] = None
+    """弃用"""
+
+    image_url: typing.Optional[str] = None
+    """图片链接
+    """
 
     error: typing.Optional[errors.CommandError]= None
     """错误

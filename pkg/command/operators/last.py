@@ -30,7 +30,7 @@ class LastOperator(operator.CommandOperator):
                         context.session.using_conversation = context.session.conversations[index-1]
                         time_str = context.session.using_conversation.create_time.strftime("%Y-%m-%d %H:%M:%S")
 
-                        yield entities.CommandReturn(text=f"已切换到上一个对话: {index} {time_str}: {context.session.using_conversation.messages[0].content}")
+                        yield entities.CommandReturn(text=f"已切换到上一个对话: {index} {time_str}: {context.session.using_conversation.messages[0].readable_str()}")
                         return
         else:
             yield entities.CommandReturn(error=errors.CommandOperationError('当前没有对话'))

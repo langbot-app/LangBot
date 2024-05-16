@@ -8,7 +8,7 @@ from ....config import manager as cfg_mgr
 
 @filter_model.filter_class("ban-word-filter")
 class BanWordFilter(filter_model.ContentFilter):
-    """根据内容禁言"""
+    """根据内容过滤"""
 
     async def initialize(self):
         pass

@@ -4,23 +4,73 @@
             "name": "default",
             "requester": "openai-chat-completions",
             "token_mgr": "openai",
-            "tool_call_supported": false
+            "tool_call_supported": false,
+            "vision_supported": false
+        },
+        {
+            "name": "gpt-3.5-turbo-0125",
+            "tool_call_supported": true,
+            "vision_supported": false
         },
         {
             "name": "gpt-3.5-turbo",
-            "tool_call_supported": true
+            "tool_call_supported": true,
+            "vision_supported": false
         },
         {
-            "name": "gpt-4",
-            "tool_call_supported": true
+            "name": "gpt-3.5-turbo-1106",
+            "tool_call_supported": true,
+            "vision_supported": false
+        },
+        {
+            "name": "gpt-4-turbo",
+            "tool_call_supported": true,
+            "vision_supported": true
+        },
+        {
+            "name": "gpt-4-turbo-2024-04-09",
+            "tool_call_supported": true,
+            "vision_supported": true
         },
         {
             "name": "gpt-4-turbo-preview",
-            "tool_call_supported": true
+            "tool_call_supported": true,
+            "vision_supported": true
+        },
+        {
+            "name": "gpt-4-0125-preview",
+            "tool_call_supported": true,
+            "vision_supported": true
+        },
+        {
+            "name": "gpt-4-1106-preview",
+            "tool_call_supported": true,
+            "vision_supported": true
+        },
+        {
+            "name": "gpt-4",
+            "tool_call_supported": true,
+            "vision_supported": true
+        },
+        {
+            "name": "gpt-4o",
+            "tool_call_supported": true,
+            "vision_supported": true
+        },
+        {
+            "name": "gpt-4-0613",
+            "tool_call_supported": true,
+            "vision_supported": true
         },
         {
             "name": "gpt-4-32k",
-            "tool_call_supported": true
+            "tool_call_supported": true,
+            "vision_supported": true
+        },
+        {
+            "name": "gpt-4-32k-0613",
+            "tool_call_supported": true,
+            "vision_supported": true
         },
         {
             "model_name": "SparkDesk",

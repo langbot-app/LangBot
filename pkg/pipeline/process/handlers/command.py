@@ -80,9 +80,6 @@ class CommandHandler(handler.MessageHandler):
                 session=session
             ):
                 if ret.error is not None:
-                    # query.resp_message_chain = mirai.MessageChain([
-                    #     mirai.Plain(str(ret.error))
-                    # ])
                     query.resp_messages.append(
                         llm_entities.Message(
                             role='command',
@@ -96,18 +93,28 @@ class CommandHandler(handler.MessageHandler):
                         result_type=entities.ResultType.CONTINUE,
                         new_query=query
                     )
-                elif ret.text is not None:
-                    # query.resp_message_chain = mirai.MessageChain([
-                    #     mirai.Plain(ret.text)
-                    # ])
+                elif ret.text is not None or ret.image_url is not None:
+
+                    content: list[llm_entities.ContentElement]= []
+
+                    if ret.text is not None:
+                        content.append(
+                            llm_entities.ContentElement.from_text(ret.text)
+                        )
+
+                    if ret.image_url is not None:
+                        content.append(
+                            llm_entities.ContentElement.from_image_url(ret.image_url)
+                        )
+
                     query.resp_messages.append(
                         llm_entities.Message(
                             role='command',
-                            content=ret.text,
+                            content=content,
                         )
                     )
 
-                    self.ap.logger.info(f'命令返回: {self.cut_str(ret.text)}')
+                    self.ap.logger.info(f'命令返回: {self.cut_str(str(content[0]))}')
 
                     yield entities.StageProcessResult(
                         result_type=entities.ResultType.CONTINUE,

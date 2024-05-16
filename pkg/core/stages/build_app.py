@@ -15,7 +15,6 @@ from ...provider.sysprompt import sysprompt as llm_prompt_mgr
 from ...provider.tools import toolmgr as llm_tool_mgr
 from ...platform import manager as im_mgr
 
-
 @stage.stage_class("BuildAppStage")
 class BuildAppStage(stage.BootingStage):
     """构建应用阶段
@@ -83,7 +82,6 @@ class BuildAppStage(stage.BootingStage):
         llm_tool_mgr_inst = llm_tool_mgr.ToolManager(ap)
         await llm_tool_mgr_inst.initialize()
         ap.tool_mgr = llm_tool_mgr_inst
-
         im_mgr_inst = im_mgr.PlatformManager(ap=ap)
         await im_mgr_inst.initialize()
         ap.platform_mgr = im_mgr_inst
@@ -91,6 +89,7 @@ class BuildAppStage(stage.BootingStage):
         stage_mgr = stagemgr.StageManager(ap)
         await stage_mgr.initialize()
         ap.stage_mgr = stage_mgr
+
 
         ctrl = controller.Controller(ap)
         ap.ctrl = ctrl

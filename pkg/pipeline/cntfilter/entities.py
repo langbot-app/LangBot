@@ -4,6 +4,8 @@ import enum
 
 import pydantic
 
+from ...provider import entities as llm_entities
+
 
 class ResultLevel(enum.Enum):
     """结果等级"""
@@ -38,7 +40,7 @@ class FilterResult(pydantic.BaseModel):
     """
 
     replacement: str
-    """替换后的消息
+    """替换后的文本消息
     
     内容过滤器可以进行一些遮掩处理，然后把遮掩后的消息返回。
     若没有修改内容，也需要返回原消息。

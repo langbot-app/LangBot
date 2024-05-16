@@ -21,5 +21,7 @@ class LLMModelInfo(pydantic.BaseModel):
 
     tool_call_supported: typing.Optional[bool] = False
 
+    vision_supported: typing.Optional[bool] = False
+
     class Config:
         arbitrary_types_allowed = True

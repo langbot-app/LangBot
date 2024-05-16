@@ -12,11 +12,11 @@ class LoadConfigStage(stage.BootingStage):
     async def run(self, ap: app.Application):
         """启动
         """
-        ap.command_cfg = await config.load_json_config("data/config/command.json", "templates/command.json")
-        ap.pipeline_cfg = await config.load_json_config("data/config/pipeline.json", "templates/pipeline.json")
-        ap.platform_cfg = await config.load_json_config("data/config/platform.json", "templates/platform.json")
-        ap.provider_cfg = await config.load_json_config("data/config/provider.json", "templates/provider.json")
-        ap.system_cfg = await config.load_json_config("data/config/system.json", "templates/system.json")
+        ap.command_cfg = await config.load_json_config("data/config/command.json", "templates/command.json", completion=False)
+        ap.pipeline_cfg = await config.load_json_config("data/config/pipeline.json", "templates/pipeline.json", completion=False)
+        ap.platform_cfg = await config.load_json_config("data/config/platform.json", "templates/platform.json", completion=False)
+        ap.provider_cfg = await config.load_json_config("data/config/provider.json", "templates/provider.json", completion=False)
+        ap.system_cfg = await config.load_json_config("data/config/system.json", "templates/system.json", completion=False)
 
         ap.plugin_setting_meta = await config.load_json_config("plugins/plugins.json", "templates/plugin-settings.json")
         await ap.plugin_setting_meta.dump_config()

@@ -8,7 +8,10 @@ from ...config import manager as cfg_mgr
 
 @stage.stage_class('BanSessionCheckStage')
 class BanSessionCheckStage(stage.PipelineStage):
-    """访问控制处理阶段"""
+    """访问控制处理阶段
+    
+    仅检查query中群号或个人号是否在访问控制列表中。
+    """
 
     async def initialize(self):
         pass

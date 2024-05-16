@@ -31,7 +31,7 @@ class SendResponseBackStage(stage.PipelineStage):
 
         await self.ap.platform_mgr.send(
             query.message_event,
-            query.resp_message_chain,
+            query.resp_message_chain[-1],
             adapter=query.adapter
         )
 
