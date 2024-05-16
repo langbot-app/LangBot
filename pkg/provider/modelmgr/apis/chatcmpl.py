@@ -76,7 +76,7 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
         args = self.requester_cfg['args'].copy()
         args["model"] = use_model.name if use_model.model_name is None else use_model.model_name
 
-        if use_model.tool_call_supported:
+        if use_funcs:
             tools = await self.ap.tool_mgr.generate_tools_for_openai(use_funcs)
 
             if tools:
@@ -88,7 +88,7 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
         # 检查vision
         if self.ap.oss_mgr.available():
             for msg in messages:
-                if isinstance(msg["content"], list):
+                if 'content' in msg and isinstance(msg["content"], list):
                     for me in msg["content"]:
                         if me["type"] == "image_url":
                             me["image_url"]['url'] = await self.get_oss_url(me["image_url"]['url'])

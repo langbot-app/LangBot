@@ -39,8 +39,13 @@ class PreProcessor(stage.PipelineStage):
         query.prompt = conversation.prompt.copy()
         query.messages = conversation.messages.copy()
 
+        query.use_model = conversation.use_model
+
+        query.use_funcs = conversation.use_funcs if query.use_model.tool_call_supported else None
+
+
         # 检查vision是否启用，没启用就删除所有图片
-        if not self.ap.provider_cfg.data['enable-vision']:
+        if not self.ap.provider_cfg.data['enable-vision'] or not query.use_model.vision_supported:
             for msg in query.messages:
                 if isinstance(msg.content, list):
                     for me in msg.content:
@@ -55,7 +60,7 @@ class PreProcessor(stage.PipelineStage):
                     llm_entities.ContentElement.from_text(me.text)
                 )
             elif isinstance(me, mirai.Image):
-                if self.ap.provider_cfg.data['enable-vision']:
+                if self.ap.provider_cfg.data['enable-vision'] and query.use_model.vision_supported:
                     if me.url is not None:
                         content_list.append(
                             llm_entities.ContentElement.from_image_url(str(me.url))
@@ -65,11 +70,6 @@ class PreProcessor(stage.PipelineStage):
             role='user',
             content=content_list
         )
-
-        query.use_model = conversation.use_model
-
-        query.use_funcs = conversation.use_funcs
-
         # =========== 触发事件 PromptPreProcessing
 
         event_ctx = await self.ap.plugin_mgr.emit_event(

@@ -28,7 +28,7 @@ class DeepseekChatCompletions(chatcmpl.OpenAIChatCompletions):
         args = self.requester_cfg['args'].copy()
         args["model"] = use_model.name if use_model.model_name is None else use_model.model_name
 
-        if use_model.tool_call_supported:
+        if use_funcs:
             tools = await self.ap.tool_mgr.generate_tools_for_openai(use_funcs)
 
             if tools:
@@ -39,7 +39,7 @@ class DeepseekChatCompletions(chatcmpl.OpenAIChatCompletions):
 
         # deepseek 不支持多模态，把content都转换成纯文字
         for m in messages:
-            if isinstance(m["content"], list):
+            if 'content' in m and isinstance(m["content"], list):
                 m["content"] = " ".join([c["text"] for c in m["content"]])
 
         args["messages"] = messages

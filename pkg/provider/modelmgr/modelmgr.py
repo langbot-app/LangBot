@@ -87,7 +87,8 @@ class ModelManager:
                     model_name=None,
                     token_mgr=self.token_mgrs[model['token_mgr']],
                     requester=self.requesters[model['requester']],
-                    tool_call_supported=model['tool_call_supported']
+                    tool_call_supported=model['tool_call_supported'],
+                    vision_supported=model['vision_supported']
                 )
                 break
 
@@ -99,13 +100,15 @@ class ModelManager:
                 token_mgr = self.token_mgrs[model['token_mgr']] if 'token_mgr' in model else default_model_info.token_mgr
                 requester = self.requesters[model['requester']] if 'requester' in model else default_model_info.requester
                 tool_call_supported = model.get('tool_call_supported', default_model_info.tool_call_supported)
+                vision_supported = model.get('vision_supported', default_model_info.vision_supported)
 
                 model_info = entities.LLMModelInfo(
                     name=model['name'],
                     model_name=model_name,
                     token_mgr=token_mgr,
                     requester=requester,
-                    tool_call_supported=tool_call_supported
+                    tool_call_supported=tool_call_supported,
+                    vision_supported=vision_supported
                 )
                 self.model_list.append(model_info)
             
