@@ -14,5 +14,3 @@ pydantic
 websockets
 urllib3
 psutil
-
-oss2

@@ -15,7 +15,6 @@ from ..command import cmdmgr
 from ..plugin import manager as plugin_mgr
 from ..pipeline import pool
 from ..pipeline import controller, stagemgr
-from ..oss import oss
 from ..utils import version as version_mgr, proxy as proxy_mgr
 
 
@@ -71,8 +70,6 @@ class Application:
     ver_mgr: version_mgr.VersionManager = None
 
     proxy_mgr: proxy_mgr.ProxyManager = None
-
-    oss_mgr: oss.OSSServiceManager = None
 
     logger: logging.Logger = None
 

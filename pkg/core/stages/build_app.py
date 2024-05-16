@@ -14,8 +14,6 @@ from ...provider.modelmgr import modelmgr as llm_model_mgr
 from ...provider.sysprompt import sysprompt as llm_prompt_mgr
 from ...provider.tools import toolmgr as llm_tool_mgr
 from ...platform import manager as im_mgr
-from ...oss import oss as oss_mgr
-
 
 @stage.stage_class("BuildAppStage")
 class BuildAppStage(stage.BootingStage):
@@ -68,10 +66,6 @@ class BuildAppStage(stage.BootingStage):
         cmd_mgr_inst = cmdmgr.CommandManager(ap)
         await cmd_mgr_inst.initialize()
         ap.cmd_mgr = cmd_mgr_inst
-
-        oss_mgr_inst = oss_mgr.OSSServiceManager(ap)
-        await oss_mgr_inst.initialize()
-        ap.oss_mgr = oss_mgr_inst
 
         llm_model_mgr_inst = llm_model_mgr.ModelManager(ap)
         await llm_model_mgr_inst.initialize()

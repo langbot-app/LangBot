@@ -14,7 +14,6 @@ required_deps = {
     "yaml": "pyyaml",
     "aiohttp": "aiohttp",
     "psutil": "psutil",
-    "oss2": "oss2",
 }
 
 

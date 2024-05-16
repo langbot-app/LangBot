@@ -4,8 +4,8 @@ import importlib
 
 from .. import stage, app
 from ...config import migration
-from ...config.migrations import m001_sensitive_word_migration, m002_openai_config_migration, m003_anthropic_requester_cfg_completion, m004_moonshot_cfg_completion
-from ...config.migrations import m005_deepseek_cfg_completion, m006_vision_and_oss_config
+from ...config.migrations import m001_sensitive_word_migration, m002_openai_config_migration, m003_anthropic_requester_cfg_completion, m004_moonshot_cfg_completion, m006_vision_config
+from ...config.migrations import m005_deepseek_cfg_completion
 
 
 @stage.stage_class("MigrationStage")
