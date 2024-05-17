@@ -69,7 +69,7 @@ class AnthropicMessages(api.LLMAPIRequester):
             elif isinstance(m.content, list):
                 # 删除m.content中的type!=text的元素
                 m.content = [
-                    c for c in m.content if c.get("type") == "text"
+                    c for c in m.content if c.type == "text"
                 ]
 
                 if len(m.content) > 0:
