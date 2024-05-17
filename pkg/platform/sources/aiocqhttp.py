@@ -31,7 +31,7 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
                 msg_time = msg.time
             elif type(msg) is mirai.Image:
                 arg = ''
-                if hasattr(msg, "base64"):
+                if msg.base64:
                     arg = msg.base64
                     msg_list.append(aiocqhttp.MessageSegment.image(f"base64://{arg}"))
                 elif msg.url:
