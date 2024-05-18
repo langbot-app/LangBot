@@ -34,18 +34,18 @@ class LongTextProcessStage(stage.PipelineStage):
                     if os.name == "nt":
                         use_font = "C:/Windows/Fonts/msyh.ttc"
                         if not os.path.exists(use_font):
-                            self.ap.logger.warn("未找到字体文件，且无法使用Windows自带字体，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。")
+                            self.ap.logger.warn("未找到字体文件，且无法使用Windows自带字体，更换为转发消息组件以发送长消息，您可以在配置文件中调整相关设置。")
                             config['blob_message_strategy'] = "forward"
                         else:
                             self.ap.logger.info("使用Windows自带字体：" + use_font)
                             config['font-path'] = use_font
                     else:
-                        self.ap.logger.warn("未找到字体文件，且无法使用系统自带字体，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。")
+                        self.ap.logger.warn("未找到字体文件，且无法使用系统自带字体，更换为转发消息组件以发送长消息，您可以在配置文件中调整相关设置。")
 
                         self.ap.platform_cfg.data['long-text-process']['strategy'] = "forward"
             except:
                 traceback.print_exc()
-                self.ap.logger.error("加载字体文件失败({})，更换为转发消息组件以发送长消息，您可以在config.py中调整相关设置。".format(use_font))
+                self.ap.logger.error("加载字体文件失败({})，更换为转发消息组件以发送长消息，您可以在配置文件中调整相关设置。".format(use_font))
 
                 self.ap.platform_cfg.data['long-text-process']['strategy'] = "forward"
 
