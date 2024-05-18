@@ -163,13 +163,13 @@ class ContentFilterStage(stage.PipelineStage):
             )
         elif stage_inst_name == 'PostContentFilterStage':
             # 仅处理 query.resp_messages[-1].content 是 str 的情况
-            if isinstance(query.resp_messages[-1].content, str):
+            if isinstance(query.resp_messages[-1], llm_entities.Message) and isinstance(query.resp_messages[-1].content, str):
                 return await self._post_process(
                     query.resp_messages[-1].content,
                     query
                 )
             else:
-                self.ap.logger.debug(f"resp_messages[-1] 不是 str 类型，跳过内容过滤器检查。")
+                self.ap.logger.debug(f"resp_messages[-1] 不是 Message 类型或 query.resp_messages[-1].content 不是 str 类型，跳过内容过滤器检查。")
                 return entities.StageProcessResult(
                     result_type=entities.ResultType.CONTINUE,
                     new_query=query

@@ -48,12 +48,7 @@ class CommandHandler(handler.MessageHandler):
             if event_ctx.event.reply is not None:
                 mc = mirai.MessageChain(event_ctx.event.reply)
 
-                query.resp_messages.append(
-                    llm_entities.Message(
-                        role='command',
-                        content=str(mc),
-                    )
-                )
+                query.resp_messages.append(mc)
 
                 yield entities.StageProcessResult(
                     result_type=entities.ResultType.CONTINUE,
