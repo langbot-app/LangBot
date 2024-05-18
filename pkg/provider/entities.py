@@ -96,7 +96,16 @@ class Message(pydantic.BaseModel):
                 if ce.type == 'text':
                     mc.append(mirai.Plain(ce.text))
                 elif ce.type == 'image':
-                    mc.append(mirai.Image(url=ce.image_url))
+                    if ce.image_url.url.startswith("http"):
+                        mc.append(mirai.Image(url=ce.image_url.url))
+                    else:  # base64
+                        
+                        b64_str = ce.image_url.url
+
+                        if b64_str.startswith("data:"):
+                            b64_str = b64_str.split(",")[1]
+
+                        mc.append(mirai.Image(base64=b64_str))
             
             # 找第一个文字组件
             if prefix_text:

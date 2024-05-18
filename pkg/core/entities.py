@@ -67,7 +67,7 @@ class Query(pydantic.BaseModel):
     use_funcs: typing.Optional[list[tools_entities.LLMFunction]] = None
     """使用的函数，由前置处理器阶段设置"""
 
-    resp_messages: typing.Optional[list[llm_entities.Message]] = []
+    resp_messages: typing.Optional[list[llm_entities.Message]] | typing.Optional[list[mirai.MessageChain]] = []
     """由Process阶段生成的回复消息对象列表"""
 
     resp_message_chain: typing.Optional[list[mirai.MessageChain]] = None
