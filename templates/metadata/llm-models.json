@@ -83,32 +83,38 @@
         {
             "name": "claude-3-opus-20240229",
             "requester": "anthropic-messages",
-            "token_mgr": "anthropic"
+            "token_mgr": "anthropic",
+            "vision_supported": true
         },
         {
             "name": "claude-3-sonnet-20240229",
             "requester": "anthropic-messages",
-            "token_mgr": "anthropic"
+            "token_mgr": "anthropic",
+            "vision_supported": true
         },
         {
             "name": "claude-3-haiku-20240307",
             "requester": "anthropic-messages",
-            "token_mgr": "anthropic"
+            "token_mgr": "anthropic",
+            "vision_supported": true
         },
         {
             "name": "moonshot-v1-8k",
             "requester": "moonshot-chat-completions",
-            "token_mgr": "moonshot"
+            "token_mgr": "moonshot",
+            "tool_call_supported": true
         },
         {
             "name": "moonshot-v1-32k",
             "requester": "moonshot-chat-completions",
-            "token_mgr": "moonshot"
+            "token_mgr": "moonshot",
+            "tool_call_supported": true
         },
         {
             "name": "moonshot-v1-128k",
             "requester": "moonshot-chat-completions",
-            "token_mgr": "moonshot"
+            "token_mgr": "moonshot",
+            "tool_call_supported": true
         },
         {
             "name": "deepseek-chat",
