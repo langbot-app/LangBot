@@ -11,6 +11,7 @@ from .. import api, entities, errors
 from ....core import entities as core_entities
 from ... import entities as llm_entities
 from ...tools import entities as tools_entities
+from ....utils import image
 
 
 @api.requester_class("anthropic-messages")
@@ -54,28 +55,44 @@ class AnthropicMessages(api.LLMAPIRequester):
             and isinstance(system_role_message.content, str):
             args['system'] = system_role_message.content
 
-        # 其他消息
-        # req_messages = [
-        #     m.dict(exclude_none=True) for m in messages \
-        #         if (isinstance(m.content, str) and m.content.strip() != "") \
-        #         or (isinstance(m.content, list) and )
-        # ]
-        # 暂时不支持vision，仅保留纯文字的content
         req_messages = []
 
         for m in messages:
             if isinstance(m.content, str) and m.content.strip() != "":
                 req_messages.append(m.dict(exclude_none=True))
             elif isinstance(m.content, list):
-                # 删除m.content中的type!=text的元素
-                m.content = [
-                    c for c in m.content if c.type == "text"
-                ]
+                # m.content = [
+                #     c for c in m.content if c.type == "text"
+                # ]
 
-                if len(m.content) > 0:
-                    req_messages.append(m.dict(exclude_none=True))
+                # if len(m.content) > 0:
+                #     req_messages.append(m.dict(exclude_none=True))
+
+                msg_dict = m.dict(exclude_none=True)
+
+                for i, ce in enumerate(m.content):
+                    if ce.type == "image_url":
+                        alter_image_ele = {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": await image.qq_image_url_to_base64(ce.image_url.url)
+                            }
+                        }
+                        msg_dict["content"][i] = alter_image_ele
+
+                req_messages.append(msg_dict)
 
         args["messages"] = req_messages
+
+        # anthropic的tools处在beta阶段，sdk不稳定，故暂时不支持
+        #
+        # if funcs:
+        #     tools = await self.ap.tool_mgr.generate_tools_for_openai(funcs)
+
+        #     if tools:
+        #         args["tools"] = tools
 
         try:
             resp = await self.client.messages.create(**args)
