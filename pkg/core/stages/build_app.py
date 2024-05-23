@@ -34,6 +34,7 @@ class BuildAppStage(stage.BootingStage):
 
         center_v2_api = center_v2.V2CenterAPI(
             ap,
+            backend_url=ap.system_cfg.data["qcg-center-url"],
             basic_info={
                 "host_id": identifier.identifier["host_id"],
                 "instance_id": identifier.identifier["instance_id"],
