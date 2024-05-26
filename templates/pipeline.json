@@ -29,7 +29,10 @@
         "strategy": "drop",
         "algo": "fixwin",
         "fixwin": {
-            "default": 60
+            "default": {
+                "window-size": 60,
+                "limit": 60
+            }
         }
     }
 }

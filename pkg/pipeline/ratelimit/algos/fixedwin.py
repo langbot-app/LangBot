@@ -1,18 +1,15 @@
-# 固定窗口算法
 from __future__ import annotations
-
 import asyncio
 import time
-
 from .. import algo
 
-
+# 固定窗口算法
 class SessionContainer:
     
     wait_lock: asyncio.Lock
 
     records: dict[int, int]
-    """访问记录，key为每分钟的起始时间戳，value为访问次数"""
+    """访问记录，key为每窗口长度的起始时间戳，value为访问次数"""
 
     def __init__(self):
         self.wait_lock = asyncio.Lock()
@@ -47,30 +44,34 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
 
         # 等待锁
         async with container.wait_lock:
+
+            # 获取窗口大小和限制
+            window_size = self.ap.pipeline_cfg.data['rate-limit']['fixwin']['default']['window-size']
+            limitation = self.ap.pipeline_cfg.data['rate-limit']['fixwin']['default']['limit']
+
+            if session_name in self.ap.pipeline_cfg.data['rate-limit']['fixwin']:
+                window_size = self.ap.pipeline_cfg.data['rate-limit']['fixwin'][session_name]['window-size']
+                limitation = self.ap.pipeline_cfg.data['rate-limit']['fixwin'][session_name]['limit']
+
             # 获取当前时间戳
             now = int(time.time())
 
-            # 获取当前分钟的起始时间戳
-            now = now - now % 60
+            # 获取当前窗口的起始时间戳
+            now = now - now % window_size
 
-            # 获取当前分钟的访问次数
+            # 获取当前窗口的访问次数
             count = container.records.get(now, 0)
-
-            limitation = self.ap.pipeline_cfg.data['rate-limit']['fixwin']['default']
-
-            if session_name in self.ap.pipeline_cfg.data['rate-limit']['fixwin']:
-                limitation = self.ap.pipeline_cfg.data['rate-limit']['fixwin'][session_name]
 
             # 如果访问次数超过了限制
             if count >= limitation:
                 if self.ap.pipeline_cfg.data['rate-limit']['strategy'] == 'drop':
                     return False
                 elif self.ap.pipeline_cfg.data['rate-limit']['strategy'] == 'wait':
-                    # 等待下一分钟
-                    await asyncio.sleep(60 - time.time() % 60)
+                    # 等待下一窗口
+                    await asyncio.sleep(window_size - time.time() % window_size)
     
                     now = int(time.time())
-                    now = now - now % 60
+                    now = now - now % window_size
             
             if now not in container.records:
                 container.records = {}
