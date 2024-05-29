@@ -13,6 +13,7 @@ from .respback import respback
 from .wrapper import wrapper
 from .preproc import preproc
 from .ratelimit import ratelimit
+from .msgtrun import msgtrun
 
 
 # 请求处理阶段顺序
@@ -21,6 +22,7 @@ stage_order = [
     "BanSessionCheckStage",  # 封禁会话检查
     "PreContentFilterStage",  # 内容过滤前置阶段
     "PreProcessor",  # 预处理器
+    "ConversationMessageTruncator",  # 会话消息截断器
     "RequireRateLimitOccupancy",  # 请求速率限制占用
     "MessageProcessor",  # 处理器
     "ReleaseRateLimitOccupancy",  # 释放速率限制占用
