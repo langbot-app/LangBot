@@ -27,6 +27,7 @@ async def make_app() -> app.Application:
     for stage_name in stage_order:
         stage_cls = stage.preregistered_stages[stage_name]
         stage_inst = stage_cls()
+
         await stage_inst.run(ap)
 
     await ap.initialize()
@@ -35,5 +36,8 @@ async def make_app() -> app.Application:
 
 
 async def main():
-    app_inst = await make_app()
-    await app_inst.run()
+    try:
+        app_inst = await make_app()
+        await app_inst.run()
+    except Exception as e:
+        print(f"应用启动失败: {e}")

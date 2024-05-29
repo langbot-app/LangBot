@@ -37,7 +37,10 @@ class JSONConfigFile(file_model.ConfigFile):
                 self.template_data = json.load(f)
 
         with open(self.config_file_name, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
+            try:
+                cfg = json.load(f)
+            except json.JSONDecodeError as e:
+                raise Exception(f"配置文件 {self.config_file_name} 语法错误: {e}")
 
         if completion:
 
