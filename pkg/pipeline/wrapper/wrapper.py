@@ -71,7 +71,7 @@ class ResponseWrapper(stage.PipelineStage):
 
                     reply_text = ''
 
-                    if result.content is not None:  # 有内容
+                    if result.content:  # 有内容
                         reply_text = str(result.get_content_mirai_message_chain())
 
                         # ============= 触发插件事件 ===============
