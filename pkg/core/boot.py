@@ -1,5 +1,7 @@
 from __future__ import print_function
 
+import traceback
+
 from . import app
 from ..audit import identifier
 from . import stage
@@ -40,4 +42,4 @@ async def main():
         app_inst = await make_app()
         await app_inst.run()
     except Exception as e:
-        print(f"应用启动失败: {e}")
+        traceback.print_exc()
