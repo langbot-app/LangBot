@@ -102,9 +102,14 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
         messages: typing.List[llm_entities.Message],
         funcs: typing.List[tools_entities.LLMFunction] = None,
     ) -> llm_entities.Message:
-        req_messages = [  # req_messages 仅用于类内，外部同步由 query.messages 进行
-            m.dict(exclude_none=True) for m in messages
-        ]
+        req_messages = []
+        for m in messages:
+            msg_dict = m.dict(exclude_none=True)
+            if isinstance(msg_dict.get("content"), list):
+                # 确保content是字符串
+                msg_dict["content"] = "".join(
+                    [part["text"] for part in msg_dict["content"]])
+            req_messages.append(msg_dict)
 
         try:
             return await self._closure(req_messages, model, funcs)
