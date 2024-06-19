@@ -102,13 +102,15 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
         messages: typing.List[llm_entities.Message],
         funcs: typing.List[tools_entities.LLMFunction] = None,
     ) -> llm_entities.Message:
-        req_messages = []
+        req_messages = []  # req_messages 仅用于类内，外部同步由 query.messages 进行
         for m in messages:
             msg_dict = m.dict(exclude_none=True)
-            if isinstance(msg_dict.get("content"), list):
-                # 确保content是字符串
-                msg_dict["content"] = "".join(
-                    [part["text"] for part in msg_dict["content"]])
+            content = msg_dict.get("content")
+            if isinstance(content, list):
+                # 检查 content 列表中是否每个部分都是文本
+                if all(isinstance(part, dict) and part.get("type") == "text" for part in content):
+                    # 将所有文本部分合并为一个字符串
+                    msg_dict["content"] = "".join(part["text"] for part in content)
             req_messages.append(msg_dict)
 
         try:
