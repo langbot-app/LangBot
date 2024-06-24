@@ -110,7 +110,7 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
                 # 检查 content 列表中是否每个部分都是文本
                 if all(isinstance(part, dict) and part.get("type") == "text" for part in content):
                     # 将所有文本部分合并为一个字符串
-                    msg_dict["content"] = "".join(part["text"] for part in content)
+                    msg_dict["content"] = "\n".join(part["text"] for part in content)
             req_messages.append(msg_dict)
 
         try:
