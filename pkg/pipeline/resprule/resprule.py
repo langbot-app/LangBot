@@ -44,8 +44,8 @@ class GroupRespondRuleCheckStage(stage.PipelineStage):
 
         use_rule = rules['default']
 
-        if str(query.launcher_id) in use_rule:
-            use_rule = use_rule[str(query.launcher_id)]
+        if str(query.launcher_id) in rules:
+            use_rule = rules[str(query.launcher_id)]
 
         for rule_matcher in self.rule_matchers:  # 任意一个匹配就放行
             res = await rule_matcher.match(str(query.message_chain), query.message_chain, use_rule, query)

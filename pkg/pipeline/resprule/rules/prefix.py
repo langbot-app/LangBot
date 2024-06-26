@@ -20,11 +20,14 @@ class PrefixRule(rule_model.GroupRespondRule):
         for prefix in prefixes:
             if message_text.startswith(prefix):
 
+                # 查找第一个plain元素
+                for me in message_chain:
+                    if isinstance(me, mirai.Plain):
+                        me.text = me.text[len(prefix):]
+
                 return entities.RuleJudgeResult(
                     matching=True,
-                    replacement=mirai.MessageChain([
-                        mirai.Plain(message_text[len(prefix):])
-                    ]),
+                    replacement=message_chain,
                 )
 
         return entities.RuleJudgeResult(
