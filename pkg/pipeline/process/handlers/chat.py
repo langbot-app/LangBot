@@ -62,9 +62,8 @@ class ChatMessageHandler(handler.MessageHandler):
                 )
 
             if event_ctx.event.alter is not None:
-                query.message_chain = mirai.MessageChain([
-                    mirai.Plain(event_ctx.event.alter)
-                ])
+                # if isinstance(event_ctx.event, str):  # 现在暂时不考虑多模态alter
+                query.user_message.content = event_ctx.event.alter
 
             text_length = 0
 
