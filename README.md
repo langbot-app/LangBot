@@ -42,14 +42,5 @@
 <a href="https://github.com/RockChinQ/qcg-center">遥测服务端源码</a> ｜
 <a href="https://github.com/the-lazy-me/QChatGPT-Wiki">官方文档储存库</a>
 
-<hr/>
-
-<div align="center">
-京东云4090单卡15C90G实例 <br/>
-    仅需1.89/小时，包月1225元起  <br/>
-    可选预装Stable Diffusion等应用，随用随停，计费透明，欢迎首选支持 <br/>
-https://3.cn/1ZOi6-Gj
-</div>
-
 <img alt="回复效果（带有联网插件）" src="https://qchatgpt.rockchin.top/assets/image/QChatGPT-0516.png" width="500px"/>
 </div>
