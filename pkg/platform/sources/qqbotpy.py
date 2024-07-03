@@ -198,7 +198,6 @@ class OfficialMessageConverter(adapter_model.MessageConverter):
         bot_account_id: int = 0,
     ) -> mirai.MessageChain:
         yiri_msg_list = []
-
         # 存id
 
         yiri_msg_list.append(
@@ -218,7 +217,7 @@ class OfficialMessageConverter(adapter_model.MessageConverter):
                 yiri_msg_list.append(mirai.At(target=mention.id))
 
         for attachment in message.attachments:
-            if attachment.content_type == "image":
+            if attachment.content_type.startswith("image"):
                 yiri_msg_list.append(mirai.Image(url=attachment.url))
             else:
                 logging.warning(
