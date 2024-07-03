@@ -53,11 +53,9 @@ class BuildAppStage(stage.BootingStage):
 
         # 发送公告
         ann_mgr = announce.AnnouncementManager(ap)
-        await ann_mgr.show_announcements()
+        ap.ann_mgr = ann_mgr
 
         ap.query_pool = pool.QueryPool()
-
-        await ap.ver_mgr.show_version_update()
 
         plugin_mgr_inst = plugin_mgr.PluginManager(ap)
         await plugin_mgr_inst.initialize()

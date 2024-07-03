@@ -7,14 +7,15 @@ from ..audit import identifier
 from . import stage
 
 # 引入启动阶段实现以便注册
-from .stages import load_config, setup_logger, build_app, migrate
+from .stages import load_config, setup_logger, build_app, migrate, show_notes
 
 
 stage_order = [
     "LoadConfigStage",
     "MigrationStage",
     "SetupLoggerStage",
-    "BuildAppStage"
+    "BuildAppStage",
+    "ShowNotesStage"
 ]
 
 
