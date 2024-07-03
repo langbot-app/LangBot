@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import typing
+import logging
 import time
 
 import requests
@@ -213,11 +215,11 @@ class VersionManager:
 
     async def show_version_update(
         self
-    ):
+    ) -> typing.Tuple[str, int]:
         try:
 
             if await self.ap.ver_mgr.is_new_version_available():
-                self.ap.logger.info("有新版本可用，请使用 !update 命令更新")
+                return "有新版本可用，请使用管理员账号发送 !update 命令更新", logging.INFO
         
         except Exception as e:
-            self.ap.logger.warning(f"检查版本更新时出错: {e}")
+            return f"检查版本更新时出错: {e}", logging.WARNING

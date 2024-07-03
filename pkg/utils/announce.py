@@ -4,6 +4,7 @@ import json
 import typing
 import os
 import base64
+import logging
 
 import pydantic
 import requests
@@ -107,17 +108,20 @@ class AnnouncementManager:
 
     async def show_announcements(
         self
-    ):
+    ) -> typing.Tuple[str, int]:
         """显示公告"""
         try:
             announcements = await self.fetch_new()
+            ann_text = ""
             for ann in announcements:
-                self.ap.logger.info(f'[公告] {ann.time}: {ann.content}')
+                ann_text += f"[公告] {ann.time}: {ann.content}\n"
 
             if announcements:
 
                 await self.ap.ctr_mgr.main.post_announcement_showed(
                     ids=[item.id for item in announcements]
                 )
+
+            return ann_text, logging.INFO
         except Exception as e:
-            self.ap.logger.warning(f'获取公告时出错: {e}')
+            return f'获取公告时出错: {e}', logging.WARNING

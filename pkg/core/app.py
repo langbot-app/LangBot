@@ -15,7 +15,7 @@ from ..command import cmdmgr
 from ..plugin import manager as plugin_mgr
 from ..pipeline import pool
 from ..pipeline import controller, stagemgr
-from ..utils import version as version_mgr, proxy as proxy_mgr
+from ..utils import version as version_mgr, proxy as proxy_mgr, announce as announce_mgr
 
 
 class Application:
@@ -68,6 +68,8 @@ class Application:
     stage_mgr: stagemgr.StageManager = None
 
     ver_mgr: version_mgr.VersionManager = None
+
+    ann_mgr: announce_mgr.AnnouncementManager = None
 
     proxy_mgr: proxy_mgr.ProxyManager = None
 
