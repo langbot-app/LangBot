@@ -73,6 +73,9 @@ class Query(pydantic.BaseModel):
     resp_message_chain: typing.Optional[list[mirai.MessageChain]] = None
     """回复消息链，从resp_messages包装而得"""
 
+    # ======= 内部保留 =======
+    current_stage: "pkg.pipeline.stagemgr.StageInstContainer" = None
+
     class Config:
         arbitrary_types_allowed = True
 
