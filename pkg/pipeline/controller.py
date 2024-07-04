@@ -4,6 +4,8 @@ import asyncio
 import typing
 import traceback
 
+import mirai
+
 from ..core import app, entities
 from . import entities as pipeline_entities
 from ..plugin import events
@@ -68,6 +70,17 @@ class Controller:
         """检查输出
         """
         if result.user_notice:
+            # 处理str类型
+
+            if isinstance(result.user_notice, str):
+                result.user_notice = mirai.MessageChain(
+                    mirai.Plain(result.user_notice)
+                )
+            elif isinstance(result.user_notice, list):
+                result.user_notice = mirai.MessageChain(
+                    *result.user_notice
+                )
+
             await self.ap.platform_mgr.send(
                 query.message_event,
                 result.user_notice,
