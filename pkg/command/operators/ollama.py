@@ -21,8 +21,8 @@ class OllamaOperator(operator.CommandOperator):
         for model in model_list:
             content += f"name: {model['name']}\n"
             content += f"modified_at: {model['modified_at']}\n"
-            content += f"size: {bytes_to_mb(model['size'])}mb\n\n"
-        yield entities.CommandReturn(text=f"{content}")
+            content += f"size: {bytes_to_mb(model['size'])}MB\n\n"
+        yield entities.CommandReturn(text=f"{content.strip()}")
 
 
 def bytes_to_mb(num_bytes):
@@ -56,7 +56,7 @@ class OllamaShowOperator(operator.CommandOperator):
         except ollama.ResponseError as e:
             content = f"{e.error}"
 
-        yield entities.CommandReturn(text=content)
+        yield entities.CommandReturn(text=content.strip())
 
 
 @operator.operator_class(
@@ -93,7 +93,7 @@ class OllamaPullOperator(operator.CommandOperator):
                         if percentage_completed > progress_count:
                             progress_count += 10
                             yield entities.CommandReturn(
-                                text=f"下载进度: {completed}/{total} = {percentage_completed:.2f}%")
+                                text=f"下载进度: {completed}/{total} ({percentage_completed:.2f}%)")
         except ollama.ResponseError as e:
             yield entities.CommandReturn(text=f"拉取失败: {e.error}")
 
