@@ -8,7 +8,7 @@ from . import entities, operator, errors
 from ..config import manager as cfg_mgr
 
 # 引入所有算子以便注册
-from .operators import func, plugin, default, reset, list as list_cmd, last, next, delc, resend, prompt, cmd, help, version, update
+from .operators import func, plugin, default, reset, list as list_cmd, last, next, delc, resend, prompt, cmd, help, version, update, ollama
 
 
 class CommandManager:
