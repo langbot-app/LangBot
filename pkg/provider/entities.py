@@ -95,7 +95,7 @@ class Message(pydantic.BaseModel):
             for ce in self.content:
                 if ce.type == 'text':
                     mc.append(mirai.Plain(ce.text))
-                elif ce.type == 'image':
+                elif ce.type == 'image_url':
                     if ce.image_url.url.startswith("http"):
                         mc.append(mirai.Image(url=ce.image_url.url))
                     else:  # base64
