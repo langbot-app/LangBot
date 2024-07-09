@@ -37,6 +37,11 @@
             "base-url": "https://api.deepseek.com",
             "args": {},
             "timeout": 120
+        },
+        "ollama-chat": {
+            "base-url": "http://127.0.0.1:11434",
+            "args": {},
+            "timeout": 600
         }
     },
     "model": "gpt-3.5-turbo",
