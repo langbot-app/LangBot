@@ -8,11 +8,11 @@ from .. import operator, entities
 
 
 @operator.operator_class(
-    name="ollama_list",
-    help="ollama模型列表",
-    usage="!ollama_list"
+    name="ollama",
+    help="ollama平台操作",
+    usage="!ollama\n!ollama show <模型名>\n!ollama pull <模型名>\n!ollama del <模型名>"
 )
-class OllamaListOperator(operator.CommandOperator):
+class OllamaOperator(operator.CommandOperator):
     async def execute(
             self, context: entities.ExecuteContext
     ) -> typing.AsyncGenerator[entities.CommandReturn, None]:
@@ -31,9 +31,10 @@ def bytes_to_mb(num_bytes):
 
 
 @operator.operator_class(
-    name="ollama_show",
+    name="show",
     help="ollama模型详情",
-    usage="!ollama_show <模型名>"
+    privilege=2,
+    parent_class=OllamaOperator
 )
 class OllamaShowOperator(operator.CommandOperator):
     async def execute(
@@ -59,9 +60,10 @@ class OllamaShowOperator(operator.CommandOperator):
 
 
 @operator.operator_class(
-    name="ollama_pull",
+    name="pull",
     help="ollama模型拉取",
-    usage="!ollama_pull <模型名>"
+    privilege=2,
+    parent_class=OllamaOperator
 )
 class OllamaPullOperator(operator.CommandOperator):
     async def execute(
@@ -97,9 +99,10 @@ class OllamaPullOperator(operator.CommandOperator):
 
 
 @operator.operator_class(
-    name="ollama_del",
+    name="del",
     help="ollama模型删除",
-    usage="!ollama_del <模型名>"
+    privilege=2,
+    parent_class=OllamaOperator
 )
 class OllamaDelOperator(operator.CommandOperator):
     async def execute(
