@@ -14,7 +14,7 @@ from ...tools import entities as tools_entities
 from ....core import app
 from ....utils import image
 
-REQUESTER_NAME: str = "ollama-chat-completions"
+REQUESTER_NAME: str = "ollama-chat"
 
 
 @api.requester_class(REQUESTER_NAME)
