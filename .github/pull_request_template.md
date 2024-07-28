@@ -2,24 +2,16 @@
 
 实现/解决/优化的内容: 
 
-### 事务
+## 检查清单
 
-- [ ] 已阅读仓库[贡献指引](https://github.com/RockChinQ/QChatGPT/blob/master/CONTRIBUTING.md)
-- [ ] 已与维护者在issues或其他平台沟通此PR大致内容
+### PR 作者完成
 
-## 以下内容可在起草PR后、合并PR前逐步完成
+- [ ] 阅读仓库[贡献指引](https://github.com/RockChinQ/QChatGPT/blob/master/CONTRIBUTING.md)了吗？
+- [ ] 与项目所有者沟通过了吗？
 
-### 功能
+### 项目所有者完成
 
-- [ ] 已编写完善的配置文件字段说明（若有新增）
-- [ ] 已编写面向用户的新功能说明（若有必要）
-- [ ] 已测试新功能或更改
-
-### 兼容性
-
-- [ ] 已处理版本兼容性
-- [ ] 已处理插件兼容问题
-
-### 风险
-
-可能导致或已知的问题: 
+- [ ] 相关 issues 链接了吗？
+- [ ] 配置项写好了吗？迁移写好了吗？生效了吗？
+- [ ] 依赖写到 requirements.txt 和 core/bootutils/deps.py 了吗
+- [ ] 文档编写了吗？

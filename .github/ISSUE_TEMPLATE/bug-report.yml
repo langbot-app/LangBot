@@ -5,17 +5,6 @@ labels: ["bug?"]
 body:
   - type: dropdown
     attributes:
-      label: 部署方式
-      description: "主程序使用的部署方式"
-      options:
-        - 手动部署
-        - 安装器部署
-        - 一键安装包部署
-        - Docker部署
-    validations:
-      required: true
-  - type: dropdown
-    attributes:
       label: 消息平台适配器
       description: "连接QQ使用的框架"
       options:
@@ -27,37 +16,24 @@ body:
       required: false
   - type: input
     attributes:
-      label: 系统环境
-      description: 操作系统、系统架构、**主机地理位置**，地理位置最好写清楚，涉及网络问题排查。
-      placeholder: 例如： CentOS x64 中国大陆、Windows11 美国
-    validations:
-      required: true
-  - type: input
-    attributes:
-      label: Python环境
-      description: 运行程序的Python版本
-      placeholder: 例如： Python 3.10
+      label: 运行环境
+      description: 操作系统、系统架构、**Python版本**、**主机地理位置**
+      placeholder: 例如： CentOS x64 Python 3.10.3、Docker 的直接写 Docker 就行
     validations:
       required: true
   - type: input
     attributes:
       label: QChatGPT版本
       description: QChatGPT版本号
-      placeholder: 例如： v2.6.0，可以使用`!version`命令查看
+      placeholder: 例如：v3.3.0，可以使用`!version`命令查看，或者到 pkg/utils/constants.py 查看
     validations:
       required: true
   - type: textarea
     attributes:
       label: 异常情况
-      description: 完整描述异常情况，什么时候发生的、发生了什么，尽可能详细
+      description: 完整描述异常情况，什么时候发生的、发生了什么。**请附带日志信息。**
     validations:
       required: true
-  - type: textarea
-    attributes:
-      label: 日志信息
-      description: 请提供完整的 **登录框架 和 QChatGPT控制台**的相关日志信息（若有），不提供日志信息**无法**为您排查问题，请尽可能详细
-    validations:
-      required: false
   - type: textarea
     attributes:
       label: 启用的插件
