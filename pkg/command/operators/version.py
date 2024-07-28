@@ -20,7 +20,7 @@ class VersionCommand(operator.CommandOperator):
 
         try:
             if await self.ap.ver_mgr.is_new_version_available():
-                reply_str += "\n\n有新版本可用, 使用 !update 更新"
+                reply_str += "\n\n有新版本可用。"
         except:
             pass
 

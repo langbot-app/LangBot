@@ -3,7 +3,7 @@ from __future__ import annotations
 import abc
 import typing
 
-from ..core import app
+from . import app
 
 
 preregistered_migrations: list[typing.Type[Migration]] = []
