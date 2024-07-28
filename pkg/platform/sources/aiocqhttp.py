@@ -47,7 +47,16 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
             elif type(msg) is mirai.Face:
                 msg_list.append(aiocqhttp.MessageSegment.face(msg.face_id))
             elif type(msg) is mirai.Voice:
-                msg_list.append(aiocqhttp.MessageSegment.record(msg.path))
+                arg = ''
+                if msg.base64:
+                    arg = msg.base64
+                    msg_list.append(aiocqhttp.MessageSegment.record(f"base64://{arg}"))
+                elif msg.url:
+                    arg = msg.url
+                    msg_list.append(aiocqhttp.MessageSegment.record(arg))
+                elif msg.path:
+                    arg = msg.path
+                    msg_list.append(aiocqhttp.MessageSegment.record(msg.path))
             elif type(msg) is forward.Forward:
 
                 for node in msg.node_list:
