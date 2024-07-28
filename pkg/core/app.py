@@ -9,6 +9,7 @@ from ..provider.session import sessionmgr as llm_session_mgr
 from ..provider.modelmgr import modelmgr as llm_model_mgr
 from ..provider.sysprompt import sysprompt as llm_prompt_mgr
 from ..provider.tools import toolmgr as llm_tool_mgr
+from ..provider import runnermgr
 from ..config import manager as config_mgr
 from ..audit.center import v2 as center_mgr
 from ..command import cmdmgr
@@ -32,6 +33,8 @@ class Application:
     prompt_mgr: llm_prompt_mgr.PromptManager = None
 
     tool_mgr: llm_tool_mgr.ToolManager = None
+
+    runner_mgr: runnermgr.RunnerManager = None
 
     # ======= 配置管理器 =======
 

@@ -13,6 +13,7 @@ from ...provider.session import sessionmgr as llm_session_mgr
 from ...provider.modelmgr import modelmgr as llm_model_mgr
 from ...provider.sysprompt import sysprompt as llm_prompt_mgr
 from ...provider.tools import toolmgr as llm_tool_mgr
+from ...provider import runnermgr
 from ...platform import manager as im_mgr
 
 @stage.stage_class("BuildAppStage")
@@ -81,6 +82,11 @@ class BuildAppStage(stage.BootingStage):
         llm_tool_mgr_inst = llm_tool_mgr.ToolManager(ap)
         await llm_tool_mgr_inst.initialize()
         ap.tool_mgr = llm_tool_mgr_inst
+
+        runner_mgr_inst = runnermgr.RunnerManager(ap)
+        await runner_mgr_inst.initialize()
+        ap.runner_mgr = runner_mgr_inst
+
         im_mgr_inst = im_mgr.PlatformManager(ap=ap)
         await im_mgr_inst.initialize()
         ap.platform_mgr = im_mgr_inst
