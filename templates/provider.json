@@ -48,5 +48,6 @@
     "prompt-mode": "normal",
     "prompt": {
         "default": "" 
-    }
+    },
+    "runner": "local-agent"
 }
