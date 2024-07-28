@@ -15,6 +15,7 @@ required_deps = {
     "aiohttp": "aiohttp",
     "psutil": "psutil",
     "async_lru": "async-lru",
+    "ollama": "ollama",
 }
 
 
