@@ -42,7 +42,9 @@ class Processor(stage.PipelineStage):
         self.ap.logger.info(f"处理 {query.launcher_type.value}_{query.launcher_id} 的请求({query.query_id}): {message_text}")
 
         async def generator():
-            if message_text.startswith('!') or message_text.startswith('！'):
+            cmd_prefix = self.ap.command_cfg.data['command-prefix']
+
+            if any(message_text.startswith(prefix) for prefix in cmd_prefix):
                 async for result in self.cmd_handler.handle(query):
                     yield result
             else:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import typing
 import abc
 import pydantic
+import mirai
 
 from . import events
 from ..provider.tools import entities as tools_entities
@@ -165,11 +166,54 @@ class EventContext:
     }
     """
 
+    # ========== 插件可调用的 API ==========
+
     def add_return(self, key: str, ret):
         """添加返回值"""
         if key not in self.__return_value__:
             self.__return_value__[key] = []
         self.__return_value__[key].append(ret)
+    
+    async def reply(self, message_chain: mirai.MessageChain):
+        """回复此次消息请求
+        
+        Args:
+            message_chain (mirai.MessageChain): YiriMirai库的消息链，若用户使用的不是 YiriMirai 适配器，程序也能自动转换为目标消息链
+        """
+        await self.host.ap.platform_mgr.send(
+            event=self.event.query.message_event,
+            msg=message_chain,
+            adapter=self.event.query.adapter,
+        )
+    
+    async def send_message(
+        self,
+        target_type: str,
+        target_id: str,
+        message: mirai.MessageChain
+    ):
+        """主动发送消息
+        
+        Args:
+            target_type (str): 目标类型，`person`或`group`
+            target_id (str): 目标ID
+            message (mirai.MessageChain): YiriMirai库的消息链，若用户使用的不是 YiriMirai 适配器，程序也能自动转换为目标消息链
+        """
+        await self.event.query.adapter.send_message(
+            target_type=target_type,
+            target_id=target_id,
+            message=message
+        )
+
+    def prevent_postorder(self):
+        """阻止后续插件执行"""
+        self.__prevent_postorder__ = True
+
+    def prevent_default(self):
+        """阻止默认行为"""
+        self.__prevent_default__ = True
+
+    # ========== 以下是内部保留方法，插件不应调用 ==========
 
     def get_return(self, key: str) -> list:
         """获取key的所有返回值"""
@@ -183,14 +227,6 @@ class EventContext:
             return self.__return_value__[key][0]
         return None
 
-    def prevent_default(self):
-        """阻止默认行为"""
-        self.__prevent_default__ = True
-
-    def prevent_postorder(self):
-        """阻止后续插件执行"""
-        self.__prevent_postorder__ = True
-
     def is_prevented_default(self):
         """是否阻止默认行为"""
         return self.__prevent_default__
@@ -198,6 +234,7 @@ class EventContext:
     def is_prevented_postorder(self):
         """是否阻止后序插件执行"""
         return self.__prevent_postorder__
+    
 
     def __init__(self, host: APIHost, event: events.BaseEventModel):
 

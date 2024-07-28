@@ -1,3 +1,7 @@
 {
-    "privilege": {}
+    "privilege": {},
+    "command-prefix": [
+        "!",
+        "！"
+    ]
 }

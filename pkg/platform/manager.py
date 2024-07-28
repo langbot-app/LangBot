@@ -146,9 +146,9 @@ class PlatformManager:
         if len(self.adapters) == 0:
             self.ap.logger.warning('未运行平台适配器，请根据文档配置并启用平台适配器。')
 
-    async def send(self, event: mirai.MessageEvent, msg: mirai.MessageChain, adapter: msadapter.MessageSourceAdapter, check_quote=True, check_at_sender=True):
+    async def send(self, event: mirai.MessageEvent, msg: mirai.MessageChain, adapter: msadapter.MessageSourceAdapter):
         
-        if check_at_sender and self.ap.platform_cfg.data['at-sender'] and isinstance(event, GroupMessage):
+        if self.ap.platform_cfg.data['at-sender'] and isinstance(event, GroupMessage):
 
             msg.insert(
                 0,
@@ -160,7 +160,7 @@ class PlatformManager:
         await adapter.reply_message(
             event,
             msg,
-            quote_origin=True if self.ap.platform_cfg.data['quote-origin'] and check_quote else False
+            quote_origin=True if self.ap.platform_cfg.data['quote-origin'] else False
         )
 
     async def run(self):

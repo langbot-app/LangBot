@@ -1,0 +1,40 @@
+from __future__ import annotations
+
+import abc
+import typing
+
+from ..core import app, entities as core_entities
+from . import entities as llm_entities
+
+
+preregistered_runners: list[typing.Type[RequestRunner]] = []
+
+def runner_class(name: str):
+    """注册一个请求运行器
+    """
+    def decorator(cls: typing.Type[RequestRunner]) -> typing.Type[RequestRunner]:
+        cls.name = name
+        preregistered_runners.append(cls)
+        return cls
+
+    return decorator
+
+
+class RequestRunner(abc.ABC):
+    """请求运行器
+    """
+    name: str = None
+
+    ap: app.Application
+
+    def __init__(self, ap: app.Application):
+        self.ap = ap
+
+    async def initialize(self):
+        pass
+
+    @abc.abstractmethod
+    async def run(self, query: core_entities.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
+        """运行请求
+        """
+        pass
