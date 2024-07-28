@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import typing
+import traceback
 
 import ollama
-from .. import operator, entities
+from .. import operator, entities, errors
 
 
 @operator.operator_class(
@@ -16,13 +17,16 @@ class OllamaOperator(operator.CommandOperator):
     async def execute(
             self, context: entities.ExecuteContext
     ) -> typing.AsyncGenerator[entities.CommandReturn, None]:
-        content: str = '模型列表:\n'
-        model_list: list = ollama.list().get('models', [])
-        for model in model_list:
-            content += f"name: {model['name']}\n"
-            content += f"modified_at: {model['modified_at']}\n"
-            content += f"size: {bytes_to_mb(model['size'])}MB\n\n"
-        yield entities.CommandReturn(text=f"{content.strip()}")
+        try:
+            content: str = '模型列表:\n'
+            model_list: list = ollama.list().get('models', [])
+            for model in model_list:
+                content += f"名称: {model['name']}\n"
+                content += f"修改时间: {model['modified_at']}\n"
+                content += f"大小: {bytes_to_mb(model['size'])}MB\n\n"
+            yield entities.CommandReturn(text=f"{content.strip()}")
+        except ollama.ResponseError as e:
+            yield entities.CommandReturn(error=errors.CommandError(f"无法获取模型列表，请确认 Ollama 服务正常"))
 
 
 def bytes_to_mb(num_bytes):
@@ -53,11 +57,9 @@ class OllamaShowOperator(operator.CommandOperator):
                 model_info[key] = ignore_show
 
             content += json.dumps(show, indent=4)
+            yield entities.CommandReturn(text=content.strip())
         except ollama.ResponseError as e:
-            content = f"{e.error}"
-
-        yield entities.CommandReturn(text=content.strip())
-
+            yield entities.CommandReturn(error=errors.CommandError(f"无法获取模型详情，请确认 Ollama 服务正常"))
 
 @operator.operator_class(
     name="pull",
@@ -69,9 +71,13 @@ class OllamaPullOperator(operator.CommandOperator):
     async def execute(
             self, context: entities.ExecuteContext
     ) -> typing.AsyncGenerator[entities.CommandReturn, None]:
-        model_list: list = ollama.list().get('models', [])
-        if context.crt_params[0] in [model['name'] for model in model_list]:
-            yield entities.CommandReturn(text="模型已存在")
+        try:
+            model_list: list = ollama.list().get('models', [])
+            if context.crt_params[0] in [model['name'] for model in model_list]:
+                yield entities.CommandReturn(text="模型已存在")
+                return
+        except ollama.ResponseError as e:
+            yield entities.CommandReturn(error=errors.CommandError(f"无法获取模型列表，请确认 Ollama 服务正常"))
             return
 
         on_progress: bool = False
