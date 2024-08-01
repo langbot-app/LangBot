@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import mirai
+import mirai.models
+import mirai.models.message
 
 from ...core import app
 
@@ -63,6 +65,7 @@ class ContentFilterStage(stage.PipelineStage):
         """请求llm前处理消息
         只要有一个不通过就不放行，只放行 PASS 的消息
         """
+
         if not self.ap.pipeline_cfg.data['income-msg-check']:
             return entities.StageProcessResult(
                 result_type=entities.ResultType.CONTINUE,
@@ -145,11 +148,13 @@ class ContentFilterStage(stage.PipelineStage):
             
             contain_non_text = False
 
+            text_components = [mirai.Plain, mirai.models.message.Source]
+
             for me in query.message_chain:
-                if not isinstance(me, mirai.Plain):
+                if type(me) not in text_components:
                     contain_non_text = True
                     break
-            
+
             if contain_non_text:
                 self.ap.logger.debug(f"消息中包含非文本消息，跳过内容过滤器检查。")
                 return entities.StageProcessResult(
