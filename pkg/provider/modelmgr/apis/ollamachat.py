@@ -101,5 +101,5 @@ class OllamaChatCompletions(api.LLMAPIRequester):
             self,
             original_url: str,
     ) -> str:
-        base64_image: str = await image.qq_image_url_to_base64(original_url)
-        return f"data:image/jpeg;base64,{base64_image}"
+        base64_image, image_format = await image.qq_image_url_to_base64(original_url)
+        return f"data:image/{image_format};base64,{base64_image}"

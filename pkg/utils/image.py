@@ -8,14 +8,14 @@ import aiohttp
 
 async def qq_image_url_to_base64(
     image_url: str
-) -> str:
-    """将QQ图片URL转为base64
+) -> typing.Tuple[str, str]:
+    """将QQ图片URL转为base64，并返回图片格式
 
     Args:
         image_url (str): QQ图片URL
 
     Returns:
-        str: base64编码
+        typing.Tuple[str, str]: base64编码和图片格式
     """
     parsed = urlparse(image_url)
     query = parse_qs(parsed.query)
@@ -35,7 +35,12 @@ async def qq_image_url_to_base64(
         ) as resp:
             resp.raise_for_status()  # 检查HTTP错误
             file_bytes = await resp.read()
+            content_type = resp.headers.get('Content-Type')
+            if not content_type or not content_type.startswith('image/'):
+                image_format = 'jpeg'
+            else: 
+                image_format = content_type.split('/')[-1]
 
     base64_str = base64.b64encode(file_bytes).decode()
 
-    return base64_str
+    return base64_str, image_format

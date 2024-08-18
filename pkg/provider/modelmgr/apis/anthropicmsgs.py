@@ -72,12 +72,13 @@ class AnthropicMessages(api.LLMAPIRequester):
 
                 for i, ce in enumerate(m.content):
                     if ce.type == "image_url":
+                        base64_image, image_format = await image.qq_image_url_to_base64(ce.image_url.url)
                         alter_image_ele = {
                             "type": "image",
                             "source": {
                                 "type": "base64",
-                                "media_type": "image/jpeg",
-                                "data": await image.qq_image_url_to_base64(ce.image_url.url)
+                                "media_type": f"image/{image_format}",
+                                "data": base64_image
                             }
                         }
                         msg_dict["content"][i] = alter_image_ele
