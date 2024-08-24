@@ -23,10 +23,12 @@ from ...config import manager as cfg_mgr
 class OfficialGroupMessage(mirai.GroupMessage):
     pass
 
+class OfficialFriendMessage(mirai.FriendMessage):
+    pass
 
 event_handler_mapping = {
     mirai.GroupMessage: ["on_at_message_create", "on_group_at_message_create"],
-    mirai.FriendMessage: ["on_direct_message_create"],
+    mirai.FriendMessage: ["on_direct_message_create", "on_c2c_message_create"],
 }
 
 
@@ -193,7 +195,7 @@ class OfficialMessageConverter(adapter_model.MessageConverter):
 
     @staticmethod
     def extract_message_chain_from_obj(
-        message: typing.Union[botpy_message.Message, botpy_message.DirectMessage],
+        message: typing.Union[botpy_message.Message, botpy_message.DirectMessage, botpy_message.GroupMessage, botpy_message.C2CMessage],
         message_id: str = None,
         bot_account_id: int = 0,
     ) -> mirai.MessageChain:
@@ -206,7 +208,7 @@ class OfficialMessageConverter(adapter_model.MessageConverter):
             )
         )
 
-        if type(message) is not botpy_message.DirectMessage:
+        if type(message) not in [botpy_message.DirectMessage, botpy_message.C2CMessage]:
             yiri_msg_list.append(mirai.At(target=bot_account_id))
 
         if hasattr(message, "mentions"):
@@ -255,7 +257,7 @@ class OfficialEventConverter(adapter_model.EventConverter):
 
     def target2yiri(
         self,
-        event: typing.Union[botpy_message.Message, botpy_message.DirectMessage]
+        event: typing.Union[botpy_message.Message, botpy_message.DirectMessage, botpy_message.GroupMessage, botpy_message.C2CMessage],
     ) -> mirai.Event:
         import mirai.models.entities as mirai_entities
 
@@ -295,7 +297,7 @@ class OfficialEventConverter(adapter_model.EventConverter):
                     ).timestamp()
                 ),
             )
-        elif type(event) == botpy_message.DirectMessage:  # 私聊，转私聊事件
+        elif type(event) == botpy_message.DirectMessage:  # 频道私聊，转私聊事件
             return mirai.FriendMessage(
                 sender=mirai_entities.Friend(
                     id=event.guild_id,
@@ -311,7 +313,7 @@ class OfficialEventConverter(adapter_model.EventConverter):
                     ).timestamp()
                 ),
             )
-        elif type(event) == botpy_message.GroupMessage:
+        elif type(event) == botpy_message.GroupMessage:  # 群聊，转群聊事件
 
             replacing_member_id = self.member_openid_mapping.save_openid(event.author.member_openid)
 
@@ -329,6 +331,25 @@ class OfficialEventConverter(adapter_model.EventConverter):
                     join_timestamp=int(0),
                     last_speak_timestamp=datetime.datetime.now().timestamp(),
                     mute_time_remaining=0,
+                ),
+                message_chain=OfficialMessageConverter.extract_message_chain_from_obj(
+                    event, event.id
+                ),
+                time=int(
+                    datetime.datetime.strptime(
+                        event.timestamp, "%Y-%m-%dT%H:%M:%S%z"
+                    ).timestamp()
+                ),
+            )
+        elif type(event) == botpy_message.C2CMessage:  # 私聊，转私聊事件
+
+            user_id_alter = self.member_openid_mapping.save_openid(event.author.user_openid)  # 实测这里的user_openid与group的member_openid是一样的
+
+            return OfficialFriendMessage(
+                sender=mirai_entities.Friend(
+                    id=user_id_alter,
+                    nickname=user_id_alter,
+                    remark=user_id_alter,
                 ),
                 message_chain=OfficialMessageConverter.extract_message_chain_from_obj(
                     event, event.id
@@ -466,6 +487,17 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
                 args["msg_seq"] = self.group_msg_seq
                 self.group_msg_seq += 1
                 await self.bot.api.post_group_message(**args)
+            elif type(message_source) == OfficialFriendMessage:
+                if "image" in args or "file_image" in args:
+                    continue
+                args["openid"] = self.member_openid_mapping.getkey(
+                    message_source.sender.id
+                )
+
+                args["msg_id"] = cached_message_ids[
+                    str(message_source.message_chain.message_id)
+                ]
+                await self.bot.api.post_c2c_message(**args)
 
     async def is_muted(self, group_id: int) -> bool:
         return False
