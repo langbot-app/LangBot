@@ -3,16 +3,15 @@ from __future__ import annotations
 import logging
 import typing
 import datetime
-import asyncio
 import re
 import traceback
-import json
-import threading
 
 import mirai
 import botpy
 import botpy.message as botpy_message
 import botpy.types.message as botpy_message_type
+import pydantic
+import pydantic.networks
 
 from .. import adapter as adapter_model
 from ...pipeline.longtext.strategies import forward
@@ -389,6 +388,7 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
     group_openid_mapping: OpenIDMapping[str, int] = None
 
     group_msg_seq = None
+    c2c_msg_seq = None
 
     def __init__(self, cfg: dict, ap: app.Application):
         """初始化适配器"""
@@ -396,6 +396,7 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
         self.ap = ap
 
         self.group_msg_seq = 1
+        self.c2c_msg_seq = 1
 
         switchs = {}
 
@@ -475,28 +476,57 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
                 ]
                 await self.bot.api.post_dms(**args)
             elif type(message_source) == OfficialGroupMessage:
-                if "image" in args or "file_image" in args:
+
+                if "file_image" in args:  # 暂不支持发送文件图片
                     continue
+
                 args["group_openid"] = self.group_openid_mapping.getkey(
                     message_source.sender.group.id
                 )
+
+                if "image" in args:
+                    uploadMedia = await self.bot.api.post_group_file(
+                        group_openid=args["group_openid"],
+                        file_type=1,
+                        url=str(args['image'])
+                    )
+
+                    del args['image']
+                    args['media'] = uploadMedia
+                    args['msg_type'] = 7
 
                 args["msg_id"] = cached_message_ids[
                     str(message_source.message_chain.message_id)
                 ]
                 args["msg_seq"] = self.group_msg_seq
                 self.group_msg_seq += 1
+
                 await self.bot.api.post_group_message(**args)
             elif type(message_source) == OfficialFriendMessage:
-                if "image" in args or "file_image" in args:
+                if "file_image" in args:
                     continue
                 args["openid"] = self.member_openid_mapping.getkey(
                     message_source.sender.id
                 )
 
+                if "image" in args:
+                    uploadMedia = await self.bot.api.post_c2c_file(
+                        openid=args["openid"],
+                        file_type=1,
+                        url=str(args['image'])
+                    )
+
+                    del args['image']
+                    args['media'] = uploadMedia
+                    args['msg_type'] = 7
+
                 args["msg_id"] = cached_message_ids[
                     str(message_source.message_chain.message_id)
                 ]
+
+                args["msg_seq"] = self.c2c_msg_seq
+                self.c2c_msg_seq += 1
+
                 await self.bot.api.post_c2c_message(**args)
 
     async def is_muted(self, group_id: int) -> bool:
