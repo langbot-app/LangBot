@@ -1,6 +1,6 @@
 
 <p align="center">
-<img src="https://qchatgpt.rockchin.top/logo.png" alt="QChatGPT" width="180" />
+<img src="https://qchatgpt.rockchin.top/chrome-512.png" alt="QChatGPT" width="180" />
 </p>
 <div align="center">
 
