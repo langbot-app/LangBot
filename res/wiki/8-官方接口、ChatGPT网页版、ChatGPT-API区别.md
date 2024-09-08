@@ -1,3 +1,6 @@
+> [!WARNING]
+> 此 Wiki 已弃用，所有文档已迁移到 [项目主页](https://qchatgpt.rockchin.top)
+
 ## 多个对话接口有何区别？
 
 出于对稳定性的高要求，本项目主线接入的是GPT-3模型接口，此接口由OpenAI官方开放，稳定性强。  
