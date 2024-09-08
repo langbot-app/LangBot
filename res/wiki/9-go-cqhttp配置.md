@@ -1,3 +1,6 @@
+> [!WARNING]
+> 此 Wiki 已弃用，所有文档已迁移到 [项目主页](https://qchatgpt.rockchin.top)
+
 # 配置go-cqhttp用于登录QQ
 
 > 若您是从旧版本升级到此版本以使用go-cqhttp的用户，请您按照`config-template.py`的内容修改`config.py`，添加`msg_source_adapter`配置项并将其设为`nakuru`，同时添加`nakuru_config`字段按照说明配置。
