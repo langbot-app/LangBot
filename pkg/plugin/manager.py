@@ -140,7 +140,7 @@ class PluginManager:
         for plugin in self.plugins:
             if plugin.enabled:
                 if event.__class__ in plugin.event_handlers:
-                    self.ap.logger.debug(f'插件 {plugin.plugin_name} 触发事件 {event.__class__.__name__}')
+                    self.ap.logger.debug(f'插件 {plugin.plugin_name} 处理事件 {event.__class__.__name__}')
                     
                     is_prevented_default_before_call = ctx.is_prevented_default()
 
@@ -150,7 +150,7 @@ class PluginManager:
                             ctx
                         )
                     except Exception as e:
-                        self.ap.logger.error(f'插件 {plugin.plugin_name} 触发事件 {event.__class__.__name__} 时发生错误: {e}')
+                        self.ap.logger.error(f'插件 {plugin.plugin_name} 处理事件 {event.__class__.__name__} 时发生错误: {e}')
                         self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
                     
                     emitted_plugins.append(plugin)
