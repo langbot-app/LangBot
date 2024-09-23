@@ -55,6 +55,10 @@ class OpenAIChatCompletions(api.LLMAPIRequester):
     ) -> llm_entities.Message:
         chatcmpl_message = chat_completion.choices[0].message.dict()
 
+        # 确保 role 字段存在且不为 None
+        if 'role' not in chatcmpl_message or chatcmpl_message['role'] is None:
+            chatcmpl_message['role'] = 'assistant'
+
         message = llm_entities.Message(**chatcmpl_message)
 
         return message
