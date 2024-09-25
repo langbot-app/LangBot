@@ -174,10 +174,11 @@ class AiocqhttpEventConverter(adapter.EventConverter):
         if event.message_type == "group":
             permission = "MEMBER"
 
-            if event.sender["role"] == "admin":
-                permission = "ADMINISTRATOR"
-            elif event.sender["role"] == "owner":
-                permission = "OWNER"
+            if "role" in event.sender:
+                if event.sender["role"] == "admin":
+                    permission = "ADMINISTRATOR"
+                elif event.sender["role"] == "owner":
+                    permission = "OWNER"
             converted_event = platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
                     id=event.sender["user_id"],  # message_seq 放哪？
