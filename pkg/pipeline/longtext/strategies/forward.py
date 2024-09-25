@@ -2,15 +2,17 @@
 from __future__ import annotations
 import typing
 
-from mirai.models import MessageChain
-from mirai.models.message import MessageComponent, ForwardMessageNode
-from mirai.models.base import MiraiBaseModel
+# from mirai.models import MessageChain
+# from mirai.models.message import MessageComponent, ForwardMessageNode
+# from mirai.models.base import MiraiBaseModel
+import pydantic
 
 from .. import strategy as strategy_model
 from ....core import entities as core_entities
+from ....platform.types import message as platform_message
 
 
-class ForwardMessageDiaplay(MiraiBaseModel):
+class ForwardMessageDiaplay(pydantic.BaseModel):
     title: str = "群聊的聊天记录"
     brief: str = "[聊天记录]"
     source: str = "聊天记录"
@@ -18,13 +20,13 @@ class ForwardMessageDiaplay(MiraiBaseModel):
     summary: str = "查看x条转发消息"
 
 
-class Forward(MessageComponent):
+class Forward(platform_message.MessageComponent):
     """合并转发。"""
     type: str = "Forward"
     """消息组件类型。"""
     display: ForwardMessageDiaplay
     """显示信息"""
-    node_list: typing.List[ForwardMessageNode]
+    node_list: typing.List[platform_message.ForwardMessageNode]
     """转发消息节点列表。"""
     def __init__(self, *args, **kwargs):
         if len(args) == 1:
@@ -39,7 +41,7 @@ class Forward(MessageComponent):
 @strategy_model.strategy_class("forward")
 class ForwardComponentStrategy(strategy_model.LongTextStrategy):
 
-    async def process(self, message: str, query: core_entities.Query) -> list[MessageComponent]:
+    async def process(self, message: str, query: core_entities.Query) -> list[platform_message.MessageComponent]:
         display = ForwardMessageDiaplay(
             title="群聊的聊天记录",
             brief="[聊天记录]",
@@ -49,10 +51,10 @@ class ForwardComponentStrategy(strategy_model.LongTextStrategy):
         )
 
         node_list = [
-            ForwardMessageNode(
+            platform_message.ForwardMessageNode(
                 sender_id=query.adapter.bot_account_id,
                 sender_name='QQ用户',
-                message_chain=MessageChain([message])
+                message_chain=platform_message.MessageChain([message])
             )
         ]
 

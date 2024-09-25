@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import mirai
-import mirai.models
-import mirai.models.message
+# import mirai
+# import mirai.models
+# import mirai.models.message
 
 from ...core import app
 
@@ -12,6 +12,9 @@ from ...config import manager as cfg_mgr
 from . import filter as filter_model, entities as filter_entities
 from .filters import cntignore, banwords, baiduexamine
 from ...provider import entities as llm_entities
+from ...platform.types import message as platform_message
+from ...platform.types import events as platform_events
+from ...platform.types import entities as platform_entities
 
 
 @stage.stage_class('PostContentFilterStage')
@@ -89,8 +92,8 @@ class ContentFilterStage(stage.PipelineStage):
                     elif result.level == filter_entities.ResultLevel.PASS:  # 传到下一个
                         message = result.replacement
             
-            query.message_chain = mirai.MessageChain(
-                mirai.Plain(message)
+            query.message_chain = platform_message.MessageChain(
+                platform_message.Plain(message)
             )
 
             return entities.StageProcessResult(
@@ -148,7 +151,7 @@ class ContentFilterStage(stage.PipelineStage):
             
             contain_non_text = False
 
-            text_components = [mirai.Plain, mirai.models.message.Source]
+            text_components = [platform_message.Plain, platform_message.Source]
 
             for me in query.message_chain:
                 if type(me) not in text_components:

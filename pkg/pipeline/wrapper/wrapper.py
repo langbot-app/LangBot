@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import typing
 
-import mirai
+# import mirai
 
 from ...core import app, entities as core_entities
 from .. import entities
@@ -10,6 +10,7 @@ from .. import stage, entities, stagemgr
 from ...core import entities as core_entities
 from ...config import manager as cfg_mgr
 from ...plugin import events
+from ...platform.types import message as platform_message
 
 
 @stage.stage_class("ResponseWrapper")
@@ -34,7 +35,7 @@ class ResponseWrapper(stage.PipelineStage):
         """
 
         # 如果 resp_messages[-1] 已经是 MessageChain 了
-        if isinstance(query.resp_messages[-1], mirai.MessageChain):
+        if isinstance(query.resp_messages[-1], platform_message.MessageChain):
             query.resp_message_chain.append(query.resp_messages[-1])
 
             yield entities.StageProcessResult(
@@ -96,7 +97,7 @@ class ResponseWrapper(stage.PipelineStage):
                         else:
                             if event_ctx.event.reply is not None:
                                 
-                                query.resp_message_chain.append(mirai.MessageChain(event_ctx.event.reply))
+                                query.resp_message_chain.append(platform_message.MessageChain(event_ctx.event.reply))
 
                             else:
 
@@ -113,7 +114,7 @@ class ResponseWrapper(stage.PipelineStage):
 
                         reply_text = f'调用函数 {".".join(function_names)}...'
 
-                        query.resp_message_chain.append(mirai.MessageChain([mirai.Plain(reply_text)]))
+                        query.resp_message_chain.append(platform_message.MessageChain([platform_message.Plain(reply_text)]))
 
                         if self.ap.platform_cfg.data['track-function-calls']:
                             
@@ -139,11 +140,11 @@ class ResponseWrapper(stage.PipelineStage):
                             else:
                                 if event_ctx.event.reply is not None:
                                     
-                                    query.resp_message_chain.append(mirai.MessageChain(event_ctx.event.reply))
+                                    query.resp_message_chain.append(platform_message.MessageChain(event_ctx.event.reply))
 
                                 else:
 
-                                    query.resp_message_chain.append(mirai.MessageChain([mirai.Plain(reply_text)]))
+                                    query.resp_message_chain.append(platform_message.MessageChain([platform_message.Plain(reply_text)]))
 
                                 yield entities.StageProcessResult(
                                     result_type=entities.ResultType.CONTINUE,

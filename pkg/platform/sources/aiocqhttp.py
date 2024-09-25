@@ -5,31 +5,34 @@ import traceback
 import time
 import datetime
 
-import mirai
-import mirai.models.message as yiri_message
+# import mirai
+# import mirai.models.message as yiri_message
 import aiocqhttp
 
 from .. import adapter
 from ...pipeline.longtext.strategies import forward
 from ...core import app
+from ..types import message as platform_message
+from ..types import events as platform_events
+from ..types import entities as platform_entities
 
 
 class AiocqhttpMessageConverter(adapter.MessageConverter):
 
     @staticmethod
-    def yiri2target(message_chain: mirai.MessageChain) -> typing.Tuple[list, int, datetime.datetime]:
+    def yiri2target(message_chain: platform_message.MessageChain) -> typing.Tuple[list, int, datetime.datetime]:
         msg_list = aiocqhttp.Message()
 
         msg_id = 0
         msg_time = None
 
         for msg in message_chain:
-            if type(msg) is mirai.Plain:
+            if type(msg) is platform_message.Plain:
                 msg_list.append(aiocqhttp.MessageSegment.text(msg.text))
-            elif type(msg) is yiri_message.Source:
+            elif type(msg) is platform_message.Source:
                 msg_id = msg.id
                 msg_time = msg.time
-            elif type(msg) is mirai.Image:
+            elif type(msg) is platform_message.Image:
                 arg = ''
                 if msg.base64:
                     arg = msg.base64
@@ -40,13 +43,11 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
                 elif msg.path:
                     arg = msg.path
                     msg_list.append(aiocqhttp.MessageSegment.image(arg))
-            elif type(msg) is mirai.At:
+            elif type(msg) is platform_message.At:
                 msg_list.append(aiocqhttp.MessageSegment.at(msg.target))
-            elif type(msg) is mirai.AtAll:
+            elif type(msg) is platform_message.AtAll:
                 msg_list.append(aiocqhttp.MessageSegment.at("all"))
-            elif type(msg) is mirai.Face:
-                msg_list.append(aiocqhttp.MessageSegment.face(msg.face_id))
-            elif type(msg) is mirai.Voice:
+            elif type(msg) is platform_message.Voice:
                 arg = ''
                 if msg.base64:
                     arg = msg.base64
@@ -74,25 +75,25 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
         yiri_msg_list = []
 
         yiri_msg_list.append(
-            yiri_message.Source(id=message_id, time=datetime.datetime.now())
+            platform_message.Source(id=message_id, time=datetime.datetime.now())
         )
 
         for msg in message:
             if msg.type == "at":
                 if msg.data["qq"] == "all":
-                    yiri_msg_list.append(yiri_message.AtAll())
+                    yiri_msg_list.append(platform_message.AtAll())
                 else:
                     yiri_msg_list.append(
-                        yiri_message.At(
+                        platform_message.At(
                             target=msg.data["qq"],
                         )
                     )
             elif msg.type == "text":
-                yiri_msg_list.append(yiri_message.Plain(text=msg.data["text"]))
+                yiri_msg_list.append(platform_message.Plain(text=msg.data["text"]))
             elif msg.type == "image":
-                yiri_msg_list.append(yiri_message.Image(url=msg.data["url"]))
+                yiri_msg_list.append(platform_message.Image(url=msg.data["url"]))
 
-        chain = mirai.MessageChain(yiri_msg_list)
+        chain = platform_message.MessageChain(yiri_msg_list)
 
         return chain
 
@@ -100,11 +101,11 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
 class AiocqhttpEventConverter(adapter.EventConverter):
 
     @staticmethod
-    def yiri2target(event: mirai.Event, bot_account_id: int):
+    def yiri2target(event: platform_events.Event, bot_account_id: int):
 
         msg, msg_id, msg_time = AiocqhttpMessageConverter.yiri2target(event.message_chain)
 
-        if type(event) is mirai.GroupMessage:
+        if type(event) is platform_events.GroupMessage:
             role = "member"
 
             if event.sender.permission == "ADMINISTRATOR":
@@ -140,7 +141,7 @@ class AiocqhttpEventConverter(adapter.EventConverter):
             }
 
             return aiocqhttp.Event.from_payload(payload)
-        elif type(event) is mirai.FriendMessage:
+        elif type(event) is platform_events.FriendMessage:
 
             payload = {
                 "post_type": "message",
@@ -177,15 +178,15 @@ class AiocqhttpEventConverter(adapter.EventConverter):
                 permission = "ADMINISTRATOR"
             elif event.sender["role"] == "owner":
                 permission = "OWNER"
-            converted_event = mirai.GroupMessage(
-                sender=mirai.models.entities.GroupMember(
+            converted_event = platform_events.GroupMessage(
+                sender=platform_entities.GroupMember(
                     id=event.sender["user_id"],  # message_seq 放哪？
                     member_name=event.sender["nickname"],
                     permission=permission,
-                    group=mirai.models.entities.Group(
+                    group=platform_entities.Group(
                         id=event.group_id,
                         name=event.sender["nickname"],
-                        permission=mirai.models.entities.Permission.Member,
+                        permission=platform_entities.Permission.Member,
                     ),
                     special_title=event.sender["title"] if "title" in event.sender else "",
                     join_timestamp=0,
@@ -197,8 +198,8 @@ class AiocqhttpEventConverter(adapter.EventConverter):
             )
             return converted_event
         elif event.message_type == "private":
-            return mirai.FriendMessage(
-                sender=mirai.models.entities.Friend(
+            return platform_events.FriendMessage(
+                sender=platform_entities.Friend(
                     id=event.sender["user_id"],
                     nickname=event.sender["nickname"],
                     remark="",
@@ -240,7 +241,7 @@ class AiocqhttpAdapter(adapter.MessageSourceAdapter):
             self.bot = aiocqhttp.CQHttp()
 
     async def send_message(
-        self, target_type: str, target_id: str, message: mirai.MessageChain
+        self, target_type: str, target_id: str, message: platform_message.MessageChain
     ):
         aiocq_msg = AiocqhttpMessageConverter.yiri2target(message)[0]
 
@@ -251,8 +252,8 @@ class AiocqhttpAdapter(adapter.MessageSourceAdapter):
 
     async def reply_message(
         self,
-        message_source: mirai.MessageEvent,
-        message: mirai.MessageChain,
+        message_source: platform_events.MessageEvent,
+        message: platform_message.MessageChain,
         quote_origin: bool = False,
     ):  
         aiocq_event = AiocqhttpEventConverter.yiri2target(message_source, self.bot_account_id)
@@ -270,8 +271,8 @@ class AiocqhttpAdapter(adapter.MessageSourceAdapter):
 
     def register_listener(
         self,
-        event_type: typing.Type[mirai.Event],
-        callback: typing.Callable[[mirai.Event, adapter.MessageSourceAdapter], None],
+        event_type: typing.Type[platform_events.Event],
+        callback: typing.Callable[[platform_events.Event, adapter.MessageSourceAdapter], None],
     ):
         async def on_message(event: aiocqhttp.Event):
             self.bot_account_id = event.self_id
@@ -280,15 +281,15 @@ class AiocqhttpAdapter(adapter.MessageSourceAdapter):
             except:
                 traceback.print_exc()
 
-        if event_type == mirai.GroupMessage:
+        if event_type == platform_events.GroupMessage:
             self.bot.on_message("group")(on_message)
-        elif event_type == mirai.FriendMessage:
+        elif event_type == platform_events.FriendMessage:
             self.bot.on_message("private")(on_message)
 
     def unregister_listener(
         self,
-        event_type: typing.Type[mirai.Event],
-        callback: typing.Callable[[mirai.Event, adapter.MessageSourceAdapter], None],
+        event_type: typing.Type[platform_events.Event],
+        callback: typing.Callable[[platform_events.Event, adapter.MessageSourceAdapter], None],
     ):
         return super().unregister_listener(event_type, callback)
 

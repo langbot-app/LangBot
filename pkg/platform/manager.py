@@ -6,13 +6,17 @@ import logging
 import asyncio
 import traceback
 
-from mirai import At, GroupMessage, MessageEvent, StrangerMessage, \
-    FriendMessage, Image, MessageChain, Plain
-import mirai
+# from mirai import At, GroupMessage, MessageEvent, StrangerMessage, \
+#     FriendMessage, Image, MessageChain, Plain
+# import mirai
 from ..platform import adapter as msadapter
 
 from ..core import app, entities as core_entities
 from ..plugin import events
+from .types import message as platform_message
+from .types import events as platform_events
+from .types import entities as platform_entities
+
 
 # 控制QQ消息输入输出的类
 class PlatformManager:
@@ -32,7 +36,7 @@ class PlatformManager:
 
         from .sources import yirimirai, nakuru, aiocqhttp, qqbotpy
 
-        async def on_friend_message(event: FriendMessage, adapter: msadapter.MessageSourceAdapter):
+        async def on_friend_message(event: platform_events.FriendMessage, adapter: msadapter.MessageSourceAdapter):
 
             event_ctx = await self.ap.plugin_mgr.emit_event(
                 event=events.PersonMessageReceived(
@@ -55,7 +59,7 @@ class PlatformManager:
                     adapter=adapter
                 )
 
-        async def on_stranger_message(event: StrangerMessage, adapter: msadapter.MessageSourceAdapter):
+        async def on_stranger_message(event: platform_events.StrangerMessage, adapter: msadapter.MessageSourceAdapter):
             
             event_ctx = await self.ap.plugin_mgr.emit_event(
                 event=events.PersonMessageReceived(
@@ -78,7 +82,7 @@ class PlatformManager:
                     adapter=adapter
                 )
 
-        async def on_group_message(event: GroupMessage, adapter: msadapter.MessageSourceAdapter):
+        async def on_group_message(event: platform_events.GroupMessage, adapter: msadapter.MessageSourceAdapter):
 
             event_ctx = await self.ap.plugin_mgr.emit_event(
                 event=events.GroupMessageReceived(
@@ -127,16 +131,16 @@ class PlatformManager:
 
                         if adapter_name == 'yiri-mirai':
                             adapter_inst.register_listener(
-                                StrangerMessage,
+                                platform_events.StrangerMessage,
                                 on_stranger_message
                             )
 
                         adapter_inst.register_listener(
-                            FriendMessage,
+                            platform_events.FriendMessage,
                             on_friend_message
                         )
                         adapter_inst.register_listener(
-                            GroupMessage,
+                            platform_events.GroupMessage,
                             on_group_message
                         )
                 
@@ -146,13 +150,13 @@ class PlatformManager:
         if len(self.adapters) == 0:
             self.ap.logger.warning('未运行平台适配器，请根据文档配置并启用平台适配器。')
 
-    async def send(self, event: mirai.MessageEvent, msg: mirai.MessageChain, adapter: msadapter.MessageSourceAdapter):
+    async def send(self, event: platform_events.MessageEvent, msg: platform_message.MessageChain, adapter: msadapter.MessageSourceAdapter):
         
-        if self.ap.platform_cfg.data['at-sender'] and isinstance(event, GroupMessage):
+        if self.ap.platform_cfg.data['at-sender'] and isinstance(event, platform_events.GroupMessage):
 
             msg.insert(
                 0,
-                At(
+                platform_message.At(
                     event.sender.id
                 )
             )

@@ -5,13 +5,15 @@ import time
 import traceback
 import json
 
-import mirai
+# import mirai
 
 from .. import handler
 from ... import entities
 from ....core import entities as core_entities
 from ....provider import entities as llm_entities, runnermgr
 from ....plugin import events
+
+from ....platform.types import message as platform_message
 
 
 class ChatMessageHandler(handler.MessageHandler):
@@ -40,7 +42,7 @@ class ChatMessageHandler(handler.MessageHandler):
 
         if event_ctx.is_prevented_default():
             if event_ctx.event.reply is not None:
-                mc = mirai.MessageChain(event_ctx.event.reply)
+                mc = platform_message.MessageChain(event_ctx.event.reply)
 
                 query.resp_messages.append(mc)
 

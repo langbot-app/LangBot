@@ -4,9 +4,11 @@ from __future__ import annotations
 import typing
 import abc
 
-import mirai
+# import mirai
 
 from ..core import app
+from .types import message as platform_message
+from .types import events as platform_events
 
 
 preregistered_adapters: list[typing.Type[MessageSourceAdapter]] = []
@@ -55,7 +57,7 @@ class MessageSourceAdapter(metaclass=abc.ABCMeta):
         self,
         target_type: str,
         target_id: str,
-        message: mirai.MessageChain
+        message: platform_message.MessageChain
     ):
         """主动发送消息
         
@@ -68,8 +70,8 @@ class MessageSourceAdapter(metaclass=abc.ABCMeta):
 
     async def reply_message(
         self,
-        message_source: mirai.MessageEvent,
-        message: mirai.MessageChain,
+        message_source: platform_events.MessageEvent,
+        message: platform_message.MessageChain,
         quote_origin: bool = False
     ):
         """回复消息
@@ -87,8 +89,8 @@ class MessageSourceAdapter(metaclass=abc.ABCMeta):
 
     def register_listener(
         self,
-        event_type: typing.Type[mirai.Event],
-        callback: typing.Callable[[mirai.Event, MessageSourceAdapter], None]
+        event_type: typing.Type[platform_message.Event],
+        callback: typing.Callable[[platform_message.Event, MessageSourceAdapter], None]
     ):
         """注册事件监听器
         
@@ -100,8 +102,8 @@ class MessageSourceAdapter(metaclass=abc.ABCMeta):
     
     def unregister_listener(
         self,
-        event_type: typing.Type[mirai.Event],
-        callback: typing.Callable[[mirai.Event, MessageSourceAdapter], None]
+        event_type: typing.Type[platform_message.Event],
+        callback: typing.Callable[[platform_message.Event, MessageSourceAdapter], None]
     ):
         """注销事件监听器
         
@@ -127,7 +129,7 @@ class MessageSourceAdapter(metaclass=abc.ABCMeta):
 class MessageConverter:
     """消息链转换器基类"""
     @staticmethod
-    def yiri2target(message_chain: mirai.MessageChain):
+    def yiri2target(message_chain: platform_message.MessageChain):
         """将YiriMirai消息链转换为目标消息链
 
         Args:
@@ -139,7 +141,7 @@ class MessageConverter:
         raise NotImplementedError
 
     @staticmethod
-    def target2yiri(message_chain: typing.Any) -> mirai.MessageChain:
+    def target2yiri(message_chain: typing.Any) -> platform_message.MessageChain:
         """将目标消息链转换为YiriMirai消息链
 
         Args:
@@ -155,7 +157,7 @@ class EventConverter:
     """事件转换器基类"""
 
     @staticmethod
-    def yiri2target(event: typing.Type[mirai.Event]):
+    def yiri2target(event: typing.Type[platform_message.Event]):
         """将YiriMirai事件转换为目标事件
 
         Args:
@@ -167,7 +169,7 @@ class EventConverter:
         raise NotImplementedError
 
     @staticmethod
-    def target2yiri(event: typing.Any) -> mirai.Event:
+    def target2yiri(event: typing.Any) -> platform_message.Event:
         """将目标事件的调用参数转换为YiriMirai的事件参数对象
 
         Args:

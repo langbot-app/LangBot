@@ -2,10 +2,12 @@ from __future__ import annotations
 import abc
 import typing
 
-import mirai
+# import mirai
 
 from ...core import app, entities as core_entities
 from . import entities
+
+from ...platform.types import message as platform_message
 
 
 preregisetered_rules: list[typing.Type[GroupRespondRule]] = []
@@ -35,7 +37,7 @@ class GroupRespondRule(metaclass=abc.ABCMeta):
     async def match(
         self,
         message_text: str,
-        message_chain: mirai.MessageChain,
+        message_chain: platform_message.MessageChain,
         rule_dict: dict,
         query: core_entities.Query
     ) -> entities.RuleJudgeResult:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import mirai
+# import mirai
 
 from ...core import app
 from . import entities as rule_entities, rule

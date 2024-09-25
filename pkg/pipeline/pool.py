@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 
-import mirai
+# import mirai
 
 from ..core import entities
 from ..platform import adapter as msadapter
+from ..platform.types import message as platform_message
+from ..platform.types import events as platform_events
 
 
 class QueryPool:
@@ -30,8 +32,8 @@ class QueryPool:
         launcher_type: entities.LauncherTypes,
         launcher_id: int,
         sender_id: int,
-        message_event: mirai.MessageEvent,
-        message_chain: mirai.MessageChain,
+        message_event: platform_events.MessageEvent,
+        message_chain: platform_message.MessageChain,
         adapter: msadapter.MessageSourceAdapter
     ) -> entities.Query:
         async with self.condition:

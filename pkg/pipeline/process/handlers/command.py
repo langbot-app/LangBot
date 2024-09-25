@@ -1,13 +1,14 @@
 from __future__ import annotations
 import typing
 
-import mirai
+# import mirai
 
 from .. import handler
 from ... import entities
 from ....core import entities as core_entities
 from ....provider import entities as llm_entities
 from ....plugin import events
+from ....platform.types import message as platform_message
 
 
 class CommandHandler(handler.MessageHandler):
@@ -46,7 +47,7 @@ class CommandHandler(handler.MessageHandler):
         if event_ctx.is_prevented_default():
 
             if event_ctx.event.reply is not None:
-                mc = mirai.MessageChain(event_ctx.event.reply)
+                mc = platform_message.MessageChain(event_ctx.event.reply)
 
                 query.resp_messages.append(mc)
 
@@ -63,8 +64,8 @@ class CommandHandler(handler.MessageHandler):
         else:
 
             if event_ctx.event.alter is not None:
-                query.message_chain = mirai.MessageChain([
-                    mirai.Plain(event_ctx.event.alter)
+                query.message_chain = platform_message.MessageChain([
+                    platform_message.Plain(event_ctx.event.alter)
                 ])
 
             session = await self.ap.sess_mgr.get_session(query)

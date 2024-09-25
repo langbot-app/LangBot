@@ -6,7 +6,7 @@ import datetime
 import re
 import traceback
 
-import mirai
+# import mirai
 import botpy
 import botpy.message as botpy_message
 import botpy.types.message as botpy_message_type
@@ -17,17 +17,21 @@ from .. import adapter as adapter_model
 from ...pipeline.longtext.strategies import forward
 from ...core import app
 from ...config import manager as cfg_mgr
+from ...platform.types import entities as platform_entities
+from ...platform.types import events as platform_events
+from ...platform.types import message as platform_message
 
 
-class OfficialGroupMessage(mirai.GroupMessage):
+
+class OfficialGroupMessage(platform_events.GroupMessage):
     pass
 
-class OfficialFriendMessage(mirai.FriendMessage):
+class OfficialFriendMessage(platform_events.FriendMessage):
     pass
 
 event_handler_mapping = {
-    mirai.GroupMessage: ["on_at_message_create", "on_group_at_message_create"],
-    mirai.FriendMessage: ["on_direct_message_create", "on_c2c_message_create"],
+    platform_events.GroupMessage: ["on_at_message_create", "on_group_at_message_create"],
+    platform_events.FriendMessage: ["on_direct_message_create", "on_c2c_message_create"],
 }
 
 
@@ -123,16 +127,16 @@ class OfficialMessageConverter(adapter_model.MessageConverter):
     """QQ 官方消息转换器"""
 
     @staticmethod
-    def yiri2target(message_chain: mirai.MessageChain):
+    def yiri2target(message_chain: platform_message.MessageChain):
         """将 YiriMirai 的消息链转换为 QQ 官方消息"""
 
         msg_list = []
-        if type(message_chain) is mirai.MessageChain:
+        if type(message_chain) is platform_message.MessageChain:
             msg_list = message_chain.__root__
         elif type(message_chain) is list:
             msg_list = message_chain
         elif type(message_chain) is str:
-            msg_list = [mirai.Plain(text=message_chain)]
+            msg_list = [platform_message.Plain(text=message_chain)]
         else:
             raise Exception(
                 "Unknown message type: " + str(message_chain) + str(type(message_chain))
@@ -153,22 +157,22 @@ class OfficialMessageConverter(adapter_model.MessageConverter):
 
         # 遍历并转换
         for component in msg_list:
-            if type(component) is mirai.Plain:
+            if type(component) is platform_message.Plain:
                 offcial_messages.append({"type": "text", "content": component.text})
-            elif type(component) is mirai.Image:
+            elif type(component) is platform_message.Image:
                 if component.url is not None:
                     offcial_messages.append({"type": "image", "content": component.url})
                 elif component.path is not None:
                     offcial_messages.append(
                         {"type": "file_image", "content": component.path}
                     )
-            elif type(component) is mirai.At:
+            elif type(component) is platform_message.At:
                 offcial_messages.append({"type": "at", "content": ""})
-            elif type(component) is mirai.AtAll:
+            elif type(component) is platform_message.AtAll:
                 print(
                     "上层组件要求发送 AtAll 消息，但 QQ 官方 API 不支持此消息类型，忽略此消息。"
                 )
-            elif type(component) is mirai.Voice:
+            elif type(component) is platform_message.Voice:
                 print(
                     "上层组件要求发送 Voice 消息，但 QQ 官方 API 不支持此消息类型，忽略此消息。"
                 )
@@ -197,29 +201,29 @@ class OfficialMessageConverter(adapter_model.MessageConverter):
         message: typing.Union[botpy_message.Message, botpy_message.DirectMessage, botpy_message.GroupMessage, botpy_message.C2CMessage],
         message_id: str = None,
         bot_account_id: int = 0,
-    ) -> mirai.MessageChain:
+    ) -> platform_message.MessageChain:
         yiri_msg_list = []
         # 存id
 
         yiri_msg_list.append(
-            mirai.models.message.Source(
+            platform_message.Source(
                 id=save_msg_id(message_id), time=datetime.datetime.now()
             )
         )
 
         if type(message) not in [botpy_message.DirectMessage, botpy_message.C2CMessage]:
-            yiri_msg_list.append(mirai.At(target=bot_account_id))
+            yiri_msg_list.append(platform_message.At(target=bot_account_id))
 
         if hasattr(message, "mentions"):
             for mention in message.mentions:
                 if mention.bot:
                     continue
 
-                yiri_msg_list.append(mirai.At(target=mention.id))
+                yiri_msg_list.append(platform_message.At(target=mention.id))
 
         for attachment in message.attachments:
             if attachment.content_type.startswith("image"):
-                yiri_msg_list.append(mirai.Image(url=attachment.url))
+                yiri_msg_list.append(platform_message.Image(url=attachment.url))
             else:
                 logging.warning(
                     "不支持的附件类型：" + attachment.content_type + "，忽略此附件。"
@@ -227,9 +231,9 @@ class OfficialMessageConverter(adapter_model.MessageConverter):
 
         content = re.sub(r"<@!\d+>", "", str(message.content))
         if content.strip() != "":
-            yiri_msg_list.append(mirai.Plain(text=content))
+            yiri_msg_list.append(platform_message.Plain(text=content))
 
-        chain = mirai.MessageChain(yiri_msg_list)
+        chain = platform_message.MessageChain(yiri_msg_list)
 
         return chain
 
@@ -244,10 +248,10 @@ class OfficialEventConverter(adapter_model.EventConverter):
         self.member_openid_mapping = member_openid_mapping
         self.group_openid_mapping = group_openid_mapping
 
-    def yiri2target(self, event: typing.Type[mirai.Event]):
-        if event == mirai.GroupMessage:
+    def yiri2target(self, event: typing.Type[platform_events.Event]):
+        if event == platform_events.GroupMessage:
             return botpy_message.Message
-        elif event == mirai.FriendMessage:
+        elif event == platform_events.FriendMessage:
             return botpy_message.DirectMessage
         else:
             raise Exception(
@@ -257,8 +261,7 @@ class OfficialEventConverter(adapter_model.EventConverter):
     def target2yiri(
         self,
         event: typing.Union[botpy_message.Message, botpy_message.DirectMessage, botpy_message.GroupMessage, botpy_message.C2CMessage],
-    ) -> mirai.Event:
-        import mirai.models.entities as mirai_entities
+    ) -> platform_events.Event:
 
         if type(event) == botpy_message.Message:  # 频道内，转群聊事件
             permission = "MEMBER"
@@ -268,15 +271,15 @@ class OfficialEventConverter(adapter_model.EventConverter):
             elif "4" in event.member.roles:
                 permission = "OWNER"
 
-            return mirai.GroupMessage(
-                sender=mirai_entities.GroupMember(
+            return platform_events.GroupMessage(
+                sender=platform_entities.GroupMember(
                     id=event.author.id,
                     member_name=event.author.username,
                     permission=permission,
-                    group=mirai_entities.Group(
+                    group=platform_entities.Group(
                         id=event.channel_id,
                         name=event.author.username,
-                        permission=mirai_entities.Permission.Member,
+                        permission=platform_entities.Permission.Member,
                     ),
                     special_title="",
                     join_timestamp=int(
@@ -297,8 +300,8 @@ class OfficialEventConverter(adapter_model.EventConverter):
                 ),
             )
         elif type(event) == botpy_message.DirectMessage:  # 频道私聊，转私聊事件
-            return mirai.FriendMessage(
-                sender=mirai_entities.Friend(
+            return platform_events.FriendMessage(
+                sender=platform_entities.Friend(
                     id=event.guild_id,
                     nickname=event.author.username,
                     remark=event.author.username,
@@ -317,14 +320,14 @@ class OfficialEventConverter(adapter_model.EventConverter):
             replacing_member_id = self.member_openid_mapping.save_openid(event.author.member_openid)
 
             return OfficialGroupMessage(
-                sender=mirai_entities.GroupMember(
+                sender=platform_entities.GroupMember(
                     id=replacing_member_id,
                     member_name=replacing_member_id,
                     permission="MEMBER",
-                    group=mirai_entities.Group(
+                    group=platform_entities.Group(
                         id=self.group_openid_mapping.save_openid(event.group_openid),
                         name=replacing_member_id,
-                        permission=mirai_entities.Permission.Member,
+                        permission=platform_entities.Permission.Member,
                     ),
                     special_title="",
                     join_timestamp=int(0),
@@ -345,7 +348,7 @@ class OfficialEventConverter(adapter_model.EventConverter):
             user_id_alter = self.member_openid_mapping.save_openid(event.author.user_openid)  # 实测这里的user_openid与group的member_openid是一样的
 
             return OfficialFriendMessage(
-                sender=mirai_entities.Friend(
+                sender=platform_entities.Friend(
                     id=user_id_alter,
                     nickname=user_id_alter,
                     remark=user_id_alter,
@@ -410,7 +413,7 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
         self.bot = botpy.Client(intents=intents)
 
     async def send_message(
-        self, target_type: str, target_id: str, message: mirai.MessageChain
+        self, target_type: str, target_id: str, message: platform_message.MessageChain
     ):
         message_list = self.message_converter.yiri2target(message)
 
@@ -437,8 +440,8 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
 
     async def reply_message(
         self,
-        message_source: mirai.MessageEvent,
-        message: mirai.MessageChain,
+        message_source: platform_events.MessageEvent,
+        message: platform_message.MessageChain,
         quote_origin: bool = False,
     ):
         
@@ -463,13 +466,13 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
                     ]
                 )
 
-            if type(message_source) == mirai.GroupMessage:
+            if type(message_source) == platform_events.GroupMessage:
                 args["channel_id"] = str(message_source.sender.group.id)
                 args["msg_id"] = cached_message_ids[
                     str(message_source.message_chain.message_id)
                 ]
                 await self.bot.api.post_message(**args)
-            elif type(message_source) == mirai.FriendMessage:
+            elif type(message_source) == platform_events.FriendMessage:
                 args["guild_id"] = str(message_source.sender.id)
                 args["msg_id"] = cached_message_ids[
                     str(message_source.message_chain.message_id)
@@ -534,9 +537,9 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
 
     def register_listener(
         self,
-        event_type: typing.Type[mirai.Event],
+        event_type: typing.Type[platform_events.Event],
         callback: typing.Callable[
-            [mirai.Event, adapter_model.MessageSourceAdapter], None
+            [platform_events.Event, adapter_model.MessageSourceAdapter], None
         ],
     ):
 
@@ -560,9 +563,9 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
 
     def unregister_listener(
         self,
-        event_type: typing.Type[mirai.Event],
+        event_type: typing.Type[platform_events.Event],
         callback: typing.Callable[
-            [mirai.Event, adapter_model.MessageSourceAdapter], None
+            [platform_events.Event, adapter_model.MessageSourceAdapter], None
         ],
     ):
         delattr(self.bot, event_handler_mapping[event_type])

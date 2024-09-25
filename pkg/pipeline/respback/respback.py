@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 import asyncio
 
-import mirai
+# import mirai
 
 from ...core import app
 

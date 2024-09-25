@@ -3,11 +3,12 @@ from __future__ import annotations
 import typing
 import abc
 import pydantic
-import mirai
+# import mirai
 
 from . import events
 from ..provider.tools import entities as tools_entities
 from ..core import app
+from ..platform.types import message as platform_message
 
 
 def register(
@@ -174,7 +175,7 @@ class EventContext:
             self.__return_value__[key] = []
         self.__return_value__[key].append(ret)
     
-    async def reply(self, message_chain: mirai.MessageChain):
+    async def reply(self, message_chain: platform_message.MessageChain):
         """回复此次消息请求
         
         Args:
@@ -190,7 +191,7 @@ class EventContext:
         self,
         target_type: str,
         target_id: str,
-        message: mirai.MessageChain
+        message: platform_message.MessageChain
     ):
         """主动发送消息
         
