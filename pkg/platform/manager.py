@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import logging
 import asyncio
 import traceback
@@ -14,6 +15,10 @@ from ..plugin import events
 from .types import message as platform_message
 from .types import events as platform_events
 from .types import entities as platform_entities
+
+# 处理 3.4 移除了 YiriMirai 之后，插件的兼容性问题
+from . import types as mirai
+sys.modules['mirai'] = mirai
 
 
 # 控制QQ消息输入输出的类

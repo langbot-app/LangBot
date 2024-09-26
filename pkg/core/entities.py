@@ -110,7 +110,7 @@ class Session(pydantic.BaseModel):
 
     using_conversation: typing.Optional[Conversation] = None
 
-    conversations: typing.Optional[list[Conversation]] = []
+    conversations: typing.Optional[list[Conversation]] = pydantic.Field(default_factory=list)
 
     create_time: typing.Optional[datetime.datetime] = pydantic.Field(default_factory=datetime.datetime.now)
 
