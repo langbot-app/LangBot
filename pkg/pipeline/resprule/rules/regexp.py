@@ -1,6 +1,5 @@
 import re
 
-# import mirai
 
 from .. import rule as rule_model
 from .. import entities

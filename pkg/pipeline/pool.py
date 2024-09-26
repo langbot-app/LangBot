@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 
-# import mirai
 
 from ..core import entities
 from ..platform import adapter as msadapter

@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 
 class PlatformMetaclass(pdm.ModelMetaclass):
-    """此类是 YiriMirai 中使用的 pydantic 模型的元类的基类。"""
+    """此类是平台中使用的 pydantic 模型的元类的基类。"""
 
 
 def to_camel(name: str) -> str:
@@ -23,7 +23,7 @@ class PlatformBaseModel(BaseModel, metaclass=PlatformMetaclass):
     启用了三项配置：
     1. 允许解析时传入额外的值，并将额外值保存在模型中。
     2. 允许通过别名访问字段。
-    3. 自动生成小驼峰风格的别名，以符合 mirai-api-http 的命名。
+    3. 自动生成小驼峰风格的别名。
     """
     def __init__(self, *args, **kwargs):
         """"""
@@ -47,17 +47,17 @@ class PlatformIndexedMetaclass(PlatformMetaclass):
 
     def __new__(cls, name, bases, attrs, **kwargs):
         new_cls = super().__new__(cls, name, bases, attrs, **kwargs)
-        # 第一类：MiraiIndexedModel
+        # 第一类：PlatformIndexedModel
         if name == 'PlatformIndexedModel':
             cls.__indexedmodel__ = new_cls
             new_cls.__indexes__ = {}
             return new_cls
-        # 第二类：MiraiIndexedModel 的直接子类，这些是可以通过子类名获取子类的类。
+        # 第二类：PlatformIndexedModel 的直接子类，这些是可以通过子类名获取子类的类。
         if cls.__indexedmodel__ in bases:
             cls.__indexedbases__.append(new_cls)
             new_cls.__indexes__ = {}
             return new_cls
-        # 第三类：MiraiIndexedModel 的直接子类的子类，这些添加到直接子类的索引中。
+        # 第三类：PlatformIndexedModel 的直接子类的子类，这些添加到直接子类的索引中。
         for base in cls.__indexedbases__:
             if issubclass(new_cls, base):
                 base.__indexes__[name] = new_cls
@@ -79,7 +79,7 @@ class PlatformIndexedModel(PlatformBaseModel, metaclass=PlatformIndexedMetaclass
             name: 类名称。
 
         Returns:
-            Type['MiraiIndexedModel']: 子类类型。
+            Type['PlatformIndexedModel']: 子类类型。
         """
         try:
             type_ = cls.__indexes__.get(name)
@@ -97,7 +97,7 @@ class PlatformIndexedModel(PlatformBaseModel, metaclass=PlatformIndexedMetaclass
             obj: 一个字典，包含了模型对象的属性。
 
         Returns:
-            MiraiIndexedModel: 构造的对象。
+            PlatformIndexedModel: 构造的对象。
         """
         if cls in PlatformIndexedModel.__subclasses__():
             ModelType = cls.get_subtype(obj['type'])

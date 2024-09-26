@@ -3,7 +3,6 @@ from __future__ import annotations
 import typing
 import abc
 import pydantic
-# import mirai
 
 from . import events
 from ..provider.tools import entities as tools_entities
@@ -179,7 +178,7 @@ class EventContext:
         """回复此次消息请求
         
         Args:
-            message_chain (mirai.MessageChain): YiriMirai库的消息链，若用户使用的不是 YiriMirai 适配器，程序也能自动转换为目标消息链
+            message_chain (platform.types.MessageChain): 源平台的消息链，若用户使用的不是源平台适配器，程序也能自动转换为目标平台消息链
         """
         await self.host.ap.platform_mgr.send(
             event=self.event.query.message_event,
@@ -198,7 +197,7 @@ class EventContext:
         Args:
             target_type (str): 目标类型，`person`或`group`
             target_id (str): 目标ID
-            message (mirai.MessageChain): YiriMirai库的消息链，若用户使用的不是 YiriMirai 适配器，程序也能自动转换为目标消息链
+            message (platform.types.MessageChain): 源平台的消息链，若用户使用的不是源平台适配器，程序也能自动转换为目标平台消息链
         """
         await self.event.query.adapter.send_message(
             target_type=target_type,

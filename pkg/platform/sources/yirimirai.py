@@ -1,9 +1,6 @@
 # import asyncio
 # import typing
 
-# import mirai
-# import mirai.models.bus
-# from mirai.bot import MiraiRunner
 
 # from .. import adapter as adapter_model
 # from ...core import app

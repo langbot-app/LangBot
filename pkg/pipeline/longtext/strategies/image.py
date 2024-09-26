@@ -8,8 +8,6 @@ import re
 
 from PIL import Image, ImageDraw, ImageFont
 
-# from mirai.models import MessageChain, Image as ImageComponent
-# from mirai.models.message import MessageComponent
 from ....platform.types import message as platform_message
 
 from .. import strategy as strategy_model

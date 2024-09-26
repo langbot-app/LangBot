@@ -6,9 +6,7 @@ import logging
 import asyncio
 import traceback
 
-# from mirai import At, GroupMessage, MessageEvent, StrangerMessage, \
 #     FriendMessage, Image, MessageChain, Plain
-# import mirai
 from ..platform import adapter as msadapter
 
 from ..core import app, entities as core_entities

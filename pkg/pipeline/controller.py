@@ -4,7 +4,6 @@ import asyncio
 import typing
 import traceback
 
-# import mirai
 
 from ..core import app, entities
 from . import entities as pipeline_entities

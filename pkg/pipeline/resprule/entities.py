@@ -1,5 +1,4 @@
 import pydantic
-# import mirai
 
 from ...platform.types import message as platform_message
 

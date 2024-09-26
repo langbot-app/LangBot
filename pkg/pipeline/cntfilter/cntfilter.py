@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-# import mirai
-# import mirai.models
-# import mirai.models.message
-
 from ...core import app
 
 from .. import stage, entities, stagemgr

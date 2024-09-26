@@ -5,7 +5,6 @@ import time
 import traceback
 import json
 
-# import mirai
 
 from .. import handler
 from ... import entities

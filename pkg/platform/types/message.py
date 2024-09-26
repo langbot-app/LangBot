@@ -514,9 +514,6 @@ class At(MessageComponent):
     def __str__(self):
         return f"@{self.display or self.target}"
 
-    def as_mirai_code(self) -> str:
-        return f"[mirai:at:{self.target}]"
-
 
 class AtAll(MessageComponent):
     """At全体。"""
@@ -524,9 +521,6 @@ class AtAll(MessageComponent):
     """消息组件类型。"""
     def __str__(self):
         return "@全体成员"
-
-    def as_mirai_code(self) -> str:
-        return f"[mirai:atall]"
 
 
 class Image(MessageComponent):
@@ -549,12 +543,9 @@ class Image(MessageComponent):
     def __str__(self):
         return '[图片]'
 
-    def as_mirai_code(self) -> str:
-        return f"[mirai:image:{self.image_id}]"
-
     @pydantic.validator('path')
     def validate_path(cls, path: typing.Union[str, Path, None]):
-        """修复 path 参数的行为，使之相对于 YiriMirai 的启动路径。"""
+        """修复 path 参数的行为，使之相对于 QChatGPT 的启动路径。"""
         if path:
             try:
                 return str(Path(path).resolve(strict=True))
@@ -682,7 +673,7 @@ class Voice(MessageComponent):
     """语音的长度，单位为秒。"""
     @pydantic.validator('path')
     def validate_path(cls, path: typing.Optional[str]):
-        """修复 path 参数的行为，使之相对于 YiriMirai 的启动路径。"""
+        """修复 path 参数的行为，使之相对于 QChatGPT 的启动路径。"""
         if path:
             try:
                 return str(Path(path).resolve(strict=True))

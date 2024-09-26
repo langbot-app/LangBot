@@ -6,7 +6,6 @@ import datetime
 import re
 import traceback
 
-# import mirai
 import botpy
 import botpy.message as botpy_message
 import botpy.types.message as botpy_message_type

@@ -5,8 +5,6 @@ import traceback
 import time
 import datetime
 
-# import mirai
-# import mirai.models.message as yiri_message
 import aiocqhttp
 
 from .. import adapter

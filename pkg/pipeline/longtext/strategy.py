@@ -2,8 +2,6 @@ from __future__ import annotations
 import abc
 import typing
 
-# import mirai
-# from mirai.models.message import MessageComponent
 
 from ...core import app
 from ...core import entities as core_entities

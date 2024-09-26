@@ -1,7 +1,6 @@
 from __future__ import annotations
 import typing
 
-# import mirai
 
 from .. import handler
 from ... import entities

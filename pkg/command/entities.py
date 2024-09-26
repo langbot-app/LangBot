@@ -3,7 +3,6 @@ from __future__ import annotations
 import typing
 
 import pydantic
-# import mirai
 
 from ..core import app, entities as core_entities
 from . import errors, operator

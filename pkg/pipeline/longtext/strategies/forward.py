@@ -2,9 +2,6 @@
 from __future__ import annotations
 import typing
 
-# from mirai.models import MessageChain
-# from mirai.models.message import MessageComponent, ForwardMessageNode
-# from mirai.models.base import MiraiBaseModel
 import pydantic
 
 from .. import strategy as strategy_model

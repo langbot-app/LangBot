@@ -2,7 +2,6 @@ requests
 openai>1.0.0
 anthropic
 colorlog~=6.6.0
-yiri-mirai-rc
 aiocqhttp
 qq-botpy
 nakuru-project-idk

@@ -3,7 +3,6 @@ import os
 import traceback
 
 from PIL import Image, ImageDraw, ImageFont
-# from mirai.models.message import MessageComponent, Plain, MessageChain
 
 from ...core import app
 from . import strategy

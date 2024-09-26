@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-# import mirai
 
 from .. import rule as rule_model
 from .. import entities
