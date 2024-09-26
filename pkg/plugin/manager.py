@@ -48,6 +48,8 @@ class PluginManager:
         # 按优先级倒序
         self.plugins.sort(key=lambda x: x.priority, reverse=True)
 
+        self.ap.logger.debug(f'优先级排序后的插件列表 {self.plugins}')
+
     async def initialize_plugins(self):
         for plugin in self.plugins:
             try:
