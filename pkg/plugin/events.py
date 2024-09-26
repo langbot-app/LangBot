@@ -3,10 +3,10 @@ from __future__ import annotations
 import typing
 
 import pydantic
-import mirai
 
 from ..core import entities as core_entities
 from ..provider import entities as llm_entities
+from ..platform.types import message as platform_message
 
 
 class BaseEventModel(pydantic.BaseModel):
@@ -31,7 +31,7 @@ class PersonMessageReceived(BaseEventModel):
     sender_id: int
     """发送者ID(QQ号)"""
 
-    message_chain: mirai.MessageChain
+    message_chain: platform_message.MessageChain
 
 
 class GroupMessageReceived(BaseEventModel):
@@ -43,7 +43,7 @@ class GroupMessageReceived(BaseEventModel):
     
     sender_id: int
 
-    message_chain: mirai.MessageChain
+    message_chain: platform_message.MessageChain
 
 
 class PersonNormalMessageReceived(BaseEventModel):

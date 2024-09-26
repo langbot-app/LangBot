@@ -3,10 +3,10 @@ from __future__ import annotations
 import typing
 
 import pydantic
-import mirai
 
 from ..core import app, entities as core_entities
 from . import errors, operator
+from ..platform.types import message as platform_message
 
 
 class CommandReturn(pydantic.BaseModel):
@@ -17,7 +17,7 @@ class CommandReturn(pydantic.BaseModel):
     """文本
     """
 
-    image: typing.Optional[mirai.Image] = None
+    image: typing.Optional[platform_message.Image] = None
     """弃用"""
 
     image_url: typing.Optional[str] = None

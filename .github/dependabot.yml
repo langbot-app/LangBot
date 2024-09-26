@@ -10,5 +10,4 @@ updates:
     schedule:
       interval: "weekly"
     allow:
-      - dependency-name: "yiri-mirai-rc"
       - dependency-name: "openai"

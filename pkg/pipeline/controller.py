@@ -4,11 +4,11 @@ import asyncio
 import typing
 import traceback
 
-import mirai
 
 from ..core import app, entities
 from . import entities as pipeline_entities
 from ..plugin import events
+from ..platform.types import message as platform_message
 
 
 class Controller:
@@ -73,11 +73,11 @@ class Controller:
             # 处理str类型
 
             if isinstance(result.user_notice, str):
-                result.user_notice = mirai.MessageChain(
-                    mirai.Plain(result.user_notice)
+                result.user_notice = platform_message.MessageChain(
+                    platform_message.Plain(result.user_notice)
                 )
             elif isinstance(result.user_notice, list):
-                result.user_notice = mirai.MessageChain(
+                result.user_notice = platform_message.MessageChain(
                     *result.user_notice
                 )
 

@@ -8,10 +8,10 @@ body:
       label: 消息平台适配器
       description: "连接QQ使用的框架"
       options:
-        - yiri-mirai（Mirai）
         - Nakuru（go-cqhttp）
         - aiocqhttp（使用 OneBot 协议接入的）
         - qq-botpy（QQ官方API）
+        - yiri-mirai（Mirai）
     validations:
       required: false
   - type: input
