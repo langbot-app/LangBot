@@ -15,6 +15,9 @@ required_deps = {
     "psutil": "psutil",
     "async_lru": "async-lru",
     "ollama": "ollama",
+    "quart": "quart",
+    "sqlalchemy": "sqlalchemy[asyncio]",
+    "aiosqlite": "aiosqlite",
 }
 
 

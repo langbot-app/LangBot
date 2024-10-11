@@ -15,7 +15,7 @@ log_colors_config = {
 }
 
 
-async def init_logging() -> logging.Logger:
+async def init_logging(extra_handlers: list[logging.Handler] = None) -> logging.Logger:
     # 删除所有现有的logger
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
@@ -41,7 +41,8 @@ async def init_logging() -> logging.Logger:
 
     stream_handler = logging.StreamHandler(sys.stdout)
 
-    log_handlers: logging.Handler = [stream_handler, logging.FileHandler(log_file_name)]
+    log_handlers: list[logging.Handler] = [stream_handler, logging.FileHandler(log_file_name)]
+    log_handlers += extra_handlers if extra_handlers is not None else []
 
     for handler in log_handlers:
         handler.setLevel(level)

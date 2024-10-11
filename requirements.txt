@@ -15,3 +15,6 @@ urllib3
 psutil
 async-lru
 ollama
+quart
+sqlalchemy[asyncio]
+aiosqlite

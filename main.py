@@ -13,7 +13,10 @@ asciiart = r"""
 """
 
 
-async def main_entry():
+import asyncio
+
+
+async def main_entry(loop: asyncio.AbstractEventLoop):
     print(asciiart)
 
     import sys
@@ -46,7 +49,7 @@ async def main_entry():
         sys.exit(0)
 
     from pkg.core import boot
-    await boot.main()
+    await boot.main(loop)
 
 
 if __name__ == '__main__':
@@ -65,8 +68,8 @@ if __name__ == '__main__':
     if invalid_pwd:
         print("请在QChatGPT项目根目录下以命令形式运行此程序。")
         input("按任意键退出...")
-        exit(0)
+        exit(1)
 
-    import asyncio
+    loop = asyncio.new_event_loop()
 
-    asyncio.run(main_entry())
+    loop.run_until_complete(main_entry(loop))
