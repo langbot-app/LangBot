@@ -7,12 +7,16 @@ LOG_PAGE_SIZE = 20
 MAX_CACHED_PAGES = 10
 
 
-class LogPage(pydantic.BaseModel):
+class LogPage():
     """日志页"""
+    number: int
+    """页码"""
 
-    cached_count: int = 0
+    logs: list[str]
 
-    logs: str = ""
+    def __init__(self, number: int):
+        self.number = number
+        self.logs = []
 
     def add_log(self, log: str) -> bool:
         """添加日志
@@ -20,9 +24,8 @@ class LogPage(pydantic.BaseModel):
         Returns:
             bool: 是否已满
         """
-        self.logs += log
-        self.cached_count += 1
-        return self.cached_count >= LOG_PAGE_SIZE
+        self.logs.append(log)
+        return len(self.logs) >= LOG_PAGE_SIZE
 
 
 class LogCache:
@@ -34,16 +37,28 @@ class LogCache:
 
     def __init__(self):
         self.log_pages = []
-        self.log_pages.append(LogPage())
+        self.log_pages.append(LogPage(number=0))
 
     def add_log(self, log: str):
         """添加日志"""
         if self.log_pages[-1].add_log(log):
-            self.log_pages.append(LogPage())
+            self.log_pages.append(LogPage(number=self.log_pages[-1].number + 1))
 
             if len(self.log_pages) > MAX_CACHED_PAGES:
                 self.log_pages.pop(0)
 
-    def get_all_logs(self) -> str:
-        """获取所有日志"""
-        return "".join([page.logs for page in self.log_pages])
+    def get_log_by_pointer(
+        self,
+        start_page_number: int,
+        start_offset: int,
+    ) -> tuple[str, int, int]:
+        """获取指定页码和偏移量的日志"""
+        final_logs_str = ""
+
+        for page in self.log_pages:
+            if page.number == start_page_number:
+                final_logs_str += "\n".join(page.logs[start_offset:])
+            elif page.number > start_page_number:
+                final_logs_str += "\n".join(page.logs)
+
+        return final_logs_str, page.number, len(page.logs)

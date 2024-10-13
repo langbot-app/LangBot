@@ -5,7 +5,7 @@ import asyncio
 import quart
 
 from ....core import app
-from .groups import log
+from .groups import logs
 from . import group
 
 
