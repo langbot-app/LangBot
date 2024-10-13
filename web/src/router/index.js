@@ -7,7 +7,17 @@
 
 // Composables
 import { createRouter, createWebHistory } from 'vue-router/auto'
-import { routes } from 'vue-router/auto-routes'
+import DashBoard from '../pages/DashBoard.vue'
+import Settings from '../pages/Settings.vue'
+import Logs from '../pages/Logs.vue'
+import Plugins from '../pages/Plugins.vue'
+
+const routes = [
+  { path: '/', component: DashBoard },
+  { path: '/settings', component: Settings },
+  { path: '/logs', component: Logs },
+  { path: '/plugins', component: Plugins },
+]
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
