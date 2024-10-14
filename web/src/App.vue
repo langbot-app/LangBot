@@ -36,7 +36,7 @@
         </template>
       </v-navigation-drawer>
 
-      <v-main>
+      <v-main style="background-color: #f6f6f6;">
         <router-view />
       </v-main>
     </v-layout>
@@ -102,4 +102,5 @@ const { proxy } = getCurrentInstance()
 #about-list-item:active {
   background-color: #ddd;
 }
+
 </style>
