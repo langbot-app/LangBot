@@ -2,10 +2,12 @@ from __future__ import print_function
 
 import traceback
 import asyncio
+import os
 
 from . import app
 from ..audit import identifier
 from . import stage
+from ..utils import constants
 
 # 引入启动阶段实现以便注册
 from .stages import load_config, setup_logger, build_app, migrate, show_notes
@@ -24,6 +26,10 @@ async def make_app(loop: asyncio.AbstractEventLoop) -> app.Application:
 
     # 生成标识符
     identifier.init()
+
+    # 确定是否为调试模式
+    if "DEBUG" in os.environ and os.environ["DEBUG"] in ["true", "1"]:
+        constants.debug_mode = True
 
     ap = app.Application()
 

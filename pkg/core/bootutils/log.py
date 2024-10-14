@@ -5,6 +5,8 @@ import time
 
 import colorlog
 
+from ...utils import constants
+
 
 log_colors_config = {
     "DEBUG": "green",  # cyan white
@@ -22,7 +24,7 @@ async def init_logging(extra_handlers: list[logging.Handler] = None) -> logging.
 
     level = logging.INFO
 
-    if "DEBUG" in os.environ and os.environ["DEBUG"] in ["true", "1"]:
+    if constants.debug_mode:
         level = logging.DEBUG
 
     log_file_name = "data/logs/qcg-%s.log" % time.strftime(

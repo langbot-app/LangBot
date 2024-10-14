@@ -54,7 +54,7 @@ class RouterGroup(abc.ABC):
                     return self.http_status(500, -2, str(e))
                 
             new_f = handler_error
-            new_f.__name__ = f.__name__
+            new_f.__name__ = (self.name + rule).replace('/', '__')
             new_f.__doc__ = f.__doc__
 
             self.quart_app.route(rule, **options)(new_f)

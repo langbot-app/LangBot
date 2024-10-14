@@ -32,7 +32,7 @@ let logPointer = {
 }
 
 const refreshLog = () => {
-    proxy.$axios.get(`${proxy.$store.state.apiBaseUrl}/logs`, {
+    proxy.$axios.get(`/logs`, {
         params: {
             start_page_number: logPointer.start_page_number,
             start_offset: logPointer.start_offset
@@ -79,7 +79,7 @@ onUnmounted(() => {
 #log-card {
     margin: 1rem;
     margin-top: 1rem;
-    height: calc(100vh - 10rem);
+    height: calc(100vh - 9.5rem);
     border-radius: 1rem;
 }
 

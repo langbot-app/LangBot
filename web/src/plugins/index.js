@@ -17,4 +17,5 @@ export function registerPlugins (app) {
     .use(store)
 
   app.config.globalProperties.$axios = axios
+  store.commit('initializeFetch')
 }
