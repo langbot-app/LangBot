@@ -11,6 +11,7 @@ from ..provider.sysprompt import sysprompt as llm_prompt_mgr
 from ..provider.tools import toolmgr as llm_tool_mgr
 from ..provider import runnermgr
 from ..config import manager as config_mgr
+from ..config import settings as settings_mgr
 from ..audit.center import v2 as center_mgr
 from ..command import cmdmgr
 from ..plugin import manager as plugin_mgr
@@ -42,6 +43,8 @@ class Application:
     tool_mgr: llm_tool_mgr.ToolManager = None
 
     runner_mgr: runnermgr.RunnerManager = None
+
+    settings_mgr: settings_mgr.SettingsManager = None
 
     # ======= 配置管理器 =======
 

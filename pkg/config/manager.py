@@ -4,11 +4,19 @@ from . import model as file_model
 from .impls import pymodule, json as json_file, yaml as yaml_file
 
 
-managers: ConfigManager = []
-
-
 class ConfigManager:
     """配置文件管理器"""
+    
+    name: str = None
+    """配置管理器名"""
+
+    description: str = None
+    """配置管理器描述"""
+
+    schema: dict = None
+    """配置文件 schema
+    需要符合 JSON Schema Draft 7 规范
+    """
 
     file: file_model.ConfigFile = None
     """配置文件实例"""

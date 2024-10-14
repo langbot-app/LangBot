@@ -68,7 +68,7 @@ onUnmounted(() => {
     margin: 1rem;
     margin-top: 1rem;
     height: 3rem;
-    border-radius: 1rem;
+    border-radius: 0.3rem;
 }
 
 .toolbar-component {
@@ -80,7 +80,7 @@ onUnmounted(() => {
     margin: 1rem;
     margin-top: 1rem;
     height: calc(100vh - 9.5rem);
-    border-radius: 1rem;
+    border-radius: 0.3rem;
 }
 
 
