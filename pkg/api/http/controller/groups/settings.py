@@ -44,7 +44,11 @@ class SettingsRouterGroup(group.RouterGroup):
         async def _(manager_name: str) -> str:
             data = await quart.request.json
             manager = self.ap.settings_mgr.get_manager(manager_name)
-            manager.data = data['data']
+            # manager.data = data['data']
+            for k, v in data['data'].items():
+                manager.data[k] = v
+
+            await manager.dump_config()
             return self.success(data={
                 "data": manager.data
             })

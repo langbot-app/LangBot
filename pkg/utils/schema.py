@@ -8,3 +8,4 @@ def load_schema(schema_path: str) -> dict:
 
 
 CONFIG_SYSTEM_SCHEMA = load_schema("templates/schema/system.json")
+CONFIG_PIPELINE_SCHEMA = load_schema("templates/schema/pipeline.json")

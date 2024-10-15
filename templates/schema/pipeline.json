@@ -1,0 +1,134 @@
+{
+    "type": "object",
+    "layout": "expansion-panels",
+    "properties": {
+        "access-control": {
+            "type": "object",
+            "title": "访问控制",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "title": "访问控制模式",
+                    "description": "访问控制模式，支持黑名单和白名单",
+                    "enum": ["blacklist", "whitelist"]
+                },
+                "blacklist": {
+                    "type": "array",
+                    "title": "黑名单",
+                    "description": "黑名单中的会话将无法使用机器人，仅在访问控制模式为黑名单时有效",
+                    "items": {
+                        "type": "string",
+                        "format": "regex",
+                        "pattern": "^(person|group)_(\\d)*$"
+                    }
+                },
+                "whitelist": {
+                    "type": "array",
+                    "title": "白名单",
+                    "description": "仅白名单中的会话可以使用机器人，仅在访问控制模式为白名单时有效",
+                    "items": {
+                        "type": "string",
+                        "format": "regex",
+                        "pattern": "^(person|group)_(\\d)*$"
+                    }
+                }
+            },
+            "required": ["mode"]
+        },
+        "respond-rules": {
+            "type": "object",
+            "title": "群内响应规则",
+            "properties": {
+                "default": {
+                    "type": "object",
+                    "title": "默认响应规则",
+                    "properties": {
+                        "at": {
+                            "type": "boolean",
+                            "title": "是否响应 @ 消息",
+                            "layout": {
+                                "comp": "switch",
+                                "props": {
+                                    "color": "primary"
+                                }
+                            }
+                        },
+                        "prefix": {
+                            "type": "array",
+                            "title": "前缀响应",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        "regexp": {
+                            "type": "array",
+                            "title": "正则表达式响应",
+                            "items": {
+                                "type": "string",
+                                "format": "regex"
+                            }
+                        },
+                        "random": {
+                            "type": "number",
+                            "title": "随机响应概率",
+                            "minimum": 0,
+                            "maximum": 1,
+                            "step": 0.01,
+                            "layout": {
+                                "comp": "slider",
+                                "props": {
+                                    "color": "primary"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "patternProperties": {
+                "^(person|group).*$": {
+                    "type": "object",
+                    "properties": {
+                        "at": {
+                            "type": "boolean",
+                            "title": "是否响应 @ 消息",
+                            "layout": {
+                                "comp": "switch",
+                                "props": {
+                                    "color": "primary"
+                                }
+                            }
+                        },
+                        "prefix": {
+                            "type": "array",
+                            "title": "前缀响应",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        "regexp": {
+                            "type": "array",
+                            "title": "正则表达式响应",
+                            "items": {
+                                "type": "string",
+                                "format": "regex"
+                            }
+                        },
+                        "random": {
+                            "type": "number",
+                            "title": "随机响应概率",
+                            "minimum": 0,
+                            "maximum": 1,
+                            "step": 0.01,
+                            "layout": {
+                                "comp": "slider",
+                                "props": {
+                                    "color": "primary"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,80 +1,112 @@
 {
     "type": "object",
+    "layout": "expansion-panels",
     "properties": {
-        "admin-sessions": {
-            "type": "array",
-            "items": {
-                "type": "string"
-            }
-        },
-        "network-proxies": {
-            "type": "object",
-            "properties": {
-                "http": {
-                    "type": "string"
-                },
-                "https": {
-                    "type": "string"
-                }
-            }
-        },
-        "report-usage": {
-            "type": "boolean"
-        },
-        "logging-level": {
+      "admin-sessions": {
+        "type": "array",
+        "title": "管理员会话",
+        "description": "",
+        "items": {
+          "type": "string",
+          "format": "regex",
+          "pattern": "^(person|group)_(\\d)*$"
+        }
+      },
+      "network-proxies": {
+        "type": "object",
+        "title": "网络代理",
+        "properties": {
+          "http": {
             "type": "string"
-        },
-        "session-concurrency": {
-            "type": "object",
-            "properties": {
-                "default": {
-                    "type": "integer"
-                }
-            },
-            "patternProperties": {
-                "^(person|group).*$": {
-                    "type": "integer"
-                }
-            }
-        },
-        "pipeline-concurrency": {
-            "type": "integer"
-        },
-        "qcg-center-url": {
+          },
+          "https": {
             "type": "string"
-        },
-        "help-message": {
-            "type": "string"
-        },
-        "http-api": {
-            "type": "object",
-            "properties": {
-                "enable": {
-                    "type": "boolean"
-                },
-                "host": {
-                    "type": "string"
-                },
-                "port": {
-                    "type": "integer"
-                }
-            }
-        },
-        "persistence": {
-            "type": "object",
-            "properties": {
-                "sqlite": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "use": {
-                    "type": "string"
-                }
+          }
+        }
+      },
+      "report-usage": {
+        "type": "boolean",
+        "title": "是否上报遥测数据",
+        "layout": {
+            "comp": "switch",
+            "props": {
+                "color": "primary"
             }
         }
+      },
+      "logging-level": {
+        "type": "string",
+        "title": "日志等级"
+      },
+      "session-concurrency": {
+        "type": "object",
+        "title": "会话并行消息数",
+        "properties": {
+          "default": {
+            "type": "integer",
+            "title": "会话默认并行消息数"
+          }
+        },
+        "patternProperties": {
+          "^(person|group).*$": {
+            "type": "integer"
+          }
+        }
+      },
+      "pipeline-concurrency": {
+        "type": "integer",
+        "title": "全局并行消息数"
+      },
+      "qcg-center-url": {
+        "type": "string",
+        "title": "遥测服务器地址"
+      },
+      "help-message": {
+        "type": "string",
+        "title": "help 命令消息",
+        "layout": "textarea"
+      },
+      "http-api": {
+        "type": "object",
+        "title": "HTTP 接口",
+        "properties": {
+          "enable": {
+            "type": "boolean",
+            "layout": {
+                "comp": "switch",
+                "props": {
+                    "color": "primary"
+                }
+            },
+            "title": "是否启用"
+          },
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer"
+          }
+        }
+      },
+      "persistence": {
+        "type": "object",
+        "title": "持久化设置",
+        "properties": {
+          "sqlite": {
+            "type": "object",
+            "title": "sqlite",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            }
+          },
+          "use": {
+            "type": "string",
+            "title": "所使用的数据库",
+            "enum": ["sqlite"]
+          }
+        }
+      }
     }
-}
+  }

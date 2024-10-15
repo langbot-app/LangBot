@@ -18,12 +18,12 @@
           <v-tooltip :text="currentManagerSchema == null ? '仅配置文件管理器提供了 JSON Schema 时支持可视化配置' : '切换编辑模式'" location="top">
             <template v-slot:activator="{ props }">
 
-              <v-btn-toggle id="config-type-toggle" color="primary" v-model="configType" mandatory v-bind="props">
+              <v-btn-toggle id="config-type-toggle" color="primary" v-model="configType" mandatory v-bind="props" density="compact">
 
-                <v-btn class="config-type-toggle-btn" value="ui" :readonly="currentManagerSchema == null">
+                <v-btn class="config-type-toggle-btn" value="ui" :readonly="currentManagerSchema == null" density="compact">
                   <v-icon>mdi-view-dashboard-edit-outline</v-icon>
                 </v-btn>
-                <v-btn class="config-type-toggle-btn" value="json" :readonly="currentManagerSchema == null">
+                <v-btn class="config-type-toggle-btn" value="json" :readonly="currentManagerSchema == null" density="compact">
                   <v-icon>mdi-code-json</v-icon>
                 </v-btn>
               </v-btn-toggle>
@@ -40,7 +40,7 @@
 
           <div id="config-tab-content-ui" v-if="configType == 'ui'">
             <v-form id="config-tab-content-ui-form">
-              <vjsf id="config-tab-content-ui-form-vjsf" :schema="currentManagerSchema" v-model="currentManagerData" :options="{}" />
+              <vjsf id="config-tab-content-ui-form-vjsf" :schema="currentManagerSchema" v-model="currentManagerData" :options="VJSFOptions" />
             </v-form>
           </div>
 
@@ -71,18 +71,84 @@ const currentManagerDataEditorString = ref('')
 const currentManagerSchema = ref(null)
 const modified = ref(false)
 
+const VJSFOptions = {
+  "context": {},
+  "width": 1208,
+  "readOnly": false,
+  "summary": false,
+  "density": "comfortable",
+  "indent": true,
+  "titleDepth": 4,
+  "validateOn": "input",
+  "initialValidation": "withData",
+  "updateOn": "input",
+  "debounceInputMs": 300,
+  "defaultOn": "empty",
+  "removeAdditional": "error",
+  "autofocus": false,
+  "readOnlyPropertiesMode": "show",
+  "pluginsOptions": {},
+  "locale": "en",
+  "messages": {
+    "errorOneOf": "请选择一个",
+    "errorRequired": "必填信息",
+    "addItem": "添加",
+    "delete": "删除",
+    "edit": "编辑",
+    "close": "关闭",
+    "duplicate": "复制",
+    "sort": "排序",
+    "up": "向上移动",
+    "down": "向下移动",
+    "showHelp": "显示帮助信息",
+    "mdeLink1": "[链接标题",
+    "mdeLink2": "](链接地址)",
+    "mdeImg1": "![](",
+    "mdeImg2": "图片地址)",
+    "mdeTable1": "",
+    "mdeTable2": "\n\n| 列 1 | 列 2 | 列 3 |\n| -------- | -------- | -------- |\n| 文本     | 文本     | 文本     |\n\n",
+    "bold": "加粗",
+    "italic": "斜体",
+    "heading": "标题",
+    "quote": "引用",
+    "unorderedList": "无序列表",
+    "orderedList": "有序列表",
+    "createLink": "创建链接",
+    "insertImage": "插入图片",
+    "createTable": "创建表格",
+    "preview": "预览",
+    "mdeGuide": "文档",
+    "undo": "撤销",
+    "redo": "重做"
+  }
+}
+
 const refresh = () => {
   proxy.$axios.get('/settings').then(response => {
     managerList.value = response.data.data.managers
 
     if (proxy.$store.state.settingsPageTab != '') {
       fetchCurrentManagerData(proxy.$store.state.settingsPageTab)
+    } else {
+      proxy.$store.state.settingsPageTab = managerList.value[0].name
+      fetchCurrentManagerData(proxy.$store.state.settingsPageTab)
     }
+
+    firstJumpEditorAfterChangeTab()
   })
 }
 
 const onTabChange = (tab) => {
   fetchCurrentManagerData(tab)
+  firstJumpEditorAfterChangeTab()
+}
+
+const firstJumpEditorAfterChangeTab = () => {
+  if (currentManagerSchema.value != null) {
+    configType.value = 'ui'
+  } else {
+    configType.value = 'json'
+  }
 }
 
 const fetchCurrentManagerData = (tab) => {
@@ -91,11 +157,6 @@ const fetchCurrentManagerData = (tab) => {
     currentManagerData.value = currentManager.value.data
     currentManagerDataEditorString.value = JSON.stringify(currentManager.value.data, null, 2)
     currentManagerSchema.value = currentManager.value.schema
-    if (currentManagerSchema.value != null) {
-      configType.value = 'ui'
-    } else {
-      configType.value = 'json'
-    }
   })
 }
 
@@ -117,7 +178,11 @@ const saveAndApply = () => {
 }
 
 const reset = () => {
-  currentManagerData.value = JSON.stringify(currentManager.value.data, null, 2)
+  if (configType.value == 'json') {
+    currentManagerData.value = JSON.stringify(currentManager.value.data, null, 2)
+  } else {
+    fetchCurrentManagerData(currentManager.value.name)
+  }
   modified.value = false
 }
 
@@ -155,7 +220,7 @@ onMounted(async () => {
 
 .config-tab-toolbar {
   margin: 0.5rem;
-  height: 4rem;
+  height: 3.2rem;
   display: flex;
   flex-direction: row;
   justify-content: space-between;
@@ -202,7 +267,7 @@ onMounted(async () => {
 
 #config-tab-content-ui-form-vjsf {
   height: 100%;
-  width: calc(100% - 1.2rem);
+  width: calc(100% - 1rem);
 }
 
 #config-tab-content-json {

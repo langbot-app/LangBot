@@ -33,7 +33,8 @@ class LoadConfigStage(stage.BootingStage):
         ap.settings_mgr.register_manager(
             name="pipeline.json",
             description="消息处理流水线配置",
-            manager=ap.pipeline_cfg
+            manager=ap.pipeline_cfg,
+            schema=schema.CONFIG_PIPELINE_SCHEMA
         )
 
         ap.settings_mgr.register_manager(
