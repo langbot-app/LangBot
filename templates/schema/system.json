@@ -1,0 +1,80 @@
+{
+    "type": "object",
+    "properties": {
+        "admin-sessions": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "network-proxies": {
+            "type": "object",
+            "properties": {
+                "http": {
+                    "type": "string"
+                },
+                "https": {
+                    "type": "string"
+                }
+            }
+        },
+        "report-usage": {
+            "type": "boolean"
+        },
+        "logging-level": {
+            "type": "string"
+        },
+        "session-concurrency": {
+            "type": "object",
+            "properties": {
+                "default": {
+                    "type": "integer"
+                }
+            },
+            "patternProperties": {
+                "^(person|group).*$": {
+                    "type": "integer"
+                }
+            }
+        },
+        "pipeline-concurrency": {
+            "type": "integer"
+        },
+        "qcg-center-url": {
+            "type": "string"
+        },
+        "help-message": {
+            "type": "string"
+        },
+        "http-api": {
+            "type": "object",
+            "properties": {
+                "enable": {
+                    "type": "boolean"
+                },
+                "host": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                }
+            }
+        },
+        "persistence": {
+            "type": "object",
+            "properties": {
+                "sqlite": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "use": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

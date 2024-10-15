@@ -15,15 +15,15 @@
       <v-tabs-window-item v-for="manager in managerList" :key="manager.name" :value="manager.name"
         class="config-tab-window">
         <v-card class="config-tab-toolbar">
-          <v-tooltip :text="manager.schema == null ? '仅配置文件管理器提供了 JSON Schema 时支持可视化配置' : '切换编辑模式'" location="top">
+          <v-tooltip :text="currentManagerSchema == null ? '仅配置文件管理器提供了 JSON Schema 时支持可视化配置' : '切换编辑模式'" location="top">
             <template v-slot:activator="{ props }">
 
               <v-btn-toggle id="config-type-toggle" color="primary" v-model="configType" mandatory v-bind="props">
 
-                <v-btn class="config-type-toggle-btn" value="ui" :readonly="manager.schema == null">
+                <v-btn class="config-type-toggle-btn" value="ui" :readonly="currentManagerSchema == null">
                   <v-icon>mdi-view-dashboard-edit-outline</v-icon>
                 </v-btn>
-                <v-btn class="config-type-toggle-btn" value="json" :readonly="manager.schema == null">
+                <v-btn class="config-type-toggle-btn" value="json" :readonly="currentManagerSchema == null">
                   <v-icon>mdi-code-json</v-icon>
                 </v-btn>
               </v-btn-toggle>
@@ -31,18 +31,21 @@
           </v-tooltip>
 
           <div id="file-operation-toolbar">
-            <v-btn @click="reset" color="warning" prepend-icon="mdi-undo" :disabled="!modified">重置</v-btn>
-            <v-btn @click="saveAndApply" color="primary" prepend-icon="mdi-content-save-outline" :disabled="!modified">应用</v-btn>
+            <v-btn @click="reset" color="warning" prepend-icon="mdi-undo" :disabled="!modified && configType == 'json'">重置</v-btn>
+            <v-btn @click="saveAndApply" color="primary" prepend-icon="mdi-content-save-outline" :disabled="!modified && configType == 'json'">应用</v-btn>
           </div>
         </v-card>
+
         <div id="config-tab-content">
 
           <div id="config-tab-content-ui" v-if="configType == 'ui'">
-
+            <v-form id="config-tab-content-ui-form">
+              <vjsf id="config-tab-content-ui-form-vjsf" :schema="currentManagerSchema" v-model="currentManagerData" :options="{}" />
+            </v-form>
           </div>
 
           <v-card id="config-tab-content-json" v-if="configType == 'json'">
-            <textarea id="config-tab-content-json-textarea" @input="onInput" v-model="currentManagerData" />
+            <textarea id="config-tab-content-json-textarea" @input="onInput" v-model="currentManagerDataEditorString" />
           </v-card>
         </div>
       </v-tabs-window-item>
@@ -56,12 +59,16 @@
 import PageTitle from '@/components/PageTitle.vue'
 import { ref, getCurrentInstance, onMounted } from 'vue'
 
+import Vjsf from '@koumoul/vjsf';
+
 const { proxy } = getCurrentInstance()
 
 const managerList = ref([])
 const configType = ref('json')  // ui or json
 const currentManager = ref(null)
-const currentManagerData = ref('')
+const currentManagerData = ref({})
+const currentManagerDataEditorString = ref('')
+const currentManagerSchema = ref(null)
 const modified = ref(false)
 
 const refresh = () => {
@@ -81,7 +88,14 @@ const onTabChange = (tab) => {
 const fetchCurrentManagerData = (tab) => {
   proxy.$axios.get(`/settings/${tab}`).then(response => {
     currentManager.value = response.data.data.manager
-    currentManagerData.value = JSON.stringify(currentManager.value.data, null, 2)
+    currentManagerData.value = currentManager.value.data
+    currentManagerDataEditorString.value = JSON.stringify(currentManager.value.data, null, 2)
+    currentManagerSchema.value = currentManager.value.schema
+    if (currentManagerSchema.value != null) {
+      configType.value = 'ui'
+    } else {
+      configType.value = 'json'
+    }
   })
 }
 
@@ -90,9 +104,12 @@ const onInput = () => {
 }
 
 const saveAndApply = () => {
+  if (configType.value == 'json') {
+    currentManagerData.value = JSON.parse(currentManagerDataEditorString.value)
+  }
 
   proxy.$axios.put(`/settings/${currentManager.value.name}/data`, {
-    data: JSON.parse(currentManagerData.value)
+    data: currentManagerData.value
   }).then(response => {
     fetchCurrentManagerData(currentManager.value.name)
     modified.value = false
@@ -133,7 +150,7 @@ onMounted(async () => {
 }
 
 .config-tab-window {
-  overflow: auto;
+  overflow: hidden;
 }
 
 .config-tab-toolbar {
@@ -159,16 +176,38 @@ onMounted(async () => {
   box-shadow: 0 0 0 2px #dddddd;
 }
 
-.config-type-toggle-btn {}
-
-.config-tab-content {
+#config-tab-content {
   margin: 0.2rem;
   height: calc(100% - 1rem);
+  overflow: hidden;
+}
+
+#config-tab-content-ui {
+  margin: 0.5rem;
+  height: calc(100vh - 15rem);
+  margin-top: 1rem;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+#config-tab-content-ui-form {
+  height: 100%;
+  width: calc(100% - 1.5rem);
+  margin-left: 0.5rem;
+  overflow-y: auto;
+}
+
+#config-tab-content-ui-form-vjsf {
+  height: 100%;
+  width: calc(100% - 1.2rem);
 }
 
 #config-tab-content-json {
   margin: 0.5rem;
-  height: calc(100vh - 18rem);
+  height: calc(100vh - 16rem);
   margin-top: 1rem;
 }
 

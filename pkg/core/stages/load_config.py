@@ -3,6 +3,7 @@ from __future__ import annotations
 from .. import stage, app
 from ..bootutils import config
 from ...config import settings as settings_mgr
+from ...utils import schema
 
 
 @stage.stage_class("LoadConfigStage")
@@ -50,7 +51,8 @@ class LoadConfigStage(stage.BootingStage):
         ap.settings_mgr.register_manager(
             name="system.json",
             description="系统配置",
-            manager=ap.system_cfg
+            manager=ap.system_cfg,
+            schema=schema.CONFIG_SYSTEM_SCHEMA
         )
 
         ap.plugin_setting_meta = await config.load_json_config("plugins/plugins.json", "templates/plugin-settings.json")

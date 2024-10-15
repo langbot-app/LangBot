@@ -5,6 +5,8 @@ import Vuetify, { transformAssetUrls } from 'vite-plugin-vuetify'
 import ViteFonts from 'unplugin-fonts/vite'
 import VueRouter from 'unplugin-vue-router/vite'
 
+import { commonjsDeps } from '@koumoul/vjsf/utils/build.js'
+
 // Utilities
 import { defineConfig } from 'vite'
 import { fileURLToPath, URL } from 'node:url'
@@ -51,4 +53,12 @@ export default defineConfig({
   server: {
     port: 3002,
   },
+  optimizeDeps: {
+    include: commonjsDeps,
+  },
+  build: {
+    commonjsOptions: {
+      transformMixedEsModules: true,
+    },
+  }
 })
