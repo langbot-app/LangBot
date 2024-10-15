@@ -63,11 +63,6 @@ class RouterGroup(abc.ABC):
         return decorator
     
     def _cors(self, response: quart.Response) -> quart.Response:
-        # Quart-Cors 似乎很久没维护了，所以自己写
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Headers'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = '*'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
         return response
 
     def success(self, data: typing.Any = None) -> quart.Response:

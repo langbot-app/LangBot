@@ -18,3 +18,4 @@ ollama
 quart
 sqlalchemy[asyncio]
 aiosqlite
+quart-cors

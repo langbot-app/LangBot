@@ -39,3 +39,12 @@ class SettingsRouterGroup(group.RouterGroup):
                     }
                 }
             )
+        
+        @self.route('/<manager_name>/data', methods=['PUT'])
+        async def _(manager_name: str) -> str:
+            data = await quart.request.json
+            manager = self.ap.settings_mgr.get_manager(manager_name)
+            manager.data = data['data']
+            return self.success(data={
+                "data": manager.data
+            })

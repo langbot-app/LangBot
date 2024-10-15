@@ -6,6 +6,7 @@ export default createStore({
   state: {
     apiBaseUrl: 'http://localhost:5300/api/v1',
     autoRefreshLog: false,
+    settingsPageTab: '',
     version: 'v0.0.0',
     debug: false
   },

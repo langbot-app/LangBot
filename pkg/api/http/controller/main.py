@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 import quart
+import quart_cors
 
 from ....core import app
 from .groups import logs, system, settings
@@ -18,6 +19,7 @@ class HTTPController:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
         self.quart_app = quart.Quart(__name__)
+        quart_cors.cors(self.quart_app, allow_origin='*')
 
     async def initialize(self) -> None:
         await self.register_routes()
