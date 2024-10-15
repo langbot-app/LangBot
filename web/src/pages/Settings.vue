@@ -67,6 +67,10 @@ const modified = ref(false)
 const refresh = () => {
   proxy.$axios.get('/settings').then(response => {
     managerList.value = response.data.data.managers
+
+    if (proxy.$store.state.settingsPageTab != '') {
+      fetchCurrentManagerData(proxy.$store.state.settingsPageTab)
+    }
   })
 }
 
