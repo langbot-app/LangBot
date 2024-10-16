@@ -1,5 +1,8 @@
 <template>
   <v-app>
+    <v-snackbar v-model="snackbar" :color="color" :timeout="timeout" :location="location">
+      {{ text }}
+    </v-snackbar>
 
     <v-layout>
       <v-navigation-drawer id="navigation-drawer" :width="160" app permanent rail>
@@ -8,7 +11,9 @@
             <div id="logo-container">
               <v-img id="logo-img" src="@/assets/langbot-logo-block.png" height="32" width="32"></v-img>
 
-              <div id="version-chip" v-tooltip="proxy.$store.state.version + (proxy.$store.state.debug ? ' (调试模式已启用)' : '')" :style="{ 'background-color': proxy.$store.state.debug ? '#c79a47' : '#1e9ae2' }">
+              <div id="version-chip"
+                v-tooltip="proxy.$store.state.version + (proxy.$store.state.debug ? ' (调试模式已启用)' : '')"
+                :style="{ 'background-color': proxy.$store.state.debug ? '#c79a47' : '#1e9ae2' }">
                 {{ proxy.$store.state.version }}
               </div>
             </div>
@@ -45,8 +50,42 @@
 
 <script setup>
 import { getCurrentInstance } from 'vue'
+import {provide, ref, watch} from 'vue';
 
 const { proxy } = getCurrentInstance()
+
+const snackbar = ref(false);
+const color = ref('success');
+const text = ref('');
+const location = ref('top');
+const timeout = ref(2000);
+
+function success(content) {
+  snackbar.value = true;
+  color.value = 'success';
+  text.value = content;
+}
+
+function error(content) {
+  snackbar.value = true;
+  color.value = 'error';
+  text.value = content;
+}
+
+function warning(content) {
+  snackbar.value = true;
+  color.value = 'warning';
+  text.value = content;
+}
+
+function info(content) {
+  snackbar.value = true;
+  color.value = 'primary';
+  text.value = content;
+}
+
+
+provide('snackbar', {success, error, warning, info, location, timeout});
 </script>
 
 <style scoped>
@@ -102,5 +141,4 @@ const { proxy } = getCurrentInstance()
 #about-list-item:active {
   background-color: #ddd;
 }
-
 </style>

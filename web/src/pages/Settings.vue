@@ -47,6 +47,8 @@
           <v-card id="config-tab-content-json" v-if="configType == 'json'">
             <textarea id="config-tab-content-json-textarea" @input="onInput" v-model="currentManagerDataEditorString" />
           </v-card>
+
+        <div id="config-tab-json-not-valid" v-if="!isJsonValid && configType == 'json'">*JSON 格式不正确: {{ errorMessage }}</div>
         </div>
       </v-tabs-window-item>
     </v-tabs-window>
@@ -58,6 +60,10 @@
 
 import PageTitle from '@/components/PageTitle.vue'
 import { ref, getCurrentInstance, onMounted } from 'vue'
+
+import {inject} from "vue";
+
+const snackbar = inject('snackbar');
 
 import Vjsf from '@koumoul/vjsf';
 
@@ -125,6 +131,12 @@ const VJSFOptions = {
 
 const refresh = () => {
   proxy.$axios.get('/settings').then(response => {
+
+    if (response.data.code != 0) {
+      snackbar.error(response.data.msg)
+      return
+    }
+
     managerList.value = response.data.data.managers
 
     if (proxy.$store.state.settingsPageTab == '') {
@@ -133,10 +145,14 @@ const refresh = () => {
     fetchCurrentManagerData(proxy.$store.state.settingsPageTab).then(() => {
       firstJumpEditorAfterChangeTab()
     })
+  }).catch(error => {
+    snackbar.error(error)
   })
 }
 
 const onTabChange = (tab) => {
+  isJsonValid.value = true
+  errorMessage.value = ''
   fetchCurrentManagerData(tab).then(() => {
     firstJumpEditorAfterChangeTab()
   })
@@ -151,7 +167,13 @@ const firstJumpEditorAfterChangeTab = () => {
 }
 
 const fetchCurrentManagerData = (tab) => {
-  return proxy.$axios.get(`/settings/${tab}`).then(response => {
+  return proxy.$axios.get(`/settings/${tab}`).catch(error => {
+    snackbar.error(error)
+  }).then(response => {
+    if (response.data.code != 0) {
+      snackbar.error(response.data.msg)
+      return
+    }
     currentManager.value = response.data.data.manager
     currentManagerData.value = currentManager.value.data
     currentManagerDataEditorString.value = JSON.stringify(currentManager.value.data, null, 2)
@@ -159,11 +181,30 @@ const fetchCurrentManagerData = (tab) => {
   })
 }
 
+const isJsonValid = ref(true)
+const errorMessage = ref('')
+
+const checkJsonValid = () => {
+  try {
+    JSON.parse(currentManagerDataEditorString.value)
+    isJsonValid.value = true
+    errorMessage.value = ''
+  } catch (error) {
+    isJsonValid.value = false
+    errorMessage.value = error.message
+  }
+}
+
 const onInput = () => {
   modified.value = true
+  checkJsonValid()
 }
 
 const saveAndApply = () => {
+  if (!isJsonValid.value) {
+    snackbar.error('JSON 格式不正确: ' + errorMessage.value)
+    return
+  }
   if (configType.value == 'json') {
     currentManagerData.value = JSON.parse(currentManagerDataEditorString.value)
   }
@@ -171,14 +212,23 @@ const saveAndApply = () => {
   proxy.$axios.put(`/settings/${currentManager.value.name}/data`, {
     data: currentManagerData.value
   }).then(response => {
+    if (response.data.code != 0) {
+      snackbar.error(response.data.msg)
+      return
+    }
     fetchCurrentManagerData(currentManager.value.name)
     modified.value = false
+  }).catch(error => {
+    snackbar.error(error)
   })
 }
 
 const reset = () => {
   if (configType.value == 'json') {
-    currentManagerData.value = JSON.stringify(currentManager.value.data, null, 2)
+    currentManagerData.value = currentManager.value.data
+    currentManagerDataEditorString.value = JSON.stringify(currentManager.value.data, null, 2)
+    isJsonValid.value = true
+    errorMessage.value = ''
   } else {
     fetchCurrentManagerData(currentManager.value.name)
   }
@@ -288,5 +338,14 @@ onMounted(async () => {
   letter-spacing: 0.05rem;
   line-height: 1.6rem;
   text-wrap: nowrap;
+}
+
+#config-tab-json-not-valid {
+  margin: 0rem;
+  margin-left: 0.6rem;
+  height: 1.5rem;
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  color: red;
 }
 </style>
