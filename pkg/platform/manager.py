@@ -184,7 +184,8 @@ class PlatformManager:
                 tasks.append(exception_wrapper(adapter))
             
             for task in tasks:
-                asyncio.create_task(task)
+                async_task = asyncio.create_task(task)
+                self.ap.asyncio_tasks.append(async_task)
 
         except Exception as e:
             self.ap.logger.error('平台适配器运行出错: ' + str(e))

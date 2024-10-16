@@ -69,7 +69,11 @@ class APIGroup(metaclass=abc.ABCMeta):
         **kwargs
     ) -> asyncio.Task:
         """执行请求"""
-        asyncio.create_task(self._do(method, path, data, params, headers, **kwargs))
+        task = asyncio.create_task(self._do(method, path, data, params, headers, **kwargs))
+
+        self.ap.asyncio_tasks.append(task)
+
+        return task
 
     def gen_rid(
         self

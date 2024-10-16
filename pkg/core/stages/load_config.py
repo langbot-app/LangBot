@@ -27,7 +27,8 @@ class LoadConfigStage(stage.BootingStage):
         ap.settings_mgr.register_manager(
             name="command.json",
             description="命令配置",
-            manager=ap.command_cfg
+            manager=ap.command_cfg,
+            schema=schema.CONFIG_COMMAND_SCHEMA
         )
 
         ap.settings_mgr.register_manager(
@@ -40,13 +41,15 @@ class LoadConfigStage(stage.BootingStage):
         ap.settings_mgr.register_manager(
             name="platform.json",
             description="消息平台配置",
-            manager=ap.platform_cfg
+            manager=ap.platform_cfg,
+            schema=schema.CONFIG_PLATFORM_SCHEMA
         )
 
         ap.settings_mgr.register_manager(
             name="provider.json",
             description="大模型能力配置",
-            manager=ap.provider_cfg
+            manager=ap.provider_cfg,
+            schema=schema.CONFIG_PROVIDER_SCHEMA
         )
 
         ap.settings_mgr.register_manager(

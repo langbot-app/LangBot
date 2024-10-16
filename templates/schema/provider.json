@@ -1,0 +1,196 @@
+{
+    "type": "object",
+    "layout": "expansion-panels",
+    "properties": {
+        "enable-chat": {
+            "type": "boolean",
+            "default": true,
+            "title": "启用聊天功能",
+            "description": "是否启用 AI 聊天功能"
+        },
+        "enable-vision": {
+            "type": "boolean",
+            "default": true,
+            "title": "启用视觉功能",
+            "description": "是否开启AI视觉功能。需要使用的模型同时支持视觉功能，详情见元数据板块"
+        },
+        "keys": {
+            "type": "object",
+            "title": "模型接口密钥",
+            "description": "以字典的形式设置若干个密钥组，每个密钥组的键为密钥组名称，值为密钥列表。模型与密钥组的对应关系，请查看元数据板块",
+            "properties": {
+                "openai": {
+                    "type": "array",
+                    "title": "OpenAI API 密钥",
+                    "description": "OpenAI API 密钥",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "anthropic": {
+                    "type": "array",
+                    "title": "Anthropic API 密钥",
+                    "description": "Anthropic API 密钥",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "moonshot": {
+                    "type": "array",
+                    "title": "Moonshot API 密钥",
+                    "description": "Moonshot API 密钥",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "deepseek": {
+                    "type": "array",
+                    "title": "DeepSeek API 密钥",
+                    "description": "DeepSeek API 密钥",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "requester": {
+            "type": "object",
+            "title": "大模型请求器",
+            "description": "以字典的形式设置若干个请求器，每个请求器的键为请求器名称，值为请求器配置。模型与请求器的对应关系，请查看元数据板块。实现请求器的方式，请查看插件编写教程",
+            "properties": {
+                "openai-chat-completions": {
+                    "type": "object",
+                    "title": "OpenAI API 请求配置",
+                    "description": "仅可编辑 URL 和 超时时间，额外请求参数不支持可视化编辑，请到编辑器编辑",
+                    "properties": {
+                        "base-url": {
+                            "type": "string",
+                            "title": "API URL"
+                        },
+                        "args": {
+                            "type": "object"
+                        },
+                        "timeout": {
+                            "type": "number",
+                            "title": "API 请求超时时间",
+                            "default": 120
+                        }
+                    }
+                },
+                "anthropic-messages": {
+                    "type": "object",
+                    "title": "Anthropic API 请求配置",
+                    "description": "仅可编辑 URL 和 超时时间，额外请求参数不支持可视化编辑，请到编辑器编辑",
+                    "properties": {
+                        "base-url": {
+                            "type": "string",
+                            "title": "API URL"
+                        },
+                        "args": {
+                            "type": "object"
+                        },
+                        "timeout": {
+                            "type": "number",
+                            "title": "API 请求超时时间",
+                            "default": 120
+                        }
+                    }
+                },
+                "moonshot-chat-completions": {
+                    "type": "object",
+                    "title": "Moonshot API 请求配置",
+                    "description": "仅可编辑 URL 和 超时时间，额外请求参数不支持可视化编辑，请到编辑器编辑",
+                    "properties": {
+                        "base-url": {
+                            "type": "string",
+                            "title": "API URL"
+                        },
+                        "args": {
+                            "type": "object"
+                        },
+                        "timeout": {
+                            "type": "number",
+                            "title": "API 请求超时时间",
+                            "default": 120
+                        }
+                    }
+                },
+                "deepseek-chat-completions": {
+                    "type": "object",
+                    "title": "DeepSeek API 请求配置",
+                    "description": "仅可编辑 URL 和 超时时间，额外请求参数不支持可视化编辑，请到编辑器编辑",
+                    "properties": {
+                        "base-url": {
+                            "type": "string",
+                            "title": "API URL"
+                        },
+                        "args": {
+                            "type": "object"
+                        },
+                        "timeout": {
+                            "type": "number",
+                            "title": "API 请求超时时间",
+                            "default": 120
+                        }
+                    }
+                },
+                "ollama-chat": {
+                    "type": "object",
+                    "title": "Ollama API 请求配置",
+                    "description": "仅可编辑 URL 和 超时时间，额外请求参数不支持可视化编辑，请到编辑器编辑",
+                    "properties": {
+                        "base-url": {
+                            "type": "string",
+                            "title": "API URL"
+                        },
+                        "args": {
+                            "type": "object"
+                        },
+                        "timeout": {
+                            "type": "number",
+                            "title": "API 请求超时时间",
+                            "default": 600
+                        }
+                    }
+                }
+            }
+        },
+        "model": {
+            "type": "string",
+            "title": "所使用的模型名称",
+            "description": "设置要使用的模型名称。通常来说直接填写模型名称即可，但如果要使用原生接口不是 ChatCompletion 但以 ChatCompletion 接口格式接入的模型，请在模型名称前方加一个 OneAPI/ 前缀以进行区分。 简单来说可以认为是：现阶段非 OpenAI 的模型接入都需要在模型名称前方加一个 OneAPI/ 前缀。\n\n例如：\n\n1. 通过 OneAPI 等中转服务接入了 OpenAI 的 gpt-4 模型，由于 gpt-4 也是使用 ChatCompletion 接口格式进行请求，则可以直接填入 gpt-4；\n2. 通过 OneAPI 等中转服务接入了 Google 的 gemini-pro 模型，由于 gemini-pro 原生接口格式并非 ChatCompletion，因此需要填入 OneAPI/gemini-pro。\n具体支持的模型列表和各个模型对应的请求器和密钥组，请查看元数据板块 llm-models.json "
+        },
+        "prompt-mode": {
+            "type": "string",
+            "title": "情景预设（人格）模式",
+            "description": "值为normal（单预设模式）和full-scenario（完整历史对话模式）；normal模式时，使用下方设置的情景预设，也支持读取data/prompts目录下的文件内容作为单个 System Prompt，文件名即为prompt的名称；full-scenario模式时，读取 data/scenario/ 下的完整历史对话作为情景预设",
+            "enum": ["normal", "full-scenario"],
+            "default": "normal"
+        },
+        "prompt": {
+            "type": "object",
+            "title": "情景预设（人格）",
+            "description": "设置情景预设（人格）。值为空字符串时，将不使用情景预设（人格）。normal模式时，使用下方设置的情景预设，也支持读取data/prompts目录下的文件内容作为单个 System Prompt，文件名即为prompt的名称；full-scenario模式时，读取 data/scenario/ 下的完整历史对话作为情景预设",
+            "properties": {
+                "default": {
+                    "type": "string",
+                    "title": "默认情景预设",
+                    "description": "设置默认情景预设。值为空字符串时，将不使用情景预设（人格）"
+                }
+            },
+            "patternProperties": {
+                "^.*$": {
+                    "type": "string",
+                    "title": "情景预设",
+                    "description": "设置情景预设。值为空字符串时，将不使用情景预设（人格）"
+                }
+            },
+            "required": ["default"]
+        },
+        "runner": {
+            "type": "string",
+            "title": "请求运行器",
+            "description": "设置请求运行器。值为local-agent时，使用内置默认运行器；支持插件扩展"
+        }
+    }
+}
