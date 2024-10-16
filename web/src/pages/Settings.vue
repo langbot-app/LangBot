@@ -127,20 +127,19 @@ const refresh = () => {
   proxy.$axios.get('/settings').then(response => {
     managerList.value = response.data.data.managers
 
-    if (proxy.$store.state.settingsPageTab != '') {
-      fetchCurrentManagerData(proxy.$store.state.settingsPageTab)
-    } else {
+    if (proxy.$store.state.settingsPageTab == '') {
       proxy.$store.state.settingsPageTab = managerList.value[0].name
-      fetchCurrentManagerData(proxy.$store.state.settingsPageTab)
     }
-
-    firstJumpEditorAfterChangeTab()
+    fetchCurrentManagerData(proxy.$store.state.settingsPageTab).then(() => {
+      firstJumpEditorAfterChangeTab()
+    })
   })
 }
 
 const onTabChange = (tab) => {
-  fetchCurrentManagerData(tab)
-  firstJumpEditorAfterChangeTab()
+  fetchCurrentManagerData(tab).then(() => {
+    firstJumpEditorAfterChangeTab()
+  })
 }
 
 const firstJumpEditorAfterChangeTab = () => {
@@ -152,7 +151,7 @@ const firstJumpEditorAfterChangeTab = () => {
 }
 
 const fetchCurrentManagerData = (tab) => {
-  proxy.$axios.get(`/settings/${tab}`).then(response => {
+  return proxy.$axios.get(`/settings/${tab}`).then(response => {
     currentManager.value = response.data.data.manager
     currentManagerData.value = currentManager.value.data
     currentManagerDataEditorString.value = JSON.stringify(currentManager.value.data, null, 2)
