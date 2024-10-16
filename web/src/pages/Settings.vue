@@ -218,6 +218,7 @@ const saveAndApply = () => {
     }
     fetchCurrentManagerData(currentManager.value.name)
     modified.value = false
+    snackbar.success('应用成功')
   }).catch(error => {
     snackbar.error(error)
   })
@@ -229,10 +230,14 @@ const reset = () => {
     currentManagerDataEditorString.value = JSON.stringify(currentManager.value.data, null, 2)
     isJsonValid.value = true
     errorMessage.value = ''
+    modified.value = false
+    snackbar.success('重置成功')
   } else {
-    fetchCurrentManagerData(currentManager.value.name)
+    fetchCurrentManagerData(currentManager.value.name).then(() => {
+      snackbar.success('重置成功')
+      modified.value = false
+    })
   }
-  modified.value = false
 }
 
 onMounted(async () => {
