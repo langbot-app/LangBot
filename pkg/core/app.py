@@ -125,9 +125,11 @@ class Application:
             import signal
 
             def signal_handler(sig, frame):
-                for task in tasks:
+                for task in self.asyncio_tasks:
                     task.cancel()
                 self.logger.info("程序退出.")
+                # 结束当前事件循环
+                self.event_loop.stop()
                 exit(0)
 
             signal.signal(signal.SIGINT, signal_handler)
@@ -138,4 +140,3 @@ class Application:
         except Exception as e:
             self.logger.error(f"应用运行致命异常: {e}")
             self.logger.debug(f"Traceback: {traceback.format_exc()}")
-

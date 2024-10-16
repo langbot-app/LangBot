@@ -60,7 +60,9 @@ class Controller:
                             # 通知其他协程，有新的请求可以处理了
                             self.ap.query_pool.condition.notify_all()
                     
-                    asyncio.create_task(_process_query(selected_query))
+                    task = asyncio.create_task(_process_query(selected_query))
+                    self.ap.asyncio_tasks.append(task)
+
         except Exception as e:
             # traceback.print_exc()
             self.ap.logger.error(f"控制器循环出错: {e}")

@@ -3,6 +3,7 @@ from __future__ import annotations
 from .. import stage, app
 from ..bootutils import config
 from ...config import settings as settings_mgr
+from ...utils import schema
 
 
 @stage.stage_class("LoadConfigStage")
@@ -26,31 +27,36 @@ class LoadConfigStage(stage.BootingStage):
         ap.settings_mgr.register_manager(
             name="command.json",
             description="命令配置",
-            manager=ap.command_cfg
+            manager=ap.command_cfg,
+            schema=schema.CONFIG_COMMAND_SCHEMA
         )
 
         ap.settings_mgr.register_manager(
             name="pipeline.json",
             description="消息处理流水线配置",
-            manager=ap.pipeline_cfg
+            manager=ap.pipeline_cfg,
+            schema=schema.CONFIG_PIPELINE_SCHEMA
         )
 
         ap.settings_mgr.register_manager(
             name="platform.json",
             description="消息平台配置",
-            manager=ap.platform_cfg
+            manager=ap.platform_cfg,
+            schema=schema.CONFIG_PLATFORM_SCHEMA
         )
 
         ap.settings_mgr.register_manager(
             name="provider.json",
             description="大模型能力配置",
-            manager=ap.provider_cfg
+            manager=ap.provider_cfg,
+            schema=schema.CONFIG_PROVIDER_SCHEMA
         )
 
         ap.settings_mgr.register_manager(
             name="system.json",
             description="系统配置",
-            manager=ap.system_cfg
+            manager=ap.system_cfg,
+            schema=schema.CONFIG_SYSTEM_SCHEMA
         )
 
         ap.plugin_setting_meta = await config.load_json_config("plugins/plugins.json", "templates/plugin-settings.json")

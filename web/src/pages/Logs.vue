@@ -18,6 +18,10 @@
 import PageTitle from '@/components/PageTitle.vue'
 import { ref, getCurrentInstance, onMounted, onUnmounted } from 'vue'
 
+import {inject} from "vue";
+
+const snackbar = inject('snackbar');
+
 const { proxy } = getCurrentInstance()
 
 const logContent = ref('')
@@ -38,9 +42,15 @@ const refreshLog = () => {
             start_offset: logPointer.start_offset
         }
     }).then(response => {
+        if (response.data.code != 0) {
+            snackbar.error(response.data.message)
+            return
+        }
         logContent.value += response.data.data.logs
         logPointer.start_page_number = response.data.data.end_page_number
         logPointer.start_offset = response.data.data.end_offset
+    }).catch(error => {
+        snackbar.error(error.message)
     })
 }
 

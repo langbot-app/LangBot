@@ -46,7 +46,7 @@ class SettingsManager:
         manager.schema = schema
         self.managers.append(manager)
 
-    def get_manager(self, name: str) -> config_manager.ConfigManager:
+    def get_manager(self, name: str) -> config_manager.ConfigManager | None:
         """获取配置管理器
         
         Args:
@@ -60,7 +60,7 @@ class SettingsManager:
             if m.name == name:
                 return m
 
-        raise ValueError(f'配置管理器 {name} 不存在')
+        return None
     
     def get_manager_list(self) -> list[config_manager.ConfigManager]:
         """获取配置管理器列表

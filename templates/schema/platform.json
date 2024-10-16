@@ -1,0 +1,258 @@
+{
+    "type": "object",
+    "layout": "expansion-panels",
+    "properties": {
+        "platform-adapters": {
+            "type": "array",
+            "title": "消息平台适配器",
+            "default": {},
+            "items": {
+                "type": "object",
+                "oneOf": [
+                    {
+                        "title": "YiriMirai 适配器",
+                        "description": "用于接入 Mirai",
+                        "properties": {
+                            "adapter": {
+                                "type": "string",
+                                "const": "yiri-mirai"
+                            },
+                            "enable": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "是否启用此适配器",
+                                "layout": {
+                                    "comp": "switch",
+                                    "props": {
+                                        "color": "primary"
+                                    }
+                                }
+                            },
+                            "host": {
+                                "type": "string",
+                                "default": "127.0.0.1"
+                            },
+                            "port": {
+                                "type": "integer",
+                                "default": 8080
+                            },
+                            "verifyKey": {
+                                "type": "string",
+                                "default": "yirimirai"
+                            },
+                            "qq": {
+                                "type": "integer",
+                                "default": 123456789
+                            }
+                        }
+                    },
+                    {
+                        "title": "Nakuru 适配器",
+                        "description": "用于接入 go-cqhttp",
+                        "properties": {
+                            "adapter": {
+                                "type": "string",
+                                "const": "nakuru"
+                            },
+                            "enable": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "是否启用此适配器",
+                                "layout": {
+                                    "comp": "switch",
+                                    "props": {
+                                        "color": "primary"
+                                    }
+                                }
+                            },
+                            "host": {
+                                "type": "string",
+                                "default": "127.0.0.1"
+                            },
+                            "ws_port": {
+                                "type": "integer",
+                                "default": 8080
+                            },
+                            "http_port": {
+                                "type": "integer",
+                                "default": 5700
+                            },
+                            "token": {
+                                "type": "string",
+                                "default": ""
+                            }
+                        }
+                    },
+                    {
+                        "title": "aiocqhttp 适配器",
+                        "description": "用于接入 Lagrange 等兼容 OneBot v11 协议的机器人框架（仅支持反向ws）",
+                        "properties": {
+                            "adapter": {
+                                "type": "string",
+                                "const": "aiocqhttp"
+                            },
+                            "enable": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "是否启用此适配器",
+                                "layout": {
+                                    "comp": "switch",
+                                    "props": {
+                                        "color": "primary"
+                                    }
+                                }
+                            },
+                            "host": {
+                                "type": "string",
+                                "default": "0.0.0.0",
+                                "description": "监听的 IP 地址，一般就保持 0.0.0.0 就可以了。使用 aiocqhttp 时，QChatGPT 作为服务端被动等待框架连接，请在 Lagrange 等框架中设置被动 ws 地址或者反向 ws 地址（具体视框架而定）为 QChatGPT 监听的地址，且路径为/ws，例如：ws://127.0.0.1:8080/ws"
+                            },
+                            "port": {
+                                "type": "integer",
+                                "default": 8080,
+                                "description": "设置监听的端口，默认8080，需在 Lagrange 等框架中设置为与此处一致的端口"
+                            },
+                            "access-token": {
+                                "type": "string",
+                                "default": "",
+                                "description": "设置访问密钥，与 Lagrange 等框架中设置的保持一致"
+                            }
+                        }
+                    },
+                    {
+                        "title": "qq-botpy 适配器",
+                        "description": "用于接入 QQ 官方机器人 API",
+                        "properties": {
+                            "adapter": {
+                                "type": "string",
+                                "const": "qq-botpy"
+                            },
+                            "enable": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "是否启用此适配器",
+                                "layout": {
+                                    "comp": "switch",
+                                    "props": {
+                                        "color": "primary"
+                                    }
+                                }
+                            },
+                            "appid": {
+                                "type": "string",
+                                "default": "",
+                                "description": "申请到的QQ官方机器人的appid"
+                            },
+                            "secret": {
+                                "type": "string",
+                                "default": "",
+                                "description": "申请到的QQ官方机器人的secret"
+                            },
+                            "intents": {
+                                "type": "array",
+                                "description": "控制监听的事件类型，需要填写才能接收到对应消息，目前支持的事件类型有：public_guild_messages（QQ 频道消息）、direct_message（QQ 频道私聊消息）、public_messages（QQ 群 和 列表私聊消息）",
+                                "default": [
+                                    "public_guild_messages",
+                                    "direct_message",
+                                    "public_messages"
+                                ]
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        "track-function-calls": {
+            "type": "boolean",
+            "default": true,
+            "layout": {
+                "comp": "switch",
+                "props": {
+                    "color": "primary"
+                }
+            },
+            "title": "跟踪内容函数调用",
+            "description": "开启之后，在对话中调用的内容函数记录也会发给用户，关闭后(false)仅会发给用户最终结果"
+        },
+        "quote-origin": {
+            "type": "boolean",
+            "default": false,
+            "layout": {
+                "comp": "switch",
+                "props": {
+                    "color": "primary"
+                }
+            },
+            "title": "引用原消息",
+            "description": "在群内回复时是否引用原消息"
+        },
+        "at-sender": {
+            "type": "boolean",
+            "default": false,
+            "layout": {
+                "comp": "switch",
+                "props": {
+                    "color": "primary"
+                }
+            },
+            "title": "是否 at 原用户",
+            "description": "在群内回复时是否@发送者"
+        },
+        "force-delay": {
+            "type": "object",
+            "default": {
+                "min": 0,
+                "max": 0
+            },
+            "title": "强制消息延迟范围",
+            "description": "在将响应内容发回给用户前的强制消息随机延迟时间范围，以防风控，单位是秒",
+            "properties": {
+                "min": {
+                    "type": "integer",
+                    "default": 0,
+                    "description": "最小值，单位是秒"
+                },
+                "max": {
+                    "type": "integer",
+                    "default": 0,
+                    "description": "最大值，单位是秒"
+                }
+            }
+        },
+        "long-text-process": {
+            "type": "object",
+            "title": "长消息处理策略",
+            "properties": {
+                "threshold": {
+                    "type": "integer",
+                    "default": 256,
+                    "title": "长消息处理阈值",
+                    "description": "当消息长度超过此阈值时，将启用长消息处理策略"
+                },
+                "strategy": {
+                    "type": "string",
+                    "default": "forward",
+                    "title": "长消息处理策略",
+                    "description": "长消息处理策略，目前支持forward（转发消息组件）和image（文字转图片）。aiocqhttp 和 qq-botpy 不支持 forward 策略"
+                },
+                "font-path": {
+                    "type": "string",
+                    "description": "image的渲染字体。未设置时，如果在windows下，会尝试寻找系统的微软雅黑字体，若找不到，则转为forward策略。未设置时，若不是windows系统，则直接转为forward策略",
+                    "default": ""
+                }
+            }
+        },
+        "hide-exception-info": {
+            "type": "boolean",
+            "default": true,
+            "layout": {
+                "comp": "switch",
+                "props": {
+                    "color": "primary"
+                }
+            },
+            "title": "向用户隐藏AI接口的异常信息",
+            "description": "是否向用户隐藏AI的异常信息，如果为true，当请求AI接口出现异常时，会返回一个错误的提示给用户。而把报错详情输出在控制台。"
+        }
+    }
+}
