@@ -2,111 +2,119 @@
     "type": "object",
     "layout": "expansion-panels",
     "properties": {
-      "admin-sessions": {
-        "type": "array",
-        "title": "管理员会话",
-        "description": "",
-        "items": {
-          "type": "string",
-          "format": "regex",
-          "pattern": "^(person|group)_(\\d)*$"
-        }
-      },
-      "network-proxies": {
-        "type": "object",
-        "title": "网络代理",
-        "properties": {
-          "http": {
-            "type": "string"
-          },
-          "https": {
-            "type": "string"
-          }
-        }
-      },
-      "report-usage": {
-        "type": "boolean",
-        "title": "是否上报遥测数据",
-        "layout": {
-            "comp": "switch",
-            "props": {
-                "color": "primary"
+        "admin-sessions": {
+            "type": "array",
+            "title": "管理员会话",
+            "description": "设置管理员会话，格式为 {type}_{id}，type 为 \"group\" 或 \"person\"，如：group_123456 或 person_123456",
+            "items": {
+                "type": "string",
+                "format": "regex",
+                "pattern": "^(person|group)_(\\d+)$"
             }
-        }
-      },
-      "logging-level": {
-        "type": "string",
-        "title": "日志等级"
-      },
-      "session-concurrency": {
-        "type": "object",
-        "title": "会话并行消息数",
-        "properties": {
-          "default": {
-            "type": "integer",
-            "title": "会话默认并行消息数"
-          }
         },
-        "patternProperties": {
-          "^(person|group).*$": {
-            "type": "integer"
-          }
-        }
-      },
-      "pipeline-concurrency": {
-        "type": "integer",
-        "title": "全局并行消息数"
-      },
-      "qcg-center-url": {
-        "type": "string",
-        "title": "遥测服务器地址"
-      },
-      "help-message": {
-        "type": "string",
-        "title": "help 命令消息",
-        "layout": "textarea"
-      },
-      "http-api": {
-        "type": "object",
-        "title": "HTTP 接口",
-        "properties": {
-          "enable": {
+        "network-proxies": {
+            "type": "object",
+            "title": "网络代理",
+            "description": "正向代理，http和https都要填，例如：http://127.0.0.1:7890 https://127.0.0.1:7890 。不使用代理请留空。正向代理也可以用环境变量设置：http_proxy 和 https_proxy",
+            "properties": {
+                "http": {
+                    "type": "string"
+                },
+                "https": {
+                    "type": "string"
+                }
+            }
+        },
+        "report-usage": {
             "type": "boolean",
+            "title": "上报遥测数据",
+            "description": "遥测数据用于统计和分析项目使用情况，不包含任何隐私信息，不建议禁用",
             "layout": {
                 "comp": "switch",
                 "props": {
                     "color": "primary"
                 }
-            },
-            "title": "是否启用"
-          },
-          "host": {
-            "type": "string"
-          },
-          "port": {
-            "type": "integer"
-          }
-        }
-      },
-      "persistence": {
-        "type": "object",
-        "title": "持久化设置",
-        "properties": {
-          "sqlite": {
-            "type": "object",
-            "title": "sqlite",
-            "properties": {
-              "path": {
-                "type": "string"
-              }
             }
-          },
-          "use": {
+        },
+        "logging-level": {
             "type": "string",
-            "title": "所使用的数据库",
-            "enum": ["sqlite"]
-          }
+            "title": "日志等级",
+            "description": "目前无效，启用调试模式请设置环境变量：export DEBUG=true"
+        },
+        "session-concurrency": {
+            "type": "object",
+            "title": "会话消息处理并发数",
+            "description": "粒度是单个会话，所有会话使用默认并发数，若需指定特定会话的并发数，请输入 会话名称（格式为 {type}_{id}，示例：group_123456 或 person_123456） 并添加，以设置特定会话的并发数",
+            "properties": {
+                "default": {
+                    "type": "integer"
+                }
+            },
+            "patternProperties": {
+                "^(person|group)_(\\d+)$": {
+                    "type": "integer"
+                }
+            }
+        },
+        "pipeline-concurrency": {
+            "type": "integer",
+            "title": "流水线消息处理并发数",
+            "description": "粒度是整个程序，目前使用 FCFS 算法调度各个请求"
+        },
+        "qcg-center-url": {
+            "type": "string",
+            "title": "遥测服务器地址",
+            "description": "运行期间推送遥测数据的目标地址，默认为官方地址，若您自己部署了 https://github.com/RockChinQ/qcg-center，可以改为你的地址。"
+        },
+        "help-message": {
+            "type": "string",
+            "title": "帮助消息",
+            "description": "用户发送 !help 命令时的输出",
+            "layout": "textarea"
+        },
+        "http-api": {
+            "type": "object",
+            "title": "HTTP 接口",
+            "properties": {
+                "enable": {
+                    "type": "boolean",
+                    "layout": {
+                        "comp": "switch",
+                        "props": {
+                            "color": "primary"
+                        }
+                    },
+                    "title": "是否启用"
+                },
+                "host": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                }
+            }
+        },
+        "persistence": {
+            "type": "object",
+            "title": "持久化设置",
+            "properties": {
+                "sqlite": {
+                    "type": "object",
+                    "title": "sqlite",
+                    "properties": {
+                        "path": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "use": {
+                    "type": "string",
+                    "title": "所使用的数据库",
+                    "enum": [
+                        "sqlite"
+                    ]
+                }
+            }
         }
-      }
     }
-  }
+}

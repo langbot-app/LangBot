@@ -10,12 +10,15 @@
                     "type": "string",
                     "title": "访问控制模式",
                     "description": "访问控制模式，支持黑名单和白名单",
-                    "enum": ["blacklist", "whitelist"]
+                    "enum": [
+                        "blacklist",
+                        "whitelist"
+                    ]
                 },
                 "blacklist": {
                     "type": "array",
                     "title": "黑名单",
-                    "description": "黑名单中的会话将无法使用机器人，仅在访问控制模式为黑名单时有效",
+                    "description": "黑名单中的会话将无法使用机器人，仅在访问控制模式为黑名单时有效。格式：{type}_{id}，示例：group_12345678 或 person_12341234",
                     "items": {
                         "type": "string",
                         "format": "regex",
@@ -25,7 +28,7 @@
                 "whitelist": {
                     "type": "array",
                     "title": "白名单",
-                    "description": "仅白名单中的会话可以使用机器人，仅在访问控制模式为白名单时有效",
+                    "description": "仅白名单中的会话可以使用机器人，仅在访问控制模式为白名单时有效。格式：{type}_{id}，示例：group_12345678 或 person_12341234",
                     "items": {
                         "type": "string",
                         "format": "regex",
@@ -33,11 +36,14 @@
                     }
                 }
             },
-            "required": ["mode"]
+            "required": [
+                "mode"
+            ]
         },
         "respond-rules": {
             "type": "object",
-            "title": "群内响应规则",
+            "title": "群消息响应规则",
+            "description": "仅处理 访问控制 允许的会话的消息。所有未指定的群使用 默认响应规则，若需指定特定的群的规则，请输入 群号 并添加，并设置响应规则",
             "properties": {
                 "default": {
                     "type": "object",
@@ -55,14 +61,16 @@
                         },
                         "prefix": {
                             "type": "array",
-                            "title": "前缀响应",
+                            "title": "响应前缀",
+                            "description": "带有指定前缀的消息即使没有 at 机器人也会被响应，发送给 AI 时会删除前缀",
                             "items": {
                                 "type": "string"
                             }
                         },
                         "regexp": {
                             "type": "array",
-                            "title": "正则表达式响应",
+                            "title": "响应正则表达式",
+                            "description": "正则表达式教程：https://www.runoob.com/regexp/regexp-syntax.html",
                             "items": {
                                 "type": "string",
                                 "format": "regex"
@@ -71,6 +79,7 @@
                         "random": {
                             "type": "number",
                             "title": "随机响应概率",
+                            "description": "数值范围是0.0-1.0，对应概率0%-100%，为1.0时所有消息都响应",
                             "minimum": 0,
                             "maximum": 1,
                             "step": 0.01,
@@ -85,7 +94,7 @@
                 }
             },
             "patternProperties": {
-                "^(person|group).*$": {
+                "^\\d+$": {
                     "type": "object",
                     "properties": {
                         "at": {
@@ -100,14 +109,16 @@
                         },
                         "prefix": {
                             "type": "array",
-                            "title": "前缀响应",
+                            "title": "响应前缀",
+                            "description": "带有指定前缀的消息即使没有 at 机器人也会被响应，发送给 AI 时会删除前缀",
                             "items": {
                                 "type": "string"
                             }
                         },
                         "regexp": {
                             "type": "array",
-                            "title": "正则表达式响应",
+                            "title": "响应正则表达式",
+                            "description": "正则表达式教程：https://www.runoob.com/regexp/regexp-syntax.html",
                             "items": {
                                 "type": "string",
                                 "format": "regex"
@@ -116,6 +127,7 @@
                         "random": {
                             "type": "number",
                             "title": "随机响应概率",
+                            "description": "数值范围是0.0-1.0，对应概率0%-100%，为1.0时所有消息都响应",
                             "minimum": 0,
                             "maximum": 1,
                             "step": 0.01,
@@ -125,6 +137,175 @@
                                     "color": "primary"
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        },
+        "income-msg-check": {
+            "type": "boolean",
+            "title": "检查传入消息内容",
+            "description": "是否对传入的消息（用户消息）进行检查，需配合审核策略使用（AI 响应内容一定会通过检查策略）",
+            "layout": {
+                "comp": "switch",
+                "props": {
+                    "color": "primary"
+                }
+            }
+        },
+        "ignore-rules": {
+            "type": "object",
+            "title": "传入消息忽略规则",
+            "description": "符合规则的传入消息将被忽略，仅传入消息检查被启用时生效",
+            "properties": {
+                "prefix": {
+                    "type": "array",
+                    "title": "忽略前缀",
+                    "description": "具有指定前缀的消息将被忽略",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "regexp": {
+                    "type": "array",
+                    "title": "忽略正则表达式",
+                    "description": "正则表达式教程：https://www.runoob.com/regexp/regexp-syntax.html",
+                    "items": {
+                        "type": "string",
+                        "format": "regex"
+                    }
+                }
+            }
+        },
+        "check-sensitive-words": {
+            "type": "boolean",
+            "title": "本地敏感词检查",
+            "description": "是否启用本地敏感词检查",
+            "layout": {
+                "comp": "switch",
+                "props": {
+                    "color": "primary"
+                }
+            }
+        },
+        "baidu-cloud-examine": {
+            "type": "object",
+            "title": "百度云内容审核配置",
+            "description": "百度云内容审核配置，前往：https://cloud.baidu.com/doc/ANTIPORN/index.html 获取 API Key 和 API Secret",
+            "properties": {
+                "enable": {
+                    "type": "boolean",
+                    "title": "是否启用",
+                    "layout": {
+                        "comp": "switch",
+                        "props": {
+                            "color": "primary"
+                        }
+                    }
+                },
+                "api-key": {
+                    "type": "string",
+                    "title": "API Key"
+                },
+                "api-secret": {
+                    "type": "string",
+                    "title": "API Secret"
+                }
+            }
+        },
+        "rate-limit": {
+            "type": "object",
+            "title": "请求限速规则",
+            "properties": {
+                "strategy": {
+                    "type": "string",
+                    "title": "限速策略",
+                    "description": "会话中的请求速率超过限制时的处理策略，drop为丢弃新请求，wait为等待请求速率降到限制以下",
+                    "enum": [
+                        "drop",
+                        "wait"
+                    ],
+                    "default": "drop"
+                },
+                "algo": {
+                    "type": "string",
+                    "title": "限速算法",
+                    "description": "目前仅支持 fixwin（固定窗口），支持插件扩展",
+                    "enum": [
+                        "fixwin"
+                    ],
+                    "default": "fixwin"
+                },
+                "fixwin": {
+                    "type": "object",
+                    "title": "固定窗口限速策略配置",
+                    "description": "所有会话使用默认限速策略，若需指定特定会话的限速策略，请输入 会话名称（格式为 {type}_{id}，示例：group_123456 或 person_123456） 并添加，以设置特定会话的限速参数",
+                    "properties": {
+                        "default": {
+                            "type": "object",
+                            "title": "默认限速策略",
+                            "properties": {
+                                "window-size": {
+                                    "type": "integer",
+                                    "title": "窗口大小（秒）",
+                                    "minimum": 1,
+                                    "default": 60
+                                },
+                                "limit": {
+                                    "type": "integer",
+                                    "title": "窗口期间允许的最大消息数",
+                                    "minimum": 1,
+                                    "default": 60
+                                }
+                            }
+                        }
+                    },
+                    "patternProperties": {
+                        "^(person|group).*$": {
+                            "type": "object",
+                            "title": "会话限速",
+                            "properties": {
+                                "window-size": {
+                                    "type": "integer",
+                                    "title": "窗口大小（秒）",
+                                    "minimum": 1,
+                                    "default": 60
+                                },
+                                "limit": {
+                                    "type": "integer",
+                                    "title": "窗口期间允许的最大消息数",
+                                    "minimum": 1,
+                                    "default": 60
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "msg-truncate": {
+            "type": "object",
+            "title": "对话历史记录截断",
+            "description": "将在发送消息给模型之前对当前会话的历史消息进行截断，以限制传给模型的消息长度",
+            "properties": {
+                "method": {
+                    "type": "string",
+                    "title": "截断方法",
+                    "description": "目前仅支持 round（按回合截断），支持插件扩展",
+                    "enum": [
+                        "round"
+                    ],
+                    "default": "round"
+                },
+                "round": {
+                    "type": "object",
+                    "title": "轮次截断策略配置",
+                    "properties": {
+                        "max-round": {
+                            "type": "integer",
+                            "title": "最大保留前文回合数",
+                            "minimum": 1,
+                            "default": 10
                         }
                     }
                 }
