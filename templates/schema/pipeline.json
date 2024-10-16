@@ -13,7 +13,8 @@
                     "enum": [
                         "blacklist",
                         "whitelist"
-                    ]
+                    ],
+                    "default": "blacklist"
                 },
                 "blacklist": {
                     "type": "array",
@@ -23,7 +24,8 @@
                         "type": "string",
                         "format": "regex",
                         "pattern": "^(person|group)_(\\d)*$"
-                    }
+                    },
+                    "default": []
                 },
                 "whitelist": {
                     "type": "array",
@@ -33,7 +35,8 @@
                         "type": "string",
                         "format": "regex",
                         "pattern": "^(person|group)_(\\d)*$"
-                    }
+                    },
+                    "default": []
                 }
             },
             "required": [
@@ -65,7 +68,8 @@
                             "description": "带有指定前缀的消息即使没有 at 机器人也会被响应，发送给 AI 时会删除前缀",
                             "items": {
                                 "type": "string"
-                            }
+                            },
+                            "default": []
                         },
                         "regexp": {
                             "type": "array",
@@ -74,7 +78,8 @@
                             "items": {
                                 "type": "string",
                                 "format": "regex"
-                            }
+                            },
+                            "default": []
                         },
                         "random": {
                             "type": "number",
@@ -113,7 +118,8 @@
                             "description": "带有指定前缀的消息即使没有 at 机器人也会被响应，发送给 AI 时会删除前缀",
                             "items": {
                                 "type": "string"
-                            }
+                            },
+                            "default": []
                         },
                         "regexp": {
                             "type": "array",
@@ -122,7 +128,8 @@
                             "items": {
                                 "type": "string",
                                 "format": "regex"
-                            }
+                            },
+                            "default": []
                         },
                         "random": {
                             "type": "number",
@@ -164,7 +171,8 @@
                     "description": "具有指定前缀的消息将被忽略",
                     "items": {
                         "type": "string"
-                    }
+                    },
+                    "default": []
                 },
                 "regexp": {
                     "type": "array",
@@ -173,7 +181,8 @@
                     "items": {
                         "type": "string",
                         "format": "regex"
-                    }
+                    },
+                    "default": []
                 }
             }
         },
@@ -205,11 +214,13 @@
                 },
                 "api-key": {
                     "type": "string",
-                    "title": "API Key"
+                    "title": "API Key",
+                    "default": ""
                 },
                 "api-secret": {
                     "type": "string",
-                    "title": "API Secret"
+                    "title": "API Secret",
+                    "default": ""
                 }
             }
         },

@@ -5,6 +5,7 @@
         "platform-adapters": {
             "type": "array",
             "title": "消息平台适配器",
+            "default": {},
             "items": {
                 "type": "object",
                 "oneOf": [
@@ -236,7 +237,8 @@
                 },
                 "font-path": {
                     "type": "string",
-                    "description": "image的渲染字体。未设置时，如果在windows下，会尝试寻找系统的微软雅黑字体，若找不到，则转为forward策略。未设置时，若不是windows系统，则直接转为forward策略"
+                    "description": "image的渲染字体。未设置时，如果在windows下，会尝试寻找系统的微软雅黑字体，若找不到，则转为forward策略。未设置时，若不是windows系统，则直接转为forward策略",
+                    "default": ""
                 }
             }
         },

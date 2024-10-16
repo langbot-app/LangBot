@@ -10,7 +10,8 @@
                 "type": "string",
                 "format": "regex",
                 "pattern": "^(person|group)_(\\d+)$"
-            }
+            },
+            "default": []
         },
         "network-proxies": {
             "type": "object",

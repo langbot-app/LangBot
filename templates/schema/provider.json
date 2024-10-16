@@ -25,7 +25,8 @@
                     "description": "OpenAI API 密钥",
                     "items": {
                         "type": "string"
-                    }
+                    },
+                    "default": []
                 },
                 "anthropic": {
                     "type": "array",
@@ -33,7 +34,8 @@
                     "description": "Anthropic API 密钥",
                     "items": {
                         "type": "string"
-                    }
+                    },
+                    "default": []
                 },
                 "moonshot": {
                     "type": "array",
@@ -41,7 +43,8 @@
                     "description": "Moonshot API 密钥",
                     "items": {
                         "type": "string"
-                    }
+                    },
+                    "default": []
                 },
                 "deepseek": {
                     "type": "array",
@@ -49,7 +52,8 @@
                     "description": "DeepSeek API 密钥",
                     "items": {
                         "type": "string"
-                    }
+                    },
+                    "default": []
                 }
             }
         },
@@ -68,7 +72,8 @@
                             "title": "API URL"
                         },
                         "args": {
-                            "type": "object"
+                            "type": "object",
+                            "default": {}
                         },
                         "timeout": {
                             "type": "number",
@@ -87,7 +92,8 @@
                             "title": "API URL"
                         },
                         "args": {
-                            "type": "object"
+                            "type": "object",
+                            "default": {}
                         },
                         "timeout": {
                             "type": "number",
@@ -106,7 +112,8 @@
                             "title": "API URL"
                         },
                         "args": {
-                            "type": "object"
+                            "type": "object",
+                            "default": {}
                         },
                         "timeout": {
                             "type": "number",
@@ -125,7 +132,8 @@
                             "title": "API URL"
                         },
                         "args": {
-                            "type": "object"
+                            "type": "object",
+                            "default": {}
                         },
                         "timeout": {
                             "type": "number",
@@ -175,14 +183,16 @@
                 "default": {
                     "type": "string",
                     "title": "默认情景预设",
-                    "description": "设置默认情景预设。值为空字符串时，将不使用情景预设（人格）"
+                    "description": "设置默认情景预设。值为空字符串时，将不使用情景预设（人格）",
+                    "default": ""
                 }
             },
             "patternProperties": {
                 "^.*$": {
                     "type": "string",
                     "title": "情景预设",
-                    "description": "设置情景预设。值为空字符串时，将不使用情景预设（人格）"
+                    "description": "设置情景预设。值为空字符串时，将不使用情景预设（人格）",
+                    "default": ""
                 }
             },
             "required": ["default"]
@@ -190,7 +200,8 @@
         "runner": {
             "type": "string",
             "title": "请求运行器",
-            "description": "设置请求运行器。值为local-agent时，使用内置默认运行器；支持插件扩展"
+            "description": "设置请求运行器。值为local-agent时，使用内置默认运行器；支持插件扩展",
+            "default": "local-agent"
         }
     }
 }
