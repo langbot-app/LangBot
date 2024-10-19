@@ -320,3 +320,31 @@ class RuntimeContainer(pydantic.BaseModel):
 
         for function in self.content_functions:
             function.enable = self.enabled
+
+    def model_dump(self, *args, **kwargs):
+        return {
+            'name': self.plugin_name,
+            'description': self.plugin_description,
+            'version': self.plugin_version,
+            'author': self.plugin_author,
+            'source': self.plugin_source,
+            'main_file': self.main_file,
+            'pkg_path': self.pkg_path,
+            'enabled': self.enabled,
+            'priority': self.priority,
+            'event_handlers': {
+                event_name.__name__: handler.__name__
+                for event_name, handler in self.event_handlers.items()
+            },
+            'content_functions': [
+                {
+                    'name': function.name,
+                    'human_desc': function.human_desc,
+                    'description': function.description,
+                    'parameters': function.parameters,
+                    'enable': function.enable,
+                    'func': function.func.__name__,
+                }
+                for function in self.content_functions
+            ],
+        }

@@ -186,3 +186,20 @@ class PluginManager:
             )
 
         return ctx
+
+    async def update_plugin_status(self, plugin_name: str, new_status: bool):
+        if self.get_plugin_by_name(plugin_name) is not None:
+            for plugin in self.plugins:
+                if plugin.plugin_name == plugin_name:
+                    plugin.enabled = new_status
+
+                    for func in plugin.content_functions:
+                        func.enable = new_status
+                    
+                    await self.setting.dump_container_setting(self.plugins)
+
+                    break
+
+            return True
+        else:
+            return False

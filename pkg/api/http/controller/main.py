@@ -6,7 +6,7 @@ import quart
 import quart_cors
 
 from ....core import app
-from .groups import logs, system, settings
+from .groups import logs, system, settings, plugins
 from . import group
 
 
