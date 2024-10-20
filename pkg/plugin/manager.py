@@ -203,3 +203,18 @@ class PluginManager:
             return True
         else:
             return False
+
+    async def reorder_plugins(self, plugins: list[dict]):
+        
+        for plugin in plugins:
+            plugin_name = plugin.get('name')
+            plugin_priority = plugin.get('priority')
+
+            for plugin in self.plugins:
+                if plugin.plugin_name == plugin_name:
+                    plugin.priority = plugin_priority
+                    break
+
+        self.plugins.sort(key=lambda x: x.priority, reverse=True)
+
+        await self.setting.dump_container_setting(self.plugins)

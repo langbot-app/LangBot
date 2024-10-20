@@ -29,3 +29,9 @@ class PluginsRouterGroup(group.RouterGroup):
             target_enabled = data.get('target_enabled')
             await self.ap.plugin_mgr.update_plugin_status(plugin_name, target_enabled)
             return self.success()
+
+        @self.route('/reorder', methods=['PUT'])
+        async def _() -> str:
+            data = await quart.request.json
+            await self.ap.plugin_mgr.reorder_plugins(data.get('plugins'))
+            return self.success()

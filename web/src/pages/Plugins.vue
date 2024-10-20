@@ -8,6 +8,40 @@
                 <template v-slot:activator="{ props }">
                     <v-btn prepend-icon="mdi-priority-high" v-bind="props">
                         编排
+
+                        <v-dialog activator="parent" max-width="500" persistent v-model="isOrchestrationDialogActive">
+                            <template v-slot:default="{ isActive }">
+                                <v-card prepend-icon="mdi-priority-high" text="优先级影响插件的加载、事件触发顺序" title="设置插件优先级">
+                                    <v-list id="plugin-orchestration-list">
+                                        <draggable v-model="plugins" item-key="name" group="plugins" @start="drag = true"
+                                            id="plugin-orchestration-draggable"
+                                            @end="drag = false">
+                                            <template #item="{ element }">
+                                                <div class="plugin-orchestration-item">
+                                                    <div class="plugin-orchestration-item-title">
+                                                        <div class="plugin-orchestration-item-author">
+                                                            {{ element.author }} /
+                                                        </div>
+                                                        <div class="plugin-orchestration-item-name">
+                                                            {{ element.name }}
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="plugin-orchestration-item-action">
+                                                        <v-icon>mdi-drag</v-icon>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </draggable>
+                                    </v-list>
+
+                                    <template v-slot:actions>
+                                        <v-btn class="ml-auto" text="关闭" prepend-icon="mdi-close" @click="isOrchestrationDialogActive = false"></v-btn>
+                                        <v-btn color="primary" prepend-icon="mdi-content-save-outline" @click="saveOrder">应用</v-btn>
+                                    </template>
+                                </v-card>
+                            </template>
+                        </v-dialog>
                     </v-btn>
                 </template>
             </v-tooltip>
@@ -17,7 +51,8 @@
         </div>
     </v-card>
     <div class="plugins-container">
-        <PluginCard class="plugin-card" v-for="plugin in plugins" :key="plugin.name" :plugin="plugin" @toggle="togglePlugin" />
+        <PluginCard class="plugin-card" v-for="plugin in plugins" :key="plugin.name" :plugin="plugin"
+            @toggle="togglePlugin" />
     </div>
 </template>
 
@@ -26,9 +61,11 @@
 import PageTitle from '@/components/PageTitle.vue'
 import PluginCard from '@/components/PluginCard.vue'
 
+import draggable from 'vuedraggable'
+
 import { ref, getCurrentInstance, onMounted } from 'vue'
 
-import {inject} from "vue";
+import { inject } from "vue";
 
 const snackbar = inject('snackbar');
 
@@ -64,19 +101,35 @@ const togglePlugin = (plugin) => {
     })
 }
 
+const isOrchestrationDialogActive = ref(false)
 
+const saveOrder = () => {
+    // 为所有插件的 priority 赋值，倒序
+    plugins.value.forEach(plugin => {
+        plugin.priority = plugins.value.length - plugins.value.indexOf(plugin)
+    })
+
+    proxy.$axios.put('/plugins/reorder', {
+        plugins: plugins.value
+    }).then(res => {
+        refresh()
+        snackbar.success('插件优先级已保存')
+        isOrchestrationDialogActive.value = false
+    }).catch(error => {
+        snackbar.error(error)
+    })
+}
 </script>
 
 <style scoped>
-
 #plugins-toolbar {
-  margin-top: 1rem;
-  margin-inline: 1rem;
-  height: 3.2rem;
-  display: flex;
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
+    margin-top: 1rem;
+    margin-inline: 1rem;
+    height: 3.2rem;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
 }
 
 #view-btns {
@@ -98,6 +151,7 @@ const togglePlugin = (plugin) => {
 .plugins-container {
     display: flex;
     flex-direction: row;
+    justify-content: flex-start;
     flex-wrap: wrap;
     gap: 16px;
     margin-inline: 1rem;
@@ -108,4 +162,49 @@ const togglePlugin = (plugin) => {
     height: 8rem;
 }
 
+#plugin-orchestration-list {
+    max-height: 20rem;
+    overflow-y: auto;
+    margin-inline: 1rem;
+    width: calc(100% - 2rem);
+    /* background-color: aqua; */
+}
+
+#plugin-orchestration-draggable {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.plugin-orchestration-item {
+    cursor: move;
+    width: calc(100% - 2rem);
+    box-shadow: 0.1rem 0.1rem 0.2rem 0.05rem #ccc;
+    background-color: #ffffff;
+    display: flex;
+    flex-direction: row;
+    padding: 0.5rem;
+    justify-content: space-between;
+}
+
+.plugin-orchestration-item-title {
+    display: flex;
+    flex-direction: column;
+}
+
+.plugin-orchestration-item-author {
+    color: #666;
+    font-size: 0.7rem;
+}
+
+.plugin-orchestration-item-name {
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+.plugin-orchestration-item-action {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
 </style>
