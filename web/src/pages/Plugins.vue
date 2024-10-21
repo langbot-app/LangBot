@@ -36,7 +36,7 @@
                                     </v-list>
 
                                     <template v-slot:actions>
-                                        <v-btn class="ml-auto" text="关闭" prepend-icon="mdi-close" @click="isOrchestrationDialogActive = false"></v-btn>
+                                        <v-btn class="ml-auto" text="关闭" prepend-icon="mdi-close" @click="cancelOrderChanges"></v-btn>
                                         <v-btn color="primary" prepend-icon="mdi-content-save-outline" @click="saveOrder">应用</v-btn>
                                     </template>
                                 </v-card>
@@ -102,6 +102,11 @@ const togglePlugin = (plugin) => {
 }
 
 const isOrchestrationDialogActive = ref(false)
+
+const cancelOrderChanges = () => {
+    refresh()
+    isOrchestrationDialogActive.value = false
+}
 
 const saveOrder = () => {
     // 为所有插件的 priority 赋值，倒序
