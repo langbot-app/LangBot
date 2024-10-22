@@ -54,6 +54,13 @@ async def main_entry(loop: asyncio.AbstractEventLoop):
 
 if __name__ == '__main__':
     import os
+    import sys
+
+    # 必须大于 3.10.1
+    if sys.version_info < (3, 10, 1):
+        print("需要 Python 3.10.1 及以上版本，当前 Python 版本为：", sys.version)
+        input("按任意键退出...")
+        exit(1)
 
     # 检查本目录是否有main.py，且包含QChatGPT字符串
     invalid_pwd = False
