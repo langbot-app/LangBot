@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import asyncio
+import threading
 import traceback
 
 from ..platform import manager as im_mgr
@@ -21,6 +22,7 @@ from ..utils import version as version_mgr, proxy as proxy_mgr, announce as anno
 from ..persistence import mgr as persistencemgr
 from ..api.http.controller import main as http_controller
 from ..utils import logcache
+from . import taskmgr
 
 
 class Application:
@@ -28,7 +30,8 @@ class Application:
 
     event_loop: asyncio.AbstractEventLoop = None
 
-    asyncio_tasks: list[asyncio.Task] = []
+    # asyncio_tasks: list[asyncio.Task] = []
+    task_mgr: taskmgr.AsyncTaskManager = None
 
     platform_mgr: im_mgr.PlatformManager = None
 
@@ -103,8 +106,6 @@ class Application:
     async def run(self):
         await self.plugin_mgr.initialize_plugins()
 
-        tasks = []
-
         try:
    
             # 后续可能会允许动态重启其他任务
@@ -113,28 +114,19 @@ class Application:
                 while True:
                     await asyncio.sleep(1)
 
-            tasks = [
-                asyncio.create_task(self.platform_mgr.run()),  # 消息平台
-                asyncio.create_task(self.ctrl.run()),  # 消息处理循环
-                asyncio.create_task(self.http_ctrl.run()),  # http 接口服务
-                asyncio.create_task(never_ending())
-            ]
-            self.asyncio_tasks.extend(tasks)
+            # tasks = [
+            #     asyncio.create_task(self.platform_mgr.run()),  # 消息平台
+            #     asyncio.create_task(self.ctrl.run()),  # 消息处理循环
+            #     asyncio.create_task(self.http_ctrl.run()),  # http 接口服务
+            #     asyncio.create_task(never_ending())
+            # ]
+            # self.asyncio_tasks.extend(tasks)
+            self.task_mgr.create_task(self.platform_mgr.run())
+            self.task_mgr.create_task(self.ctrl.run())
+            self.task_mgr.create_task(self.http_ctrl.run())
+            self.task_mgr.create_task(never_ending())
 
-            # 挂系统信号处理
-            import signal
-
-            def signal_handler(sig, frame):
-                for task in self.asyncio_tasks:
-                    task.cancel()
-                self.logger.info("程序退出.")
-                # 结束当前事件循环
-                self.event_loop.stop()
-                exit(0)
-
-            signal.signal(signal.SIGINT, signal_handler)
-
-            await asyncio.gather(*tasks, return_exceptions=True)
+            await self.task_mgr.wait_all()
         except asyncio.CancelledError:
             pass
         except Exception as e:

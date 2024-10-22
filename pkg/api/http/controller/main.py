@@ -30,12 +30,18 @@ class HTTPController:
                 while True:
                     await asyncio.sleep(1)
 
-            task = asyncio.create_task(self.quart_app.run_task(
+            # task = asyncio.create_task(self.quart_app.run_task(
+            #     host=self.ap.system_cfg.data['http-api']['host'],
+            #     port=self.ap.system_cfg.data['http-api']['port'],
+            #     shutdown_trigger=shutdown_trigger_placeholder
+            # ))
+            # self.ap.asyncio_tasks.append(task)
+            self.ap.task_mgr.create_task(self.quart_app.run_task(
                 host=self.ap.system_cfg.data['http-api']['host'],
                 port=self.ap.system_cfg.data['http-api']['port'],
                 shutdown_trigger=shutdown_trigger_placeholder
             ))
-            self.ap.asyncio_tasks.append(task)
+
 
     async def register_routes(self) -> None:
         
