@@ -34,6 +34,23 @@
         <template v-slot:append>
           <div>
             <v-list density="compact" nav>
+              <!-- <v-list-item id="system-tasks-list-item" title="系统任务" prepend-icon="mdi-align-horizontal-left" v-tooltip="系统任务" @click="showTaskDialog" v-bind="props">
+                <v-dialog activator="parent" max-width="500" persistent v-model="taskDialogShow">
+                  <template v-slot:default="{ isActive }">
+                  </template>
+                </v-dialog>
+              </v-list-item> -->
+              <v-dialog max-width="500" persistent v-model="taskDialogShow">
+                <template v-slot:activator="{ props: activatorProps }">
+                  <v-list-item id="system-tasks-list-item" title="系统任务" prepend-icon="mdi-align-horizontal-left" v-tooltip="任务列表" v-bind="activatorProps">
+                  </v-list-item>
+                </template>
+
+                <template v-slot:default="{ isActive }">
+                  <TaskDialog :dialog="{ show: isActive }" @close="closeTaskDialog" />
+                </template>
+              </v-dialog>
+
               <v-list-item id="about-list-item" title="系统信息" prepend-icon="mdi-cog-outline" v-tooltip="系统信息">
               </v-list-item>
             </v-list>
@@ -51,6 +68,8 @@
 <script setup>
 import { getCurrentInstance } from 'vue'
 import {provide, ref, watch} from 'vue';
+
+import TaskDialog from '@/components/TaskDialog.vue'
 
 const { proxy } = getCurrentInstance()
 
@@ -84,6 +103,15 @@ function info(content) {
   text.value = content;
 }
 
+const taskDialogShow = ref(false)
+
+function showTaskDialog() {
+  taskDialogShow.value = true
+}
+
+function closeTaskDialog() {
+  taskDialogShow.value = false
+}
 
 provide('snackbar', {success, error, warning, info, location, timeout});
 </script>
@@ -139,6 +167,15 @@ provide('snackbar', {success, error, warning, info, location, timeout});
 }
 
 #about-list-item:active {
+  background-color: #ddd;
+}
+
+#system-tasks-list-item:hover {
+  cursor: pointer;
+  background-color: #eee;
+}
+
+#system-tasks-list-item:active {
   background-color: #ddd;
 }
 </style>
