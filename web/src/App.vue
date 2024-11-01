@@ -42,7 +42,7 @@
               </v-list-item> -->
               <v-dialog max-width="500" persistent v-model="taskDialogShow">
                 <template v-slot:activator="{ props: activatorProps }">
-                  <v-list-item id="system-tasks-list-item" title="系统任务" prepend-icon="mdi-align-horizontal-left" v-tooltip="任务列表" v-bind="activatorProps">
+                  <v-list-item id="system-tasks-list-item" title="任务列表" prepend-icon="mdi-align-horizontal-left" v-tooltip="任务列表" v-bind="activatorProps">
                   </v-list-item>
                 </template>
 

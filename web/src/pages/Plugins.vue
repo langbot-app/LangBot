@@ -52,7 +52,7 @@
     </v-card>
     <div class="plugins-container">
         <PluginCard class="plugin-card" v-for="plugin in plugins" :key="plugin.name" :plugin="plugin"
-            @toggle="togglePlugin" />
+            @toggle="togglePlugin" @update="updatePlugin" />
     </div>
 </template>
 
@@ -88,7 +88,7 @@ const refresh = () => {
 onMounted(refresh)
 
 const togglePlugin = (plugin) => {
-    proxy.$axios.put(`/plugins/toggle/${plugin.author}/${plugin.name}`, {
+    proxy.$axios.put(`/plugins/${plugin.author}/${plugin.name}/toggle`, {
         target_enabled: !plugin.enabled
     }).then(res => {
         if (res.data.code != 0) {
@@ -96,6 +96,18 @@ const togglePlugin = (plugin) => {
             return
         }
         refresh()
+    }).catch(error => {
+        snackbar.error(error)
+    })
+}
+
+const updatePlugin = (plugin) => {
+    proxy.$axios.post(`/plugins/${plugin.author}/${plugin.name}/update`).then(res => {
+        if (res.data.code != 0) {
+            snackbar.error(res.data.msg)
+            return
+        }
+        snackbar.success(`已添加更新任务 请到任务列表查看进度`)
     }).catch(error => {
         snackbar.error(error)
     })

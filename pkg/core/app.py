@@ -114,17 +114,10 @@ class Application:
                 while True:
                     await asyncio.sleep(1)
 
-            # tasks = [
-            #     asyncio.create_task(self.platform_mgr.run()),  # 消息平台
-            #     asyncio.create_task(self.ctrl.run()),  # 消息处理循环
-            #     asyncio.create_task(self.http_ctrl.run()),  # http 接口服务
-            #     asyncio.create_task(never_ending())
-            # ]
-            # self.asyncio_tasks.extend(tasks)
-            self.task_mgr.create_task(self.platform_mgr.run())
-            self.task_mgr.create_task(self.ctrl.run())
-            self.task_mgr.create_task(self.http_ctrl.run())
-            self.task_mgr.create_task(never_ending())
+            self.task_mgr.create_task(self.platform_mgr.run(), name="platform-manager")
+            self.task_mgr.create_task(self.ctrl.run(), name="query-controller")
+            self.task_mgr.create_task(self.http_ctrl.run(), name="http-api-controller")
+            self.task_mgr.create_task(never_ending(), name="never-ending-task")
 
             await self.task_mgr.wait_all()
         except asyncio.CancelledError:

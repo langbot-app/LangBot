@@ -3,7 +3,7 @@ from __future__ import annotations
 import typing
 import abc
 
-from ..core import app
+from ..core import app, taskmgr
 
 
 class PluginInstaller(metaclass=abc.ABCMeta):
@@ -40,6 +40,7 @@ class PluginInstaller(metaclass=abc.ABCMeta):
         self,
         plugin_name: str,
         plugin_source: str=None,
+        task_context: taskmgr.TaskContext = taskmgr.TaskContext.placeholder(),
     ):
         """更新插件
         """

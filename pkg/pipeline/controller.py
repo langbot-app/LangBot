@@ -62,7 +62,11 @@ class Controller:
                     
                     # task = asyncio.create_task(_process_query(selected_query))
                     # self.ap.asyncio_tasks.append(task)
-                    self.ap.task_mgr.create_task(_process_query(selected_query))
+                    self.ap.task_mgr.create_task(
+                        _process_query(selected_query),
+                        kind="query",
+                        name=f"query-{selected_query.query_id}",
+                    )
 
         except Exception as e:
             # traceback.print_exc()
