@@ -3,7 +3,7 @@ from __future__ import annotations
 import typing
 import traceback
 
-from ..core import app
+from ..core import app, taskmgr
 from . import context, loader, events, installer, setting, models
 from .loaders import classic
 from .installers import github
@@ -102,10 +102,11 @@ class PluginManager:
         self,
         plugin_name: str,
         plugin_source: str=None,
+        task_context: taskmgr.TaskContext = taskmgr.TaskContext.placeholder(),
     ):
         """更新插件
         """
-        await self.installer.update_plugin(plugin_name, plugin_source)
+        await self.installer.update_plugin(plugin_name, plugin_source, task_context)
         
         plugin_container = self.get_plugin_by_name(plugin_name)
 
@@ -119,6 +120,7 @@ class PluginManager:
             old_version=plugin_container.plugin_version,
             new_version="HEAD"
         )
+
 
     def get_plugin_by_name(self, plugin_name: str) -> context.RuntimeContainer:
         """通过插件名获取插件

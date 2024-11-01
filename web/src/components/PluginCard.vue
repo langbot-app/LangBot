@@ -95,7 +95,7 @@ const menuItems = [
     },
     {
         title: '删除',
-        condition: (plugin) => plugin.source != '',
+        condition: (plugin) => true,
         action: uninstallPlugin
     }
 ]

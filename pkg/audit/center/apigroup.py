@@ -14,6 +14,7 @@ from ...core import app
 
 class APIGroup(metaclass=abc.ABCMeta):
     """API 组抽象类"""
+
     _basic_info: dict = None
     _runtime_info: dict = None
 
@@ -32,33 +33,28 @@ class APIGroup(metaclass=abc.ABCMeta):
         data: dict = None,
         params: dict = None,
         headers: dict = {},
-        **kwargs
+        **kwargs,
     ):
         """
         执行请求
         """
-        self._runtime_info['account_id'] = "-1"
-        
+        self._runtime_info["account_id"] = "-1"
+
         url = self.prefix + path
         data = json.dumps(data)
-        headers['Content-Type'] = 'application/json'
+        headers["Content-Type"] = "application/json"
 
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.request(
-                    method,
-                    url,
-                    data=data,
-                    params=params,
-                    headers=headers,
-                    **kwargs
+                    method, url, data=data, params=params, headers=headers, **kwargs
                 ) as resp:
                     self.ap.logger.debug("data: %s", data)
                     self.ap.logger.debug("ret: %s", await resp.text())
 
         except Exception as e:
-            self.ap.logger.debug(f'上报失败: {e}')
-    
+            self.ap.logger.debug(f"上报失败: {e}")
+
     async def do(
         self,
         method: str,
@@ -66,31 +62,29 @@ class APIGroup(metaclass=abc.ABCMeta):
         data: dict = None,
         params: dict = None,
         headers: dict = {},
-        **kwargs
+        **kwargs,
     ) -> asyncio.Task:
         """执行请求"""
-        task = asyncio.create_task(self._do(method, path, data, params, headers, **kwargs))
+        # task = asyncio.create_task(self._do(method, path, data, params, headers, **kwargs))
 
-        self.ap.asyncio_tasks.append(task)
+        # self.ap.asyncio_tasks.append(task)
 
-        return task
+        return self.ap.task_mgr.create_task(
+            self._do(method, path, data, params, headers, **kwargs),
+            kind="telemetry-operation",
+            name=f"{method} {path}",
+        ).task
 
-    def gen_rid(
-        self
-    ):
+    def gen_rid(self):
         """生成一个请求 ID"""
         return str(uuid.uuid4())
 
-    def basic_info(
-        self
-    ):
+    def basic_info(self):
         """获取基本信息"""
         basic_info = APIGroup._basic_info.copy()
-        basic_info['rid'] = self.gen_rid()
+        basic_info["rid"] = self.gen_rid()
         return basic_info
-    
-    def runtime_info(
-        self
-    ):
+
+    def runtime_info(self):
         """获取运行时信息"""
         return APIGroup._runtime_info

@@ -18,6 +18,7 @@ from ...platform import manager as im_mgr
 from ...persistence import mgr as persistencemgr
 from ...api.http.controller import main as http_controller
 from ...utils import logcache
+from .. import taskmgr
 
 
 @stage.stage_class("BuildAppStage")
@@ -28,6 +29,7 @@ class BuildAppStage(stage.BootingStage):
     async def run(self, ap: app.Application):
         """构建app对象的各个组件对象并初始化
         """
+        ap.task_mgr = taskmgr.AsyncTaskManager(ap)
 
         proxy_mgr = proxy.ProxyManager(ap)
         await proxy_mgr.initialize()

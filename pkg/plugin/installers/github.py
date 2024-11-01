@@ -9,6 +9,7 @@ import requests
 
 from .. import installer, errors
 from ...utils import pkgmgr
+from ...core import taskmgr
 
 
 class GitHubRepoInstaller(installer.PluginInstaller):
@@ -94,12 +95,19 @@ class GitHubRepoInstaller(installer.PluginInstaller):
     async def install_plugin(
         self,
         plugin_source: str,
+        task_context: taskmgr.TaskContext = taskmgr.TaskContext.placeholder(),
     ):
         """安装插件
         """
+        task_context.trace("下载插件源码...", "install-plugin")
+
         repo_label = await self.download_plugin_source_code(plugin_source, "plugins/")
 
+        task_context.trace("安装插件依赖...", "install-plugin")
+
         await self.install_requirements("plugins/" + repo_label)
+
+        task_context.trace("完成.", "install-plugin")
 
         await self.ap.plugin_mgr.setting.record_installed_plugin_source(
             "plugins/"+repo_label+'/', plugin_source
@@ -122,9 +130,12 @@ class GitHubRepoInstaller(installer.PluginInstaller):
         self,
         plugin_name: str,
         plugin_source: str=None,
+        task_context: taskmgr.TaskContext = taskmgr.TaskContext.placeholder(),
     ):
         """更新插件
         """
+        task_context.trace("更新插件...", "update-plugin")
+
         plugin_container = self.ap.plugin_mgr.get_plugin_by_name(plugin_name)
 
         if plugin_container is None:
@@ -133,7 +144,9 @@ class GitHubRepoInstaller(installer.PluginInstaller):
             if plugin_container.plugin_source:
                 plugin_source = plugin_container.plugin_source
 
-                await self.install_plugin(plugin_source)
+                task_context.trace("转交安装任务.", "update-plugin")
+
+                await self.install_plugin(plugin_source, task_context)
 
             else:
                 raise errors.PluginInstallerError('插件无源码信息，无法更新')

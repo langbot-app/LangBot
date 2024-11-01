@@ -27,8 +27,8 @@ async def init_logging(extra_handlers: list[logging.Handler] = None) -> logging.
     if constants.debug_mode:
         level = logging.DEBUG
 
-    log_file_name = "data/logs/qcg-%s.log" % time.strftime(
-        "%Y-%m-%d-%H-%M-%S", time.localtime()
+    log_file_name = "data/logs/langbot-%s.log" % time.strftime(
+        "%Y-%m-%d", time.localtime()
     )
 
     qcg_logger = logging.getLogger("qcg")
