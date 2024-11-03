@@ -19,3 +19,5 @@ quart
 sqlalchemy[asyncio]
 aiosqlite
 quart-cors
+aiofiles
+aioshutil

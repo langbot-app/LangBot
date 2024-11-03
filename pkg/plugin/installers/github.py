@@ -5,7 +5,10 @@ import os
 import shutil
 import zipfile
 
-import requests
+import aiohttp
+import aiofiles
+import aiofiles.os as aiofiles_os
+import aioshutil
 
 from .. import installer, errors
 from ...utils import pkgmgr
@@ -29,65 +32,65 @@ class GitHubRepoInstaller(installer.PluginInstaller):
             return repo[0].split("/")
         else:
             return None
+    
+    async def download_plugin_source_code(self, repo_url: str, target_path: str, task_context: taskmgr.TaskContext = taskmgr.TaskContext.placeholder()) -> str:
+        """下载插件源码（全异步）"""
         
-    async def download_plugin_source_code(self, repo_url: str, target_path: str) -> str:
-        """下载插件源码"""
-        # 检查源类型
-
         # 提取 username/repo , 正则表达式
         repo = self.get_github_plugin_repo_label(repo_url)
 
         target_path += repo[1]
 
-        if repo is not None:  # github
-            self.ap.logger.debug("正在下载源码...")
-
-            zipball_url = f"https://api.github.com/repos/{'/'.join(repo)}/zipball/HEAD"
-
-            zip_resp = requests.get(
-                url=zipball_url, proxies=self.ap.proxy_mgr.get_forward_proxies(), stream=True
-            )
-
-            if zip_resp.status_code != 200:
-                raise Exception("下载源码失败: {}".format(zip_resp.text))
-
-            if os.path.exists("temp/" + target_path):
-                shutil.rmtree("temp/" + target_path)
-
-            if os.path.exists(target_path):
-                shutil.rmtree(target_path)
-
-            os.makedirs("temp/" + target_path)
-
-            with open("temp/" + target_path + "/source.zip", "wb") as f:
-                for chunk in zip_resp.iter_content(chunk_size=1024):
-                    if chunk:
-                        f.write(chunk)
-
-            self.ap.logger.debug("解压中...")
-
-            with zipfile.ZipFile("temp/" + target_path + "/source.zip", "r") as zip_ref:
-                zip_ref.extractall("temp/" + target_path)
-            os.remove("temp/" + target_path + "/source.zip")
-
-            # 目标是 username-repo-hash , 用正则表达式提取完整的文件夹名，复制到 plugins/repo
-            import glob
-
-            # 获取解压后的文件夹名
-            unzip_dir = glob.glob("temp/" + target_path + "/*")[0]
-
-            # 复制到 plugins/repo
-            shutil.copytree(unzip_dir, target_path + "/")
-
-            # 删除解压后的文件夹
-            shutil.rmtree(unzip_dir)
-            
-            self.ap.logger.debug("源码下载完成。")
-        else:
+        if repo is None:
             raise errors.PluginInstallerError('仅支持GitHub仓库地址')
+        
+        self.ap.logger.debug("正在下载源码...")
+        task_context.trace("下载源码...", "download-plugin-source-code")
+        
+        zipball_url = f"https://api.github.com/repos/{'/'.join(repo)}/zipball/HEAD"
+
+        zip_resp: bytes = None
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                url=zipball_url,
+                timeout=aiohttp.ClientTimeout(total=300)
+            ) as resp:
+                if resp.status != 200:
+                    raise errors.PluginInstallerError(f"下载源码失败: {resp.text}")
+                
+                zip_resp = await resp.read()
+        
+        if await aiofiles_os.path.exists("temp/" + target_path):
+            await aioshutil.rmtree("temp/" + target_path)
+
+        if await aiofiles_os.path.exists(target_path):
+            await aioshutil.rmtree(target_path)
+
+        await aiofiles_os.makedirs("temp/" + target_path)
+
+        async with aiofiles.open("temp/" + target_path + "/source.zip", "wb") as f:
+            await f.write(zip_resp)
+
+        self.ap.logger.debug("解压中...")
+        task_context.trace("解压中...", "unzip-plugin-source-code")
+        
+        with zipfile.ZipFile("temp/" + target_path + "/source.zip", "r") as zip_ref:
+            zip_ref.extractall("temp/" + target_path)
+        await aiofiles_os.remove("temp/" + target_path + "/source.zip")
+
+        import glob
+
+        unzip_dir = glob.glob("temp/" + target_path + "/*")[0]
+
+        await aioshutil.copytree(unzip_dir, target_path + "/")
+
+        await aioshutil.rmtree(unzip_dir)
+        
+        self.ap.logger.debug("源码下载完成。")
 
         return repo[1]
-    
+
     async def install_requirements(self, path: str):
         if os.path.exists(path + "/requirements.txt"):
             pkgmgr.install_requirements(path + "/requirements.txt")
@@ -101,7 +104,7 @@ class GitHubRepoInstaller(installer.PluginInstaller):
         """
         task_context.trace("下载插件源码...", "install-plugin")
 
-        repo_label = await self.download_plugin_source_code(plugin_source, "plugins/")
+        repo_label = await self.download_plugin_source_code(plugin_source, "plugins/", task_context)
 
         task_context.trace("安装插件依赖...", "install-plugin")
 

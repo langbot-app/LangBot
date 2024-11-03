@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import typing
 import datetime
+import traceback
 
 from . import app
 
@@ -85,6 +86,9 @@ class TaskWrapper:
     task: asyncio.Task
     """任务"""
 
+    task_stack: list = None
+    """任务堆栈"""
+
     ap: app.Application
     """应用实例"""
 
@@ -111,7 +115,10 @@ class TaskWrapper:
 
     def assume_exception(self):
         try:
-            return self.task.exception()
+            exception = self.task.exception()
+            if self.task_stack is None:
+                self.task_stack = self.task.get_stack()
+            return exception
         except:
             return None
 
@@ -123,6 +130,13 @@ class TaskWrapper:
 
     def to_dict(self) -> dict:
 
+        exception_traceback = None
+        if self.assume_exception() is not None:
+            exception_traceback = 'Traceback (most recent call last):\n'
+
+            for frame in self.task_stack:
+                exception_traceback += f"  File \"{frame.f_code.co_filename}\", line {frame.f_lineno}, in {frame.f_code.co_name}\n"
+
         return {
             "id": self.id,
             "task_type": self.task_type,
@@ -133,8 +147,9 @@ class TaskWrapper:
             "runtime": {
                 "done": self.task.done(),
                 "state": self.task._state,
-                "exception": self.assume_exception(),
-                "result": self.assume_result(),
+                "exception": self.assume_exception().__str__() if self.assume_exception() is not None else None,
+                "exception_traceback": exception_traceback,
+                "result": self.assume_result().__str__() if self.assume_result() is not None else None,
             },
         }
 

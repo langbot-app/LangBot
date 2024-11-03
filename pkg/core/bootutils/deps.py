@@ -19,6 +19,8 @@ required_deps = {
     "quart_cors": "quart-cors",
     "sqlalchemy": "sqlalchemy[asyncio]",
     "aiosqlite": "aiosqlite",
+    "aiofiles": "aiofiles",
+    "aioshutil": "aioshutil",
 }
 
 
