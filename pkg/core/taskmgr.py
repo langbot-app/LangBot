@@ -137,6 +137,8 @@ class TaskWrapper:
             for frame in self.task_stack:
                 exception_traceback += f"  File \"{frame.f_code.co_filename}\", line {frame.f_lineno}, in {frame.f_code.co_name}\n"
 
+            exception_traceback += f"    {self.assume_exception().__str__()}\n"
+
         return {
             "id": self.id,
             "task_type": self.task_type,

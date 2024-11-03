@@ -9,6 +9,7 @@
             <v-btn class="ml-auto" text="关闭" prepend-icon="mdi-close" @click="close"></v-btn>
         </template>
     </v-card>
+
 </template>
 
 <script setup>
@@ -55,7 +56,7 @@ const refresh = () => {
 let refreshTask = null
 onMounted(() => {
     refresh()
-    refreshTask = setInterval(refresh, 500)
+    refreshTask = setInterval(refresh, 1000)
 })
 
 onUnmounted(() => {

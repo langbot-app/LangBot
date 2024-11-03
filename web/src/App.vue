@@ -69,7 +69,7 @@
 import { getCurrentInstance } from 'vue'
 import {provide, ref, watch} from 'vue';
 
-import TaskDialog from '@/components/TaskDialog.vue'
+import TaskDialog from '@/components/TaskListDialog.vue'
 
 const { proxy } = getCurrentInstance()
 
