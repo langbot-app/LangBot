@@ -21,6 +21,7 @@ class PluginInstaller(metaclass=abc.ABCMeta):
     async def install_plugin(
         self,
         plugin_source: str,
+        task_context: taskmgr.TaskContext = taskmgr.TaskContext.placeholder(),
     ):
         """安装插件
         """

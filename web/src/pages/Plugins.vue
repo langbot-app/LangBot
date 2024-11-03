@@ -13,8 +13,8 @@
                             <template v-slot:default="{ isActive }">
                                 <v-card prepend-icon="mdi-priority-high" text="优先级影响插件的加载、事件触发顺序" title="设置插件优先级">
                                     <v-list id="plugin-orchestration-list">
-                                        <draggable v-model="plugins" item-key="name" group="plugins" @start="drag = true"
-                                            id="plugin-orchestration-draggable"
+                                        <draggable v-model="plugins" item-key="name" group="plugins"
+                                            @start="drag = true" id="plugin-orchestration-draggable"
                                             @end="drag = false">
                                             <template #item="{ element }">
                                                 <div class="plugin-orchestration-item">
@@ -36,8 +36,10 @@
                                     </v-list>
 
                                     <template v-slot:actions>
-                                        <v-btn class="ml-auto" text="关闭" prepend-icon="mdi-close" @click="cancelOrderChanges"></v-btn>
-                                        <v-btn color="primary" prepend-icon="mdi-content-save-outline" @click="saveOrder">应用</v-btn>
+                                        <v-btn class="ml-auto" text="关闭" prepend-icon="mdi-close"
+                                            @click="cancelOrderChanges"></v-btn>
+                                        <v-btn color="primary" prepend-icon="mdi-content-save-outline"
+                                            @click="saveOrder">应用</v-btn>
                                     </template>
                                 </v-card>
                             </template>
@@ -45,8 +47,34 @@
                     </v-btn>
                 </template>
             </v-tooltip>
+
             <v-btn color="primary" prepend-icon="mdi-plus">
                 安装
+
+                <v-dialog activator="parent" max-width="500" persistent v-model="isInstallDialogActive">
+                    <template v-slot:default="{ isActive }">
+
+                        <v-card title="从 GitHub 安装插件" prepend-icon="mdi-github">
+
+                            <div id="plugin-install-dialog-content">
+                                <div>
+                                    目前仅支持从 GitHub 安装，插件列表：<a
+                                        href="https://github.com/stars/RockChinQ/lists/qchatgpt-%E6%8F%92%E4%BB%B6"
+                                        target="_blank">LangBot 插件</a>
+                                </div>
+                                <v-text-field v-model="installDialogSource" label="插件源码地址" />
+                            </div>
+
+                            <template v-slot:actions>
+                                <v-btn class="ml-auto" text="取消" prepend-icon="mdi-close"
+                                    @click="isInstallDialogActive = false"></v-btn>
+                                <v-btn color="primary" prepend-icon="mdi-content-save-outline"
+                                    @click="installPlugin">安装</v-btn>
+                            </template>
+
+                        </v-card>
+                    </template>
+                </v-dialog>
             </v-btn>
         </div>
     </v-card>
@@ -113,6 +141,28 @@ const updatePlugin = (plugin) => {
     })
 }
 
+const installPlugin = () => {
+
+    if (installDialogSource.value == '' || installDialogSource.value.trim() == '') {
+        snackbar.error("请输入插件仓库地址")
+        return
+    }
+
+    proxy.$axios.post(`/plugins/install/github`, {
+        source: installDialogSource.value
+    }).then(res => {
+        if (res.data.code != 0) {
+            snackbar.error(res.data.msg)
+            return
+        }
+        installDialogSource.value = ''
+        snackbar.success(`已添加插件安装任务 请到任务列表查看进度`)
+        isInstallDialogActive.value = false
+    }).catch(error => {
+        snackbar.error(error)
+    })
+}
+
 const isOrchestrationDialogActive = ref(false)
 
 const cancelOrderChanges = () => {
@@ -136,6 +186,10 @@ const saveOrder = () => {
         snackbar.error(error)
     })
 }
+
+const isInstallDialogActive = ref(false)
+const installDialogSource = ref('')
+
 </script>
 
 <style scoped>
@@ -223,5 +277,13 @@ const saveOrder = () => {
     display: flex;
     flex-direction: row;
     align-items: center;
+}
+
+#plugin-install-dialog-content {
+    width: calc(100% - 3rem);
+    margin-inline: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
 }
 </style>

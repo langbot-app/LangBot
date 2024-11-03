@@ -65,10 +65,11 @@ class PluginManager:
     async def install_plugin(
         self,
         plugin_source: str,
+        task_context: taskmgr.TaskContext = taskmgr.TaskContext.placeholder(),
     ):
         """安装插件
         """
-        await self.installer.install_plugin(plugin_source)
+        await self.installer.install_plugin(plugin_source, task_context)
 
         await self.ap.ctr_mgr.plugin.post_install_record(
             {
