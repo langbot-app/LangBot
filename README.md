@@ -29,10 +29,10 @@
 ## 使用文档
 
 <a href="https://qchatgpt.rockchin.top">项目主页</a> ｜
-<a href="https://qchatgpt.rockchin.top/posts/feature.html">功能介绍</a> ｜
-<a href="https://qchatgpt.rockchin.top/posts/deploy/">部署文档</a> ｜
-<a href="https://qchatgpt.rockchin.top/posts/error/">常见问题</a> ｜
-<a href="https://qchatgpt.rockchin.top/posts/plugin/intro.html">插件介绍</a> ｜
+<a href="https://qchatgpt.rockchin.top/insight/intro.html">功能介绍</a> ｜
+<a href="https://qchatgpt.rockchin.top/insight/guide.html">部署文档</a> ｜
+<a href="https://qchatgpt.rockchin.top/usage/faq.html">常见问题</a> ｜
+<a href="https://qchatgpt.rockchin.top/plugin/plugin-intro.html">插件介绍</a> ｜
 <a href="https://github.com/RockChinQ/QChatGPT/issues/new?assignees=&labels=%E7%8B%AC%E7%AB%8B%E6%8F%92%E4%BB%B6&projects=&template=submit-plugin.yml&title=%5BPlugin%5D%3A+%E8%AF%B7%E6%B1%82%E7%99%BB%E8%AE%B0%E6%96%B0%E6%8F%92%E4%BB%B6">提交插件</a>
 
 ## 相关链接
