@@ -119,6 +119,7 @@ class GitHubRepoInstaller(installer.PluginInstaller):
     async def uninstall_plugin(
         self,
         plugin_name: str,
+        task_context: taskmgr.TaskContext = taskmgr.TaskContext.placeholder(),
     ):
         """卸载插件
         """
@@ -127,7 +128,9 @@ class GitHubRepoInstaller(installer.PluginInstaller):
         if plugin_container is None:
             raise errors.PluginInstallerError('插件不存在或未成功加载')
         else:
-            shutil.rmtree(plugin_container.pkg_path)
+            task_context.trace("删除插件目录...", "uninstall-plugin")
+            await aioshutil.rmtree(plugin_container.pkg_path)
+            task_context.trace("完成, 重新加载以生效.", "uninstall-plugin")
 
     async def update_plugin(
         self,

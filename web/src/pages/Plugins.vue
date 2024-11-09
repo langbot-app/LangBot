@@ -80,7 +80,7 @@
     </v-card>
     <div class="plugins-container">
         <PluginCard class="plugin-card" v-for="plugin in plugins" :key="plugin.name" :plugin="plugin"
-            @toggle="togglePlugin" @update="updatePlugin" />
+            @toggle="togglePlugin" @update="updatePlugin" @remove="removePlugin" />
     </div>
 </template>
 
@@ -136,6 +136,18 @@ const updatePlugin = (plugin) => {
             return
         }
         snackbar.success(`已添加更新任务 请到任务列表查看进度`)
+    }).catch(error => {
+        snackbar.error(error)
+    })
+}
+
+const removePlugin = (plugin) => {
+    proxy.$axios.delete(`/plugins/${plugin.author}/${plugin.name}`).then(res => {
+        if (res.data.code != 0) {
+            snackbar.error(res.data.msg)
+            return
+        }
+        snackbar.success(`已添加删除任务 请到任务列表查看进度`)
     }).catch(error => {
         snackbar.error(error)
     })

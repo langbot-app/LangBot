@@ -31,6 +31,7 @@ class PluginInstaller(metaclass=abc.ABCMeta):
     async def uninstall_plugin(
         self,
         plugin_name: str,
+        task_context: taskmgr.TaskContext = taskmgr.TaskContext.placeholder(),
     ):
         """卸载插件
         """

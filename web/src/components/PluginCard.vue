@@ -59,7 +59,7 @@ const props = defineProps({
     },
 });
 
-const emit = defineEmits(['toggle', 'update', 'uninstall']);
+const emit = defineEmits(['toggle', 'update', 'remove']);
 
 const openGithubSource = () => {
     window.open(props.plugin.source, '_blank');
@@ -73,8 +73,8 @@ const updatePlugin = () => {
     emit('update', props.plugin);
 }
 
-const uninstallPlugin = () => {
-    emit('uninstall', props.plugin);
+const removePlugin = () => {
+    emit('remove', props.plugin);
 }
 
 const menuItems = [
@@ -96,7 +96,7 @@ const menuItems = [
     {
         title: '删除',
         condition: (plugin) => true,
-        action: uninstallPlugin
+        action: removePlugin
     }
 ]
 </script>

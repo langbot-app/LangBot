@@ -83,10 +83,11 @@ class PluginManager:
     async def uninstall_plugin(
         self,
         plugin_name: str,
+        task_context: taskmgr.TaskContext = taskmgr.TaskContext.placeholder(),
     ):
         """卸载插件
         """
-        await self.installer.uninstall_plugin(plugin_name)
+        await self.installer.uninstall_plugin(plugin_name, task_context)
 
         plugin_container = self.get_plugin_by_name(plugin_name)
 
