@@ -34,15 +34,10 @@
         <template v-slot:append>
           <div>
             <v-list density="compact" nav>
-              <!-- <v-list-item id="system-tasks-list-item" title="系统任务" prepend-icon="mdi-align-horizontal-left" v-tooltip="系统任务" @click="showTaskDialog" v-bind="props">
-                <v-dialog activator="parent" max-width="500" persistent v-model="taskDialogShow">
-                  <template v-slot:default="{ isActive }">
-                  </template>
-                </v-dialog>
-              </v-list-item> -->
               <v-dialog max-width="500" persistent v-model="taskDialogShow">
                 <template v-slot:activator="{ props: activatorProps }">
-                  <v-list-item id="system-tasks-list-item" title="任务列表" prepend-icon="mdi-align-horizontal-left" v-tooltip="任务列表" v-bind="activatorProps">
+                  <v-list-item id="system-tasks-list-item" title="任务列表" prepend-icon="mdi-align-horizontal-left"
+                    v-tooltip="任务列表" v-bind="activatorProps">
                   </v-list-item>
                 </template>
 
@@ -52,6 +47,28 @@
               </v-dialog>
 
               <v-list-item id="about-list-item" title="系统信息" prepend-icon="mdi-cog-outline" v-tooltip="系统信息">
+                <v-menu activator="parent" :close-on-content-click="false" location="end">
+                  <v-list>
+                    <v-list-item @click="showAboutDialog">
+                      <v-list-item-title>
+                        关于 LangBot
+
+                        <v-dialog max-width="400" persistent v-model="aboutDialogShow">
+                          <template v-slot:default="{ isActive }">
+                            <AboutDialog :dialog="{ show: isActive }" @close="closeAboutDialog" />
+                          </template>
+                        </v-dialog>
+                      </v-list-item-title>
+                    </v-list-item>
+
+                    <v-list-item @click="openDocs">
+                      <v-list-item-title>
+                        查看文档
+                      </v-list-item-title>
+                    </v-list-item>
+
+                  </v-list>
+                </v-menu>
               </v-list-item>
             </v-list>
           </div>
@@ -67,9 +84,10 @@
 
 <script setup>
 import { getCurrentInstance } from 'vue'
-import {provide, ref, watch} from 'vue';
+import { provide, ref, watch } from 'vue';
 
 import TaskDialog from '@/components/TaskListDialog.vue'
+import AboutDialog from '@/components/AboutDialog.vue'
 
 const { proxy } = getCurrentInstance()
 
@@ -113,7 +131,21 @@ function closeTaskDialog() {
   taskDialogShow.value = false
 }
 
-provide('snackbar', {success, error, warning, info, location, timeout});
+provide('snackbar', { success, error, warning, info, location, timeout });
+
+function openDocs() {
+  window.open('https://docs.langbot.app', '_blank')
+}
+
+const aboutDialogShow = ref(false)
+
+function showAboutDialog() {
+  aboutDialogShow.value = true
+}
+
+function closeAboutDialog() {
+  aboutDialogShow.value = false
+}
 </script>
 
 <style scoped>

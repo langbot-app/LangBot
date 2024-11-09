@@ -81,6 +81,7 @@ import { ref, onMounted } from 'vue'
 .content-card-title {
     font-size: 1rem;
     font-weight: 600;
+    user-select: none;
 }
 
 .content-card-title-icon {
