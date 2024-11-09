@@ -15,7 +15,8 @@ class SystemRouterGroup(group.RouterGroup):
             return self.success(
                 data={
                     "version": constants.semantic_version,
-                    "debug": constants.debug_mode
+                    "debug": constants.debug_mode,
+                    "enabled_platform_count": len(self.ap.platform_mgr.adapters)
                 }
             )
 

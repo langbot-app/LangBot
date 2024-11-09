@@ -8,7 +8,8 @@ export default createStore({
     autoRefreshLog: false,
     settingsPageTab: '',
     version: 'v0.0.0',
-    debug: false
+    debug: false,
+    enabledPlatformCount: 0,
   },
   mutations: {
     initializeFetch() {
@@ -17,6 +18,14 @@ export default createStore({
       axios.get('/system/info').then(response => {
         this.state.version = response.data.data.version
         this.state.debug = response.data.data.debug
+        this.state.enabledPlatformCount = response.data.data.enabled_platform_count
+      })
+    },
+    fetchSystemInfo() {
+      axios.get('/system/info').then(response => {
+        this.state.version = response.data.data.version
+        this.state.debug = response.data.data.debug
+        this.state.enabledPlatformCount = response.data.data.enabled_platform_count
       })
     }
   },

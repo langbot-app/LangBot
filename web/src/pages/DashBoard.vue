@@ -10,9 +10,9 @@
                 </v-card-title>
 
                 <div id="basic-analysis-number-card-content">
-                    <NumberFieldData title="活跃会话" :number="100" />
-                    <NumberFieldData title="对话总数" :number="100" />
-                    <NumberFieldData title="请求总数" :number="100" />
+                    <NumberFieldData title="活跃会话" :number="basicData.active_session_count" />
+                    <NumberFieldData title="对话总数" :number="basicData.conversation_count" />
+                    <NumberFieldData title="请求总数" :number="basicData.query_count" />
                 </div>
             </v-card>
 
@@ -23,7 +23,7 @@
                 </v-card-title>
 
                 <div id="message-platform-card-content">
-                    <NumberFieldData title="已启用" :number="1" link="/platforms" linkText="更改配置" />
+                    <NumberFieldData title="已启用" :number="proxy.$store.state.enabledPlatformCount" link="/settings" linkText="更改配置" />
                 </div>
             </v-card>
 
@@ -34,7 +34,7 @@
                 </v-card-title>
 
                 <div id="plugins-amount-card-content">
-                    <NumberFieldData title="已加载" :number="3" link="/plugins" linkText="管理插件" />
+                    <NumberFieldData title="已加载" :number="pluginsAmount" link="/plugins" linkText="管理插件" />
                 </div>
             </v-card>
         </div>
@@ -46,8 +46,45 @@
 import PageTitle from '@/components/PageTitle.vue'
 import NumberFieldData from '@/components/NumberFieldData.vue'
 
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, inject, getCurrentInstance } from 'vue'
 
+const { proxy } = getCurrentInstance()
+
+const snackbar = inject('snackbar')
+
+const basicData = ref({
+    active_session_count: 0,
+    conversation_count: 0,
+    query_count: 0,
+})
+
+const pluginsAmount = ref(0)
+
+const refresh = () => {
+    proxy.$axios.get('/stats/basic').then(res => {
+        if (res.data.code != 0) {
+            snackbar.error(res.data.msg)
+            return
+        }
+        basicData.value = res.data.data
+    }).catch(error => {
+        snackbar.error(error)
+    })
+
+    proxy.$axios.get('/plugins').then(res => {
+        if (res.data.code != 0) {
+            snackbar.error(res.data.msg)
+            return
+        }
+        pluginsAmount.value = res.data.data.plugins.length
+    }).catch(error => {
+        snackbar.error(error)
+    })
+
+    proxy.$store.commit('fetchSystemInfo')
+}
+
+onMounted(refresh)
 </script>
 
 <style scoped>
