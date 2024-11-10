@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 
 import quart
 import quart_cors
@@ -49,3 +50,13 @@ class HTTPController:
         for g in group.preregistered_groups:
             ginst = g(self.ap, self.quart_app)
             await ginst.initialize()
+
+        frontend_path = "web/dist"
+
+        @self.quart_app.route("/")
+        async def index():
+            return await quart.send_from_directory(frontend_path, "index.html")
+
+        @self.quart_app.route("/<path:path>")
+        async def static_file(path: str):
+            return await quart.send_from_directory(frontend_path, path)

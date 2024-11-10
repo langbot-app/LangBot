@@ -19,12 +19,6 @@ jobs:
             export GITHUB_REF=${{ github.ref }}
             echo $GITHUB_REF
           fi
-      # - name: Check GITHUB_REF env
-      #   run: echo $GITHUB_REF
-      # - name: Get version  # 在 GitHub Actions 运行环境
-      #   id: get_version
-      #   if: (startsWith(env.GITHUB_REF, 'refs/tags/')||startsWith(github.ref, 'refs/tags/')) && startsWith(github.repository, 'RockChinQ/QChatGPT')
-      #   run: export GITHUB_REF=${GITHUB_REF/refs\/tags\//}
       - name: Check version
         id: check_version
         run: |
