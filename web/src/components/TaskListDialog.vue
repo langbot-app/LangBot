@@ -1,5 +1,5 @@
 <template>
-    <v-card class="task-dialog" prepend-icon="mdi-align-horizontal-left" text="用户发起的任务列表" title="任务列表">
+    <v-card class="task-dialog" prepend-icon="mdi-align-horizontal-left" title="任务列表">
         <v-list id="task-list" v-if="taskList.length > 0">
             <TaskCard class="task-card" v-for="task in taskList" :key="task.id" :task="task" />
         </v-list>

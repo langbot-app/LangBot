@@ -38,6 +38,10 @@
                 </div>
             </v-card>
         </div>
+
+        <div id="dashboard-tips">
+            * 更多图表将在数据持久化功能更新后可用。
+        </div>
     </div>
 </template>
 
@@ -94,6 +98,14 @@ onMounted(refresh)
     padding-inline: 1rem;
     margin-top: 1rem;
     overflow-x: auto;
+}
+
+#dashboard-tips {
+    font-size: 0.8rem;
+    color: #222;
+    margin-top: 0.7rem;
+    margin-left: 0.5rem;
+    user-select: none;
 }
 
 #first-row {
