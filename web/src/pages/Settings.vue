@@ -45,10 +45,10 @@
           </div>
 
           <v-card id="config-tab-content-json" v-if="configType == 'json'">
-            <textarea id="config-tab-content-json-textarea" @input="onInput" v-model="currentManagerDataEditorString" />
+            <JsonEditorVue id="config-tab-content-json-json-editor-vue" v-model="currentManagerData" mode="text" @change="onInput"/>
           </v-card>
 
-        <div id="config-tab-json-not-valid" v-if="!isJsonValid && configType == 'json'">*JSON 格式不正确: {{ errorMessage }}</div>
+        <div id="config-tab-json-doc-link" v-if="configType == 'json' && currentManagerDocLink != undefined && currentManagerDocLink != ''">*配置文件格式请查看 <a :href="currentManagerDocLink" target="_blank">文档</a></div>
         </div>
       </v-tabs-window-item>
     </v-tabs-window>
@@ -65,6 +65,8 @@ import {inject} from "vue";
 
 const snackbar = inject('snackbar');
 
+import JsonEditorVue from 'json-editor-vue';
+
 import Vjsf from '@koumoul/vjsf';
 
 const { proxy } = getCurrentInstance()
@@ -72,8 +74,9 @@ const { proxy } = getCurrentInstance()
 const managerList = ref([])
 const configType = ref('json')  // ui or json
 const currentManager = ref(null)
+const currentManagerName = ref('')
+const currentManagerDocLink = ref('')
 const currentManagerData = ref({})
-const currentManagerDataEditorString = ref('')
 const currentManagerSchema = ref(null)
 const modified = ref(false)
 
@@ -175,9 +178,10 @@ const fetchCurrentManagerData = (tab) => {
       return
     }
     currentManager.value = response.data.data.manager
+    currentManagerName.value = currentManager.value.name
     currentManagerData.value = currentManager.value.data
-    currentManagerDataEditorString.value = JSON.stringify(currentManager.value.data, null, 2)
     currentManagerSchema.value = currentManager.value.schema
+    currentManagerDocLink.value = currentManager.value.doc_link
   })
 }
 
@@ -186,7 +190,7 @@ const errorMessage = ref('')
 
 const checkJsonValid = () => {
   try {
-    JSON.parse(currentManagerDataEditorString.value)
+    JSON.parse(currentManagerData.value)
     isJsonValid.value = true
     errorMessage.value = ''
   } catch (error) {
@@ -201,12 +205,15 @@ const onInput = () => {
 }
 
 const saveAndApply = () => {
+  if (configType.value == 'json') {
+    checkJsonValid()
+  }
   if (!isJsonValid.value) {
     snackbar.error('JSON 格式不正确: ' + errorMessage.value)
     return
   }
   if (configType.value == 'json') {
-    currentManagerData.value = JSON.parse(currentManagerDataEditorString.value)
+    currentManagerData.value = JSON.parse(currentManagerData.value)
   }
 
   proxy.$axios.put(`/settings/${currentManager.value.name}/data`, {
@@ -227,7 +234,6 @@ const saveAndApply = () => {
 const reset = () => {
   if (configType.value == 'json') {
     currentManagerData.value = currentManager.value.data
-    currentManagerDataEditorString.value = JSON.stringify(currentManager.value.data, null, 2)
     isJsonValid.value = true
     errorMessage.value = ''
     modified.value = false
@@ -330,27 +336,17 @@ onMounted(async () => {
   margin-top: 1rem;
 }
 
-#config-tab-content-json-textarea {
-  width: 100%;
+#config-tab-content-json-json-editor-vue {
   height: 100%;
-  resize: none;
-  padding: 0.6rem;
-  background-color: #f0f0f0;
-  border: none;
-  outline: none;
-  appearance: none;
-  /*字间隔增大*/
-  letter-spacing: 0.05rem;
-  line-height: 1.6rem;
-  text-wrap: nowrap;
+  width: 100%;
 }
 
-#config-tab-json-not-valid {
+#config-tab-json-doc-link {
   margin: 0rem;
   margin-left: 0.6rem;
   height: 1.5rem;
   margin-top: 0.2rem;
   font-size: 0.8rem;
-  color: red;
+  color: rgb(26, 98, 214);
 }
 </style>

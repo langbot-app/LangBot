@@ -19,6 +19,7 @@
     "axios": "^1.7.7",
     "codemirror": "^5.65.18",
     "core-js": "^3.37.1",
+    "json-editor-vue": "^0.17.3",
     "roboto-fontface": "*",
     "vue": "^3.4.31",
     "vuedraggable": "^4.1.0",

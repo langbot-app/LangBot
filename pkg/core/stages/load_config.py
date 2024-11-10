@@ -28,35 +28,40 @@ class LoadConfigStage(stage.BootingStage):
             name="command.json",
             description="命令配置",
             manager=ap.command_cfg,
-            schema=schema.CONFIG_COMMAND_SCHEMA
+            schema=schema.CONFIG_COMMAND_SCHEMA,
+            doc_link="https://qchatgpt.rockchin.top/config/function/command.html"
         )
 
         ap.settings_mgr.register_manager(
             name="pipeline.json",
             description="消息处理流水线配置",
             manager=ap.pipeline_cfg,
-            schema=schema.CONFIG_PIPELINE_SCHEMA
+            schema=schema.CONFIG_PIPELINE_SCHEMA,
+            doc_link="https://qchatgpt.rockchin.top/config/function/pipeline.html"
         )
 
         ap.settings_mgr.register_manager(
             name="platform.json",
             description="消息平台配置",
             manager=ap.platform_cfg,
-            schema=schema.CONFIG_PLATFORM_SCHEMA
+            schema=schema.CONFIG_PLATFORM_SCHEMA,
+            doc_link="https://qchatgpt.rockchin.top/config/function/platform.html"
         )
 
         ap.settings_mgr.register_manager(
             name="provider.json",
             description="大模型能力配置",
             manager=ap.provider_cfg,
-            schema=schema.CONFIG_PROVIDER_SCHEMA
+            schema=schema.CONFIG_PROVIDER_SCHEMA,
+            doc_link="https://qchatgpt.rockchin.top/config/function/provider.html"
         )
 
         ap.settings_mgr.register_manager(
             name="system.json",
             description="系统配置",
             manager=ap.system_cfg,
-            schema=schema.CONFIG_SYSTEM_SCHEMA
+            schema=schema.CONFIG_SYSTEM_SCHEMA,
+            doc_link="https://qchatgpt.rockchin.top/config/function/system.html"
         )
 
         ap.plugin_setting_meta = await config.load_json_config("plugins/plugins.json", "templates/plugin-settings.json")

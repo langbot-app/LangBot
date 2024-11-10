@@ -24,6 +24,9 @@ class ConfigManager:
     data: dict = None
     """配置数据"""
 
+    doc_link: str = None
+    """配置文件文档链接"""
+
     def __init__(self, cfg_file: file_model.ConfigFile) -> None:
         self.file = cfg_file
         self.data = {}

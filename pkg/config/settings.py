@@ -27,6 +27,7 @@ class SettingsManager:
         description: str,
         manager: config_manager.ConfigManager,
         schema: dict=None,
+        doc_link: str=None,
     ) -> None:
         """注册配置管理器
         
@@ -44,6 +45,7 @@ class SettingsManager:
         manager.name = name
         manager.description = description
         manager.schema = schema
+        manager.doc_link = doc_link
         self.managers.append(manager)
 
     def get_manager(self, name: str) -> config_manager.ConfigManager | None:

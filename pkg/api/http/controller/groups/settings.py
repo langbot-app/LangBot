@@ -38,7 +38,8 @@ class SettingsRouterGroup(group.RouterGroup):
                         "description": manager.description,
                         "schema": manager.schema,
                         "file": manager.file.config_file_name,
-                        "data": manager.data
+                        "data": manager.data,
+                        "doc_link": manager.doc_link
                     }
                 }
             )
