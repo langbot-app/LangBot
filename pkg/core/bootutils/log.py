@@ -36,8 +36,8 @@ async def init_logging(extra_handlers: list[logging.Handler] = None) -> logging.
     qcg_logger.setLevel(level)
 
     color_formatter = colorlog.ColoredFormatter(
-        fmt="%(log_color)s[%(asctime)s.%(msecs)03d] %(pathname)s (%(lineno)d) - [%(levelname)s] :\n    %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+        fmt="%(log_color)s[%(asctime)s.%(msecs)03d] %(filename)s (%(lineno)d) - [%(levelname)s] : %(message)s",
+        datefmt="%m-%d %H:%M:%S",
         log_colors=log_colors_config,
     )
 

@@ -15,6 +15,7 @@
     "ajv-errors": "^3.0.0",
     "ajv-formats": "^3.0.1",
     "ajv-i18n": "^4.2.0",
+    "ansi_up": "^6.0.2",
     "axios": "^1.7.7",
     "codemirror": "^5.65.18",
     "core-js": "^3.37.1",
