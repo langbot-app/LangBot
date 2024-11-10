@@ -13,7 +13,7 @@
 
               <div id="version-chip"
                 v-tooltip="proxy.$store.state.version + (proxy.$store.state.debug ? ' (调试模式已启用)' : '')"
-                :style="{ 'background-color': proxy.$store.state.debug ? '#c79a47' : '#1e9ae2' }">
+                :style="{ 'background-color': proxy.$store.state.debug ? '#27aa27' : '#1e9ae2' }">
                 {{ proxy.$store.state.version }}
               </div>
             </div>
