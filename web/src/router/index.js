@@ -6,7 +6,7 @@
  */
 
 // Composables
-import { createRouter, createWebHistory } from 'vue-router/auto'
+import { createRouter, createWebHashHistory } from 'vue-router/auto'
 import DashBoard from '../pages/DashBoard.vue'
 import Settings from '../pages/Settings.vue'
 import Logs from '../pages/Logs.vue'
@@ -20,7 +20,7 @@ const routes = [
 ]
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  history: createWebHashHistory(),
   routes,
 })
 
