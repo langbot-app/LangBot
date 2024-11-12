@@ -14,8 +14,8 @@ jobs:
         id: generate_tag
         run: |
           # 获取分支名称，把/替换为-
-          echo ${{ github.ref }} | sed 's/\//-/g'
-          echo ::set-output name=tag::$(echo ${{ github.ref }} | sed 's/\//-/g')
+          echo ${{ github.ref }} | sed 's/refs\/heads\///g' | sed 's/\//-/g'
+          echo ::set-output name=tag::$(echo ${{ github.ref }} | sed 's/refs\/heads\///g' | sed 's/\//-/g')
       - name: Login to Registry
         run: docker login --username=${{ secrets.DOCKER_USERNAME }} --password ${{ secrets.DOCKER_PASSWORD }}
       - name: Build Docker Image
