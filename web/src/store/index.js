@@ -4,7 +4,9 @@ import axios from 'axios'
 
 export default createStore({
   state: {
-    apiBaseUrl: 'http://localhost:5300/api/v1',
+    // 开发时使用
+    // apiBaseUrl: 'http://localhost:5300/api/v1',
+    apiBaseUrl: '/api/v1',
     autoRefreshLog: false,
     autoScrollLog: true,
     settingsPageTab: '',
