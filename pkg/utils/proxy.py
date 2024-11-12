@@ -31,8 +31,8 @@ class ProxyManager:
             self.forward_proxies['https://'] = self.ap.system_cfg.data['network-proxies']['https']
 
         # 设置到环境变量
-        os.environ['HTTP_PROXY'] = self.forward_proxies['http://']
-        os.environ['HTTPS_PROXY'] = self.forward_proxies['https://']
+        os.environ['HTTP_PROXY'] = self.forward_proxies['http://'] or ''
+        os.environ['HTTPS_PROXY'] = self.forward_proxies['https://'] or ''
 
     def get_forward_proxies(self) -> dict:
         return self.forward_proxies.copy()
