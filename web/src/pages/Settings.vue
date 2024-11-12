@@ -72,7 +72,7 @@ import Vjsf from '@koumoul/vjsf';
 const { proxy } = getCurrentInstance()
 
 const managerList = ref([])
-const configType = ref('json')  // ui or json
+const configType = ref('')  // ui or json
 const currentManager = ref(null)
 const currentManagerName = ref('')
 const currentManagerDocLink = ref('')

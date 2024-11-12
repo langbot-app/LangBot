@@ -6,7 +6,7 @@
         <div id="operation-btns">
             <v-tooltip text="设置插件优先级" location="top">
                 <template v-slot:activator="{ props }">
-                    <v-btn prepend-icon="mdi-priority-high" v-bind="props">
+                    <v-btn prepend-icon="mdi-priority-high" v-bind="props" :disabled="plugins.length == 0">
                         编排
 
                         <v-dialog activator="parent" max-width="500" persistent v-model="isOrchestrationDialogActive">
@@ -79,7 +79,8 @@
         </div>
     </v-card>
     <div class="plugins-container">
-        <PluginCard class="plugin-card" v-for="plugin in plugins" :key="plugin.name" :plugin="plugin"
+        <v-alert id="no-plugins-alert" v-if="plugins.length == 0" color="warning" icon="$warning" title="暂无插件" text="暂无已安装的插件，请安装插件" density="compact" style="margin-inline: 1rem;"></v-alert>
+        <PluginCard class="plugin-card" v-if="plugins.length > 0" v-for="plugin in plugins" :key="plugin.name" :plugin="plugin"
             @toggle="togglePlugin" @update="updatePlugin" @remove="removePlugin" />
     </div>
 </template>
@@ -238,6 +239,10 @@ const installDialogSource = ref('')
     flex-wrap: wrap;
     gap: 16px;
     margin-inline: 1rem;
+}
+
+#no-plugins-alert {
+    margin: 1rem;
 }
 
 .plugin-card {
