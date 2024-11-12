@@ -7,7 +7,7 @@
       <v-tooltip v-for="manager in managerList" :key="manager.name" :text="manager.description"
         location="top">
         <template v-slot:activator="{ props }">
-          <v-tab v-bind="props" :value="manager.name">{{ manager.name }}</v-tab>
+          <v-tab v-bind="props" :value="manager.name" style="text-transform: none;">{{ manager.name }}</v-tab>
         </template>
       </v-tooltip>
     </v-tabs>
