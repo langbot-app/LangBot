@@ -37,7 +37,7 @@ class PlatformManager:
     
     async def initialize(self):
 
-        from .sources import yirimirai, nakuru, aiocqhttp, qqbotpy
+        from .sources import nakuru, aiocqhttp, qqbotpy
 
         async def on_friend_message(event: platform_events.FriendMessage, adapter: msadapter.MessageSourceAdapter):
 
@@ -195,3 +195,7 @@ class PlatformManager:
         except Exception as e:
             self.ap.logger.error('平台适配器运行出错: ' + str(e))
             self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
+    
+    async def shutdown(self):
+        for adapter in self.adapters:
+            await adapter.kill()

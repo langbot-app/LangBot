@@ -328,5 +328,5 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
         while True:
             await asyncio.sleep(1)
 
-    def kill(self) -> bool:
+    async def kill(self) -> bool:
         return False

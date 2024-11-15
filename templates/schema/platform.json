@@ -10,43 +10,6 @@
                 "type": "object",
                 "oneOf": [
                     {
-                        "title": "YiriMirai 适配器",
-                        "description": "用于接入 Mirai",
-                        "properties": {
-                            "adapter": {
-                                "type": "string",
-                                "const": "yiri-mirai"
-                            },
-                            "enable": {
-                                "type": "boolean",
-                                "default": false,
-                                "description": "是否启用此适配器",
-                                "layout": {
-                                    "comp": "switch",
-                                    "props": {
-                                        "color": "primary"
-                                    }
-                                }
-                            },
-                            "host": {
-                                "type": "string",
-                                "default": "127.0.0.1"
-                            },
-                            "port": {
-                                "type": "integer",
-                                "default": 8080
-                            },
-                            "verifyKey": {
-                                "type": "string",
-                                "default": "yirimirai"
-                            },
-                            "qq": {
-                                "type": "integer",
-                                "default": 123456789
-                            }
-                        }
-                    },
-                    {
                         "title": "Nakuru 适配器",
                         "description": "用于接入 go-cqhttp",
                         "properties": {

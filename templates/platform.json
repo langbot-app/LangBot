@@ -1,14 +1,6 @@
 {
     "platform-adapters": [
         {
-            "adapter": "yiri-mirai",
-            "enable": false,
-            "host": "127.0.0.1",
-            "port": 8080,
-            "verifyKey": "yirimirai",
-            "qq": 123456789
-        },
-        {
             "adapter": "nakuru",
             "enable": false,
             "host": "127.0.0.1",

@@ -125,3 +125,10 @@ class Application:
         except Exception as e:
             self.logger.error(f"应用运行致命异常: {e}")
             self.logger.debug(f"Traceback: {traceback.format_exc()}")
+
+    async def scoped_shutdown(self, scopes: list[str]):
+        pass
+
+    async def shutdown(self):
+        for task in self.task_mgr.tasks:
+            task.cancel()

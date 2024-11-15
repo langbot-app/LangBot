@@ -154,6 +154,9 @@ class TaskWrapper:
                 "result": self.assume_result().__str__() if self.assume_result() is not None else None,
             },
         }
+    
+    def cancel(self):
+        self.task.cancel()
 
 
 class AsyncTaskManager:

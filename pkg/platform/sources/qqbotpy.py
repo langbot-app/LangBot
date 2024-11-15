@@ -591,5 +591,5 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
         self.ap.logger.info("运行 QQ 官方适配器")
         await self.bot.start(**self.cfg)
 
-    def kill(self) -> bool:
+    async def kill(self) -> bool:
         return False
