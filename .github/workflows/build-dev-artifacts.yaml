@@ -26,13 +26,9 @@ jobs:
           npm run build
       - name: Package Output
         run: |
-          mkdir -p /tmp/langbot_output
-          mkdir -p /tmp/output_files
-          cp -r . /tmp/langbot_output
-          cp -r /tmp/langbot_build_web/web/dist /tmp/langbot_output/web
-          zip -r /tmp/output_files/langbot_output.zip /tmp/langbot_output
+          cp -r /tmp/langbot_build_web/web/dist ./web
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: langbot_output.zip
-          path: /tmp/output_files/langbot_output.zip
+          name: langbot_output
+          path: .
