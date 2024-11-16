@@ -1,0 +1,38 @@
+name: Build Dev Image
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build-dev-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Make Temp Directory
+        run: |
+          mkdir -p /tmp/langbot_build_web
+          copy -r . /tmp/langbot_build_web
+      - name: Setup Node
+        uses: actions/setup-node@v2
+        with:
+          node-version: '22'
+      - name: Build Web
+        run: |
+          cd /tmp/langbot_build_web/web
+          npm install
+          npm run build
+      - name: Package Output
+        run: |
+          mkdir -p /tmp/langbot_output
+          mkdir -p /tmp/output_files
+          cp -r . /tmp/langbot_output
+          cp -r /tmp/langbot_build_web/web/dist /tmp/langbot_output/web
+          zip -r /tmp/output_files/langbot_output.zip /tmp/langbot_output
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: langbot_output
+          path: /tmp/output_files/
