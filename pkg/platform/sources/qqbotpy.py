@@ -21,7 +21,6 @@ from ...platform.types import events as platform_events
 from ...platform.types import message as platform_message
 
 
-
 class OfficialGroupMessage(platform_events.GroupMessage):
     pass
 

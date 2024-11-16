@@ -197,10 +197,6 @@ function closeAboutDialog() {
   margin-left: -0.2rem;
 }
 
-#logo-img {
-  /* margin-left: -0.2rem; */
-}
-
 #logo-list-item {
   margin-top: 0.5rem;
   margin-bottom: 1.5rem;
