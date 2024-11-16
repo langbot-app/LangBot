@@ -98,6 +98,7 @@ class BasePlugin(metaclass=abc.ABCMeta):
         pass
 
     def __del__(self):
+        """释放/禁用插件时被调用"""
         pass
 
 

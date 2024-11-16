@@ -89,6 +89,7 @@ class PluginManager:
             return
         
         self.ap.logger.debug(f'释放插件 {plugin.plugin_name}')
+        plugin.plugin_inst.__del__()
         await plugin.plugin_inst.destroy()
         plugin.plugin_inst = None
         plugin.status = context.RuntimeContainerStatus.MOUNTED
@@ -124,6 +125,9 @@ class PluginManager:
             }
         )
 
+        task_context.trace('重载插件..', 'reload-plugin')
+        await self.ap.reload(scope='plugin')
+
     async def uninstall_plugin(
         self,
         plugin_name: str,
@@ -131,9 +135,14 @@ class PluginManager:
     ):
         """卸载插件
         """
-        await self.installer.uninstall_plugin(plugin_name, task_context)
 
         plugin_container = self.get_plugin_by_name(plugin_name)
+
+        if plugin_container is None:
+            raise ValueError(f'插件 {plugin_name} 不存在')
+
+        await self.destroy_plugin(plugin_container)
+        await self.installer.uninstall_plugin(plugin_name, task_context)
 
         await self.ap.ctr_mgr.plugin.post_remove_record(
             {
@@ -143,6 +152,9 @@ class PluginManager:
                 "version": plugin_container.plugin_version
             }
         )
+
+        task_context.trace('重载插件..', 'reload-plugin')
+        await self.ap.reload(scope='plugin')
 
     async def update_plugin(
         self,
@@ -167,6 +179,8 @@ class PluginManager:
             new_version="HEAD"
         )
 
+        task_context.trace('重载插件..', 'reload-plugin')
+        await self.ap.reload(scope='plugin')
 
     def get_plugin_by_name(self, plugin_name: str) -> context.RuntimeContainer:
         """通过插件名获取插件

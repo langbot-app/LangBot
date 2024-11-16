@@ -73,6 +73,11 @@
                       </v-list-item-title>
                     </v-list-item>
 
+                    <v-list-item @click="reload('plugin')">
+                      <v-list-item-title>
+                        重载插件
+                      </v-list-item-title>
+                    </v-list-item>
                   </v-list>
                 </v-menu>
               </v-list-item>
@@ -143,21 +148,26 @@ function openDocs() {
   window.open('https://docs.langbot.app', '_blank')
 }
 
+const reloadScopeLabel = {
+  'platform': "消息平台",
+  'plugin': "插件"
+}
+
 function reload(scope) {
-  proxy.$axios.post('/system/reload', 
+  let label = reloadScopeLabel[scope]
+  proxy.$axios.post('/system/reload',
     { scope: scope },
     { headers: { 'Content-Type': 'application/json' } }
   ).then(response => {
     if (response.data.code === 0) {
-      success('消息平台已重载')
+      success(label+'已重载')
 
       // 关闭菜单
     } else {
-      error('消息平台重载失败：' + response.data.message)
+      error(label+'重载失败：' + response.data.message)
     }
-  }).catch(error => {
-    console.error(error)
-    error('消息平台重载失败：' + error)
+  }).catch(err => {
+    error(label+'重载失败：' + err)
   })
 
 }

@@ -5,6 +5,7 @@ import asyncio
 import threading
 import traceback
 import enum
+import sys
 
 from ..platform import manager as im_mgr
 from ..provider.session import sessionmgr as llm_session_mgr
@@ -106,10 +107,8 @@ class Application:
         pass
 
     async def run(self):
-        await self.plugin_mgr.initialize_plugins()
-
         try:
-   
+            await self.plugin_mgr.initialize_plugins()
             # 后续可能会允许动态重启其他任务
             # 故为了防止程序在非 Ctrl-C 情况下退出，这里创建一个不会结束的协程
             async def never_ending():
@@ -171,5 +170,21 @@ class Application:
                 await self.platform_mgr.initialize()
 
                 self.task_mgr.create_task(self.platform_mgr.run(), name="platform-manager", scopes=[core_entities.LifecycleControlScope.APPLICATION, core_entities.LifecycleControlScope.PLATFORM])
+            case core_entities.LifecycleControlScope.PLUGIN.value:
+                self.logger.info("执行热重载 scope="+scope)
+                await self.plugin_mgr.destroy_plugins()
+
+                # 删除 sys.module 中所有的 plugins/* 下的模块
+                for mod in list(sys.modules.keys()):
+                    if mod.startswith("plugins."):
+                        del sys.modules[mod]
+
+                self.plugin_mgr = plugin_mgr.PluginManager(self)
+                await self.plugin_mgr.initialize()
+
+                await self.plugin_mgr.initialize_plugins()
+
+                await self.plugin_mgr.load_plugins()
+                await self.plugin_mgr.initialize_plugins()
             case _:
                 pass
