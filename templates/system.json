@@ -11,7 +11,7 @@
     },
     "pipeline-concurrency": 20,
     "qcg-center-url": "https://api.qchatgpt.rockchin.top/api/v2",
-    "help-message": "QChatGPT - 😎高稳定性、🧩支持插件、🌏实时联网的 ChatGPT QQ 机器人🤖\n链接：https://q.rkcn.top",
+    "help-message": "LangBot - 😎高稳定性、🧩支持插件、🌏实时联网的 ChatGPT QQ 机器人🤖\n链接：https://q.rkcn.top",
     "http-api": {
         "enable": true,
         "host": "0.0.0.0",

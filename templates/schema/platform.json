@@ -68,7 +68,7 @@
                             "host": {
                                 "type": "string",
                                 "default": "0.0.0.0",
-                                "description": "监听的 IP 地址，一般就保持 0.0.0.0 就可以了。使用 aiocqhttp 时，QChatGPT 作为服务端被动等待框架连接，请在 Lagrange 等框架中设置被动 ws 地址或者反向 ws 地址（具体视框架而定）为 QChatGPT 监听的地址，且路径为/ws，例如：ws://127.0.0.1:8080/ws"
+                                "description": "监听的 IP 地址，一般就保持 0.0.0.0 就可以了。使用 aiocqhttp 时，LangBot 作为服务端被动等待框架连接，请在 Lagrange 等框架中设置被动 ws 地址或者反向 ws 地址（具体视框架而定）为 LangBot 监听的地址，且路径为/ws，例如：ws://127.0.0.1:8080/ws"
                             },
                             "port": {
                                 "type": "integer",

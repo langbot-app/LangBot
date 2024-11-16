@@ -3,6 +3,7 @@
 __pycache__/
 database.db
 qchatgpt.log
+langbot.log
 /banlist.py
 /plugins/
 !/plugins/__init__.py

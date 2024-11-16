@@ -103,7 +103,7 @@ class BasePlugin(metaclass=abc.ABCMeta):
 
 
 class APIHost:
-    """QChatGPT API 宿主"""
+    """LangBot API 宿主"""
 
     ap: app.Application
 
@@ -136,7 +136,7 @@ class APIHost:
 
         if self.ap.ver_mgr.compare_version_str(qchatgpt_version, ge) < 0 or \
             (self.ap.ver_mgr.compare_version_str(qchatgpt_version, le) > 0):
-            raise Exception("QChatGPT 版本不满足要求，某些功能（可能是由插件提供的）无法正常使用。（要求版本：{}-{}，但当前版本：{}）".format(ge, le, qchatgpt_version))
+            raise Exception("LangBot 版本不满足要求，某些功能（可能是由插件提供的）无法正常使用。（要求版本：{}-{}，但当前版本：{}）".format(ge, le, qchatgpt_version))
 
         return True
 

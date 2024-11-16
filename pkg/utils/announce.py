@@ -48,7 +48,7 @@ class AnnouncementManager:
     ) -> list[Announcement]:
         """获取所有公告"""
         resp = requests.get(
-            url="https://api.github.com/repos/RockChinQ/QChatGPT/contents/res/announcement.json",
+            url="https://api.github.com/repos/RockChinQ/LangBot/contents/res/announcement.json",
             proxies=self.ap.proxy_mgr.get_forward_proxies(),
             timeout=5
         )

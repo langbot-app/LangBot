@@ -41,7 +41,7 @@ const close = () => {
 }
 
 const openSource = () => {
-    window.open('https://github.com/RockChinQ/QChatGPT', '_blank')
+    window.open('https://github.com/RockChinQ/LangBot', '_blank')
 }
 </script>
 

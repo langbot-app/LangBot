@@ -1,6 +1,6 @@
-# QChatGPT 终端启动入口
+# LangBot 终端启动入口
 # 在此层级解决依赖项检查。
-# QChatGPT/main.py
+# LangBot/main.py
 
 asciiart = r"""
  _                   ___      _   
@@ -63,7 +63,7 @@ if __name__ == '__main__':
         input("按任意键退出...")
         exit(1)
 
-    # 检查本目录是否有main.py，且包含QChatGPT字符串
+    # 检查本目录是否有main.py，且包含LangBot字符串
     invalid_pwd = False
 
     if not os.path.exists('main.py'):
@@ -71,10 +71,10 @@ if __name__ == '__main__':
     else:
         with open('main.py', 'r', encoding='utf-8') as f:
             content = f.read()
-            if "QChatGPT/main.py" not in content:
+            if "LangBot/main.py" not in content:
                 invalid_pwd = True
     if invalid_pwd:
-        print("请在QChatGPT项目根目录下以命令形式运行此程序。")
+        print("请在 LangBot 项目根目录下以命令形式运行此程序。")
         input("按任意键退出...")
         exit(1)
 
