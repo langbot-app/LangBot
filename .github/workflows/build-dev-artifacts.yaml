@@ -1,4 +1,4 @@
-name: Build Dev Image
+name: Build Artifacts
 
 on:
   push:
@@ -34,5 +34,5 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: langbot_output
-          path: /tmp/output_files/
+          name: langbot_output.zip
+          path: /tmp/output_files/langbot_output.zip
