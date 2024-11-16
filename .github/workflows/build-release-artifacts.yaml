@@ -1,0 +1,52 @@
+name: Build Release Artifacts
+
+on:
+  workflow_dispatch:
+  ## 发布release的时候会自动构建
+  release:
+    types: [published]
+
+jobs:
+  build-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Check version
+        id: check_version
+        run: |
+          echo $GITHUB_REF
+          # 如果是tag，则去掉refs/tags/前缀
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            echo "It's a tag"
+            echo $GITHUB_REF
+            echo $GITHUB_REF | awk -F '/' '{print $3}'
+            echo ::set-output name=version::$(echo $GITHUB_REF | awk -F '/' '{print $3}')
+          else
+            echo "It's not a tag"
+            echo $GITHUB_REF
+            echo ::set-output name=version::${GITHUB_REF}
+          fi
+
+      - name: Make Temp Directory
+        run: |
+          mkdir -p /tmp/langbot_build_web
+          cp -r . /tmp/langbot_build_web
+      - name: Setup Node
+        uses: actions/setup-node@v2
+        with:
+          node-version: '22'
+      - name: Build Web
+        run: |
+          cd /tmp/langbot_build_web/web
+          npm install
+          npm run build
+      - name: Package Output
+        run: |
+          cp -r /tmp/langbot_build_web/web/dist ./web
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: langbot-{{ steps.check_version.outputs.version }}-all
+          path: .
