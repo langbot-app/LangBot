@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import AsyncGenerator
 
 from .. import operator, entities, cmdmgr
+from ...plugin import context as plugin_context
 
 
 @operator.operator_class(name="func", help="查看所有已注册的内容函数", usage='!func')
@@ -9,16 +10,18 @@ class FuncOperator(operator.CommandOperator):
     async def execute(
         self, context: entities.ExecuteContext
     ) -> AsyncGenerator[entities.CommandReturn, None]:
-        reply_str = "当前已加载的内容函数: \n\n"
+        reply_str = "当前已启用的内容函数: \n\n"
 
         index = 1
 
-        all_functions = await self.ap.tool_mgr.get_all_functions()
+        all_functions = await self.ap.tool_mgr.get_all_functions(
+            plugin_enabled=True,
+            plugin_status=plugin_context.RuntimeContainerStatus.INITIALIZED,
+        )
 
         for func in all_functions:
-            reply_str += "{}. {}{}:\n{}\n\n".format(
+            reply_str += "{}. {}:\n{}\n\n".format(
                 index,
-                ("(已禁用) " if not func.enable else ""),
                 func.name,
                 func.description,
             )

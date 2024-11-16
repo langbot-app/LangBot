@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from ...core import app, entities as core_entities
+from ...plugin import context as plugin_context
 
 
 class SessionManager:
@@ -51,7 +52,10 @@ class SessionManager:
                 prompt=await self.ap.prompt_mgr.get_prompt(session.use_prompt_name),
                 messages=[],
                 use_model=await self.ap.model_mgr.get_model_by_name(self.ap.provider_cfg.data['model']),
-                use_funcs=await self.ap.tool_mgr.get_all_functions(),
+                use_funcs=await self.ap.tool_mgr.get_all_functions(
+                    plugin_enabled=True,
+                    plugin_status=plugin_context.RuntimeContainerStatus.INITIALIZED,
+                ),
             )
             session.conversations.append(conversation)
             session.using_conversation = conversation

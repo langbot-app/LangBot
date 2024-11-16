@@ -8,7 +8,7 @@
 
 *请在方括号间写`x`以打勾
 
-- [ ] 阅读仓库[贡献指引](https://github.com/RockChinQ/QChatGPT/blob/master/CONTRIBUTING.md)了吗？
+- [ ] 阅读仓库[贡献指引](https://github.com/RockChinQ/LangBot/blob/master/CONTRIBUTING.md)了吗？
 - [ ] 与项目所有者沟通过了吗？
 - [ ] 我确定已自行测试所作的更改，确保功能符合预期。
 

@@ -15,6 +15,11 @@ from ...provider.sysprompt import sysprompt as llm_prompt_mgr
 from ...provider.tools import toolmgr as llm_tool_mgr
 from ...provider import runnermgr
 from ...platform import manager as im_mgr
+from ...persistence import mgr as persistencemgr
+from ...api.http.controller import main as http_controller
+from ...utils import logcache
+from .. import taskmgr
+
 
 @stage.stage_class("BuildAppStage")
 class BuildAppStage(stage.BootingStage):
@@ -24,6 +29,7 @@ class BuildAppStage(stage.BootingStage):
     async def run(self, ap: app.Application):
         """构建app对象的各个组件对象并初始化
         """
+        ap.task_mgr = taskmgr.AsyncTaskManager(ap)
 
         proxy_mgr = proxy.ProxyManager(ap)
         await proxy_mgr.initialize()
@@ -57,6 +63,13 @@ class BuildAppStage(stage.BootingStage):
         ap.ann_mgr = ann_mgr
 
         ap.query_pool = pool.QueryPool()
+
+        log_cache = logcache.LogCache()
+        ap.log_cache = log_cache
+
+        persistence_mgr_inst = persistencemgr.PersistenceManager(ap)
+        await persistence_mgr_inst.initialize()
+        ap.persistence_mgr = persistence_mgr_inst
 
         plugin_mgr_inst = plugin_mgr.PluginManager(ap)
         await plugin_mgr_inst.initialize()
@@ -95,6 +108,9 @@ class BuildAppStage(stage.BootingStage):
         await stage_mgr.initialize()
         ap.stage_mgr = stage_mgr
 
+        http_ctrl = http_controller.HTTPController(ap)
+        await http_ctrl.initialize()
+        ap.http_ctrl = http_ctrl
 
         ctrl = controller.Controller(ap)
         ap.ctrl = ctrl

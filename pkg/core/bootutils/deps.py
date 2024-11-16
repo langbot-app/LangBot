@@ -6,7 +6,7 @@ required_deps = {
     "anthropic": "anthropic",
     "colorlog": "colorlog",
     "aiocqhttp": "aiocqhttp",
-    "botpy": "qq-botpy",
+    "botpy": "qq-botpy-rc",
     "PIL": "pillow",
     "nakuru": "nakuru-project-idk",
     "tiktoken": "tiktoken",
@@ -15,6 +15,12 @@ required_deps = {
     "psutil": "psutil",
     "async_lru": "async-lru",
     "ollama": "ollama",
+    "quart": "quart",
+    "quart_cors": "quart-cors",
+    "sqlalchemy": "sqlalchemy[asyncio]",
+    "aiosqlite": "aiosqlite",
+    "aiofiles": "aiofiles",
+    "aioshutil": "aioshutil",
 }
 
 

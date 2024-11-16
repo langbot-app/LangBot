@@ -3,9 +3,10 @@
 __pycache__/
 database.db
 qchatgpt.log
+langbot.log
 /banlist.py
-plugins/
-!plugins/__init__.py
+/plugins/
+!/plugins/__init__.py
 /revcfg.py
 prompts/
 logs/
@@ -35,3 +36,4 @@ res/instance_id.json
 .DS_Store
 /data
 botpy.log*
+/poc

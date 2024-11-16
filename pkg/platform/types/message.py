@@ -545,7 +545,7 @@ class Image(MessageComponent):
 
     @pydantic.validator('path')
     def validate_path(cls, path: typing.Union[str, Path, None]):
-        """修复 path 参数的行为，使之相对于 QChatGPT 的启动路径。"""
+        """修复 path 参数的行为，使之相对于 LangBot 的启动路径。"""
         if path:
             try:
                 return str(Path(path).resolve(strict=True))
@@ -673,7 +673,7 @@ class Voice(MessageComponent):
     """语音的长度，单位为秒。"""
     @pydantic.validator('path')
     def validate_path(cls, path: typing.Optional[str]):
-        """修复 path 参数的行为，使之相对于 QChatGPT 的启动路径。"""
+        """修复 path 参数的行为，使之相对于 LangBot 的启动路径。"""
         if path:
             try:
                 return str(Path(path).resolve(strict=True))

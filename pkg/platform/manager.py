@@ -37,76 +37,40 @@ class PlatformManager:
     
     async def initialize(self):
 
-        from .sources import yirimirai, nakuru, aiocqhttp, qqbotpy
+        from .sources import nakuru, aiocqhttp, qqbotpy
 
         async def on_friend_message(event: platform_events.FriendMessage, adapter: msadapter.MessageSourceAdapter):
 
-            event_ctx = await self.ap.plugin_mgr.emit_event(
-                event=events.PersonMessageReceived(
-                    launcher_type='person',
-                    launcher_id=event.sender.id,
-                    sender_id=event.sender.id,
-                    message_chain=event.message_chain,
-                    query=None
-                )
+            await self.ap.query_pool.add_query(
+                launcher_type=core_entities.LauncherTypes.PERSON,
+                launcher_id=event.sender.id,
+                sender_id=event.sender.id,
+                message_event=event,
+                message_chain=event.message_chain,
+                adapter=adapter
             )
-
-            if not event_ctx.is_prevented_default():
-
-                await self.ap.query_pool.add_query(
-                    launcher_type=core_entities.LauncherTypes.PERSON,
-                    launcher_id=event.sender.id,
-                    sender_id=event.sender.id,
-                    message_event=event,
-                    message_chain=event.message_chain,
-                    adapter=adapter
-                )
 
         async def on_stranger_message(event: platform_events.StrangerMessage, adapter: msadapter.MessageSourceAdapter):
             
-            event_ctx = await self.ap.plugin_mgr.emit_event(
-                event=events.PersonMessageReceived(
-                    launcher_type='person',
-                    launcher_id=event.sender.id,
-                    sender_id=event.sender.id,
-                    message_chain=event.message_chain,
-                    query=None
-                )
+            await self.ap.query_pool.add_query(
+                launcher_type=core_entities.LauncherTypes.PERSON,
+                launcher_id=event.sender.id,
+                sender_id=event.sender.id,
+                message_event=event,
+                message_chain=event.message_chain,
+                adapter=adapter
             )
-
-            if not event_ctx.is_prevented_default():
-
-                await self.ap.query_pool.add_query(
-                    launcher_type=core_entities.LauncherTypes.PERSON,
-                    launcher_id=event.sender.id,
-                    sender_id=event.sender.id,
-                    message_event=event,
-                    message_chain=event.message_chain,
-                    adapter=adapter
-                )
 
         async def on_group_message(event: platform_events.GroupMessage, adapter: msadapter.MessageSourceAdapter):
 
-            event_ctx = await self.ap.plugin_mgr.emit_event(
-                event=events.GroupMessageReceived(
-                    launcher_type='group',
-                    launcher_id=event.group.id,
-                    sender_id=event.sender.id,
-                    message_chain=event.message_chain,
-                    query=None
-                )
+            await self.ap.query_pool.add_query(
+                launcher_type=core_entities.LauncherTypes.GROUP,
+                launcher_id=event.group.id,
+                sender_id=event.sender.id,
+                message_event=event,
+                message_chain=event.message_chain,
+                adapter=adapter
             )
-
-            if not event_ctx.is_prevented_default():
-
-                await self.ap.query_pool.add_query(
-                    launcher_type=core_entities.LauncherTypes.GROUP,
-                    launcher_id=event.group.id,
-                    sender_id=event.sender.id,
-                    message_event=event,
-                    message_chain=event.message_chain,
-                    adapter=adapter
-                )
         
         index = 0
 
@@ -174,19 +138,30 @@ class PlatformManager:
         try:
             tasks = []
             for adapter in self.adapters:
-                async def exception_wrapper(adapter):
+                async def exception_wrapper(adapter: msadapter.MessageSourceAdapter):
                     try:
                         await adapter.run_async()
                     except Exception as e:
+                        if isinstance(e, asyncio.CancelledError):
+                            return
                         self.ap.logger.error('平台适配器运行出错: ' + str(e))
                         self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
 
                 tasks.append(exception_wrapper(adapter))
             
             for task in tasks:
-                asyncio.create_task(task)
+                self.ap.task_mgr.create_task(
+                    task,
+                    kind="platform-adapter",
+                    name=f"platform-adapter-{adapter.name}",
+                    scopes=[core_entities.LifecycleControlScope.APPLICATION, core_entities.LifecycleControlScope.PLATFORM],
+                )
 
         except Exception as e:
             self.ap.logger.error('平台适配器运行出错: ' + str(e))
             self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
-
+    
+    async def shutdown(self):
+        for adapter in self.adapters:
+            await adapter.kill()
+        self.ap.task_mgr.cancel_by_scope(core_entities.LifecycleControlScope.PLATFORM)

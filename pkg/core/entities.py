@@ -17,6 +17,14 @@ from ..platform.types import events as platform_events
 from ..platform.types import entities as platform_entities
 
 
+
+class LifecycleControlScope(enum.Enum):
+
+    APPLICATION = "application"
+    PLATFORM = "platform"
+    PLUGIN = "plugin"
+
+
 class LauncherTypes(enum.Enum):
     """一个请求的发起者类型"""
 
