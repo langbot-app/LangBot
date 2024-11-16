@@ -4,6 +4,7 @@ import logging
 import asyncio
 import threading
 import traceback
+import enum
 
 from ..platform import manager as im_mgr
 from ..provider.session import sessionmgr as llm_session_mgr
@@ -21,8 +22,9 @@ from ..pipeline import controller, stagemgr
 from ..utils import version as version_mgr, proxy as proxy_mgr, announce as announce_mgr
 from ..persistence import mgr as persistencemgr
 from ..api.http.controller import main as http_controller
-from ..utils import logcache
+from ..utils import logcache, ip
 from . import taskmgr
+from . import entities as core_entities
 
 
 class Application:
@@ -114,11 +116,12 @@ class Application:
                 while True:
                     await asyncio.sleep(1)
 
-            self.task_mgr.create_task(self.platform_mgr.run(), name="platform-manager")
-            self.task_mgr.create_task(self.ctrl.run(), name="query-controller")
-            self.task_mgr.create_task(self.http_ctrl.run(), name="http-api-controller")
-            self.task_mgr.create_task(never_ending(), name="never-ending-task")
+            self.task_mgr.create_task(self.platform_mgr.run(), name="platform-manager", scopes=[core_entities.LifecycleControlScope.APPLICATION, core_entities.LifecycleControlScope.PLATFORM])
+            self.task_mgr.create_task(self.ctrl.run(), name="query-controller", scopes=[core_entities.LifecycleControlScope.APPLICATION])
+            self.task_mgr.create_task(self.http_ctrl.run(), name="http-api-controller", scopes=[core_entities.LifecycleControlScope.APPLICATION])
+            self.task_mgr.create_task(never_ending(), name="never-ending-task", scopes=[core_entities.LifecycleControlScope.APPLICATION])
 
+            await self.print_web_access_info()
             await self.task_mgr.wait_all()
         except asyncio.CancelledError:
             pass
@@ -126,9 +129,45 @@ class Application:
             self.logger.error(f"应用运行致命异常: {e}")
             self.logger.debug(f"Traceback: {traceback.format_exc()}")
 
-    async def scoped_shutdown(self, scopes: list[str]):
-        pass
+    async def print_web_access_info(self):
+        """打印访问 webui 的提示"""
+        import socket
 
-    async def shutdown(self):
-        for task in self.task_mgr.tasks:
-            task.cancel()
+        host_ip = socket.gethostbyname(socket.gethostname())
+
+        public_ip = await ip.get_myip()
+
+        port = self.system_cfg.data['http-api']['port']
+
+        tips = f"""
+=======================================
+✨ 您可通过以下方式访问管理面板：
+
+🏠 本地地址：http://{host_ip}:{port}/
+🌐 公网地址：http://{public_ip}:{port}/
+
+📌 如果您在容器中运行此程序，请确保容器的 {port} 端口已对外暴露
+🔗 若要使用公网地址访问，请阅读以下须知
+   1. 公网地址仅供参考，请以您的主机公网 IP 为准；
+   2. 要使用公网地址访问，请确保您的主机具有公网 IP，并且系统防火墙已放行 {port} 端口；
+=======================================
+""".strip()
+        for line in tips.split("\n"):
+            self.logger.info(line)
+
+    async def reload(
+        self,
+        scope: core_entities.LifecycleControlScope,
+    ):
+        match scope:
+            case core_entities.LifecycleControlScope.PLATFORM.value:
+                self.logger.info("执行热重载 scope="+scope)
+                await self.platform_mgr.shutdown()
+
+                self.platform_mgr = im_mgr.PlatformManager(self)
+
+                await self.platform_mgr.initialize()
+
+                self.task_mgr.create_task(self.platform_mgr.run(), name="platform-manager", scopes=[core_entities.LifecycleControlScope.APPLICATION, core_entities.LifecycleControlScope.PLATFORM])
+            case _:
+                pass

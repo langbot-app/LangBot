@@ -4,7 +4,6 @@ import asyncio
 import typing
 import traceback
 
-
 from ..core import app, entities
 from . import entities as pipeline_entities
 from ..plugin import events
@@ -59,13 +58,11 @@ class Controller:
                             (await self.ap.sess_mgr.get_session(selected_query)).semaphore.release()
                             # 通知其他协程，有新的请求可以处理了
                             self.ap.query_pool.condition.notify_all()
-                    
-                    # task = asyncio.create_task(_process_query(selected_query))
-                    # self.ap.asyncio_tasks.append(task)
                     self.ap.task_mgr.create_task(
                         _process_query(selected_query),
                         kind="query",
                         name=f"query-{selected_query.query_id}",
+                        scopes=[entities.LifecycleControlScope.APPLICATION, entities.LifecycleControlScope.PLATFORM],
                     )
 
         except Exception as e:

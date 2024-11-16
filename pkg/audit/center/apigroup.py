@@ -9,7 +9,7 @@ import asyncio
 import aiohttp
 import requests
 
-from ...core import app
+from ...core import app, entities as core_entities
 
 
 class APIGroup(metaclass=abc.ABCMeta):
@@ -65,14 +65,12 @@ class APIGroup(metaclass=abc.ABCMeta):
         **kwargs,
     ) -> asyncio.Task:
         """执行请求"""
-        # task = asyncio.create_task(self._do(method, path, data, params, headers, **kwargs))
-
-        # self.ap.asyncio_tasks.append(task)
 
         return self.ap.task_mgr.create_task(
             self._do(method, path, data, params, headers, **kwargs),
             kind="telemetry-operation",
             name=f"{method} {path}",
+            scopes=[core_entities.LifecycleControlScope.APPLICATION],
         ).task
 
     def gen_rid(self):

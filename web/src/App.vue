@@ -67,6 +67,12 @@
                       </v-list-item-title>
                     </v-list-item>
 
+                    <v-list-item @click="reload('platform')">
+                      <v-list-item-title>
+                        重载消息平台
+                      </v-list-item-title>
+                    </v-list-item>
+
                   </v-list>
                 </v-menu>
               </v-list-item>
@@ -135,6 +141,25 @@ provide('snackbar', { success, error, warning, info, location, timeout });
 
 function openDocs() {
   window.open('https://docs.langbot.app', '_blank')
+}
+
+function reload(scope) {
+  proxy.$axios.post('/system/reload', 
+    { scope: scope },
+    { headers: { 'Content-Type': 'application/json' } }
+  ).then(response => {
+    if (response.data.code === 0) {
+      success('消息平台已重载')
+
+      // 关闭菜单
+    } else {
+      error('消息平台重载失败：' + response.data.message)
+    }
+  }).catch(error => {
+    console.error(error)
+    error('消息平台重载失败：' + error)
+  })
+
 }
 
 const aboutDialogShow = ref(false)

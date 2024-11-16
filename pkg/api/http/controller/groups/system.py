@@ -39,3 +39,25 @@ class SystemRouterGroup(group.RouterGroup):
                 return self.http_status(404, 404, "Task not found")
             
             return self.success(data=task.to_dict())
+        
+        @self.route('/reload', methods=['POST'])
+        async def _() -> str:
+            json_data = await quart.request.json
+
+            scope = json_data.get("scope")
+
+            await self.ap.reload(
+                scope=scope
+            )
+            return self.success()
+
+        @self.route('/_debug/exec', methods=['POST'])
+        async def _() -> str:
+            if not constants.debug_mode:
+                return self.http_status(403, 403, "Forbidden")
+            
+            py_code = await quart.request.data
+
+            ap = self.ap
+
+            return self.success(data=exec(py_code, {"ap": ap}))

@@ -588,8 +588,12 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
             self.member_openid_mapping, self.group_openid_mapping
         )
 
+        self.cfg['ret_coro'] = True
+
         self.ap.logger.info("运行 QQ 官方适配器")
-        await self.bot.start(**self.cfg)
+        await (await self.bot.start(**self.cfg))
 
     async def kill(self) -> bool:
-        return False
+        if not self.bot.is_closed():
+            await self.bot.close()
+            return True

@@ -174,22 +174,23 @@ class PlatformManager:
         try:
             tasks = []
             for adapter in self.adapters:
-                async def exception_wrapper(adapter):
+                async def exception_wrapper(adapter: msadapter.MessageSourceAdapter):
                     try:
                         await adapter.run_async()
                     except Exception as e:
+                        if isinstance(e, asyncio.CancelledError):
+                            return
                         self.ap.logger.error('平台适配器运行出错: ' + str(e))
                         self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
 
                 tasks.append(exception_wrapper(adapter))
             
             for task in tasks:
-                # async_task = asyncio.create_task(task)
-                # self.ap.asyncio_tasks.append(async_task)
                 self.ap.task_mgr.create_task(
                     task,
                     kind="platform-adapter",
                     name=f"platform-adapter-{adapter.name}",
+                    scopes=[core_entities.LifecycleControlScope.APPLICATION, core_entities.LifecycleControlScope.PLATFORM],
                 )
 
         except Exception as e:
@@ -199,3 +200,4 @@ class PlatformManager:
     async def shutdown(self):
         for adapter in self.adapters:
             await adapter.kill()
+        self.ap.task_mgr.cancel_by_scope(core_entities.LifecycleControlScope.PLATFORM)
