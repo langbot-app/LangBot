@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-dev-image:
+  build-artifacts:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -14,7 +14,7 @@ jobs:
       - name: Make Temp Directory
         run: |
           mkdir -p /tmp/langbot_build_web
-          copy -r . /tmp/langbot_build_web
+          cp -r . /tmp/langbot_build_web
       - name: Setup Node
         uses: actions/setup-node@v2
         with:
