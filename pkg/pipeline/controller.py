@@ -163,6 +163,23 @@ class Controller:
     async def process_query(self, query: entities.Query):
         """处理请求
         """
+
+        # ======== 触发 MessageReceived 事件 ========
+        event_type = events.PersonMessageReceived if query.launcher_type == entities.LauncherTypes.PERSON else events.GroupMessageReceived
+
+        event_ctx = await self.ap.plugin_mgr.emit_event(
+            event=event_type(
+                launcher_type=query.launcher_type.value,
+                launcher_id=query.launcher_id,
+                sender_id=query.sender_id,
+                message_chain=query.message_chain,
+                query=query
+            )
+        )
+
+        if event_ctx.is_prevented_default():
+            return
+        
         self.ap.logger.debug(f"Processing query {query}")
 
         try:
@@ -170,7 +187,6 @@ class Controller:
         except Exception as e:
             self.ap.logger.error(f"处理请求时出错 query_id={query.query_id} stage={query.current_stage.inst_name} : {e}")
             self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
-            # traceback.print_exc()
         finally:
             self.ap.logger.debug(f"Query {query} processed")
 

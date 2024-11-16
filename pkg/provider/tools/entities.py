@@ -20,8 +20,6 @@ class LLMFunction(pydantic.BaseModel):
     description: str
     """给LLM识别的函数描述"""
 
-    enable: typing.Optional[bool] = True
-
     parameters: dict
 
     func: typing.Callable

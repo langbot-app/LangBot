@@ -3,6 +3,7 @@ from __future__ import annotations
 import typing
 import abc
 import pydantic
+import enum
 
 from . import events
 from ..provider.tools import entities as tools_entities
@@ -85,10 +86,18 @@ class BasePlugin(metaclass=abc.ABCMeta):
     """应用程序对象"""
 
     def __init__(self, host: APIHost):
+        """初始化阶段被调用"""
         self.host = host
 
     async def initialize(self):
-        """初始化插件"""
+        """初始化阶段被调用"""
+        pass
+    
+    async def destroy(self):
+        """释放/禁用插件时被调用"""
+        pass
+
+    def __del__(self):
         pass
 
 
@@ -247,6 +256,16 @@ class EventContext:
         EventContext.eid += 1
 
 
+class RuntimeContainerStatus(enum.Enum):
+    """插件容器状态"""
+
+    MOUNTED = "mounted"
+    """已加载进内存，所有位于运行时记录中的 RuntimeContainer 至少是这个状态"""
+
+    INITIALIZED = "initialized"
+    """已初始化"""
+
+
 class RuntimeContainer(pydantic.BaseModel):
     """运行时的插件容器
     
@@ -294,6 +313,9 @@ class RuntimeContainer(pydantic.BaseModel):
     content_functions: list[tools_entities.LLMFunction] = []
     """内容函数"""
 
+    status: RuntimeContainerStatus = RuntimeContainerStatus.MOUNTED
+    """插件状态"""
+
     class Config:
         arbitrary_types_allowed = True
 
@@ -318,9 +340,6 @@ class RuntimeContainer(pydantic.BaseModel):
         self.priority = setting['priority']
         self.enabled = setting['enabled']
 
-        for function in self.content_functions:
-            function.enable = self.enabled
-
     def model_dump(self, *args, **kwargs):
         return {
             'name': self.plugin_name,
@@ -342,9 +361,9 @@ class RuntimeContainer(pydantic.BaseModel):
                     'human_desc': function.human_desc,
                     'description': function.description,
                     'parameters': function.parameters,
-                    'enable': function.enable,
                     'func': function.func.__name__,
                 }
                 for function in self.content_functions
             ],
+            'status': self.status.value,
         }

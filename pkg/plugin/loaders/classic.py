@@ -20,7 +20,14 @@ class PluginLoader(loader.PluginLoader):
 
     _current_container: context.RuntimeContainer = None
 
-    containers: list[context.RuntimeContainer] = []
+    plugins: list[context.RuntimeContainer] = []
+
+    def __init__(self, ap):
+        self.ap = ap
+        self.plugins = []
+        self._current_pkg_path = ''
+        self._current_module_path = ''
+        self._current_container = None
 
     async def initialize(self):
         """初始化"""
@@ -77,8 +84,10 @@ class PluginLoader(loader.PluginLoader):
                 }
 
                 # 把 ctx.event 所有的属性都放到 args 里
-                for k, v in ctx.event.dict().items():
-                    args[k] = v 
+                # for k, v in ctx.event.dict().items():
+                #     args[k] = v 
+                for attr_name in ctx.event.__dict__.keys():
+                    args[attr_name] = getattr(ctx.event, attr_name)
 
                 func(plugin, **args)
             
@@ -113,7 +122,6 @@ class PluginLoader(loader.PluginLoader):
                 name=function_name,
                 human_desc='',
                 description=function_schema['description'],
-                enable=True,
                 parameters=function_schema['parameters'],
                 func=handler,
             )
@@ -153,7 +161,6 @@ class PluginLoader(loader.PluginLoader):
                 name=function_name,
                 human_desc='',
                 description=function_schema['description'],
-                enable=True,
                 parameters=function_schema['parameters'],
                 func=func,
             )
@@ -189,15 +196,13 @@ class PluginLoader(loader.PluginLoader):
                     importlib.import_module(module.__name__ + "." + item.name)
 
                     if self._current_container is not None:
-                        self.containers.append(self._current_container)
+                        self.plugins.append(self._current_container)
                         self.ap.logger.debug(f'插件 {self._current_container} 已加载')
                 except:
                     self.ap.logger.error(f'加载插件模块 {prefix + item.name} 时发生错误')
                     traceback.print_exc()
 
-    async def load_plugins(self) -> list[context.RuntimeContainer]:
+    async def load_plugins(self):
         """加载插件
         """
         await self._walk_plugin_path(__import__("plugins", fromlist=[""]))
-
-        return self.containers

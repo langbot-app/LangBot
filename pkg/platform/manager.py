@@ -41,72 +41,36 @@ class PlatformManager:
 
         async def on_friend_message(event: platform_events.FriendMessage, adapter: msadapter.MessageSourceAdapter):
 
-            event_ctx = await self.ap.plugin_mgr.emit_event(
-                event=events.PersonMessageReceived(
-                    launcher_type='person',
-                    launcher_id=event.sender.id,
-                    sender_id=event.sender.id,
-                    message_chain=event.message_chain,
-                    query=None
-                )
+            await self.ap.query_pool.add_query(
+                launcher_type=core_entities.LauncherTypes.PERSON,
+                launcher_id=event.sender.id,
+                sender_id=event.sender.id,
+                message_event=event,
+                message_chain=event.message_chain,
+                adapter=adapter
             )
-
-            if not event_ctx.is_prevented_default():
-
-                await self.ap.query_pool.add_query(
-                    launcher_type=core_entities.LauncherTypes.PERSON,
-                    launcher_id=event.sender.id,
-                    sender_id=event.sender.id,
-                    message_event=event,
-                    message_chain=event.message_chain,
-                    adapter=adapter
-                )
 
         async def on_stranger_message(event: platform_events.StrangerMessage, adapter: msadapter.MessageSourceAdapter):
             
-            event_ctx = await self.ap.plugin_mgr.emit_event(
-                event=events.PersonMessageReceived(
-                    launcher_type='person',
-                    launcher_id=event.sender.id,
-                    sender_id=event.sender.id,
-                    message_chain=event.message_chain,
-                    query=None
-                )
+            await self.ap.query_pool.add_query(
+                launcher_type=core_entities.LauncherTypes.PERSON,
+                launcher_id=event.sender.id,
+                sender_id=event.sender.id,
+                message_event=event,
+                message_chain=event.message_chain,
+                adapter=adapter
             )
-
-            if not event_ctx.is_prevented_default():
-
-                await self.ap.query_pool.add_query(
-                    launcher_type=core_entities.LauncherTypes.PERSON,
-                    launcher_id=event.sender.id,
-                    sender_id=event.sender.id,
-                    message_event=event,
-                    message_chain=event.message_chain,
-                    adapter=adapter
-                )
 
         async def on_group_message(event: platform_events.GroupMessage, adapter: msadapter.MessageSourceAdapter):
 
-            event_ctx = await self.ap.plugin_mgr.emit_event(
-                event=events.GroupMessageReceived(
-                    launcher_type='group',
-                    launcher_id=event.group.id,
-                    sender_id=event.sender.id,
-                    message_chain=event.message_chain,
-                    query=None
-                )
+            await self.ap.query_pool.add_query(
+                launcher_type=core_entities.LauncherTypes.GROUP,
+                launcher_id=event.group.id,
+                sender_id=event.sender.id,
+                message_event=event,
+                message_chain=event.message_chain,
+                adapter=adapter
             )
-
-            if not event_ctx.is_prevented_default():
-
-                await self.ap.query_pool.add_query(
-                    launcher_type=core_entities.LauncherTypes.GROUP,
-                    launcher_id=event.group.id,
-                    sender_id=event.sender.id,
-                    message_event=event,
-                    message_chain=event.message_chain,
-                    adapter=adapter
-                )
         
         index = 0
 

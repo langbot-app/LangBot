@@ -141,7 +141,7 @@ class Application:
 
         tips = f"""
 =======================================
-✨ 您可通过以下方式访问管理面板：
+✨ 您可通过以下方式访问管理面板
 
 🏠 本地地址：http://{host_ip}:{port}/
 🌐 公网地址：http://{public_ip}:{port}/
@@ -150,6 +150,8 @@ class Application:
 🔗 若要使用公网地址访问，请阅读以下须知
    1. 公网地址仅供参考，请以您的主机公网 IP 为准；
    2. 要使用公网地址访问，请确保您的主机具有公网 IP，并且系统防火墙已放行 {port} 端口；
+
+🤯 WebUI 仍处于 Beta 测试阶段，如有问题或建议请反馈到 https://github.com/RockChinQ/LangBot/issues
 =======================================
 """.strip()
         for line in tips.split("\n"):
