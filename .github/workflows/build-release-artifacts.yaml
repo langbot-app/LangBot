@@ -48,5 +48,5 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: langbot-{{ steps.check_version.outputs.version }}-all
+          name: langbot-${{ steps.check_version.outputs.version }}-all
           path: .
