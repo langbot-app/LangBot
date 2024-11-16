@@ -6,6 +6,7 @@ import datetime
 import traceback
 
 from . import app
+from . import entities as core_entities
 
 
 class TaskContext:
@@ -71,7 +72,7 @@ class TaskWrapper:
     task_type: str = "system"  # 任务类型: system 或 user
     """任务类型"""
 
-    kind: str = "system_task"
+    kind: str = "system_task"  # 由发起者确定任务种类，通常同质化的任务种类相同
     """任务种类"""
 
     name: str = ""
@@ -92,6 +93,9 @@ class TaskWrapper:
     ap: app.Application
     """应用实例"""
 
+    scopes: list[core_entities.LifecycleControlScope]
+    """任务所属生命周期控制范围"""
+
     def __init__(
         self,
         ap: app.Application,
@@ -101,6 +105,7 @@ class TaskWrapper:
         name: str = "",
         label: str = "",
         context: TaskContext = None,
+        scopes: list[core_entities.LifecycleControlScope] = [core_entities.LifecycleControlScope.APPLICATION],
     ):
         self.id = TaskWrapper._id_index
         TaskWrapper._id_index += 1
@@ -112,6 +117,7 @@ class TaskWrapper:
         self.name = name
         self.label = label if label != "" else name
         self.task.set_name(name)
+        self.scopes = scopes
 
     def assume_exception(self):
         try:
@@ -145,6 +151,7 @@ class TaskWrapper:
             "kind": self.kind,
             "name": self.name,
             "label": self.label,
+            "scopes": [scope.value for scope in self.scopes],
             "task_context": self.task_context.to_dict(),
             "runtime": {
                 "done": self.task.done(),
@@ -154,6 +161,9 @@ class TaskWrapper:
                 "result": self.assume_result().__str__() if self.assume_result() is not None else None,
             },
         }
+    
+    def cancel(self):
+        self.task.cancel()
 
 
 class AsyncTaskManager:
@@ -177,8 +187,9 @@ class AsyncTaskManager:
         name: str = "",
         label: str = "",
         context: TaskContext = None,
+        scopes: list[core_entities.LifecycleControlScope] = [core_entities.LifecycleControlScope.APPLICATION],
     ) -> TaskWrapper:
-        wrapper = TaskWrapper(self.ap, coro, task_type, kind, name, label, context)
+        wrapper = TaskWrapper(self.ap, coro, task_type, kind, name, label, context, scopes)
         self.tasks.append(wrapper)
         return wrapper
 
@@ -189,8 +200,9 @@ class AsyncTaskManager:
         name: str = "",
         label: str = "",
         context: TaskContext = None,
+        scopes: list[core_entities.LifecycleControlScope] = [core_entities.LifecycleControlScope.APPLICATION],
     ) -> TaskWrapper:
-        return self.create_task(coro, "user", kind, name, label, context)
+        return self.create_task(coro, "user", kind, name, label, context, scopes)
 
     async def wait_all(self):
         await asyncio.gather(*[t.task for t in self.tasks], return_exceptions=True)
@@ -214,3 +226,10 @@ class AsyncTaskManager:
             if t.id == id:
                 return t
         return None
+
+    def cancel_by_scope(self, scope: core_entities.LifecycleControlScope):
+        for wrapper in self.tasks:
+            
+            if not wrapper.task.done() and scope in wrapper.scopes:
+
+                wrapper.task.cancel()

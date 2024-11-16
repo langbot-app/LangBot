@@ -3,7 +3,7 @@ openai>1.0.0
 anthropic
 colorlog~=6.6.0
 aiocqhttp
-qq-botpy
+qq-botpy-rc
 nakuru-project-idk
 Pillow
 tiktoken

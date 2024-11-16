@@ -53,13 +53,17 @@ async def main(loop: asyncio.AbstractEventLoop):
         # 挂系统信号处理
         import signal
 
+        ap: app.Application
+
         def signal_handler(sig, frame):
             print("[Signal] 程序退出.")
+            # ap.shutdown()
             os._exit(0)
 
         signal.signal(signal.SIGINT, signal_handler)
 
         app_inst = await make_app(loop)
+        ap = app_inst
         await app_inst.run()
     except Exception as e:
         traceback.print_exc()

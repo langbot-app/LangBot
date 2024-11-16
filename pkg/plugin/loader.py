@@ -13,13 +13,16 @@ class PluginLoader(metaclass=abc.ABCMeta):
 
     ap: app.Application
 
+    plugins: list[context.RuntimeContainer]
+
     def __init__(self, ap: app.Application):
         self.ap = ap
+        self.plugins = []
 
     async def initialize(self):
         pass
 
     @abc.abstractmethod
-    async def load_plugins(self) -> list[context.RuntimeContainer]:
+    async def load_plugins(self):
         pass
 

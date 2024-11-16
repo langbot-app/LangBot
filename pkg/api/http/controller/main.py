@@ -6,7 +6,7 @@ import os
 import quart
 import quart_cors
 
-from ....core import app
+from ....core import app, entities as core_entities
 from .groups import logs, system, settings, plugins, stats
 from . import group
 
@@ -32,14 +32,25 @@ class HTTPController:
                 while True:
                     await asyncio.sleep(1)
 
+            async def exception_handler(*args, **kwargs):
+                try:
+                    await self.quart_app.run_task(
+                        *args, **kwargs
+                    )
+                except Exception as e:
+                    self.ap.logger.error(f"启动 HTTP 服务失败： {e}")
+
             self.ap.task_mgr.create_task(
-                self.quart_app.run_task(
+                exception_handler(
                     host=self.ap.system_cfg.data["http-api"]["host"],
                     port=self.ap.system_cfg.data["http-api"]["port"],
                     shutdown_trigger=shutdown_trigger_placeholder,
                 ),
                 name="http-api-quart",
+                scopes=[core_entities.LifecycleControlScope.APPLICATION],
             )
+
+            # await asyncio.sleep(5)
 
     async def register_routes(self) -> None:
 

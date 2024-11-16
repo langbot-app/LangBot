@@ -67,6 +67,17 @@
                       </v-list-item-title>
                     </v-list-item>
 
+                    <v-list-item @click="reload('platform')">
+                      <v-list-item-title>
+                        重载消息平台
+                      </v-list-item-title>
+                    </v-list-item>
+
+                    <v-list-item @click="reload('plugin')">
+                      <v-list-item-title>
+                        重载插件
+                      </v-list-item-title>
+                    </v-list-item>
                   </v-list>
                 </v-menu>
               </v-list-item>
@@ -137,6 +148,30 @@ function openDocs() {
   window.open('https://docs.langbot.app', '_blank')
 }
 
+const reloadScopeLabel = {
+  'platform': "消息平台",
+  'plugin': "插件"
+}
+
+function reload(scope) {
+  let label = reloadScopeLabel[scope]
+  proxy.$axios.post('/system/reload',
+    { scope: scope },
+    { headers: { 'Content-Type': 'application/json' } }
+  ).then(response => {
+    if (response.data.code === 0) {
+      success(label+'已重载')
+
+      // 关闭菜单
+    } else {
+      error(label+'重载失败：' + response.data.message)
+    }
+  }).catch(err => {
+    error(label+'重载失败：' + err)
+  })
+
+}
+
 const aboutDialogShow = ref(false)
 
 function showAboutDialog() {
@@ -160,10 +195,6 @@ function closeAboutDialog() {
   align-items: center;
   justify-content: center;
   margin-left: -0.2rem;
-}
-
-#logo-img {
-  /* margin-left: -0.2rem; */
 }
 
 #logo-list-item {

@@ -18,7 +18,7 @@ class PluginOperator(operator.CommandOperator):
         context: entities.ExecuteContext
     ) -> typing.AsyncGenerator[entities.CommandReturn, None]:
         
-        plugin_list = self.ap.plugin_mgr.plugins
+        plugin_list = self.ap.plugin_mgr.plugins()
         reply_str = "所有插件({}):\n".format(len(plugin_list))
         idx = 0
         for plugin in plugin_list:
@@ -110,7 +110,7 @@ class PluginUpdateAllOperator(operator.CommandOperator):
         try:
             plugins = [
                 p.plugin_name
-                for p in self.ap.plugin_mgr.plugins
+                for p in self.ap.plugin_mgr.plugins()
             ]
 
             if plugins:
@@ -182,7 +182,7 @@ class PluginEnableOperator(operator.CommandOperator):
             plugin_name = context.crt_params[0]
 
             try:
-                if await self.ap.plugin_mgr.update_plugin_status(plugin_name, True):
+                if await self.ap.plugin_mgr.update_plugin_switch(plugin_name, True):
                     yield entities.CommandReturn(text="已启用插件: {}".format(plugin_name))
                 else:
                     yield entities.CommandReturn(error=errors.CommandError("插件状态修改失败: 未找到插件 {}".format(plugin_name)))
@@ -210,7 +210,7 @@ class PluginDisableOperator(operator.CommandOperator):
             plugin_name = context.crt_params[0]
 
             try:
-                if await self.ap.plugin_mgr.update_plugin_status(plugin_name, False):
+                if await self.ap.plugin_mgr.update_plugin_switch(plugin_name, False):
                     yield entities.CommandReturn(text="已禁用插件: {}".format(plugin_name))
                 else:
                     yield entities.CommandReturn(error=errors.CommandError("插件状态修改失败: 未找到插件 {}".format(plugin_name)))
