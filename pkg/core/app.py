@@ -6,6 +6,7 @@ import threading
 import traceback
 import enum
 import sys
+import os
 
 from ..platform import manager as im_mgr
 from ..provider.session import sessionmgr as llm_session_mgr
@@ -137,6 +138,11 @@ class Application:
 
     async def print_web_access_info(self):
         """打印访问 webui 的提示"""
+
+        if not os.path.exists(os.path.join(".", "web/dist")):
+            self.logger.warning("WebUI 文件缺失，请根据文档获取：https://docs.langbot.app/webui/intro.html")
+            return
+
         import socket
 
         host_ip = socket.gethostbyname(socket.gethostname())
