@@ -92,6 +92,11 @@
                 },
                 "port": {
                     "type": "integer"
+                },
+                "jwt-expire": {
+                    "type": "integer",
+                    "title": "JWT 过期时间",
+                    "description": "单位：秒"
                 }
             }
         },

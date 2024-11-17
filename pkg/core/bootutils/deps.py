@@ -21,6 +21,8 @@ required_deps = {
     "aiosqlite": "aiosqlite",
     "aiofiles": "aiofiles",
     "aioshutil": "aioshutil",
+    "argon2": "argon2-cffi",
+    "jwt": "pyjwt",
 }
 
 

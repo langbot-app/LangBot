@@ -13,6 +13,12 @@ export default createStore({
     version: 'v0.0.0',
     debug: false,
     enabledPlatformCount: 0,
+    user: {
+      tokenChecked: false,
+      tokenValid: false,
+      systemInitialized: true,
+      jwtToken: '',
+    }
   },
   mutations: {
     initializeFetch() {
