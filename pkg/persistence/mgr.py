@@ -7,6 +7,7 @@ import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
 import sqlalchemy
 
 from . import database
+from .entities import user, base
 from ..core import app
 from .databases import sqlite
 
@@ -23,7 +24,7 @@ class PersistenceManager:
 
     def __init__(self, ap: app.Application):
         self.ap = ap
-        self.meta = sqlalchemy.MetaData()
+        self.meta = base.Base.metadata
 
     async def initialize(self):
         
@@ -46,10 +47,11 @@ class PersistenceManager:
         self,
         *args,
         **kwargs
-    ):
+    ) -> sqlalchemy.engine.cursor.CursorResult:
         async with self.get_db_engine().connect() as conn:
-            await conn.execute(*args, **kwargs)
+            result = await conn.execute(*args, **kwargs)
             await conn.commit()
+            return result
 
     def get_db_engine(self) -> sqlalchemy_asyncio.AsyncEngine:
         return self.db.get_engine()

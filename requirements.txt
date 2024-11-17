@@ -21,3 +21,5 @@ aiosqlite
 quart-cors
 aiofiles
 aioshutil
+argon2-cffi
+pyjwt

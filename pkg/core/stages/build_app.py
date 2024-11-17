@@ -17,6 +17,7 @@ from ...provider import runnermgr
 from ...platform import manager as im_mgr
 from ...persistence import mgr as persistencemgr
 from ...api.http.controller import main as http_controller
+from ...api.http.service import user as user_service
 from ...utils import logcache
 from .. import taskmgr
 
@@ -111,6 +112,9 @@ class BuildAppStage(stage.BootingStage):
         http_ctrl = http_controller.HTTPController(ap)
         await http_ctrl.initialize()
         ap.http_ctrl = http_ctrl
+
+        user_service_inst = user_service.UserService(ap)
+        ap.user_service = user_service_inst
 
         ctrl = controller.Controller(ap)
         ap.ctrl = ctrl

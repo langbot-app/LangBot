@@ -23,6 +23,7 @@ from ..pipeline import controller, stagemgr
 from ..utils import version as version_mgr, proxy as proxy_mgr, announce as announce_mgr
 from ..persistence import mgr as persistencemgr
 from ..api.http.controller import main as http_controller
+from ..api.http.service import user as user_service
 from ..utils import logcache, ip
 from . import taskmgr
 from . import entities as core_entities
@@ -74,6 +75,8 @@ class Application:
 
     llm_models_meta: config_mgr.ConfigManager = None
 
+    instance_secret_meta: config_mgr.ConfigManager = None
+
     # =========================
 
     ctr_mgr: center_mgr.V2CenterAPI = None
@@ -99,6 +102,10 @@ class Application:
     http_ctrl: http_controller.HTTPController = None
 
     log_cache: logcache.LogCache = None
+
+    # ========= HTTP Services =========
+
+    user_service: user_service.UserService = None
 
     def __init__(self):
         pass

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import secrets
+
 from .. import stage, app
 from ..bootutils import config
 from ...config import settings as settings_mgr
@@ -75,3 +77,8 @@ class LoadConfigStage(stage.BootingStage):
 
         ap.llm_models_meta = await config.load_json_config("data/metadata/llm-models.json", "templates/metadata/llm-models.json")
         await ap.llm_models_meta.dump_config()
+
+        ap.instance_secret_meta = await config.load_json_config("data/metadata/instance-secret.json", template_data={
+            'jwt_secret': secrets.token_hex(16)
+        })
+        await ap.instance_secret_meta.dump_config()

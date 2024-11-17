@@ -7,7 +7,7 @@ import quart
 import quart_cors
 
 from ....core import app, entities as core_entities
-from .groups import logs, system, settings, plugins, stats
+from .groups import logs, system, settings, plugins, stats, user
 from . import group
 
 

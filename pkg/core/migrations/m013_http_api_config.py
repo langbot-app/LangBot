@@ -17,7 +17,8 @@ class HttpApiConfigMigration(migration.Migration):
         self.ap.system_cfg.data['http-api'] = {
             "enable": True,
             "host": "0.0.0.0",
-            "port": 5300
+            "port": 5300,
+            "jwt-expire": 604800
         }
 
         self.ap.system_cfg.data['persistence'] = {

@@ -16,6 +16,16 @@ export function registerPlugins (app) {
     .use(router)
     .use(store)
 
+  // 读取用户令牌
+  const token = localStorage.getItem('user-token')
+
+  if (token) {
+    store.state.user.jwtToken = token
+  }
+
+  // 所有axios请求均携带用户令牌
+  axios.defaults.headers.common['Authorization'] = `Bearer ${store.state.user.jwtToken}`
+
   app.config.globalProperties.$axios = axios
   store.commit('initializeFetch')
 }

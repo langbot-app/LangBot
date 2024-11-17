@@ -10,7 +10,7 @@ from .....utils import constants
 class SystemRouterGroup(group.RouterGroup):
     
     async def initialize(self) -> None:
-        @self.route('/info', methods=['GET'])
+        @self.route('/info', methods=['GET'], auth_type=group.AuthType.NONE)
         async def _() -> str:
             return self.success(
                 data={
