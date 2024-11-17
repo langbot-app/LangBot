@@ -31,7 +31,7 @@ class LoadConfigStage(stage.BootingStage):
             description="命令配置",
             manager=ap.command_cfg,
             schema=schema.CONFIG_COMMAND_SCHEMA,
-            doc_link="https://qchatgpt.rockchin.top/config/function/command.html"
+            doc_link="https://docs.langbot.app/config/function/command.html"
         )
 
         ap.settings_mgr.register_manager(
@@ -39,7 +39,7 @@ class LoadConfigStage(stage.BootingStage):
             description="消息处理流水线配置",
             manager=ap.pipeline_cfg,
             schema=schema.CONFIG_PIPELINE_SCHEMA,
-            doc_link="https://qchatgpt.rockchin.top/config/function/pipeline.html"
+            doc_link="https://docs.langbot.app/config/function/pipeline.html"
         )
 
         ap.settings_mgr.register_manager(
@@ -47,7 +47,7 @@ class LoadConfigStage(stage.BootingStage):
             description="消息平台配置",
             manager=ap.platform_cfg,
             schema=schema.CONFIG_PLATFORM_SCHEMA,
-            doc_link="https://qchatgpt.rockchin.top/config/function/platform.html"
+            doc_link="https://docs.langbot.app/config/function/platform.html"
         )
 
         ap.settings_mgr.register_manager(
@@ -55,7 +55,7 @@ class LoadConfigStage(stage.BootingStage):
             description="大模型能力配置",
             manager=ap.provider_cfg,
             schema=schema.CONFIG_PROVIDER_SCHEMA,
-            doc_link="https://qchatgpt.rockchin.top/config/function/provider.html"
+            doc_link="https://docs.langbot.app/config/function/provider.html"
         )
 
         ap.settings_mgr.register_manager(
@@ -63,7 +63,7 @@ class LoadConfigStage(stage.BootingStage):
             description="系统配置",
             manager=ap.system_cfg,
             schema=schema.CONFIG_SYSTEM_SCHEMA,
-            doc_link="https://qchatgpt.rockchin.top/config/function/system.html"
+            doc_link="https://docs.langbot.app/config/function/system.html"
         )
 
         ap.plugin_setting_meta = await config.load_json_config("plugins/plugins.json", "templates/plugin-settings.json")

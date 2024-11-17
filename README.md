@@ -1,6 +1,6 @@
 
 <p align="center">
-<img src="https://qchatgpt.rockchin.top/chrome-512.png" alt="QChatGPT" width="180" />
+<img src="https://docs.langbot.app/chrome-512.png" alt="QChatGPT" width="180" />
 </p>
 <div align="center">
 
@@ -12,7 +12,7 @@
 <a href="https://hub.docker.com/repository/docker/rockchin/langbot">
     <img src="https://img.shields.io/docker/pulls/rockchin/langbot?color=blue" alt="docker pull">
   </a>
- ![Dynamic JSON Badge](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.qchatgpt.rockchin.top%2Fapi%2Fv2%2Fview%2Frealtime%2Fcount_query%3Fminute%3D10080&query=%24.data.count&label=%E4%BD%BF%E7%94%A8%E9%87%8F%EF%BC%887%E6%97%A5%EF%BC%89)
+ ![Dynamic JSON Badge](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.docs.langbot.app%2Fapi%2Fv2%2Fview%2Frealtime%2Fcount_query%3Fminute%3D10080&query=%24.data.count&label=%E4%BD%BF%E7%94%A8%E9%87%8F%EF%BC%887%E6%97%A5%EF%BC%89)
 ![Wakapi Count](https://wakapi.rockchin.top/api/badge/RockChinQ/interval:any/project:QChatGPT)
 <br/>
 <img src="https://img.shields.io/badge/python-3.10 | 3.11 | 3.12-blue.svg" alt="python">
@@ -28,11 +28,11 @@
  
 ## 使用文档
 
-<a href="https://qchatgpt.rockchin.top">项目主页</a> ｜
-<a href="https://qchatgpt.rockchin.top/posts/feature.html">功能介绍</a> ｜
-<a href="https://qchatgpt.rockchin.top/posts/deploy/">部署文档</a> ｜
-<a href="https://qchatgpt.rockchin.top/posts/error/">常见问题</a> ｜
-<a href="https://qchatgpt.rockchin.top/posts/plugin/intro.html">插件介绍</a> ｜
+<a href="https://docs.langbot.app">项目主页</a> ｜
+<a href="https://docs.langbot.app/posts/feature.html">功能介绍</a> ｜
+<a href="https://docs.langbot.app/posts/deploy/">部署文档</a> ｜
+<a href="https://docs.langbot.app/posts/error/">常见问题</a> ｜
+<a href="https://docs.langbot.app/posts/plugin/intro.html">插件介绍</a> ｜
 <a href="https://github.com/RockChinQ/QChatGPT/issues/new?assignees=&labels=%E7%8B%AC%E7%AB%8B%E6%8F%92%E4%BB%B6&projects=&template=submit-plugin.yml&title=%5BPlugin%5D%3A+%E8%AF%B7%E6%B1%82%E7%99%BB%E8%AE%B0%E6%96%B0%E6%8F%92%E4%BB%B6">提交插件</a>
 
 ## 相关链接
@@ -51,5 +51,5 @@
 https://3.cn/24A-2NXd
 </div>
 
-<img alt="回复效果（带有联网插件）" src="https://qchatgpt.rockchin.top/QChatGPT-0516.png" width="500px"/>
+<img alt="回复效果（带有联网插件）" src="https://docs.langbot.app/QChatGPT-0516.png" width="500px"/>
 </div>
