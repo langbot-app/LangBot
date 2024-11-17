@@ -29,11 +29,11 @@
 ## 使用文档
 
 <a href="https://docs.langbot.app">项目主页</a> ｜
-<a href="https://docs.langbot.app/posts/feature.html">功能介绍</a> ｜
-<a href="https://docs.langbot.app/posts/deploy/">部署文档</a> ｜
-<a href="https://docs.langbot.app/posts/error/">常见问题</a> ｜
-<a href="https://docs.langbot.app/posts/plugin/intro.html">插件介绍</a> ｜
-<a href="https://github.com/RockChinQ/QChatGPT/issues/new?assignees=&labels=%E7%8B%AC%E7%AB%8B%E6%8F%92%E4%BB%B6&projects=&template=submit-plugin.yml&title=%5BPlugin%5D%3A+%E8%AF%B7%E6%B1%82%E7%99%BB%E8%AE%B0%E6%96%B0%E6%8F%92%E4%BB%B6">提交插件</a>
+<a href="https://docs.langbot.app/insight/intro.htmll">功能介绍</a> ｜
+<a href="https://docs.langbot.app/insight/guide.html">部署文档</a> ｜
+<a href="https://docs.langbot.app/usage/faq.html">常见问题</a> ｜
+<a href="https://docs.langbot.app/plugin/plugin-intro.html">插件介绍</a> ｜
+<a href="https://github.com/RockChinQ/LangBot/issues/new?assignees=&labels=%E7%8B%AC%E7%AB%8B%E6%8F%92%E4%BB%B6&projects=&template=submit-plugin.yml&title=%5BPlugin%5D%3A+%E8%AF%B7%E6%B1%82%E7%99%BB%E8%AE%B0%E6%96%B0%E6%8F%92%E4%BB%B6">提交插件</a>
 
 ## 相关链接
 
@@ -41,15 +41,3 @@
 <a href="https://github.com/RockChinQ/qcg-tester">测试工程源码</a> ｜
 <a href="https://github.com/RockChinQ/qcg-center">遥测服务端源码</a> ｜
 <a href="https://github.com/the-lazy-me/QChatGPT-Wiki">官方文档储存库</a>
-
-<hr/>
-
-<div align="center">
-京东云 4090 单卡 15C90G 实例 <br/>
-    仅需1.89/小时，包月1225元起  <br/>
-    可选预装Stable Diffusion等应用，随用随停，计费透明，欢迎首选支持 <br/>
-https://3.cn/24A-2NXd
-</div>
-
-<img alt="回复效果（带有联网插件）" src="https://docs.langbot.app/QChatGPT-0516.png" width="500px"/>
-</div>
