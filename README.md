@@ -1,6 +1,6 @@
 
 <p align="center">
-<img src="https://docs.langbot.app/chrome-512.png" alt="QChatGPT" width="180" />
+<img src="https://docs.langbot.app/langbot-logo-0.5x.png" alt="QChatGPT" width="180" />
 </p>
 <div align="center">
 
@@ -9,10 +9,10 @@
 <a href="https://trendshift.io/repositories/6187" target="_blank"><img src="https://trendshift.io/api/badge/repositories/6187" alt="RockChinQ%2FQChatGPT | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/LangBot)](https://github.com/RockChinQ/LangBot/releases/latest)
-<a href="https://hub.docker.com/repository/docker/rockchin/langbot">
+<!-- <a href="https://hub.docker.com/repository/docker/rockchin/langbot">
     <img src="https://img.shields.io/docker/pulls/rockchin/langbot?color=blue" alt="docker pull">
-  </a>
- ![Dynamic JSON Badge](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.docs.langbot.app%2Fapi%2Fv2%2Fview%2Frealtime%2Fcount_query%3Fminute%3D10080&query=%24.data.count&label=%E4%BD%BF%E7%94%A8%E9%87%8F%EF%BC%887%E6%97%A5%EF%BC%89)
+  </a> -->
+ ![Dynamic JSON Badge](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.qchatgpt.rockchin.top%2Fapi%2Fv2%2Fview%2Frealtime%2Fcount_query%3Fminute%3D10080&query=%24.data.count&label=%E4%BD%BF%E7%94%A8%E9%87%8F%EF%BC%887%E6%97%A5%EF%BC%89)
 ![Wakapi Count](https://wakapi.rockchin.top/api/badge/RockChinQ/interval:any/project:QChatGPT)
 <br/>
 <img src="https://img.shields.io/badge/python-3.10 | 3.11 | 3.12-blue.svg" alt="python">
@@ -22,9 +22,6 @@
 <a href="https://qm.qq.com/q/PClALFK242">
 <img alt="Static Badge" src="https://img.shields.io/badge/%E7%A4%BE%E5%8C%BA%E7%BE%A4-619154800-purple">
 </a>
-<a href="https://codecov.io/gh/RockChinQ/QChatGPT" > 
- <img src="https://codecov.io/gh/RockChinQ/QChatGPT/graph/badge.svg?token=pjxYIL2kbC"/> 
- </a>
  
 ## 使用文档
 
@@ -42,5 +39,5 @@
 <a href="https://github.com/RockChinQ/qcg-center">遥测服务端源码</a> ｜
 <a href="https://github.com/the-lazy-me/QChatGPT-Wiki">官方文档储存库</a>
 
-<img alt="回复效果（带有联网插件）" src="https://docs.langbot.top/QChatGPT-0516.png" width="500px"/>
+<img alt="回复效果（带有联网插件）" src="https://docs.langbot.app/QChatGPT-0516.png" width="500px"/>
 </div>
