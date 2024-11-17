@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import mirai
 
 from .. import stage, entities, stagemgr
 from ...core import entities as core_entities
 from ...provider import entities as llm_entities
 from ...plugin import events
+from ...platform.types import message as platform_message
 
 
 @stage.stage_class("PreProcessor")
@@ -55,11 +55,11 @@ class PreProcessor(stage.PipelineStage):
         content_list = []
 
         for me in query.message_chain:
-            if isinstance(me, mirai.Plain):
+            if isinstance(me, platform_message.Plain):
                 content_list.append(
                     llm_entities.ContentElement.from_text(me.text)
                 )
-            elif isinstance(me, mirai.Image):
+            elif isinstance(me, platform_message.Image):
                 if self.ap.provider_cfg.data['enable-vision'] and query.use_model.vision_supported:
                     if me.url is not None:
                         content_list.append(

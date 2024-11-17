@@ -1,19 +1,23 @@
-# QChatGPT 终端启动入口
+# LangBot 终端启动入口
 # 在此层级解决依赖项检查。
-# QChatGPT/main.py
+# LangBot/main.py
 
 asciiart = r"""
-  ___   ___ _         _    ___ ___ _____ 
- / _ \ / __| |_  __ _| |_ / __| _ \_   _|
-| (_) | (__| ' \/ _` |  _| (_ |  _/ | |  
- \__\_\\___|_||_\__,_|\__|\___|_|   |_|  
+ _                   ___      _   
+| |   __ _ _ _  __ _| _ ) ___| |_ 
+| |__/ _` | ' \/ _` | _ \/ _ \  _|
+|____\__,_|_||_\__, |___/\___/\__|
+               |___/              
 
-⭐️开源地址: https://github.com/RockChinQ/QChatGPT
-📖文档地址: https://q.rkcn.top
+⭐️开源地址: https://github.com/RockChinQ/LangBot
+📖文档地址: https://docs.langbot.app
 """
 
 
-async def main_entry():
+import asyncio
+
+
+async def main_entry(loop: asyncio.AbstractEventLoop):
     print(asciiart)
 
     import sys
@@ -46,13 +50,20 @@ async def main_entry():
         sys.exit(0)
 
     from pkg.core import boot
-    await boot.main()
+    await boot.main(loop)
 
 
 if __name__ == '__main__':
     import os
+    import sys
 
-    # 检查本目录是否有main.py，且包含QChatGPT字符串
+    # 必须大于 3.10.1
+    if sys.version_info < (3, 10, 1):
+        print("需要 Python 3.10.1 及以上版本，当前 Python 版本为：", sys.version)
+        input("按任意键退出...")
+        exit(1)
+
+    # 检查本目录是否有main.py，且包含LangBot字符串
     invalid_pwd = False
 
     if not os.path.exists('main.py'):
@@ -60,13 +71,13 @@ if __name__ == '__main__':
     else:
         with open('main.py', 'r', encoding='utf-8') as f:
             content = f.read()
-            if "QChatGPT/main.py" not in content:
+            if "LangBot/main.py" not in content:
                 invalid_pwd = True
     if invalid_pwd:
-        print("请在QChatGPT项目根目录下以命令形式运行此程序。")
+        print("请在 LangBot 项目根目录下以命令形式运行此程序。")
         input("按任意键退出...")
-        exit(0)
+        exit(1)
 
-    import asyncio
+    loop = asyncio.new_event_loop()
 
-    asyncio.run(main_entry())
+    loop.run_until_complete(main_entry(loop))

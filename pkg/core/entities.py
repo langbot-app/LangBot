@@ -6,13 +6,23 @@ import datetime
 import asyncio
 
 import pydantic
-import mirai
 
 from ..provider import entities as llm_entities
 from ..provider.modelmgr import entities
 from ..provider.sysprompt import entities as sysprompt_entities
 from ..provider.tools import entities as tools_entities
 from ..platform import adapter as msadapter
+from ..platform.types import message as platform_message
+from ..platform.types import events as platform_events
+from ..platform.types import entities as platform_entities
+
+
+
+class LifecycleControlScope(enum.Enum):
+
+    APPLICATION = "application"
+    PLATFORM = "platform"
+    PLUGIN = "plugin"
 
 
 class LauncherTypes(enum.Enum):
@@ -40,10 +50,10 @@ class Query(pydantic.BaseModel):
     sender_id: int
     """发送者ID，platform处理阶段设置"""
 
-    message_event: mirai.MessageEvent
+    message_event: platform_events.MessageEvent
     """事件，platform收到的原始事件"""
 
-    message_chain: mirai.MessageChain
+    message_chain: platform_message.MessageChain
     """消息链，platform收到的原始消息链"""
 
     adapter: msadapter.MessageSourceAdapter
@@ -67,10 +77,10 @@ class Query(pydantic.BaseModel):
     use_funcs: typing.Optional[list[tools_entities.LLMFunction]] = None
     """使用的函数，由前置处理器阶段设置"""
 
-    resp_messages: typing.Optional[list[llm_entities.Message]] | typing.Optional[list[mirai.MessageChain]] = []
+    resp_messages: typing.Optional[list[llm_entities.Message]] | typing.Optional[list[platform_message.MessageChain]] = []
     """由Process阶段生成的回复消息对象列表"""
 
-    resp_message_chain: typing.Optional[list[mirai.MessageChain]] = None
+    resp_message_chain: typing.Optional[list[platform_message.MessageChain]] = None
     """回复消息链，从resp_messages包装而得"""
 
     # ======= 内部保留 =======
@@ -108,7 +118,7 @@ class Session(pydantic.BaseModel):
 
     using_conversation: typing.Optional[Conversation] = None
 
-    conversations: typing.Optional[list[Conversation]] = []
+    conversations: typing.Optional[list[Conversation]] = pydantic.Field(default_factory=list)
 
     create_time: typing.Optional[datetime.datetime] = pydantic.Field(default_factory=datetime.datetime.now)
 

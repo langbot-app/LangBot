@@ -3,7 +3,7 @@ from __future__ import annotations
 import typing
 import abc
 
-from ..core import app
+from ..core import app, taskmgr
 
 
 class PluginInstaller(metaclass=abc.ABCMeta):
@@ -21,6 +21,7 @@ class PluginInstaller(metaclass=abc.ABCMeta):
     async def install_plugin(
         self,
         plugin_source: str,
+        task_context: taskmgr.TaskContext = taskmgr.TaskContext.placeholder(),
     ):
         """安装插件
         """
@@ -30,6 +31,7 @@ class PluginInstaller(metaclass=abc.ABCMeta):
     async def uninstall_plugin(
         self,
         plugin_name: str,
+        task_context: taskmgr.TaskContext = taskmgr.TaskContext.placeholder(),
     ):
         """卸载插件
         """
@@ -40,6 +42,7 @@ class PluginInstaller(metaclass=abc.ABCMeta):
         self,
         plugin_name: str,
         plugin_source: str=None,
+        task_context: taskmgr.TaskContext = taskmgr.TaskContext.placeholder(),
     ):
         """更新插件
         """

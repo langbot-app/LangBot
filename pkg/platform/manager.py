@@ -2,17 +2,24 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import logging
 import asyncio
 import traceback
 
-from mirai import At, GroupMessage, MessageEvent, StrangerMessage, \
-    FriendMessage, Image, MessageChain, Plain
-import mirai
+#     FriendMessage, Image, MessageChain, Plain
 from ..platform import adapter as msadapter
 
 from ..core import app, entities as core_entities
 from ..plugin import events
+from .types import message as platform_message
+from .types import events as platform_events
+from .types import entities as platform_entities
+
+# 处理 3.4 移除了 YiriMirai 之后，插件的兼容性问题
+from . import types as mirai
+sys.modules['mirai'] = mirai
+
 
 # 控制QQ消息输入输出的类
 class PlatformManager:
@@ -30,76 +37,40 @@ class PlatformManager:
     
     async def initialize(self):
 
-        from .sources import yirimirai, nakuru, aiocqhttp, qqbotpy
+        from .sources import nakuru, aiocqhttp, qqbotpy
 
-        async def on_friend_message(event: FriendMessage, adapter: msadapter.MessageSourceAdapter):
+        async def on_friend_message(event: platform_events.FriendMessage, adapter: msadapter.MessageSourceAdapter):
 
-            event_ctx = await self.ap.plugin_mgr.emit_event(
-                event=events.PersonMessageReceived(
-                    launcher_type='person',
-                    launcher_id=event.sender.id,
-                    sender_id=event.sender.id,
-                    message_chain=event.message_chain,
-                    query=None
-                )
+            await self.ap.query_pool.add_query(
+                launcher_type=core_entities.LauncherTypes.PERSON,
+                launcher_id=event.sender.id,
+                sender_id=event.sender.id,
+                message_event=event,
+                message_chain=event.message_chain,
+                adapter=adapter
             )
 
-            if not event_ctx.is_prevented_default():
-
-                await self.ap.query_pool.add_query(
-                    launcher_type=core_entities.LauncherTypes.PERSON,
-                    launcher_id=event.sender.id,
-                    sender_id=event.sender.id,
-                    message_event=event,
-                    message_chain=event.message_chain,
-                    adapter=adapter
-                )
-
-        async def on_stranger_message(event: StrangerMessage, adapter: msadapter.MessageSourceAdapter):
+        async def on_stranger_message(event: platform_events.StrangerMessage, adapter: msadapter.MessageSourceAdapter):
             
-            event_ctx = await self.ap.plugin_mgr.emit_event(
-                event=events.PersonMessageReceived(
-                    launcher_type='person',
-                    launcher_id=event.sender.id,
-                    sender_id=event.sender.id,
-                    message_chain=event.message_chain,
-                    query=None
-                )
+            await self.ap.query_pool.add_query(
+                launcher_type=core_entities.LauncherTypes.PERSON,
+                launcher_id=event.sender.id,
+                sender_id=event.sender.id,
+                message_event=event,
+                message_chain=event.message_chain,
+                adapter=adapter
             )
 
-            if not event_ctx.is_prevented_default():
+        async def on_group_message(event: platform_events.GroupMessage, adapter: msadapter.MessageSourceAdapter):
 
-                await self.ap.query_pool.add_query(
-                    launcher_type=core_entities.LauncherTypes.PERSON,
-                    launcher_id=event.sender.id,
-                    sender_id=event.sender.id,
-                    message_event=event,
-                    message_chain=event.message_chain,
-                    adapter=adapter
-                )
-
-        async def on_group_message(event: GroupMessage, adapter: msadapter.MessageSourceAdapter):
-
-            event_ctx = await self.ap.plugin_mgr.emit_event(
-                event=events.GroupMessageReceived(
-                    launcher_type='group',
-                    launcher_id=event.group.id,
-                    sender_id=event.sender.id,
-                    message_chain=event.message_chain,
-                    query=None
-                )
+            await self.ap.query_pool.add_query(
+                launcher_type=core_entities.LauncherTypes.GROUP,
+                launcher_id=event.group.id,
+                sender_id=event.sender.id,
+                message_event=event,
+                message_chain=event.message_chain,
+                adapter=adapter
             )
-
-            if not event_ctx.is_prevented_default():
-
-                await self.ap.query_pool.add_query(
-                    launcher_type=core_entities.LauncherTypes.GROUP,
-                    launcher_id=event.group.id,
-                    sender_id=event.sender.id,
-                    message_event=event,
-                    message_chain=event.message_chain,
-                    adapter=adapter
-                )
         
         index = 0
 
@@ -127,16 +98,16 @@ class PlatformManager:
 
                         if adapter_name == 'yiri-mirai':
                             adapter_inst.register_listener(
-                                StrangerMessage,
+                                platform_events.StrangerMessage,
                                 on_stranger_message
                             )
 
                         adapter_inst.register_listener(
-                            FriendMessage,
+                            platform_events.FriendMessage,
                             on_friend_message
                         )
                         adapter_inst.register_listener(
-                            GroupMessage,
+                            platform_events.GroupMessage,
                             on_group_message
                         )
                 
@@ -146,13 +117,13 @@ class PlatformManager:
         if len(self.adapters) == 0:
             self.ap.logger.warning('未运行平台适配器，请根据文档配置并启用平台适配器。')
 
-    async def send(self, event: mirai.MessageEvent, msg: mirai.MessageChain, adapter: msadapter.MessageSourceAdapter):
+    async def send(self, event: platform_events.MessageEvent, msg: platform_message.MessageChain, adapter: msadapter.MessageSourceAdapter):
         
-        if self.ap.platform_cfg.data['at-sender'] and isinstance(event, GroupMessage):
+        if self.ap.platform_cfg.data['at-sender'] and isinstance(event, platform_events.GroupMessage):
 
             msg.insert(
                 0,
-                At(
+                platform_message.At(
                     event.sender.id
                 )
             )
@@ -167,19 +138,30 @@ class PlatformManager:
         try:
             tasks = []
             for adapter in self.adapters:
-                async def exception_wrapper(adapter):
+                async def exception_wrapper(adapter: msadapter.MessageSourceAdapter):
                     try:
                         await adapter.run_async()
                     except Exception as e:
+                        if isinstance(e, asyncio.CancelledError):
+                            return
                         self.ap.logger.error('平台适配器运行出错: ' + str(e))
                         self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
 
                 tasks.append(exception_wrapper(adapter))
             
             for task in tasks:
-                asyncio.create_task(task)
+                self.ap.task_mgr.create_task(
+                    task,
+                    kind="platform-adapter",
+                    name=f"platform-adapter-{adapter.name}",
+                    scopes=[core_entities.LifecycleControlScope.APPLICATION, core_entities.LifecycleControlScope.PLATFORM],
+                )
 
         except Exception as e:
             self.ap.logger.error('平台适配器运行出错: ' + str(e))
             self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
-
+    
+    async def shutdown(self):
+        for adapter in self.adapters:
+            await adapter.kill()
+        self.ap.task_mgr.cancel_by_scope(core_entities.LifecycleControlScope.PLATFORM)

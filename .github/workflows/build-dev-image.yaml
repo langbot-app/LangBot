@@ -1,0 +1,24 @@
+name: Build Dev Image
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build-dev-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Generate Tag
+        id: generate_tag
+        run: |
+          # 获取分支名称，把/替换为-
+          echo ${{ github.ref }} | sed 's/refs\/heads\///g' | sed 's/\//-/g'
+          echo ::set-output name=tag::$(echo ${{ github.ref }} | sed 's/refs\/heads\///g' | sed 's/\//-/g')
+      - name: Login to Registry
+        run: docker login --username=${{ secrets.DOCKER_USERNAME }} --password ${{ secrets.DOCKER_PASSWORD }}
+      - name: Build Docker Image
+        run: |
+          docker buildx create --name mybuilder --use
+          docker build -t rockchin/langbot:${{ steps.generate_tag.outputs.tag }} . --push

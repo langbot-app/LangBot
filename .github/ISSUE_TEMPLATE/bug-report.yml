@@ -8,10 +8,10 @@ body:
       label: 消息平台适配器
       description: "连接QQ使用的框架"
       options:
-        - yiri-mirai（Mirai）
         - Nakuru（go-cqhttp）
         - aiocqhttp（使用 OneBot 协议接入的）
         - qq-botpy（QQ官方API）
+        - yiri-mirai（Mirai）
     validations:
       required: false
   - type: input
@@ -23,8 +23,8 @@ body:
       required: true
   - type: input
     attributes:
-      label: QChatGPT版本
-      description: QChatGPT版本号
+      label: LangBot 版本
+      description: LangBot (QChatGPT) 版本号
       placeholder: 例如：v3.3.0，可以使用`!version`命令查看，或者到 pkg/utils/constants.py 查看
     validations:
       required: true

@@ -38,7 +38,7 @@ class VersionManager:
     async def get_release_list(self) -> list:
         """获取发行列表"""
         rls_list_resp = requests.get(
-            url="https://api.github.com/repos/RockChinQ/QChatGPT/releases",
+            url="https://api.github.com/repos/RockChinQ/LangBot/releases",
             proxies=self.ap.proxy_mgr.get_forward_proxies(),
             timeout=5
         )

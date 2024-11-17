@@ -18,7 +18,7 @@ class PluginOperator(operator.CommandOperator):
         context: entities.ExecuteContext
     ) -> typing.AsyncGenerator[entities.CommandReturn, None]:
         
-        plugin_list = self.ap.plugin_mgr.plugins
+        plugin_list = self.ap.plugin_mgr.plugins()
         reply_str = "所有插件({}):\n".format(len(plugin_list))
         idx = 0
         for plugin in plugin_list:
@@ -110,7 +110,7 @@ class PluginUpdateAllOperator(operator.CommandOperator):
         try:
             plugins = [
                 p.plugin_name
-                for p in self.ap.plugin_mgr.plugins
+                for p in self.ap.plugin_mgr.plugins()
             ]
 
             if plugins:
@@ -163,24 +163,6 @@ class PluginDelOperator(operator.CommandOperator):
                 yield entities.CommandReturn(error=errors.CommandError("插件删除失败: "+str(e)))
 
 
-async def update_plugin_status(plugin_name: str, new_status: bool, ap: app.Application):
-    if ap.plugin_mgr.get_plugin_by_name(plugin_name) is not None:
-        for plugin in ap.plugin_mgr.plugins:
-            if plugin.plugin_name == plugin_name:
-                plugin.enabled = new_status
-
-                for func in plugin.content_functions:
-                    func.enable = new_status
-                
-                await ap.plugin_mgr.setting.dump_container_setting(ap.plugin_mgr.plugins)
-
-                break
-
-        return True
-    else:
-        return False
-
-
 @operator.operator_class(
     name="on",
     help="启用插件",
@@ -200,7 +182,7 @@ class PluginEnableOperator(operator.CommandOperator):
             plugin_name = context.crt_params[0]
 
             try:
-                if await update_plugin_status(plugin_name, True, self.ap):
+                if await self.ap.plugin_mgr.update_plugin_switch(plugin_name, True):
                     yield entities.CommandReturn(text="已启用插件: {}".format(plugin_name))
                 else:
                     yield entities.CommandReturn(error=errors.CommandError("插件状态修改失败: 未找到插件 {}".format(plugin_name)))
@@ -228,7 +210,7 @@ class PluginDisableOperator(operator.CommandOperator):
             plugin_name = context.crt_params[0]
 
             try:
-                if await update_plugin_status(plugin_name, False, self.ap):
+                if await self.ap.plugin_mgr.update_plugin_switch(plugin_name, False):
                     yield entities.CommandReturn(text="已禁用插件: {}".format(plugin_name))
                 else:
                     yield entities.CommandReturn(error=errors.CommandError("插件状态修改失败: 未找到插件 {}".format(plugin_name)))

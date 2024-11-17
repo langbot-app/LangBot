@@ -4,7 +4,8 @@ import typing
 import enum
 import pydantic
 
-import mirai
+
+from ..platform.types import message as platform_message
 
 
 class FunctionCall(pydantic.BaseModel):
@@ -73,14 +74,14 @@ class Message(pydantic.BaseModel):
 
     def readable_str(self) -> str:
         if self.content is not None:
-            return str(self.role) + ": " + str(self.get_content_mirai_message_chain())
+            return str(self.role) + ": " + str(self.get_content_platform_message_chain())
         elif self.tool_calls is not None:
             return f'调用工具: {self.tool_calls[0].id}'
         else:
             return '未知消息'
 
-    def get_content_mirai_message_chain(self, prefix_text: str="") -> mirai.MessageChain | None:
-        """将内容转换为 Mirai MessageChain 对象
+    def get_content_platform_message_chain(self, prefix_text: str="") -> platform_message.MessageChain | None:
+        """将内容转换为平台消息 MessageChain 对象
         
         Args:
             prefix_text (str): 首个文字组件的前缀文本
@@ -89,15 +90,15 @@ class Message(pydantic.BaseModel):
         if self.content is None:
             return None
         elif isinstance(self.content, str):
-            return mirai.MessageChain([mirai.Plain(prefix_text+self.content)])
+            return platform_message.MessageChain([platform_message.Plain(prefix_text+self.content)])
         elif isinstance(self.content, list):
             mc = []
             for ce in self.content:
                 if ce.type == 'text':
-                    mc.append(mirai.Plain(ce.text))
+                    mc.append(platform_message.Plain(ce.text))
                 elif ce.type == 'image_url':
                     if ce.image_url.url.startswith("http"):
-                        mc.append(mirai.Image(url=ce.image_url.url))
+                        mc.append(platform_message.Image(url=ce.image_url.url))
                     else:  # base64
                         
                         b64_str = ce.image_url.url
@@ -105,15 +106,15 @@ class Message(pydantic.BaseModel):
                         if b64_str.startswith("data:"):
                             b64_str = b64_str.split(",")[1]
 
-                        mc.append(mirai.Image(base64=b64_str))
-            
+                        mc.append(platform_message.Image(base64=b64_str))
+
             # 找第一个文字组件
             if prefix_text:
                 for i, c in enumerate(mc):
-                    if isinstance(c, mirai.Plain):
-                        mc[i] = mirai.Plain(prefix_text+c.text)
+                    if isinstance(c, platform_message.Plain):
+                        mc[i] = platform_message.Plain(prefix_text+c.text)
                         break
                 else:
-                    mc.insert(0, mirai.Plain(prefix_text))
+                    mc.insert(0, platform_message.Plain(prefix_text))
 
-            return mirai.MessageChain(mc)
+            return platform_message.MessageChain(mc)

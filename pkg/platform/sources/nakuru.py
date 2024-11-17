@@ -6,26 +6,28 @@ import typing
 import traceback
 import logging
 
-import mirai
 
 import nakuru
 import nakuru.entities.components as nkc
 
 from .. import adapter as adapter_model
 from ...pipeline.longtext.strategies import forward
+from ...platform.types import message as platform_message
+from ...platform.types import entities as platform_entities
+from ...platform.types import events as platform_events
 
 
 class NakuruProjectMessageConverter(adapter_model.MessageConverter):
     """消息转换器"""
     @staticmethod
-    def yiri2target(message_chain: mirai.MessageChain) -> list:
+    def yiri2target(message_chain: platform_message.MessageChain) -> list:
         msg_list = []
-        if type(message_chain) is mirai.MessageChain:
+        if type(message_chain) is platform_message.MessageChain:
             msg_list = message_chain.__root__
         elif type(message_chain) is list:
             msg_list = message_chain
         elif type(message_chain) is str:
-            msg_list = [mirai.Plain(message_chain)]
+            msg_list = [platform_message.Plain(message_chain)]
         else:
             raise Exception("Unknown message type: " + str(message_chain) + str(type(message_chain)))
         
@@ -33,22 +35,20 @@ class NakuruProjectMessageConverter(adapter_model.MessageConverter):
         
         # 遍历并转换
         for component in msg_list:
-            if type(component) is mirai.Plain:
+            if type(component) is platform_message.Plain:
                 nakuru_msg_list.append(nkc.Plain(component.text, False))
-            elif type(component) is mirai.Image:
+            elif type(component) is platform_message.Image:
                 if component.url is not None:
                     nakuru_msg_list.append(nkc.Image.fromURL(component.url))
                 elif component.base64 is not None:
                     nakuru_msg_list.append(nkc.Image.fromBase64(component.base64))
                 elif component.path is not None:
                     nakuru_msg_list.append(nkc.Image.fromFileSystem(component.path))
-            elif type(component) is mirai.Face:
-                nakuru_msg_list.append(nkc.Face(id=component.face_id))
-            elif type(component) is mirai.At:
+            elif type(component) is platform_message.At:
                 nakuru_msg_list.append(nkc.At(qq=component.target))
-            elif type(component) is mirai.AtAll:
+            elif type(component) is platform_message.AtAll:
                 nakuru_msg_list.append(nkc.AtAll())
-            elif type(component) is mirai.Voice:
+            elif type(component) is platform_message.Voice:
                 if component.url is not None:
                     nakuru_msg_list.append(nkc.Record.fromURL(component.url))
                 elif component.path is not None:
@@ -80,49 +80,47 @@ class NakuruProjectMessageConverter(adapter_model.MessageConverter):
         return nakuru_msg_list
 
     @staticmethod
-    def target2yiri(message_chain: typing.Any, message_id: int = -1) -> mirai.MessageChain:
+    def target2yiri(message_chain: typing.Any, message_id: int = -1) -> platform_message.MessageChain:
         """将Yiri的消息链转换为YiriMirai的消息链"""
         assert type(message_chain) is list
 
         yiri_msg_list = []
         import datetime
         # 添加Source组件以标记message_id等信息
-        yiri_msg_list.append(mirai.models.message.Source(id=message_id, time=datetime.datetime.now()))
+        yiri_msg_list.append(platform_message.Source(id=message_id, time=datetime.datetime.now()))
         for component in message_chain:
             if type(component) is nkc.Plain:
-                yiri_msg_list.append(mirai.Plain(text=component.text))
+                yiri_msg_list.append(platform_message.Plain(text=component.text))
             elif type(component) is nkc.Image:
-                yiri_msg_list.append(mirai.Image(url=component.url))
-            elif type(component) is nkc.Face:
-                yiri_msg_list.append(mirai.Face(face_id=component.id))
+                yiri_msg_list.append(platform_message.Image(url=component.url))
             elif type(component) is nkc.At:
-                yiri_msg_list.append(mirai.At(target=component.qq))
+                yiri_msg_list.append(platform_message.At(target=component.qq))
             elif type(component) is nkc.AtAll:
-                yiri_msg_list.append(mirai.AtAll())
+                yiri_msg_list.append(platform_message.AtAll())
             else:
                 pass
         # logging.debug("转换后的消息链: " + str(yiri_msg_list))
-        chain = mirai.MessageChain(yiri_msg_list)
+        chain = platform_message.MessageChain(yiri_msg_list)
         return chain
 
 
 class NakuruProjectEventConverter(adapter_model.EventConverter):
     """事件转换器"""
     @staticmethod
-    def yiri2target(event: typing.Type[mirai.Event]):
-        if event is mirai.GroupMessage:
+    def yiri2target(event: typing.Type[platform_events.Event]):
+        if event is platform_events.GroupMessage:
             return nakuru.GroupMessage
-        elif event is mirai.FriendMessage:
+        elif event is platform_events.FriendMessage:
             return nakuru.FriendMessage
         else:
             raise Exception("未支持转换的事件类型: " + str(event))
 
     @staticmethod
-    def target2yiri(event: typing.Any) -> mirai.Event:
+    def target2yiri(event: typing.Any) -> platform_events.Event:
         yiri_chain = NakuruProjectMessageConverter.target2yiri(event.message, event.message_id)
         if type(event) is nakuru.FriendMessage:  # 私聊消息事件
-            return mirai.FriendMessage(
-                sender=mirai.models.entities.Friend(
+            return platform_events.FriendMessage(
+                sender=platform_entities.Friend(
                     id=event.sender.user_id,
                     nickname=event.sender.nickname,
                     remark=event.sender.nickname
@@ -138,16 +136,15 @@ class NakuruProjectEventConverter(adapter_model.EventConverter):
             elif event.sender.role == "owner":
                 permission = "OWNER"
 
-            import mirai.models.entities as entities
-            return mirai.GroupMessage(
-                sender=mirai.models.entities.GroupMember(
+            return platform_events.GroupMessage(
+                sender=platform_entities.GroupMember(
                     id=event.sender.user_id,
                     member_name=event.sender.nickname,
                     permission=permission,
-                    group=mirai.models.entities.Group(
+                    group=platform_entities.Group(
                         id=event.group_id,
                         name=event.sender.nickname,
-                        permission=entities.Permission.Member
+                        permission=platform_entities.Permission.Member
                     ),
                     special_title=event.sender.title,
                     join_timestamp=0,
@@ -189,7 +186,7 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
         self,
         target_type: str,
         target_id: str,
-        message: typing.Union[mirai.MessageChain, list],
+        message: typing.Union[platform_message.MessageChain, list],
         converted: bool = False
     ):
         task = None
@@ -222,8 +219,8 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
 
     async def reply_message(
         self,
-        message_source: mirai.MessageEvent,
-        message: mirai.MessageChain,
+        message_source: platform_events.MessageEvent,
+        message: platform_message.MessageChain,
         quote_origin: bool = False
     ):
         message = self.message_converter.yiri2target(message)
@@ -233,14 +230,14 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
                     id=message_source.message_chain.message_id,
                 )
             )
-        if type(message_source) is mirai.GroupMessage:
+        if type(message_source) is platform_events.GroupMessage:
             await self.send_message(
                 "group",
                 message_source.sender.group.id,
                 message,
                 converted=True
             )
-        elif type(message_source) is mirai.FriendMessage:
+        elif type(message_source) is platform_events.FriendMessage:
             await self.send_message(
                 "person",
                 message_source.sender.id,
@@ -258,8 +255,8 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
 
     def register_listener(
         self,
-        event_type: typing.Type[mirai.Event],
-        callback: typing.Callable[[mirai.Event, adapter_model.MessageSourceAdapter], None]
+        event_type: typing.Type[platform_events.Event],
+        callback: typing.Callable[[platform_events.Event, adapter_model.MessageSourceAdapter], None]
     ):
         try:
 
@@ -286,8 +283,8 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
 
     def unregister_listener(
         self,
-        event_type: typing.Type[mirai.Event],
-        callback: typing.Callable[[mirai.Event, adapter_model.MessageSourceAdapter], None]
+        event_type: typing.Type[platform_events.Event],
+        callback: typing.Callable[[platform_events.Event, adapter_model.MessageSourceAdapter], None]
     ):
         nakuru_event_name = self.event_converter.yiri2target(event_type).__name__
 
@@ -331,5 +328,5 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
         while True:
             await asyncio.sleep(1)
 
-    def kill(self) -> bool:
+    async def kill(self) -> bool:
         return False

@@ -3,7 +3,6 @@ import os
 import traceback
 
 from PIL import Image, ImageDraw, ImageFont
-from mirai.models.message import MessageComponent, Plain, MessageChain
 
 from ...core import app
 from . import strategy
@@ -11,6 +10,7 @@ from .strategies import image, forward
 from .. import stage, entities, stagemgr
 from ...core import entities as core_entities
 from ...config import manager as cfg_mgr
+from ...platform.types import message as platform_message
 
 
 @stage.stage_class("LongTextProcessStage")
@@ -63,14 +63,14 @@ class LongTextProcessStage(stage.PipelineStage):
         contains_non_plain = False
 
         for msg in query.resp_message_chain[-1]:
-            if not isinstance(msg, Plain):
+            if not isinstance(msg, platform_message.Plain):
                 contains_non_plain = True
                 break
         
         if contains_non_plain:
             self.ap.logger.debug("消息中包含非 Plain 组件，跳过长消息处理。")
         elif len(str(query.resp_message_chain[-1])) > self.ap.platform_cfg.data['long-text-process']['threshold']:
-            query.resp_message_chain[-1] = MessageChain(await self.strategy_impl.process(str(query.resp_message_chain[-1]), query))
+            query.resp_message_chain[-1] = platform_message.MessageChain(await self.strategy_impl.process(str(query.resp_message_chain[-1]), query))
 
         return entities.StageProcessResult(
             result_type=entities.ResultType.CONTINUE,

@@ -1,18 +1,18 @@
 
 <p align="center">
-<img src="https://qchatgpt.rockchin.top/langbot-logo.png" alt="LangBot" width="160" />
+<img src="https://docs.langbot.app/chrome-512.png" alt="QChatGPT" width="180" />
 </p>
 <div align="center">
 
-# QChatGPT
+# LangBot
 
 <a href="https://trendshift.io/repositories/6187" target="_blank"><img src="https://trendshift.io/api/badge/repositories/6187" alt="RockChinQ%2FQChatGPT | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/QChatGPT)](https://github.com/RockChinQ/QChatGPT/releases/latest)
-<a href="https://hub.docker.com/repository/docker/rockchin/qchatgpt">
-    <img src="https://img.shields.io/docker/pulls/rockchin/qchatgpt?color=blue" alt="docker pull">
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/LangBot)](https://github.com/RockChinQ/LangBot/releases/latest)
+<a href="https://hub.docker.com/repository/docker/rockchin/langbot">
+    <img src="https://img.shields.io/docker/pulls/rockchin/langbot?color=blue" alt="docker pull">
   </a>
- ![Dynamic JSON Badge](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.qchatgpt.rockchin.top%2Fapi%2Fv2%2Fview%2Frealtime%2Fcount_query%3Fminute%3D10080&query=%24.data.count&label=%E4%BD%BF%E7%94%A8%E9%87%8F%EF%BC%887%E6%97%A5%EF%BC%89)
+ ![Dynamic JSON Badge](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.docs.langbot.app%2Fapi%2Fv2%2Fview%2Frealtime%2Fcount_query%3Fminute%3D10080&query=%24.data.count&label=%E4%BD%BF%E7%94%A8%E9%87%8F%EF%BC%887%E6%97%A5%EF%BC%89)
 ![Wakapi Count](https://wakapi.rockchin.top/api/badge/RockChinQ/interval:any/project:QChatGPT)
 <br/>
 <img src="https://img.shields.io/badge/python-3.10 | 3.11 | 3.12-blue.svg" alt="python">
@@ -28,12 +28,12 @@
  
 ## 使用文档
 
-<a href="https://qchatgpt.rockchin.top">项目主页</a> ｜
-<a href="https://qchatgpt.rockchin.top/insight/intro.html">功能介绍</a> ｜
-<a href="https://qchatgpt.rockchin.top/insight/guide.html">部署文档</a> ｜
-<a href="https://qchatgpt.rockchin.top/usage/faq.html">常见问题</a> ｜
-<a href="https://qchatgpt.rockchin.top/plugin/plugin-intro.html">插件介绍</a> ｜
-<a href="https://github.com/RockChinQ/QChatGPT/issues/new?assignees=&labels=%E7%8B%AC%E7%AB%8B%E6%8F%92%E4%BB%B6&projects=&template=submit-plugin.yml&title=%5BPlugin%5D%3A+%E8%AF%B7%E6%B1%82%E7%99%BB%E8%AE%B0%E6%96%B0%E6%8F%92%E4%BB%B6">提交插件</a>
+<a href="https://docs.langbot.app">项目主页</a> ｜
+<a href="https://docs.langbot.app/insight/intro.htmll">功能介绍</a> ｜
+<a href="https://docs.langbot.app/insight/guide.html">部署文档</a> ｜
+<a href="https://docs.langbot.app/usage/faq.html">常见问题</a> ｜
+<a href="https://docs.langbot.app/plugin/plugin-intro.html">插件介绍</a> ｜
+<a href="https://github.com/RockChinQ/LangBot/issues/new?assignees=&labels=%E7%8B%AC%E7%AB%8B%E6%8F%92%E4%BB%B6&projects=&template=submit-plugin.yml&title=%5BPlugin%5D%3A+%E8%AF%B7%E6%B1%82%E7%99%BB%E8%AE%B0%E6%96%B0%E6%8F%92%E4%BB%B6">提交插件</a>
 
 ## 相关链接
 
@@ -42,14 +42,5 @@
 <a href="https://github.com/RockChinQ/qcg-center">遥测服务端源码</a> ｜
 <a href="https://github.com/the-lazy-me/QChatGPT-Wiki">官方文档储存库</a>
 
-
-<!--<div align="center">
-<hr/>
-京东云 4090 单卡 15C90G 实例 <br/>
-    仅需1.89/小时，包月1225元起  <br/>
-    可选预装Stable Diffusion等应用，随用随停，计费透明，欢迎首选支持 <br/>
-https://3.cn/24A-2NXd
-</div>-->
-
-<img alt="回复效果（带有联网插件）" src="https://qchatgpt.rockchin.top/QChatGPT-0516.png" width="500px"/>
+<img alt="回复效果（带有联网插件）" src="https://docs.langbot.top/QChatGPT-0516.png" width="500px"/>
 </div>

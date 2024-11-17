@@ -2,11 +2,10 @@ from __future__ import annotations
 import abc
 import typing
 
-import mirai
-from mirai.models.message import MessageComponent
 
 from ...core import app
 from ...core import entities as core_entities
+from ...platform.types import message as platform_message
 
 
 preregistered_strategies: list[typing.Type[LongTextStrategy]] = []
@@ -51,7 +50,7 @@ class LongTextStrategy(metaclass=abc.ABCMeta):
         pass
     
     @abc.abstractmethod
-    async def process(self, message: str, query: core_entities.Query) -> list[MessageComponent]:
+    async def process(self, message: str, query: core_entities.Query) -> list[platform_message.MessageComponent]:
         """处理长文本
 
         在 platform.json 中配置 long-text-process 字段，只要 文本长度超过了 threshold 就会调用此方法
@@ -61,6 +60,6 @@ class LongTextStrategy(metaclass=abc.ABCMeta):
             query (core_entities.Query): 此次请求的上下文对象
 
         Returns:
-            list[mirai.models.messages.MessageComponent]: 转换后的 YiriMirai 消息组件列表
+            list[platform_message.MessageComponent]: 转换后的 平台 消息组件列表
         """
         return []

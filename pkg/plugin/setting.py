@@ -45,6 +45,7 @@ class SettingManager:
                 for plugin_container in plugin_containers:
                     if plugin_container.plugin_name == value['name']:
                         plugin_container.set_from_setting_dict(value)
+                        break
 
         self.settings.data = {
             'plugins': [

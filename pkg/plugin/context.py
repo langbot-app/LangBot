@@ -3,11 +3,12 @@ from __future__ import annotations
 import typing
 import abc
 import pydantic
-import mirai
+import enum
 
 from . import events
 from ..provider.tools import entities as tools_entities
 from ..core import app
+from ..platform.types import message as platform_message
 
 
 def register(
@@ -85,15 +86,24 @@ class BasePlugin(metaclass=abc.ABCMeta):
     """应用程序对象"""
 
     def __init__(self, host: APIHost):
+        """初始化阶段被调用"""
         self.host = host
 
     async def initialize(self):
-        """初始化插件"""
+        """初始化阶段被调用"""
+        pass
+    
+    async def destroy(self):
+        """释放/禁用插件时被调用"""
+        pass
+
+    def __del__(self):
+        """释放/禁用插件时被调用"""
         pass
 
 
 class APIHost:
-    """QChatGPT API 宿主"""
+    """LangBot API 宿主"""
 
     ap: app.Application
 
@@ -126,7 +136,7 @@ class APIHost:
 
         if self.ap.ver_mgr.compare_version_str(qchatgpt_version, ge) < 0 or \
             (self.ap.ver_mgr.compare_version_str(qchatgpt_version, le) > 0):
-            raise Exception("QChatGPT 版本不满足要求，某些功能（可能是由插件提供的）无法正常使用。（要求版本：{}-{}，但当前版本：{}）".format(ge, le, qchatgpt_version))
+            raise Exception("LangBot 版本不满足要求，某些功能（可能是由插件提供的）无法正常使用。（要求版本：{}-{}，但当前版本：{}）".format(ge, le, qchatgpt_version))
 
         return True
 
@@ -174,11 +184,11 @@ class EventContext:
             self.__return_value__[key] = []
         self.__return_value__[key].append(ret)
     
-    async def reply(self, message_chain: mirai.MessageChain):
+    async def reply(self, message_chain: platform_message.MessageChain):
         """回复此次消息请求
         
         Args:
-            message_chain (mirai.MessageChain): YiriMirai库的消息链，若用户使用的不是 YiriMirai 适配器，程序也能自动转换为目标消息链
+            message_chain (platform.types.MessageChain): 源平台的消息链，若用户使用的不是源平台适配器，程序也能自动转换为目标平台消息链
         """
         await self.host.ap.platform_mgr.send(
             event=self.event.query.message_event,
@@ -190,14 +200,14 @@ class EventContext:
         self,
         target_type: str,
         target_id: str,
-        message: mirai.MessageChain
+        message: platform_message.MessageChain
     ):
         """主动发送消息
         
         Args:
             target_type (str): 目标类型，`person`或`group`
             target_id (str): 目标ID
-            message (mirai.MessageChain): YiriMirai库的消息链，若用户使用的不是 YiriMirai 适配器，程序也能自动转换为目标消息链
+            message (platform.types.MessageChain): 源平台的消息链，若用户使用的不是源平台适配器，程序也能自动转换为目标平台消息链
         """
         await self.event.query.adapter.send_message(
             target_type=target_type,
@@ -247,6 +257,16 @@ class EventContext:
         EventContext.eid += 1
 
 
+class RuntimeContainerStatus(enum.Enum):
+    """插件容器状态"""
+
+    MOUNTED = "mounted"
+    """已加载进内存，所有位于运行时记录中的 RuntimeContainer 至少是这个状态"""
+
+    INITIALIZED = "initialized"
+    """已初始化"""
+
+
 class RuntimeContainer(pydantic.BaseModel):
     """运行时的插件容器
     
@@ -294,6 +314,9 @@ class RuntimeContainer(pydantic.BaseModel):
     content_functions: list[tools_entities.LLMFunction] = []
     """内容函数"""
 
+    status: RuntimeContainerStatus = RuntimeContainerStatus.MOUNTED
+    """插件状态"""
+
     class Config:
         arbitrary_types_allowed = True
 
@@ -318,5 +341,30 @@ class RuntimeContainer(pydantic.BaseModel):
         self.priority = setting['priority']
         self.enabled = setting['enabled']
 
-        for function in self.content_functions:
-            function.enable = self.enabled
+    def model_dump(self, *args, **kwargs):
+        return {
+            'name': self.plugin_name,
+            'description': self.plugin_description,
+            'version': self.plugin_version,
+            'author': self.plugin_author,
+            'source': self.plugin_source,
+            'main_file': self.main_file,
+            'pkg_path': self.pkg_path,
+            'enabled': self.enabled,
+            'priority': self.priority,
+            'event_handlers': {
+                event_name.__name__: handler.__name__
+                for event_name, handler in self.event_handlers.items()
+            },
+            'content_functions': [
+                {
+                    'name': function.name,
+                    'human_desc': function.human_desc,
+                    'description': function.description,
+                    'parameters': function.parameters,
+                    'func': function.func.__name__,
+                }
+                for function in self.content_functions
+            ],
+            'status': self.status.value,
+        }

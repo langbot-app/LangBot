@@ -3,7 +3,6 @@ from __future__ import annotations
 import random
 import asyncio
 
-import mirai
 
 from ...core import app
 
@@ -20,7 +19,10 @@ class SendResponseBackStage(stage.PipelineStage):
     async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:
         """处理
         """
-        random_delay = random.uniform(*self.ap.platform_cfg.data['force-delay'])
+        
+        random_range = (self.ap.platform_cfg.data['force-delay']['min'], self.ap.platform_cfg.data['force-delay']['max'])
+
+        random_delay = random.uniform(*random_range)
 
         self.ap.logger.debug(
             "根据规则强制延迟回复: %s s",
