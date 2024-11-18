@@ -3,6 +3,7 @@ version: "3"
 services:
   langbot:
     image: rockchin/langbot:latest
+    container_name: langbot
     volumes:
       - ./data:/app/data
       - ./plugins:/app/plugins
