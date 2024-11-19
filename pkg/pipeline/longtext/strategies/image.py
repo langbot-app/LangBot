@@ -58,7 +58,7 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
         """
         kv = []
         nums = []
-        beforeDatas = re.findall('[\d]+', path)
+        beforeDatas = re.findall('[\\d]+', path)
         for num in beforeDatas:
             indexV = []
             times = path.count(num)
