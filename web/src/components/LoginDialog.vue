@@ -47,17 +47,21 @@ const login = () => {
         user: user.value,
         password: password.value
     }).then(res => {
-        if (res.data.data.token) {
+        if (res.data.code == 0) {
             emit('success', '登录成功')
             localStorage.setItem('user-token', res.data.data.token)
             setTimeout(() => {
                 location.reload()
             }, 1000)
         } else {
-            emit('error', '登录失败')
+            emit('error', res.data.msg)
         }
     }).catch(err => {
-        emit('error', err.response.data.message)
+        if (err.response.data.msg) {
+            emit('error', err.response.data.msg)
+        } else {
+            emit('error', '登录失败')
+        }
     })
 }
 

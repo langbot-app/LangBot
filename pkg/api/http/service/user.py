@@ -51,8 +51,7 @@ class UserService:
 
         ph = argon2.PasswordHasher()
 
-        if not ph.verify(user_obj.password, password):
-            raise ValueError('密码错误')
+        ph.verify(user_obj.password, password)
 
         return await self.generate_jwt_token(user_email)
 

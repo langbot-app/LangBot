@@ -1,5 +1,6 @@
 import quart
 import sqlalchemy
+import argon2
 
 from .. import group
 from .....persistence.entities import user
@@ -32,7 +33,10 @@ class UserRouterGroup(group.RouterGroup):
         async def _() -> str:
             json_data = await quart.request.json
 
-            token = await self.ap.user_service.authenticate(json_data['user'], json_data['password'])
+            try:
+                token = await self.ap.user_service.authenticate(json_data['user'], json_data['password'])
+            except argon2.exceptions.VerifyMismatchError:
+                return self.fail(1, '用户名或密码错误')
 
             return self.success(data={
                 'token': token
