@@ -4,7 +4,7 @@ import typing
 
 import pydantic
 
-from . import api
+from . import requester
 from . import token
 
 
@@ -17,7 +17,7 @@ class LLMModelInfo(pydantic.BaseModel):
 
     token_mgr: token.TokenManager
 
-    requester: api.LLMAPIRequester
+    requester: requester.LLMAPIRequester
 
     tool_call_supported: typing.Optional[bool] = False
 

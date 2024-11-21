@@ -5,17 +5,17 @@ import traceback
 
 import anthropic
 
-from .. import api, entities, errors
+from .. import entities, errors, requester
 
-from .. import api, entities, errors
+from .. import entities, errors
 from ....core import entities as core_entities
 from ... import entities as llm_entities
 from ...tools import entities as tools_entities
 from ....utils import image
 
 
-@api.requester_class("anthropic-messages")
-class AnthropicMessages(api.LLMAPIRequester):
+@requester.requester_class("anthropic-messages")
+class AnthropicMessages(requester.LLMAPIRequester):
     """Anthropic Messages API 请求器"""
 
     client: anthropic.AsyncAnthropic

@@ -3,13 +3,13 @@ from __future__ import annotations
 from ....core import app
 
 from . import chatcmpl
-from .. import api, entities, errors
+from .. import entities, errors, requester
 from ....core import entities as core_entities, app
 from ... import entities as llm_entities
 from ...tools import entities as tools_entities
 
 
-@api.requester_class("deepseek-chat-completions")
+@requester.requester_class("deepseek-chat-completions")
 class DeepseekChatCompletions(chatcmpl.OpenAIChatCompletions):
     """Deepseek ChatCompletion API 请求器"""
 

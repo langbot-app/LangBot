@@ -8,7 +8,7 @@ from typing import Union, Mapping, Any, AsyncIterator
 import async_lru
 import ollama
 
-from .. import api, entities, errors
+from .. import entities, errors, requester
 from ... import entities as llm_entities
 from ...tools import entities as tools_entities
 from ....core import app
@@ -17,8 +17,8 @@ from ....utils import image
 REQUESTER_NAME: str = "ollama-chat"
 
 
-@api.requester_class(REQUESTER_NAME)
-class OllamaChatCompletions(api.LLMAPIRequester):
+@requester.requester_class(REQUESTER_NAME)
+class OllamaChatCompletions(requester.LLMAPIRequester):
     """Ollama平台 ChatCompletion API请求器"""
     client: ollama.AsyncClient
     request_cfg: dict

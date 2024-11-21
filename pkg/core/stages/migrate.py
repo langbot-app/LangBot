@@ -7,6 +7,7 @@ from .. import migration
 from ..migrations import m001_sensitive_word_migration, m002_openai_config_migration, m003_anthropic_requester_cfg_completion, m004_moonshot_cfg_completion
 from ..migrations import m005_deepseek_cfg_completion, m006_vision_config, m007_qcg_center_url, m008_ad_fixwin_config_migrate, m009_msg_truncator_cfg
 from ..migrations import m010_ollama_requester_config, m011_command_prefix_config, m012_runner_config, m013_http_api_config, m014_force_delay_config
+from ..migrations import m015_gitee_ai_config
 
 
 @stage.stage_class("MigrationStage")
@@ -28,3 +29,4 @@ class MigrationStage(stage.BootingStage):
 
             if await migration_instance.need_migrate():
                 await migration_instance.run()
+                print(f'已执行迁移 {migration_instance.name}')
