@@ -118,10 +118,9 @@ class ToolManager:
             traceback.print_exc()
             return f"error occurred when executing function {name}: {e}"
         finally:
-
             plugin = None
 
-            for p in self.ap.plugin_mgr.plugins:
+            for p in self.ap.plugin_mgr.plugins():
                 if function in p.content_functions:
                     plugin = p
                     break
