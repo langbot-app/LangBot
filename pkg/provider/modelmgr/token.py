@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import typing
 
-import pydantic
-
 
 class TokenManager():
     """鉴权 Token 管理器

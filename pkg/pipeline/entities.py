@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import typing
 
-import pydantic
+import pydantic.v1 as pydantic
 from ..platform.types import message as platform_message
 
 from ..core import entities

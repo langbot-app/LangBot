@@ -5,8 +5,7 @@ from enum import Enum
 from pathlib import Path
 import typing
 
-import pydantic
-import pydantic.main
+import pydantic.v1 as pydantic
 
 from . import entities as platform_entities
 from .base import PlatformBaseModel, PlatformIndexedMetaclass, PlatformIndexedModel

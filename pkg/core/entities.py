@@ -5,7 +5,7 @@ import typing
 import datetime
 import asyncio
 
-import pydantic
+import pydantic.v1 as pydantic
 
 from ..provider import entities as llm_entities
 from ..provider.modelmgr import entities

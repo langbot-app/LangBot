@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import typing
 import abc
-import pydantic
+import pydantic.v1 as pydantic
 import enum
 
 from . import events

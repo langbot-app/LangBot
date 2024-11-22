@@ -9,7 +9,7 @@ Pillow
 tiktoken
 PyYaml
 aiohttp
-pydantic<2.0
+pydantic>2.0
 websockets
 urllib3
 psutil

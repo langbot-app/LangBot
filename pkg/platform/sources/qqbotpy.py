@@ -9,8 +9,6 @@ import traceback
 import botpy
 import botpy.message as botpy_message
 import botpy.types.message as botpy_message_type
-import pydantic
-import pydantic.networks
 
 from .. import adapter as adapter_model
 from ...pipeline.longtext.strategies import forward

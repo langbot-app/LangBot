@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pydantic
-
 
 LOG_PAGE_SIZE = 20
 MAX_CACHED_PAGES = 10

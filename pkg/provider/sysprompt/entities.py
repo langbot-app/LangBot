@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import typing
-import pydantic
+import pydantic.v1 as pydantic
 
 from ...provider import entities
 

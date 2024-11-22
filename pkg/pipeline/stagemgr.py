@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pydantic
-
 from ..core import app
 from . import stage
 from .resprule import resprule

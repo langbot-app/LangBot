@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import Enum
 import typing
 
-import pydantic
+import pydantic.v1 as pydantic
 
 from . import entities as platform_entities
 from . import message as platform_message

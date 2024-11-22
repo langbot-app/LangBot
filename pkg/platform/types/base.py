@@ -1,8 +1,8 @@
 
 from typing import Dict, List, Type
 
-import pydantic.main as pdm
-from pydantic import BaseModel
+import pydantic.v1.main as pdm
+from pydantic.v1 import BaseModel
 
 
 class PlatformMetaclass(pdm.ModelMetaclass):
