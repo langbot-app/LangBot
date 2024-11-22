@@ -12,15 +12,15 @@ import httpx
 import aiohttp
 import async_lru
 
-from .. import api, entities, errors
+from .. import entities, errors, requester
 from ....core import entities as core_entities, app
 from ... import entities as llm_entities
 from ...tools import entities as tools_entities
 from ....utils import image
 
 
-@api.requester_class("openai-chat-completions")
-class OpenAIChatCompletions(api.LLMAPIRequester):
+@requester.requester_class("openai-chat-completions")
+class OpenAIChatCompletions(requester.LLMAPIRequester):
     """OpenAI ChatCompletion API 请求器"""
 
     client: openai.AsyncClient

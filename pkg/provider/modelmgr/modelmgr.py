@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import aiohttp
 
-from . import entities
+from . import entities, requester
 from ...core import app
 
-from . import token, api
-from .apis import chatcmpl, anthropicmsgs, moonshotchatcmpl, deepseekchatcmpl, ollamachat
+from . import token
+from .requesters import chatcmpl, anthropicmsgs, moonshotchatcmpl, deepseekchatcmpl, ollamachat, giteeaichatcmpl
 
 FETCH_MODEL_LIST_URL = "https://api.qchatgpt.rockchin.top/api/v2/fetch/model_list"
 
@@ -18,7 +18,7 @@ class ModelManager:
 
     model_list: list[entities.LLMModelInfo]
 
-    requesters: dict[str, api.LLMAPIRequester]
+    requesters: dict[str, requester.LLMAPIRequester]
 
     token_mgrs: dict[str, token.TokenManager]
     
@@ -42,7 +42,7 @@ class ModelManager:
         for k, v in self.ap.provider_cfg.data['keys'].items():
             self.token_mgrs[k] = token.TokenManager(k, v)
 
-        for api_cls in api.preregistered_requesters:
+        for api_cls in requester.preregistered_requesters:
             api_inst = api_cls(self.ap)
             await api_inst.initialize()
             self.requesters[api_inst.name] = api_inst
@@ -94,7 +94,7 @@ class ModelManager:
 
                 model_name = model.get('model_name', default_model_info.model_name)
                 token_mgr = self.token_mgrs[model['token_mgr']] if 'token_mgr' in model else default_model_info.token_mgr
-                requester = self.requesters[model['requester']] if 'requester' in model else default_model_info.requester
+                req = self.requesters[model['requester']] if 'requester' in model else default_model_info.requester
                 tool_call_supported = model.get('tool_call_supported', default_model_info.tool_call_supported)
                 vision_supported = model.get('vision_supported', default_model_info.vision_supported)
 
@@ -102,7 +102,7 @@ class ModelManager:
                     name=model['name'],
                     model_name=model_name,
                     token_mgr=token_mgr,
-                    requester=requester,
+                    requester=req,
                     tool_call_supported=tool_call_supported,
                     vision_supported=vision_supported
                 )

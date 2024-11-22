@@ -1,21 +1,26 @@
 from __future__ import annotations
 
-from ....core import app
+import json
+
+import asyncio
+import aiohttp
+import typing
 
 from . import chatcmpl
-from .. import api, entities, errors
-from ....core import entities as core_entities, app
+from .. import entities, errors, requester
+from ....core import app
 from ... import entities as llm_entities
 from ...tools import entities as tools_entities
+from .. import entities as modelmgr_entities
 
 
-@api.requester_class("moonshot-chat-completions")
-class MoonshotChatCompletions(chatcmpl.OpenAIChatCompletions):
-    """Moonshot ChatCompletion API 请求器"""
+@requester.requester_class("gitee-ai-chat-completions")
+class GiteeAIChatCompletions(chatcmpl.OpenAIChatCompletions):
+    """Gitee AI ChatCompletions API 请求器"""
 
     def __init__(self, ap: app.Application):
-        self.requester_cfg = ap.provider_cfg.data['requester']['moonshot-chat-completions']
         self.ap = ap
+        self.requester_cfg = ap.provider_cfg.data['requester']['gitee-ai-chat-completions'].copy()
 
     async def _closure(
         self,
@@ -34,23 +39,15 @@ class MoonshotChatCompletions(chatcmpl.OpenAIChatCompletions):
             if tools:
                 args["tools"] = tools
 
-        # 设置此次请求中的messages
-        messages = req_messages
-
-        # deepseek 不支持多模态，把content都转换成纯文字
-        for m in messages:
+        # gitee 不支持多模态，把content都转换成纯文字
+        for m in req_messages:
             if 'content' in m and isinstance(m["content"], list):
                 m["content"] = " ".join([c["text"] for c in m["content"]])
 
-        # 删除空的
-        messages = [m for m in messages if m["content"].strip() != ""]
+        args["messages"] = req_messages
 
-        args["messages"] = messages
-
-        # 发送请求
         resp = await self._req(args)
 
-        # 处理请求结果
         message = await self._make_msg(resp)
 
         return message
