@@ -36,6 +36,12 @@ async def main_entry(loop: asyncio.AbstractEventLoop):
         print("已自动安装缺失的依赖包，请重启程序。")
         sys.exit(0)
 
+    # 检查pydantic版本，如果没有 pydantic.v1，则把 pydantic 映射为 v1
+    import pydantic.version
+    if pydantic.version.VERSION < '2.0':
+        import pydantic
+        sys.modules['pydantic.v1'] = pydantic
+
     # 检查配置文件
 
     from pkg.core.bootutils import files
