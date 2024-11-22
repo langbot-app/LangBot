@@ -8,42 +8,47 @@
             "vision_supported": false
         },
         {
-            "name": "gpt-3.5-turbo-0125",
+            "name": "gpt-4o",
             "tool_call_supported": true,
-            "vision_supported": false
+            "vision_supported": true
         },
         {
-            "name": "gpt-3.5-turbo",
+            "name": "gpt-4o-2024-11-20",
             "tool_call_supported": true,
-            "vision_supported": false
+            "vision_supported": true
         },
         {
-            "name": "gpt-3.5-turbo-1106",
+            "name": "gpt-4o-2024-08-06",
             "tool_call_supported": true,
-            "vision_supported": false
+            "vision_supported": true
+        },
+        {
+            "name": "gpt-4o-2024-05-13",
+            "tool_call_supported": true,
+            "vision_supported": true
+        },
+        {
+            "name": "chatgpt-4o-latest",
+            "tool_call_supported": true,
+            "vision_supported": true
+        },
+        {
+            "name": "gpt-4o-mini",
+            "tool_call_supported": true,
+            "vision_supported": true
+        },
+        {
+            "name": "o1-preview",
+            "tool_call_supported": true,
+            "vision_supported": true
+        },
+        {
+            "name": "o1-mini",
+            "tool_call_supported": true,
+            "vision_supported": true
         },
         {
             "name": "gpt-4-turbo",
-            "tool_call_supported": true,
-            "vision_supported": true
-        },
-        {
-            "name": "gpt-4-turbo-2024-04-09",
-            "tool_call_supported": true,
-            "vision_supported": true
-        },
-        {
-            "name": "gpt-4-turbo-preview",
-            "tool_call_supported": true,
-            "vision_supported": true
-        },
-        {
-            "name": "gpt-4-0125-preview",
-            "tool_call_supported": true,
-            "vision_supported": true
-        },
-        {
-            "name": "gpt-4-1106-preview",
             "tool_call_supported": true,
             "vision_supported": true
         },
@@ -53,24 +58,9 @@
             "vision_supported": true
         },
         {
-            "name": "gpt-4o",
+            "name": "gpt-3.5-turbo",
             "tool_call_supported": true,
-            "vision_supported": true
-        },
-        {
-            "name": "gpt-4-0613",
-            "tool_call_supported": true,
-            "vision_supported": true
-        },
-        {
-            "name": "gpt-4-32k",
-            "tool_call_supported": true,
-            "vision_supported": true
-        },
-        {
-            "name": "gpt-4-32k-0613",
-            "tool_call_supported": true,
-            "vision_supported": true
+            "vision_supported": false
         },
         {
             "model_name": "SparkDesk",
@@ -81,19 +71,19 @@
             "name": "OneAPI/gemini-pro"
         },
         {
-            "name": "claude-3-opus-20240229",
+            "name": "claude-3-opus-latest",
             "requester": "anthropic-messages",
             "token_mgr": "anthropic",
             "vision_supported": true
         },
         {
-            "name": "claude-3-sonnet-20240229",
+            "name": "claude-3-5-sonnet-latest",
             "requester": "anthropic-messages",
             "token_mgr": "anthropic",
             "vision_supported": true
         },
         {
-            "name": "claude-3-haiku-20240307",
+            "name": "claude-3-5-haiku-latest",
             "requester": "anthropic-messages",
             "token_mgr": "anthropic",
             "vision_supported": true
@@ -118,6 +108,11 @@
         },
         {
             "name": "deepseek-chat",
+            "requester": "deepseek-chat-completions",
+            "token_mgr": "deepseek"
+        },
+        {
+            "name": "deepseek-coder",
             "requester": "deepseek-chat-completions",
             "token_mgr": "deepseek"
         }

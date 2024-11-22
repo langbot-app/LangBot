@@ -52,7 +52,7 @@
             "timeout": 120
         }
     },
-    "model": "gpt-3.5-turbo",
+    "model": "gpt-4o",
     "prompt-mode": "normal",
     "prompt": {
         "default": "" 
