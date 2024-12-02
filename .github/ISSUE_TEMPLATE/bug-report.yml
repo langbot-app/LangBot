@@ -11,7 +11,7 @@ body:
         - Nakuru（go-cqhttp）
         - aiocqhttp（使用 OneBot 协议接入的）
         - qq-botpy（QQ官方API）
-        - yiri-mirai（Mirai）
+        - 其他
     validations:
       required: false
   - type: input
