@@ -1,5 +1,5 @@
 name: 漏洞反馈
-description: 报错或漏洞请使用这个模板创建，不使用此模板创建的异常、漏洞相关issue将被直接关闭。由于自己操作不当/不甚了解所用技术栈引起的网络连接问题恕无法解决，请勿提 issue。容器间网络连接问题，参考[文档](https://docs.langbot.app/deploy/network-details.html)
+description: 报错或漏洞请使用这个模板创建，不使用此模板创建的异常、漏洞相关issue将被直接关闭。由于自己操作不当/不甚了解所用技术栈引起的网络连接问题恕无法解决，请勿提 issue。容器间网络连接问题，参考文档 https://docs.langbot.app/deploy/network-details.html  
 title: "[Bug]: "
 labels: ["bug?"]
 body:
