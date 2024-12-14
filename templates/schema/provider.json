@@ -230,6 +230,51 @@
             "title": "请求运行器",
             "description": "设置请求运行器。值为local-agent时，使用内置默认运行器；支持插件扩展",
             "default": "local-agent"
+        },
+        "dify-service-api": {
+            "type": "object",
+            "title": "Dify Service API 配置",
+            "properties": {
+                "base-url": {
+                    "type": "string",
+                    "title": "API URL",
+                    "description": "Dify Service API 的 基础URL，可以在 Dify 应用 API 页面查看",
+                    "default": "https://api.dify.ai/v1"
+                },
+                "app-type": {
+                    "type": "string",
+                    "title": "应用类型",
+                    "description": "支持 chat 和 workflow，chat：聊天助手（含高级编排）和 Agent；workflow：工作流；请填写下方对应的应用类型 API 参数",
+                    "enum": ["chat", "workflow"],
+                    "default": "chat"
+                },
+                "chat": {
+                    "type": "object",
+                    "title": "聊天助手 API 参数",
+                    "properties": {
+                        "api-key": {
+                            "type": "string",
+                            "title": "API 密钥"
+                        }
+                    }
+                },
+                "workflow": {
+                    "type": "object",
+                    "title": "工作流 API 参数",
+                    "properties": {
+                        "api-key": {
+                            "type": "string",
+                            "title": "API 密钥"
+                        },
+                        "output-key": {
+                            "type": "string",
+                            "title": "工作流输出键",
+                            "description": "设置工作流输出键，用于从 Dify Workflow 结束节点返回的 JSON 数据中提取输出内容",
+                            "default": "summary"
+                        }
+                    }
+                }
+            }
         }
     }
 }

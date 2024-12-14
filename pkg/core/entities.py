@@ -91,7 +91,7 @@ class Query(pydantic.BaseModel):
 
 
 class Conversation(pydantic.BaseModel):
-    """对话，包含于 Session 中，一个 Session 可以有多个历史 Conversation，但只有一个当前使用的 Conversation""" 
+    """对话，包含于 Session 中，一个 Session 可以有多个历史 Conversation，但只有一个当前使用的 Conversation"""
 
     prompt: sysprompt_entities.Prompt
 
@@ -104,6 +104,9 @@ class Conversation(pydantic.BaseModel):
     use_model: entities.LLMModelInfo
 
     use_funcs: typing.Optional[list[tools_entities.LLMFunction]]
+
+    uuid: typing.Optional[str] = None
+    """该对话的 uuid，在创建时不会自动生成。而是当使用 Dify API 等由外部管理对话信息的服务时，用于绑定外部的会话。具体如何使用，取决于 Runner。"""
 
 
 class Session(pydantic.BaseModel):

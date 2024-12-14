@@ -4,7 +4,7 @@ from . import runner
 from ..core import app
 
 from .runners import localagent
-from .runners import difyapi
+from .runners import difysvapi
 
 class RunnerManager:
 

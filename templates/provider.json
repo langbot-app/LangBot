@@ -57,5 +57,16 @@
     "prompt": {
         "default": "" 
     },
-    "runner": "local-agent"
+    "runner": "local-agent",
+    "dify-service-api": {
+        "base-url": "https://api.dify.ai/v1",
+        "app-type": "workflow",
+        "chat": {
+            "api-key": "app-1234567890"
+        },
+        "workflow": {
+            "api-key": "app-1234567890",
+            "output-key": "summary"
+        }
+    }
 }
