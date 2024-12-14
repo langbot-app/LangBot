@@ -1,6 +1,6 @@
 
 <p align="center">
-<img src="./res/social.png" alt="LangBot"/>
+<img src="https://docs.langbot.app/social.png" alt="LangBot"/>
 
 <div align="center">
 
