@@ -17,10 +17,10 @@ class DifyServiceAPICfgMigration(migration.Migration):
             "base-url": "https://api.dify.ai/v1",
             "app-type": "chat",
             "chat": {
-                "api-key": "sk-1234567890"
+                "api-key": "app-1234567890"
             },
             "workflow": {
-                "api-key": "sk-1234567890",
+                "api-key": "app-1234567890",
                 "output-key": "summary"
             }
         }

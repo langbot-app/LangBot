@@ -60,7 +60,7 @@
     "runner": "local-agent",
     "dify-service-api": {
         "base-url": "https://api.dify.ai/v1",
-        "app-type": "workflow",
+        "app-type": "chat",
         "chat": {
             "api-key": "app-1234567890"
         },
