@@ -1,3 +1,4 @@
+# direct
 requests
 openai>1.0.0
 anthropic
@@ -23,3 +24,6 @@ aiofiles
 aioshutil
 argon2-cffi
 pyjwt
+
+# indirect
+taskgroup==0.0.0a4
