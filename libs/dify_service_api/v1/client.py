@@ -105,10 +105,6 @@ class AsyncDifyServiceClient:
         timeout: float = 30.0,
     ) -> str:
         """上传文件"""
-        # curl -X POST 'http://dify.rockchin.top/v1/files/upload' \
-        # --header 'Authorization: Bearer {api_key}' \
-        # --form 'file=@localfile;type=image/[png|jpeg|jpg|webp|gif] \
-        # --form 'user=abc-123'
         async with httpx.AsyncClient(
             base_url=self.base_url,
             trust_env=True,
