@@ -48,13 +48,19 @@
 >
 > 在您开始任何方式部署之前，请务必阅读[新手指引](https://docs.langbot.app/insight/guide.html)。
 
-#### 宝塔面板部署
-
-LangBot 已上架宝塔面板，若您已安装宝塔面板，可以根据[文档](https://docs.langbot.app/deploy/langbot/one-click/bt.html)使用。
-
-#### Docker 部署
+#### Docker Compose 部署
 
 适合熟悉 Docker 的用户，查看文档[Docker 部署](https://docs.langbot.app/deploy/langbot/docker.html)。
+
+#### 宝塔面板部署
+
+已上架宝塔面板，若您已安装宝塔面板，可以根据[文档](https://docs.langbot.app/deploy/langbot/one-click/bt.html)使用。
+
+#### Zeabur 云部署
+
+社区贡献的 Zeabur 模板。
+
+[![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/zh-CN/templates/ZKTBDH)
 
 #### 手动部署
 
