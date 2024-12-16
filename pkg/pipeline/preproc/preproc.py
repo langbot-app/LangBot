@@ -45,7 +45,7 @@ class PreProcessor(stage.PipelineStage):
 
 
         # 检查vision是否启用，没启用就删除所有图片
-        if not self.ap.provider_cfg.data['enable-vision'] or not query.use_model.vision_supported:
+        if not self.ap.provider_cfg.data['enable-vision'] or (self.ap.provider_cfg.data['runner'] == 'local-agent' and not query.use_model.vision_supported):
             for msg in query.messages:
                 if isinstance(msg.content, list):
                     for me in msg.content:
@@ -60,13 +60,13 @@ class PreProcessor(stage.PipelineStage):
                     llm_entities.ContentElement.from_text(me.text)
                 )
             elif isinstance(me, platform_message.Image):
-                if self.ap.provider_cfg.data['enable-vision'] and query.use_model.vision_supported:
+                if self.ap.provider_cfg.data['enable-vision'] and (self.ap.provider_cfg.data['runner'] != 'local-agent' or query.use_model.vision_supported):
                     if me.url is not None:
                         content_list.append(
                             llm_entities.ContentElement.from_image_url(str(me.url))
                         )
 
-        query.user_message = llm_entities.Message(  # TODO 适配多模态输入
+        query.user_message = llm_entities.Message(
             role='user',
             content=content_list
         )

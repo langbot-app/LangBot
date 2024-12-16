@@ -10,8 +10,8 @@ class TestDifyClient:
     async def test_chat_messages(self):
         cln = client.AsyncDifyServiceClient(api_key=os.getenv("DIFY_API_KEY"), base_url=os.getenv("DIFY_BASE_URL"))
 
-        resp = await cln.chat_messages(inputs={}, query="Who are you?", user="test")
-        print(json.dumps(resp, ensure_ascii=False, indent=4))
+        async for chunk in cln.chat_messages(inputs={}, query="调用工具查看现在几点？", user="test"):
+            print(json.dumps(chunk, ensure_ascii=False, indent=4))
 
     async def test_upload_file(self):
         cln = client.AsyncDifyServiceClient(api_key=os.getenv("DIFY_API_KEY"), base_url=os.getenv("DIFY_BASE_URL"))
@@ -41,4 +41,4 @@ class TestDifyClient:
         print(json.dumps(chunks, ensure_ascii=False, indent=4))
 
 if __name__ == "__main__":
-    asyncio.run(TestDifyClient().test_workflow_run())
+    asyncio.run(TestDifyClient().test_chat_messages())

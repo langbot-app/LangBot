@@ -91,7 +91,7 @@ class ChatMessageHandler(handler.MessageHandler):
                 query.session.using_conversation.messages.extend(query.resp_messages)
             except Exception as e:
                 
-                self.ap.logger.error(f'对话({query.query_id})请求失败: {str(e)}')
+                self.ap.logger.error(f'对话({query.query_id})请求失败: {type(e).__name__} {str(e)}')
 
                 yield entities.StageProcessResult(
                     result_type=entities.ResultType.INTERRUPT,
