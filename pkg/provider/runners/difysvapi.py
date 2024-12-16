@@ -20,7 +20,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
     async def initialize(self):
         """初始化"""
-        valid_app_types = ["chat", "workflow"]
+        valid_app_types = ["chat", "agent", "workflow"]
         if (
             self.ap.provider_cfg.data["dify-service-api"]["app-type"]
             not in valid_app_types
@@ -85,23 +85,84 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             for image_id in image_ids
         ]
 
-        resp = await self.dify_client.chat_messages(
+        async for chunk in self.dify_client.chat_messages(
             inputs={},
             query=plain_text,
             user=f"{query.session.launcher_type.value}_{query.session.launcher_id}",
             conversation_id=cov_id,
             files=files,
             timeout=self.ap.provider_cfg.data["dify-service-api"]["chat"]["timeout"],
-        )
+        ):
+            self.ap.logger.debug("dify-chat-chunk: "+chunk)
+            if chunk['event'] == 'node_finished':
+                if chunk['data']['node_type'] == 'answer':
+                    yield llm_entities.Message(
+                        role="assistant",
+                        content=chunk['data']['outputs']['answer'],
+                    )
 
-        msg = llm_entities.Message(
-            role="assistant",
-            content=resp["answer"],
-        )
+        query.session.using_conversation.uuid = chunk["conversation_id"]
 
-        yield msg
+    async def _agent_chat_messages(
+        self, query: core_entities.Query
+    ) -> typing.AsyncGenerator[llm_entities.Message, None]:
+        """调用聊天助手"""
+        cov_id = query.session.using_conversation.uuid or ""
 
-        query.session.using_conversation.uuid = resp["conversation_id"]
+        plain_text, image_ids = await self._preprocess_user_message(query)
+
+        files = [
+            {
+                "type": "image",
+                "transfer_method": "local_file",
+                "upload_file_id": image_id,
+            }
+            for image_id in image_ids
+        ]
+
+        ignored_events = ["agent_message"]
+
+        async for chunk in self.dify_client.chat_messages(
+            inputs={},
+            query=plain_text,
+            user=f"{query.session.launcher_type.value}_{query.session.launcher_id}",
+            response_mode="streaming",
+            conversation_id=cov_id,
+            files=files,
+            timeout=self.ap.provider_cfg.data["dify-service-api"]["chat"]["timeout"],
+        ):
+            self.ap.logger.debug("dify-agent-chunk: "+chunk)
+            if chunk["event"] in ignored_events:
+                continue
+            if chunk["event"] == "agent_thought":
+
+                if chunk['tool'] != '' and chunk['observation'] != '':  # 工具调用结果，跳过
+                    continue
+
+                if chunk['thought'].strip() != '':  # 文字回复内容
+                    msg = llm_entities.Message(
+                        role="assistant",
+                        content=chunk["thought"],
+                    )
+                    yield msg
+
+                if chunk['tool']:
+                    msg = llm_entities.Message(
+                        role="assistant",
+                        tool_calls=[
+                            llm_entities.ToolCall(
+                                id=chunk['id'],
+                                type="function",
+                                function=llm_entities.FunctionCall(
+                                    name=chunk["tool"],
+                                    arguments=json.dumps({}),
+                                ),
+                            )
+                        ],
+                    )
+                    yield msg
+
+        query.session.using_conversation.uuid = chunk["conversation_id"]
 
     async def _workflow_messages(
         self, query: core_entities.Query
@@ -136,7 +197,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             files=files,
             timeout=self.ap.provider_cfg.data["dify-service-api"]["workflow"]["timeout"],
         ):
-
+            self.ap.logger.debug("dify-workflow-chunk: "+chunk)
             if chunk["event"] in ignored_events:
                 continue
 
@@ -184,6 +245,9 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         """运行请求"""
         if self.ap.provider_cfg.data["dify-service-api"]["app-type"] == "chat":
             async for msg in self._chat_messages(query):
+                yield msg
+        elif self.ap.provider_cfg.data["dify-service-api"]["app-type"] == "agent":
+            async for msg in self._agent_chat_messages(query):
                 yield msg
         elif self.ap.provider_cfg.data["dify-service-api"]["app-type"] == "workflow":
             async for msg in self._workflow_messages(query):

@@ -65,6 +65,10 @@
             "api-key": "app-1234567890",
             "timeout": 120
         },
+        "agent": {
+            "api-key": "app-1234567890",
+            "timeout": 120
+        },
         "workflow": {
             "api-key": "app-1234567890",
             "output-key": "summary",

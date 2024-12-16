@@ -26,21 +26,22 @@ class AsyncDifyServiceClient:
         inputs: dict[str, typing.Any],
         query: str,
         user: str,
-        response_mode: str = "blocking",  # 当前不支持 streaming
+        response_mode: str = "streaming",  # 当前不支持 blocking
         conversation_id: str = "",
         files: list[dict[str, typing.Any]] = [],
         timeout: float = 30.0,
-    ) -> dict[str, typing.Any]:
+    ) -> typing.AsyncGenerator[dict[str, typing.Any], None]:
         """发送消息"""
-        if response_mode != "blocking":
-            raise DifyAPIError("当前仅支持 blocking 模式")
+        if response_mode != "streaming":
+            raise DifyAPIError("当前仅支持 streaming 模式")
         
         async with httpx.AsyncClient(
             base_url=self.base_url,
             trust_env=True,
             timeout=timeout,
         ) as client:
-            response = await client.post(
+            async with client.stream(
+                "POST",
                 "/chat-messages",
                 headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
                 json={
@@ -51,12 +52,14 @@ class AsyncDifyServiceClient:
                     "conversation_id": conversation_id,
                     "files": files,
                 },
-            )
-
-            if response.status_code != 200:
-                raise DifyAPIError(f"{response.status_code} {response.text}")
-
-            return response.json()
+            ) as r:
+                async for chunk in r.aiter_lines():
+                    if r.status_code != 200:
+                        raise DifyAPIError(f"{r.status_code} {chunk}")
+                    if chunk.strip() == "":
+                        continue
+                    if chunk.startswith("data:"):
+                        yield json.loads(chunk[5:])
         
     async def workflow_run(
         self,
@@ -88,6 +91,8 @@ class AsyncDifyServiceClient:
                 },
             ) as r:
                 async for chunk in r.aiter_lines():
+                    if r.status_code != 200:
+                        raise DifyAPIError(f"{r.status_code} {chunk}")
                     if chunk.strip() == "":
                         continue
                     if chunk.startswith("data:"):
