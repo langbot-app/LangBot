@@ -255,6 +255,24 @@
                         "api-key": {
                             "type": "string",
                             "title": "API 密钥"
+                        },
+                        "timeout": {
+                            "type": "number",
+                            "title":"API 请求超时时间"
+                        }
+                    }
+                },
+                "agent": {
+                    "type": "object",
+                    "title": "Agent API 参数",
+                    "properties": {
+                        "api-key": {
+                            "type": "string",
+                            "title": "API 密钥"
+                        },
+                        "timeout": {
+                            "type": "number",
+                            "title":"API 请求超时时间"
                         }
                     }
                 },
@@ -271,6 +289,10 @@
                             "title": "工作流输出键",
                             "description": "设置工作流输出键，用于从 Dify Workflow 结束节点返回的 JSON 数据中提取输出内容",
                             "default": "summary"
+                        },
+                        "timeout": {
+                            "type": "number",
+                            "title": "API 请求超时时间"
                         }
                     }
                 }
