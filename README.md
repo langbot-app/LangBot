@@ -62,6 +62,10 @@
 
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/zh-CN/templates/ZKTBDH)
 
+#### Railway 云部署
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
+
 #### 手动部署
 
 直接使用发行版运行，查看文档[手动部署](https://docs.langbot.app/deploy/langbot/manual.html)。
