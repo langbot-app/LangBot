@@ -143,9 +143,7 @@ class Application:
             self.logger.warning("WebUI 文件缺失，请根据文档获取：https://docs.langbot.app/webui/intro.html")
             return
 
-        import socket
-
-        host_ip = socket.gethostbyname(socket.gethostname())
+        host_ip = "127.0.0.1"
 
         public_ip = await ip.get_myip()
 

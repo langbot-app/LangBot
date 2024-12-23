@@ -4,6 +4,7 @@ import typing
 import traceback
 
 import anthropic
+import httpx
 
 from .. import entities, errors, requester
 
@@ -21,11 +22,19 @@ class AnthropicMessages(requester.LLMAPIRequester):
     client: anthropic.AsyncAnthropic
 
     async def initialize(self):
+
+        httpx_client = anthropic._base_client.AsyncHttpxClientWrapper(
+            base_url=self.ap.provider_cfg.data['requester']['anthropic-messages']['base-url'],
+            # cast to a valid type because mypy doesn't understand our type narrowing
+            timeout=typing.cast(httpx.Timeout, self.ap.provider_cfg.data['requester']['anthropic-messages']['timeout']),
+            limits=anthropic._constants.DEFAULT_CONNECTION_LIMITS,
+            follow_redirects=True,
+            proxies=self.ap.proxy_mgr.get_forward_proxies()
+        )
+
         self.client = anthropic.AsyncAnthropic(
             api_key="",
-            base_url=self.ap.provider_cfg.data['requester']['anthropic-messages']['base-url'],
-            timeout=self.ap.provider_cfg.data['requester']['anthropic-messages']['timeout'],
-            proxies=self.ap.proxy_mgr.get_forward_proxies()
+            http_client=httpx_client,
         )
 
     async def call(
