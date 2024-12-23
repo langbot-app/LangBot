@@ -73,3 +73,7 @@
 ## 📸 效果展示
 
 <img alt="回复效果（带有联网插件）" src="https://docs.langbot.app/QChatGPT-0516.png" width="500px"/>
+
+- WebUI Demo: https://demo.langbot.dev/
+    - 登录信息：邮箱：`demo@langbot.app` 密码：`langbot123456`
+    - 注意：仅展示webui效果，公开环境，请不要在其中填入您的任何敏感信息。
