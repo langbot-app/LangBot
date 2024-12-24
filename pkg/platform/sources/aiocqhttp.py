@@ -6,6 +6,7 @@ import time
 import datetime
 
 import aiocqhttp
+import aiohttp
 
 from .. import adapter
 from ...pipeline.longtext.strategies import forward
@@ -13,12 +14,12 @@ from ...core import app
 from ..types import message as platform_message
 from ..types import events as platform_events
 from ..types import entities as platform_entities
-
+from ...utils import image
 
 class AiocqhttpMessageConverter(adapter.MessageConverter):
 
     @staticmethod
-    def yiri2target(message_chain: platform_message.MessageChain) -> typing.Tuple[list, int, datetime.datetime]:
+    async def yiri2target(message_chain: platform_message.MessageChain) -> typing.Tuple[list, int, datetime.datetime]:
         msg_list = aiocqhttp.Message()
 
         msg_id = 0
@@ -59,7 +60,7 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
             elif type(msg) is forward.Forward:
 
                 for node in msg.node_list:
-                    msg_list.extend(AiocqhttpMessageConverter.yiri2target(node.message_chain)[0])
+                    msg_list.extend(await AiocqhttpMessageConverter.yiri2target(node.message_chain)[0])
                 
             else:
                 msg_list.append(aiocqhttp.MessageSegment.text(str(msg)))
@@ -67,7 +68,7 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
         return msg_list, msg_id, msg_time
 
     @staticmethod
-    def target2yiri(message: str, message_id: int = -1):
+    async def target2yiri(message: str, message_id: int = -1):
         message = aiocqhttp.Message(message)
 
         yiri_msg_list = []
@@ -89,7 +90,8 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
             elif msg.type == "text":
                 yiri_msg_list.append(platform_message.Plain(text=msg.data["text"]))
             elif msg.type == "image":
-                yiri_msg_list.append(platform_message.Image(url=msg.data["url"]))
+                image_base64, image_format = await image.qq_image_url_to_base64(msg.data['url'])
+                yiri_msg_list.append(platform_message.Image(base64=f"data:image/{image_format};base64,{image_base64}"))
 
         chain = platform_message.MessageChain(yiri_msg_list)
 
@@ -99,9 +101,9 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
 class AiocqhttpEventConverter(adapter.EventConverter):
 
     @staticmethod
-    def yiri2target(event: platform_events.Event, bot_account_id: int):
+    async def yiri2target(event: platform_events.Event, bot_account_id: int):
 
-        msg, msg_id, msg_time = AiocqhttpMessageConverter.yiri2target(event.message_chain)
+        msg, msg_id, msg_time = await AiocqhttpMessageConverter.yiri2target(event.message_chain)
 
         if type(event) is platform_events.GroupMessage:
             role = "member"
@@ -164,8 +166,8 @@ class AiocqhttpEventConverter(adapter.EventConverter):
             return aiocqhttp.Event.from_payload(payload)
 
     @staticmethod
-    def target2yiri(event: aiocqhttp.Event):
-        yiri_chain = AiocqhttpMessageConverter.target2yiri(
+    async def target2yiri(event: aiocqhttp.Event):
+        yiri_chain = await AiocqhttpMessageConverter.target2yiri(
             event.message, event.message_id
         )
 
@@ -242,7 +244,7 @@ class AiocqhttpAdapter(adapter.MessageSourceAdapter):
     async def send_message(
         self, target_type: str, target_id: str, message: platform_message.MessageChain
     ):
-        aiocq_msg = AiocqhttpMessageConverter.yiri2target(message)[0]
+        aiocq_msg = await AiocqhttpMessageConverter.yiri2target(message)[0]
 
         if target_type == "group":
             await self.bot.send_group_msg(group_id=int(target_id), message=aiocq_msg)
@@ -255,8 +257,8 @@ class AiocqhttpAdapter(adapter.MessageSourceAdapter):
         message: platform_message.MessageChain,
         quote_origin: bool = False,
     ):  
-        aiocq_event = AiocqhttpEventConverter.yiri2target(message_source, self.bot_account_id)
-        aiocq_msg = AiocqhttpMessageConverter.yiri2target(message)[0]
+        aiocq_event = await AiocqhttpEventConverter.yiri2target(message_source, self.bot_account_id)
+        aiocq_msg = (await AiocqhttpMessageConverter.yiri2target(message))[0]
         if quote_origin:
             aiocq_msg = aiocqhttp.MessageSegment.reply(aiocq_event.message_id) + aiocq_msg
 
@@ -276,7 +278,7 @@ class AiocqhttpAdapter(adapter.MessageSourceAdapter):
         async def on_message(event: aiocqhttp.Event):
             self.bot_account_id = event.self_id
             try:
-                return await callback(self.event_converter.target2yiri(event), self)
+                return await callback(await self.event_converter.target2yiri(event), self)
             except:
                 traceback.print_exc()
 

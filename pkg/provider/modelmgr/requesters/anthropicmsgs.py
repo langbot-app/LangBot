@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import typing
 import traceback
+import base64
 
 import anthropic
 import httpx
@@ -39,6 +40,7 @@ class AnthropicMessages(requester.LLMAPIRequester):
 
     async def call(
         self,
+        query: core_entities.Query,
         model: entities.LLMModelInfo,
         messages: typing.List[llm_entities.Message],
         funcs: typing.List[tools_entities.LLMFunction] = None,
@@ -70,24 +72,20 @@ class AnthropicMessages(requester.LLMAPIRequester):
             if isinstance(m.content, str) and m.content.strip() != "":
                 req_messages.append(m.dict(exclude_none=True))
             elif isinstance(m.content, list):
-                # m.content = [
-                #     c for c in m.content if c.type == "text"
-                # ]
-
-                # if len(m.content) > 0:
-                #     req_messages.append(m.dict(exclude_none=True))
 
                 msg_dict = m.dict(exclude_none=True)
 
                 for i, ce in enumerate(m.content):
-                    if ce.type == "image_url":
-                        base64_image, image_format = await image.qq_image_url_to_base64(ce.image_url.url)
+
+                    if ce.type == "image_base64":
+                        image_b64, image_format = await image.extract_b64_and_format(ce.image_base64)
+
                         alter_image_ele = {
                             "type": "image",
                             "source": {
                                 "type": "base64",
                                 "media_type": f"image/{image_format}",
-                                "data": base64_image
+                                "data": image_b64
                             }
                         }
                         msg_dict["content"][i] = alter_image_ele

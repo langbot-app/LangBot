@@ -3,6 +3,7 @@ from __future__ import annotations
 import typing
 import json
 import uuid
+import base64
 
 from .. import runner
 from ...core import entities as core_entities
@@ -52,10 +53,9 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             for ce in query.user_message.content:
                 if ce.type == "text":
                     plain_text += ce.text
-                elif ce.type == "image_url":
-                    file_bytes, image_format = await image.get_qq_image_bytes(
-                        ce.image_url.url
-                    )
+                elif ce.type == "image_base64":
+                    image_b64, image_format = await image.extract_b64_and_format(ce.image_base64)
+                    file_bytes = base64.b64decode(image_b64)
                     file = ("img.png", file_bytes, f"image/{image_format}")
                     file_upload_resp = await self.dify_client.upload_file(
                         file,
