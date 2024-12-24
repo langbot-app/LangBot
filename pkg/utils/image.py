@@ -18,10 +18,14 @@ def get_qq_image_downloadable_url(image_url: str) -> tuple[str, dict]:
 async def get_qq_image_bytes(image_url: str) -> tuple[bytes, str]:
     """[弃用]获取QQ图片的bytes"""
     image_url, query = get_qq_image_downloadable_url(image_url)
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
+        'Referer': 'https://multimedia.nt.qq.com.cn/'
+    }
     ssl_context = ssl.create_default_context()
     ssl_context.check_hostname = False
     ssl_context.verify_mode = ssl.CERT_NONE
-    async with aiohttp.ClientSession(trust_env=False) as session:
+    async with aiohttp.ClientSession(trust_env=False, headers=headers) as session:
         async with session.get(image_url, params=query, ssl=ssl_context) as resp:
             resp.raise_for_status()
             file_bytes = await resp.read()
