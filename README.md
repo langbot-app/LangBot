@@ -1,9 +1,3 @@
-> [!IMPORTANT]
-> 我们被人在 X.com 上冒充了，以下两个账号利用本项目和作者信息在 X.com 上发布数字货币营销信息，请勿相信！我们已向 X 官方举报！  
-> We have been impersonated on X.com. The following two accounts are using this project and author information to post digital currency marketing information on X.com. Please do not believe us! We have reported to X official!
-> 1. https://x.com/RockChinQ
-> 2. https://x.com/LangBotAI
-
 <p align="center">
 <img src="https://docs.langbot.app/social.png" alt="LangBot"/>
 
