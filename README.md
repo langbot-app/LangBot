@@ -44,7 +44,7 @@
 
 ## 📦 开始使用
 
-> **INFO**  
+> [!IMPORTANT]
 >
 > 在您开始任何方式部署之前，请务必阅读[新手指引](https://docs.langbot.app/insight/guide.html)。
 
