@@ -6,14 +6,14 @@ body:
   - type: dropdown
     attributes:
       label: 消息平台适配器
-      description: "连接QQ使用的框架"
+      description: "接入的消息平台类型"
       options:
         - Nakuru（go-cqhttp）
         - aiocqhttp（使用 OneBot 协议接入的）
         - qq-botpy（QQ官方API）
-        - 其他
+        - 其他（或暂未使用）
     validations:
-      required: false
+      required: true
   - type: input
     attributes:
       label: 运行环境
