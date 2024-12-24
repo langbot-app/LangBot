@@ -61,9 +61,9 @@ class PreProcessor(stage.PipelineStage):
                 )
             elif isinstance(me, platform_message.Image):
                 if self.ap.provider_cfg.data['enable-vision'] and (self.ap.provider_cfg.data['runner'] != 'local-agent' or query.use_model.vision_supported):
-                    if me.url is not None:
+                    if me.base64 is not None:
                         content_list.append(
-                            llm_entities.ContentElement.from_image_url(str(me.url))
+                            llm_entities.ContentElement.from_image_base64(me.base64)
                         )
 
         query.user_message = llm_entities.Message(

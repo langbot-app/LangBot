@@ -1,9 +1,11 @@
 import base64
 import typing
+import io
 from urllib.parse import urlparse, parse_qs
 import ssl
 
 import aiohttp
+import PIL.Image
 
 
 def get_qq_image_downloadable_url(image_url: str) -> tuple[str, dict]:
@@ -14,7 +16,7 @@ def get_qq_image_downloadable_url(image_url: str) -> tuple[str, dict]:
 
 
 async def get_qq_image_bytes(image_url: str) -> tuple[bytes, str]:
-    """获取QQ图片的bytes"""
+    """[弃用]获取QQ图片的bytes"""
     image_url, query = get_qq_image_downloadable_url(image_url)
     ssl_context = ssl.create_default_context()
     ssl_context.check_hostname = False
@@ -24,8 +26,11 @@ async def get_qq_image_bytes(image_url: str) -> tuple[bytes, str]:
             resp.raise_for_status()
             file_bytes = await resp.read()
             content_type = resp.headers.get('Content-Type')
-            if not content_type or not content_type.startswith('image/'):
+            if not content_type:
                 image_format = 'jpeg'
+            elif not content_type.startswith('image/'):
+                pil_img = PIL.Image.open(io.BytesIO(file_bytes))
+                image_format = pil_img.format.lower()
             else: 
                 image_format = content_type.split('/')[-1]
             return file_bytes, image_format
@@ -34,7 +39,7 @@ async def get_qq_image_bytes(image_url: str) -> tuple[bytes, str]:
 async def qq_image_url_to_base64(
     image_url: str
 ) -> typing.Tuple[str, str]:
-    """将QQ图片URL转为base64，并返回图片格式
+    """[弃用]将QQ图片URL转为base64，并返回图片格式
 
     Args:
         image_url (str): QQ图片URL
@@ -51,4 +56,14 @@ async def qq_image_url_to_base64(
 
     base64_str = base64.b64encode(file_bytes).decode()
 
+    return base64_str, image_format
+
+async def extract_b64_and_format(image_base64_data: str) -> typing.Tuple[str, str]:
+    """提取base64编码和图片格式
+    
+    data:image/jpeg;base64,xxx
+    提取出base64编码和图片格式
+    """
+    base64_str = image_base64_data.split(',')[-1]
+    image_format = image_base64_data.split(':')[-1].split(';')[0].split('/')[-1]
     return base64_str, image_format

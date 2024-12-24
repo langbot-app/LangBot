@@ -38,6 +38,8 @@ class ContentElement(pydantic.BaseModel):
 
     image_url: typing.Optional[ImageURLContentObject] = None
 
+    image_base64: typing.Optional[str] = None
+
     def __str__(self):
         if self.type == 'text':
             return self.text
@@ -53,6 +55,10 @@ class ContentElement(pydantic.BaseModel):
     @classmethod
     def from_image_url(cls, image_url: str):
         return cls(type='image_url', image_url=ImageURLContentObject(url=image_url))
+    
+    @classmethod
+    def from_image_base64(cls, image_base64: str):
+        return cls(type='image_base64', image_base64=image_base64)
 
 
 class Message(pydantic.BaseModel):

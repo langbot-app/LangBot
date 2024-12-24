@@ -6,6 +6,7 @@ import typing
 from typing import Union, Mapping, Any, AsyncIterator
 import uuid
 import json
+import base64
 
 import async_lru
 import ollama
@@ -13,7 +14,7 @@ import ollama
 from .. import entities, errors, requester
 from ... import entities as llm_entities
 from ...tools import entities as tools_entities
-from ....core import app
+from ....core import app, entities as core_entities
 from ....utils import image
 
 REQUESTER_NAME: str = "ollama-chat"
@@ -43,7 +44,7 @@ class OllamaChatCompletions(requester.LLMAPIRequester):
             **args
         )
 
-    async def _closure(self, req_messages: list[dict], use_model: entities.LLMModelInfo,
+    async def _closure(self, query: core_entities.Query, req_messages: list[dict], use_model: entities.LLMModelInfo,
                        user_funcs: list[tools_entities.LLMFunction] = None) -> (
             llm_entities.Message):
         args: Any = self.request_cfg['args'].copy()
@@ -57,9 +58,9 @@ class OllamaChatCompletions(requester.LLMAPIRequester):
                 for me in msg["content"]:
                     if me["type"] == "text":
                         text_content.append(me["text"])
-                    elif me["type"] == "image_url":
-                        image_url = await self.get_base64_str(me["image_url"]['url'])
-                        image_urls.append(image_url)
+                    elif me["type"] == "image_base64":
+                        image_urls.append(me["image_base64"])
+                        
                 msg["content"] = "\n".join(text_content)
                 msg["images"] = [url.split(',')[1] for url in image_urls]
             if 'tool_calls' in msg:  # LangBot 内部以 str 存储 tool_calls 的参数，这里需要转换为 dict
@@ -109,6 +110,7 @@ class OllamaChatCompletions(requester.LLMAPIRequester):
 
     async def call(
             self,
+            query: core_entities.Query,
             model: entities.LLMModelInfo,
             messages: typing.List[llm_entities.Message],
             funcs: typing.List[tools_entities.LLMFunction] = None,
@@ -122,14 +124,6 @@ class OllamaChatCompletions(requester.LLMAPIRequester):
                     msg_dict["content"] = "\n".join(part["text"] for part in content)
             req_messages.append(msg_dict)
         try:
-            return await self._closure(req_messages, model, funcs)
+            return await self._closure(query, req_messages, model, funcs)
         except asyncio.TimeoutError:
             raise errors.RequesterError('请求超时')
-
-    @async_lru.alru_cache(maxsize=128)
-    async def get_base64_str(
-            self,
-            original_url: str,
-    ) -> str:
-        base64_image, image_format = await image.qq_image_url_to_base64(original_url)
-        return f"data:image/{image_format};base64,{base64_image}"

@@ -48,6 +48,7 @@ class LLMAPIRequester(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     async def call(
         self,
+        query: core_entities.Query,
         model: modelmgr_entities.LLMModelInfo,
         messages: typing.List[llm_entities.Message],
         funcs: typing.List[tools_entities.LLMFunction] = None,

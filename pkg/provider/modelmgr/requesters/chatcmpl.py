@@ -65,6 +65,7 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
 
     async def _closure(
         self,
+        query: core_entities.Query,
         req_messages: list[dict],
         use_model: entities.LLMModelInfo,
         use_funcs: list[tools_entities.LLMFunction] = None,
@@ -87,8 +88,12 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
         for msg in messages:
             if 'content' in msg and isinstance(msg["content"], list):
                 for me in msg["content"]:
-                    if me["type"] == "image_url":
-                        me["image_url"]['url'] = await self.get_base64_str(me["image_url"]['url'])
+                    if me["type"] == "image_base64":
+                        me["image_url"] = {
+                            "url": me["image_base64"]
+                        }
+                        me["type"] = "image_url"
+                        del me["image_base64"]
 
         args["messages"] = messages
 
@@ -102,6 +107,7 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
     
     async def call(
         self,
+        query: core_entities.Query,
         model: entities.LLMModelInfo,
         messages: typing.List[llm_entities.Message],
         funcs: typing.List[tools_entities.LLMFunction] = None,
@@ -118,7 +124,7 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
             req_messages.append(msg_dict)
 
         try:
-            return await self._closure(req_messages, model, funcs)
+            return await self._closure(query, req_messages, model, funcs)
         except asyncio.TimeoutError:
             raise errors.RequesterError('请求超时')
         except openai.BadRequestError as e:
@@ -134,11 +140,3 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
             raise errors.RequesterError(f'请求过于频繁或余额不足: {e.message}')
         except openai.APIError as e:
             raise errors.RequesterError(f'请求错误: {e.message}')
-
-    @async_lru.alru_cache(maxsize=128)
-    async def get_base64_str(
-        self,
-        original_url: str,
-    ) -> str:
-        base64_image, image_format = await image.qq_image_url_to_base64(original_url)
-        return f"data:image/{image_format};base64,{base64_image}"
