@@ -90,8 +90,6 @@ class AnthropicMessages(requester.LLMAPIRequester):
                         }
                         msg_dict["content"][i] = alter_image_ele
 
-                print(msg_dict)
-
                 req_messages.append(msg_dict)
 
         args["messages"] = req_messages
