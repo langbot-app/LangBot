@@ -8,10 +8,10 @@ body:
       label: 消息平台适配器
       description: "接入的消息平台类型"
       options:
+        - 其他（或暂未使用）
         - Nakuru（go-cqhttp）
         - aiocqhttp（使用 OneBot 协议接入的）
         - qq-botpy（QQ官方API）
-        - 其他（或暂未使用）
     validations:
       required: true
   - type: input
