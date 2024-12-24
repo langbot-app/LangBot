@@ -60,7 +60,7 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
             elif type(msg) is forward.Forward:
 
                 for node in msg.node_list:
-                    msg_list.extend(await AiocqhttpMessageConverter.yiri2target(node.message_chain)[0])
+                    msg_list.extend((await AiocqhttpMessageConverter.yiri2target(node.message_chain))[0])
                 
             else:
                 msg_list.append(aiocqhttp.MessageSegment.text(str(msg)))
@@ -244,7 +244,7 @@ class AiocqhttpAdapter(adapter.MessageSourceAdapter):
     async def send_message(
         self, target_type: str, target_id: str, message: platform_message.MessageChain
     ):
-        aiocq_msg = await AiocqhttpMessageConverter.yiri2target(message)[0]
+        aiocq_msg = (await AiocqhttpMessageConverter.yiri2target(message))[0]
 
         if target_type == "group":
             await self.bot.send_group_msg(group_id=int(target_id), message=aiocq_msg)
