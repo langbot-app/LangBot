@@ -124,7 +124,7 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
             req_messages.append(msg_dict)
 
         try:
-            return await self._closure(query, req_messages, model, funcs)
+            return await self._closure(query=query, req_messages=req_messages, use_model=model, use_funcs=funcs)
         except asyncio.TimeoutError:
             raise errors.RequesterError('请求超时')
         except openai.BadRequestError as e:

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from ....core import app
-
 from . import chatcmpl
 from .. import entities, errors, requester
 from ....core import entities as core_entities, app
@@ -19,6 +17,7 @@ class DeepseekChatCompletions(chatcmpl.OpenAIChatCompletions):
 
     async def _closure(
         self,
+        query: core_entities.Query,
         req_messages: list[dict],
         use_model: entities.LLMModelInfo,
         use_funcs: list[tools_entities.LLMFunction] = None,
