@@ -13,6 +13,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+
       - name: judge has env GITHUB_REF  # 如果没有GITHUB_REF环境变量，则把github.ref变量赋值给GITHUB_REF
         run: |
           if [ -z "$GITHUB_REF" ]; then
