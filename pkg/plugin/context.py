@@ -127,16 +127,16 @@ class APIHost:
         Returns:
             bool: 是否满足要求, False时为无法获取版本号，True时为满足要求，报错为不满足要求
         """
-        qchatgpt_version = ""
+        langbot_version = ""
 
         try:
-            qchatgpt_version = self.ap.ver_mgr.get_current_version()  # 从updater模块获取版本号
+            langbot_version = self.ap.ver_mgr.get_current_version()  # 从updater模块获取版本号
         except:
             return False
 
-        if self.ap.ver_mgr.compare_version_str(qchatgpt_version, ge) < 0 or \
-            (self.ap.ver_mgr.compare_version_str(qchatgpt_version, le) > 0):
-            raise Exception("LangBot 版本不满足要求，某些功能（可能是由插件提供的）无法正常使用。（要求版本：{}-{}，但当前版本：{}）".format(ge, le, qchatgpt_version))
+        if self.ap.ver_mgr.compare_version_str(langbot_version, ge) < 0 or \
+            (self.ap.ver_mgr.compare_version_str(langbot_version, le) > 0):
+            raise Exception("LangBot 版本不满足要求，某些功能（可能是由插件提供的）无法正常使用。（要求版本：{}-{}，但当前版本：{}）".format(ge, le, langbot_version))
 
         return True
 
