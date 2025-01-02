@@ -52,3 +52,11 @@ jobs:
         with:
           name: langbot-${{ steps.check_version.outputs.version }}-all
           path: .
+
+      - name: Upload To Release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_UPLOAD_GITHUB_TOKEN }}
+        run: |
+          # 本目录下所有文件打包成zip
+          zip -r langbot-${{ steps.check_version.outputs.version }}-all.zip .
+          gh release upload ${{ github.event.release.tag_name }} langbot-${{ steps.check_version.outputs.version }}-all.zip

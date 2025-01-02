@@ -7,6 +7,8 @@ on:
 jobs:
   build-dev-image:
     runs-on: ubuntu-latest
+    # 如果是tag则跳过
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v2
