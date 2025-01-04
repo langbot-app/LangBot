@@ -197,5 +197,27 @@ class Application:
 
                 await self.plugin_mgr.load_plugins()
                 await self.plugin_mgr.initialize_plugins()
+            case core_entities.LifecycleControlScope.PROVIDER.value:
+                self.logger.info("执行热重载 scope="+scope)
+
+                llm_model_mgr_inst = llm_model_mgr.ModelManager(self)
+                await llm_model_mgr_inst.initialize()
+                self.model_mgr = llm_model_mgr_inst
+
+                llm_session_mgr_inst = llm_session_mgr.SessionManager(self)
+                await llm_session_mgr_inst.initialize()
+                self.sess_mgr = llm_session_mgr_inst
+
+                llm_prompt_mgr_inst = llm_prompt_mgr.PromptManager(self)
+                await llm_prompt_mgr_inst.initialize()
+                self.prompt_mgr = llm_prompt_mgr_inst
+
+                llm_tool_mgr_inst = llm_tool_mgr.ToolManager(self)
+                await llm_tool_mgr_inst.initialize()
+                self.tool_mgr = llm_tool_mgr_inst
+
+                runner_mgr_inst = runnermgr.RunnerManager(self)
+                await runner_mgr_inst.initialize()
+                self.runner_mgr = runner_mgr_inst
             case _:
                 pass

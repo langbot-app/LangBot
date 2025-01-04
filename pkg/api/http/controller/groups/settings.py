@@ -9,7 +9,7 @@ class SettingsRouterGroup(group.RouterGroup):
     
     async def initialize(self) -> None:
         
-        @self.route('', methods=['GET'])
+        @self.route('', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
             return self.success(
                 data={
@@ -23,7 +23,7 @@ class SettingsRouterGroup(group.RouterGroup):
                 }
             )
         
-        @self.route('/<manager_name>', methods=['GET'])
+        @self.route('/<manager_name>', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _(manager_name: str) -> str:
 
             manager = self.ap.settings_mgr.get_manager(manager_name)
@@ -44,7 +44,7 @@ class SettingsRouterGroup(group.RouterGroup):
                 }
             )
         
-        @self.route('/<manager_name>/data', methods=['PUT'])
+        @self.route('/<manager_name>/data', methods=['PUT'], auth_type=group.AuthType.USER_TOKEN)
         async def _(manager_name: str) -> str:
             data = await quart.request.json
             manager = self.ap.settings_mgr.get_manager(manager_name)

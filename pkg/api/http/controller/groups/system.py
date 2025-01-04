@@ -20,7 +20,7 @@ class SystemRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/tasks', methods=['GET'])
+        @self.route('/tasks', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
             task_type = quart.request.args.get("type")
 
@@ -31,7 +31,7 @@ class SystemRouterGroup(group.RouterGroup):
                 data=self.ap.task_mgr.get_tasks_dict(task_type)
             )
         
-        @self.route('/tasks/<task_id>', methods=['GET'])
+        @self.route('/tasks/<task_id>', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _(task_id: str) -> str:
             task = self.ap.task_mgr.get_task_by_id(int(task_id))
 
@@ -40,7 +40,7 @@ class SystemRouterGroup(group.RouterGroup):
             
             return self.success(data=task.to_dict())
         
-        @self.route('/reload', methods=['POST'])
+        @self.route('/reload', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
             json_data = await quart.request.json
 
@@ -51,7 +51,7 @@ class SystemRouterGroup(group.RouterGroup):
             )
             return self.success()
 
-        @self.route('/_debug/exec', methods=['POST'])
+        @self.route('/_debug/exec', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
             if not constants.debug_mode:
                 return self.http_status(403, 403, "Forbidden")

@@ -79,6 +79,12 @@
                           重载插件
                         </v-list-item-title>
                       </v-list-item>
+
+                      <v-list-item @click="reload('provider')">
+                        <v-list-item-title>
+                          重载 LLM 管理器
+                        </v-list-item-title>
+                      </v-list-item>
                     </v-list>
                   </v-menu>
                 </v-list-item>
@@ -169,7 +175,8 @@ function openDocs() {
 
 const reloadScopeLabel = {
   'platform': "消息平台",
-  'plugin': "插件"
+  'plugin': "插件",
+  'provider': "LLM 管理器"
 }
 
 function reload(scope) {
