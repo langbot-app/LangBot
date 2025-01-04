@@ -115,6 +115,38 @@
             "name": "deepseek-coder",
             "requester": "deepseek-chat-completions",
             "token_mgr": "deepseek"
+        },
+        {
+            "name": "grok-2-latest",
+            "requester": "xai-chat-completions",
+            "token_mgr": "xai"
+        },
+        {
+            "name": "grok-2",
+            "requester": "xai-chat-completions",
+            "token_mgr": "xai"
+        },
+        {
+            "name": "grok-2-vision-1212",
+            "requester": "xai-chat-completions",
+            "token_mgr": "xai",
+            "vision_supported": true
+        },
+        {
+            "name": "grok-2-1212",
+            "requester": "xai-chat-completions",
+            "token_mgr": "xai"
+        },
+        {
+            "name": "grok-vision-beta",
+            "requester": "xai-chat-completions",
+            "token_mgr": "xai",
+            "vision_supported": true
+        },
+        {
+            "name": "grok-beta",
+            "requester": "xai-chat-completions",
+            "token_mgr": "xai"
         }
     ]
 }

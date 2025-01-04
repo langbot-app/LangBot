@@ -22,7 +22,6 @@
                 "openai": {
                     "type": "array",
                     "title": "OpenAI API 密钥",
-                    "description": "OpenAI API 密钥",
                     "items": {
                         "type": "string"
                     },
@@ -31,7 +30,6 @@
                 "anthropic": {
                     "type": "array",
                     "title": "Anthropic API 密钥",
-                    "description": "Anthropic API 密钥",
                     "items": {
                         "type": "string"
                     },
@@ -40,7 +38,6 @@
                 "moonshot": {
                     "type": "array",
                     "title": "Moonshot API 密钥",
-                    "description": "Moonshot API 密钥",
                     "items": {
                         "type": "string"
                     },
@@ -49,7 +46,6 @@
                 "deepseek": {
                     "type": "array",
                     "title": "DeepSeek API 密钥",
-                    "description": "DeepSeek API 密钥",
                     "items": {
                         "type": "string"
                     },
@@ -57,8 +53,15 @@
                 },
                 "gitee": {
                     "type": "array",
-                    "title": "Gitee API 密钥",
-                    "description": "Gitee API 密钥",
+                    "title": "Gitee AI API 密钥",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": []
+                },
+                "xai": {
+                    "type": "array",
+                    "title": "xAI API 密钥",
                     "items": {
                         "type": "string"
                     },
@@ -173,6 +176,25 @@
                 "gitee-ai-chat-completions": {
                     "type": "object",
                     "title": "Gitee AI API 请求配置",
+                    "description": "仅可编辑 URL 和 超时时间，额外请求参数不支持可视化编辑，请到编辑器编辑",
+                    "properties": {
+                        "base-url": {
+                            "type": "string",
+                            "title": "API URL"
+                        },
+                        "args": {
+                            "type": "object"
+                        },
+                        "timeout": {
+                            "type": "number",
+                            "title": "API 请求超时时间",
+                            "default": 120
+                        }
+                    }
+                },
+                "xai-chat-completions": {
+                    "type": "object",
+                    "title": "xAI API 请求配置",
                     "description": "仅可编辑 URL 和 超时时间，额外请求参数不支持可视化编辑，请到编辑器编辑",
                     "properties": {
                         "base-url": {
