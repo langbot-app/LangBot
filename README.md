@@ -82,7 +82,7 @@
 
 ### 消息平台
 
-| 平台 | 支持 | 备注 |
+| 平台 | 状态 | 备注 |
 | --- | --- | --- |
 | OneBot v11 | ✅ | QQ 个人号私聊、群聊 |
 | go-cqhttp | ✅ | QQ 个人号私聊、群聊 |
@@ -94,13 +94,14 @@
 
 ### 大模型
 
-| 模型 | 支持 | 备注 |
+| 模型 | 状态 | 备注 |
 | --- | --- | --- |
-| OpenAI | ✅ | 可接入任何 OpenAI 接口格式模型 |
-| DeepSeek | ✅ |  |
-| MoonShot | ✅ |  |
-| Anthropic | ✅ |  |
-| xAI | ✅ |  |
-| Dify | ✅ | LLMOps 平台 |
-| Ollama | ✅ | 本地大模型管理平台 |
-| GiteeAI | ✅ | 大模型接口聚合平台 |
+| [OpenAI](https://platform.openai.com/) | ✅ | 可接入任何 OpenAI 接口格式模型 |
+| [DeepSeek](https://www.deepseek.com/) | ✅ |  |
+| [Moonshot](https://www.moonshot.cn/) | ✅ |  |
+| [Anthropic](https://www.anthropic.com/) | ✅ |  |
+| [xAI](https://x.ai/) | ✅ |  |
+| [智谱AI](https://open.bigmodel.cn/) | ✅ |  |
+| [Dify](https://dify.ai) | ✅ | LLMOps 平台 |
+| [Ollama](https://ollama.com/) | ✅ | 本地大模型管理平台 |
+| [GiteeAI](https://ai.gitee.com/) | ✅ | 大模型接口聚合平台 |
