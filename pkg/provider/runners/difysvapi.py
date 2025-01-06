@@ -5,6 +5,8 @@ import json
 import uuid
 import base64
 
+import aiohttp
+
 from .. import runner
 from ...core import entities as core_entities
 from .. import entities as llm_entities
@@ -97,7 +99,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             files=files,
             timeout=self.ap.provider_cfg.data["dify-service-api"]["chat"]["timeout"],
         ):
-            self.ap.logger.debug("dify-chat-chunk: ", chunk)
+            self.ap.logger.debug("dify-chat-chunk: " + str(chunk))
 
             if chunk['event'] == 'workflow_started':
                 mode = "workflow"
@@ -149,7 +151,8 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             files=files,
             timeout=self.ap.provider_cfg.data["dify-service-api"]["chat"]["timeout"],
         ):
-            self.ap.logger.debug("dify-agent-chunk: ", chunk)
+            self.ap.logger.debug("dify-agent-chunk: " + str(chunk))
+
             if chunk["event"] in ignored_events:
                 continue
             if chunk["event"] == "agent_thought":
@@ -179,6 +182,21 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                         ],
                     )
                     yield msg
+            if chunk['event'] == 'message_file':
+
+                if chunk['type'] == 'image' and chunk['belongs_to'] == 'assistant':
+
+                    base_url = self.dify_client.base_url
+
+                    if base_url.endswith('/v1'):
+                        base_url = base_url[:-3]
+
+                    image_url = base_url + chunk['url']
+
+                    yield llm_entities.Message(
+                        role="assistant",
+                        content=[llm_entities.ContentElement.from_image_url(image_url)],
+                    )
 
         query.session.using_conversation.uuid = chunk["conversation_id"]
 
@@ -215,7 +233,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             files=files,
             timeout=self.ap.provider_cfg.data["dify-service-api"]["workflow"]["timeout"],
         ):
-            self.ap.logger.debug("dify-workflow-chunk: ", chunk)
+            self.ap.logger.debug("dify-workflow-chunk: " + str(chunk))
             if chunk["event"] in ignored_events:
                 continue
 
