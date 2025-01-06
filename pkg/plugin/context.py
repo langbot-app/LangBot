@@ -117,7 +117,7 @@ class APIHost:
     # ========== 插件可调用的 API（主程序API） ==========
 
     def get_platform_adapters(self) -> list[platform_adapter.MessageSourceAdapter]:
-        """获取所有消息平台适配器
+        """获取已启用的消息平台适配器列表
         
         Returns:
             list[platform.adapter.MessageSourceAdapter]: 已启用的消息平台适配器列表
