@@ -19,6 +19,9 @@
         ],
         "xai": [
             "xai-1234567890"
+        ],
+        "zhipuai": [
+            "xxxxxxx"
         ]
     },
     "requester": {
@@ -56,6 +59,11 @@
         },
         "xai-chat-completions": {
             "base-url": "https://api.x.ai/v1",
+            "args": {},
+            "timeout": 120
+        },
+        "zhipuai-chat-completions": {
+            "base-url": "https://open.bigmodel.cn/api/paas/v4",
             "args": {},
             "timeout": 120
         }
