@@ -77,3 +77,29 @@
 - WebUI Demo: https://demo.langbot.dev/
     - 登录信息：邮箱：`demo@langbot.app` 密码：`langbot123456`
     - 注意：仅展示webui效果，公开环境，请不要在其中填入您的任何敏感信息。
+
+## 🔌 组件兼容性
+
+### 消息平台
+
+| 平台 | 支持 | 备注 |
+| --- | --- | --- |
+| OneBot v11 | ✅ | QQ 个人号私聊、群聊 |
+| QQ 官方 API | ✅ | QQ 频道机器人，支持频道、私聊、群聊 |
+| 企业微信 | 🚧 |  |
+| 钉钉 | 🚧 |  |
+
+🚧: 正在开发中
+
+### 大模型
+
+| 模型 | 支持 | 备注 |
+| --- | --- | --- |
+| OpenAI | ✅ | 可接入任何 OpenAI 接口格式模型 |
+| DeepSeek | ✅ |  |
+| MoonShot | ✅ |  |
+| Anthropic | ✅ |  |
+| xAI | ✅ |  |
+| Dify | ✅ | LLMOps 平台 |
+| Ollama | ✅ | 本地大模型管理平台 |
+| GiteeAI | ✅ | 大模型接口聚合平台 |
