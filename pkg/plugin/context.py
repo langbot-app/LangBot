@@ -9,6 +9,7 @@ from . import events
 from ..provider.tools import entities as tools_entities
 from ..core import app
 from ..platform.types import message as platform_message
+from ..platform import adapter as platform_adapter
 
 
 def register(
@@ -112,6 +113,37 @@ class APIHost:
 
     async def initialize(self):
         pass
+
+    # ========== 插件可调用的 API（主程序API） ==========
+
+    def get_platform_adapters(self) -> list[platform_adapter.MessageSourceAdapter]:
+        """获取所有消息平台适配器
+        
+        Returns:
+            list[platform.adapter.MessageSourceAdapter]: 已启用的消息平台适配器列表
+        """
+        return self.ap.platform_mgr.adapters
+    
+    async def send_active_message(
+        self,
+        adapter: platform_adapter.MessageSourceAdapter,
+        target_type: str,
+        target_id: str,
+        message: platform_message.MessageChain,
+    ):
+        """发送主动消息
+        
+        Args:
+            adapter (platform.adapter.MessageSourceAdapter): 消息平台适配器对象，调用 host.get_platform_adapters() 获取并取用其中某个
+            target_type (str): 目标类型，`person`或`group`
+            target_id (str): 目标ID
+            message (platform.types.MessageChain): 消息链
+        """
+        await adapter.send_message(
+            target_type=target_type,
+            target_id=target_id,
+            message=message,
+        )
 
     def require_ver(
         self,
