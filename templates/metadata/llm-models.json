@@ -147,6 +147,65 @@
             "name": "grok-beta",
             "requester": "xai-chat-completions",
             "token_mgr": "xai"
+        },
+        {
+            "name": "glm-4-plus",
+            "requester": "zhipuai-chat-completions",
+            "token_mgr": "zhipuai"
+        },
+        {
+            "name": "glm-4-0520",
+            "requester": "zhipuai-chat-completions",
+            "token_mgr": "zhipuai"
+        },
+        {
+            "name": "glm-4-air",
+            "requester": "zhipuai-chat-completions",
+            "token_mgr": "zhipuai"
+        },
+        {
+            "name": "glm-4-airx",
+            "requester": "zhipuai-chat-completions",
+            "token_mgr": "zhipuai"
+        },
+        {
+            "name": "glm-4-long",
+            "requester": "zhipuai-chat-completions",
+            "token_mgr": "zhipuai"
+        },
+        {
+            "name": "glm-4-flashx",
+            "requester": "zhipuai-chat-completions",
+            "token_mgr": "zhipuai"
+        },
+        {
+            "name": "glm-4-flash",
+            "requester": "zhipuai-chat-completions",
+            "token_mgr": "zhipuai"
+        },
+        {
+            "name": "glm-4v-plus",
+            "requester": "zhipuai-chat-completions",
+            "token_mgr": "zhipuai",
+            "vision_supported": true
+        },
+        {
+            "name": "glm-4v",
+            "requester": "zhipuai-chat-completions",
+            "token_mgr": "zhipuai",
+            "vision_supported": true
+        },
+        {
+            "name": "glm-4v-flash",
+            "requester": "zhipuai-chat-completions",
+            "token_mgr": "zhipuai",
+            "vision_supported": true
+        },
+        {
+            "name": "glm-zero-preview",
+            "requester": "zhipuai-chat-completions",
+            "token_mgr": "zhipuai",
+            "vision_supported": true
         }
     ]
 }
