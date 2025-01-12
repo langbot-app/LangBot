@@ -24,6 +24,7 @@ aiofiles
 aioshutil
 argon2-cffi
 pyjwt
+pycryptodome
 
 # indirect
 taskgroup==0.0.0a4

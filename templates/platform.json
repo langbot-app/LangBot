@@ -24,6 +24,17 @@
                 "public_guild_messages",
                 "direct_message"
             ]
+        },
+        {
+            "adapter":"wecom",
+            "enable":false,
+            "host":"0.0.0.0",
+            "port":5001,
+            "corpid":"",
+            "secret":"",
+            "token":"",
+            "EncodingAESKey":"",
+            "contacts_secret":""
         }
     ],
     "track-function-calls": true,

@@ -37,3 +37,6 @@ res/instance_id.json
 /data
 botpy.log*
 /poc
+/libs/wecom_api/test.py
+/venv
+

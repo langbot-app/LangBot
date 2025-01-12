@@ -31,7 +31,7 @@ class ReteLimitAlgo(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    async def require_access(self, launcher_type: str, launcher_id: int) -> bool:
+    async def require_access(self, launcher_type: str, launcher_id: typing.Union[int, str]) -> bool:
         """进入处理流程
 
         这个方法对等待是友好的，意味着算法可以实现在这里等待一段时间以控制速率。
@@ -46,7 +46,7 @@ class ReteLimitAlgo(metaclass=abc.ABCMeta):
         raise NotImplementedError
     
     @abc.abstractmethod
-    async def release_access(self, launcher_type: str, launcher_id: int):
+    async def release_access(self, launcher_type: str, launcher_id: typing.Union[int, str]):
         """退出处理流程
 
         Args:
