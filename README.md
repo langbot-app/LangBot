@@ -1,6 +1,8 @@
 
 <p align="center">
+<a href="https://langbot.app">
 <img src="https://docs.langbot.app/social.png" alt="LangBot"/>
+</a>
 
 <div align="center">
 
