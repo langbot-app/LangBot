@@ -7,6 +7,31 @@ import ssl
 import aiohttp
 import PIL.Image
 
+async def get_wecom_image_base64(pic_url: str) -> tuple[str, str]:
+    """
+    下载企业微信图片并转换为 base64
+    :param pic_url: 企业微信图片URL
+    :return: (base64_str, image_format)
+    """
+    async with aiohttp.ClientSession() as session:
+        async with session.get(pic_url) as response:
+            if response.status != 200:
+                raise Exception(f"Failed to download image: {response.status}")
+            
+            # 读取图片数据
+            image_data = await response.read()
+            
+            # 获取图片格式
+            content_type = response.headers.get('Content-Type', '')
+            image_format = content_type.split('/')[-1]  # 例如 'image/jpeg' -> 'jpeg'
+            
+            # 转换为 base64
+            import base64
+            image_base64 = base64.b64encode(image_data).decode('utf-8')
+            
+            return image_base64, image_format
+
+
 
 def get_qq_image_downloadable_url(image_url: str) -> tuple[str, dict]:
     """获取QQ图片的下载链接"""

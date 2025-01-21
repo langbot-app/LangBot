@@ -35,6 +35,13 @@ class WecomEvent(dict):
             str: 事件类型。
         """
         return self.get("MsgType", "")
+    
+    @property
+    def picurl(self) -> str:
+        """
+        图片链接
+        """
+        return self.get("PicUrl")
 
     @property
     def detail_type(self) -> str:
