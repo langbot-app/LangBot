@@ -45,10 +45,10 @@ class Query(pydantic.BaseModel):
     launcher_type: LauncherTypes
     """会话类型，platform处理阶段设置"""
 
-    launcher_id: int
+    launcher_id: typing.Union[int, str]
     """会话ID，platform处理阶段设置"""
 
-    sender_id: int
+    sender_id: typing.Union[int, str]
     """发送者ID，platform处理阶段设置"""
 
     message_event: platform_events.MessageEvent
@@ -114,9 +114,9 @@ class Session(pydantic.BaseModel):
     """会话，一个 Session 对应一个 {launcher_type.value}_{launcher_id}"""
     launcher_type: LauncherTypes
 
-    launcher_id: int
+    launcher_id: typing.Union[int, str]
 
-    sender_id: typing.Optional[int] = 0
+    sender_id: typing.Optional[typing.Union[int, str]] = 0
 
     use_prompt_name: typing.Optional[str] = 'default'
 

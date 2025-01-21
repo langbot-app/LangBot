@@ -485,11 +485,11 @@ class Quote(MessageComponent):
     """消息组件类型。"""
     id: typing.Optional[int] = None
     """被引用回复的原消息的 message_id。"""
-    group_id: typing.Optional[int] = None
+    group_id: typing.Optional[typing.Union[int, str]] = None
     """被引用回复的原消息所接收的群号，当为好友消息时为0。"""
-    sender_id: typing.Optional[int] = None
+    sender_id: typing.Optional[typing.Union[int, str]] = None
     """被引用回复的原消息的发送者的QQ号。"""
-    target_id: typing.Optional[int] = None
+    target_id: typing.Optional[typing.Union[int, str]] = None
     """被引用回复的原消息的接收者者的QQ号（或群号）。"""
     origin: MessageChain
     """被引用回复的原消息的消息链对象。"""
@@ -749,7 +749,7 @@ class Voice(MessageComponent):
 
 class ForwardMessageNode(pydantic.BaseModel):
     """合并转发中的一条消息。"""
-    sender_id: typing.Optional[int] = None
+    sender_id: typing.Optional[typing.Union[int, str]] = None
     """发送人QQ号。"""
     sender_name: typing.Optional[str] = None
     """显示名称。"""

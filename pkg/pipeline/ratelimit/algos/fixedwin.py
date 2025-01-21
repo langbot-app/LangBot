@@ -1,6 +1,7 @@
 from __future__ import annotations
 import asyncio
 import time
+import typing
 from .. import algo
 
 # 固定窗口算法
@@ -29,7 +30,7 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
         self.containers_lock = asyncio.Lock()
         self.containers = {}
 
-    async def require_access(self, launcher_type: str, launcher_id: int) -> bool:
+    async def require_access(self, launcher_type: str, launcher_id: typing.Union[int, str]) -> bool:
         # 加锁，找容器
         container: SessionContainer = None
 
@@ -83,5 +84,5 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
             # 返回True
             return True
         
-    async def release_access(self, launcher_type: str, launcher_id: int):
+    async def release_access(self, launcher_type: str, launcher_id: typing.Union[int, str]):
         pass

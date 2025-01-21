@@ -25,7 +25,7 @@ class Entity(pydantic.BaseModel):
 
 class Friend(Entity):
     """好友。"""
-    id: int
+    id: typing.Union[int, str]
     """QQ 号。"""
     nickname: typing.Optional[str]
     """昵称。"""
@@ -52,7 +52,7 @@ class Permission(str, Enum):
 
 class Group(Entity):
     """群。"""
-    id: int
+    id: typing.Union[int, str]
     """群号。"""
     name: str
     """群名称。"""
@@ -67,7 +67,7 @@ class Group(Entity):
 
 class GroupMember(Entity):
     """群成员。"""
-    id: int
+    id: typing.Union[int, str]
     """QQ 号。"""
     member_name: str
     """群成员名称。"""
@@ -92,7 +92,7 @@ class GroupMember(Entity):
 
 class Client(Entity):
     """来自其他客户端的用户。"""
-    id: int
+    id: typing.Union[int, str]
     """识别 id。"""
     platform: str
     """来源平台。"""
@@ -105,7 +105,7 @@ class Client(Entity):
 
 class Subject(pydantic.BaseModel):
     """另一种实体类型表示。"""
-    id: int
+    id: typing.Union[int, str]
     """QQ 号或群号。"""
     kind: typing.Literal['Friend', 'Group', 'Stranger']
     """类型。"""

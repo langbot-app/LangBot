@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-
+import typing
 
 from ..core import entities
 from ..platform import adapter as msadapter
@@ -29,8 +29,8 @@ class QueryPool:
     async def add_query(
         self,
         launcher_type: entities.LauncherTypes,
-        launcher_id: int,
-        sender_id: int,
+        launcher_id: typing.Union[int, str],
+        sender_id: typing.Union[int, str],
         message_event: platform_events.MessageEvent,
         message_chain: platform_message.MessageChain,
         adapter: msadapter.MessageSourceAdapter

@@ -52,7 +52,7 @@ class MessageSourceAdapter(metaclass=abc.ABCMeta):
         self.config = config
         self.ap = ap
 
-    async def send_message(
+    async def send_message(  
         self,
         target_type: str,
         target_id: str,
