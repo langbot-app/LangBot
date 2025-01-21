@@ -2,7 +2,6 @@
 .idea/
 __pycache__/
 database.db
-qchatgpt.log
 langbot.log
 /banlist.py
 /plugins/
@@ -17,8 +16,7 @@ scenario/
 !scenario/default-template.json
 override.json
 cookies.json
-res/announcement_saved
-res/announcement_saved.json
+data/labels/announcement_saved.json
 cmdpriv.json
 tips.py
 .venv
@@ -32,7 +30,7 @@ claude.json
 bard.json
 /*yaml
 !/docker-compose.yaml
-res/instance_id.json
+data/labels/instance_id.json
 .DS_Store
 /data
 botpy.log*

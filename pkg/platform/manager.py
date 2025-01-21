@@ -50,17 +50,6 @@ class PlatformManager:
                 adapter=adapter
             )
 
-        async def on_stranger_message(event: platform_events.StrangerMessage, adapter: msadapter.MessageSourceAdapter):
-            
-            await self.ap.query_pool.add_query(
-                launcher_type=core_entities.LauncherTypes.PERSON,
-                launcher_id=event.sender.id,
-                sender_id=event.sender.id,
-                message_event=event,
-                message_chain=event.message_chain,
-                adapter=adapter
-            )
-
         async def on_group_message(event: platform_events.GroupMessage, adapter: msadapter.MessageSourceAdapter):
 
             await self.ap.query_pool.add_query(
@@ -95,12 +84,6 @@ class PlatformManager:
                             self.ap
                         )
                         self.adapters.append(adapter_inst)
-
-                        if adapter_name == 'yiri-mirai':
-                            adapter_inst.register_listener(
-                                platform_events.StrangerMessage,
-                                on_stranger_message
-                            )
 
                         adapter_inst.register_listener(
                             platform_events.FriendMessage,

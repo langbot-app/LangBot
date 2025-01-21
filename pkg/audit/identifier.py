@@ -13,14 +13,14 @@ identifier = {
     'instance_create_ts': 0,
 }
 
-HOST_ID_FILE = os.path.expanduser('~/.qchatgpt/host_id.json')
-INSTANCE_ID_FILE = 'res/instance_id.json'
+HOST_ID_FILE = os.path.expanduser('~/.langbot/host_id.json')
+INSTANCE_ID_FILE = 'data/labels/instance_id.json'
 
 def init():
     global identifier
 
-    if not os.path.exists(os.path.expanduser('~/.qchatgpt')):
-        os.mkdir(os.path.expanduser('~/.qchatgpt'))
+    if not os.path.exists(os.path.expanduser('~/.langbot')):
+        os.mkdir(os.path.expanduser('~/.langbot'))
 
     if not os.path.exists(HOST_ID_FILE):
         new_host_id = 'host_'+str(uuid.uuid4())

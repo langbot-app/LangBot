@@ -49,11 +49,9 @@ async def main_entry(loop: asyncio.AbstractEventLoop):
     generated_files = await files.generate_files()
 
     if generated_files:
-        print("以下文件不存在，已自动生成，请按需修改配置文件后重启：")
+        print("以下文件不存在，已自动生成：")
         for file in generated_files:
             print("-", file)
-
-        sys.exit(0)
 
     from pkg.core import boot
     await boot.main(loop)

@@ -1,11 +1,8 @@
-> [!IMPORTANT]
-> 我们被人在 X.com 和 pump.fun 上冒充了，以下两个账号利用本项目和作者信息在 X.com 上发布数字货币营销信息，请勿相信！我们已向 X 官方举报！我们从未以 LangBot 名义创建任何社交媒体账号或者数字货币。  
-> We have been impersonated on X.com and pump.fun . The following two accounts are using this project and author information to post digital currency marketing information on X.com. Please do not believe that! We have reported to X official! We have never created any social media account or digital currency under the name LangBot.  
-> 1. https://x.com/RockChinQ
-> 2. https://x.com/LangBotAI
 
 <p align="center">
+<a href="https://langbot.app">
 <img src="https://docs.langbot.app/social.png" alt="LangBot"/>
+</a>
 
 <div align="center">
 
@@ -82,3 +79,30 @@
 - WebUI Demo: https://demo.langbot.dev/
     - 登录信息：邮箱：`demo@langbot.app` 密码：`langbot123456`
     - 注意：仅展示webui效果，公开环境，请不要在其中填入您的任何敏感信息。
+
+## 🔌 组件兼容性
+
+### 消息平台
+
+| 平台 | 状态 | 备注 |
+| --- | --- | --- |
+| QQ 个人号 | ✅ | QQ 个人号私聊、群聊 |
+| QQ 官方机器人 | ✅ | QQ 频道机器人，支持频道、私聊、群聊 |
+| 企业微信 | 🚧 |  |
+| 钉钉 | 🚧 |  |
+
+🚧: 正在开发中
+
+### 大模型
+
+| 模型 | 状态 | 备注 |
+| --- | --- | --- |
+| [OpenAI](https://platform.openai.com/) | ✅ | 可接入任何 OpenAI 接口格式模型 |
+| [DeepSeek](https://www.deepseek.com/) | ✅ |  |
+| [Moonshot](https://www.moonshot.cn/) | ✅ |  |
+| [Anthropic](https://www.anthropic.com/) | ✅ |  |
+| [xAI](https://x.ai/) | ✅ |  |
+| [智谱AI](https://open.bigmodel.cn/) | ✅ |  |
+| [Dify](https://dify.ai) | ✅ | LLMOps 平台 |
+| [Ollama](https://ollama.com/) | ✅ | 本地大模型管理平台 |
+| [GiteeAI](https://ai.gitee.com/) | ✅ | 大模型接口聚合平台 |

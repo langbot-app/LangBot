@@ -9,6 +9,7 @@ from . import events
 from ..provider.tools import entities as tools_entities
 from ..core import app
 from ..platform.types import message as platform_message
+from ..platform import adapter as platform_adapter
 
 
 def register(
@@ -113,6 +114,37 @@ class APIHost:
     async def initialize(self):
         pass
 
+    # ========== 插件可调用的 API（主程序API） ==========
+
+    def get_platform_adapters(self) -> list[platform_adapter.MessageSourceAdapter]:
+        """获取已启用的消息平台适配器列表
+        
+        Returns:
+            list[platform.adapter.MessageSourceAdapter]: 已启用的消息平台适配器列表
+        """
+        return self.ap.platform_mgr.adapters
+    
+    async def send_active_message(
+        self,
+        adapter: platform_adapter.MessageSourceAdapter,
+        target_type: str,
+        target_id: str,
+        message: platform_message.MessageChain,
+    ):
+        """发送主动消息
+        
+        Args:
+            adapter (platform.adapter.MessageSourceAdapter): 消息平台适配器对象，调用 host.get_platform_adapters() 获取并取用其中某个
+            target_type (str): 目标类型，`person`或`group`
+            target_id (str): 目标ID
+            message (platform.types.MessageChain): 消息链
+        """
+        await adapter.send_message(
+            target_type=target_type,
+            target_id=target_id,
+            message=message,
+        )
+
     def require_ver(
         self,
         ge: str,
@@ -127,16 +159,16 @@ class APIHost:
         Returns:
             bool: 是否满足要求, False时为无法获取版本号，True时为满足要求，报错为不满足要求
         """
-        qchatgpt_version = ""
+        langbot_version = ""
 
         try:
-            qchatgpt_version = self.ap.ver_mgr.get_current_version()  # 从updater模块获取版本号
+            langbot_version = self.ap.ver_mgr.get_current_version()  # 从updater模块获取版本号
         except:
             return False
 
-        if self.ap.ver_mgr.compare_version_str(qchatgpt_version, ge) < 0 or \
-            (self.ap.ver_mgr.compare_version_str(qchatgpt_version, le) > 0):
-            raise Exception("LangBot 版本不满足要求，某些功能（可能是由插件提供的）无法正常使用。（要求版本：{}-{}，但当前版本：{}）".format(ge, le, qchatgpt_version))
+        if self.ap.ver_mgr.compare_version_str(langbot_version, ge) < 0 or \
+            (self.ap.ver_mgr.compare_version_str(langbot_version, le) > 0):
+            raise Exception("LangBot 版本不满足要求，某些功能（可能是由插件提供的）无法正常使用。（要求版本：{}-{}，但当前版本：{}）".format(ge, le, langbot_version))
 
         return True
 

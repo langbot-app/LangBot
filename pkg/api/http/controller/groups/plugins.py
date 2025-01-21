@@ -13,7 +13,7 @@ from .. import group
 class PluginsRouterGroup(group.RouterGroup):
 
     async def initialize(self) -> None:
-        @self.route('', methods=['GET'])
+        @self.route('', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
             plugins = self.ap.plugin_mgr.plugins()
 
@@ -23,14 +23,14 @@ class PluginsRouterGroup(group.RouterGroup):
                 'plugins': plugins_data
             })
         
-        @self.route('/<author>/<plugin_name>/toggle', methods=['PUT'])
+        @self.route('/<author>/<plugin_name>/toggle', methods=['PUT'], auth_type=group.AuthType.USER_TOKEN)
         async def _(author: str, plugin_name: str) -> str:
             data = await quart.request.json
             target_enabled = data.get('target_enabled')
             await self.ap.plugin_mgr.update_plugin_switch(plugin_name, target_enabled)
             return self.success()
         
-        @self.route('/<author>/<plugin_name>/update', methods=['POST'])
+        @self.route('/<author>/<plugin_name>/update', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _(author: str, plugin_name: str) -> str:
             ctx = taskmgr.TaskContext.new()
             wrapper = self.ap.task_mgr.create_user_task(
@@ -44,7 +44,7 @@ class PluginsRouterGroup(group.RouterGroup):
                 'task_id': wrapper.id
             })
         
-        @self.route('/<author>/<plugin_name>', methods=['DELETE'])
+        @self.route('/<author>/<plugin_name>', methods=['DELETE'], auth_type=group.AuthType.USER_TOKEN)
         async def _(author: str, plugin_name: str) -> str:
             ctx = taskmgr.TaskContext.new()
             wrapper = self.ap.task_mgr.create_user_task(
@@ -59,13 +59,13 @@ class PluginsRouterGroup(group.RouterGroup):
                 'task_id': wrapper.id
             })
 
-        @self.route('/reorder', methods=['PUT'])
+        @self.route('/reorder', methods=['PUT'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
             data = await quart.request.json
             await self.ap.plugin_mgr.reorder_plugins(data.get('plugins'))
             return self.success()
         
-        @self.route('/install/github', methods=['POST'])
+        @self.route('/install/github', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
             data = await quart.request.json
             

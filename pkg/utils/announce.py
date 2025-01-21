@@ -62,11 +62,11 @@ class AnnouncementManager:
     async def fetch_saved(
         self
     ) -> list[Announcement]:
-        if not os.path.exists("res/announcement_saved.json"):
-            with open("res/announcement_saved.json", "w", encoding="utf-8") as f:
+        if not os.path.exists("data/labels/announcement_saved.json"):
+            with open("data/labels/announcement_saved.json", "w", encoding="utf-8") as f:
                 f.write("[]")
 
-        with open("res/announcement_saved.json", "r", encoding="utf-8") as f:
+        with open("data/labels/announcement_saved.json", "r", encoding="utf-8") as f:
             content = f.read()
 
         if not content:
@@ -79,7 +79,7 @@ class AnnouncementManager:
         content: list[Announcement]
     ):
 
-        with open("res/announcement_saved.json", "w", encoding="utf-8") as f:
+        with open("data/labels/announcement_saved.json", "w", encoding="utf-8") as f:
             f.write(json.dumps([
                 item.to_dict() for item in content
             ], indent=4, ensure_ascii=False))

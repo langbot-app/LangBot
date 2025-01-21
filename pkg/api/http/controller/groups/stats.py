@@ -9,7 +9,7 @@ from .. import group
 class StatsRouterGroup(group.RouterGroup):
     
     async def initialize(self) -> None:
-        @self.route('/basic', methods=['GET'])
+        @self.route('/basic', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
 
             conv_count = 0
