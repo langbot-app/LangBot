@@ -39,7 +39,7 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
             base_url=self.requester_cfg['base-url'],
             timeout=self.requester_cfg['timeout'],
             http_client=httpx.AsyncClient(
-                proxies=self.ap.proxy_mgr.get_forward_proxies()
+                trust_env=True,
             )
         )
 

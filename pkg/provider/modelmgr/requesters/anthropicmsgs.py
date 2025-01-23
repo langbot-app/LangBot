@@ -30,7 +30,7 @@ class AnthropicMessages(requester.LLMAPIRequester):
             timeout=typing.cast(httpx.Timeout, self.ap.provider_cfg.data['requester']['anthropic-messages']['timeout']),
             limits=anthropic._constants.DEFAULT_CONNECTION_LIMITS,
             follow_redirects=True,
-            proxies=self.ap.proxy_mgr.get_forward_proxies()
+            trust_env=True,
         )
 
         self.client = anthropic.AsyncAnthropic(
