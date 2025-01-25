@@ -110,8 +110,17 @@ class WecomClient():
                 "enable_duplicate_check": 0,
                 "duplicate_check_interval": 1800
             }
-            response = await client.post(url,json=params)
-            data = response.json()
+            try:
+                response = await client.post(url,json=params)
+                data = response.json()
+            except Exception as e:
+                raise Exception("Failed to send image: "+str(e))
+
+            # 企业微信错误码40014和42001，代表accesstoken问题
+            if data['errcode'] == 40014 or data['errcode'] == 42001:
+                self.access_token = await self.get_access_token(self.secret)
+                return await self.send_image(user_id,agent_id,media_id)
+
             if data['errcode'] != 0:
                 raise Exception("Failed to send image: "+str(data))
             
@@ -136,7 +145,9 @@ class WecomClient():
             }
             response = await client.post(url,json=params)
             data = response.json()
-            
+            if data['errcode'] == 40014 or data['errcode'] == 42001:
+                self.access_token = await self.get_access_token(self.secret)
+                return await self.send_private_msg(user_id,agent_id,content)
             if data['errcode'] != 0:
                 raise Exception("Failed to send message: "+str(data))
 
@@ -286,11 +297,14 @@ class WecomClient():
         async with httpx.AsyncClient() as client:
             response = await client.post(url, headers=headers, content=body)
             data = response.json()
+            if data['errcode'] == 40014 or data['errcode'] == 42001:
+                self.access_token = await self.get_access_token(self.secret)
+                media_id = await self.upload_to_work(image)
             if data.get('errcode', 0) != 0:
                 raise Exception("failed to upload file")
 
-            return data.get('media_id')
-
+            media_id = data.get('media_id')
+            return media_id
 
     async def download_image_to_bytes(self,url:str) -> bytes:
         async with httpx.AsyncClient() as client:
