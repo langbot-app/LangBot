@@ -117,6 +117,7 @@ class WecomClient():
             except Exception as e:
                 raise Exception("Failed to send image: "+str(e))
 
+            # 企业微信错误码40014和42001，代表accesstoken问题
             if data['errcode'] == 40014 or data['errcode'] == 42001:
                 self.access_token = await self.get_access_token(self.secret)
                 return await self.send_image(user_id,agent_id,media_id)
