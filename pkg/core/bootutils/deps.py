@@ -1,5 +1,7 @@
 import pip
 
+# 检查依赖，防止用户未安装
+# 左边为引入名称，右边为依赖名称
 required_deps = {
     "requests": "requests",
     "openai": "openai",
@@ -23,6 +25,7 @@ required_deps = {
     "aioshutil": "aioshutil",
     "argon2": "argon2-cffi",
     "jwt": "pyjwt",
+    "Crypto": "pycryptodome"
 }
 
 
