@@ -117,6 +117,11 @@
             "token_mgr": "deepseek"
         },
         {
+            "name": "deepseek-reasoner",
+            "requester": "deepseek-chat-completions",
+            "token_mgr": "deepseek"
+        },
+        {
             "name": "grok-2-latest",
             "requester": "xai-chat-completions",
             "token_mgr": "xai"
