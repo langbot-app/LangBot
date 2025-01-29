@@ -121,6 +121,98 @@
                                 ]
                             }
                         }
+                    },
+                    {
+                        "title": "企业微信适配器",
+                        "description": "用于接入企业微信",
+                        "properties": {
+                            "adapter": {
+                                "type": "string",
+                                "const": "wecom"
+                            },
+                            "enable": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "是否启用此适配器",
+                                "layout": {
+                                    "comp": "switch",
+                                    "props": {
+                                        "color": "primary"
+                                    }
+                                }
+                            },
+                            "host": {
+                                "type": "string",
+                                "default": "0.0.0.0",
+                                "description": "监听的IP地址"
+                            },
+                            "port": {
+                                "type": "integer",
+                                "default": 2290,
+                                "description": "监听的端口"
+                            },
+                            "corpid": {
+                                "type": "string",
+                                "default": "",
+                                "description": "企业微信的corpid"
+                            },
+                            "secret": {
+                                "type": "string",
+                                "default": "",
+                                "description": "企业微信的secret"
+                            },
+                            "token": {
+                                "type": "string",
+                                "default": "",
+                                "description": "企业微信的token"
+                            },
+                            "EncodingAESKey": {
+                                "type": "string",
+                                "default": "",
+                                "description": "企业微信的EncodingAESKey"
+                            },
+                            "contacts_secret": {
+                                "type": "string",
+                                "default": "",
+                                "description": "企业微信的contacts_secret"
+                            }
+                        }
+                    },
+                    {
+                        "title": "飞书适配器",
+                        "description": "用于接入飞书",
+                        "properties": {
+                            "adapter": {
+                                "type": "string",
+                                "const": "lark"
+                            },
+                            "enable": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "是否启用此适配器",
+                                "layout": {
+                                    "comp": "switch",
+                                    "props": {
+                                        "color": "primary"
+                                    }
+                                }
+                            },
+                            "app_id": {
+                                "type": "string",
+                                "default": "",
+                                "description": "飞书的app_id"
+                            },
+                            "app_secret": {
+                                "type": "string",
+                                "default": "",
+                                "description": "飞书的app_secret"
+                            },
+                            "bot_name": {
+                                "type": "string",
+                                "default": "",
+                                "description": "飞书的bot_name"
+                            }
+                        }
                     }
                 ]
             }

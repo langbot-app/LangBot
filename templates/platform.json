@@ -35,6 +35,13 @@
             "token": "",
             "EncodingAESKey": "",
             "contacts_secret": ""
+        },
+        {
+            "adapter": "lark",
+            "enable": false,
+            "app_id": "cli_abcdefgh",
+            "app_secret": "XXXXXXXXXX",
+            "bot_name": "LangBot"
         }
     ],
     "track-function-calls": true,
