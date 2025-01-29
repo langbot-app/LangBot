@@ -25,7 +25,8 @@ required_deps = {
     "aioshutil": "aioshutil",
     "argon2": "argon2-cffi",
     "jwt": "pyjwt",
-    "Crypto": "pycryptodome"
+    "Crypto": "pycryptodome",
+    "lark_oapi": "lark-oapi"
 }
 
 

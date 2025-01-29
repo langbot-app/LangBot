@@ -33,7 +33,7 @@
 
 ## ✨ Features
 
-- 💬 大模型对话、Agent：支持多种大模型，适配群聊和私聊；具有多轮对话、工具调用、多模态能力，并深度适配 [Dify](https://dify.ai)。目前支持 QQ、QQ频道、企业微信，后续还将支持微信、WhatsApp、Discord等平台。
+- 💬 大模型对话、Agent：支持多种大模型，适配群聊和私聊；具有多轮对话、工具调用、多模态能力，并深度适配 [Dify](https://dify.ai)。目前支持 QQ、QQ频道、企业微信、飞书，后续还将支持微信、WhatsApp、Discord等平台。
 - 🛠️ 高稳定性、功能完备：原生支持访问控制、限速、敏感词过滤等机制；配置简单，支持多种部署方式。
 - 🧩 插件扩展、活跃社区：支持事件驱动、组件扩展等插件机制；丰富生态，目前已有数十个[插件](https://docs.langbot.app/plugin/plugin-intro.html)
 - 😻 [New] Web 管理面板：支持通过浏览器管理 LangBot 实例，具体支持功能，查看[文档](https://docs.langbot.app/webui/intro.html)
@@ -83,6 +83,7 @@
 | QQ 个人号 | ✅ | QQ 个人号私聊、群聊 |
 | QQ 官方机器人 | ✅ | QQ 频道机器人，支持频道、私聊、群聊 |
 | 企业微信 | ✅ |  |
+| 飞书 | ✅ |  |
 | 钉钉 | 🚧 |  |
 
 🚧: 正在开发中
@@ -100,3 +101,12 @@
 | [Dify](https://dify.ai) | ✅ | LLMOps 平台 |
 | [Ollama](https://ollama.com/) | ✅ | 本地大模型管理平台 |
 | [GiteeAI](https://ai.gitee.com/) | ✅ | 大模型接口聚合平台 |
+
+## 😘 社区贡献
+
+LangBot 离不开以下贡献者和社区内所有人的贡献，我们欢迎任何形式的贡献和反馈。
+
+
+<a href="https://github.com/RockChinQ/LangBot/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=RockChinQ/LangBot" />
+</a>

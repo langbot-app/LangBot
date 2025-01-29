@@ -460,7 +460,7 @@ class Source(MessageComponent):
     """源。包含消息的基本信息。"""
     type: str = "Source"
     """消息组件类型。"""
-    id: int
+    id: typing.Union[int, str]
     """消息的识别号，用于引用回复（Source 类型永远为 MessageChain 的第一个元素）。"""
     time: datetime
     """消息时间。"""
@@ -503,7 +503,7 @@ class At(MessageComponent):
     """At某人。"""
     type: str = "At"
     """消息组件类型。"""
-    target: int
+    target: typing.Union[int, str]
     """群员 QQ 号。"""
     display: typing.Optional[str] = None
     """At时显示的文字，发送消息时无效，自动使用群名片。"""

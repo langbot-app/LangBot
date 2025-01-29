@@ -25,6 +25,7 @@ aioshutil
 argon2-cffi
 pyjwt
 pycryptodome
+lark-oapi
 
 # indirect
 taskgroup==0.0.0a4
