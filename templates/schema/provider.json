@@ -172,7 +172,8 @@
                             "title": "API URL"
                         },
                         "args": {
-                            "type": "object"
+                            "type": "object",
+                            "default": {}
                         },
                         "timeout": {
                             "type": "number",
@@ -191,7 +192,8 @@
                             "title": "API URL"
                         },
                         "args": {
-                            "type": "object"
+                            "type": "object",
+                            "default": {}
                         },
                         "timeout": {
                             "type": "number",
@@ -210,7 +212,8 @@
                             "title": "API URL"
                         },
                         "args": {
-                            "type": "object"
+                            "type": "object",
+                            "default": {}
                         },
                         "timeout": {
                             "type": "number",
@@ -229,10 +232,12 @@
                             "title": "API URL"
                         },
                         "args": {
-                            "type": "object"
+                            "type": "object",
+                            "default": {}
                         },
                         "timeout": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 120
                         }
                     }
                 }
