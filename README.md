@@ -100,3 +100,12 @@
 | [Dify](https://dify.ai) | ✅ | LLMOps 平台 |
 | [Ollama](https://ollama.com/) | ✅ | 本地大模型管理平台 |
 | [GiteeAI](https://ai.gitee.com/) | ✅ | 大模型接口聚合平台 |
+
+## 😘 社区贡献
+
+LangBot 离不开以下贡献者和社区内所有人的贡献，我们欢迎任何形式的贡献和反馈。
+
+
+<a href="https://github.com/RockChinQ/LangBot/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=RockChinQ/LangBot" />
+</a>
