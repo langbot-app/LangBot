@@ -12,6 +12,8 @@ body:
         - Nakuru（go-cqhttp）
         - aiocqhttp（使用 OneBot 协议接入的）
         - qq-botpy（QQ官方API）
+        - lark（飞书）
+        - wecom（企业微信）
     validations:
       required: true
   - type: input

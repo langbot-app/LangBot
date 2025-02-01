@@ -99,8 +99,10 @@
 | [xAI](https://x.ai/) | ✅ |  |
 | [智谱AI](https://open.bigmodel.cn/) | ✅ |  |
 | [Dify](https://dify.ai) | ✅ | LLMOps 平台 |
-| [Ollama](https://ollama.com/) | ✅ | 本地大模型管理平台 |
+| [Ollama](https://ollama.com/) | ✅ | 本地大模型运行平台 |
+| [LMStudio](https://lmstudio.ai/) | ✅ | 本地大模型运行平台 |
 | [GiteeAI](https://ai.gitee.com/) | ✅ | 大模型接口聚合平台 |
+| [SiliconFlow](https://siliconflow.cn/) | ✅ | 大模型聚合平台 |
 
 ## 😘 社区贡献
 
