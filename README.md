@@ -103,6 +103,7 @@
 | [LMStudio](https://lmstudio.ai/) | ✅ | 本地大模型运行平台 |
 | [GiteeAI](https://ai.gitee.com/) | ✅ | 大模型接口聚合平台 |
 | [SiliconFlow](https://siliconflow.cn/) | ✅ | 大模型聚合平台 |
+| [阿里云百炼](https://bailian.console.aliyun.com/) | ✅ | 大模型聚合平台 |
 
 ## 😘 社区贡献
 
