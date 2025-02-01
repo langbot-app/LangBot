@@ -30,9 +30,9 @@ body:
   - type: textarea
     attributes:
       label: 复现步骤
-      description: 如何重现这个问题，越详细越好
+      description: 如何重现这个问题，越详细越好；请贴上所有相关的配置文件和元数据文件（注意隐去敏感信息）
     validations:
-      required: false
+      required: true
   - type: textarea
     attributes:
       label: 启用的插件
