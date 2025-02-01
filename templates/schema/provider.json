@@ -74,6 +74,14 @@
                         "type": "string"
                     },
                     "default": []
+                },
+                "siliconflow": {
+                    "type": "array",
+                    "title": "SiliconFlow API 密钥",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": []
                 }
             }
         },
@@ -244,6 +252,26 @@
                 "lmstudio-chat-completions": {
                     "type": "object",
                     "title": "LMStudio API 请求配置",
+                    "description": "仅可编辑 URL 和 超时时间，额外请求参数不支持可视化编辑，请到编辑器编辑",
+                    "properties": {
+                        "base-url": {
+                            "type": "string",
+                            "title": "API URL"
+                        },
+                        "args": {
+                            "type": "object",
+                            "default": {}
+                        },
+                        "timeout": {
+                            "type": "number",
+                            "title": "API 请求超时时间",
+                            "default": 120
+                        }
+                    }
+                },
+                "siliconflow-chat-completions": {
+                    "type": "object",
+                    "title": "SiliconFlow API 请求配置",
                     "description": "仅可编辑 URL 和 超时时间，额外请求参数不支持可视化编辑，请到编辑器编辑",
                     "properties": {
                         "base-url": {

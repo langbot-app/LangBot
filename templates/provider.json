@@ -22,6 +22,9 @@
         ],
         "zhipuai": [
             "xxxxxxx"
+        ],
+        "siliconflow": [
+            "xxxxxxx"
         ]
     },
     "requester": {
@@ -69,6 +72,11 @@
         },
         "lmstudio-chat-completions": {
             "base-url": "http://127.0.0.1:1234/v1",
+            "args": {},
+            "timeout": 120
+        },
+        "siliconflow-chat-completions": {
+            "base-url": "https://api.siliconflow.cn/v1",
             "args": {},
             "timeout": 120
         }
