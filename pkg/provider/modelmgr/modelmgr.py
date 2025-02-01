@@ -6,7 +6,7 @@ from . import entities, requester
 from ...core import app
 
 from . import token
-from .requesters import chatcmpl, anthropicmsgs, moonshotchatcmpl, deepseekchatcmpl, ollamachat, giteeaichatcmpl, xaichatcmpl, zhipuaichatcmpl
+from .requesters import chatcmpl, anthropicmsgs, moonshotchatcmpl, deepseekchatcmpl, ollamachat, giteeaichatcmpl, xaichatcmpl, zhipuaichatcmpl, lmstudiochatcmpl
 
 FETCH_MODEL_LIST_URL = "https://api.qchatgpt.rockchin.top/api/v2/fetch/model_list"
 
@@ -109,4 +109,4 @@ class ModelManager:
                 self.model_list.append(model_info)
             
             except Exception as e:
-                self.ap.logger.error(f"初始化模型 {model['name']} 失败: {e} ,请检查配置文件")
+                self.ap.logger.error(f"初始化模型 {model['name']} 失败: {type(e)} {e} ,请检查配置文件")

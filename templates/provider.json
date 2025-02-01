@@ -66,6 +66,11 @@
             "base-url": "https://open.bigmodel.cn/api/paas/v4",
             "args": {},
             "timeout": 120
+        },
+        "lmstudio-chat-completions": {
+            "base-url": "http://127.0.0.1:1234/v1",
+            "args": {},
+            "timeout": 120
         }
     },
     "model": "gpt-4o",
