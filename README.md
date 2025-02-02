@@ -15,7 +15,6 @@
 <a href="https://docs.langbot.app/plugin/plugin-intro.html">插件介绍</a> ｜
 <a href="https://github.com/RockChinQ/LangBot/issues/new?assignees=&labels=%E7%8B%AC%E7%AB%8B%E6%8F%92%E4%BB%B6&projects=&template=submit-plugin.yml&title=%5BPlugin%5D%3A+%E8%AF%B7%E6%B1%82%E7%99%BB%E8%AE%B0%E6%96%B0%E6%8F%92%E4%BB%B6">提交插件</a>
 
-
 <div align="center">
 😎高稳定、🧩支持扩展、🦄多模态 - 大模型原生即时通信机器人平台🤖  
 </div>
