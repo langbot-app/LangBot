@@ -213,6 +213,37 @@
                                 "description": "飞书的bot_name"
                             }
                         }
+                    },
+                    {
+                        "title": "Discord 适配器",
+                        "description": "用于接入 Discord",
+                        "properties": {
+                            "adapter": {
+                                "type": "string",
+                                "const": "discord"
+                            },
+                            "enable": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "是否启用此适配器",
+                                "layout": {
+                                    "comp": "switch",
+                                    "props": {
+                                        "color": "primary"
+                                    }
+                                }
+                            },
+                            "client_id": {
+                                "type": "string",
+                                "default": "",
+                                "description": "Discord 的 client_id"
+                            },
+                            "token": {
+                                "type": "string",
+                                "default": "",
+                                "description": "Discord 的 token"
+                            }
+                        }
                     }
                 ]
             }

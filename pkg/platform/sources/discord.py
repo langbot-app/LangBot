@@ -10,6 +10,7 @@ import re
 import base64
 import uuid
 import json
+import os
 import datetime
 
 import aiohttp
@@ -201,7 +202,12 @@ class DiscordMessageSourceAdapter(adapter.MessageSourceAdapter):
         intents = discord.Intents.default()
         intents.message_content = True
 
-        self.bot = MyClient(intents=intents, proxy=self.config["proxy"])
+        args = {}
+
+        if os.getenv("http_proxy"):
+            args["proxy"] = os.getenv("http_proxy")
+
+        self.bot = MyClient(intents=intents, **args)
         
     async def send_message(
         self, target_type: str, target_id: str, message: platform_message.MessageChain
