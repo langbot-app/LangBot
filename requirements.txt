@@ -26,6 +26,7 @@ argon2-cffi
 pyjwt
 pycryptodome
 lark-oapi
+discord.py
 
 # indirect
 taskgroup==0.0.0a4
