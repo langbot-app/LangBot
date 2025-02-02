@@ -45,7 +45,7 @@
         },
         {
             "adapter": "discord",
-            "enable": true,
+            "enable": false,
             "client_id": "1234567890",
             "token": "XXXXXXXXXX"
         }
