@@ -26,7 +26,8 @@ required_deps = {
     "argon2": "argon2-cffi",
     "jwt": "pyjwt",
     "Crypto": "pycryptodome",
-    "lark_oapi": "lark-oapi"
+    "lark_oapi": "lark-oapi",
+    "discord": "discord.py"
 }
 
 

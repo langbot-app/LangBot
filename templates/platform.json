@@ -42,6 +42,12 @@
             "app_id": "cli_abcdefgh",
             "app_secret": "XXXXXXXXXX",
             "bot_name": "LangBot"
+        },
+        {
+            "adapter": "discord",
+            "enable": true,
+            "client_id": "1234567890",
+            "token": "XXXXXXXXXX"
         }
     ],
     "track-function-calls": true,
