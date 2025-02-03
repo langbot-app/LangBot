@@ -2,6 +2,10 @@
     <PageTitle title="插件" @refresh="refresh" />
     <v-card id="plugins-toolbar">
         <div id="view-btns">
+            <v-btn-toggle id="plugins-view-toggle" color="primary" v-model="proxy.$store.state.pluginsView" mandatory density="compact">
+                <v-btn class="plugins-view-toggle-btn" value="installed" density="compact">已安装</v-btn>
+                <v-btn class="plugins-view-toggle-btn" value="market" density="compact">插件市场</v-btn>
+            </v-btn-toggle>
         </div>
         <div id="operation-btns">
             <v-tooltip text="设置插件优先级" location="top">
@@ -78,10 +82,13 @@
             </v-btn>
         </div>
     </v-card>
-    <div class="plugins-container">
+    <div class="plugins-container" v-if="proxy.$store.state.pluginsView == 'installed'">
         <v-alert id="no-plugins-alert" v-if="plugins.length == 0" color="warning" icon="$warning" title="暂无插件" text="暂无已安装的插件，请安装插件" density="compact" style="margin-inline: 1rem;"></v-alert>
         <PluginCard class="plugin-card" v-if="plugins.length > 0" v-for="plugin in plugins" :key="plugin.name" :plugin="plugin"
             @toggle="togglePlugin" @update="updatePlugin" @remove="removePlugin" />
+    </div>
+    <div class="plugins-container" v-if="proxy.$store.state.pluginsView == 'market'">
+        <Marketplace @installPlugin="installMarketplacePlugin" />
     </div>
 </template>
 
@@ -89,6 +96,7 @@
 
 import PageTitle from '@/components/PageTitle.vue'
 import PluginCard from '@/components/PluginCard.vue'
+import Marketplace from '@/components/Marketplace.vue'
 
 import draggable from 'vuedraggable'
 
@@ -152,6 +160,12 @@ const removePlugin = (plugin) => {
     }).catch(error => {
         snackbar.error(error)
     })
+}
+
+const installMarketplacePlugin = (repository) => {
+
+    installDialogSource.value = 'https://'+repository
+    isInstallDialogActive.value = true
 }
 
 const installPlugin = () => {
@@ -222,6 +236,11 @@ const installDialogSource = ref('')
     align-items: center;
     gap: 1rem;
     margin-left: 1rem;
+}
+
+#plugins-view-toggle {
+    margin: 0.5rem;
+    box-shadow: 0 0 0 2px #dddddd;
 }
 
 #operation-btns {
