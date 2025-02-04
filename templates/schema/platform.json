@@ -244,6 +244,52 @@
                                 "description": "Discord 的 token"
                             }
                         }
+                    },
+                    {
+                        "title": "gewechat 适配器",
+                        "description": "用于接入个人微信",
+                        "properties": {
+                            "adapter": {
+                                "type": "string",
+                                "const": "gewechat"
+                            },
+                            "enable": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "是否启用此适配器",
+                                "layout": {
+                                    "comp": "switch",
+                                    "props": {
+                                        "color": "primary"
+                                    }
+                                }
+                            },
+                            "gewechat_url": {
+                                "type": "string",
+                                "default": "",
+                                "description": "gewechat 的 url"
+                            },
+                            "port": {
+                                "type": "integer",
+                                "default": 2286,
+                                "description": "gewechat 的端口"
+                            },
+                            "callback_url": {
+                                "type": "string",
+                                "default": "",
+                                "description": "回调地址（LangBot主机相对于gewechat服务器的地址）"
+                            },
+                            "app_id": {
+                                "type": "string",
+                                "default": "",
+                                "description": "gewechat 的 app_id"
+                            },
+                            "token": {
+                                "type": "string",
+                                "default": "",
+                                "description": "gewechat 的 token"
+                            }
+                        }
                     }
                 ]
             }

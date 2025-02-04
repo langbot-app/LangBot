@@ -27,6 +27,7 @@ pyjwt
 pycryptodome
 lark-oapi
 discord.py
+gewechat-client
 
 # indirect
 taskgroup==0.0.0a4
