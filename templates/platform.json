@@ -26,6 +26,14 @@
             ]
         },
         {
+            "adapter": "qqofficial",
+            "enable": false,
+            "appid": "1234567890",
+            "secret": "xxxxxxx",
+            "port": 2284,
+            "token": "abcdefg"
+        },
+        {
             "adapter": "wecom",
             "enable": false,
             "host": "0.0.0.0",

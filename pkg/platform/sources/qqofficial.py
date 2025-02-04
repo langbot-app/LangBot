@@ -239,7 +239,7 @@ class QQOfficialAdapter(adapter.MessageSourceAdapter):
                 await asyncio.sleep(1)
 
         await self.bot.run_task(
-            host=self.config["host"],
+            host='0.0.0.0',
             port=self.config["port"],
             shutdown_trigger=shutdown_trigger_placeholder,
         )   
