@@ -28,5 +28,7 @@ pycryptodome
 lark-oapi
 discord.py
 cryptography
+gewechat-client
+
 # indirect
 taskgroup==0.0.0a4

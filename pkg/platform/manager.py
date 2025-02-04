@@ -39,7 +39,7 @@ class PlatformManager:
     
     async def initialize(self):
 
-        from .sources import nakuru, aiocqhttp, qqofficial, wecom, lark, discord
+        from .sources import nakuru, aiocqhttp, qqbotpy, qqofficial, wecom, lark, discord, gewechat
 
         async def on_friend_message(event: platform_events.FriendMessage, adapter: msadapter.MessageSourceAdapter):
 
@@ -101,6 +101,35 @@ class PlatformManager:
                 
         if len(self.adapters) == 0:
             self.ap.logger.warning('未运行平台适配器，请根据文档配置并启用平台适配器。')
+
+    async def write_back_config(self, adapter_inst: msadapter.MessageSourceAdapter, config: dict):
+        index = -2
+
+        for i, adapter in enumerate(self.adapters):
+            if adapter == adapter_inst:
+                index = i
+                break
+
+        if index == -2:
+            raise Exception('平台适配器未找到')
+
+        # 只修改启用的适配器
+        real_index = -1
+
+        for i, adapter in enumerate(self.ap.platform_cfg.data['platform-adapters']):
+            if adapter['enable']:
+                index -= 1
+                if index == -1:
+                    real_index = i
+                    break
+
+        new_cfg = {
+            'adapter': adapter_inst.name,
+            'enable': True,
+            **config
+        }
+        self.ap.platform_cfg.data['platform-adapters'][real_index] = new_cfg
+        await self.ap.platform_cfg.dump_config()
 
     async def send(self, event: platform_events.MessageEvent, msg: platform_message.MessageChain, adapter: msadapter.MessageSourceAdapter):
         

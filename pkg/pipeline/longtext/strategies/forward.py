@@ -9,30 +9,8 @@ from ....core import entities as core_entities
 from ....platform.types import message as platform_message
 
 
-class ForwardMessageDiaplay(pydantic.BaseModel):
-    title: str = "群聊的聊天记录"
-    brief: str = "[聊天记录]"
-    source: str = "聊天记录"
-    preview: typing.List[str] = []
-    summary: str = "查看x条转发消息"
-
-
-class Forward(platform_message.MessageComponent):
-    """合并转发。"""
-    type: str = "Forward"
-    """消息组件类型。"""
-    display: ForwardMessageDiaplay
-    """显示信息"""
-    node_list: typing.List[platform_message.ForwardMessageNode]
-    """转发消息节点列表。"""
-    def __init__(self, *args, **kwargs):
-        if len(args) == 1:
-            self.node_list = args[0]
-            super().__init__(**kwargs)
-        super().__init__(*args, **kwargs)
-
-    def __str__(self):
-        return '[聊天记录]'
+ForwardMessageDiaplay = platform_message.ForwardMessageDiaplay
+Forward = platform_message.Forward
 
 
 @strategy_model.strategy_class("forward")

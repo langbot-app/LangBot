@@ -28,7 +28,8 @@ required_deps = {
     "Crypto": "pycryptodome",
     "lark_oapi": "lark-oapi",
     "discord": "discord.py",
-    "cryptography": "cryptography"
+    "cryptography": "cryptography",
+    "gewechat_client": "gewechat-client"
 }
 
 

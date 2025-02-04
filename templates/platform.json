@@ -45,9 +45,18 @@
         },
         {
             "adapter": "discord",
-            "enable": true,
+            "enable": false,
             "client_id": "1234567890",
             "token": "XXXXXXXXXX"
+        },
+        {
+            "adapter": "gewechat",
+            "enable": false,
+            "gewechat_url": "http://your-gewechat-server:2531",
+            "port": 2286,
+            "callback_url": "http://your-callback-url:2286/gewechat/callback",
+            "app_id": "",
+            "token": ""
         }
     ],
     "track-function-calls": true,
@@ -58,7 +67,7 @@
         "max": 0
     },
     "long-text-process": {
-        "threshold": 256,
+        "threshold": 2560,
         "strategy": "forward",
         "font-path": ""
     },

@@ -18,7 +18,18 @@ export default createStore({
       tokenValid: false,
       systemInitialized: true,
       jwtToken: '',
-    }
+    },
+    pluginsView: 'installed',
+    marketplaceParams: {
+      query: '',
+      page: 1,
+      per_page: 10,
+      sort_by: 'pushed_at',
+      sort_order: 'DESC',
+    },
+    marketplacePlugins: [],
+    marketplaceTotalPages: 0,
+    marketplaceTotalPluginsCount: 0,
   },
   mutations: {
     initializeFetch() {
