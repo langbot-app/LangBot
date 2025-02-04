@@ -6,6 +6,7 @@ import ssl
 
 import aiohttp
 import PIL.Image
+import httpx
 
 async def get_wecom_image_base64(pic_url: str) -> tuple[str, str]:
     """
@@ -30,7 +31,19 @@ async def get_wecom_image_base64(pic_url: str) -> tuple[str, str]:
             image_base64 = base64.b64encode(image_data).decode('utf-8')
             
             return image_base64, image_format
-
+        
+async def get_qq_official_image_base64(pic_url:str,content_type:str) -> tuple[str,str]:
+    """
+    下载QQ官方图片，
+    并且转换为base64格式
+    """
+    async with httpx.AsyncClient() as client:
+        response = await client.get(pic_url)
+        response.raise_for_status()  # 确保请求成功
+        image_data = response.content
+        base64_data = base64.b64encode(image_data).decode('utf-8')
+        
+        return f"data:{content_type};base64,{base64_data}"
 
 
 def get_qq_image_downloadable_url(image_url: str) -> tuple[str, dict]:

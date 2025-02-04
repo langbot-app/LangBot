@@ -7,6 +7,8 @@ import logging
 import asyncio
 import traceback
 
+from .sources import qqofficial
+
 #     FriendMessage, Image, MessageChain, Plain
 from ..platform import adapter as msadapter
 
@@ -37,7 +39,7 @@ class PlatformManager:
     
     async def initialize(self):
 
-        from .sources import nakuru, aiocqhttp, qqbotpy, wecom, lark, discord
+        from .sources import nakuru, aiocqhttp, qqofficial, wecom, lark, discord
 
         async def on_friend_message(event: platform_events.FriendMessage, adapter: msadapter.MessageSourceAdapter):
 
