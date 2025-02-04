@@ -85,6 +85,7 @@
 | 飞书 | ✅ |  |
 | Discord | ✅ |  |
 | 个人微信 | ✅ | 使用 [Gewechat](https://github.com/Devo919/Gewechat) 接入 |
+| Telegram | 🚧 |  |
 | WhatsApp | 🚧 |  |
 | 钉钉 | 🚧 |  |
 
