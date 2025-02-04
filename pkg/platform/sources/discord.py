@@ -55,6 +55,11 @@ class DiscordMessageConverter(adapter.MessageConverter):
                 image_files.append(discord.File(fp=image_bytes, filename=f"{uuid.uuid4()}.png"))
             elif isinstance(ele, platform_message.Plain):
                 text_string += ele.text
+            elif isinstance(ele, platform_message.Forward):
+                for node in ele.node_list:
+                    text_string, image_files = await DiscordMessageConverter.yiri2target(node.message_chain)
+                    text_string += text_string
+                    image_files.extend(image_files)
 
         return text_string, image_files
 

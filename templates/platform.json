@@ -58,7 +58,7 @@
         "max": 0
     },
     "long-text-process": {
-        "threshold": 256,
+        "threshold": 2560,
         "strategy": "forward",
         "font-path": ""
     },

@@ -90,6 +90,9 @@ class LarkMessageConverter(adapter.MessageConverter):
                     ]
                 )
                 pending_paragraph = []
+            elif isinstance(msg, platform_message.Forward):
+                for node in msg.node_list:
+                    message_elements.extend(await LarkMessageConverter.yiri2target(node.message_chain, api_client))
 
         if pending_paragraph:
             message_elements.append(pending_paragraph)
