@@ -29,17 +29,6 @@ class WecomMessageConverter(adapter.MessageConverter):
     ):
         content_list = []
 
-        [
-            {
-                "type": "text",
-                "content": "text",
-            },
-            {
-                "type": "image",
-                "media_id": "media_id",
-            }
-        ]
-
         for msg in message_chain:
             if type(msg) is platform_message.Plain:
                 content_list.append({
@@ -83,7 +72,7 @@ class WecomMessageConverter(adapter.MessageConverter):
         image_base64, image_format = await image.get_wecom_image_base64(pic_url=picurl)
         yiri_msg_list.append(platform_message.Image(base64=f"data:image/{image_format};base64,{image_base64}"))
         chain = platform_message.MessageChain(yiri_msg_list)
-
+        
         return chain
 
 
@@ -208,7 +197,7 @@ class WecomeAdapter(adapter.MessageSourceAdapter):
                 await self.bot.send_private_msg(Wecom_event.user_id, Wecom_event.agent_id, content["content"])
             elif content["type"] == "image":
                 await self.bot.send_image(Wecom_event.user_id, Wecom_event.agent_id, content["media_id"])
-
+  
     async def send_message(
         self, target_type: str, target_id: str, message: platform_message.MessageChain
     ):

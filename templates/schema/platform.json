@@ -83,7 +83,7 @@
                         }
                     },
                     {
-                        "title": "qq-botpy 适配器",
+                        "title": "qq-botpy 适配器（WebSocket）",
                         "description": "用于接入 QQ 官方机器人 API",
                         "properties": {
                             "adapter": {
@@ -119,6 +119,47 @@
                                     "direct_message",
                                     "public_messages"
                                 ]
+                            }
+                        }
+                    },
+                    {
+                        "title": "QQ 官方适配器（WebHook）",
+                        "description": "用于接入 QQ 官方机器人 API",
+                        "properties": {
+                            "adapter": {
+                                "type": "string",
+                                "const": "qqofficial"
+                            },
+                            "enable": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "是否启用此适配器",
+                                "layout": {
+                                    "comp": "switch",
+                                    "props": {
+                                        "color": "primary"
+                                    }
+                                }
+                            },
+                            "appid": {
+                                "type": "string",
+                                "default": "",
+                                "description": "申请到的QQ官方机器人的appid"
+                            },
+                            "secret": {
+                                "type": "string",
+                                "default": "",
+                                "description": "申请到的QQ官方机器人的secret"
+                            },
+                            "port": {
+                                "type": "integer",
+                                "default": 2284,
+                                "description": "监听的端口"
+                            },
+                            "token": {
+                                "type": "string",
+                                "default": "",
+                                "description": "申请到的QQ官方机器人的token"
                             }
                         }
                     },

@@ -27,6 +27,7 @@ pyjwt
 pycryptodome
 lark-oapi
 discord.py
+cryptography
 gewechat-client
 
 # indirect
