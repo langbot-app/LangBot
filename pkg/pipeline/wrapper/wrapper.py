@@ -102,7 +102,7 @@ class ResponseWrapper(stage.PipelineStage):
                                 new_query=query
                             )
 
-                    if result.tool_calls is not None:  # 有函数调用
+                    if result.tool_calls is not None and len(result.tool_calls) > 0:  # 有函数调用
                         
                         function_names = [tc.function.name for tc in result.tool_calls]
 
