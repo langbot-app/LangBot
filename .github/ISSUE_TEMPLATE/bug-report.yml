@@ -11,9 +11,12 @@ body:
         - 其他（或暂未使用）
         - Nakuru（go-cqhttp）
         - aiocqhttp（使用 OneBot 协议接入的）
-        - qq-botpy（QQ官方API）
+        - qq-botpy（QQ官方API WebSocket）
+        - qqofficial（QQ官方API Webhook）
         - lark（飞书）
         - wecom（企业微信）
+        - gewechat（个人微信）
+        - discord
     validations:
       required: true
   - type: input
