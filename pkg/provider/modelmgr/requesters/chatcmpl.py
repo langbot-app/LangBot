@@ -101,14 +101,14 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
                         content=pending_content,
                         tool_calls=real_tool_calls if len(real_tool_calls) > 0 else None
                     ),
-                    finish_reason=chunk.choices[0].finish_reason,
+                    finish_reason=chunk.choices[0].finish_reason if hasattr(chunk.choices[0], 'finish_reason') and chunk.choices[0].finish_reason is not None else 'stop',
                     logprobs=chunk.choices[0].logprobs,
                 )
             ],
-            model=args["model"],
-            service_tier=chunk.service_tier,
-            system_fingerprint=chunk.system_fingerprint,
-            usage=chunk.usage
+            model=chunk.model,
+            service_tier=chunk.service_tier if hasattr(chunk, 'service_tier') else None,
+            system_fingerprint=chunk.system_fingerprint if hasattr(chunk, 'system_fingerprint') else None,
+            usage=chunk.usage if hasattr(chunk, 'usage') else None
         ) if chunk else None
 
     async def _make_msg(
