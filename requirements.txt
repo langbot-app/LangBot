@@ -29,6 +29,7 @@ lark-oapi
 discord.py
 cryptography
 gewechat-client
+dashscope
 
 # indirect
 taskgroup==0.0.0a4
