@@ -25,6 +25,9 @@
         ],
         "siliconflow": [
             "xxxxxxx"
+        ],
+        "aliyun": [
+            "sk-aliyun_token"
         ]
     },
     "requester": {
@@ -78,6 +81,11 @@
         "siliconflow-chat-completions": {
             "base-url": "https://api.siliconflow.cn/v1",
             "args": {},
+            "timeout": 120
+        },
+        "aliyun-chat-completions": {
+            "args": {},
+            "base-url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
             "timeout": 120
         }
     },
