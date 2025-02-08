@@ -84,7 +84,7 @@
     "model": "gpt-4o",
     "prompt-mode": "normal",
     "prompt": {
-        "default": "" 
+        "default": ""
     },
     "runner": "local-agent",
     "dify-service-api": {

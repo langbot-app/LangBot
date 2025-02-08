@@ -211,6 +211,30 @@
             "requester": "zhipuai-chat-completions",
             "token_mgr": "zhipuai",
             "vision_supported": true
+        },
+        {
+            "name": "siliconflow-r1",
+            "model_name": "deepseek-ai/DeepSeek-R1",
+            "requester": "siliconflow-chat-completions",
+            "token_mgr": "siliconflow"
+        },
+        {
+            "name": "siliconflow-v3",
+            "model_name": "deepseek-ai/DeepSeek-V3",
+            "requester": "siliconflow-chat-completions",
+            "token_mgr": "siliconflow"
+        },
+        {
+            "name": "aliyun-r1",
+            "model_name": "deepseek-r1",
+            "requester": "aliyun-chat-completions",
+            "token_mgr": "aliyun"
+        },
+        {
+            "name": "aliyun-v3",
+            "model_name": "deepseek-v3",
+            "requester": "aliyun-chat-completions",
+            "token_mgr": "aliyun"
         }
     ]
 }
