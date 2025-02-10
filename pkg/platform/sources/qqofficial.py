@@ -47,6 +47,7 @@ class QQOfficialMessageConverter(adapter.MessageConverter):
             yiri_msg_list.append(
                 platform_message.Image(base64=base64_url)
             )
+
         yiri_msg_list.append(platform_message.Plain(text=message))
         chain = platform_message.MessageChain(yiri_msg_list)
         return chain

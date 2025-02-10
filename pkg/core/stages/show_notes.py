@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .. import stage, app, note
-from ..notes import n001_classic_msgs, n002_selection_mode_on_windows
+from ..notes import n001_classic_msgs, n002_selection_mode_on_windows, n003_print_version
 
 
 @stage.stage_class("ShowNotesStage")
