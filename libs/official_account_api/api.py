@@ -106,13 +106,14 @@ class OAClient():
 
                 if self.msg_id_map.get(message_data["MsgId"], 1) == 3:
 
-                    response_xml = xml_template.format(
-                        to_user=from_user,
-                        from_user=to_user,
-                        create_time=int(time.time()),
-                        content = "请求失效：暂不支持公众号超过15秒的请求，如有需求，请联系 LangBot 团队。"
-                    )
-                    return response_xml
+                    # response_xml = xml_template.format(
+                    #     to_user=from_user,
+                    #     from_user=to_user,
+                    #     create_time=int(time.time()),
+                    #     content = "请求失效：暂不支持公众号超过15秒的请求，如有需求，请联系 LangBot 团队。"
+                    # )
+                    print("请求失效：暂不支持公众号超过15秒的请求，如有需求，请联系 LangBot 团队。")
+                    return ''
 
         except Exception as e:
             traceback.print_exc()
