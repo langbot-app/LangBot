@@ -189,7 +189,9 @@ class WecomeAdapter(adapter.MessageSourceAdapter):
             message_source, self.bot_account_id, self.bot
         )
         content_list = await WecomMessageConverter.yiri2target(message, self.bot)
-        fixed_user_id = Wecom_event.user_id.lstrip('u')
+        fixed_user_id = Wecom_event.user_id
+        # 删掉开头的u
+        fixed_user_id = fixed_user_id[1:]
         for content in content_list:
             if content["type"] == "text":
                 await self.bot.send_private_msg(fixed_user_id, Wecom_event.agent_id, content["content"])
