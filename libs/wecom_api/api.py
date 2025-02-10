@@ -228,7 +228,7 @@ class WecomClient():
         if message_data["MsgType"] == "image":
             message_data["MediaId"] = root.find("MediaId").text if root.find("MediaId") is not None else None
             message_data["PicUrl"] = root.find("PicUrl").text if root.find("PicUrl") is not None else None
-    
+        
         return message_data
     
     @staticmethod

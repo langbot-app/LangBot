@@ -331,6 +331,51 @@
                                 "description": "gewechat 的 token"
                             }
                         }
+                    },
+                    {
+                        "title": "微信公众号适配器",
+                        "description": "用于接入微信公众号",
+                        "properties": {
+                            "adapter": {
+                                "type": "string",
+                                "const": "officialaccount"
+                            },
+                            "enable": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "是否启用此适配器"
+                            },
+                            "token": {
+                                "type": "string",
+                                "default": "",
+                                "description": "微信公众号的token"
+                            },
+                            "EncodingAESKey": {
+                                "type": "string",
+                                "default": "",
+                                "description": "微信公众号的EncodingAESKey"
+                            },
+                            "AppID": {
+                                "type": "string",
+                                "default": "",
+                                "description": "微信公众号的AppID"
+                            },
+                            "AppSecret": {
+                                "type": "string",
+                                "default": "",
+                                "description": "微信公众号的AppSecret"
+                            },
+                            "host": {
+                                "type": "string",
+                                "default": "0.0.0.0",
+                                "description": "监听的IP地址"
+                            },
+                            "port": {
+                                "type": "integer",
+                                "default": 2287,
+                                "description": "监听的端口"
+                            }
+                        }
                     }
                 ]
             }
