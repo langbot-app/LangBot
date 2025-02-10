@@ -171,7 +171,6 @@ class WecomClient():
             elif request.method == "POST":
                 encrypt_msg = await request.data
                 ret, xml_msg = self.wxcpt.DecryptMsg(encrypt_msg, msg_signature, timestamp, nonce)
-                # print(xml_msg)
                 if ret != 0:
                     raise Exception(f"消息解密失败，错误码: {ret}")
 

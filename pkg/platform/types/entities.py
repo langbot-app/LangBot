@@ -38,6 +38,7 @@ class Friend(Entity):
         return self.nickname or self.remark or ''
 
 
+
 class Permission(str, Enum):
     """群成员身份权限。"""
     Member = "MEMBER"

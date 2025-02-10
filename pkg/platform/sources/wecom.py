@@ -119,9 +119,8 @@ class WecomEventConverter:
             yiri_chain = await WecomMessageConverter.target2yiri(
                 event.message, event.message_id
             )
-
             friend = platform_entities.Friend(
-                id=event.user_id,
+                id=f"u{event.user_id}",
                 nickname=str(event.agent_id),
                 remark="",
             )
@@ -190,12 +189,12 @@ class WecomeAdapter(adapter.MessageSourceAdapter):
             message_source, self.bot_account_id, self.bot
         )
         content_list = await WecomMessageConverter.yiri2target(message, self.bot)
-
+        fixed_user_id = Wecom_event.user_id.lstrip('u')
         for content in content_list:
             if content["type"] == "text":
-                await self.bot.send_private_msg(Wecom_event.user_id, Wecom_event.agent_id, content["content"])
+                await self.bot.send_private_msg(fixed_user_id, Wecom_event.agent_id, content["content"])
             elif content["type"] == "image":
-                await self.bot.send_image(Wecom_event.user_id, Wecom_event.agent_id, content["media_id"])
+                await self.bot.send_image(fixed_user_id, Wecom_event.agent_id, content["media_id"])
   
     async def send_message(
         self, target_type: str, target_id: str, message: platform_message.MessageChain
