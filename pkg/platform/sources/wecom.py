@@ -154,7 +154,6 @@ class WecomeAdapter(adapter.MessageSourceAdapter):
     message_converter: WecomMessageConverter = WecomMessageConverter()
     event_converter: WecomEventConverter = WecomEventConverter()
     config: dict
-    ap: app.Application
 
     def __init__(self, config: dict, ap: app.Application):
         self.config = config
