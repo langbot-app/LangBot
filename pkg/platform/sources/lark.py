@@ -14,7 +14,10 @@ import datetime
 
 import aiohttp
 import lark_oapi.ws.exception
+import quart
+from flask import jsonify
 from lark_oapi.api.im.v1 import *
+from lark_oapi.api.verification.v1 import GetVerificationRequest
 
 from .. import adapter
 from ...pipeline.longtext.strategies import forward
@@ -288,12 +291,47 @@ class LarkMessageSourceAdapter(adapter.MessageSourceAdapter):
     ] = {}
 
     config: dict
-
+    quart_app: quart.Quart
     ap: app.Application
 
     def __init__(self, config: dict, ap: app.Application):
         self.config = config
         self.ap = ap
+        self.quart_app = quart.Quart(__name__)
+
+        @self.quart_app.route('/lark/callback', methods=['POST'])
+        async def lark_callback():
+            data = await quart.request.json
+
+            type =  data.get("type")
+            if type is  None :
+                context = EventContext(data)
+                type = context.header.event_type
+            if type is  None :
+                return 'ok'
+
+            if 'url_verification' in type:
+                # todo 验证verification token
+                return data
+            context = EventContext(data)
+            type = context.header.event_type
+            p2v1 = P2ImMessageReceiveV1()
+            p2v1.header = context.header
+            event = P2ImMessageReceiveV1Data()
+            event.message = EventMessage(context.event['message'])
+            event.sender = EventSender(context.event['sender'])
+            p2v1.event = event
+            p2v1.schema = context.schema
+            if 'im.message.receive_v1' in type:
+                try:
+                    event = await self.event_converter.target2yiri(p2v1, self.api_client)
+                except Exception as e:
+                    traceback.print_exc()
+
+                if event.__class__ in self.listeners:
+                    await self.listeners[event.__class__](event, self)
+
+                return 'ok'
 
         async def on_message(event: lark_oapi.im.v1.P2ImMessageReceiveV1):
 
@@ -392,16 +430,28 @@ class LarkMessageSourceAdapter(adapter.MessageSourceAdapter):
         self.listeners.pop(event_type)
 
     async def run_async(self):
-        try:
-            await self.bot._connect()
-        except lark_oapi.ws.exception.ClientException as e:
-            raise e
-        except Exception as e:
-            await self.bot._disconnect()
-            if self.bot._auto_reconnect:
-                await self.bot._reconnect()
-            else:
-                raise e
+        port =self.config['port']
 
+        if port is None or port == "":
+            try:
+                await self.bot._connect()
+            except lark_oapi.ws.exception.ClientException as e:
+                raise e
+            except Exception as e:
+                await self.bot._disconnect()
+                if self.bot._auto_reconnect:
+                    await self.bot._reconnect()
+                else:
+                    raise e
+        else:
+            async def shutdown_trigger_placeholder():
+                while True:
+                    await asyncio.sleep(1)
+
+            await self.quart_app.run_task(
+                host='0.0.0.0',
+                port=self.config['port'],
+                shutdown_trigger=shutdown_trigger_placeholder,
+            )
     async def kill(self) -> bool:
         return False

@@ -252,6 +252,10 @@
                                 "type": "string",
                                 "default": "",
                                 "description": "飞书的bot_name"
+                            },
+                            "port": {
+                                "type": "integer",
+                                "description": "设置监听的端口,开启callback event"
                             }
                         }
                     },
