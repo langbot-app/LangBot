@@ -216,11 +216,6 @@
             "name": "your-dashscope-app-id",
             "requester": "dashscope-chat-applications",
             "token_mgr": "dashscope",
-        },
-        {
-            "name": "qwen-plus",
-            "requester": "qwen-chat-completions",
-            "token_mgr": "qwen",
         }
     ]
 }
