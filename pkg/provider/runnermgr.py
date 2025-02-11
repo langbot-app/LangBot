@@ -5,6 +5,7 @@ from ..core import app
 
 from .runners import localagent
 from .runners import difysvapi
+from .runners import dashscopeapi
 
 class RunnerManager:
 
