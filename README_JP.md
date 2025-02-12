@@ -108,7 +108,7 @@ LangBotはBTPanelにリストされています。BTPanelをインストール�
 | [LMStudio](https://lmstudio.ai/) | ✅ | ローカルLLM実行プラットフォーム |
 | [GiteeAI](https://ai.gitee.com/) | ✅ | LLMインターフェースゲートウェイ(MaaS) |
 | [SiliconFlow](https://siliconflow.cn/) | ✅ | LLMゲートウェイ(MaaS) |
-| [Aliyun Bailian](https://bailian.console.aliyun.com/) | ✅ | LLMゲートウェイ(MaaS) |
+| [Aliyun Bailian](https://bailian.console.aliyun.com/) | ✅ | LLMゲートウェイ(MaaS), LLMOpsプラットフォーム |
 
 ## 🤝 コミュニティ貢献
 

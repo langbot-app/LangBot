@@ -82,6 +82,14 @@
                         "type": "string"
                     },
                     "default": []
+                },
+                "bailian": {
+                    "type": "array",
+                    "title": "阿里云百炼大模型平台 API 密钥",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": []
                 }
             }
         },
@@ -288,6 +296,26 @@
                             "default": 120
                         }
                     }
+                },
+                "bailian-chat-completions": {
+                    "type": "object",
+                    "title": "阿里云百炼大模型平台 API 请求配置",
+                    "description": "仅可编辑 URL 和 超时时间，额外请求参数不支持可视化编辑，请到编辑器编辑",
+                    "properties": {
+                        "base-url": {
+                            "type": "string",
+                            "title": "API URL"
+                        },
+                        "args": {
+                            "type": "object",
+                            "default": {}
+                        },
+                        "timeout": {
+                            "type": "number",
+                            "title": "API 请求超时时间",
+                            "default": 120
+                        }
+                    }
                 }
             }
         },
@@ -393,6 +421,59 @@
                         "timeout": {
                             "type": "number",
                             "title": "API 请求超时时间"
+                        }
+                    }
+                }
+            }
+        },
+        "dashscope-app-api": {
+            "type": "object",
+            "title": "阿里百炼平台自建应用 API 配置",
+            "properties": {
+                "app-type": {
+                    "type": "string",
+                    "title": "应用类型",
+                    "description": "支持 workflow 和 agent，workflow：智能体编排；agent：普通智能体；请填写下方对应的应用类型 API 参数",
+                    "enum": ["workflow", "agent"],
+                    "default": "agent"
+                },
+                "api-key": {
+                    "type": "string",
+                    "title": "API 密钥"
+                },
+                "agent": {
+                    "type": "object",
+                    "title": "Agent API 参数",
+                    "properties": {
+                        "app-id": {
+                            "type": "string",
+                            "title": "应用 ID"
+                        },
+                        "references_quote": {
+                            "type": "string",
+                            "title": "参考资料引用",
+                            "description": "设置参考资料引用，用于从 Dashscope App API 结束节点返回的 JSON 数据中提取引用内容",
+                            "default": "参考资料来自:"
+                        }
+                    }
+                },
+                "workflow": {
+                    "type": "object",
+                    "title": "工作流 API 参数",
+                    "properties": {
+                        "app-id": {
+                            "type": "string",
+                            "title": "应用 ID"
+                        },
+                        "references_quote": {
+                            "type": "string",
+                            "title": "参考资料引用",
+                            "default": "参考资料来自:"
+                        },
+                        "biz_params": {
+                            "type": "object",
+                            "title": "传入参数",
+                            "default": {}
                         }
                     }
                 }
