@@ -111,5 +111,21 @@
             "output-key": "summary",
             "timeout": 120
         }
+    },
+    "dashscope-app-api": {
+        "app-type": "agent",
+        "api-key": "sk-1234567890",
+        "agent": {
+            "app-id": "Your_app_id",
+            "references_quote": "参考资料来自:"
+        },
+        "workflow": {
+            "app-id": "Your_app_id",
+            "references_quote": "参考资料来自:",
+            "biz_params": {  
+                "city": "北京",
+                "date": "2023-08-10"
+            }
+        }
     }
 }

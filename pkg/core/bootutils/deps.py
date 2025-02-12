@@ -29,7 +29,8 @@ required_deps = {
     "lark_oapi": "lark-oapi",
     "discord": "discord.py",
     "cryptography": "cryptography",
-    "gewechat_client": "gewechat-client"
+    "gewechat_client": "gewechat-client",
+    "dashscope": "dashscope",
 }
 
 
