@@ -23,6 +23,8 @@ class RunnerManager:
                 self.using_runner = r(self.ap)
                 await self.using_runner.initialize()
                 break
+        else:
+            raise ValueError(f"未找到请求运行器: {self.ap.provider_cfg.data['runner']}")
 
     def get_runner(self) -> runner.RequestRunner:
         return self.using_runner

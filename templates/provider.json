@@ -104,21 +104,20 @@
             "timeout": 120
         }
     },
-    "dashscope-service-api": {
+    "dashscope-app-api": {
+        "app-type": "agent",
+        "api-key": "sk-1234567890",
         "agent": {
-            "api-key": "sk-1234567890",
             "app-id": "Your_app_id",
             "references_quote": "参考资料来自:"
         },
-        "app-type": "agent",
         "workflow": {
-            "api-key": "sk-1234567890",
             "app-id": "Your_app_id",
             "references_quote": "参考资料来自:",
             "biz_params": {  
-            "city": "北京",
-            "date": "2023-08-10"
-        }
+                "city": "北京",
+                "date": "2023-08-10"
+            }
         }
     }
 }

@@ -211,11 +211,6 @@
             "requester": "zhipuai-chat-completions",
             "token_mgr": "zhipuai",
             "vision_supported": true
-        },
-        {
-            "name": "your-dashscope-app-id",
-            "requester": "dashscope-chat-applications",
-            "token_mgr": "dashscope",
         }
     ]
 }

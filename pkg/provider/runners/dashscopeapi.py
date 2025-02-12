@@ -20,7 +20,7 @@ class DashscopeAPIError(Exception):
         super().__init__(self.message)
 
 
-@runner.runner_class("dashscope-service-api")
+@runner.runner_class("dashscope-app-api")
 class DashScopeAPIRunner(runner.RequestRunner):
     "阿里云百炼DashsscopeAPI对话请求器"
     
@@ -34,7 +34,7 @@ class DashScopeAPIRunner(runner.RequestRunner):
     async def initialize(self):
         """初始化"""
         valid_app_types = ["agent", "workflow"]
-        self.app_type = self.ap.provider_cfg.data["dashscope-service-api"]["app-type"]
+        self.app_type = self.ap.provider_cfg.data["dashscope-app-api"]["app-type"]
         #检查配置文件中使用的应用类型是否支持
         if (self.app_type not in valid_app_types):
             raise DashscopeAPIError(
@@ -42,10 +42,10 @@ class DashScopeAPIRunner(runner.RequestRunner):
             )
         
         #初始化Dashscope 参数配置
-        self.app_id = self.ap.provider_cfg.data["dashscope-service-api"][self.app_type]["app-id"]
-        self.api_key = self.ap.provider_cfg.data["dashscope-service-api"][self.app_type]["api-key"]
-        self.references_quote = self.ap.provider_cfg.data["dashscope-service-api"][self.app_type]["references_quote"]
-        self.biz_params = self.ap.provider_cfg.data["dashscope-service-api"]["workflow"]["biz_params"]
+        self.app_id = self.ap.provider_cfg.data["dashscope-app-api"][self.app_type]["app-id"]
+        self.api_key = self.ap.provider_cfg.data["dashscope-app-api"]["api-key"]
+        self.references_quote = self.ap.provider_cfg.data["dashscope-app-api"][self.app_type]["references_quote"]
+        self.biz_params = self.ap.provider_cfg.data["dashscope-app-api"]["workflow"]["biz_params"]
      
     def _replace_references(self, text, references_dict):
         """阿里云百炼平台的自定义应用支持资料引用，此函数可以将引用标签替换为参考资料"""
@@ -222,15 +222,15 @@ class DashScopeAPIRunner(runner.RequestRunner):
         self, query: core_entities.Query
     ) -> typing.AsyncGenerator[llm_entities.Message, None]:
         """运行"""
-        if self.ap.provider_cfg.data["dashscope-service-api"]["app-type"] == "agent":
+        if self.ap.provider_cfg.data["dashscope-app-api"]["app-type"] == "agent":
             async for msg in self._agent_messages(query):
                 yield msg
-        elif self.ap.provider_cfg.data["dashscope-service-api"]["app-type"] == "workflow":
+        elif self.ap.provider_cfg.data["dashscope-app-api"]["app-type"] == "workflow":
             async for msg in self._workflow_messages(query):
                 yield msg
         else:
             raise DashscopeAPIError(
-                f"不支持的 Dashscope 应用类型: {self.ap.provider_cfg.data['dashscope-service-api']['app-type']}"
+                f"不支持的 Dashscope 应用类型: {self.ap.provider_cfg.data['dashscope-app-api']['app-type']}"
             )
 
 
