@@ -252,6 +252,21 @@
                                 "type": "string",
                                 "default": "",
                                 "description": "飞书的bot_name"
+                            },
+                            "enable-webhook": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "是否启用webhook模式"
+                            },
+                            "port": {
+                                "type": "integer",
+                                "description": "设置监听的端口,开启callback event时需要设置",
+                                "default": 2285
+                            },
+                            "encrypt-key": {
+                                "type": "string",
+                                "default": "",
+                                "description": "设置加密密钥"
                             }
                         }
                     },

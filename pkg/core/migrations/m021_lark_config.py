@@ -23,7 +23,10 @@ class LarkConfigMigration(migration.Migration):
             "enable": False,
             "app_id": "cli_abcdefgh",
             "app_secret": "XXXXXXXXXX",
-            "bot_name": "LangBot"
+            "bot_name": "LangBot",
+            "enable-webhook": False,
+            "port": 2285,
+            "encrypt-key": "xxxxxxxxx"
         })
 
         await self.ap.platform_cfg.dump_config()
