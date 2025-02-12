@@ -130,7 +130,7 @@ class WecomEventConverter:
             )
         elif event.type == "image":
             friend = platform_entities.Friend(
-                id=event.user_id,
+                id=f"u{event.user_id}",
                 nickname=str(event.agent_id),
                 remark="",
             )
