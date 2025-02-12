@@ -1,0 +1,155 @@
+from __future__ import annotations
+import typing
+import asyncio
+import traceback
+import time
+import datetime
+from pkg.core import app
+from pkg.platform.adapter import MessageSourceAdapter
+from pkg.platform.types import events as platform_events, message as platform_message
+
+import aiocqhttp
+import aiohttp
+from libs.official_account_api.oaevent import OAEvent
+from pkg.platform.adapter import MessageSourceAdapter
+from pkg.platform.types import events as platform_events, message as platform_message
+from libs.official_account_api.api import OAClient
+from pkg.core import app
+from .. import adapter
+from ...pipeline.longtext.strategies import forward
+from ...core import app
+from ..types import message as platform_message
+from ..types import events as platform_events
+from ..types import entities as platform_entities
+from ...command.errors import ParamNotEnoughError
+
+
+# 生成的ai回答
+generated_content = {}
+
+class OAMessageConverter(adapter.MessageConverter):
+    @staticmethod
+    async def yiri2target(message_chain: platform_message.MessageChain):
+        for msg in message_chain:
+            if type(msg) is platform_message.Plain:
+                return msg.text
+            
+
+    @staticmethod
+    async def target2yiri(message:str,message_id =-1):
+        yiri_msg_list = []
+        yiri_msg_list.append(
+            platform_message.Source(id=message_id, time=datetime.datetime.now())
+        )
+
+        yiri_msg_list.append(platform_message.Plain(text=message))
+        chain = platform_message.MessageChain(yiri_msg_list)
+
+        return chain
+        
+
+class OAEventConverter(adapter.EventConverter):
+    @staticmethod
+    async def target2yiri(event:OAEvent):
+        if event.type == "text":
+            yiri_chain = await OAMessageConverter.target2yiri(
+                event.message, event.message_id
+            )
+
+            friend = platform_entities.Friend(
+                id=event.user_id,
+                nickname=str(event.user_id),
+                remark="",
+            )
+
+            return platform_events.FriendMessage(
+                sender=friend, message_chain=yiri_chain, time=event.timestamp, source_platform_object=event
+            )
+        else:
+            return None
+
+@adapter.adapter_class("officialaccount")
+class OfficialAccountAdapter(adapter.MessageSourceAdapter):
+
+    bot : OAClient
+    ap : app.Application
+    bot_account_id: str
+    message_converter: OAMessageConverter = OAMessageConverter()
+    event_converter: OAEventConverter = OAEventConverter()
+    config: dict
+
+
+    def __init__(self, config: dict, ap: app.Application):
+        self.config = config
+        
+        self.ap = ap
+
+        required_keys = [
+            "token",
+            "EncodingAESKey",
+            "AppSecret",
+            "AppID",
+        ]
+        missing_keys = [key for key in required_keys if key not in config]
+        if missing_keys:
+            raise ParamNotEnoughError("企业微信缺少相关配置项，请查看文档或联系管理员")
+        
+        self.bot = OAClient(
+            token=config['token'],
+            EncodingAESKey=config['EncodingAESKey'],
+            Appsecret=config['AppSecret'],
+            AppID=config['AppID'], 
+        )
+
+    async def reply_message(self, message_source: platform_events.FriendMessage, message: platform_message.MessageChain, quote_origin: bool = False):
+        global generated_content
+
+        content = await OAMessageConverter.yiri2target(
+            message
+        )
+
+        generated_content[message_source.message_chain.message_id] = content
+        
+    async def send_message(
+        self, target_type: str, target_id: str, message: platform_message.MessageChain
+    ):
+        pass
+
+
+    def register_listener(self, event_type: type, callback: typing.Callable[[platform_events.Event, MessageSourceAdapter], None]):
+        async def on_message(event: OAEvent):
+            self.bot_account_id = event.receiver_id
+            try:
+                return await callback(
+                    await self.event_converter.target2yiri(event), self
+                )
+            except:
+                traceback.print_exc()
+
+        if event_type == platform_events.FriendMessage:
+            self.bot.on_message("text")(on_message)
+        elif event_type == platform_events.GroupMessage:
+            pass
+
+    async def run_async(self):
+        async def shutdown_trigger_placeholder():
+            while True:
+                await asyncio.sleep(1)
+
+        await self.bot.run_task(
+            host=self.config["host"],
+            port=self.config["port"],
+            shutdown_trigger=shutdown_trigger_placeholder,
+        )
+
+    async def kill(self) -> bool:
+        return False
+
+    async def unregister_listener(
+        self,
+        event_type: type,
+        callback: typing.Callable[[platform_events.Event, MessageSourceAdapter], None],
+    ):
+        return super().unregister_listener(event_type, callback)
+    
+    

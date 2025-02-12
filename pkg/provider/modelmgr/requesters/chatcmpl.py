@@ -61,7 +61,7 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
 
         async for chunk in resp_gen:
             # print(chunk)
-            if not chunk:
+            if not chunk or not chunk.id or not chunk.choices or not chunk.choices[0] or not chunk.choices[0].delta:
                 continue
 
             if chunk.choices[0].delta.content is not None:
@@ -75,6 +75,9 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
                             break
                     else:
                         tool_calls.append(tool_call)
+            
+            if chunk.choices[0].finish_reason is not None:
+                break
 
         real_tool_calls = []
 
