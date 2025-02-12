@@ -11,6 +11,9 @@ import base64
 import uuid
 import json
 import datetime
+import hashlib
+import base64
+from Crypto.Cipher import AES
 
 import aiohttp
 import lark_oapi.ws.exception
@@ -26,6 +29,28 @@ from ..types import message as platform_message
 from ..types import events as platform_events
 from ..types import entities as platform_entities
 from ...utils import image
+
+
+class  AESCipher(object):
+    def __init__(self, key):
+        self.bs = AES.block_size
+        self.key=hashlib.sha256(AESCipher.str_to_bytes(key)).digest()
+    @staticmethod
+    def str_to_bytes(data):
+        u_type = type(b"".decode('utf8'))
+        if isinstance(data, u_type):
+            return data.encode('utf8')
+        return data
+    @staticmethod
+    def _unpad(s):
+        return s[:-ord(s[len(s) - 1:])]
+    def decrypt(self, enc):
+        iv = enc[:AES.block_size]
+        cipher = AES.new(self.key, AES.MODE_CBC, iv)
+        return  self._unpad(cipher.decrypt(enc[AES.block_size:]))
+    def decrypt_string(self, enc):
+        enc = base64.b64decode(enc)
+        return  self.decrypt(enc).decode('utf8')
 
 
 class LarkMessageConverter(adapter.MessageConverter):
@@ -301,37 +326,47 @@ class LarkMessageSourceAdapter(adapter.MessageSourceAdapter):
 
         @self.quart_app.route('/lark/callback', methods=['POST'])
         async def lark_callback():
-            data = await quart.request.json
+            try:
+                data = await quart.request.json
 
-            type =  data.get("type")
-            if type is  None :
+                if 'encrypt' in data:
+                    cipher = AESCipher(self.config['encrypt-key'])
+                    data = cipher.decrypt_string(data['encrypt'])
+                    data = json.loads(data)
+
+                type =  data.get("type")
+                if type is None :
+                    context = EventContext(data)
+                    type = context.header.event_type
+                
+                if 'url_verification' == type:
+                    print(data.get("challenge"))
+                    # todo 验证verification token
+                    return {
+                        "challenge": data.get("challenge")
+                    }
                 context = EventContext(data)
                 type = context.header.event_type
-            if type is  None :
-                return 'ok'
+                p2v1 = P2ImMessageReceiveV1()
+                p2v1.header = context.header
+                event = P2ImMessageReceiveV1Data()
+                event.message = EventMessage(context.event['message'])
+                event.sender = EventSender(context.event['sender'])
+                p2v1.event = event
+                p2v1.schema = context.schema
+                if 'im.message.receive_v1' == type:
+                    try:
+                        event = await self.event_converter.target2yiri(p2v1, self.api_client)
+                    except Exception as e:
+                        traceback.print_exc()
 
-            if 'url_verification' in type:
-                # todo 验证verification token
-                return data
-            context = EventContext(data)
-            type = context.header.event_type
-            p2v1 = P2ImMessageReceiveV1()
-            p2v1.header = context.header
-            event = P2ImMessageReceiveV1Data()
-            event.message = EventMessage(context.event['message'])
-            event.sender = EventSender(context.event['sender'])
-            p2v1.event = event
-            p2v1.schema = context.schema
-            if 'im.message.receive_v1' in type:
-                try:
-                    event = await self.event_converter.target2yiri(p2v1, self.api_client)
-                except Exception as e:
-                    traceback.print_exc()
+                    if event.__class__ in self.listeners:
+                        await self.listeners[event.__class__](event, self)
 
-                if event.__class__ in self.listeners:
-                    await self.listeners[event.__class__](event, self)
-
-                return 'ok'
+                return {"code": 200, "message": "ok"}
+            except Exception as e:
+                traceback.print_exc()
+                return {"code": 500, "message": "error"}
 
         async def on_message(event: lark_oapi.im.v1.P2ImMessageReceiveV1):
 
@@ -430,9 +465,10 @@ class LarkMessageSourceAdapter(adapter.MessageSourceAdapter):
         self.listeners.pop(event_type)
 
     async def run_async(self):
-        port =self.config['port']
+        port = self.config['port']
+        enable_webhook = self.config['enable-webhook']
 
-        if port is None or port == "":
+        if not enable_webhook:
             try:
                 await self.bot._connect()
             except lark_oapi.ws.exception.ClientException as e:
@@ -450,7 +486,7 @@ class LarkMessageSourceAdapter(adapter.MessageSourceAdapter):
 
             await self.quart_app.run_task(
                 host='0.0.0.0',
-                port=self.config['port'],
+                port=port,
                 shutdown_trigger=shutdown_trigger_placeholder,
             )
     async def kill(self) -> bool:

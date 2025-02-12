@@ -50,7 +50,9 @@
             "app_id": "cli_abcdefgh",
             "app_secret": "XXXXXXXXXX",
             "bot_name": "LangBot",
-            "port":""
+            "enable-webhook": false,
+            "port": 2285,
+            "encrypt-key": "xxxxxxxxx"
         },
         {
             "adapter": "discord",

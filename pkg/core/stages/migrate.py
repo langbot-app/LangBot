@@ -10,7 +10,7 @@ from ..migrations import m010_ollama_requester_config, m011_command_prefix_confi
 from ..migrations import m015_gitee_ai_config, m016_dify_service_api, m017_dify_api_timeout_params, m018_xai_config, m019_zhipuai_config
 from ..migrations import m020_wecom_config, m021_lark_config, m022_lmstudio_config, m023_siliconflow_config, m024_discord_config, m025_gewechat_config
 from ..migrations import m026_qqofficial_config, m027_wx_official_account_config
-
+from ..migrations import m030_lark_config_cmpl
 @stage.stage_class("MigrationStage")
 class MigrationStage(stage.BootingStage):
     """迁移阶段
