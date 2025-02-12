@@ -110,7 +110,7 @@ Directly use the released version to run, see the [Manual Deployment](https://do
 | [LMStudio](https://lmstudio.ai/) | ✅ | Local LLM running platform |
 | [GiteeAI](https://ai.gitee.com/) | ✅ | LLM interface gateway(MaaS) |
 | [SiliconFlow](https://siliconflow.cn/) | ✅ | LLM gateway(MaaS) |
-| [Aliyun Bailian](https://bailian.console.aliyun.com/) | ✅ | LLM gateway(MaaS) |
+| [Aliyun Bailian](https://bailian.console.aliyun.com/) | ✅ | LLM gateway(MaaS), LLMOps platform |
 
 ## 🤝 Community Contribution
 
