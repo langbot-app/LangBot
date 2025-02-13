@@ -391,6 +391,47 @@
                                 "description": "监听的端口"
                             }
                         }
+                    },
+                    {
+                        "title": "钉钉适配器",
+                        "description": "用于接入钉钉",
+                        "properties": {
+                            "adapter": {
+                                "type": "string",
+                                "const": "dingtalk"
+                            },
+                            "enable": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "是否启用此适配器",
+                                "layout": {
+                                    "comp": "switch",
+                                    "props": {
+                                        "color": "primary"
+                                    }
+                                }
+                            },
+                            "client_id": {
+                                "type": "string",
+                                "default": "",
+                                "description": "钉钉的client_id"
+                            },
+                            "client_secret": {
+                                "type": "string",
+                                "default": "",
+                                "description": "钉钉的client_secret"
+                            },
+                            "robot_code": {
+                                "type": "string",
+                                "default": "",
+                                "description": "钉钉的robot_code"
+                            },
+                            "robot_name": {
+                                "type": "string",
+                                "default": "",
+                                "description": "钉钉的robot_name"
+                            }
+                        }
                     }
                 ]
             }

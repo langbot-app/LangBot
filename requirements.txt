@@ -29,6 +29,7 @@ lark-oapi
 discord.py
 cryptography
 gewechat-client
+dingtalk_stream
 dashscope
 
 # indirect
