@@ -86,13 +86,13 @@
 | QQ 个人号 | ✅ | QQ 个人号私聊、群聊 |
 | QQ 官方机器人 | ✅ | QQ 官方机器人，支持频道、私聊、群聊 |
 | 企业微信 | ✅ |  |
+| 个人微信 | ✅ | 使用 [Gewechat](https://github.com/Devo919/Gewechat) 接入 |
 | 微信公众号 | ✅ |  |
 | 飞书 | ✅ |  |
+| 钉钉 | ✅ |  |
 | Discord | ✅ |  |
-| 个人微信 | ✅ | 使用 [Gewechat](https://github.com/Devo919/Gewechat) 接入 |
 | Telegram | 🚧 |  |
 | WhatsApp | 🚧 |  |
-| 钉钉 | 🚧 |  |
 
 🚧: 正在开发中
 
