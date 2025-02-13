@@ -6,7 +6,7 @@
 
 <div align="center">
 
-<a href="https://trendshift.io/repositories/6187" target="_blank"><img src="https://trendshift.io/api/badge/repositories/6187" alt="RockChinQ%2FQChatGPT | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+<a href="https://trendshift.io/repositories/12901" target="_blank"><img src="https://trendshift.io/api/badge/repositories/12901" alt="RockChinQ%2FLangBot | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 <a href="https://docs.langbot.app">项目主页</a> ｜
 <a href="https://docs.langbot.app/insight/intro.htmll">功能介绍</a> ｜
@@ -22,12 +22,13 @@
 <br/>
 
 
+[![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&labelColor=%20%235462eb&logoColor=%20%23f5f5f5&color=%20%235462eb)](https://discord.gg/wdNEHETs87)
 [![QQ Group](https://img.shields.io/badge/%E7%A4%BE%E5%8C%BAQQ%E7%BE%A4-1030838208-blue)](https://qm.qq.com/q/PF9OuQCCcM)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/LangBot)](https://github.com/RockChinQ/LangBot/releases/latest)
  ![Dynamic JSON Badge](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.qchatgpt.rockchin.top%2Fapi%2Fv2%2Fview%2Frealtime%2Fcount_query%3Fminute%3D10080&query=%24.data.count&label=%E4%BD%BF%E7%94%A8%E9%87%8F%EF%BC%887%E6%97%A5%EF%BC%89)
 <img src="https://img.shields.io/badge/python-3.10 | 3.11 | 3.12-blue.svg" alt="python">
 
-[简体中文](README.md) / [English](README_EN.md)
+[简体中文](README.md) / [English](README_EN.md) / [日本語](README_JP.md)
 
 </div>
 
@@ -85,6 +86,7 @@
 | QQ 个人号 | ✅ | QQ 个人号私聊、群聊 |
 | QQ 官方机器人 | ✅ | QQ 官方机器人，支持频道、私聊、群聊 |
 | 企业微信 | ✅ |  |
+| 微信公众号 | ✅ |  |
 | 飞书 | ✅ |  |
 | Discord | ✅ |  |
 | 个人微信 | ✅ | 使用 [Gewechat](https://github.com/Devo919/Gewechat) 接入 |
@@ -109,7 +111,7 @@
 | [LMStudio](https://lmstudio.ai/) | ✅ | 本地大模型运行平台 |
 | [GiteeAI](https://ai.gitee.com/) | ✅ | 大模型接口聚合平台 |
 | [SiliconFlow](https://siliconflow.cn/) | ✅ | 大模型聚合平台 |
-| [阿里云百炼](https://bailian.console.aliyun.com/) | ✅ | 大模型聚合平台 |
+| [阿里云百炼](https://bailian.console.aliyun.com/) | ✅ | 大模型聚合平台, LLMOps 平台 |
 
 ## 😘 社区贡献
 

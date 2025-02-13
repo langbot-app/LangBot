@@ -5,7 +5,7 @@
 
 <div align="center">
 
-<a href="https://trendshift.io/repositories/6187" target="_blank"><img src="https://trendshift.io/api/badge/repositories/6187" alt="RockChinQ%2FQChatGPT | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+<a href="https://trendshift.io/repositories/12901" target="_blank"><img src="https://trendshift.io/api/badge/repositories/12901" alt="RockChinQ%2FLangBot | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 <a href="https://docs.langbot.app">Home</a> ｜
 <a href="https://docs.langbot.app/insight/intro.htmll">Features</a> ｜
@@ -21,12 +21,12 @@
 <br/>
 
 
-
+[![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&labelColor=%20%235462eb&logoColor=%20%23f5f5f5&color=%20%235462eb)](https://discord.gg/wdNEHETs87)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/LangBot)](https://github.com/RockChinQ/LangBot/releases/latest)
  ![Dynamic JSON Badge](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.qchatgpt.rockchin.top%2Fapi%2Fv2%2Fview%2Frealtime%2Fcount_query%3Fminute%3D10080&query=%24.data.count&label=Usage(7days))
 <img src="https://img.shields.io/badge/python-3.10 | 3.11 | 3.12-blue.svg" alt="python">
 
-[简体中文](README.md) / [English](README_EN.md)
+[简体中文](README.md) / [English](README_EN.md) / [日本語](README_JP.md)
 
 </div>
 
@@ -85,6 +85,7 @@ Directly use the released version to run, see the [Manual Deployment](https://do
 | Personal QQ | ✅ |  |
 | QQ Official API | ✅ |  |
 | WeCom | ✅ |  |
+| WeChat Official Account | ✅ |  |
 | Lark | ✅ |  |
 | Discord | ✅ |  |
 | Personal WeChat | ✅ | Use [Gewechat](https://github.com/Devo919/Gewechat) to access |
@@ -109,7 +110,7 @@ Directly use the released version to run, see the [Manual Deployment](https://do
 | [LMStudio](https://lmstudio.ai/) | ✅ | Local LLM running platform |
 | [GiteeAI](https://ai.gitee.com/) | ✅ | LLM interface gateway(MaaS) |
 | [SiliconFlow](https://siliconflow.cn/) | ✅ | LLM gateway(MaaS) |
-| [Aliyun Bailian](https://bailian.console.aliyun.com/) | ✅ | LLM gateway(MaaS) |
+| [Aliyun Bailian](https://bailian.console.aliyun.com/) | ✅ | LLM gateway(MaaS), LLMOps platform |
 
 ## 🤝 Community Contribution
 

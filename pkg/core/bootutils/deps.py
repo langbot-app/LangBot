@@ -31,6 +31,7 @@ required_deps = {
     "cryptography": "cryptography",
     "gewechat_client": "gewechat-client",
     "dingtalk_stream": "dingtalk_stream",
+    "dashscope": "dashscope",
 }
 
 

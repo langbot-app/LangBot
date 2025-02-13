@@ -46,6 +46,9 @@ class DeepseekChatCompletions(chatcmpl.OpenAIChatCompletions):
         # 发送请求
         resp = await self._req(args)
 
+        if resp is None:
+            raise errors.RequesterError('接口返回为空，请确定模型提供商服务是否正常')
+
         # 处理请求结果
         message = await self._make_msg(resp)
 
