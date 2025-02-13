@@ -39,7 +39,7 @@ class PlatformManager:
     
     async def initialize(self):
 
-        from .sources import nakuru, aiocqhttp, qqbotpy, qqofficial, wecom, lark, discord, gewechat, officialaccount,dingtalk
+        from .sources import nakuru, aiocqhttp, qqbotpy, qqofficial, wecom, lark, discord, gewechat, officialaccount, telegram, dingtalk
 
         async def on_friend_message(event: platform_events.FriendMessage, adapter: msadapter.MessageSourceAdapter):
 
