@@ -75,6 +75,14 @@
             "AppID":"",
             "host": "0.0.0.0",
             "port": 2287
+        },
+        {
+            "adapter":"dingtalk",
+            "enable": false,
+            "client_id":"",
+            "client_secret":"",
+            "robot_code":"",
+            "robot_name":""
         }
     ],
     "track-function-calls": true,

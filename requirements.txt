@@ -29,6 +29,6 @@ lark-oapi
 discord.py
 cryptography
 gewechat-client
-
+dingtalk_stream
 # indirect
 taskgroup==0.0.0a4
