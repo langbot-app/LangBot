@@ -32,6 +32,7 @@ required_deps = {
     "gewechat_client": "gewechat-client",
     "dingtalk_stream": "dingtalk_stream",
     "dashscope": "dashscope",
+    "telegram": "python-telegram-bot",
 }
 
 

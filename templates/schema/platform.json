@@ -432,6 +432,26 @@
                                 "description": "钉钉的robot_name"
                             }
                         }
+                    },
+                    {
+                        "title": "Telegram 适配器",
+                        "description": "用于接入 Telegram",
+                        "properties": {
+                            "adapter": {
+                                "type": "string",
+                                "const": "telegram"
+                            },
+                            "enable": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "是否启用此适配器"
+                            },
+                            "token": {
+                                "type": "string",
+                                "default": "",
+                                "description": "Telegram 的 token"
+                            }
+                        }
                     }
                 ]
             }
