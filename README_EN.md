@@ -89,7 +89,7 @@ Directly use the released version to run, see the [Manual Deployment](https://do
 | Lark | ✅ |  |
 | DingTalk | ✅ |  |
 | Discord | ✅ |  |
-| Telegram | 🚧 |  |
+| Telegram | ✅ |  |
 | WhatsApp | 🚧 |  |
 
 🚧: In development
