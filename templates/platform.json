@@ -86,6 +86,11 @@
             "client_secret":"",
             "robot_code":"",
             "robot_name":""
+        },
+        {
+            "adapter":"telegram",
+            "enable": false,
+            "token":""
         }
     ],
     "track-function-calls": true,

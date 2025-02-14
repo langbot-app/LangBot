@@ -10,11 +10,12 @@ class WXOfficialAccountConfigMigration(migration.Migration):
     async def need_migrate(self) -> bool:
         """判断当前环境是否需要运行此迁移"""
         
-        for adapter in self.ap.platform_cfg.data['platform-adapters']:
-            if adapter['adapter'] == 'officialaccount':
-                return False
+        # for adapter in self.ap.platform_cfg.data['platform-adapters']:
+        #     if adapter['adapter'] == 'officialaccount':
+        #         return False
 
-        return True
+        # return True
+        return False
 
     async def run(self):
         """执行迁移"""
