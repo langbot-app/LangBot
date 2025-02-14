@@ -34,7 +34,7 @@
 
 ## ✨ Features
 
-- 💬 Chat with LLM / Agent: Supports multiple LLMs, adapt to group chats and private chats; Supports multi-round conversations, tool calls, and multi-modal capabilities. Deeply integrates with [Dify](https://dify.ai). Currently supports QQ, QQ Channel, WeCom, Lark, Discord, personal WeChat, and will support WhatsApp, Telegram, etc. in the future.
+- 💬 Chat with LLM / Agent: Supports multiple LLMs, adapt to group chats and private chats; Supports multi-round conversations, tool calls, and multi-modal capabilities. Deeply integrates with [Dify](https://dify.ai). Currently supports QQ, QQ Channel, WeCom, personal WeChat, Lark, DingTalk, Discord, Telegram, etc.
 - 🛠️ High Stability, Feature-rich: Native access control, rate limiting, sensitive word filtering, etc. mechanisms; Easy to use, supports multiple deployment methods.
 - 🧩 Plugin Extension, Active Community: Support event-driven, component extension, etc. plugin mechanisms; Rich ecology, currently has dozens of [plugins](https://docs.langbot.app/plugin/plugin-intro.html)
 - 😻 [New] Web UI: Support management LangBot instance through the browser, for details, see [documentation](https://docs.langbot.app/webui/intro.html)
