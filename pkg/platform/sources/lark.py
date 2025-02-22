@@ -298,8 +298,7 @@ class LarkEventConverter(adapter.EventConverter):
             )
 
 
-@adapter.adapter_class("lark")
-class LarkMessageSourceAdapter(adapter.MessageSourceAdapter):
+class LarkAdapter(adapter.MessagePlatformAdapter):
 
     bot: lark_oapi.ws.Client
     api_client: lark_oapi.Client
@@ -312,7 +311,7 @@ class LarkMessageSourceAdapter(adapter.MessageSourceAdapter):
 
     listeners: typing.Dict[
         typing.Type[platform_events.Event],
-        typing.Callable[[platform_events.Event, adapter.MessageSourceAdapter], None],
+        typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
     ] = {}
 
     config: dict
@@ -450,7 +449,7 @@ class LarkMessageSourceAdapter(adapter.MessageSourceAdapter):
         self,
         event_type: typing.Type[platform_events.Event],
         callback: typing.Callable[
-            [platform_events.Event, adapter.MessageSourceAdapter], None
+            [platform_events.Event, adapter.MessagePlatformAdapter], None
         ],
     ):
         self.listeners[event_type] = callback
@@ -459,7 +458,7 @@ class LarkMessageSourceAdapter(adapter.MessageSourceAdapter):
         self,
         event_type: typing.Type[platform_events.Event],
         callback: typing.Callable[
-            [platform_events.Event, adapter.MessageSourceAdapter], None
+            [platform_events.Event, adapter.MessagePlatformAdapter], None
         ],
     ):
         self.listeners.pop(event_type)

@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: discord
+  label:
+    en_US: Discord
+    zh_CN: Discord
+  description:
+    en_US: Discord Adapter
+    zh_CN: Discord 适配器
+spec:
+  config:
+    - name: client_id
+      label:
+        en_US: Client ID
+        zh_CN: 客户端ID
+      type: string
+      required: true
+      default: ""
+    - name: token
+      label:
+        en_US: Token
+        zh_CN: 令牌
+      type: string
+      required: true
+      default: ""
+execution:
+  python:
+    path: ./discord.py
+    attr: DiscordAdapter

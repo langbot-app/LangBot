@@ -10,7 +10,7 @@ from .types import message as platform_message
 from .types import events as platform_events
 
 
-preregistered_adapters: list[typing.Type[MessageSourceAdapter]] = []
+preregistered_adapters: list[typing.Type[MessagePlatformAdapter]] = []
 
 def adapter_class(
     name: str
@@ -23,14 +23,14 @@ def adapter_class(
     Returns:
         typing.Callable[[typing.Type[MessageSourceAdapter]], typing.Type[MessageSourceAdapter]]: 装饰器
     """
-    def decorator(cls: typing.Type[MessageSourceAdapter]) -> typing.Type[MessageSourceAdapter]:
+    def decorator(cls: typing.Type[MessagePlatformAdapter]) -> typing.Type[MessagePlatformAdapter]:
         cls.name = name
         preregistered_adapters.append(cls)
         return cls
     return decorator
 
 
-class MessageSourceAdapter(metaclass=abc.ABCMeta):
+class MessagePlatformAdapter(metaclass=abc.ABCMeta):
     """消息平台适配器基类"""
 
     name: str
@@ -89,7 +89,7 @@ class MessageSourceAdapter(metaclass=abc.ABCMeta):
     def register_listener(
         self,
         event_type: typing.Type[platform_message.Event],
-        callback: typing.Callable[[platform_message.Event, MessageSourceAdapter], None]
+        callback: typing.Callable[[platform_message.Event, MessagePlatformAdapter], None]
     ):
         """注册事件监听器
         
@@ -102,7 +102,7 @@ class MessageSourceAdapter(metaclass=abc.ABCMeta):
     def unregister_listener(
         self,
         event_type: typing.Type[platform_message.Event],
-        callback: typing.Callable[[platform_message.Event, MessageSourceAdapter], None]
+        callback: typing.Callable[[platform_message.Event, MessagePlatformAdapter], None]
     ):
         """注销事件监听器
         

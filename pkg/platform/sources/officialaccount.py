@@ -5,13 +5,13 @@ import traceback
 import time
 import datetime
 from pkg.core import app
-from pkg.platform.adapter import MessageSourceAdapter
+from pkg.platform.adapter import MessagePlatformAdapter
 from pkg.platform.types import events as platform_events, message as platform_message
 
 import aiocqhttp
 import aiohttp
 from libs.official_account_api.oaevent import OAEvent
-from pkg.platform.adapter import MessageSourceAdapter
+from pkg.platform.adapter import MessagePlatformAdapter
 from pkg.platform.types import events as platform_events, message as platform_message
 from libs.official_account_api.api import OAClient
 from pkg.core import app
@@ -68,8 +68,7 @@ class OAEventConverter(adapter.EventConverter):
         else:
             return None
 
-@adapter.adapter_class("officialaccount")
-class OfficialAccountAdapter(adapter.MessageSourceAdapter):
+class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
 
     bot : OAClient
     ap : app.Application
@@ -116,7 +115,7 @@ class OfficialAccountAdapter(adapter.MessageSourceAdapter):
         pass
 
 
-    def register_listener(self, event_type: type, callback: typing.Callable[[platform_events.Event, MessageSourceAdapter], None]):
+    def register_listener(self, event_type: type, callback: typing.Callable[[platform_events.Event, MessagePlatformAdapter], None]):
         async def on_message(event: OAEvent):
             self.bot_account_id = event.receiver_id
             try:
@@ -148,7 +147,7 @@ class OfficialAccountAdapter(adapter.MessageSourceAdapter):
     async def unregister_listener(
         self,
         event_type: type,
-        callback: typing.Callable[[platform_events.Event, MessageSourceAdapter], None],
+        callback: typing.Callable[[platform_events.Event, MessagePlatformAdapter], None],
     ):
         return super().unregister_listener(event_type, callback)
     

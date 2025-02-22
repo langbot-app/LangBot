@@ -25,6 +25,7 @@ from ..utils import version as version_mgr, proxy as proxy_mgr, announce as anno
 from ..persistence import mgr as persistencemgr
 from ..api.http.controller import main as http_controller
 from ..api.http.service import user as user_service
+from ..discover import engine as discover_engine
 from ..utils import logcache, ip
 from . import taskmgr
 from . import entities as core_entities
@@ -37,6 +38,8 @@ class Application:
 
     # asyncio_tasks: list[asyncio.Task] = []
     task_mgr: taskmgr.AsyncTaskManager = None
+
+    discover: discover_engine.ComponentDiscoveryEngine = None
 
     platform_mgr: im_mgr.PlatformManager = None
 

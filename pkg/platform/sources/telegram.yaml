@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: telegram
+  label:
+    en_US: Telegram
+    zh_CN: 电报
+  description:
+    en_US: Telegram Adapter
+    zh_CN: 电报适配器
+spec:
+  config:
+    - name: token
+      label:
+        en_US: Token
+        zh_CN: 令牌
+      type: string
+      required: true
+      default: ""
+execution:
+  python:
+    path: ./telegram.py
+    attr: TelegramAdapter

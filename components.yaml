@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Blueprint
+metadata:
+  name: builtin-components
+  label:
+    en_US: Builtin Components
+    zh_CN: 内置组件
+spec:
+  components:
+    ComponentTemplate:
+      fromFiles:
+        - pkg/platform/adapter.yaml
+    MessagePlatformAdapter:
+      fromDirs:
+        - path: pkg/platform/sources/

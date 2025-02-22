@@ -133,8 +133,7 @@ class GewechatEventConverter(adapter.EventConverter):
             )
 
 
-@adapter.adapter_class("gewechat")
-class GewechatMessageSourceAdapter(adapter.MessageSourceAdapter):
+class GeWeChatAdapter(adapter.MessagePlatformAdapter):
     
     bot: gewechat_client.GewechatClient
     quart_app: quart.Quart
@@ -150,7 +149,7 @@ class GewechatMessageSourceAdapter(adapter.MessageSourceAdapter):
 
     listeners: typing.Dict[
         typing.Type[platform_events.Event],
-        typing.Callable[[platform_events.Event, adapter.MessageSourceAdapter], None],
+        typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
     ] = {}
     
     def __init__(self, config: dict, ap: app.Application):
@@ -222,14 +221,14 @@ class GewechatMessageSourceAdapter(adapter.MessageSourceAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessageSourceAdapter], None]
+        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None]
     ):
         self.listeners[event_type] = callback
 
     def unregister_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessageSourceAdapter], None]
+        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None]
     ):
         pass
 

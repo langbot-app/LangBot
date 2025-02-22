@@ -6,7 +6,7 @@ import time
 import datetime
 import aiocqhttp
 import aiohttp
-from pkg.platform.adapter import MessageSourceAdapter
+from pkg.platform.adapter import MessagePlatformAdapter
 from pkg.platform.types import events as platform_events, message as platform_message
 from pkg.core import app
 from .. import adapter
@@ -137,10 +137,7 @@ class QQOfficialEventConverter(adapter.EventConverter):
             )
 
 
-        
-
-@adapter.adapter_class("qqofficial")
-class QQOfficialAdapter(adapter.MessageSourceAdapter):
+class QQOfficialAdapter(adapter.MessagePlatformAdapter):
     bot:QQOfficialClient
     ap:app.Application
     config:dict
@@ -213,7 +210,7 @@ class QQOfficialAdapter(adapter.MessageSourceAdapter):
         self,
         event_type: typing.Type[platform_events.Event],
         callback: typing.Callable[
-            [platform_events.Event, adapter.MessageSourceAdapter], None
+            [platform_events.Event, adapter.MessagePlatformAdapter], None
         ],
     ):
         async def on_message(event:QQOfficialEvent):
@@ -250,7 +247,7 @@ class QQOfficialAdapter(adapter.MessageSourceAdapter):
     def unregister_listener(
         self,
         event_type: type,
-        callback: typing.Callable[[platform_events.Event, MessageSourceAdapter], None],
+        callback: typing.Callable[[platform_events.Event, MessagePlatformAdapter], None],
     ):
         return super().unregister_listener(event_type, callback)
 

@@ -116,7 +116,7 @@ class APIHost:
 
     # ========== 插件可调用的 API（主程序API） ==========
 
-    def get_platform_adapters(self) -> list[platform_adapter.MessageSourceAdapter]:
+    def get_platform_adapters(self) -> list[platform_adapter.MessagePlatformAdapter]:
         """获取已启用的消息平台适配器列表
         
         Returns:
@@ -126,7 +126,7 @@ class APIHost:
     
     async def send_active_message(
         self,
-        adapter: platform_adapter.MessageSourceAdapter,
+        adapter: platform_adapter.MessagePlatformAdapter,
         target_type: str,
         target_id: str,
         message: platform_message.MessageChain,
