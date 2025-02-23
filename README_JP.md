@@ -109,7 +109,7 @@ LangBotはBTPanelにリストされています。BTPanelをインストール�
 | [GiteeAI](https://ai.gitee.com/) | ✅ | LLMインターフェースゲートウェイ(MaaS) |
 | [SiliconFlow](https://siliconflow.cn/) | ✅ | LLMゲートウェイ(MaaS) |
 | [Aliyun Bailian](https://bailian.console.aliyun.com/) | ✅ | LLMゲートウェイ(MaaS), LLMOpsプラットフォーム |
-| [Volc Engine Ark](https://console.volcark.com/ark/region:ark+cn-beijing/model?vendor=Bytedance&view=LIST_VIEW) | ✅ | LLMゲートウェイ(MaaS), LLMOpsプラットフォーム |
+| [Volc Engine Ark](https://console.volcengine.com/ark/region:ark+cn-beijing/model?vendor=Bytedance&view=LIST_VIEW) | ✅ | LLMゲートウェイ(MaaS), LLMOpsプラットフォーム |
 
 ## 🤝 コミュニティ貢献
 
