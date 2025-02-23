@@ -113,6 +113,7 @@
 | [GiteeAI](https://ai.gitee.com/) | ✅ | 大模型接口聚合平台 |
 | [SiliconFlow](https://siliconflow.cn/) | ✅ | 大模型聚合平台 |
 | [阿里云百炼](https://bailian.console.aliyun.com/) | ✅ | 大模型聚合平台, LLMOps 平台 |
+| [火山方舟](https://console.volcark.com/ark/region:ark+cn-beijing/model?vendor=Bytedance&view=LIST_VIEW) | ✅ | 大模型聚合平台, LLMOps 平台 |
 
 ## 😘 社区贡献
 

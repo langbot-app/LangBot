@@ -110,6 +110,7 @@ Directly use the released version to run, see the [Manual Deployment](https://do
 | [GiteeAI](https://ai.gitee.com/) | ✅ | LLM interface gateway(MaaS) |
 | [SiliconFlow](https://siliconflow.cn/) | ✅ | LLM gateway(MaaS) |
 | [Aliyun Bailian](https://bailian.console.aliyun.com/) | ✅ | LLM gateway(MaaS), LLMOps platform |
+| [Volc Engine Ark](https://console.volcark.com/ark/region:ark+cn-beijing/model?vendor=Bytedance&view=LIST_VIEW) | ✅ | LLM gateway(MaaS), LLMOps platform |
 
 ## 🤝 Community Contribution
 

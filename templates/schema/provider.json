@@ -91,7 +91,7 @@
                     },
                     "default": []
                 },
-                "volcengine": {
+                "volcark": {
                     "type": "array",
                     "title": "火山引擎大模型平台 API 密钥",
                     "items": {
@@ -325,7 +325,7 @@
                         }
                     }
                 },
-                "volcengine-chat-completions": {
+                "volcark-chat-completions": {
                     "type": "object",
                     "title": "火山方舟大模型平台 API 请求配置",
                     "description": "仅可编辑 URL 和 超时时间，额外请求参数不支持可视化编辑，请到编辑器编辑",
