@@ -29,6 +29,7 @@ qcapi
 claude.json
 bard.json
 /*yaml
+!components.yaml
 !/docker-compose.yaml
 data/labels/instance_id.json
 .DS_Store

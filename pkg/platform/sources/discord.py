@@ -168,8 +168,8 @@ class DiscordEventConverter(adapter.EventConverter):
                 source_platform_object=event,
             )
 
-@adapter.adapter_class("discord")
-class DiscordMessageSourceAdapter(adapter.MessageSourceAdapter):
+
+class DiscordAdapter(adapter.MessagePlatformAdapter):
 
     bot: discord.Client
 
@@ -184,7 +184,7 @@ class DiscordMessageSourceAdapter(adapter.MessageSourceAdapter):
 
     listeners: typing.Dict[
         typing.Type[platform_events.Event],
-        typing.Callable[[platform_events.Event, adapter.MessageSourceAdapter], None],
+        typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
     ] = {}
 
     def __init__(self, config: dict, ap: app.Application):
@@ -249,14 +249,14 @@ class DiscordMessageSourceAdapter(adapter.MessageSourceAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessageSourceAdapter], None],
+        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
     ):
         self.listeners[event_type] = callback
 
     def unregister_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessageSourceAdapter], None],
+        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
     ):
         self.listeners.pop(event_type)
 

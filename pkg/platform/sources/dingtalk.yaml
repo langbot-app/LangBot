@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: dingtalk
+  label:
+    en_US: DingTalk
+    zh_CN: 钉钉
+  description:
+    en_US: DingTalk Adapter
+    zh_CN: 钉钉适配器
+spec:
+  config:
+    - name: client_id
+      label:
+        en_US: Client ID
+        zh_CN: 客户端ID
+      type: string
+      required: true
+      default: ""
+    - name: client_secret
+      label:
+        en_US: Client Secret
+        zh_CN: 客户端密钥
+      type: string
+      required: true
+      default: ""
+    - name: robot_code
+      label:
+        en_US: Robot Code
+        zh_CN: 机器人代码
+      type: string
+      required: true
+      default: ""
+    - name: robot_name
+      label:
+        en_US: Robot Name
+        zh_CN: 机器人名称
+      type: string
+      required: true
+      default: ""
+execution:
+  python:
+    path: ./dingtalk.py
+    attr: DingTalkAdapter

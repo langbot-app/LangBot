@@ -18,6 +18,8 @@ from .types import message as platform_message
 from .types import events as platform_events
 from .types import entities as platform_entities
 
+from ..discover import engine
+
 # 处理 3.4 移除了 YiriMirai 之后，插件的兼容性问题
 from . import types as mirai
 sys.modules['mirai'] = mirai
@@ -27,7 +29,9 @@ sys.modules['mirai'] = mirai
 class PlatformManager:
     
     # adapter: msadapter.MessageSourceAdapter = None
-    adapters: list[msadapter.MessageSourceAdapter] = []
+    adapters: list[msadapter.MessagePlatformAdapter] = []
+
+    message_platform_adapter_components: list[engine.Component] = []
 
     # modern
     ap: app.Application = None
@@ -39,9 +43,13 @@ class PlatformManager:
     
     async def initialize(self):
 
-        from .sources import nakuru, aiocqhttp, qqbotpy, qqofficial, wecom, lark, discord, gewechat, officialaccount, telegram, dingtalk
+        components = self.ap.discover.get_components_by_kind('MessagePlatformAdapter')
 
-        async def on_friend_message(event: platform_events.FriendMessage, adapter: msadapter.MessageSourceAdapter):
+        self.message_platform_adapter_components = components
+
+        # from .sources import nakuru, aiocqhttp, qqbotpy, qqofficial, wecom, lark, discord, gewechat, officialaccount, telegram, dingtalk
+
+        async def on_friend_message(event: platform_events.FriendMessage, adapter: msadapter.MessagePlatformAdapter):
 
             await self.ap.query_pool.add_query(
                 launcher_type=core_entities.LauncherTypes.PERSON,
@@ -52,7 +60,7 @@ class PlatformManager:
                 adapter=adapter
             )
 
-        async def on_group_message(event: platform_events.GroupMessage, adapter: msadapter.MessageSourceAdapter):
+        async def on_group_message(event: platform_events.GroupMessage, adapter: msadapter.MessagePlatformAdapter):
 
             await self.ap.query_pool.add_query(
                 launcher_type=core_entities.LauncherTypes.GROUP,
@@ -76,10 +84,10 @@ class PlatformManager:
 
                 found = False
 
-                for adapter in msadapter.preregistered_adapters:
-                    if adapter.name == adapter_name:
+                for adapter in self.message_platform_adapter_components:
+                    if adapter.metadata.name == adapter_name:
                         found = True
-                        adapter_cls = adapter
+                        adapter_cls = adapter.get_python_component_class()
                         
                         adapter_inst = adapter_cls(
                             cfg_copy,
@@ -102,7 +110,7 @@ class PlatformManager:
         if len(self.adapters) == 0:
             self.ap.logger.warning('未运行平台适配器，请根据文档配置并启用平台适配器。')
 
-    async def write_back_config(self, adapter_inst: msadapter.MessageSourceAdapter, config: dict):
+    async def write_back_config(self, adapter_inst: msadapter.MessagePlatformAdapter, config: dict):
         index = -2
 
         for i, adapter in enumerate(self.adapters):
@@ -131,7 +139,7 @@ class PlatformManager:
         self.ap.platform_cfg.data['platform-adapters'][real_index] = new_cfg
         await self.ap.platform_cfg.dump_config()
 
-    async def send(self, event: platform_events.MessageEvent, msg: platform_message.MessageChain, adapter: msadapter.MessageSourceAdapter):
+    async def send(self, event: platform_events.MessageEvent, msg: platform_message.MessageChain, adapter: msadapter.MessagePlatformAdapter):
         
         if self.ap.platform_cfg.data['at-sender'] and isinstance(event, platform_events.GroupMessage):
 
@@ -152,7 +160,7 @@ class PlatformManager:
         try:
             tasks = []
             for adapter in self.adapters:
-                async def exception_wrapper(adapter: msadapter.MessageSourceAdapter):
+                async def exception_wrapper(adapter: msadapter.MessagePlatformAdapter):
                     try:
                         await adapter.run_async()
                     except Exception as e:
@@ -167,7 +175,7 @@ class PlatformManager:
                 self.ap.task_mgr.create_task(
                     task,
                     kind="platform-adapter",
-                    name=f"platform-adapter-{adapter.name}",
+                    name=f"platform-adapter-{adapter.__class__.__name__}",
                     scopes=[core_entities.LifecycleControlScope.APPLICATION, core_entities.LifecycleControlScope.PLATFORM],
                 )
 

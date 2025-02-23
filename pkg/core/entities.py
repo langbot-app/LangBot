@@ -57,7 +57,7 @@ class Query(pydantic.BaseModel):
     message_chain: platform_message.MessageChain
     """消息链，platform收到的原始消息链"""
 
-    adapter: msadapter.MessageSourceAdapter
+    adapter: msadapter.MessagePlatformAdapter
     """消息平台适配器对象，单个app中可能启用了多个消息平台适配器，此对象表明发起此query的适配器"""
 
     session: typing.Optional[Session] = None

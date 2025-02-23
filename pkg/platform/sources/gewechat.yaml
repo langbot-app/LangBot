@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: gewechat
+  label:
+    en_US: GeWeChat
+    zh_CN: GeWeChat（个人微信）
+  description:
+    en_US: GeWeChat Adapter
+    zh_CN: GeWeChat 适配器
+spec:
+  config:
+    - name: gewechat_url
+      label:
+        en_US: GeWeChat URL
+        zh_CN: GeWeChat URL
+      type: string
+      required: true
+      default: ""
+    - name: port
+      label:
+        en_US: Port
+        zh_CN: 端口
+      type: int
+      required: true
+      default: 2286
+    - name: callback_url
+      label:
+        en_US: Callback URL
+        zh_CN: 回调URL
+      type: string
+      required: true
+      default: ""
+    - name: app_id
+      label:
+        en_US: App ID
+        zh_CN: 应用ID
+      type: string
+      required: true
+      default: ""
+    - name: token
+      label:
+        en_US: Token
+        zh_CN: 令牌
+      type: string
+      required: true
+      default: ""
+execution:
+  python:
+    path: ./gewechat.py
+    attr: GeWeChatAdapter

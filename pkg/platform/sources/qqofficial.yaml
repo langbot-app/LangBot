@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: qqofficial
+  label:
+    en_US: QQ Official API
+    zh_CN: QQ 官方 API
+  description:
+    en_US: QQ Official API (Webhook)
+    zh_CN: QQ 官方 API (Webhook)
+spec:
+  config:
+    - name: appid
+      label:
+        en_US: App ID
+        zh_CN: 应用ID
+      type: string
+      required: true
+      default: ""
+    - name: secret
+      label:
+        en_US: Secret
+        zh_CN: 密钥
+      type: string
+      required: true
+      default: ""
+    - name: port
+      label:
+        en_US: Port
+        zh_CN: 监听端口
+      type: int
+      required: true
+      default: 2284
+    - name: token
+      label:
+        en_US: Token
+        zh_CN: 令牌
+      type: string
+      required: true
+      default: ""
+execution:
+  python:
+    path: ./qqofficial.py
+    attr: QQOfficialAdapter

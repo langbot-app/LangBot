@@ -360,8 +360,7 @@ class OfficialEventConverter(adapter_model.EventConverter):
             )
 
 
-@adapter_model.adapter_class("qq-botpy")
-class OfficialAdapter(adapter_model.MessageSourceAdapter):
+class OfficialAdapter(adapter_model.MessagePlatformAdapter):
     """QQ 官方消息适配器"""
 
     bot: botpy.Client = None
@@ -535,7 +534,7 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
         self,
         event_type: typing.Type[platform_events.Event],
         callback: typing.Callable[
-            [platform_events.Event, adapter_model.MessageSourceAdapter], None
+            [platform_events.Event, adapter_model.MessagePlatformAdapter], None
         ],
     ):
 
@@ -561,7 +560,7 @@ class OfficialAdapter(adapter_model.MessageSourceAdapter):
         self,
         event_type: typing.Type[platform_events.Event],
         callback: typing.Callable[
-            [platform_events.Event, adapter_model.MessageSourceAdapter], None
+            [platform_events.Event, adapter_model.MessagePlatformAdapter], None
         ],
     ):
         delattr(self.bot, event_handler_mapping[event_type])

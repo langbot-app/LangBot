@@ -3,7 +3,7 @@ import traceback
 import typing
 from libs.dingtalk_api.dingtalkevent import DingTalkEvent
 from pkg.platform.types import message as platform_message
-from pkg.platform.adapter import MessageSourceAdapter
+from pkg.platform.adapter import MessagePlatformAdapter
 from pkg.platform.types import events as platform_events, message as platform_message
 from pkg.core import app
 from .. import adapter
@@ -96,8 +96,8 @@ class DingTalkEventConverter(adapter.EventConverter):
                 source_platform_object=event
             )
 
-@adapter.adapter_class("dingtalk")
-class DingTalkAdapter(adapter.MessageSourceAdapter):
+
+class DingTalkAdapter(adapter.MessagePlatformAdapter):
     bot: DingTalkClient
     ap: app.Application
     bot_account_id: str
@@ -149,7 +149,7 @@ class DingTalkAdapter(adapter.MessageSourceAdapter):
         self,
         event_type: typing.Type[platform_events.Event],
         callback: typing.Callable[
-            [platform_events.Event, adapter.MessageSourceAdapter], None
+            [platform_events.Event, adapter.MessagePlatformAdapter], None
         ],
     ):
         async def on_message(event: DingTalkEvent):
@@ -176,7 +176,7 @@ class DingTalkAdapter(adapter.MessageSourceAdapter):
     async def unregister_listener(
         self,
         event_type: type,
-        callback: typing.Callable[[platform_events.Event, MessageSourceAdapter], None],
+        callback: typing.Callable[[platform_events.Event, MessagePlatformAdapter], None],
     ):
         return super().unregister_listener(event_type, callback)
 

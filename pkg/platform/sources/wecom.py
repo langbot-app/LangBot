@@ -8,7 +8,7 @@ import datetime
 import aiocqhttp
 import aiohttp
 from libs.wecom_api.api import WecomClient
-from pkg.platform.adapter import MessageSourceAdapter
+from pkg.platform.adapter import MessagePlatformAdapter
 from pkg.platform.types import events as platform_events, message as platform_message
 from libs.wecom_api.wecomevent import WecomEvent
 from pkg.core import app
@@ -144,8 +144,7 @@ class WecomEventConverter:
             )
 
 
-@adapter.adapter_class("wecom")
-class WecomeAdapter(adapter.MessageSourceAdapter):
+class WecomAdapter(adapter.MessagePlatformAdapter):
 
     bot: WecomClient
     ap: app.Application
@@ -207,7 +206,7 @@ class WecomeAdapter(adapter.MessageSourceAdapter):
         self,
         event_type: typing.Type[platform_events.Event],
         callback: typing.Callable[
-            [platform_events.Event, adapter.MessageSourceAdapter], None
+            [platform_events.Event, adapter.MessagePlatformAdapter], None
         ],
     ):
         async def on_message(event: WecomEvent):
@@ -242,6 +241,6 @@ class WecomeAdapter(adapter.MessageSourceAdapter):
     async def unregister_listener(
         self,
         event_type: type,
-        callback: typing.Callable[[platform_events.Event, MessageSourceAdapter], None],
+        callback: typing.Callable[[platform_events.Event, MessagePlatformAdapter], None],
     ):
         return super().unregister_listener(event_type, callback)

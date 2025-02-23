@@ -158,8 +158,7 @@ class NakuruProjectEventConverter(adapter_model.EventConverter):
             raise Exception("未支持转换的事件类型: " + str(event))
 
 
-@adapter_model.adapter_class("nakuru")
-class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
+class NakuruAdapter(adapter_model.MessagePlatformAdapter):
     """nakuru-project适配器"""
     bot: nakuru.CQHTTP
     bot_account_id: int
@@ -256,7 +255,7 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter_model.MessageSourceAdapter], None]
+        callback: typing.Callable[[platform_events.Event, adapter_model.MessagePlatformAdapter], None]
     ):
         try:
 
@@ -284,7 +283,7 @@ class NakuruProjectAdapter(adapter_model.MessageSourceAdapter):
     def unregister_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter_model.MessageSourceAdapter], None]
+        callback: typing.Callable[[platform_events.Event, adapter_model.MessagePlatformAdapter], None]
     ):
         nakuru_event_name = self.event_converter.yiri2target(event_type).__name__
 

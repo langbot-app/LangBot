@@ -18,6 +18,7 @@ from ...platform import manager as im_mgr
 from ...persistence import mgr as persistencemgr
 from ...api.http.controller import main as http_controller
 from ...api.http.service import user as user_service
+from ...discover import engine as discover_engine
 from ...utils import logcache
 from .. import taskmgr
 
@@ -31,6 +32,12 @@ class BuildAppStage(stage.BootingStage):
         """构建app对象的各个组件对象并初始化
         """
         ap.task_mgr = taskmgr.AsyncTaskManager(ap)
+
+        discover = discover_engine.ComponentDiscoveryEngine(ap)
+        discover.discover_blueprint(
+            "components.yaml"
+        )
+        ap.discover = discover
 
         proxy_mgr = proxy.ProxyManager(ap)
         await proxy_mgr.initialize()

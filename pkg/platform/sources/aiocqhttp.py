@@ -210,8 +210,7 @@ class AiocqhttpEventConverter(adapter.EventConverter):
             )
 
 
-@adapter.adapter_class("aiocqhttp")
-class AiocqhttpAdapter(adapter.MessageSourceAdapter):
+class AiocqhttpAdapter(adapter.MessagePlatformAdapter):
 
     bot: aiocqhttp.CQHttp
 
@@ -273,7 +272,7 @@ class AiocqhttpAdapter(adapter.MessageSourceAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessageSourceAdapter], None],
+        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
     ):
         async def on_message(event: aiocqhttp.Event):
             self.bot_account_id = event.self_id
@@ -290,7 +289,7 @@ class AiocqhttpAdapter(adapter.MessageSourceAdapter):
     def unregister_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessageSourceAdapter], None],
+        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
     ):
         return super().unregister_listener(event_type, callback)
 

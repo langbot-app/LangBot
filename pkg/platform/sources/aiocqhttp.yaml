@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: aiocqhttp
+  label:
+    en_US: OneBot v11 Adapter
+    zh_CN: OneBot v11 适配器
+  description:
+    en_US: OneBot v11 Adapter
+    zh_CN: OneBot v11 适配器
+spec:
+  config:
+    - name: host
+      label:
+        en_US: Host
+        zh_CN: 主机
+      type: string
+      required: true
+      default: 0.0.0.0
+    - name: port
+      label:
+        en_US: Port
+        zh_CN: 端口
+      type: int
+      required: true
+      default: 2280
+    - name: access-token
+      label:
+        en_US: Access Token
+        zh_CN: 访问令牌
+      type: string
+      required: false
+      default: ""
+execution:
+  python:
+    path: ./aiocqhttp.py
+    attr: AiocqhttpAdapter
