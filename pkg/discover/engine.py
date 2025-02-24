@@ -139,7 +139,7 @@ class ComponentDiscoveryEngine:
 
     def load_component_manifest(self, path: str, owner: str = 'builtin', no_save: bool = False) -> Component:
         """加载组件清单"""
-        with open(path, 'r') as f:
+        with open(path, 'r', encoding='utf-8') as f:
             manifest = yaml.safe_load(f)
             comp = Component(
                 owner=owner,
