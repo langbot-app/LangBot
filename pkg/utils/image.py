@@ -8,6 +8,60 @@ import aiohttp
 import PIL.Image
 import httpx
 
+
+async def get_gewechat_image_base64(gewechat_url: str, app_id: str, xml_content: str, image_type: int = 2) -> \
+typing.Tuple[str, str]:
+    """从gewechat服务器获取图片并转换为base64格式
+
+    Args:
+        gewechat_url (str): gewechat服务器地址
+        app_id (str): gewechat应用ID
+        xml_content (str): 图片的XML内容
+        image_type (int, optional): 图片类型. Defaults to 2.
+            1: 高清图片
+            2: 常规图片
+            3: 缩略图
+
+    Returns:
+        typing.Tuple[str, str]: (base64编码, 图片格式)
+
+    Raises:
+        Exception: 当图片下载或处理失败时抛出异常
+    """
+    async with aiohttp.ClientSession() as session:
+        # 获取图片下载链接
+        async with session.post(
+                f"{gewechat_url}/v2/api/message/downloadImage",
+                json={
+                    "app_id": app_id,
+                    "type": image_type,
+                    "xml": xml_content
+                }
+        ) as response:
+            if response.status != 200:
+                raise Exception(f"获取gewechat图片下载失败: {await response.text()}")
+
+            resp_data = await response.json()
+            if resp_data.get("ret") != 200:
+                raise Exception(f"获取gewechat图片下载链接失败: {resp_data}")
+
+            image_url = f"{gewechat_url}{resp_data['data']['fileUrl']}"
+
+            # 下载图片内容
+            async with session.get(image_url) as img_response:
+                if img_response.status != 200:
+                    raise Exception(f"下载gewechat图片失败: {await img_response.text()}")
+
+                # 获取图片格式
+                content_type = img_response.headers.get('Content-Type', '')
+                image_format = content_type.split('/')[-1]  # 例如 'image/jpeg' -> 'jpeg'
+
+                # 读取图片数据并转换为base64
+                image_data = await img_response.read()
+                base64_str = base64.b64encode(image_data).decode('utf-8')
+
+                return base64_str, image_format
+
 async def get_wecom_image_base64(pic_url: str) -> tuple[str, str]:
     """
     下载企业微信图片并转换为 base64

@@ -28,7 +28,10 @@ from ...utils import image
 
 
 class GewechatMessageConverter(adapter.MessageConverter):
-    
+
+    def __init__(self, config: dict):
+        self.config = config
+
     @staticmethod
     async def yiri2target(
         message_chain: platform_message.MessageChain
@@ -48,8 +51,8 @@ class GewechatMessageConverter(adapter.MessageConverter):
 
         return content_list
 
-    @staticmethod
     async def target2yiri(
+        self,
         message: dict,
         bot_account_id: str
     ) -> platform_message.MessageChain:
@@ -74,10 +77,29 @@ class GewechatMessageConverter(adapter.MessageConverter):
             return platform_message.MessageChain(content_list)
                     
         elif message["Data"]["MsgType"] == 3:
-            image_base64 = message["Data"]["ImgBuf"]["buffer"]
-            return platform_message.MessageChain(
-                [platform_message.Image(base64=f"data:image/jpeg;base64,{image_base64}")]
-            )
+            image_xml = message["Data"]["Content"]["string"]
+            if not image_xml:
+                return platform_message.MessageChain([
+                    platform_message.Plain(text="[图片内容为空]")
+                ])
+
+            try:
+                base64_str, image_format = await image.get_gewechat_image_base64(
+                    gewechat_url=self.config["gewechat_url"],
+                    app_id=self.config["app_id"],
+                    xml_content=image_xml
+                )
+
+                return platform_message.MessageChain([
+                    platform_message.Image(
+                        base64=f"data:image/{image_format};base64,{base64_str}"
+                    )
+                ])
+            except Exception as e:
+                print(f"处理图片消息失败: {str(e)}")
+                return platform_message.MessageChain([
+                    platform_message.Plain(text="[图片处理失败]")
+                ])
 
         elif message["Data"]["MsgType"] == 49:
             # 支持微信聊天记录的消息类型，将 XML 内容转换为 MessageChain 传递
@@ -106,19 +128,26 @@ class GewechatMessageConverter(adapter.MessageConverter):
                 )
 
 class GewechatEventConverter(adapter.EventConverter):
-    
+
+    def __init__(self, config: dict):
+        self.config = config
+        self.message_converter = GewechatMessageConverter(config)
+
     @staticmethod
     async def yiri2target(
         event: platform_events.MessageEvent
     ) -> dict:
         pass
 
-    @staticmethod
     async def target2yiri(
+        self,
         event: dict,
         bot_account_id: str
     ) -> platform_events.MessageEvent:
-        message_chain = await GewechatMessageConverter.target2yiri(copy.deepcopy(event), bot_account_id)
+        message_chain = await self.message_converter.target2yiri(
+            copy.deepcopy(event),
+            bot_account_id
+        )
 
         if not message_chain:
             return None
@@ -172,8 +201,8 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
 
     ap: app.Application
 
-    message_converter: GewechatMessageConverter = GewechatMessageConverter()
-    event_converter: GewechatEventConverter = GewechatEventConverter()
+    message_converter: GewechatMessageConverter
+    event_converter: GewechatEventConverter
 
     listeners: typing.Dict[
         typing.Type[platform_events.Event],
@@ -185,6 +214,9 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
         self.ap = ap
 
         self.quart_app = quart.Quart(__name__)
+
+        self.message_converter = GewechatMessageConverter(config=config)
+        self.event_converter = GewechatEventConverter(config=config)
 
         @self.quart_app.route('/gewechat/callback', methods=['POST'])
         async def gewechat_callback():
