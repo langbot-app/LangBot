@@ -54,7 +54,7 @@ async def get_gewechat_image_base64(
             if resp_data.get("ret") != 200:
                 raise Exception(f"获取gewechat图片下载链接失败: {resp_data}")
 
-            image_url = f"{gewechat_url}{resp_data['data']['fileUrl']}"
+            image_url = f"{gewechat_url}/{resp_data['data']['fileUrl']}"
 
             # 下载图片内容
             async with session.get(image_url, headers=headers) as img_response:
