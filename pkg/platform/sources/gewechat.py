@@ -79,6 +79,32 @@ class GewechatMessageConverter(adapter.MessageConverter):
                 [platform_message.Image(base64=f"data:image/jpeg;base64,{image_base64}")]
             )
 
+        elif message["Data"]["MsgType"] == 49:
+            # 支持微信聊天记录的消息类型，将 XML 内容转换为 MessageChain 传递
+            try:
+                # 首先确保内容是字符串
+                content = message["Data"]["Content"]["string"]
+
+                # 如果内容已经是base64编码，尝试解码
+                try:
+                    # 先将字符串编码为UTF-8字节
+                    content_bytes = content.encode('utf-8')
+                    # 然后进行base64解码
+                    decoded_content = base64.b64decode(content_bytes)
+                    return platform_message.MessageChain(
+                        [platform_message.Unknown(content=decoded_content)]
+                    )
+                except Exception as e:
+                    # 如果解码失败，直接返回原始内容
+                    return platform_message.MessageChain(
+                        [platform_message.Plain(text=content)]
+                    )
+            except Exception as e:
+                print(f"Error processing type 49 message: {str(e)}")
+                return platform_message.MessageChain(
+                    [platform_message.Plain(text="[无法解析的消息]")]
+                )
+
 class GewechatEventConverter(adapter.EventConverter):
     
     @staticmethod
