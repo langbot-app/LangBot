@@ -9,14 +9,20 @@ import PIL.Image
 import httpx
 
 
-async def get_gewechat_image_base64(gewechat_url: str, app_id: str, xml_content: str, image_type: int = 2) -> \
-typing.Tuple[str, str]:
+async def get_gewechat_image_base64(
+        gewechat_url: str,
+        app_id: str,
+        xml_content: str,
+        token: str,
+        image_type: int = 2
+) -> typing.Tuple[str, str]:
     """从gewechat服务器获取图片并转换为base64格式
 
     Args:
         gewechat_url (str): gewechat服务器地址
         app_id (str): gewechat应用ID
         xml_content (str): 图片的XML内容
+        token (str): Gewechat API Token
         image_type (int, optional): 图片类型. Defaults to 2.
             1: 高清图片
             2: 常规图片
@@ -24,16 +30,19 @@ typing.Tuple[str, str]:
 
     Returns:
         typing.Tuple[str, str]: (base64编码, 图片格式)
-
-    Raises:
-        Exception: 当图片下载或处理失败时抛出异常
     """
+    headers = {
+        'X-GEWE-TOKEN': token,
+        'Content-Type': 'application/json'
+    }
+
     async with aiohttp.ClientSession() as session:
         # 获取图片下载链接
         async with session.post(
                 f"{gewechat_url}/v2/api/message/downloadImage",
+                headers=headers,
                 json={
-                    "app_id": app_id,
+                    "appId": app_id,
                     "type": image_type,
                     "xml": xml_content
                 }
@@ -48,13 +57,13 @@ typing.Tuple[str, str]:
             image_url = f"{gewechat_url}{resp_data['data']['fileUrl']}"
 
             # 下载图片内容
-            async with session.get(image_url) as img_response:
+            async with session.get(image_url, headers=headers) as img_response:
                 if img_response.status != 200:
                     raise Exception(f"下载gewechat图片失败: {await img_response.text()}")
 
                 # 获取图片格式
                 content_type = img_response.headers.get('Content-Type', '')
-                image_format = content_type.split('/')[-1]  # 例如 'image/jpeg' -> 'jpeg'
+                image_format = content_type.split('/')[-1]
 
                 # 读取图片数据并转换为base64
                 image_data = await img_response.read()

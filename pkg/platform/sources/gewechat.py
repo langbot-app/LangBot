@@ -87,7 +87,9 @@ class GewechatMessageConverter(adapter.MessageConverter):
                 base64_str, image_format = await image.get_gewechat_image_base64(
                     gewechat_url=self.config["gewechat_url"],
                     app_id=self.config["app_id"],
-                    xml_content=image_xml
+                    xml_content=image_xml,
+                    token=self.config["token"],
+                    image_type=2
                 )
 
                 return platform_message.MessageChain([
