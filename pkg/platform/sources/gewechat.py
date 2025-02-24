@@ -212,7 +212,8 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
 
         self.quart_app = quart.Quart(__name__)
 
-
+        self.message_converter = GewechatMessageConverter(config)
+        self.event_converter = GewechatEventConverter(config)
 
         @self.quart_app.route('/gewechat/callback', methods=['POST'])
         async def gewechat_callback():
