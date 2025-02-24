@@ -45,6 +45,13 @@ spec:
       type: string
       required: true
       default: ""
+    - name: data_dir
+      label:
+        en_US: Data Directory
+        zh_CN: 数据目录
+      type: string
+      required: true
+      default: "/root/docker/gewechat/data/download"
 execution:
   python:
     path: ./gewechat.py

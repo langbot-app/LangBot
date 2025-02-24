@@ -8,25 +8,29 @@ import aiohttp
 import PIL.Image
 import httpx
 
+import os
+import aiofiles
+import pathlib
+from urllib.parse import urlparse
+
 
 async def get_gewechat_image_base64(
         gewechat_url: str,
         app_id: str,
         xml_content: str,
         token: str,
+        data_dir: str = "/root/docker/gewechat/data/download",  # gewechat数据目录
         image_type: int = 2
 ) -> typing.Tuple[str, str]:
-    """从gewechat服务器获取图片并转换为base64格式
+    """从gewechat本地文件系统获取图片并转换为base64格式
 
     Args:
-        gewechat_url (str): gewechat服务器地址
+        gewechat_url (str): gewechat服务器地址（用于获取图片URL）
         app_id (str): gewechat应用ID
         xml_content (str): 图片的XML内容
         token (str): Gewechat API Token
+        data_dir (str): gewechat数据目录
         image_type (int, optional): 图片类型. Defaults to 2.
-            1: 高清图片
-            2: 常规图片
-            3: 缩略图
 
     Returns:
         typing.Tuple[str, str]: (base64编码, 图片格式)
@@ -54,22 +58,30 @@ async def get_gewechat_image_base64(
             if resp_data.get("ret") != 200:
                 raise Exception(f"获取gewechat图片下载链接失败: {resp_data}")
 
-            image_url = f"{gewechat_url}/{resp_data['data']['fileUrl']}"
+            # 从URL中解析文件路径
+            file_url = resp_data['data']['fileUrl']
+            parsed_url = urlparse(file_url)
+            path_parts = parsed_url.path.strip('/').split('/')
 
-            # 下载图片内容
-            async with session.get(image_url, headers=headers) as img_response:
-                if img_response.status != 200:
-                    raise Exception(f"下载gewechat图片失败: {await img_response.text()}")
+            # 构建本地文件路径
+            # URL格式: /20250224/wx_U48cqQsdtqedi4Cak7MnN/35f6240a-c778-4579-93ee-d8002f91a8ed.png
+            local_path = os.path.join(data_dir, *path_parts)
 
-                # 获取图片格式
-                content_type = img_response.headers.get('Content-Type', '')
-                image_format = content_type.split('/')[-1]
+            # 确保文件存在
+            if not os.path.exists(local_path):
+                raise Exception(f"图片文件不存在: {local_path}")
 
-                # 读取图片数据并转换为base64
-                image_data = await img_response.read()
-                base64_str = base64.b64encode(image_data).decode('utf-8')
+            # 读取本地文件
+            async with aiofiles.open(local_path, 'rb') as f:
+                image_data = await f.read()
 
-                return base64_str, image_format
+            # 获取图片格式
+            image_format = pathlib.Path(local_path).suffix.lstrip('.')
+
+            # 转换为base64
+            base64_str = base64.b64encode(image_data).decode('utf-8')
+
+            return base64_str, image_format
 
 async def get_wecom_image_base64(pic_url: str) -> tuple[str, str]:
     """

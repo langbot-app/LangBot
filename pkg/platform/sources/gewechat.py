@@ -89,6 +89,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
                     app_id=self.config["app_id"],
                     xml_content=image_xml,
                     token=self.config["token"],
+                    data_dir=self.config.get("data_dir", "/root/docker/gewechat/data/download"),
                     image_type=2
                 )
 
