@@ -257,7 +257,7 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
 
         self.ap.logger.info(f"Gewechat 登录成功，app_id: {app_id}")
 
-        await self.ap.platform_mgr.write_back_config(self, self.config)
+        await self.ap.platform_mgr.write_back_config('gewechat', self, self.config)
 
         # 获取 nickname
         profile = self.bot.get_profile(self.config["app_id"])
