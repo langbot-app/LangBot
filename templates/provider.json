@@ -106,6 +106,9 @@
     "dify-service-api": {
         "base-url": "https://api.dify.ai/v1",
         "app-type": "chat",
+        "options": {
+            "convert-thinking-tips": "plain"
+        },
         "chat": {
             "api-key": "app-1234567890",
             "timeout": 120

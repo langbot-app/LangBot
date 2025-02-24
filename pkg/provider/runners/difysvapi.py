@@ -3,6 +3,7 @@ from __future__ import annotations
 import typing
 import json
 import uuid
+import re
 import base64
 
 import aiohttp
@@ -40,6 +41,23 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             api_key=api_key,
             base_url=self.ap.provider_cfg.data["dify-service-api"]["base-url"],
         )
+
+    def _try_convert_thinking(self, resp_text: str) -> str:
+        """尝试转换 Dify 的思考提示"""
+        if not resp_text.startswith("<details style=\"color:gray;background-color: #f8f8f8;padding: 8px;border-radius: 4px;\" open> <summary> Thinking... </summary>"):
+            return resp_text
+
+        if self.ap.provider_cfg.data["dify-service-api"]["options"]["convert-thinking-tips"] == "original":
+            return resp_text
+        
+        if self.ap.provider_cfg.data["dify-service-api"]["options"]["convert-thinking-tips"] == "remove":
+            return re.sub(r'<details style="color:gray;background-color: #f8f8f8;padding: 8px;border-radius: 4px;" open> <summary> Thinking... </summary>.*?</details>', '', resp_text, flags=re.DOTALL)
+        
+        if self.ap.provider_cfg.data["dify-service-api"]["options"]["convert-thinking-tips"] == "plain":
+            pattern = r'<details style="color:gray;background-color: #f8f8f8;padding: 8px;border-radius: 4px;" open> <summary> Thinking... </summary>(.*?)</details>'
+            thinking_text = re.search(pattern, resp_text, flags=re.DOTALL)
+            content_text = re.sub(pattern, '', resp_text, flags=re.DOTALL)
+            return f"<think>{thinking_text.group(1)}</think>\n{content_text}"
 
     async def _preprocess_user_message(
         self, query: core_entities.Query
@@ -109,7 +127,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     if chunk['data']['node_type'] == 'answer':
                         yield llm_entities.Message(
                             role="assistant",
-                            content=chunk['data']['outputs']['answer'],
+                            content=self._try_convert_thinking(chunk['data']['outputs']['answer']),
                         )
             elif mode == "basic":
                 if chunk['event'] == 'message':
@@ -117,7 +135,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 elif chunk['event'] == 'message_end':
                     yield llm_entities.Message(
                         role="assistant",
-                        content=basic_mode_pending_chunk,
+                        content=self._try_convert_thinking(basic_mode_pending_chunk),
                     )
                     basic_mode_pending_chunk = ''
 
