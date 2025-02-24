@@ -160,7 +160,9 @@ class GewechatEventConverter(adapter.EventConverter):
 
 
 class GeWeChatAdapter(adapter.MessagePlatformAdapter):
-    
+
+    name: str = "gewechat"  # 定义适配器名称
+
     bot: gewechat_client.GewechatClient
     quart_app: quart.Quart
 
