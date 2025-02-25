@@ -216,7 +216,7 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
         @self.quart_app.route('/gewechat/callback', methods=['POST'])
         async def gewechat_callback():
             data = await quart.request.json
-            print(json.dumps(data, indent=4, ensure_ascii=False))
+            # print(json.dumps(data, indent=4, ensure_ascii=False))
 
             if 'testMsg' in data:
                 return 'ok'
