@@ -205,14 +205,7 @@ class Application:
                 self.logger.info("执行热重载 scope="+scope)
 
                 latest_llm_model_config = await config.load_json_config("data/metadata/llm-models.json", "templates/metadata/llm-models.json")
-                for model in latest_llm_model_config.data['list']:
-                    for index, local_model in enumerate(self.llm_models_meta.data['list']):
-                        if model['name'] == local_model['name']:
-                            self.llm_models_meta.data['list'][index] = model
-                            break
-                    else:
-                        self.logger.info("读取到新模型="+model['name'])
-                        self.llm_models_meta.data['list'].append(model)
+                self.llm_models_meta = latest_llm_model_config
                 llm_model_mgr_inst = llm_model_mgr.ModelManager(self)
                 await llm_model_mgr_inst.initialize()
                 self.model_mgr = llm_model_mgr_inst
