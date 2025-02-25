@@ -23,7 +23,7 @@ class GewechatConfigMigration(migration.Migration):
             "adapter": "gewechat",
             "enable": False,
             "gewechat_url": "http://your-gewechat-server:2531",
-            "gewechat_downloadImage_port": 2532,
+            "gewechat_file_url": "http://your-gewechat-server:2532",
             "port": 2286,
             "callback_url": "http://your-callback-url:2286/gewechat/callback",
             "app_id": "",

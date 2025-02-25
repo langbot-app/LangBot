@@ -17,21 +17,21 @@ from urllib.parse import urlparse
 
 async def get_gewechat_image_base64(
         gewechat_url: str,
+        gewechat_file_url: str,
         app_id: str,
         xml_content: str,
         token: str,
         image_type: int = 2,
-        download_image_port: int = 2532,
 ) -> typing.Tuple[str, str]:
     """从gewechat服务器获取图片并转换为base64格式
 
     Args:
         gewechat_url (str): gewechat服务器地址（用于获取图片URL）
+        gewechat_file_url (str): gewechat文件下载服务地址
         app_id (str): gewechat应用ID
         xml_content (str): 图片的XML内容
         token (str): Gewechat API Token
         image_type (int, optional): 图片类型. Defaults to 2.
-        download_image_port (int, optional): 图片下载服务端口. Defaults to 2532.
 
     Returns:
         typing.Tuple[str, str]: (base64编码, 图片格式)
@@ -80,8 +80,7 @@ async def get_gewechat_image_base64(
                 raise Exception(f"获取图片下载链接网络错误: {str(e)}")
 
             # 解析原始URL并替换端口
-            parsed_url = urlparse(gewechat_url)
-            base_url = f"http://{parsed_url.hostname}:{download_image_port}"
+            base_url = gewechat_file_url
             download_url = f"{base_url}/download/{file_url}"
 
             # 下载图片
