@@ -11,6 +11,7 @@ import httpx
 import os
 import aiofiles
 import pathlib
+import asyncio
 from urllib.parse import urlparse
 
 
@@ -19,69 +20,94 @@ async def get_gewechat_image_base64(
         app_id: str,
         xml_content: str,
         token: str,
-        data_dir: str = "/root/docker/gewechat/data/download",  # gewechat数据目录
-        image_type: int = 2
+        image_type: int = 2,
+        download_image_port: int = 2532,
 ) -> typing.Tuple[str, str]:
-    """从gewechat本地文件系统获取图片并转换为base64格式
+    """从gewechat服务器获取图片并转换为base64格式
 
     Args:
         gewechat_url (str): gewechat服务器地址（用于获取图片URL）
         app_id (str): gewechat应用ID
         xml_content (str): 图片的XML内容
         token (str): Gewechat API Token
-        data_dir (str): gewechat数据目录
         image_type (int, optional): 图片类型. Defaults to 2.
+        download_image_port (int, optional): 图片下载服务端口. Defaults to 2532.
 
     Returns:
         typing.Tuple[str, str]: (base64编码, 图片格式)
+
+    Raises:
+        aiohttp.ClientTimeout: 请求超时（15秒）或连接超时（2秒）
+        Exception: 其他错误
     """
     headers = {
         'X-GEWE-TOKEN': token,
         'Content-Type': 'application/json'
     }
 
-    async with aiohttp.ClientSession() as session:
-        # 获取图片下载链接
-        async with session.post(
-                f"{gewechat_url}/v2/api/message/downloadImage",
-                headers=headers,
-                json={
-                    "appId": app_id,
-                    "type": image_type,
-                    "xml": xml_content
-                }
-        ) as response:
-            if response.status != 200:
-                raise Exception(f"获取gewechat图片下载失败: {await response.text()}")
+    # 设置超时
+    timeout = aiohttp.ClientTimeout(
+        total=15.0,  # 总超时时间15秒
+        connect=2.0,  # 连接超时2秒
+        sock_connect=2.0,  # socket连接超时2秒
+        sock_read=15.0  # socket读取超时15秒
+    )
 
-            resp_data = await response.json()
-            if resp_data.get("ret") != 200:
-                raise Exception(f"获取gewechat图片下载链接失败: {resp_data}")
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            # 获取图片下载链接
+            try:
+                async with session.post(
+                        f"{gewechat_url}/v2/api/message/downloadImage",
+                        headers=headers,
+                        json={
+                            "appId": app_id,
+                            "type": image_type,
+                            "xml": xml_content
+                        }
+                ) as response:
+                    if response.status != 200:
+                        raise Exception(f"获取gewechat图片下载失败: {await response.text()}")
 
-            # 从URL中解析文件路径
-            file_url = resp_data['data']['fileUrl']
-            parsed_url = urlparse(file_url)
-            path_parts = parsed_url.path.strip('/').split('/')
+                    resp_data = await response.json()
+                    if resp_data.get("ret") != 200:
+                        raise Exception(f"获取gewechat图片下载链接失败: {resp_data}")
 
-            # 构建本地文件路径
-            # URL格式: /20250224/wx_U48cqQsdtqedi4Cak7MnN/35f6240a-c778-4579-93ee-d8002f91a8ed.png
-            local_path = os.path.join(data_dir, *path_parts)
+                    file_url = resp_data['data']['fileUrl']
+            except asyncio.TimeoutError:
+                raise Exception("获取图片下载链接超时")
+            except aiohttp.ClientError as e:
+                raise Exception(f"获取图片下载链接网络错误: {str(e)}")
 
-            # 确保文件存在
-            if not os.path.exists(local_path):
-                raise Exception(f"图片文件不存在: {local_path}")
+            # 解析原始URL并替换端口
+            parsed_url = urlparse(gewechat_url)
+            base_url = f"http://{parsed_url.hostname}:{download_image_port}"
+            download_url = f"{base_url}/download/{file_url}"
 
-            # 读取本地文件
-            async with aiofiles.open(local_path, 'rb') as f:
-                image_data = await f.read()
+            # 下载图片
+            try:
+                async with session.get(download_url) as img_response:
+                    if img_response.status != 200:
+                        raise Exception(f"下载图片失败: {await img_response.text()}, URL: {download_url}")
 
-            # 获取图片格式
-            image_format = pathlib.Path(local_path).suffix.lstrip('.')
+                    image_data = await img_response.read()
 
-            # 转换为base64
-            base64_str = base64.b64encode(image_data).decode('utf-8')
+                    content_type = img_response.headers.get('Content-Type', '')
+                    if content_type:
+                        image_format = content_type.split('/')[-1]
+                    else:
+                        image_format = file_url.split('.')[-1]
 
-            return base64_str, image_format
+                    base64_str = base64.b64encode(image_data).decode('utf-8')
+
+                    return base64_str, image_format
+            except asyncio.TimeoutError:
+                raise Exception(f"下载图片超时, URL: {download_url}")
+            except aiohttp.ClientError as e:
+                raise Exception(f"下载图片网络错误: {str(e)}, URL: {download_url}")
+    except Exception as e:
+        raise Exception(f"获取图片失败: {str(e)}") from e
+
 
 async def get_wecom_image_base64(pic_url: str) -> tuple[str, str]:
     """

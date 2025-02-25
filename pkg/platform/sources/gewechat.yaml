@@ -17,6 +17,13 @@ spec:
       type: string
       required: true
       default: ""
+    - name: gewechat_downloadImage_port
+      label:
+        en_US: GeWeChat download image port
+        zh_CN: GeWeChat 下载图片的端口
+      type: int
+      required: true
+      default: 2532
     - name: port
       label:
         en_US: Port
@@ -45,13 +52,6 @@ spec:
       type: string
       required: true
       default: ""
-    - name: data_dir
-      label:
-        en_US: Data Directory
-        zh_CN: 数据目录
-      type: string
-      required: true
-      default: "/root/docker/gewechat/data/download"
 execution:
   python:
     path: ./gewechat.py

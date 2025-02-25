@@ -56,7 +56,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
         message: dict,
         bot_account_id: str
     ) -> platform_message.MessageChain:
-        
+
         if message["Data"]["MsgType"] == 1:
             # 检查消息开头，如果有 wxid_sbitaz0mt65n22:\n 则删掉
             regex = re.compile(r"^wxid_.*:")
@@ -89,8 +89,8 @@ class GewechatMessageConverter(adapter.MessageConverter):
                     app_id=self.config["app_id"],
                     xml_content=image_xml,
                     token=self.config["token"],
-                    data_dir=self.config.get("data_dir", "/root/docker/gewechat/data/download"),
-                    image_type=2
+                    image_type=2,
+                    download_image_port=self.config["gewechat_downloadImage_port"]
                 )
 
                 return platform_message.MessageChain([
@@ -107,20 +107,15 @@ class GewechatMessageConverter(adapter.MessageConverter):
         elif message["Data"]["MsgType"] == 49:
             # 支持微信聊天记录的消息类型，将 XML 内容转换为 MessageChain 传递
             try:
-                # 首先确保内容是字符串
                 content = message["Data"]["Content"]["string"]
 
-                # 如果内容已经是base64编码，尝试解码
                 try:
-                    # 先将字符串编码为UTF-8字节
                     content_bytes = content.encode('utf-8')
-                    # 然后进行base64解码
                     decoded_content = base64.b64decode(content_bytes)
                     return platform_message.MessageChain(
                         [platform_message.Unknown(content=decoded_content)]
                     )
                 except Exception as e:
-                    # 如果解码失败，直接返回原始内容
                     return platform_message.MessageChain(
                         [platform_message.Plain(text=content)]
                     )
@@ -175,7 +170,7 @@ class GewechatEventConverter(adapter.EventConverter):
                 time=event["Data"]["CreateTime"],
                 source_platform_object=event,
             )
-        elif 'wxid_' in event["Data"]["FromUserName"]["string"]:
+        else:
             return platform_events.FriendMessage(
                 sender=platform_entities.Friend(
                     id=event["Data"]["FromUserName"]["string"],
@@ -221,7 +216,7 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
         @self.quart_app.route('/gewechat/callback', methods=['POST'])
         async def gewechat_callback():
             data = await quart.request.json
-            # print(json.dumps(data, indent=4, ensure_ascii=False))
+            print(json.dumps(data, indent=4, ensure_ascii=False))
 
             if 'testMsg' in data:
                 return 'ok'

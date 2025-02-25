@@ -325,6 +325,11 @@
                                 "default": "",
                                 "description": "gewechat 的 url"
                             },
+                            "gewechat_downloadImage_port": {
+                                "type": "integer",
+                                "default": 2532,
+                                "description": "gewechat 下载图片的端口"
+                            },
                             "port": {
                                 "type": "integer",
                                 "default": 2286,
