@@ -325,6 +325,11 @@
                                 "default": "",
                                 "description": "gewechat 的 url"
                             },
+                            "gewechat_file_url": {
+                                "type": "string",
+                                "default": "",
+                                "description": "gewechat 文件下载URL"
+                            },
                             "port": {
                                 "type": "integer",
                                 "default": 2286,

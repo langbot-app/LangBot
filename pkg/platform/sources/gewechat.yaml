@@ -17,6 +17,13 @@ spec:
       type: string
       required: true
       default: ""
+    - name: gewechat_file_url
+      label:
+        en_US: GeWeChat file download URL
+        zh_CN: GeWeChat 文件下载URL
+      type: string
+      required: true
+      default: ""
     - name: port
       label:
         en_US: Port
