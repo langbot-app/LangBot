@@ -242,11 +242,7 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
 
         for msg in geweap_msg:
             if msg['type'] == 'text':
-
-                if target_type == "group":
-                    await self.bot.post_text(app_id=self.config['app_id'], to_wxid=target_id,content=msg['content'])
-                elif target_type == "person":
-                    await self.bot.post_text(app_id=self.config['app_id'], to_wxid=target_id,content=msg['content'])
+                await self.bot.post_text(app_id=self.config['app_id'], to_wxid=target_id,content=msg['content'])
 
     async def reply_message(
         self,
