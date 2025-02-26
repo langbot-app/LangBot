@@ -43,8 +43,11 @@ class GewechatMessageConverter(adapter.MessageConverter):
             elif isinstance(component, platform_message.Plain):
                 content_list.append({"type": "text", "content": component.text})
             elif isinstance(component, platform_message.Image):
+                content_list.append({"type": "image", "url": component.url})
                 # content_list.append({"type": "image", "image_id": component.image_id})
-                pass
+                #pass
+            elif isinstance(component, platform_message.Voice):
+                content_list.append({"type": "voice", "url": component.url, "length": component.length})
             elif isinstance(component, platform_message.Forward):
                 for node in component.node_list:
                     content_list.extend(await GewechatMessageConverter.yiri2target(node.message_chain))
@@ -103,7 +106,11 @@ class GewechatMessageConverter(adapter.MessageConverter):
                 return platform_message.MessageChain([
                     platform_message.Plain(text="[图片处理失败]")
                 ])
-
+        elif message["Data"]["MsgType"] == 34:
+            audio_base64 = message["Data"]["ImgBuf"]["buffer"]
+            return platform_message.MessageChain(
+                [platform_message.Voice(base64=f"data:audio/silk;base64,{audio_base64}")]
+            )
         elif message["Data"]["MsgType"] == 49:
             # 支持微信聊天记录的消息类型，将 XML 内容转换为 MessageChain 传递
             try:
