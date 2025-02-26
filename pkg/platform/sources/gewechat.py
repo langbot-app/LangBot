@@ -245,7 +245,11 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
         target_id: str,
         message: platform_message.MessageChain
     ):
-        pass
+        geweap_msg = await GewechatMessageConverter.yiri2target(message)
+
+        for msg in geweap_msg:
+            if msg['type'] == 'text':
+                await self.bot.post_text(app_id=self.config['app_id'], to_wxid=target_id,content=msg['content'])
 
     async def reply_message(
         self,
