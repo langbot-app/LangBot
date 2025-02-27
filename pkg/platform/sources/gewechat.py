@@ -43,28 +43,9 @@ class GewechatMessageConverter(adapter.MessageConverter):
             elif isinstance(component, platform_message.Plain):
                 content_list.append({"type": "text", "content": component.text})
             elif isinstance(component, platform_message.Image):
-                # if component.base64:
-                #     arg = component.base64
-                #     content_list.append({"type": "image", "image": arg})
-                # elif component.url:
-                #     arg = component.url
-                #     content_list.append({"type": "image", "image": arg})
-                # elif component.path:
-                #     arg = component.path
-                #     content_list.append({"type": "image", "image": arg})
-                # elif component.image_id:
-                #     arg = component.image_id
-                #     content_list.append({"type": "image", "image_id": arg})
-                if not component.url:
-                    pass
-                content_list.append({"type": "image", "image": component.url})
+                pass
 
 
-                # content_list.append({"type": "image", "image_id": component.image_id})
-                # pass
-
-                # content_list.append({"type": "image", "image_id": component.image_id})
-                #pass
             elif isinstance(component, platform_message.Voice):
                 content_list.append({"type": "voice", "url": component.url, "length": component.length})
             elif isinstance(component, platform_message.Forward):
@@ -273,9 +254,6 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
             if msg['type'] == 'text':
                 await self.bot.post_text(app_id=self.config['app_id'], to_wxid=target_id, content=msg['content'])
 
-            elif msg['type'] == 'image':
-
-                await self.bot.post_image(app_id=self.config['app_id'], to_wxid=target_id, img_url=msg["image"])
 
 
     async def reply_message(
