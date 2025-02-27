@@ -43,8 +43,25 @@ class GewechatMessageConverter(adapter.MessageConverter):
             elif isinstance(component, platform_message.Plain):
                 content_list.append({"type": "text", "content": component.text})
             elif isinstance(component, platform_message.Image):
+                # if component.base64:
+                #     arg = component.base64
+                #     content_list.append({"type": "image", "image": arg})
+                # elif component.url:
+                #     arg = component.url
+                #     content_list.append({"type": "image", "image": arg})
+                # elif component.path:
+                #     arg = component.path
+                #     content_list.append({"type": "image", "image": arg})
+                # elif component.image_id:
+                #     arg = component.image_id
+                #     content_list.append({"type": "image", "image_id": arg})
+                if not component.url:
+                    pass
+                content_list.append({"type": "image", "image": component.url})
+
+
                 # content_list.append({"type": "image", "image_id": component.image_id})
-                pass
+                # pass
             elif isinstance(component, platform_message.Forward):
                 for node in component.node_list:
                     content_list.extend(await GewechatMessageConverter.yiri2target(node.message_chain))
@@ -83,6 +100,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
                     platform_message.Plain(text="[图片内容为空]")
                 ])
 
+
             try:
                 base64_str, image_format = await image.get_gewechat_image_base64(
                     gewechat_url=self.config["gewechat_url"],
@@ -101,7 +119,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
             except Exception as e:
                 print(f"处理图片消息失败: {str(e)}")
                 return platform_message.MessageChain([
-                    platform_message.Plain(text="[图片处理失败]")
+                    platform_message.Plain(text=f"[图片处理失败]")
                 ])
 
         elif message["Data"]["MsgType"] == 49:
@@ -239,10 +257,17 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
         message: platform_message.MessageChain
     ):
         geweap_msg = await GewechatMessageConverter.yiri2target(message)
+        # 此处加上群消息at处理
+        # ats = [item["target"] for item in geweap_msg if item["type"] == "at"]
 
         for msg in geweap_msg:
             if msg['type'] == 'text':
-                await self.bot.post_text(app_id=self.config['app_id'], to_wxid=target_id,content=msg['content'])
+                await self.bot.post_text(app_id=self.config['app_id'], to_wxid=target_id, content=msg['content'])
+
+            elif msg['type'] == 'image':
+
+                await self.bot.post_image(app_id=self.config['app_id'], to_wxid=target_id, img_url=msg["image"])
+
 
     async def reply_message(
         self,
