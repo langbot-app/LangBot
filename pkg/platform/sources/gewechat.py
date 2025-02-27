@@ -43,7 +43,9 @@ class GewechatMessageConverter(adapter.MessageConverter):
             elif isinstance(component, platform_message.Plain):
                 content_list.append({"type": "text", "content": component.text})
             elif isinstance(component, platform_message.Image):
-                pass
+                if not component.url:
+                    pass
+                content_list.append({"type": "image", "image": component.url})
 
 
             elif isinstance(component, platform_message.Voice):
@@ -253,6 +255,10 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
         for msg in geweap_msg:
             if msg['type'] == 'text':
                 await self.bot.post_text(app_id=self.config['app_id'], to_wxid=target_id, content=msg['content'])
+
+            elif msg['type'] == 'image':
+
+                await self.bot.post_image(app_id=self.config['app_id'], to_wxid=target_id, img_url=msg["image"])
 
 
 
