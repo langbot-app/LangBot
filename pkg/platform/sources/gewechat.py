@@ -43,9 +43,11 @@ class GewechatMessageConverter(adapter.MessageConverter):
             elif isinstance(component, platform_message.Plain):
                 content_list.append({"type": "text", "content": component.text})
             elif isinstance(component, platform_message.Image):
-                content_list.append({"type": "image", "url": component.url})
-                # content_list.append({"type": "image", "image_id": component.image_id})
-                #pass
+                if not component.url:
+                    pass
+                content_list.append({"type": "image", "image": component.url})
+
+
             elif isinstance(component, platform_message.Voice):
                 content_list.append({"type": "voice", "url": component.url, "length": component.length})
             elif isinstance(component, platform_message.Forward):
@@ -86,6 +88,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
                     platform_message.Plain(text="[图片内容为空]")
                 ])
 
+
             try:
                 base64_str, image_format = await image.get_gewechat_image_base64(
                     gewechat_url=self.config["gewechat_url"],
@@ -104,7 +107,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
             except Exception as e:
                 print(f"处理图片消息失败: {str(e)}")
                 return platform_message.MessageChain([
-                    platform_message.Plain(text="[图片处理失败]")
+                    platform_message.Plain(text=f"[图片处理失败]")
                 ])
         elif message["Data"]["MsgType"] == 34:
             audio_base64 = message["Data"]["ImgBuf"]["buffer"]
@@ -246,10 +249,18 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
         message: platform_message.MessageChain
     ):
         geweap_msg = await GewechatMessageConverter.yiri2target(message)
+        # 此处加上群消息at处理
+        # ats = [item["target"] for item in geweap_msg if item["type"] == "at"]
 
         for msg in geweap_msg:
             if msg['type'] == 'text':
-                await self.bot.post_text(app_id=self.config['app_id'], to_wxid=target_id,content=msg['content'])
+                await self.bot.post_text(app_id=self.config['app_id'], to_wxid=target_id, content=msg['content'])
+
+            elif msg['type'] == 'image':
+
+                await self.bot.post_image(app_id=self.config['app_id'], to_wxid=target_id, img_url=msg["image"])
+
+
 
     async def reply_message(
         self,
