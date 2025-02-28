@@ -23,5 +23,7 @@ class LLMModelInfo(pydantic.BaseModel):
 
     vision_supported: typing.Optional[bool] = False
 
+    thinking: typing.Optional[bool] = False
+
     class Config:
         arbitrary_types_allowed = True
