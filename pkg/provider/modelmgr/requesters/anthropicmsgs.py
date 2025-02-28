@@ -50,6 +50,12 @@ class AnthropicMessages(requester.LLMAPIRequester):
         args = self.ap.provider_cfg.data['requester']['anthropic-messages']['args'].copy()
         args["model"] = model.name if model.model_name is None else model.model_name
 
+        if model.thinking:
+            if args["max_tokens"] >= 20000:
+                args["thinking"] = {"type": "enabled", "budget_tokens": 16000}
+            elif args["max_tokens"] > 1:
+                args["thinking"] = {"type": "enabled", "budget_tokens": args["max_tokens"]-1}
+
         # 处理消息
 
         # system
