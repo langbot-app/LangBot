@@ -14,7 +14,6 @@ from ...tools import entities as tools_entities
 from .. import entities as modelmgr_entities
 
 
-@requester.requester_class("gitee-ai-chat-completions")
 class GiteeAIChatCompletions(chatcmpl.OpenAIChatCompletions):
     """Gitee AI ChatCompletions API 请求器"""
 

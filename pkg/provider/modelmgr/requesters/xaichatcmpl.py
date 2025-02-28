@@ -7,7 +7,6 @@ from .. import requester
 from ....core import app
 
 
-@requester.requester_class("xai-chat-completions")
 class XaiChatCompletions(chatcmpl.OpenAIChatCompletions):
     """xAI ChatCompletion API 请求器"""
 

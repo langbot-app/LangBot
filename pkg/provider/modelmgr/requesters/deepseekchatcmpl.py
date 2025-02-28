@@ -7,7 +7,6 @@ from ... import entities as llm_entities
 from ...tools import entities as tools_entities
 
 
-@requester.requester_class("deepseek-chat-completions")
 class DeepseekChatCompletions(chatcmpl.OpenAIChatCompletions):
     """Deepseek ChatCompletion API 请求器"""
 

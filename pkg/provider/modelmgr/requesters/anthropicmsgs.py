@@ -16,7 +16,6 @@ from ...tools import entities as tools_entities
 from ....utils import image
 
 
-@requester.requester_class("anthropic-messages")
 class AnthropicMessages(requester.LLMAPIRequester):
     """Anthropic Messages API 请求器"""
 

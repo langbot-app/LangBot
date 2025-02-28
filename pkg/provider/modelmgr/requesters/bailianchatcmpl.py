@@ -7,7 +7,6 @@ from .. import requester
 from ....core import app
 
 
-@requester.requester_class("bailian-chat-completions")
 class BailianChatCompletions(chatcmpl.OpenAIChatCompletions):
     """阿里云百炼大模型平台 ChatCompletion API 请求器"""
 
