@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: LLMAPIRequester
+metadata:
+  name: siliconflow-chat-completions
+  label:
+    en_US: SiliconFlow
+    zh_CN: 硅基流动
+spec:
+  config:
+    - name: base-url
+      label:
+        en_US: Base URL
+        zh_CN: 基础 URL
+      type: string
+      required: true
+      default: "https://api.siliconflow.cn/v1"
+    - name: args
+      label:
+        en_US: Args
+        zh_CN: 附加参数
+      type: object
+      required: true
+      default: {}
+    - name: timeout
+      label:
+        en_US: Timeout
+        zh_CN: 超时时间
+      type: int
+      required: true
+      default: 120
+execution:
+  python:
+    path: ./siliconflowchatcmpl.py
+    attr: SiliconFlowChatCompletions
