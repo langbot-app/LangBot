@@ -9,7 +9,6 @@ from ... import entities as llm_entities
 from ...tools import entities as tools_entities
 
 
-@requester.requester_class("moonshot-chat-completions")
 class MoonshotChatCompletions(chatcmpl.OpenAIChatCompletions):
     """Moonshot ChatCompletion API 请求器"""
 

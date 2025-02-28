@@ -10,18 +10,6 @@ from . import entities as modelmgr_entities
 from ..tools import entities as tools_entities
 
 
-preregistered_requesters: list[typing.Type[LLMAPIRequester]] = []
-
-def requester_class(name: str):
-
-    def decorator(cls: typing.Type[LLMAPIRequester]) -> typing.Type[LLMAPIRequester]:
-        cls.name = name
-        preregistered_requesters.append(cls)
-        return cls
-
-    return decorator
-
-
 class LLMAPIRequester(metaclass=abc.ABCMeta):
     """LLM API请求器
     """

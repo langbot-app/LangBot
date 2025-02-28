@@ -4,7 +4,7 @@ import aiohttp
 
 from . import entities, requester
 from ...core import app
-
+from ...discover import engine
 from . import token
 from .requesters import bailianchatcmpl, chatcmpl, anthropicmsgs, moonshotchatcmpl, deepseekchatcmpl, ollamachat, giteeaichatcmpl, volcarkchatcmpl, xaichatcmpl, zhipuaichatcmpl, lmstudiochatcmpl, siliconflowchatcmpl, volcarkchatcmpl
 
@@ -15,6 +15,8 @@ class ModelManager:
     """模型管理器"""
 
     ap: app.Application
+
+    requester_components: list[engine.Component]
 
     model_list: list[entities.LLMModelInfo]
 
@@ -38,14 +40,21 @@ class ModelManager:
     
     async def initialize(self):
 
+        self.requester_components = self.ap.discover.get_components_by_kind('LLMAPIRequester')
+
         # 初始化token_mgr, requester
         for k, v in self.ap.provider_cfg.data['keys'].items():
             self.token_mgrs[k] = token.TokenManager(k, v)
 
-        for api_cls in requester.preregistered_requesters:
+        # for api_cls in requester.preregistered_requesters:
+        #     api_inst = api_cls(self.ap)
+        #     await api_inst.initialize()
+        #     self.requesters[api_inst.name] = api_inst
+        for component in self.requester_components:
+            api_cls = component.get_python_component_class()
             api_inst = api_cls(self.ap)
             await api_inst.initialize()
-            self.requesters[api_inst.name] = api_inst
+            self.requesters[component.metadata.name] = api_inst
 
         # 尝试从api获取最新的模型信息
         try:

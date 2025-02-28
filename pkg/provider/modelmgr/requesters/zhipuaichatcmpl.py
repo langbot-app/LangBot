@@ -7,7 +7,6 @@ from . import chatcmpl
 from .. import requester
 
 
-@requester.requester_class("zhipuai-chat-completions")
 class ZhipuAIChatCompletions(chatcmpl.OpenAIChatCompletions):
     """智谱AI ChatCompletion API 请求器"""
 
