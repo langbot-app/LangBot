@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typing
+import json
 import traceback
 import base64
 
@@ -68,11 +69,32 @@ class AnthropicMessages(requester.LLMAPIRequester):
         req_messages = []
 
         for m in messages:
-            if isinstance(m.content, str) and m.content.strip() != "":
-                req_messages.append(m.dict(exclude_none=True))
-            elif isinstance(m.content, list):
+            if m.role == 'tool':
+                tool_call_id = m.tool_call_id
 
-                msg_dict = m.dict(exclude_none=True)
+                req_messages.append({
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": tool_call_id,
+                            "content": m.content
+                        }
+                    ]
+                })
+
+                continue
+
+            msg_dict = m.dict(exclude_none=True)
+
+            if isinstance(m.content, str) and m.content.strip() != "":
+                msg_dict["content"] = [
+                    {
+                        "type": "text",
+                        "text": m.content
+                    }
+                ]
+            elif isinstance(m.content, list):
 
                 for i, ce in enumerate(m.content):
 
@@ -89,25 +111,58 @@ class AnthropicMessages(requester.LLMAPIRequester):
                         }
                         msg_dict["content"][i] = alter_image_ele
 
-                req_messages.append(msg_dict)
+            if m.tool_calls:
+
+                for tool_call in m.tool_calls:
+                    msg_dict["content"].append({
+                        "type": "tool_use",
+                        "id": tool_call.id,
+                        "name": tool_call.function.name,
+                        "input": json.loads(tool_call.function.arguments)
+                    })
+
+                del msg_dict["tool_calls"]
+
+            req_messages.append(msg_dict)
+                
 
         args["messages"] = req_messages
+        
+        if funcs:
+            tools = await self.ap.tool_mgr.generate_tools_for_anthropic(funcs)
 
-        # anthropic的tools处在beta阶段，sdk不稳定，故暂时不支持
-        #
-        # if funcs:
-        #     tools = await self.ap.tool_mgr.generate_tools_for_openai(funcs)
-
-        #     if tools:
-        #         args["tools"] = tools
+            if tools:
+                args["tools"] = tools
 
         try:
+            # print(json.dumps(args, indent=4, ensure_ascii=False))
             resp = await self.client.messages.create(**args)
 
-            return llm_entities.Message(
-                content=resp.content[0].text,
-                role=resp.role
-            )
+            args = {
+                'content': '',
+                'role': resp.role,
+            }
+            
+            assert type(resp) is anthropic.types.message.Message
+
+            for block in resp.content:
+                if block.type == 'text':
+                    args['content'] += block.text
+                elif block.type == 'tool_use':
+                    assert type(block) is anthropic.types.tool_use_block.ToolUseBlock
+                    tool_call = llm_entities.ToolCall(
+                        id=block.id,
+                        type="function",
+                        function=llm_entities.FunctionCall(
+                            name=block.name,
+                            arguments=json.dumps(block.input)
+                        )
+                    )
+                    if 'tool_calls' not in args:
+                        args['tool_calls'] = []
+                    args['tool_calls'].append(tool_call)
+
+            return llm_entities.Message(**args)
         except anthropic.AuthenticationError as e:
             raise errors.RequesterError(f'api-key 无效: {e.message}')
         except anthropic.BadRequestError as e:
