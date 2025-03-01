@@ -74,19 +74,29 @@
             "name": "claude-3-opus-latest",
             "requester": "anthropic-messages",
             "token_mgr": "anthropic",
-            "vision_supported": true
+            "vision_supported": true,
+            "tool_call_supported": true
         },
         {
             "name": "claude-3-5-sonnet-latest",
             "requester": "anthropic-messages",
             "token_mgr": "anthropic",
-            "vision_supported": true
+            "vision_supported": true,
+            "tool_call_supported": true
         },
         {
             "name": "claude-3-5-haiku-latest",
             "requester": "anthropic-messages",
             "token_mgr": "anthropic",
-            "vision_supported": true
+            "vision_supported": true,
+            "tool_call_supported": true
+        },
+        {
+            "name": "claude-3-7-sonnet-latest",
+            "requester": "anthropic-messages",
+            "token_mgr": "anthropic",
+            "vision_supported": true,
+            "tool_call_supported": true
         },
         {
             "name": "moonshot-v1-8k",

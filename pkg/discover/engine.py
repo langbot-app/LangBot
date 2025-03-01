@@ -187,6 +187,9 @@ class ComponentDiscoveryEngine:
             if name == 'ComponentTemplate':
                 continue
             components[name] = self.load_blueprint_comp_group(component, owner)
+        
+        self.ap.logger.debug(f'Components: {components}')
+
         return blueprint_manifest, components
 
 

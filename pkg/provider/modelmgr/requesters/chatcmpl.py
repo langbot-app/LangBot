@@ -20,7 +20,6 @@ from ...tools import entities as tools_entities
 from ....utils import image
 
 
-@requester.requester_class("openai-chat-completions")
 class OpenAIChatCompletions(requester.LLMAPIRequester):
     """OpenAI ChatCompletion API 请求器"""
 

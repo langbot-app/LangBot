@@ -7,7 +7,6 @@ from .. import requester
 from ....core import app
 
 
-@requester.requester_class("siliconflow-chat-completions")
 class SiliconFlowChatCompletions(chatcmpl.OpenAIChatCompletions):
     """SiliconFlow ChatCompletion API 请求器"""
 

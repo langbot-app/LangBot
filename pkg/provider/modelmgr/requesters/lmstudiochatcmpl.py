@@ -7,7 +7,6 @@ from .. import requester
 from ....core import app
 
 
-@requester.requester_class("lmstudio-chat-completions")
 class LmStudioChatCompletions(chatcmpl.OpenAIChatCompletions):
     """LMStudio ChatCompletion API 请求器"""
 

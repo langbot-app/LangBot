@@ -7,7 +7,6 @@ from .. import requester
 from ....core import app
 
 
-@requester.requester_class("volcark-chat-completions")
 class VolcArkChatCompletions(chatcmpl.OpenAIChatCompletions):
     """火山方舟大模型平台 ChatCompletion API 请求器"""
 

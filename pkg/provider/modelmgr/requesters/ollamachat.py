@@ -20,7 +20,6 @@ from ....utils import image
 REQUESTER_NAME: str = "ollama-chat"
 
 
-@requester.requester_class(REQUESTER_NAME)
 class OllamaChatCompletions(requester.LLMAPIRequester):
     """Ollama平台 ChatCompletion API请求器"""
     client: ollama.AsyncClient
