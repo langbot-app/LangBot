@@ -51,10 +51,7 @@ class AnthropicMessages(requester.LLMAPIRequester):
         args["model"] = model.name if model.model_name is None else model.model_name
 
         if model.thinking:
-            if args["max_tokens"] >= 20000:
-                args["thinking"] = {"type": "enabled", "budget_tokens": 16000}
-            elif args["max_tokens"] > 1:
-                args["thinking"] = {"type": "enabled", "budget_tokens": args["max_tokens"]-1}
+            args["thinking"] = {"type": "enabled", "budget_tokens": 16000}
 
         # 处理消息
 
@@ -152,6 +149,8 @@ class AnthropicMessages(requester.LLMAPIRequester):
             assert type(resp) is anthropic.types.message.Message
 
             for block in resp.content:
+                if block.type == 'thinking':
+                    args['content'] = '<think>' + block.thinking + '</think>'
                 if block.type == 'text':
                     args['content'] += block.text
                 elif block.type == 'tool_use':
