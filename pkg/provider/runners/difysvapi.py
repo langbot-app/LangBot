@@ -229,7 +229,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         cov_id = query.session.using_conversation.uuid
 
-        plain_text, image_ids, timestamp = await self._preprocess_user_message(query)
+        plain_text, image_ids = await self._preprocess_user_message(query)
 
         # 尝试获取 CreateTime
         create_time = 0
