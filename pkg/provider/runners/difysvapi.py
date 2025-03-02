@@ -61,7 +61,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
     async def _preprocess_user_message(
         self, query: core_entities.Query
-    ) -> tuple[str, list[str], int | None]:
+    ) -> tuple[str, list[str]]:
         """预处理用户消息，提取纯文本，并将图片上传到 Dify 服务
 
         Returns:
