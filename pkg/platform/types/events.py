@@ -44,21 +44,6 @@ class Event(pydantic.BaseModel):
 
 
 ###############################
-# Bot Event
-class BotEvent(Event):
-    """Bot 自身事件。
-
-    Args:
-        type: 事件名。
-        qq: Bot 的 QQ 号。
-    """
-    type: str
-    """事件名。"""
-    qq: int
-    """Bot 的 QQ 号。"""
-
-
-###############################
 # Message Event
 class MessageEvent(Event):
     """消息事件。
@@ -79,7 +64,7 @@ class MessageEvent(Event):
 
 
 class FriendMessage(MessageEvent):
-    """好友消息。
+    """私聊消息。
 
     Args:
         type: 事件名。
@@ -111,19 +96,3 @@ class GroupMessage(MessageEvent):
     @property
     def group(self) -> platform_entities.Group:
         return self.sender.group
-
-
-class StrangerMessage(MessageEvent):
-    """陌生人消息。
-
-    Args:
-        type: 事件名。
-        sender: 发送消息的人。
-        message_chain: 消息内容。
-    """
-    type: str = 'StrangerMessage'
-    """事件名。"""
-    sender: platform_entities.Friend
-    """发送消息的人。"""
-    message_chain: platform_message.MessageChain
-    """消息内容。"""

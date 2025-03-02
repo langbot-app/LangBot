@@ -116,18 +116,6 @@ class MessageChain(PlatformBaseModel):
         print('At Me')
     ```
 
-    消息链对索引操作进行了增强。以消息组件类型为索引，获取消息链中的全部该类型的消息组件。
-    ```py
-    plain_list = message_chain[Plain]
-    '[Plain("Hello World!")]'
-    ```
-
-    可以用加号连接两个消息链。
-    ```py
-    MessageChain(['Hello World!']) + MessageChain(['Goodbye World!'])
-    # 返回 MessageChain([Plain("Hello World!"), Plain("Goodbye World!")])
-    ```
-
     """
     __root__: typing.List[MessageComponent]
 
@@ -488,9 +476,9 @@ class Quote(MessageComponent):
     group_id: typing.Optional[typing.Union[int, str]] = None
     """被引用回复的原消息所接收的群号，当为好友消息时为0。"""
     sender_id: typing.Optional[typing.Union[int, str]] = None
-    """被引用回复的原消息的发送者的QQ号。"""
+    """被引用回复的原消息的发送者的ID。"""
     target_id: typing.Optional[typing.Union[int, str]] = None
-    """被引用回复的原消息的接收者者的QQ号（或群号）。"""
+    """被引用回复的原消息的接收者者的ID或群ID。"""
     origin: MessageChain
     """被引用回复的原消息的消息链对象。"""
 
@@ -504,7 +492,7 @@ class At(MessageComponent):
     type: str = "At"
     """消息组件类型。"""
     target: typing.Union[int, str]
-    """群员 QQ 号。"""
+    """群员 ID。"""
     display: typing.Optional[str] = None
     """At时显示的文字，发送消息时无效，自动使用群名片。"""
     def __eq__(self, other):
@@ -527,9 +515,9 @@ class Image(MessageComponent):
     type: str = "Image"
     """消息组件类型。"""
     image_id: typing.Optional[str] = None
-    """图片的 image_id，群图片与好友图片格式不同。不为空时将忽略 url 属性。"""
+    """图片的 image_id，不为空时将忽略 url 属性。"""
     url: typing.Optional[pydantic.HttpUrl] = None
-    """图片的 URL，发送时可作网络图片的链接；接收时为腾讯图片服务器的链接，可用于图片下载。"""
+    """图片的 URL，发送时可作网络图片的链接；接收时为图片的链接，可用于图片下载。"""
     path: typing.Union[str, Path, None] = None
     """图片的路径，发送本地图片。"""
     base64: typing.Optional[str] = None
@@ -663,7 +651,7 @@ class Voice(MessageComponent):
     voice_id: typing.Optional[str] = None
     """语音的 voice_id，不为空时将忽略 url 属性。"""
     url: typing.Optional[str] = None
-    """语音的 URL，发送时可作网络语音的链接；接收时为腾讯语音服务器的链接，可用于语音下载。"""
+    """语音的 URL，发送时可作网络语音的链接；接收时为语音文件的链接，可用于语音下载。"""
     path: typing.Optional[str] = None
     """语音的路径，发送本地语音。"""
     base64: typing.Optional[str] = None
@@ -690,8 +678,6 @@ class Voice(MessageComponent):
         directory: typing.Union[str, Path, None] = None
     ):
         """下载语音到本地。
-
-        语音采用 silk v3 格式，silk 格式的编码解码请使用 [graiax-silkcoder](https://pypi.org/project/graiax-silkcoder/)。
 
         Args:
             filename: 下载到本地的文件路径。与 `directory` 二选一。
@@ -750,13 +736,13 @@ class Voice(MessageComponent):
 class ForwardMessageNode(pydantic.BaseModel):
     """合并转发中的一条消息。"""
     sender_id: typing.Optional[typing.Union[int, str]] = None
-    """发送人QQ号。"""
+    """发送人ID。"""
     sender_name: typing.Optional[str] = None
     """显示名称。"""
     message_chain: typing.Optional[MessageChain] = None
     """消息内容。"""
     message_id: typing.Optional[int] = None
-    """消息的 message_id，可以只使用此属性，从缓存中读取消息内容。"""
+    """消息的 message_id。"""
     time: typing.Optional[datetime] = None
     """发送时间。"""
     @pydantic.validator('message_chain', check_fields=False)
