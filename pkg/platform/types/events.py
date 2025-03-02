@@ -57,7 +57,7 @@ class MessageEvent(Event):
     message_chain: platform_message.MessageChain
     """消息内容。"""
 
-    time: float
+    time: float | None = None
     """消息发送时间戳。"""
 
     source_platform_object: typing.Optional[typing.Any] = None

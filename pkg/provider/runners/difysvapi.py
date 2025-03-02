@@ -5,6 +5,7 @@ import json
 import uuid
 import re
 import base64
+import datetime
 
 import aiohttp
 
@@ -232,15 +233,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         plain_text, image_ids = await self._preprocess_user_message(query)
 
         # 尝试获取 CreateTime
-        create_time = 0
-        try:
-            timestamp = query.message_event.source_platform_object.get('Data', {}).get('CreateTime')
-            # 确保 timestamp 是整数类型
-            if isinstance(timestamp, (int, float)):
-                create_time = int(timestamp)
-        except AttributeError:
-            # 如果获取过程中发生属性错误，保持 create_time 为 None
-            pass
+        create_time = int(query.message_event.time) if query.message_event.time else int(datetime.datetime.now().timestamp())
 
         files = [
             {
