@@ -1,4 +1,5 @@
 import base64
+import json
 import time
 from typing import Callable
 import dingtalk_stream
@@ -92,8 +93,31 @@ class DingTalkClient:
                 base64_str = base64.b64encode(file_bytes).decode('utf-8')  # 返回字符串格式
                 return base64_str
             else:
-                raise Exception("获取图片失败")
-
+                raise Exception("获取文件失败")
+            
+    async def get_audio_url(self,download_code:str):
+        if not await self.check_access_token():
+            await self.get_access_token()
+        url = 'https://api.dingtalk.com/v1.0/robot/messageFiles/download'
+        params = {
+            "downloadCode":download_code,
+            "robotCode":self.robot_code
+        }
+        headers ={
+            "x-acs-dingtalk-access-token": self.access_token
+        }
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, headers=headers, json=params)
+            if response.status_code == 200:
+                result = response.json()
+                download_url = result.get("downloadUrl")
+                if download_url:
+                    return await self.download_url_to_base64(download_url)
+                else:
+                    raise Exception("获取音频失败")
+            else:
+                raise Exception(f"Error: {response.status_code}, {response.text}")
+                
     async def update_incoming_message(self, message):
         """异步更新 DingTalkClient 中的 incoming_message"""
         message_data = await self.get_message(message)
@@ -133,6 +157,7 @@ class DingTalkClient:
 
     async def get_message(self,incoming_message:dingtalk_stream.chatbot.ChatbotMessage):
         try:
+            # print(json.dumps(incoming_message.to_dict(), indent=4, ensure_ascii=False))
             message_data = {
                 "IncomingMessage":incoming_message,
             }
@@ -160,10 +185,14 @@ class DingTalkClient:
                 message_data['Picture'] = await self.download_image(incoming_message.get_image_list()[0])
                 
                 message_data['Type'] = 'image'
+            elif incoming_message.message_type == 'audio':
+                message_data['Audio'] = await self.get_audio_url(incoming_message.to_dict()['content']['downloadCode'])
 
-            # 删掉开头的@消息
-            if message_data["Content"].startswith("@"+self.robot_name):
-                message_data["Content"][len("@"+self.robot_name):]
+                message_data['Type'] = 'audio'
+
+            copy_message_data = message_data.copy()
+            del copy_message_data['IncomingMessage']
+            # print("message_data:", json.dumps(copy_message_data, indent=4, ensure_ascii=False))
         except Exception:
             traceback.print_exc()
             
