@@ -256,9 +256,9 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         async for chunk in self.dify_client.workflow_run(
             inputs={
                 "langbot_user_message_text": plain_text,
-                "langbot_session_id": f"{query.session.launcher_type.value}_{query.session.launcher_id}_{create_time}",
+                "langbot_session_id": f"{query.session.launcher_type.value}_{query.session.launcher_id}",
                 "langbot_conversation_id": cov_id,
-                "langbot_msg_create_time": f"ctime_{create_time}",
+                "langbot_msg_create_time": create_time,
             },
             user=f"{query.session.launcher_type.value}_{query.session.launcher_id}",
             files=files,

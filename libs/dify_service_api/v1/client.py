@@ -78,7 +78,6 @@ class AsyncDifyServiceClient:
             trust_env=True,
             timeout=timeout,
         ) as client:
-            print(f"inputs: {inputs}")
 
             async with client.stream(
                 "POST",
