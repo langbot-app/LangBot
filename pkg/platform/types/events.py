@@ -57,6 +57,9 @@ class MessageEvent(Event):
     message_chain: platform_message.MessageChain
     """消息内容。"""
 
+    time: float | None = None
+    """消息发送时间戳。"""
+
     source_platform_object: typing.Optional[typing.Any] = None
     """原消息平台对象。
     供消息平台适配器开发者使用，如果回复用户时需要使用原消息事件对象的信息，

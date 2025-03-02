@@ -74,7 +74,11 @@ class QQOfficialEventConverter(adapter.EventConverter):
                 remark = "",
             )
             return platform_events.FriendMessage(
-                sender = friend,message_chain = yiri_chain,time = event.timestamp,
+                sender = friend,message_chain = yiri_chain,time = int(
+                    datetime.datetime.strptime(
+                        event.timestamp, "%Y-%m-%dT%H:%M:%S%z"
+                    ).timestamp()
+                ),
                 source_platform_object=event
             )
         
@@ -105,7 +109,11 @@ class QQOfficialEventConverter(adapter.EventConverter):
                 last_speak_timestamp=0,
                 mute_time_remaining=0
             )
-            time = event.timestamp
+            time = int(
+                    datetime.datetime.strptime(
+                        event.timestamp, "%Y-%m-%dT%H:%M:%S%z"
+                    ).timestamp()
+                )
             return platform_events.GroupMessage(
                 sender = sender,
                 message_chain=yiri_chain,
@@ -128,7 +136,11 @@ class QQOfficialEventConverter(adapter.EventConverter):
                 last_speak_timestamp=0,
                 mute_time_remaining=0
             )
-            time = event.timestamp,
+            time = int(
+                    datetime.datetime.strptime(
+                        event.timestamp, "%Y-%m-%dT%H:%M:%S%z"
+                    ).timestamp()
+                ),
             return platform_events.GroupMessage(
                 sender  =sender,
                 message_chain = yiri_chain,

@@ -77,7 +77,7 @@ class DingTalkEventConverter(adapter.EventConverter):
                     remark=""
                 ),
                 message_chain = message_chain,
-                time = datetime.datetime.now(),
+                time = event.incoming_message.create_at,
                 source_platform_object=event,
             )
         elif event.conversation == 'GroupMessage':
@@ -95,7 +95,7 @@ class DingTalkEventConverter(adapter.EventConverter):
                 last_speak_timestamp=0,
                 mute_time_remaining=0
             )
-            time = datetime.datetime.now(),
+            time = event.incoming_message.create_at
             return platform_events.GroupMessage(
                 sender =sender,
                 message_chain = message_chain,

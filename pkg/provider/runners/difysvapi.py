@@ -5,6 +5,7 @@ import json
 import uuid
 import re
 import base64
+import datetime
 
 import aiohttp
 
@@ -69,6 +70,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         """
         plain_text = ""
         image_ids = []
+
         if isinstance(query.user_message.content, list):
             for ce in query.user_message.content:
                 if ce.type == "text":
@@ -230,6 +232,9 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         plain_text, image_ids = await self._preprocess_user_message(query)
 
+        # 尝试获取 CreateTime
+        create_time = int(query.message_event.time) if query.message_event.time else int(datetime.datetime.now().timestamp())
+
         files = [
             {
                 "type": "image",
@@ -246,6 +251,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 "langbot_user_message_text": plain_text,
                 "langbot_session_id": f"{query.session.launcher_type.value}_{query.session.launcher_id}",
                 "langbot_conversation_id": cov_id,
+                "langbot_msg_create_time": create_time,
             },
             user=f"{query.session.launcher_type.value}_{query.session.launcher_id}",
             files=files,
