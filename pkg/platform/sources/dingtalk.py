@@ -38,6 +38,8 @@ class DingTalkMessageConverter(adapter.MessageConverter):
             yiri_msg_list.append(platform_message.Plain(text=event.content))
         if event.picture:
             yiri_msg_list.append(platform_message.Image(base64=event.picture))
+        if event.audio:
+            yiri_msg_list.append(platform_message.Voice(base64=event.audio))
 
         chain = platform_message.MessageChain(yiri_msg_list)
         
@@ -167,7 +169,7 @@ class DingTalkAdapter(adapter.MessagePlatformAdapter):
             self.bot.on_message("GroupMessage")(on_message)
 
     async def run_async(self):
-
+        self.ap.logger.debug(f'钉钉机器人启动')
         await self.bot.start()
 
     async def kill(self) -> bool:

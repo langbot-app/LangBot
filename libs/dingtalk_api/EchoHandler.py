@@ -1,4 +1,5 @@
 import asyncio
+import json
 import dingtalk_stream
 from dingtalk_stream import AckMessage
 
@@ -17,7 +18,7 @@ class EchoTextHandler(dingtalk_stream.ChatbotHandler):
         await self.client.update_incoming_message(incoming_message)
 
         return AckMessage.STATUS_OK, 'OK'
-    
+
     async def get_incoming_message(self):
         """异步等待消息的到来"""
         while self.incoming_message is None:

@@ -25,6 +25,10 @@ class DingTalkEvent(dict):
     @property
     def picture(self):
         return self.get("Picture","")
+    
+    @property
+    def audio(self):
+        return self.get("Audio","")
 
     @property
     def conversation(self):
