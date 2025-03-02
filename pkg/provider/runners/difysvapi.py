@@ -70,17 +70,6 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         plain_text = ""
         image_ids = []
 
-        # 尝试获取 CreateTime
-        create_time = None
-        try:
-            timestamp = query.message_event.source_platform_object.get('Data', {}).get('CreateTime')
-            # 确保 timestamp 是整数类型
-            if isinstance(timestamp, (int, float)):
-                create_time = int(timestamp)
-        except AttributeError:
-            # 如果获取过程中发生属性错误，保持 create_time 为 None
-            pass
-
         if isinstance(query.user_message.content, list):
             for ce in query.user_message.content:
                 if ce.type == "text":
@@ -98,7 +87,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         elif isinstance(query.user_message.content, str):
             plain_text = query.user_message.content
 
-        return plain_text, image_ids, create_time
+        return plain_text, image_ids
 
     async def _chat_messages(
         self, query: core_entities.Query
@@ -106,7 +95,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         """调用聊天助手"""
         cov_id = query.session.using_conversation.uuid or ""
 
-        plain_text, image_ids, _ = await self._preprocess_user_message(query)
+        plain_text, image_ids = await self._preprocess_user_message(query)
 
         files = [
             {
@@ -159,7 +148,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         """调用聊天助手"""
         cov_id = query.session.using_conversation.uuid or ""
 
-        plain_text, image_ids, _ = await self._preprocess_user_message(query)
+        plain_text, image_ids = await self._preprocess_user_message(query)
 
         files = [
             {
@@ -242,6 +231,17 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         plain_text, image_ids, timestamp = await self._preprocess_user_message(query)
 
+        # 尝试获取 CreateTime
+        create_time = 0
+        try:
+            timestamp = query.message_event.source_platform_object.get('Data', {}).get('CreateTime')
+            # 确保 timestamp 是整数类型
+            if isinstance(timestamp, (int, float)):
+                create_time = int(timestamp)
+        except AttributeError:
+            # 如果获取过程中发生属性错误，保持 create_time 为 None
+            pass
+
         files = [
             {
                 "type": "image",
@@ -256,9 +256,9 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         async for chunk in self.dify_client.workflow_run(
             inputs={
                 "langbot_user_message_text": plain_text,
-                "langbot_session_id": f"{query.session.launcher_type.value}_{query.session.launcher_id}",
+                "langbot_session_id": f"{query.session.launcher_type.value}_{query.session.launcher_id}_{create_time}",
                 "langbot_conversation_id": cov_id,
-                "langbot_msg_timestamp": timestamp,
+                "langbot_msg_create_time": create_time,
             },
             user=f"{query.session.launcher_type.value}_{query.session.launcher_id}",
             files=files,
