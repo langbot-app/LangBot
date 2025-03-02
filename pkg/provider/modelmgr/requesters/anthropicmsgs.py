@@ -146,7 +146,9 @@ class AnthropicMessages(requester.LLMAPIRequester):
             assert type(resp) is anthropic.types.message.Message
 
             for block in resp.content:
-                if block.type == 'text':
+                if block.type == 'thinking':
+                    args['content'] = '<think>' + block.thinking + '</think>\n' + args['content']
+                elif block.type == 'text':
                     args['content'] += block.text
                 elif block.type == 'tool_use':
                     assert type(block) is anthropic.types.tool_use_block.ToolUseBlock
