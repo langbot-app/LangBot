@@ -1,4 +1,5 @@
 from typing import Dict, Any, Optional
+import dingtalk_stream
 
 class DingTalkEvent(dict):
     @staticmethod
@@ -15,7 +16,7 @@ class DingTalkEvent(dict):
         return self.get("Content","")
 
     @property
-    def incoming_message(self):
+    def incoming_message(self) -> Optional["dingtalk_stream.chatbot.ChatbotMessage"]:
         return self.get("IncomingMessage")
 
     @property
@@ -65,4 +66,4 @@ class DingTalkEvent(dict):
         Returns:
             str: 字符串表示。
         """
-        return f"<WecomEvent {super().__repr__()}>"
+        return f"<DingTalkEvent {super().__repr__()}>"

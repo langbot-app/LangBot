@@ -28,14 +28,19 @@ class DingTalkMessageConverter(adapter.MessageConverter):
                 return msg.text
 
     @staticmethod
-    async def target2yiri(event:DingTalkEvent):
+    async def target2yiri(event:DingTalkEvent, bot_name:str):
         yiri_msg_list = []
         yiri_msg_list.append(
-            platform_message.Source(id = '0',time=datetime.datetime.now())
+            platform_message.Source(id = event.incoming_message.message_id,time=datetime.datetime.now())
         )
 
+        for atUser in event.incoming_message.at_users:
+            if atUser.dingtalk_id == event.incoming_message.chatbot_user_id:
+                yiri_msg_list.append(platform_message.At(target=bot_name))
+
         if event.content:
-            yiri_msg_list.append(platform_message.Plain(text=event.content))
+            text_content = event.content.replace("@"+bot_name, '')
+            yiri_msg_list.append(platform_message.Plain(text=text_content))
         if event.picture:
             yiri_msg_list.append(platform_message.Image(base64=event.picture))
         if event.audio:
@@ -56,18 +61,19 @@ class DingTalkEventConverter(adapter.EventConverter):
 
     @staticmethod
     async def target2yiri(
-        event:DingTalkEvent
+        event:DingTalkEvent,
+        bot_name:str
     ):
         
-        message_chain = await DingTalkMessageConverter.target2yiri(event)
+        message_chain = await DingTalkMessageConverter.target2yiri(event, bot_name)
 
 
         if event.conversation == 'FriendMessage':
 
             return platform_events.FriendMessage(
                 sender=platform_entities.Friend(
-                    id= 0,
-                    nickname ='nickname',
+                    id=event.incoming_message.sender_id,
+                    nickname = event.incoming_message.sender_nick,
                     remark=""
                 ),
                 message_chain = message_chain,
@@ -75,14 +81,13 @@ class DingTalkEventConverter(adapter.EventConverter):
                 source_platform_object=event,
             )
         elif event.conversation == 'GroupMessage':
-            message_chain.insert(0, platform_message.At(target="justbot"))
             sender = platform_entities.GroupMember(
-                id = 111,
-                member_name="name",
+                id = event.incoming_message.sender_id,
+                member_name=event.incoming_message.sender_nick,
                 permission= 'MEMBER',
                 group = platform_entities.Group(
-                    id = 111,
-                    name = 'MEMBER',
+                    id = event.incoming_message.conversation_id,
+                    name = event.incoming_message.conversation_title,
                     permission=platform_entities.Permission.Member
                 ),
                 special_title='',
@@ -119,6 +124,8 @@ class DingTalkAdapter(adapter.MessagePlatformAdapter):
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
             raise ParamNotEnoughError("钉钉缺少相关配置项，请查看文档或联系管理员")
+
+        self.bot_account_id = self.config["robot_name"]
         
         self.bot = DingTalkClient(
             client_id=config["client_id"],
@@ -155,10 +162,9 @@ class DingTalkAdapter(adapter.MessagePlatformAdapter):
         ],
     ):
         async def on_message(event: DingTalkEvent):
-            self.bot_account_id = 'justbot'
             try:
                 return await callback(
-                    await self.event_converter.target2yiri(event), self
+                    await self.event_converter.target2yiri(event, self.config["robot_name"]), self
                 )
             except:
                 traceback.print_exc()
@@ -169,7 +175,6 @@ class DingTalkAdapter(adapter.MessagePlatformAdapter):
             self.bot.on_message("GroupMessage")(on_message)
 
     async def run_async(self):
-        self.ap.logger.debug(f'钉钉机器人启动')
         await self.bot.start()
 
     async def kill(self) -> bool:

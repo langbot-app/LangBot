@@ -1,4 +1,5 @@
 import base64
+import json
 import time
 from typing import Callable
 import dingtalk_stream
@@ -156,6 +157,7 @@ class DingTalkClient:
 
     async def get_message(self,incoming_message:dingtalk_stream.chatbot.ChatbotMessage):
         try:
+            # print(json.dumps(incoming_message.to_dict(), indent=4, ensure_ascii=False))
             message_data = {
                 "IncomingMessage":incoming_message,
             }
@@ -188,9 +190,9 @@ class DingTalkClient:
 
                 message_data['Type'] = 'audio'
 
-            # 删掉开头的@消息
-            if 'Content' in message_data and message_data["Content"].startswith("@"+self.robot_name):
-                message_data["Content"] = message_data["Content"][len("@"+self.robot_name):]
+            copy_message_data = message_data.copy()
+            del copy_message_data['IncomingMessage']
+            # print("message_data:", json.dumps(copy_message_data, indent=4, ensure_ascii=False))
         except Exception:
             traceback.print_exc()
             
