@@ -50,9 +50,6 @@ class AnthropicMessages(requester.LLMAPIRequester):
         args = self.ap.provider_cfg.data['requester']['anthropic-messages']['args'].copy()
         args["model"] = model.name if model.model_name is None else model.model_name
 
-        if model.thinking:
-            args["thinking"] = {"type": "enabled", "budget_tokens": 16000}
-
         # 处理消息
 
         # system
@@ -150,8 +147,8 @@ class AnthropicMessages(requester.LLMAPIRequester):
 
             for block in resp.content:
                 if block.type == 'thinking':
-                    args['content'] = '<think>' + block.thinking + '</think>'
-                if block.type == 'text':
+                    args['content'] = '<think>' + block.thinking + '</think>\n' + args['content']
+                elif block.type == 'text':
                     args['content'] += block.text
                 elif block.type == 'tool_use':
                     assert type(block) is anthropic.types.tool_use_block.ToolUseBlock
