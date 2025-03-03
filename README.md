@@ -115,6 +115,20 @@
 | [阿里云百炼](https://bailian.console.aliyun.com/) | ✅ | 大模型聚合平台, LLMOps 平台 |
 | [火山方舟](https://console.volcengine.com/ark/region:ark+cn-beijing/model?vendor=Bytedance&view=LIST_VIEW) | ✅ | 大模型聚合平台, LLMOps 平台 |
 
+### TTS
+
+| 平台/模型 | 备注 |
+| --- | --- |
+| [FishAudio](https://fish.audio/zh-CN/discovery/) | [插件](https://github.com/the-lazy-me/NewChatVoice) |
+| [海豚 AI](https://www.ttson.cn/?source=thelazy) | [插件](https://github.com/the-lazy-me/NewChatVoice) |
+| [AzureTTS](https://portal.azure.com/) | [插件](https://github.com/Ingnaryk/LangBot_AzureTTS) |
+
+### 文生图
+
+| 平台/模型 | 备注 |
+| --- | --- |
+| 阿里云百炼 | [插件](https://github.com/Thetail001/LangBot_BailianTextToImagePlugin)
+
 ## 😘 社区贡献
 
 LangBot 离不开以下贡献者和社区内所有人的贡献，我们欢迎任何形式的贡献和反馈。
