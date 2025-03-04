@@ -226,11 +226,16 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
         @self.quart_app.route('/gewechat/callback', methods=['POST'])
         async def gewechat_callback():
             data = await quart.request.json
-            # print(json.dumps(data, indent=4, ensure_ascii=False))
+
+
+            if data['data']:
+                data['Data'] = data['data']
+            print(json.dumps(data, indent=4, ensure_ascii=False))
+
 
             if 'testMsg' in data:
                 return 'ok'
-            elif 'TypeName' in data and data['TypeName'] == 'AddMsg':
+            elif 'TypeName' in data and data['TypeName'] or data['type_name'] == 'AddMsg':
                 try:
 
                     event = await self.event_converter.target2yiri(data.copy(), self.bot_account_id)
@@ -248,7 +253,7 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
         target_id: str,
         message: platform_message.MessageChain
     ):
-        geweap_msg = await GewechatMessageConverter.yiri2target(message)
+        geweap_msg = await self.message_converter.yiri2target(message)
         # 此处加上群消息at处理
         # ats = [item["target"] for item in geweap_msg if item["type"] == "at"]
 
