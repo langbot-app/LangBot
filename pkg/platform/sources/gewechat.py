@@ -226,16 +226,18 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
         @self.quart_app.route('/gewechat/callback', methods=['POST'])
         async def gewechat_callback():
             data = await quart.request.json
-
-
-            if data['data']:
+            # print(json.dumps(data, indent=4, ensure_ascii=False))
+            
+            if 'data' in data:
                 data['Data'] = data['data']
+            if 'type_name' in data:
+                data['TypeName'] = data['type_name']
             # print(json.dumps(data, indent=4, ensure_ascii=False))
 
 
             if 'testMsg' in data:
                 return 'ok'
-            elif 'TypeName' in data and data['TypeName'] or data['type_name'] == 'AddMsg':
+            elif 'TypeName' in data and data['TypeName'] == 'AddMsg':
                 try:
 
                     event = await self.event_converter.target2yiri(data.copy(), self.bot_account_id)
