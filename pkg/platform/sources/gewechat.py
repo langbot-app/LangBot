@@ -230,7 +230,7 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
 
             if data['data']:
                 data['Data'] = data['data']
-            print(json.dumps(data, indent=4, ensure_ascii=False))
+            # print(json.dumps(data, indent=4, ensure_ascii=False))
 
 
             if 'testMsg' in data:
