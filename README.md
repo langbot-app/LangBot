@@ -9,7 +9,7 @@
 <a href="https://trendshift.io/repositories/12901" target="_blank"><img src="https://trendshift.io/api/badge/repositories/12901" alt="RockChinQ%2FLangBot | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 <a href="https://docs.langbot.app">项目主页</a> ｜
-<a href="https://docs.langbot.app/insight/intro.htmll">功能介绍</a> ｜
+<a href="https://docs.langbot.app/insight/intro.html">功能介绍</a> ｜
 <a href="https://docs.langbot.app/insight/guide.html">部署文档</a> ｜
 <a href="https://docs.langbot.app/usage/faq.html">常见问题</a> ｜
 <a href="https://docs.langbot.app/plugin/plugin-intro.html">插件介绍</a> ｜
