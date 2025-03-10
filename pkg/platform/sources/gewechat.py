@@ -261,11 +261,11 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
 
         for msg in geweap_msg:
             if msg['type'] == 'text':
-                await self.bot.post_text(app_id=self.config['app_id'], to_wxid=target_id, content=msg['content'])
+                self.bot.post_text(app_id=self.config['app_id'], to_wxid=target_id, content=msg['content'])
 
             elif msg['type'] == 'image':
 
-                await self.bot.post_image(app_id=self.config['app_id'], to_wxid=target_id, img_url=msg["image"])
+                self.bot.post_image(app_id=self.config['app_id'], to_wxid=target_id, img_url=msg["image"])
 
 
 
