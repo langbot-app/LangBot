@@ -100,7 +100,7 @@ class QQOfficialEventConverter(adapter.EventConverter):
                 member_name= event.t,
                 permission= 'MEMBER',
                 group = platform_entities.Group(
-                    id = 0,
+                    id = event.group_openid,
                     name = 'MEMBER',
                     permission= platform_entities.Permission.Member
                 ),
@@ -127,7 +127,7 @@ class QQOfficialEventConverter(adapter.EventConverter):
                 member_name=event.t,
                 permission= 'MEMBER',
                 group = platform_entities.Group(
-                    id = 0,
+                    id = event.channel_id,
                     name = 'MEMBER',
                     permission=platform_entities.Permission.Member
                 ),
@@ -140,7 +140,7 @@ class QQOfficialEventConverter(adapter.EventConverter):
                     datetime.datetime.strptime(
                         event.timestamp, "%Y-%m-%dT%H:%M:%S%z"
                     ).timestamp()
-                ),
+                )
             return platform_events.GroupMessage(
                 sender  =sender,
                 message_chain = yiri_chain,

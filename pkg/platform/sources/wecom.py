@@ -2,18 +2,15 @@ from __future__ import annotations
 import typing
 import asyncio
 import traceback
-import time
+
 import datetime
 
-import aiocqhttp
-import aiohttp
 from libs.wecom_api.api import WecomClient
 from pkg.platform.adapter import MessagePlatformAdapter
 from pkg.platform.types import events as platform_events, message as platform_message
 from libs.wecom_api.wecomevent import WecomEvent
 from pkg.core import app
 from .. import adapter
-from ...pipeline.longtext.strategies import forward
 from ...core import app
 from ..types import message as platform_message
 from ..types import events as platform_events
