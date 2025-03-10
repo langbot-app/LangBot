@@ -25,6 +25,7 @@ from ..utils import version as version_mgr, proxy as proxy_mgr, announce as anno
 from ..persistence import mgr as persistencemgr
 from ..api.http.controller import main as http_controller
 from ..api.http.service import user as user_service
+from ..api.http.service import model as model_service
 from ..discover import engine as discover_engine
 from ..utils import logcache, ip
 from . import taskmgr
@@ -111,6 +112,8 @@ class Application:
     # ========= HTTP Services =========
 
     user_service: user_service.UserService = None
+
+    model_service: model_service.ModelsService = None
 
     def __init__(self):
         pass

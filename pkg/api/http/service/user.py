@@ -6,7 +6,7 @@ import jwt
 import datetime
 
 from ....core import app
-from ....persistence.entities import user
+from ....entity.persistence import user
 from ....utils import constants
 
 

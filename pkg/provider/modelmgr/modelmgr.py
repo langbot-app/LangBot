@@ -6,6 +6,7 @@ from . import entities, requester
 from ...core import app
 from ...discover import engine
 from . import token
+from ...entity.persistence import model
 from .requesters import bailianchatcmpl, chatcmpl, anthropicmsgs, moonshotchatcmpl, deepseekchatcmpl, ollamachat, giteeaichatcmpl, volcarkchatcmpl, xaichatcmpl, zhipuaichatcmpl, lmstudiochatcmpl, siliconflowchatcmpl, volcarkchatcmpl
 
 FETCH_MODEL_LIST_URL = "https://api.qchatgpt.rockchin.top/api/v2/fetch/model_list"
@@ -23,12 +24,16 @@ class ModelManager:
     requesters: dict[str, requester.LLMAPIRequester]
 
     token_mgrs: dict[str, token.TokenManager]
+
+    models: list[model.LLMModel]
     
     def __init__(self, ap: app.Application):
         self.ap = ap
+        self.requester_components = []
         self.model_list = []
         self.requesters = {}
         self.token_mgrs = {}
+        self.models = []
 
     async def get_model_by_name(self, name: str) -> entities.LLMModelInfo:
         """通过名称获取模型
@@ -46,10 +51,6 @@ class ModelManager:
         for k, v in self.ap.provider_cfg.data['keys'].items():
             self.token_mgrs[k] = token.TokenManager(k, v)
 
-        # for api_cls in requester.preregistered_requesters:
-        #     api_inst = api_cls(self.ap)
-        #     await api_inst.initialize()
-        #     self.requesters[api_inst.name] = api_inst
         for component in self.requester_components:
             api_cls = component.get_python_component_class()
             api_inst = api_cls(self.ap)

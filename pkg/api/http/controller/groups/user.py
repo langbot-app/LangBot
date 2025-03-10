@@ -3,7 +3,7 @@ import sqlalchemy
 import argon2
 
 from .. import group
-from .....persistence.entities import user
+from .....entity.persistence import user
 
 
 @group.group_class('user', '/api/v1/user')

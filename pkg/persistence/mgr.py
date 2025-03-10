@@ -7,7 +7,7 @@ import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
 import sqlalchemy
 
 from . import database
-from .entities import user, base
+from ..entity.persistence import user, model, base
 from ..core import app
 from .databases import sqlite
 
@@ -33,6 +33,11 @@ class PersistenceManager:
             await self.db.initialize()
 
         await self.create_tables()
+
+        # auto migrate
+        async with self.get_db_engine().connect() as conn:
+            await conn.run_sync(self.meta.drop_all)
+            await conn.run_sync(self.meta.create_all)
 
     async def create_tables(self):
         # TODO: 对扩展友好
