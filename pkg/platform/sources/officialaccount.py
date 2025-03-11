@@ -2,14 +2,12 @@ from __future__ import annotations
 import typing
 import asyncio
 import traceback
-import time
+
 import datetime
 from pkg.core import app
 from pkg.platform.adapter import MessagePlatformAdapter
 from pkg.platform.types import events as platform_events, message as platform_message
 
-import aiocqhttp
-import aiohttp
 from libs.official_account_api.oaevent import OAEvent
 from pkg.platform.adapter import MessagePlatformAdapter
 from pkg.platform.types import events as platform_events, message as platform_message
@@ -91,7 +89,7 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
         ]
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
-            raise ParamNotEnoughError("企业微信缺少相关配置项，请查看文档或联系管理员")
+            raise ParamNotEnoughError("微信公众号缺少相关配置项，请查看文档或联系管理员")
         
         self.bot = OAClient(
             token=config['token'],
