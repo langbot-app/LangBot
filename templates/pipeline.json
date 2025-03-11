@@ -16,7 +16,7 @@
     },
     "income-msg-check": true,
     "ignore-rules": {
-        "prefix": ["/"],
+        "prefix": [],
         "regexp": []
     },
     "check-sensitive-words": true,
