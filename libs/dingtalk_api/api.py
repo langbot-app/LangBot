@@ -157,6 +157,7 @@ class DingTalkClient:
 
     async def get_message(self,incoming_message:dingtalk_stream.chatbot.ChatbotMessage):
         try:
+            
             # print(json.dumps(incoming_message.to_dict(), indent=4, ensure_ascii=False))
             message_data = {
                 "IncomingMessage":incoming_message,
@@ -197,6 +198,53 @@ class DingTalkClient:
             traceback.print_exc()
             
         return message_data
+
+    async def send_proactive_message_to_one(self,target_id:str,content:str):
+        if not await self.check_access_token():
+            await self.get_access_token()
+
+        url = 'https://api.dingtalk.com/v1.0/robot/oToMessages/batchSend'
+
+        headers ={
+            "x-acs-dingtalk-access-token":self.access_token,
+            "Content-Type":"application/json",
+        }
+
+        data ={
+            "robotCode":self.robot_code,
+            "userIds":[target_id],
+            "msgKey": "sampleText",
+            "msgParam": json.dumps({"content":content}),
+        }
+        try:
+            async with httpx.AsyncClient() as client:
+                response  = await client.post(url,headers=headers,json=data)
+        except Exception:
+            traceback.print_exc()
+
+
+    async def send_proactive_message_to_group(self,target_id:str,content:str):
+        if not await self.check_access_token():
+            await self.get_access_token()
+
+        url = 'https://api.dingtalk.com/v1.0/robot/groupMessages/send'
+
+        headers ={
+            "x-acs-dingtalk-access-token":self.access_token,
+            "Content-Type":"application/json",
+        }
+
+        data ={
+            "robotCode":self.robot_code,
+            "openConversationId":target_id,
+            "msgKey": "sampleText",
+            "msgParam": json.dumps({"content":content}),
+        }
+        try:
+            async with httpx.AsyncClient() as client:
+                response  = await client.post(url,headers=headers,json=data)
+        except Exception:
+            traceback.print_exc()
     
     async def start(self):
         """启动 WebSocket 连接，监听消息"""

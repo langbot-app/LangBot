@@ -152,7 +152,11 @@ class DingTalkAdapter(adapter.MessagePlatformAdapter):
     async def send_message(
         self, target_type: str, target_id: str, message: platform_message.MessageChain
     ):
-        pass
+        content = await DingTalkMessageConverter.yiri2target(message)
+        if target_type == 'person':
+            await self.bot.send_proactive_message_to_one(target_id,content)
+        if target_type == 'group':
+            await self.bot.send_proactive_message_to_group(target_id,content)
 
     def register_listener(
         self,

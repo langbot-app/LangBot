@@ -23,6 +23,7 @@ class EchoTextHandler(dingtalk_stream.ChatbotHandler):
         """异步等待消息的到来"""
         while self.incoming_message is None:
             await asyncio.sleep(0.1)  # 异步等待，避免阻塞
+
         return self.incoming_message
 
 async def get_dingtalk_client(client_id, client_secret):
