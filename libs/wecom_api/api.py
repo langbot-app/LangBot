@@ -66,7 +66,7 @@ class WecomClient():
             else:
                 raise Exception("未获取用户")
             
-    async def send_to_all(self,content:str):
+    async def send_to_all(self,content:str,agent_id:int):
         if not self.check_access_token_for_contacts():
             self.access_token_for_contacts = await self.get_access_token(self.secret_for_contacts)
 
@@ -77,7 +77,7 @@ class WecomClient():
                 params = {
                 "touser" : user_ids_string,
                 "msgtype" : "text",
-                "agentid" : 1000002,
+                "agentid" : agent_id,
                 "text" : {
                     "content" : content,
                 },
