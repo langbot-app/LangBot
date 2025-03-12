@@ -94,6 +94,26 @@ class Query(pydantic.BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
+    # ========== 插件可调用的 API（请求 API） ==========
+
+    def set_variable(self, key: str, value: typing.Any):
+        """设置变量"""
+        if self.variables is None:
+            self.variables = {}
+        self.variables[key] = value
+    
+    def get_variable(self, key: str) -> typing.Any:
+        """获取变量"""
+        if self.variables is None:
+            return None
+        return self.variables.get(key)
+    
+    def get_variables(self) -> dict[str, typing.Any]:
+        """获取所有变量"""
+        if self.variables is None:
+            return {}
+        return self.variables
+
 
 class Conversation(pydantic.BaseModel):
     """对话，包含于 Session 中，一个 Session 可以有多个历史 Conversation，但只有一个当前使用的 Conversation"""
