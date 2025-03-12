@@ -23,7 +23,7 @@
                     "items": {
                         "type": "string",
                         "format": "regex",
-                        "pattern": "^(person|group)_(\\d)*$"
+                        "pattern": "^(person|group)_.*$"
                     },
                     "default": []
                 },
@@ -34,7 +34,7 @@
                     "items": {
                         "type": "string",
                         "format": "regex",
-                        "pattern": "^(person|group)_(\\d)*$"
+                        "pattern": "^(person|group)_.*$"
                     },
                     "default": []
                 }
@@ -99,7 +99,7 @@
                 }
             },
             "patternProperties": {
-                "^\\d+$": {
+                "^.*$": {
                     "type": "object",
                     "properties": {
                         "at": {

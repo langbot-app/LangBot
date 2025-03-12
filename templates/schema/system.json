@@ -9,7 +9,7 @@
             "items": {
                 "type": "string",
                 "format": "regex",
-                "pattern": "^(person|group)_(\\d+)$"
+                "pattern": "^(person|group)_.*$"
             },
             "default": []
         },
@@ -52,7 +52,7 @@
                 }
             },
             "patternProperties": {
-                "^(person|group)_(\\d+)$": {
+                "^(person|group)_.*$": {
                     "type": "integer"
                 }
             }
