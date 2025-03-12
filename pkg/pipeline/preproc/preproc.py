@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 
 from .. import stage, entities, stagemgr
 from ...core import entities as core_entities
@@ -34,7 +35,7 @@ class PreProcessor(stage.PipelineStage):
 
         conversation = await self.ap.sess_mgr.get_conversation(session)
 
-        # 从会话取出消息和情景预设到query
+        # 设置query
         query.session = session
         query.prompt = conversation.prompt.copy()
         query.messages = conversation.messages.copy()
@@ -43,6 +44,11 @@ class PreProcessor(stage.PipelineStage):
 
         query.use_funcs = conversation.use_funcs if query.use_model.tool_call_supported else None
 
+        query.variables = {
+            "session_id": f"{query.session.launcher_type.value}_{query.session.launcher_id}",
+            "conversation_id": conversation.uuid,
+            "msg_create_time": int(query.message_event.time) if query.message_event.time else int(datetime.datetime.now().timestamp()),
+        }
 
         # 检查vision是否启用，没启用就删除所有图片
         if not self.ap.provider_cfg.data['enable-vision'] or (self.ap.provider_cfg.data['runner'] == 'local-agent' and not query.use_model.vision_supported):

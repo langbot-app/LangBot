@@ -72,6 +72,9 @@ class Query(pydantic.BaseModel):
     user_message: typing.Optional[llm_entities.Message] = None
     """此次请求的用户消息对象，由前置处理器阶段设置"""
 
+    variables: typing.Optional[dict[str, typing.Any]] = None
+    """变量，由前置处理器阶段设置。在prompt中嵌入或由 Runner 传递到 LLMOps 平台。"""
+
     use_model: typing.Optional[entities.LLMModelInfo] = None
     """使用的模型，由前置处理器阶段设置"""
 
@@ -86,9 +89,30 @@ class Query(pydantic.BaseModel):
 
     # ======= 内部保留 =======
     current_stage: "pkg.pipeline.stagemgr.StageInstContainer" = None
+    """当前所处阶段"""
 
     class Config:
         arbitrary_types_allowed = True
+
+    # ========== 插件可调用的 API（请求 API） ==========
+
+    def set_variable(self, key: str, value: typing.Any):
+        """设置变量"""
+        if self.variables is None:
+            self.variables = {}
+        self.variables[key] = value
+    
+    def get_variable(self, key: str) -> typing.Any:
+        """获取变量"""
+        if self.variables is None:
+            return None
+        return self.variables.get(key)
+    
+    def get_variables(self) -> dict[str, typing.Any]:
+        """获取所有变量"""
+        if self.variables is None:
+            return {}
+        return self.variables
 
 
 class Conversation(pydantic.BaseModel):

@@ -111,8 +111,12 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         basic_mode_pending_chunk = ''
 
+        inputs = {}
+        
+        inputs.update(query.variables)
+
         async for chunk in self.dify_client.chat_messages(
-            inputs={},
+            inputs=inputs,
             query=plain_text,
             user=f"{query.session.launcher_type.value}_{query.session.launcher_id}",
             conversation_id=cov_id,
@@ -162,8 +166,12 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         ignored_events = ["agent_message"]
 
+        inputs = {}
+        
+        inputs.update(query.variables)
+
         async for chunk in self.dify_client.chat_messages(
-            inputs={},
+            inputs=inputs,
             query=plain_text,
             user=f"{query.session.launcher_type.value}_{query.session.launcher_id}",
             response_mode="streaming",
@@ -227,13 +235,10 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         if not query.session.using_conversation.uuid:
             query.session.using_conversation.uuid = str(uuid.uuid4())
-
-        cov_id = query.session.using_conversation.uuid
+        
+        query.variables["conversation_id"] = query.session.using_conversation.uuid
 
         plain_text, image_ids = await self._preprocess_user_message(query)
-
-        # 尝试获取 CreateTime
-        create_time = int(query.message_event.time) if query.message_event.time else int(datetime.datetime.now().timestamp())
 
         files = [
             {
@@ -246,13 +251,17 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         ignored_events = ["text_chunk", "workflow_started"]
 
+        inputs = {  # these variables are legacy variables, we need to keep them for compatibility
+            "langbot_user_message_text": plain_text,
+            "langbot_session_id": query.variables["session_id"],
+            "langbot_conversation_id": query.variables["conversation_id"],
+            "langbot_msg_create_time": query.variables["msg_create_time"],
+        }
+        
+        inputs.update(query.variables)
+
         async for chunk in self.dify_client.workflow_run(
-            inputs={
-                "langbot_user_message_text": plain_text,
-                "langbot_session_id": f"{query.session.launcher_type.value}_{query.session.launcher_id}",
-                "langbot_conversation_id": cov_id,
-                "langbot_msg_create_time": create_time,
-            },
+            inputs=inputs,
             user=f"{query.session.launcher_type.value}_{query.session.launcher_id}",
             files=files,
             timeout=self.ap.provider_cfg.data["dify-service-api"]["workflow"]["timeout"],

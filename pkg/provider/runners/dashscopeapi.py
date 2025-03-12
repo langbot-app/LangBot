@@ -167,6 +167,10 @@ class DashScopeAPIRunner(runner.RequestRunner):
         image_ids = []          # 用户输入的图片ID列表 （暂不支持）
         
         plain_text, image_ids = await self._preprocess_user_message(query)
+
+        biz_params = {}
+        biz_params.update(self.biz_params)
+        biz_params.update(query.variables)
         
         #发送对话请求
         response = dashscope.Application.call(
@@ -176,7 +180,7 @@ class DashScopeAPIRunner(runner.RequestRunner):
             stream=True,                                        # 流式输出
             incremental_output=True,                            # 增量输出，使用流式输出需要开启增量输出
             session_id=query.session.using_conversation.uuid,   # 会话ID用于，多轮对话
-            biz_params=self.biz_params                          # 工作流应用的自定义输入参数传递
+            biz_params=biz_params,                              # 工作流应用的自定义输入参数传递
             # rag_options={                                     # 主要用于文件交互，暂不支持
             #     "session_file_ids": ["FILE_ID1"],             # FILE_ID1 替换为实际的临时文件ID,逗号隔开多个
             # }
