@@ -197,7 +197,19 @@ class WecomAdapter(adapter.MessagePlatformAdapter):
     async def send_message(
         self, target_type: str, target_id: str, message: platform_message.MessageChain
     ):
-        pass
+        """企业微信目前只有发送给个人的方法，
+        构造target_id的方式为前半部分为账户id，后半部分为agent_id,中间使用“|”符号隔开。
+        """
+        content_list = await WecomMessageConverter.yiri2target(message, self.bot)
+        parts = target_id.split("|")
+        user_id = parts[0]
+        agent_id = int(parts[1])
+        if target_type == 'person':
+            for content in content_list:
+                if content["type"] == "text":
+                    await self.bot.send_private_msg(user_id,agent_id,content["content"])
+                if content["type"] == "image":
+                    await self.bot.send_image(user_id,agent_id,content["media"])
 
     def register_listener(
         self,
