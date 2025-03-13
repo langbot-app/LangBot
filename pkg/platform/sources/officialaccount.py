@@ -7,14 +7,14 @@ import datetime
 from pkg.core import app
 from pkg.platform.adapter import MessagePlatformAdapter
 from pkg.platform.types import events as platform_events, message as platform_message
-
+from collections import deque
 from libs.official_account_api.oaevent import OAEvent
 from pkg.platform.adapter import MessagePlatformAdapter
 from pkg.platform.types import events as platform_events, message as platform_message
 from libs.official_account_api.api import OAClient
+from libs.official_account_api.api import OAClientForLongerResponse
 from pkg.core import app
 from .. import adapter
-from ...pipeline.longtext.strategies import forward
 from ...core import app
 from ..types import message as platform_message
 from ..types import events as platform_events
@@ -24,6 +24,7 @@ from ...command.errors import ParamNotEnoughError
 
 # 生成的ai回答
 generated_content = {}
+msg_queue = {}
 
 class OAMessageConverter(adapter.MessageConverter):
     @staticmethod
@@ -86,17 +87,28 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
             "EncodingAESKey",
             "AppSecret",
             "AppID",
+            "Mode",
         ]
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
             raise ParamNotEnoughError("微信公众号缺少相关配置项，请查看文档或联系管理员")
         
-        self.bot = OAClient(
-            token=config['token'],
-            EncodingAESKey=config['EncodingAESKey'],
-            Appsecret=config['AppSecret'],
-            AppID=config['AppID'], 
-        )
+        
+        if self.config['Mode'] == "drop":
+            self.bot = OAClient(
+                token=config['token'],
+                EncodingAESKey=config['EncodingAESKey'],
+                Appsecret=config['AppSecret'],
+                AppID=config['AppID'], 
+            )
+        if self.config['Mode'] == "passive":
+            self.bot = OAClientForLongerResponse(
+                token=config['token'],
+                EncodingAESKey=config['EncodingAESKey'],
+                Appsecret=config['AppSecret'],
+                AppID=config['AppID'], 
+            )
+
 
     async def reply_message(self, message_source: platform_events.FriendMessage, message: platform_message.MessageChain, quote_origin: bool = False):
         global generated_content
@@ -107,6 +119,20 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
 
         generated_content[message_source.message_chain.message_id] = content
         
+        from_user = message_source.sender.id
+
+
+        if  from_user not in msg_queue:
+            msg_queue[from_user] = []
+        
+        msg_queue[from_user].append(
+            {
+                "msg_id":message_source.message_chain.message_id,
+                "content":content,
+            }
+        )
+
+            
     async def send_message(
         self, target_type: str, target_id: str, message: platform_message.MessageChain
     ):
