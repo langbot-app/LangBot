@@ -93,16 +93,15 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
         if missing_keys:
             raise ParamNotEnoughError("微信公众号缺少相关配置项，请查看文档或联系管理员")
         
-        # 模式1为15s内回复，模式2为超过15s回复
         
-        if self.config['Mode'] == 1:
+        if self.config['Mode'] == "drop":
             self.bot = OAClient(
                 token=config['token'],
                 EncodingAESKey=config['EncodingAESKey'],
                 Appsecret=config['AppSecret'],
                 AppID=config['AppID'], 
             )
-        if self.config['Mode'] == 2:
+        if self.config['Mode'] == "passive":
             self.bot = OAClientForLongerResponse(
                 token=config['token'],
                 EncodingAESKey=config['EncodingAESKey'],
