@@ -101,13 +101,15 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
                 Appsecret=config['AppSecret'],
                 AppID=config['AppID'], 
             )
-        if self.config['Mode'] == "passive":
+        elif self.config['Mode'] == "passive":
             self.bot = OAClientForLongerResponse(
                 token=config['token'],
                 EncodingAESKey=config['EncodingAESKey'],
                 Appsecret=config['AppSecret'],
                 AppID=config['AppID'], 
             )
+        else:
+            raise KeyError("请设置微信公众号通信模式")
 
 
     async def reply_message(self, message_source: platform_events.FriendMessage, message: platform_message.MessageChain, quote_origin: bool = False):
