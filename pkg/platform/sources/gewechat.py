@@ -257,11 +257,23 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
     ):
         geweap_msg = await self.message_converter.yiri2target(message)
         # 此处加上群消息at处理
-        # ats = [item["target"] for item in geweap_msg if item["type"] == "at"]
+        ats = [item["target"] for item in geweap_msg if item["type"] == "at"]
+
 
         for msg in geweap_msg:
+            # at主动发送消息
             if msg['type'] == 'text':
-                self.bot.post_text(app_id=self.config['app_id'], to_wxid=target_id, content=msg['content'])
+                if ats:
+                    member_info = self.bot.get_chatroom_member_detail(
+                        self.config["app_id"],
+                        target_id,
+                        ats[::-1]
+                    )["data"]
+
+                    for member in member_info:
+                        msg['content'] = f'@{member["nickName"]} {msg["content"]}'
+                self.bot.post_text(app_id=self.config['app_id'], to_wxid=target_id, content=msg['content'],
+                                   ats=",".join(ats))
 
             elif msg['type'] == 'image':
 
@@ -296,7 +308,7 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
                     app_id=self.config["app_id"],
                     to_wxid=message_source.source_platform_object["Data"]["FromUserName"]["string"],
                     content=msg["content"],
-                    ats=','.join(ats)
+                    ats=",".join(ats)
                 )
 
     async def is_muted(self, group_id: int) -> bool:
