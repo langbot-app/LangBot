@@ -385,6 +385,12 @@
                                 "default": "",
                                 "description": "微信公众号的AppSecret"
                             },
+                            "Mode": {
+                                "type": "string",
+                                "default": "drop",
+                                "description": "对于超过15s的响应的处理模式",
+                                "enum": ["drop", "passive"]
+                            },
                             "host": {
                                 "type": "string",
                                 "default": "0.0.0.0",
