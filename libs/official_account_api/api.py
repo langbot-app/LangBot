@@ -27,6 +27,8 @@ xml_template = """
 </xml>
 """
 
+user_msg_queue = {}
+
 class OAClient():
 
     def __init__(self,token:str,EncodingAESKey:str,AppID:str,Appsecret:str):
@@ -224,8 +226,12 @@ class OAClientForLongerResponse():
 
                 
                 if oa.msg_queue.get(from_user) and oa.msg_queue[from_user][0]["content"]:
-                    queue_top = oa.msg_queue[from_user].pop(0)  
+                    queue_top = oa.msg_queue[from_user].pop(0)
                     queue_content = queue_top["content"]
+
+                    # 弹出用户消息
+                    if user_msg_queue.get(from_user) and user_msg_queue[from_user]:
+                        user_msg_queue[from_user].pop(0)
 
                     response_xml = xml_template.format(
                         to_user=from_user,
@@ -242,14 +248,23 @@ class OAClientForLongerResponse():
                         create_time=int(time.time()),
                         content="AI正在思考中，请发送任意内容获取回答。"
                     )
+                    
+                    if user_msg_queue.get(from_user) and user_msg_queue[from_user][0]["content"]:
+                        return response_xml
+                    else:
+                        message_data = await self.get_message(xml_msg)
+                        
+                        if message_data:
+                            event = OAEvent.from_payload(message_data)
+                            if event:
+                                user_msg_queue.setdefault(from_user,[]).append(
+                                    {
+                                        "content":event.message,
+                                    }
+                                )
+                                await self._handle_message(event)
 
-                    message_data = await self.get_message(xml_msg)
-                    if message_data:
-                        event = OAEvent.from_payload(message_data)
-                        if event:
-                            await self._handle_message(event)
-
-                    return response_xml
+                        return response_xml
 
         except Exception as e:
             traceback.print_exc()
