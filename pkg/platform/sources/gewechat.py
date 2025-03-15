@@ -68,31 +68,24 @@ class GewechatMessageConverter(adapter.MessageConverter):
         if message["Data"]["MsgType"] == 1:
             # 检查消息开头，如果有 wxid_sbitaz0mt65n22:\n 则删掉
             regex = re.compile(r"^wxid_.*:")
-            # print(message)
+            print(message)
 
             line_split = message["Data"]["Content"]["string"].split("\n")
 
             if len(line_split) > 0 and regex.match(line_split[0]):
                 message["Data"]["Content"]["string"] = "\n".join(line_split[1:])
-            # 获取机器人在群内信息
-            # bot_room_datas = bot.get_chatroom_member_detail(
-            #     self.config["app_id"],
-            #     message['Data']['FromUserName']['string'],
-            #     [message['Data']["ToUserName"]['string']]
-            # )['data']
-            # print(bot_room_datas)
-            # # 拿到机器人在群内名称
-            # at_string = ''
-            # for bot_data in bot_room_datas:
-            #     bot_room_name = bot_data['nickName']
-            #     at_string += f"@{bot_room_name}"
+
             # 正则表达式模式，匹配'@'后跟任意数量的非空白字符
             pattern = r'@\S+'
-            # at_string = f"@{bot_account_id}"
+            at_string = f"@{bot_account_id}"
             content_list = []
-            if '@' in message["Data"]["Content"]["string"]:
+            if at_string in message["Data"]["Content"]["string"]:
                 content_list.append(platform_message.At(target=bot_account_id))
-                # print(re.sub(pattern, '', message["Data"]["Content"]["string"]))
+                content_list.append(platform_message.Plain(message["Data"]["Content"]["string"].replace(at_string, '', 1)))
+            # 更优雅的替换@机器人，仅仅限于单独AT的情况
+            elif '在群聊中@了你' in message["Data"]["PushContent"]:
+                content_list.append(platform_message.At(target=bot_account_id))
+                print(re.sub(pattern, '', message["Data"]["Content"]["string"]))
                 content_list.append(platform_message.Plain(re.sub(pattern, '', message["Data"]["Content"]["string"])))
             else:
                 content_list = [platform_message.Plain(message["Data"]["Content"]["string"])]
