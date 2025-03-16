@@ -67,7 +67,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
         if message["Data"]["MsgType"] == 1:
             # 检查消息开头，如果有 wxid_sbitaz0mt65n22:\n 则删掉
             regex = re.compile(r"^wxid_.*:")
-            print(message)
+            # print(message)
 
             line_split = message["Data"]["Content"]["string"].split("\n")
 
