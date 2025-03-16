@@ -4,6 +4,7 @@ import abc
 import typing
 import enum
 import quart
+import traceback
 from quart.typing import RouteCallable
 
 from ....core import app
@@ -75,7 +76,9 @@ class RouterGroup(abc.ABC):
                 try:
                     return await f(*args, **kwargs)
                 except Exception as e:  # 自动 500
-                    return self.http_status(500, -2, str(e))
+                    traceback.print_exc()
+                    # return self.http_status(500, -2, str(e))
+                    return self.http_status(500, -2, 'internal server error')
                 
             new_f = handler_error
             new_f.__name__ = (self.name + rule).replace('/', '__')

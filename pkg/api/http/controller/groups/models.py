@@ -1,4 +1,5 @@
 import quart
+import uuid
 
 from .. import group
 from .....entity.persistence import model
@@ -15,13 +16,28 @@ class LLMModelsRouterGroup(group.RouterGroup):
                     'models': await self.ap.model_service.get_llm_models()
                 })
             elif quart.request.method == 'POST':
-                pass
+                json_data = await quart.request.json
+
+                await self.ap.model_service.create_llm_model(json_data)
+
+                return self.success()
 
         @self.route('/<model_uuid>', methods=['GET', 'PUT', 'DELETE'])
         async def _(model_uuid: str) -> str:
             if quart.request.method == 'GET':
-                pass
+                model = await self.ap.model_service.get_llm_model(model_uuid)
+
+                if model is None:
+                    return self.http_status(404, -1, 'model not found')
+
+                return self.success(data=model)
             elif quart.request.method == 'PUT':
-                pass
+                json_data = await quart.request.json
+
+                await self.ap.model_service.update_llm_model(model_uuid, json_data)
+
+                return self.success()
             elif quart.request.method == 'DELETE':
-                pass
+                await self.ap.model_service.delete_llm_model(model_uuid)
+
+                return self.success()
