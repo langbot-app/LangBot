@@ -170,7 +170,8 @@ class PlatformManager:
                         self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
 
                 tasks.append(exception_wrapper(adapter))
-            
+
+
             for task in tasks:
                 self.ap.task_mgr.create_task(
                     task,

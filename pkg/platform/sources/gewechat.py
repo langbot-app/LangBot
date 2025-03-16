@@ -82,7 +82,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
                 content_list.append(platform_message.At(target=bot_account_id))
                 content_list.append(platform_message.Plain(message["Data"]["Content"]["string"].replace(at_string, '', 1)))
             # 更优雅的替换改名后@机器人，仅仅限于单独AT的情况
-            elif '在群聊中@了你' in message["Data"]["PushContent"]:
+            elif "PushContent" in message['Data'] and '在群聊中@了你' in message["Data"]["PushContent"]:
                 content_list.append(platform_message.At(target=bot_account_id))
                 content_list.append(platform_message.Plain(re.sub(pattern, '', message["Data"]["Content"]["string"])))
             else:
@@ -161,6 +161,10 @@ class GewechatEventConverter(adapter.EventConverter):
         event: dict,
         bot_account_id: str
     ) -> platform_events.MessageEvent:
+
+        if event['Wxid'] == event['Data']['FromUserName']['string']:
+            return None
+
         message_chain = await self.message_converter.target2yiri(copy.deepcopy(event), bot_account_id)
 
         if not message_chain:

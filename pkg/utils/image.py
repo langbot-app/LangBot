@@ -15,6 +15,9 @@ import asyncio
 from urllib.parse import urlparse
 
 
+
+
+
 async def get_gewechat_image_base64(
         gewechat_url: str,
         gewechat_file_url: str,
@@ -67,6 +70,7 @@ async def get_gewechat_image_base64(
                         }
                 ) as response:
                     if response.status != 200:
+                        # print(response)
                         raise Exception(f"获取gewechat图片下载失败: {await response.text()}")
 
                     resp_data = await response.json()
@@ -106,6 +110,9 @@ async def get_gewechat_image_base64(
                 raise Exception(f"下载图片网络错误: {str(e)}, URL: {download_url}")
     except Exception as e:
         raise Exception(f"获取图片失败: {str(e)}") from e
+
+
+
 
 
 async def get_wecom_image_base64(pic_url: str) -> tuple[str, str]:
