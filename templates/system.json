@@ -20,7 +20,7 @@
     },
     "persistence": {
         "sqlite": {
-            "path": "data/persistence.db"
+            "path": "data/langbot.db"
         },
         "use": "sqlite"
     }
