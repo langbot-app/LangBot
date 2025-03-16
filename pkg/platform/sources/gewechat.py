@@ -78,8 +78,6 @@ class GewechatMessageConverter(adapter.MessageConverter):
             pattern = r'@\S+'
             at_string = f"@{bot_account_id}"
             content_list = []
-            if message['Wxid'] == message['Data']['FromUserName']['string']:
-                return platform_message.MessageChain()
             if at_string in message["Data"]["Content"]["string"]:
                 content_list.append(platform_message.At(target=bot_account_id))
                 content_list.append(platform_message.Plain(message["Data"]["Content"]["string"].replace(at_string, '', 1)))
@@ -88,10 +86,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
                 content_list.append(platform_message.At(target=bot_account_id))
                 content_list.append(platform_message.Plain(re.sub(pattern, '', message["Data"]["Content"]["string"])))
             else:
-                if message['Wxid'] == message['Data']['FromUserName']['string']:
-                    pass
-                else:
-                    content_list = [platform_message.Plain(message["Data"]["Content"]["string"])]
+                content_list = [platform_message.Plain(message["Data"]["Content"]["string"])]
 
             return platform_message.MessageChain(content_list)
                     
@@ -166,6 +161,10 @@ class GewechatEventConverter(adapter.EventConverter):
         event: dict,
         bot_account_id: str
     ) -> platform_events.MessageEvent:
+
+        if event['Wxid'] == event['Data']['FromUserName']['string']:
+            return None
+
         message_chain = await self.message_converter.target2yiri(copy.deepcopy(event), bot_account_id)
 
         if not message_chain:

@@ -70,7 +70,7 @@ async def get_gewechat_image_base64(
                         }
                 ) as response:
                     if response.status != 200:
-                        print(response)
+                        # print(response)
                         raise Exception(f"获取gewechat图片下载失败: {await response.text()}")
 
                     resp_data = await response.json()
