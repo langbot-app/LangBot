@@ -17,9 +17,10 @@ from .. import entities as modelmgr_entities
 class GiteeAIChatCompletions(chatcmpl.OpenAIChatCompletions):
     """Gitee AI ChatCompletions API 请求器"""
 
-    def __init__(self, ap: app.Application):
-        self.ap = ap
-        self.requester_cfg = ap.provider_cfg.data['requester']['gitee-ai-chat-completions'].copy()
+    default_config: dict[str, typing.Any] = {
+        'base-url': 'https://ai.gitee.com/v1',
+        'timeout': 120,
+    }
 
     async def _closure(
         self,
@@ -27,6 +28,7 @@ class GiteeAIChatCompletions(chatcmpl.OpenAIChatCompletions):
         req_messages: list[dict],
         use_model: entities.LLMModelInfo,
         use_funcs: list[tools_entities.LLMFunction] = None,
+        extra_args: dict[str, typing.Any] = {},
     ) -> llm_entities.Message:
         self.client.api_key = use_model.token_mgr.get_token()
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import typing
 import openai
 
 from ....core import app
@@ -12,9 +13,7 @@ class ZhipuAIChatCompletions(chatcmpl.OpenAIChatCompletions):
 
     client: openai.AsyncClient
 
-    requester_cfg: dict
-
-    def __init__(self, ap: app.Application):
-        self.ap = ap
-
-        self.requester_cfg = self.ap.provider_cfg.data['requester']['zhipuai-chat-completions']
+    default_config: dict[str, typing.Any] = {
+        'base-url': 'https://open.bigmodel.cn/api/paas/v4',
+        'timeout': 120,
+    }

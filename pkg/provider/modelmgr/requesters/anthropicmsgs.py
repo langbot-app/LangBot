@@ -8,6 +8,7 @@ import base64
 import anthropic
 import httpx
 
+from ....core import app
 from .. import entities, errors, requester
 
 from .. import entities, errors
@@ -21,6 +22,11 @@ class AnthropicMessages(requester.LLMAPIRequester):
     """Anthropic Messages API 请求器"""
 
     client: anthropic.AsyncAnthropic
+
+    default_config: dict[str, typing.Any] = {
+        'base-url': 'https://api.anthropic.com/v1',
+        'timeout': 120,
+    }
 
     async def initialize(self):
 

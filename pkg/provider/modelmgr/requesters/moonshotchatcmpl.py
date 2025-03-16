@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import typing
+
 from ....core import app
 
 from . import chatcmpl
@@ -12,9 +14,10 @@ from ...tools import entities as tools_entities
 class MoonshotChatCompletions(chatcmpl.OpenAIChatCompletions):
     """Moonshot ChatCompletion API 请求器"""
 
-    def __init__(self, ap: app.Application):
-        self.requester_cfg = ap.provider_cfg.data['requester']['moonshot-chat-completions']
-        self.ap = ap
+    default_config: dict[str, typing.Any] = {
+        'base-url': 'https://api.moonshot.cn/v1',
+        'timeout': 120,
+    }
 
     async def _closure(
         self,
@@ -22,6 +25,7 @@ class MoonshotChatCompletions(chatcmpl.OpenAIChatCompletions):
         req_messages: list[dict],
         use_model: entities.LLMModelInfo,
         use_funcs: list[tools_entities.LLMFunction] = None,
+        extra_args: dict[str, typing.Any] = {},
     ) -> llm_entities.Message:
         self.client.api_key = use_model.token_mgr.get_token()
 

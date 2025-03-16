@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import typing
+
 from . import chatcmpl
 from .. import entities, errors, requester
 from ....core import entities as core_entities, app
@@ -10,9 +12,10 @@ from ...tools import entities as tools_entities
 class DeepseekChatCompletions(chatcmpl.OpenAIChatCompletions):
     """Deepseek ChatCompletion API 请求器"""
 
-    def __init__(self, ap: app.Application):
-        self.requester_cfg = ap.provider_cfg.data['requester']['deepseek-chat-completions']
-        self.ap = ap
+    default_config: dict[str, typing.Any] = {
+        'base-url': 'https://api.deepseek.com',
+        'timeout': 120,
+    }
 
     async def _closure(
         self,
@@ -20,6 +23,7 @@ class DeepseekChatCompletions(chatcmpl.OpenAIChatCompletions):
         req_messages: list[dict],
         use_model: entities.LLMModelInfo,
         use_funcs: list[tools_entities.LLMFunction] = None,
+        extra_args: dict[str, typing.Any] = {},
     ) -> llm_entities.Message:
         self.client.api_key = use_model.token_mgr.get_token()
 

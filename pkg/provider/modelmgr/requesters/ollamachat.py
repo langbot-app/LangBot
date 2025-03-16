@@ -23,17 +23,16 @@ REQUESTER_NAME: str = "ollama-chat"
 class OllamaChatCompletions(requester.LLMAPIRequester):
     """Ollama平台 ChatCompletion API请求器"""
     client: ollama.AsyncClient
-    request_cfg: dict
 
-    def __init__(self, ap: app.Application):
-        super().__init__(ap)
-        self.ap = ap
-        self.request_cfg = self.ap.provider_cfg.data['requester'][REQUESTER_NAME]
+    default_config: dict[str, typing.Any] = {
+        'base-url': 'http://127.0.0.1:11434',
+        'timeout': 120,
+    }
 
     async def initialize(self):
-        os.environ['OLLAMA_HOST'] = self.request_cfg['base-url']
+        os.environ['OLLAMA_HOST'] = self.requester_cfg['base-url']
         self.client = ollama.AsyncClient(
-            timeout=self.request_cfg['timeout']
+            timeout=self.requester_cfg['timeout']
         )
 
     async def _req(self,
@@ -44,9 +43,9 @@ class OllamaChatCompletions(requester.LLMAPIRequester):
         )
 
     async def _closure(self, query: core_entities.Query, req_messages: list[dict], use_model: entities.LLMModelInfo,
-                       user_funcs: list[tools_entities.LLMFunction] = None) -> (
-            llm_entities.Message):
-        args: Any = self.request_cfg['args'].copy()
+                       user_funcs: list[tools_entities.LLMFunction] = None,
+                       extra_args: dict[str, typing.Any] = {}) -> llm_entities.Message:
+        args: Any = self.requester_cfg['args'].copy()
         args["model"] = use_model.name if use_model.model_name is None else use_model.model_name
 
         messages: list[dict] = req_messages.copy()
@@ -113,6 +112,7 @@ class OllamaChatCompletions(requester.LLMAPIRequester):
             model: entities.LLMModelInfo,
             messages: typing.List[llm_entities.Message],
             funcs: typing.List[tools_entities.LLMFunction] = None,
+            extra_args: dict[str, typing.Any] = {},
     ) -> llm_entities.Message:
         req_messages: list = []
         for m in messages:
@@ -123,6 +123,6 @@ class OllamaChatCompletions(requester.LLMAPIRequester):
                     msg_dict["content"] = "\n".join(part["text"] for part in content)
             req_messages.append(msg_dict)
         try:
-            return await self._closure(query, req_messages, model, funcs)
+            return await self._closure(query, req_messages, model, funcs, extra_args)
         except asyncio.TimeoutError:
             raise errors.RequesterError('请求超时')
