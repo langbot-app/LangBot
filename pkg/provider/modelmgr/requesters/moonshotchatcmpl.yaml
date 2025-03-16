@@ -14,13 +14,6 @@ spec:
       type: string
       required: true
       default: "https://api.moonshot.com/v1"
-    - name: args
-      label:
-        en_US: Args
-        zh_CN: 附加参数
-      type: object
-      required: true
-      default: {}
     - name: timeout
       label:
         en_US: Timeout
