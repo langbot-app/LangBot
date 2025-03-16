@@ -35,6 +35,7 @@ required_deps = {
     "telegram": "python-telegram-bot",
     "certifi": "certifi",
     "mcp": "mcp",
+    "sqlmodel": "sqlmodel",
 }
 
 

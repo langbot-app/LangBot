@@ -34,11 +34,6 @@ class PersistenceManager:
 
         await self.create_tables()
 
-        # auto migrate
-        async with self.get_db_engine().connect() as conn:
-            await conn.run_sync(self.meta.drop_all)
-            await conn.run_sync(self.meta.create_all)
-
     async def create_tables(self):
         # TODO: 对扩展友好
         
