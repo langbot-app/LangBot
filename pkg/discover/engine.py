@@ -23,6 +23,16 @@ class I18nString(pydantic.BaseModel):
     ja_JP: typing.Optional[str] = None
     """日文"""
 
+    def to_dict(self) -> dict:
+        """转换为字典"""
+        dic = {}
+        if self.en_US is not None:
+            dic['en_US'] = self.en_US
+        if self.zh_CN is not None:
+            dic['zh_CN'] = self.zh_CN
+        if self.ja_JP is not None:
+            dic['ja_JP'] = self.ja_JP
+        return dic
 
 class Metadata(pydantic.BaseModel):
     """元数据"""
@@ -38,6 +48,17 @@ class Metadata(pydantic.BaseModel):
 
     icon: typing.Optional[str] = None
     """图标"""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
+        if self.description is None:
+            self.description = I18nString(
+                en_US=''
+            )
+
+        if self.icon is None:
+            self.icon = ''
 
 
 class PythonExecution(pydantic.BaseModel):
@@ -123,6 +144,16 @@ class Component(pydantic.BaseModel):
         module_path = module_path.replace('/', '.').replace('\\', '.')
         module = importlib.import_module(module_path)
         return getattr(module, self.execution.python.attr)
+    
+    def to_plain_dict(self) -> dict:
+        """转换为平铺字典"""
+        return {
+            'name': self.metadata.name,
+            'label': self.metadata.label.to_dict(),
+            'description': self.metadata.description.to_dict(),
+            'icon': self.metadata.icon,
+            'spec': self.spec
+        }
 
 
 class ComponentDiscoveryEngine:

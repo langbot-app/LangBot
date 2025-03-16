@@ -33,19 +33,19 @@ class RuntimeLLMModel:
 class ModelManager:
     """模型管理器"""
 
-    ap: app.Application
+    model_list: list[entities.LLMModelInfo]  # deprecated
 
-    requester_components: list[engine.Component]
+    requesters: dict[str, requester.LLMAPIRequester]  # deprecated
 
-    model_list: list[entities.LLMModelInfo]
-
-    requesters: dict[str, requester.LLMAPIRequester]
-
-    token_mgrs: dict[str, token.TokenManager]
+    token_mgrs: dict[str, token.TokenManager]  # deprecated
 
     # ====== 4.0 ======
 
+    ap: app.Application
+
     llm_models: list[RuntimeLLMModel]
+
+    requester_components: list[engine.Component]
     
     def __init__(self, ap: app.Application):
         self.ap = ap
@@ -140,3 +140,17 @@ class ModelManager:
             
             except Exception as e:
                 self.ap.logger.error(f"初始化模型 {model['name']} 失败: {type(e)} {e} ,请检查配置文件")
+
+    def get_available_requesters_info(self) -> list[dict]:
+        """获取所有可用的请求器"""
+        return [
+            component.to_plain_dict()
+            for component in self.requester_components
+        ]
+
+    def get_available_requester_info_by_name(self, name: str) -> dict | None:
+        """通过名称获取请求器信息"""
+        for component in self.requester_components:
+            if component.metadata.name == name:
+                return component.to_plain_dict()
+        return None
