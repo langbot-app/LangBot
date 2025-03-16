@@ -67,7 +67,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
         if message["Data"]["MsgType"] == 1:
             # 检查消息开头，如果有 wxid_sbitaz0mt65n22:\n 则删掉
             regex = re.compile(r"^wxid_.*:")
-            # print(message)
+            print(message)
 
             line_split = message["Data"]["Content"]["string"].split("\n")
 
@@ -78,15 +78,20 @@ class GewechatMessageConverter(adapter.MessageConverter):
             pattern = r'@\S+'
             at_string = f"@{bot_account_id}"
             content_list = []
+            if message['Wxid'] == message['Data']['FromUserName']['string']:
+                return platform_message.MessageChain()
             if at_string in message["Data"]["Content"]["string"]:
                 content_list.append(platform_message.At(target=bot_account_id))
                 content_list.append(platform_message.Plain(message["Data"]["Content"]["string"].replace(at_string, '', 1)))
             # 更优雅的替换改名后@机器人，仅仅限于单独AT的情况
-            elif '在群聊中@了你' in message["Data"]["PushContent"]:
+            elif "PushContent" in message['Data'] and '在群聊中@了你' in message["Data"]["PushContent"]:
                 content_list.append(platform_message.At(target=bot_account_id))
                 content_list.append(platform_message.Plain(re.sub(pattern, '', message["Data"]["Content"]["string"])))
             else:
-                content_list = [platform_message.Plain(message["Data"]["Content"]["string"])]
+                if message['Wxid'] == message['Data']['FromUserName']['string']:
+                    pass
+                else:
+                    content_list = [platform_message.Plain(message["Data"]["Content"]["string"])]
 
             return platform_message.MessageChain(content_list)
                     
