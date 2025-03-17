@@ -60,17 +60,22 @@ class PreProcessor(stage.PipelineStage):
 
         content_list = []
 
+        plain_text = ""
+
         for me in query.message_chain:
             if isinstance(me, platform_message.Plain):
                 content_list.append(
                     llm_entities.ContentElement.from_text(me.text)
                 )
+                plain_text += me.text
             elif isinstance(me, platform_message.Image):
                 if self.ap.provider_cfg.data['enable-vision'] and (self.ap.provider_cfg.data['runner'] != 'local-agent' or query.use_model.vision_supported):
                     if me.base64 is not None:
                         content_list.append(
                             llm_entities.ContentElement.from_image_base64(me.base64)
                         )
+
+        query.variables['user_message_text'] = plain_text
 
         query.user_message = llm_entities.Message(
             role='user',
