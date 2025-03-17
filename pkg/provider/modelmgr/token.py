@@ -7,14 +7,14 @@ class TokenManager():
     """鉴权 Token 管理器
     """
 
-    provider: str
+    name: str
 
     tokens: list[str]
 
     using_token_index: typing.Optional[int] = 0
 
-    def __init__(self, provider: str, tokens: list[str]):
-        self.provider = provider
+    def __init__(self, name: str, tokens: list[str]):
+        self.name = name
         self.tokens = tokens
         self.using_token_index = 0
 

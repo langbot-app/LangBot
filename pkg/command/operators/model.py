@@ -54,7 +54,7 @@ class ModelShowOperator(operator.CommandOperator):
             if model.model_name is not None:
                 content += f"请求模型名称: {model.model_name}\n"
             content += f"请求器: {model.requester.name}\n"
-            content += f"密钥组: {model.token_mgr.provider}\n"
+            content += f"密钥组: {model.token_mgr.name}\n"
             content += f"支持视觉: {model.vision_supported}\n"
             content += f"支持工具: {model.tool_call_supported}\n"
 

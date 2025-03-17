@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import aiohttp
+import sqlalchemy
 
 from . import entities, requester
 from ...core import app
 from ...discover import engine
 from . import token
-from ...entity.persistence import model
+from ...entity.persistence import model as persistence_model
 from .requesters import bailianchatcmpl, chatcmpl, anthropicmsgs, moonshotchatcmpl, deepseekchatcmpl, ollamachat, giteeaichatcmpl, volcarkchatcmpl, xaichatcmpl, zhipuaichatcmpl, lmstudiochatcmpl, siliconflowchatcmpl, volcarkchatcmpl
 
 FETCH_MODEL_LIST_URL = "https://api.qchatgpt.rockchin.top/api/v2/fetch/model_list"
@@ -15,7 +16,7 @@ FETCH_MODEL_LIST_URL = "https://api.qchatgpt.rockchin.top/api/v2/fetch/model_lis
 class RuntimeLLMModel:
     """运行时模型"""
 
-    model_entity: model.LLMModel
+    model_entity: persistence_model.LLMModel
     """模型数据"""
 
     token_mgr: token.TokenManager
@@ -24,7 +25,7 @@ class RuntimeLLMModel:
     requester: requester.LLMAPIRequester
     """请求器实例"""
     
-    def __init__(self, model_entity: model.LLMModel, token_mgr: token.TokenManager, requester: requester.LLMAPIRequester):
+    def __init__(self, model_entity: persistence_model.LLMModel, token_mgr: token.TokenManager, requester: requester.LLMAPIRequester):
         self.model_entity = model_entity
         self.token_mgr = token_mgr
         self.requester = requester
@@ -140,6 +141,38 @@ class ModelManager:
             
             except Exception as e:
                 self.ap.logger.error(f"初始化模型 {model['name']} 失败: {type(e)} {e} ,请检查配置文件")
+
+    async def load_model_from_db(self):
+        """从数据库加载模型"""
+        self.llm_models = []
+
+        # forge requester class dict
+        requester_dict: dict[str, type[requester.LLMAPIRequester]] = {}
+        for component in self.requester_components:
+            requester_dict[component.metadata.name] = component.get_python_component_class()
+
+        # llm models
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_model.LLMModel)
+        )
+
+        llm_models = result.all()
+
+        # load models
+        for llm_model in llm_models:
+            assert isinstance(llm_model, persistence_model.LLMModel)
+            runtime_llm_model = RuntimeLLMModel(
+                model_entity=llm_model,
+                token_mgr=token.TokenManager(
+                    name=llm_model.uuid,
+                    tokens=llm_model.api_keys
+                ),
+                requester=requester_dict[llm_model.requester](
+                    ap=self.ap,
+                    config=llm_model.requester_config
+                )
+            )
+            self.llm_models.append(runtime_llm_model)
 
     def get_available_requesters_info(self) -> list[dict]:
         """获取所有可用的请求器"""
