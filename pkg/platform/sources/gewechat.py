@@ -155,8 +155,9 @@ class GewechatMessageConverter(adapter.MessageConverter):
                     user_data = appmsg_data.find('.//title').text  # 拿到用户消息
                     quote_data = appmsg_data.find('.//refermsg').find('.//content').text  # 引用原文
                     sender_id = appmsg_data.find('.//refermsg').find('.//chatusr').text  # 引用用户id
+                    from_name = message['Data']['FromUserName']['string']
                     message_list =[]
-                    if message['Wxid'] == sender_id:  # 因为引用机制暂时无法响应用户，所以当引用用户是机器人是构建一个at激活机器人
+                    if message['Wxid'] == sender_id and from_name.endswith('@chatroom'):  # 因为引用机制暂时无法响应用户，所以当引用用户是机器人是构建一个at激活机器人
                         message_list.append(platform_message.At(target=bot_account_id))
                     message_list.append(platform_message.Quote(
                             sender_id=sender_id,
