@@ -33,6 +33,7 @@ required_deps = {
     "dingtalk_stream": "dingtalk_stream",
     "dashscope": "dashscope",
     "telegram": "python-telegram-bot",
+    "certifi": "certifi",
 }
 
 
