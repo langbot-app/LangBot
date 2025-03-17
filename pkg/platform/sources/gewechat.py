@@ -227,7 +227,7 @@ class GewechatEventConverter(adapter.EventConverter):
 
         if event['Wxid'] == event['Data']['FromUserName']['string']:
             return None
-        print(event)
+        # print(event)
         message_chain = await self.message_converter.target2yiri(copy.deepcopy(event), bot_account_id)
 
         if not message_chain:
