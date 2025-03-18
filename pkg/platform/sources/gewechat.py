@@ -25,6 +25,7 @@ from ..types import message as platform_message
 from ..types import events as platform_events
 from ..types import entities as platform_entities
 from ...utils import image
+import xml.etree.ElementTree as ET
 
 
 class GewechatMessageConverter(adapter.MessageConverter):
@@ -73,6 +74,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
 
             if len(line_split) > 0 and regex.match(line_split[0]):
                 message["Data"]["Content"]["string"] = "\n".join(line_split[1:])
+
 
             # 正则表达式模式，匹配'@'后跟任意数量的非空白字符
             pattern = r'@\S+'
@@ -127,17 +129,78 @@ class GewechatMessageConverter(adapter.MessageConverter):
             # 支持微信聊天记录的消息类型，将 XML 内容转换为 MessageChain 传递
             try:
                 content = message["Data"]["Content"]["string"]
+                # 有三种可能的消息结构weid开头，私聊直接<?xml>和直接<msg>
+                if content.startswith('wxid'):
+                    xml_list = content.split('\n')[2:]
+                    xml_data = '\n'.join(xml_list)
+                elif content.startswith('<?xml'):
+                    xml_list = content.split('\n')[1:]
+                    xml_data = '\n'.join(xml_list)
+                else:
+                    xml_data = content
 
-                try:
-                    content_bytes = content.encode('utf-8')
-                    decoded_content = base64.b64decode(content_bytes)
+                content_data = ET.fromstring(xml_data)
+                # print(xml_data)
+                # 拿到细分消息类型，按照gewe接口中描述
+                '''
+                小程序：33/36
+                引用消息：57
+                转账消息：2000
+                红包消息：2001
+                视频号消息：51
+                '''
+                appmsg_data = content_data.find('.//appmsg')
+                data_type = appmsg_data.find('.//type').text
+                if data_type == '57':
+                    user_data = appmsg_data.find('.//title').text  # 拿到用户消息
+                    quote_data = appmsg_data.find('.//refermsg').find('.//content').text  # 引用原文
+                    sender_id = appmsg_data.find('.//refermsg').find('.//chatusr').text  # 引用用户id
+                    from_name = message['Data']['FromUserName']['string']
+                    message_list =[]
+                    if message['Wxid'] == sender_id and from_name.endswith('@chatroom'):  # 因为引用机制暂时无法响应用户，所以当引用用户是机器人是构建一个at激活机器人
+                        message_list.append(platform_message.At(target=bot_account_id))
+                    message_list.append(platform_message.Quote(
+                            sender_id=sender_id,
+                            origin=platform_message.MessageChain(
+                                [platform_message.Plain(quote_data)]
+                            )))
+                    message_list.append(platform_message.Plain(user_data))
+                    return platform_message.MessageChain(message_list)
+                elif data_type == '51':
                     return platform_message.MessageChain(
-                        [platform_message.Unknown(content=decoded_content)]
+                        [platform_message.Plain(text=f'[视频号消息]')]
                     )
-                except Exception as e:
+                    # print(content_data)
+                elif data_type == '2000':
                     return platform_message.MessageChain(
-                        [platform_message.Plain(text=content)]
+                        [platform_message.Plain(text=f'[转账消息]')]
                     )
+                elif data_type == '2001':
+                    return platform_message.MessageChain(
+                        [platform_message.Plain(text=f'[红包消息]')]
+                    )
+                elif data_type == '5':
+                    return platform_message.MessageChain(
+                        [platform_message.Plain(text=f'[公众号消息]')]
+                    )
+                elif data_type == '33' or data_type == '36':
+                    return platform_message.MessageChain(
+                        [platform_message.Plain(text=f'[小程序消息]')]
+                    )
+                # print(data_type.text)
+                else:
+
+
+                    try:
+                        content_bytes = content.encode('utf-8')
+                        decoded_content = base64.b64decode(content_bytes)
+                        return platform_message.MessageChain(
+                            [platform_message.Unknown(content=decoded_content)]
+                        )
+                    except Exception as e:
+                        return platform_message.MessageChain(
+                            [platform_message.Plain(text=content)]
+                        )
             except Exception as e:
                 print(f"Error processing type 49 message: {str(e)}")
                 return platform_message.MessageChain(
@@ -164,7 +227,7 @@ class GewechatEventConverter(adapter.EventConverter):
 
         if event['Wxid'] == event['Data']['FromUserName']['string']:
             return None
-
+        # print(event)
         message_chain = await self.message_converter.target2yiri(copy.deepcopy(event), bot_account_id)
 
         if not message_chain:
