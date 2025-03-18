@@ -78,6 +78,7 @@
             "AppID":"",
             "AppSecret":"",
             "Mode":"drop",
+            "LoadingMessage":"AI正在思考中，请发送任意内容获取回复。",
             "host": "0.0.0.0",
             "port": 2287
         },

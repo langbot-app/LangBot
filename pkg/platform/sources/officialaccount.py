@@ -107,6 +107,7 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
                 EncodingAESKey=config['EncodingAESKey'],
                 Appsecret=config['AppSecret'],
                 AppID=config['AppID'], 
+                LoadingMessage=config['LoadingMessage']
             )
         else:
             raise KeyError("请设置微信公众号通信模式")

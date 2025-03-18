@@ -176,7 +176,7 @@ class OAClient():
 
 class OAClientForLongerResponse():
     
-    def __init__(self,token:str,EncodingAESKey:str,AppID:str,Appsecret:str):
+    def __init__(self,token:str,EncodingAESKey:str,AppID:str,Appsecret:str,LoadingMessage:str):
         self.token = token
         self.aes = EncodingAESKey
         self.appid = AppID
@@ -189,6 +189,7 @@ class OAClientForLongerResponse():
             "example":[],
         }
         self.access_token_expiry_time = None
+        self.loading_message = LoadingMessage
 
     async def handle_callback_request(self):
         try:
@@ -246,7 +247,7 @@ class OAClientForLongerResponse():
                         to_user=from_user,
                         from_user=to_user,
                         create_time=int(time.time()),
-                        content="AI正在思考中，请发送任意内容获取回答。"
+                        content=self.loading_message
                     )
                     
                     if user_msg_queue.get(from_user) and user_msg_queue[from_user][0]["content"]:
