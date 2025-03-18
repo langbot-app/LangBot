@@ -227,7 +227,7 @@ class GewechatEventConverter(adapter.EventConverter):
         event: dict,
         bot_account_id: str
     ) -> platform_events.MessageEvent:
-        print(event)
+        # print(event)
         # 排除自己发消息回调回答问题
         if event['Wxid'] == event['Data']['FromUserName']['string']:
             return None
