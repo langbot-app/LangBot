@@ -32,6 +32,6 @@ gewechat-client
 dingtalk_stream
 dashscope
 python-telegram-bot
-
+cozepy
 # indirect
 taskgroup==0.0.0a4

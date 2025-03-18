@@ -520,6 +520,86 @@
                     }
                 }
             }
+        },
+        "coze-app-api": {
+            "type": "object",
+            "title": "Coze API 配置",
+            "properties": {
+                "app-type": {
+                    "type": "string",
+                    "title": "应用类型",
+                    "description": "支持 agent 和 workflow，agent：普通智能体；workflow：智能体编排；请填写下方对应的应用类型 API 参数",
+                    "enum": ["agent", "workflow"],
+                    "default": "agent"
+                },
+                "client_type": {
+                    "type": "string",
+                    "title": "客户端类型",
+                    "description": "支持 jwt 和 oauth2，jwt：JWT 认证；oauth2：OAuth2 认证；请填写下方对应的应用类型 API 参数",
+                    "enum": ["jwt", "oauth2"],
+                    "default": "jwt"
+                },
+                "client_id": {
+                    "type": "string",   
+                    "title": "客户端 ID"
+                },
+                "private_key": {
+                    "type": "string",
+                    "title": "私钥"
+                },
+                "public_key_id": {
+                    "type": "string",
+                    "title": "公钥 ID"
+                },
+                "coze_www_base": {
+                    "type": "string",
+                    "title": "Coze 官网基础 URL"
+                },
+                "coze_api_base": {
+                    "type": "string",
+                    "title": "Coze API 基础 URL"
+                },
+                "stream": {
+                    "type": "boolean",
+                    "title": "是否启用流式输出",
+                    "default": true
+                },
+                "agent": {
+                    "type": "object",
+                    "title": "智能体 API 参数",
+                    "properties": {
+                        "bot_id": {
+                            "type": "string",
+                            "title": "机器人 ID"
+                        }
+                    }
+                },
+                "workflow": {
+                    "type": "object",
+                    "title": "智能体编排 API 参数",
+                    "properties": {
+                        "flow_id": {
+                            "type": "string",
+                            "title": "工作流 ID"
+                        },
+                        "bot_id": {
+                            "type": "string",
+                            "title": "机器人 ID"
+                        },
+                        "app_id": {
+                            "type": "string",
+                            "title": "应用 ID"
+                        },
+                        "input_key":{
+                            "type": "string",
+                            "title": "输入键",
+                            "description": "coze api 输入键，默认是 input",
+                            "default": "input"
+
+                        }
+                    }
+                }
+            }
         }
     }
 }

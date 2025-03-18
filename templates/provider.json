@@ -138,5 +138,24 @@
                 "date": "2023-08-10"
             }
         }
+    },
+    "coze-app-api": {
+        "agent": {
+            "bot_id": ""
+        },
+        "app-type": "agent",
+        "client_id": "",
+        "client_type": "jwt",
+        "coze_api_base": "https://api.coze.cn",
+        "coze_www_base": "https://www.coze.cn",
+        "stream": false,
+        "workflow": {
+            "app_id": "",
+            "bot_id": "",
+            "flow_id": "",
+            "input_key": ""
+        },
+        "private_key": "",
+        "public_key_id": ""
     }
 }
