@@ -54,7 +54,6 @@ class SessionManager:
                 use_model=await self.ap.model_mgr.get_model_by_name(self.ap.provider_cfg.data['model']),
                 use_funcs=await self.ap.tool_mgr.get_all_functions(
                     plugin_enabled=True,
-                    plugin_status=plugin_context.RuntimeContainerStatus.INITIALIZED,
                 ),
             )
             session.conversations.append(conversation)
