@@ -89,6 +89,8 @@ LangBotはBTPanelにリストされています。BTPanelをインストール�
 | DingTalk | ✅ |  |
 | Discord | ✅ |  |
 | Telegram | ✅ |  |
+| Slack | 🚧 |  |
+| LINE | 🚧 |  |
 | WhatsApp | 🚧 |  |
 
 🚧: 開発中

@@ -90,6 +90,8 @@ Directly use the released version to run, see the [Manual Deployment](https://do
 | DingTalk | ✅ |  |
 | Discord | ✅ |  |
 | Telegram | ✅ |  |
+| Slack | 🚧 |  |
+| LINE | 🚧 |  |
 | WhatsApp | 🚧 |  |
 
 🚧: In development
