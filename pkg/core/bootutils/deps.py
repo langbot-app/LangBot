@@ -34,6 +34,7 @@ required_deps = {
     "dashscope": "dashscope",
     "telegram": "python-telegram-bot",
     "certifi": "certifi",
+    "mcp": "mcp",
 }
 
 

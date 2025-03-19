@@ -47,3 +47,8 @@ class ToolLoader(abc.ABC):
     async def invoke_tool(self, query: core_entities.Query, name: str, parameters: dict) -> typing.Any:
         """执行工具调用"""
         pass
+
+    @abc.abstractmethod
+    async def shutdown(self):
+        """关闭工具"""
+        pass

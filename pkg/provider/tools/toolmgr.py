@@ -6,7 +6,7 @@ import traceback
 from ...core import app, entities as core_entities
 from . import entities, loader as tools_loader
 from ...plugin import context as plugin_context
-from .loaders import plugin
+from .loaders import plugin, mcp
 
 
 class ToolManager:
@@ -101,3 +101,8 @@ class ToolManager:
                 return await loader.invoke_tool(query, name, parameters)
         else:
             raise ValueError(f"未找到工具: {name}")
+
+    async def shutdown(self):
+        """关闭所有工具"""
+        for loader in self.loaders:
+            await loader.shutdown()

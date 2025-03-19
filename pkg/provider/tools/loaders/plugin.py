@@ -86,3 +86,7 @@ class PluginToolLoader(loader.ToolLoader):
                     function_name=function.name,
                     function_description=function.description,
                 )
+
+    async def shutdown(self):
+        """关闭工具"""
+        pass

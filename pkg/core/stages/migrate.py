@@ -12,6 +12,8 @@ from ..migrations import m020_wecom_config, m021_lark_config, m022_lmstudio_conf
 from ..migrations import m026_qqofficial_config, m027_wx_official_account_config, m028_aliyun_requester_config
 from ..migrations import m029_dashscope_app_api_config, m030_lark_config_cmpl, m031_dingtalk_config, m032_volcark_config
 from ..migrations import m033_dify_thinking_config, m034_gewechat_file_url_config, m035_wxoa_mode, m036_wxoa_loading_message
+from ..migrations import m037_mcp_config
+
 
 @stage.stage_class("MigrationStage")
 class MigrationStage(stage.BootingStage):

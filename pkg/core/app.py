@@ -204,6 +204,8 @@ class Application:
             case core_entities.LifecycleControlScope.PROVIDER.value:
                 self.logger.info("执行热重载 scope="+scope)
 
+                await self.tool_mgr.shutdown()
+
                 latest_llm_model_config = await config.load_json_config("data/metadata/llm-models.json", "templates/metadata/llm-models.json")
                 self.llm_models_meta = latest_llm_model_config
                 llm_model_mgr_inst = llm_model_mgr.ModelManager(self)
