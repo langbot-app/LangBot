@@ -520,6 +520,87 @@
                     }
                 }
             }
+        },
+        "mcp": {
+            "type": "object",
+            "title": "MCP 配置",
+            "properties": {
+                "servers": {
+                    "type": "array",
+                    "title": "MCP 服务器配置",
+                    "default": [],
+                    "items": {
+                        "type": "object",
+                        "oneOf": [
+                            {
+                                "title": "Stdio 模式服务器",
+                                "properties": {
+                                    "mode": {
+                                        "type": "string",
+                                        "title": "模式",
+                                        "const": "stdio"
+                                    },
+                                    "enable": {
+                                        "type": "boolean",
+                                        "title": "启用"
+                                    },
+                                    "name": {
+                                        "type": "string",
+                                        "title": "名称"
+                                    },
+                                    "command": {
+                                        "type": "string",
+                                        "title": "启动命令"
+                                    },
+                                    "args": {
+                                        "type": "array",
+                                        "title": "启动参数",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "default": []
+                                    },
+                                    "env": {
+                                        "type": "object",
+                                        "default": {}
+                                    }
+                                }
+                            },
+                            {
+                                "title": "SSE 模式服务器",
+                                "properties": {
+                                    "mode": {
+                                        "type": "string",
+                                        "title": "模式",
+                                        "const": "sse"
+                                    },
+                                    "enable": {
+                                        "type": "boolean",
+                                        "title": "启用"
+                                    },
+                                    "name": {
+                                        "type": "string",
+                                        "title": "名称"
+                                    },
+                                    "url": {
+                                        "type": "string",
+                                        "title": "URL"
+                                    },
+                                    "headers": {
+                                        "type": "object",
+                                        "default": {}
+                                    },
+                                    "timeout": {
+                                        "type": "number",
+                                        "title": "请求超时时间",
+                                        "default": 10
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
         }
     }
 }
