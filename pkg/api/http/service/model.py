@@ -35,7 +35,7 @@ class ModelsService:
                 **model_data
             )
         )
-        # TODO: add to runtime
+        await self.ap.model_mgr.load_model(model_data)
 
     async def get_llm_model(self, model_uuid: str) -> dict | None:
         result = await self.ap.persistence_mgr.execute_async(
@@ -54,8 +54,12 @@ class ModelsService:
             sqlalchemy.update(persistence_model.LLMModel).where(persistence_model.LLMModel.uuid == model_uuid).values(**model_data)
         )
 
+        await self.ap.model_mgr.remove_model(model_uuid)
+        await self.ap.model_mgr.load_model(model_data)
+
     async def delete_llm_model(self, model_uuid: str) -> None:
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.delete(persistence_model.LLMModel).where(persistence_model.LLMModel.uuid == model_uuid)
         )
-        # TODO: delete from runtime
+
+        await self.ap.model_mgr.remove_model(model_uuid)
