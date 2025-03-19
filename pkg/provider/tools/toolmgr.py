@@ -101,3 +101,8 @@ class ToolManager:
                 return await loader.invoke_tool(query, name, parameters)
         else:
             raise ValueError(f"未找到工具: {name}")
+
+    async def shutdown(self):
+        """关闭所有工具"""
+        for loader in self.loaders:
+            await loader.shutdown()
