@@ -1,4 +1,4 @@
-semantic_version = "v3.4.10.4"
+semantic_version = "v3.4.11"
 
 debug_mode = False
 
