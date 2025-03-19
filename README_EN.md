@@ -36,7 +36,7 @@
 
 - 💬 Chat with LLM / Agent: Supports multiple LLMs, adapt to group chats and private chats; Supports multi-round conversations, tool calls, and multi-modal capabilities. Deeply integrates with [Dify](https://dify.ai). Currently supports QQ, QQ Channel, WeCom, personal WeChat, Lark, DingTalk, Discord, Telegram, etc.
 - 🛠️ High Stability, Feature-rich: Native access control, rate limiting, sensitive word filtering, etc. mechanisms; Easy to use, supports multiple deployment methods.
-- 🧩 Plugin Extension, Active Community: Support event-driven, component extension, etc. plugin mechanisms; Rich ecology, currently has dozens of [plugins](https://docs.langbot.app/plugin/plugin-intro.html)
+- 🧩 Plugin Extension, Active Community: Support event-driven, component extension, etc. plugin mechanisms; Integrate Anthropic [MCP protocol](https://modelcontextprotocol.io/); Currently has dozens of [plugins](https://docs.langbot.app/plugin/plugin-intro.html)
 - 😻 [New] Web UI: Support management LangBot instance through the browser, for details, see [documentation](https://docs.langbot.app/webui/intro.html)
 
 ## 📦 Getting Started
@@ -111,6 +111,7 @@ Directly use the released version to run, see the [Manual Deployment](https://do
 | [SiliconFlow](https://siliconflow.cn/) | ✅ | LLM gateway(MaaS) |
 | [Aliyun Bailian](https://bailian.console.aliyun.com/) | ✅ | LLM gateway(MaaS), LLMOps platform |
 | [Volc Engine Ark](https://console.volcengine.com/ark/region:ark+cn-beijing/model?vendor=Bytedance&view=LIST_VIEW) | ✅ | LLM gateway(MaaS), LLMOps platform |
+| [MCP](https://modelcontextprotocol.io/) | ✅ | Support tool access through MCP protocol |
 
 ## 🤝 Community Contribution
 
