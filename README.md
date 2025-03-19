@@ -39,7 +39,7 @@
 
 - 💬 大模型对话、Agent：支持多种大模型，适配群聊和私聊；具有多轮对话、工具调用、多模态能力，并深度适配 [Dify](https://dify.ai)。目前支持 QQ、QQ频道、企业微信、个人微信、飞书、Discord、Telegram 等平台。
 - 🛠️ 高稳定性、功能完备：原生支持访问控制、限速、敏感词过滤等机制；配置简单，支持多种部署方式。
-- 🧩 插件扩展、活跃社区：支持事件驱动、组件扩展等插件机制；丰富生态，目前已有数十个[插件](https://docs.langbot.app/plugin/plugin-intro.html)
+- 🧩 插件扩展、活跃社区：支持事件驱动、组件扩展等插件机制；适配 Anthropic [MCP 协议](https://modelcontextprotocol.io/)；目前已有数十个[插件](https://docs.langbot.app/plugin/plugin-intro.html)
 - 😻 [New] Web 管理面板：支持通过浏览器管理 LangBot 实例，具体支持功能，查看[文档](https://docs.langbot.app/webui/intro.html)
 
 ## 📦 开始使用
@@ -97,7 +97,7 @@
 
 🚧: 正在开发中
 
-### 大模型
+### 大模型能力
 
 | 模型 | 状态 | 备注 |
 | --- | --- | --- |
@@ -114,7 +114,7 @@
 | [SiliconFlow](https://siliconflow.cn/) | ✅ | 大模型聚合平台 |
 | [阿里云百炼](https://bailian.console.aliyun.com/) | ✅ | 大模型聚合平台, LLMOps 平台 |
 | [火山方舟](https://console.volcengine.com/ark/region:ark+cn-beijing/model?vendor=Bytedance&view=LIST_VIEW) | ✅ | 大模型聚合平台, LLMOps 平台 |
-
+| [MCP](https://modelcontextprotocol.io/) | ✅ | 支持通过 MCP 协议获取工具 |
 ### TTS
 
 | 平台/模型 | 备注 |
