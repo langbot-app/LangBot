@@ -16,7 +16,6 @@ class FuncOperator(operator.CommandOperator):
 
         all_functions = await self.ap.tool_mgr.get_all_functions(
             plugin_enabled=True,
-            plugin_status=plugin_context.RuntimeContainerStatus.INITIALIZED,
         )
 
         for func in all_functions:
