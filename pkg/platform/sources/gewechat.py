@@ -85,7 +85,10 @@ class GewechatMessageConverter(adapter.MessageConverter):
                 content_list.append(platform_message.Plain(message["Data"]["Content"]["string"].replace(at_string, '', 1)))
             # 更优雅的替换改名后@机器人，仅仅限于单独AT的情况
             elif "PushContent" in message['Data'] and '在群聊中@了你' in message["Data"]["PushContent"]:
-                content_list.append(platform_message.At(target=bot_account_id))
+                if '@所有人' in message["Data"]["Content"]["string"]:  # at全员时候传入atll不当作at自己
+                    content_list.append(platform_message.AtAll())
+                else:
+                    content_list.append(platform_message.At(target=bot_account_id))
                 content_list.append(platform_message.Plain(re.sub(pattern, '', message["Data"]["Content"]["string"])))
             else:
                 content_list = [platform_message.Plain(message["Data"]["Content"]["string"])]
@@ -224,10 +227,14 @@ class GewechatEventConverter(adapter.EventConverter):
         event: dict,
         bot_account_id: str
     ) -> platform_events.MessageEvent:
-
+        # print(event)
+        # 排除自己发消息回调回答问题
         if event['Wxid'] == event['Data']['FromUserName']['string']:
             return None
-        # print(event)
+        # 排除公众号以及微信团队消息
+        if event['Data']['FromUserName']['string'].startswith('gh_')\
+                or event['Data']['FromUserName']['string'].startswith('weixin'):
+            return None
         message_chain = await self.message_converter.target2yiri(copy.deepcopy(event), bot_account_id)
 
         if not message_chain:
