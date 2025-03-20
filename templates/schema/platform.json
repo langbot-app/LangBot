@@ -391,6 +391,11 @@
                                 "description": "对于超过15s的响应的处理模式",
                                 "enum": ["drop", "passive"]
                             },
+                            "LoadingMessage": {
+                                "type": "string",
+                                "default": "AI正在思考中，请发送任意内容获取回复。",
+                                "description": "当使用被动模式时，显示给用户的提示信息"
+                            },
                             "host": {
                                 "type": "string",
                                 "default": "0.0.0.0",
