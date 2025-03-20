@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-import aiohttp
+import typing
 import sqlalchemy
 
 from . import entities, requester
 from ...core import app
+from ...core import entities as core_entities
+from .. import entities as llm_entities
+from ..tools import entities as tools_entities
 from ...discover import engine
 from . import token
 from ...entity.persistence import model as persistence_model
@@ -58,14 +61,6 @@ class ModelManager:
         self.llm_models = []
         self.requester_components = []
         self.requester_dict = {}
-
-    async def get_model_by_name(self, name: str) -> entities.LLMModelInfo:
-        """通过名称获取模型
-        """
-        for model in self.model_list:
-            if model.name == name:
-                return model
-        raise ValueError(f"无法确定模型 {name} 的信息，请在元数据中配置")
     
     async def initialize(self):
         self.requester_components = self.ap.discover.get_components_by_kind('LLMAPIRequester')
@@ -92,9 +87,9 @@ class ModelManager:
 
         # load models
         for llm_model in llm_models:
-            await self.load_model(llm_model)
+            await self.load_llm_model(llm_model)
     
-    async def load_model(self, model_info: persistence_model.LLMModel | sqlalchemy.Row[persistence_model.LLMModel] | dict):
+    async def load_llm_model(self, model_info: persistence_model.LLMModel | sqlalchemy.Row[persistence_model.LLMModel] | dict):
         """加载模型"""
         
         if isinstance(model_info, sqlalchemy.Row):
@@ -113,10 +108,24 @@ class ModelManager:
                 config=model_info.requester_config
             )
         )
-        print(runtime_llm_model, runtime_llm_model.model_entity.name, "loaded")
         self.llm_models.append(runtime_llm_model)
 
-    async def remove_model(self, model_uuid: str):
+    async def get_model_by_name(self, name: str) -> entities.LLMModelInfo:  # deprecated
+        """通过名称获取模型
+        """
+        for model in self.model_list:
+            if model.name == name:
+                return model
+        raise ValueError(f"无法确定模型 {name} 的信息，请在元数据中配置")
+    
+    async def get_model_by_uuid(self, uuid: str) -> entities.LLMModelInfo:
+        """通过uuid获取模型"""
+        for model in self.llm_models:
+            if model.model_entity.uuid == uuid:
+                return model
+        raise ValueError(f"model {uuid} not found")
+
+    async def remove_llm_model(self, model_uuid: str):
         """移除模型"""
         for model in self.llm_models:
             if model.model_entity.uuid == model_uuid:
@@ -136,3 +145,13 @@ class ModelManager:
             if component.metadata.name == name:
                 return component.to_plain_dict()
         return None
+
+    async def invoke_llm(
+        self,
+        query: core_entities.Query,
+        model_uuid: str,
+        messages: list[llm_entities.Message],
+        funcs: list[tools_entities.LLMFunction] = None,
+    ) -> llm_entities.Message:
+        pass
+
