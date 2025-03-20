@@ -22,10 +22,6 @@ from ..types import entities as platform_entities
 from ...command.errors import ParamNotEnoughError
 
 
-# 生成的ai回答
-generated_content = {}
-msg_queue = {}
-
 class OAMessageConverter(adapter.MessageConverter):
     @staticmethod
     async def yiri2target(message_chain: platform_message.MessageChain):
@@ -69,7 +65,7 @@ class OAEventConverter(adapter.EventConverter):
 
 class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
 
-    bot : OAClient
+    bot : OAClient | OAClientForLongerResponse
     ap : app.Application
     bot_account_id: str
     message_converter: OAMessageConverter = OAMessageConverter()
@@ -114,26 +110,15 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
 
 
     async def reply_message(self, message_source: platform_events.FriendMessage, message: platform_message.MessageChain, quote_origin: bool = False):
-        global generated_content
 
         content = await OAMessageConverter.yiri2target(
             message
         )
-
-        generated_content[message_source.message_chain.message_id] = content
-        
-        from_user = message_source.sender.id
-
-
-        if  from_user not in msg_queue:
-            msg_queue[from_user] = []
-        
-        msg_queue[from_user].append(
-            {
-                "msg_id":message_source.message_chain.message_id,
-                "content":content,
-            }
-        )
+        if type(self.bot) == OAClient:
+            await self.bot.set_message(message_source.message_chain.message_id,content)
+        if type(self.bot) == OAClientForLongerResponse:
+            from_user = message_source.sender.id
+            await self.bot.set_message(from_user,message_source.message_chain.message_id,content)
 
             
     async def send_message(

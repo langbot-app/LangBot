@@ -27,7 +27,6 @@ xml_template = """
 </xml>
 """
 
-user_msg_queue = {}
 
 class OAClient():
 
@@ -45,6 +44,7 @@ class OAClient():
         }
         self.access_token_expiry_time = None
         self.msg_id_map = {}
+        self.generated_content = {}
 
     async def handle_callback_request(self):
 
@@ -87,12 +87,10 @@ class OAClient():
                 from_user = root.find("FromUserName").text  # 发送者
                 to_user = root.find("ToUserName").text  # 机器人
                 
-                from pkg.platform.sources import officialaccount
-                
                 timeout = 4.80
                 interval = 0.1
                 while True:
-                    content = officialaccount.generated_content.pop(message_data["MsgId"], None)
+                    content = self.generated_content.pop(message_data["MsgId"], None)
                     if content:
                         response_xml = xml_template.format(
                             to_user=from_user,
@@ -172,6 +170,9 @@ class OAClient():
             for handler in self._message_handlers[msg_type]:
                 await handler(event)
 
+    async def set_message(self,msg_id:int,content:str):
+        self.generated_content[msg_id] = content
+
 
 
 class OAClientForLongerResponse():
@@ -190,6 +191,8 @@ class OAClientForLongerResponse():
         }
         self.access_token_expiry_time = None
         self.loading_message = LoadingMessage
+        self.msg_queue = {}
+        self.user_msg_queue = {}
 
     async def handle_callback_request(self):
         try:
@@ -222,17 +225,15 @@ class OAClientForLongerResponse():
                 from_user = root.find("FromUserName").text
                 to_user = root.find("ToUserName").text
 
-                
-                from pkg.platform.sources import officialaccount as oa
 
-                
-                if oa.msg_queue.get(from_user) and oa.msg_queue[from_user][0]["content"]:
-                    queue_top = oa.msg_queue[from_user].pop(0)
+                if self.msg_queue.get(from_user) and self.msg_queue[from_user][0]["content"]:
+
+                    queue_top = self.msg_queue[from_user].pop(0)
                     queue_content = queue_top["content"]
 
                     # 弹出用户消息
-                    if user_msg_queue.get(from_user) and user_msg_queue[from_user]:
-                        user_msg_queue[from_user].pop(0)
+                    if self.user_msg_queue.get(from_user) and self.user_msg_queue[from_user]:
+                        self.user_msg_queue[from_user].pop(0)
 
                     response_xml = xml_template.format(
                         to_user=from_user,
@@ -250,7 +251,7 @@ class OAClientForLongerResponse():
                         content=self.loading_message
                     )
                     
-                    if user_msg_queue.get(from_user) and user_msg_queue[from_user][0]["content"]:
+                    if self.user_msg_queue.get(from_user) and self.user_msg_queue[from_user][0]["content"]:
                         return response_xml
                     else:
                         message_data = await self.get_message(xml_msg)
@@ -258,7 +259,7 @@ class OAClientForLongerResponse():
                         if message_data:
                             event = OAEvent.from_payload(message_data)
                             if event:
-                                user_msg_queue.setdefault(from_user,[]).append(
+                                self.user_msg_queue.setdefault(from_user,[]).append(
                                     {
                                         "content":event.message,
                                     }
@@ -317,6 +318,18 @@ class OAClientForLongerResponse():
         if msg_type in self._message_handlers:
             for handler in self._message_handlers[msg_type]:
                 await handler(event)
+
+    async def set_message(self,from_user:int,message_id:int,content:str):
+        if  from_user not in self.msg_queue:
+            self.msg_queue[from_user] = []
+        
+        self.msg_queue[from_user].append(
+            {
+                "msg_id":message_id,
+                "content":content,
+            }
+        )
+        
 
 
 
