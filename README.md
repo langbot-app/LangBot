@@ -134,9 +134,15 @@
 
 ## 😘 社区贡献
 
-LangBot 离不开以下贡献者和社区内所有人的贡献，我们欢迎任何形式的贡献和反馈。
-
+感谢以下[代码贡献者](https://github.com/RockChinQ/LangBot/graphs/contributors)和社区里其他成员对 LangBot 的贡献：
 
 <a href="https://github.com/RockChinQ/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=RockChinQ/LangBot" />
 </a>
+
+以及 LangBot 核心团队成员：
+
+- [RockChinQ](https://github.com/RockChinQ)
+- [the-lazy-me](https://github.com/the-lazy-me)
+- [wangcham](https://github.com/wangcham)
+- [KaedeSAMA](https://github.com/KaedeSAMA)

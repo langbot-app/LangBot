@@ -117,11 +117,15 @@ Directly use the released version to run, see the [Manual Deployment](https://do
 
 ## 🤝 Community Contribution
 
-Thanks to the following contributors and everyone in the community for their contributions.
-
+Thank you for the following [code contributors](https://github.com/RockChinQ/LangBot/graphs/contributors) and other members in the community for their contributions to LangBot:
 
 <a href="https://github.com/RockChinQ/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=RockChinQ/LangBot" />
 </a>
 
+And the core team members of LangBot:
 
+- [RockChinQ](https://github.com/RockChinQ)
+- [the-lazy-me](https://github.com/the-lazy-me)
+- [wangcham](https://github.com/wangcham)
+- [KaedeSAMA](https://github.com/KaedeSAMA)

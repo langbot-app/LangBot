@@ -116,11 +116,15 @@ LangBotはBTPanelにリストされています。BTPanelをインストール�
 
 ## 🤝 コミュニティ貢献
 
-以下の貢献者とコミュニティの皆さんの貢献に感謝します。
-
+LangBot への貢献に対して、以下の [コード貢献者](https://github.com/RockChinQ/LangBot/graphs/contributors) とコミュニティの他のメンバーに感謝します。
 
 <a href="https://github.com/RockChinQ/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=RockChinQ/LangBot" />
 </a>
 
+LangBot の核心チームメンバー:
 
+- [RockChinQ](https://github.com/RockChinQ)
+- [the-lazy-me](https://github.com/the-lazy-me)
+- [wangcham](https://github.com/wangcham)
+- [KaedeSAMA](https://github.com/KaedeSAMA)
