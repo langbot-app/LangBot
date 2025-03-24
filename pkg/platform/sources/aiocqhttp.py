@@ -57,7 +57,7 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
                 elif msg.path:
                     arg = msg.path
                     msg_list.append(aiocqhttp.MessageSegment.record(msg.path))
-            elif type(msg) is forward.Forward:
+            elif type(msg) is platform_message.Forward:
 
                 for node in msg.node_list:
                     msg_list.extend((await AiocqhttpMessageConverter.yiri2target(node.message_chain))[0])
@@ -101,69 +101,8 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
 class AiocqhttpEventConverter(adapter.EventConverter):
 
     @staticmethod
-    async def yiri2target(event: platform_events.Event, bot_account_id: int):
-
-        msg, msg_id, msg_time = await AiocqhttpMessageConverter.yiri2target(event.message_chain)
-
-        if type(event) is platform_events.GroupMessage:
-            role = "member"
-
-            if event.sender.permission == "ADMINISTRATOR":
-                role = "admin"
-            elif event.sender.permission == "OWNER":
-                role = "owner"
-
-            payload = {
-                "post_type": "message",
-                "message_type": "group",
-                "time": int(msg_time.timestamp()),
-                "self_id": bot_account_id,
-                "sub_type": "normal",
-                "anonymous": None,
-                "font": 0,
-                "message": str(msg),
-                "raw_message": str(msg),
-                "sender": {
-                    "age": 0,
-                    "area": "",
-                    "card": "",
-                    "level": "",
-                    "nickname": event.sender.member_name,
-                    "role": role,
-                    "sex": "unknown",
-                    "title": "",
-                    "user_id": event.sender.id,
-                },
-                "user_id": event.sender.id,
-                "message_id": msg_id,
-                "group_id": event.group.id,
-                "message_seq": 0,
-            }
-
-            return aiocqhttp.Event.from_payload(payload)
-        elif type(event) is platform_events.FriendMessage:
-
-            payload = {
-                "post_type": "message",
-                "message_type": "private",
-                "time": int(msg_time.timestamp()),
-                "self_id": bot_account_id,
-                "sub_type": "friend",
-                "target_id": bot_account_id,
-                "message": str(msg),
-                "raw_message": str(msg),
-                "font": 0,
-                "sender": {
-                    "age": 0,
-                    "nickname": event.sender.nickname,
-                    "sex": "unknown",
-                    "user_id": event.sender.id,
-                },
-                "message_id": msg_id,
-                "user_id": event.sender.id,
-            }
-            
-            return aiocqhttp.Event.from_payload(payload)
+    async def yiri2target(event: platform_events.MessageEvent, bot_account_id: int):
+        return event.source_platform_object
 
     @staticmethod
     async def target2yiri(event: aiocqhttp.Event):
@@ -196,6 +135,7 @@ class AiocqhttpEventConverter(adapter.EventConverter):
                 ),
                 message_chain=yiri_chain,
                 time=event.time,
+                source_platform_object=event
             )
             return converted_event
         elif event.message_type == "private":
@@ -207,6 +147,7 @@ class AiocqhttpEventConverter(adapter.EventConverter):
                 ),
                 message_chain=yiri_chain,
                 time=event.time,
+                source_platform_object=event
             )
 
 
