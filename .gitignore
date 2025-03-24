@@ -19,7 +19,7 @@ cookies.json
 data/labels/announcement_saved.json
 cmdpriv.json
 tips.py
-.venv
+venv*
 bin/
 .vscode
 test_*
