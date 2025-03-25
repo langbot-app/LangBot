@@ -1,0 +1,92 @@
+name: output
+label:
+  en_US: Output Processing
+  zh_CN: 输出处理
+stages:
+  - name: long-text-processing
+    label:
+      en_US: Long Text Processing
+      zh_CN: 长文本处理
+    config:
+      - name: threshold
+        label:
+          en_US: Threshold
+          zh_CN: 阈值
+        type: integer
+        required: true
+        default: 1000
+      - name: strategy
+        label:
+          en_US: Strategy
+          zh_CN: 策略
+        type: select
+        required: true
+        default: forward
+        options:
+          - name: forward
+            label:
+              en_US: Forward Message Component
+              zh_CN: 转发消息组件
+          - name: image
+            label:
+              en_US: Convert to Image
+              zh_CN: 转换为图片
+      - name: font-path
+        label:
+          en_US: Font Path
+          zh_CN: 字体路径
+        type: string
+        required: true
+        default: ''
+  - name: force-delay
+    label:
+      en_US: Force Delay
+      zh_CN: 强制延迟
+    config:
+      - name: min
+        label:
+          en_US: Min
+          zh_CN: 最小秒数
+        type: integer
+        required: true
+        default: 0
+      - name: max
+        label:
+          en_US: Max
+          zh_CN: 最大秒数
+        type: integer
+        required: true
+        default: 0
+  - name: misc
+    label:
+      en_US: Misc
+      zh_CN: 杂项
+    config:
+      - name: hide-exception
+        label:
+          en_US: Hide Exception
+          zh_CN: 不输出异常信息给用户
+        type: boolean
+        required: true
+        default: true
+      - name: at-sender
+        label:
+          en_US: At Sender
+          zh_CN: 在回复中@发送者
+        type: boolean
+        required: true
+        default: true
+      - name: quote-origin
+        label:
+          en_US: Quote Origin
+          zh_CN: 引用原文
+        type: boolean
+        required: true
+        default: false
+      - name: track-function-calls
+        label:
+          en_US: Track Function Calls
+          zh_CN: 跟踪函数调用
+        type: boolean
+        required: true
+        default: true
