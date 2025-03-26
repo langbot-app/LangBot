@@ -26,6 +26,7 @@ from ..persistence import mgr as persistencemgr
 from ..api.http.controller import main as http_controller
 from ..api.http.service import user as user_service
 from ..api.http.service import model as model_service
+from ..api.http.service import pipeline as pipeline_service
 from ..discover import engine as discover_engine
 from ..utils import logcache, ip
 from . import taskmgr
@@ -83,6 +84,11 @@ class Application:
 
     instance_secret_meta: config_mgr.ConfigManager = None
 
+    pipeline_config_meta_trigger: config_mgr.ConfigManager = None
+    pipeline_config_meta_safety: config_mgr.ConfigManager = None
+    pipeline_config_meta_ai: config_mgr.ConfigManager = None
+    pipeline_config_meta_output: config_mgr.ConfigManager = None
+
     # =========================
 
     ctr_mgr: center_mgr.V2CenterAPI = None
@@ -114,6 +120,8 @@ class Application:
     user_service: user_service.UserService = None
 
     model_service: model_service.ModelsService = None
+
+    pipeline_service: pipeline_service.PipelineService = None
 
     def __init__(self):
         pass
