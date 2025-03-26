@@ -46,7 +46,7 @@ class PipelineService:
 
         return self.ap.persistence_mgr.serialize_model(persistence_pipeline.LegacyPipeline, pipeline)
 
-    async def create_pipeline(self, pipeline_data: dict) -> None:
+    async def create_pipeline(self, pipeline_data: dict) -> str:
         pipeline_data['uuid'] = str(uuid.uuid4())
         pipeline_data['for_version'] = self.ap.ver_mgr.get_current_version()
         pipeline_data['stages'] = stagemgr.stage_order.copy()
@@ -57,6 +57,8 @@ class PipelineService:
             sqlalchemy.insert(persistence_pipeline.LegacyPipeline).values(**pipeline_data)
         )
         # TODO: 更新到pipeline manager
+
+        return pipeline_data['uuid']
 
     async def update_pipeline(self, pipeline_uuid: str, pipeline_data: dict) -> None:
         del pipeline_data['uuid']

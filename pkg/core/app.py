@@ -27,6 +27,7 @@ from ..api.http.controller import main as http_controller
 from ..api.http.service import user as user_service
 from ..api.http.service import model as model_service
 from ..api.http.service import pipeline as pipeline_service
+from ..api.http.service import bot as bot_service
 from ..discover import engine as discover_engine
 from ..utils import logcache, ip
 from . import taskmgr
@@ -122,6 +123,8 @@ class Application:
     model_service: model_service.ModelsService = None
 
     pipeline_service: pipeline_service.PipelineService = None
+
+    bot_service: bot_service.BotService = None
 
     def __init__(self):
         pass

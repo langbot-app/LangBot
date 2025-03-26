@@ -110,6 +110,18 @@ class PlatformManager:
         if len(self.adapters) == 0:
             self.ap.logger.warning('未运行平台适配器，请根据文档配置并启用平台适配器。')
 
+    def get_available_adapters_info(self) -> list[dict]:
+        return [
+            component.to_plain_dict()
+            for component in self.message_platform_adapter_components
+        ]
+
+    def get_available_adapter_info_by_name(self, name: str) -> dict | None:
+        for component in self.message_platform_adapter_components:
+            if component.metadata.name == name:
+                return component.to_plain_dict()
+        return None
+
     async def write_back_config(self, adapter_name: str, adapter_inst: msadapter.MessagePlatformAdapter, config: dict):
         index = -2
 

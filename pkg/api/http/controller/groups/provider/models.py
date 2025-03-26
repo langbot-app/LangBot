@@ -18,9 +18,11 @@ class LLMModelsRouterGroup(group.RouterGroup):
             elif quart.request.method == 'POST':
                 json_data = await quart.request.json
 
-                await self.ap.model_service.create_llm_model(json_data)
+                model_uuid = await self.ap.model_service.create_llm_model(json_data)
 
-                return self.success()
+                return self.success(data={
+                    'uuid': model_uuid
+                })
 
         @self.route('/<model_uuid>', methods=['GET', 'DELETE'])
         async def _(model_uuid: str) -> str:

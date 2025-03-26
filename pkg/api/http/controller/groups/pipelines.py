@@ -20,9 +20,11 @@ class PipelinesRouterGroup(group.RouterGroup):
             elif quart.request.method == 'POST':
                 json_data = await quart.request.json
 
-                await self.ap.pipeline_service.create_pipeline(json_data)
+                pipeline_uuid = await self.ap.pipeline_service.create_pipeline(json_data)
 
-                return self.success()
+                return self.success(data={
+                    'uuid': pipeline_uuid
+                })
 
         @self.route('/_/metadata', methods=['GET'])
         async def _() -> str:
