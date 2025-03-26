@@ -49,7 +49,7 @@ spec:
       label:
         en_US: Port
         zh_CN: 监听端口
-      type: int
+      type: integer
       required: true
       default: 2287
 execution:

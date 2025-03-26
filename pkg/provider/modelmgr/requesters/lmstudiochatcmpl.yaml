@@ -18,7 +18,7 @@ spec:
       label:
         en_US: Timeout
         zh_CN: 超时时间
-      type: int
+      type: integer
       required: true
       default: 120
 execution:

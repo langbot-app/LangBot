@@ -28,7 +28,7 @@ spec:
       label:
         en_US: Port
         zh_CN: 端口
-      type: int
+      type: integer
       required: true
       default: 2286
     - name: callback_url

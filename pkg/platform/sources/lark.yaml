@@ -42,7 +42,7 @@ spec:
       label:
         en_US: Webhook Port
         zh_CN: Webhook端口
-      type: int
+      type: integer
       required: true
       default: 2285
     - name: encrypt-key
