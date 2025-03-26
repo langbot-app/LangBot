@@ -1,0 +1,67 @@
+.sidebarContainer {
+    box-sizing: border-box;
+    width: 240px;
+    height: 100vh;
+    background-color: #FFF;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.langbotIconContainer {
+    width: 240px;
+    height: 70px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-evenly;
+
+    .langbotIcon {
+        width: 54px;
+        height: 54px;
+        border-radius: 12px;
+        background: #6062E7;
+        color: #fbfbfb;
+        font-weight: 600;
+        font-size: 36px;
+        line-height: 54px;
+        text-align: center;
+    }
+
+    .langbotText {
+        font-size: 26px;
+    }
+}
+
+
+.sidebarChildContainer {
+    box-sizing: border-box;
+    width: 198px;
+    height: 48px;
+    margin: 12px 0;
+    font-size: 16px;
+    background-color: #fff;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    cursor: pointer;
+}
+
+.sidebarSelected {
+    background-color: #6062E7;
+    color: white;
+}
+
+.sidebarUnselected {
+    background-color: white;
+    color: #6C6C6C;
+}
+
+.sidebarChildIcon {
+    width: 28px;
+    height: 28px;
+    margin-left: 16px;
+    margin-right: 6px;
+    background-color: rgba(96, 149, 209, 0);
+}

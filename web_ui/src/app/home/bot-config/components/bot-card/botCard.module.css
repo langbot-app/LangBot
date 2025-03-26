@@ -1,0 +1,67 @@
+.iconBasicInfoContainer {
+    width: 300px;
+    height: 100px;
+    margin-left: 20px;
+    display: flex;
+    flex-direction: row;
+}
+
+.cardContainer {
+    width: 360px;
+    height: 200px;
+    background-color: #FFF;
+    border-radius: 9px;
+    box-shadow: rgba(0, 0, 0, 0.4) 0 1px 1px -1px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: space-evenly;
+}
+
+.iconBasicInfoContainer {
+    width: 300px;
+    height: 100px;
+    margin-left: 20px;
+    display: flex;
+    flex-direction: row;
+}
+
+.icon {
+    width: 90px;
+    height: 90px;
+    border-radius: 5px;
+    font-size: 40px;
+    line-height: 90px;
+    text-align: center;
+    color: #ffffff;
+    background: rgba(96, 149, 209, 0.31);
+    border: 1px solid rgba(96, 149, 209, 0.31);
+}
+
+.basicInfoContainer {
+    width: 200px;
+    height: 90px;
+    padding-left: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: space-between;
+}
+
+.basicInfoText {
+
+}
+
+.bigText {
+    font-size: 20px;
+}
+
+.urlAndUpdateText {
+    margin-left: 20px;
+}
+
+.createCardContainer {
+    font-size: 90px;
+    background: #6062E7;
+    color: white;
+}
