@@ -30,7 +30,7 @@ class PipelinesRouterGroup(group.RouterGroup):
                 'configs': await self.ap.pipeline_service.get_pipeline_metadata()
             })
 
-        @self.route('/<pipeline_uuid>', methods=['GET', 'DELETE'])
+        @self.route('/<pipeline_uuid>', methods=['GET', 'PUT', 'DELETE'])
         async def _(pipeline_uuid: str) -> str:
             if quart.request.method == 'GET':
                 pipeline = await self.ap.pipeline_service.get_pipeline(pipeline_uuid)
@@ -41,6 +41,12 @@ class PipelinesRouterGroup(group.RouterGroup):
                 return self.success(data={
                     'pipeline': pipeline
                 })
+            elif quart.request.method == 'PUT':
+                json_data = await quart.request.json
+
+                await self.ap.pipeline_service.update_pipeline(pipeline_uuid, json_data)
+
+                return self.success()
             elif quart.request.method == 'DELETE':
                 await self.ap.pipeline_service.delete_pipeline(pipeline_uuid)
 

@@ -58,6 +58,15 @@ class PipelineService:
         )
         # TODO: 更新到pipeline manager
 
+    async def update_pipeline(self, pipeline_uuid: str, pipeline_data: dict) -> None:
+        del pipeline_data['uuid']
+        del pipeline_data['for_version']
+        del pipeline_data['stages']
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.update(persistence_pipeline.LegacyPipeline).where(persistence_pipeline.LegacyPipeline.uuid == pipeline_uuid).values(**pipeline_data)
+        )
+        # TODO: 更新到pipeline manager
+
     async def delete_pipeline(self, pipeline_uuid: str) -> None:
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.delete(persistence_pipeline.LegacyPipeline).where(persistence_pipeline.LegacyPipeline.uuid == pipeline_uuid)
