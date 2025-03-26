@@ -14,7 +14,7 @@ stages:
       - name: at
         label:
           en_US: At
-          zh_CN: @
+          zh_CN: '@'
         description:
           en_US: Whether to trigger when the message mentions the bot
           zh_CN: 是否在消息@机器人时触发
