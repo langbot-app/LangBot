@@ -1,0 +1,37 @@
+* {
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+   /* 适用于 Firefox 的滚动条 */
+   scrollbar-color: rgba(0, 0, 0, 0.2) transparent; /* 滑块颜色 + 轨道颜色 */
+   scrollbar-width: thin; /* auto | thin | none */
+}
+
+/* WebKit 内核浏览器定制 */
+::-webkit-scrollbar {
+    width: 6px;  /* 垂直滚动条宽度 */
+    height: 6px; /* 水平滚动条高度 */
+}
+
+::-webkit-scrollbar-track {
+    background: transparent; /* 隐藏轨道背景 */
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2); /* 半透明黑色 */
+    border-radius: 3px;
+    transition: background 0.3s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.35); /* 悬停加深 */
+}
+
+/* 兼容 Edge */
+@supports (-ms-ime-align:auto) {
+    body {
+        -ms-overflow-style: -ms-autohiding-scrollbar; /* 自动隐藏滚动条 */
+    }
+}
