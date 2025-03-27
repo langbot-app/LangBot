@@ -35,7 +35,10 @@ class ModelsService:
                 **model_data
             )
         )
-        await self.ap.model_mgr.load_llm_model(model_data)
+
+        llm_model = await self.get_llm_model(model_data['uuid'])
+
+        await self.ap.model_mgr.load_llm_model(llm_model)
 
         return model_data['uuid']
 
@@ -60,7 +63,10 @@ class ModelsService:
         )
 
         await self.ap.model_mgr.remove_llm_model(model_uuid)
-        await self.ap.model_mgr.load_llm_model(model_data)
+
+        llm_model = await self.get_llm_model(model_uuid)
+
+        await self.ap.model_mgr.load_llm_model(llm_model)
 
     async def delete_llm_model(self, model_uuid: str) -> None:
         await self.ap.persistence_mgr.execute_async(

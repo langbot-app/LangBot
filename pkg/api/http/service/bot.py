@@ -44,11 +44,16 @@ class BotService:
 
     async def create_bot(self, bot_data: dict) -> str:
         """创建机器人"""
+        # TODO: 检查配置信息格式
         bot_data['uuid'] = str(uuid.uuid4())
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_bot.Bot).values(bot_data)
         )
-        # TODO: 加载机器人到机器人管理器
+
+        bot = await self.get_bot(bot_data['uuid'])
+
+        await self.ap.platform_mgr.load_bot(bot)
+        
         return bot_data['uuid']
 
     async def update_bot(self, bot_uuid: str, bot_data: dict) -> None:
@@ -58,13 +63,21 @@ class BotService:
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_bot.Bot).values(bot_data).where(persistence_bot.Bot.uuid == bot_uuid)
         )
-        # TODO: 加载机器人到机器人管理器
+        await self.ap.platform_mgr.remove_bot(bot_uuid)
+        
+        # select from db
+        bot = await self.get_bot(bot_uuid)
+
+        runtime_bot = await self.ap.platform_mgr.load_bot(bot)
+
+        if runtime_bot.enable:
+            await runtime_bot.run()
 
     async def delete_bot(self, bot_uuid: str) -> None:
         """删除机器人"""
+        await self.ap.platform_mgr.remove_bot(bot_uuid)
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.delete(persistence_bot.Bot).where(persistence_bot.Bot.uuid == bot_uuid)
         )
-        # TODO: 从机器人管理器中删除机器人
 
 
