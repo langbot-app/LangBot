@@ -46,7 +46,7 @@ stages:
           zh_CN: 窗口长度（秒）
         type: integer
         required: true
-        default: 10
+        default: 60
       - name: limitation
         label:
           en_US: Limitation

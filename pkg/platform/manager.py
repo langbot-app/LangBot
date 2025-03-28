@@ -50,6 +50,41 @@ class RuntimeBot:
         self.adapter = adapter
         self.task_context = taskmgr.TaskContext()
 
+    async def initialize(self):
+        
+        async def on_friend_message(event: platform_events.FriendMessage, adapter: msadapter.MessagePlatformAdapter):
+
+            await self.ap.query_pool.add_query(
+                launcher_type=core_entities.LauncherTypes.PERSON,
+                launcher_id=event.sender.id,
+                sender_id=event.sender.id,
+                message_event=event,
+                message_chain=event.message_chain,
+                adapter=adapter,
+                pipeline_uuid=self.bot_entity.use_pipeline_uuid
+            )
+
+        async def on_group_message(event: platform_events.GroupMessage, adapter: msadapter.MessagePlatformAdapter):
+
+            await self.ap.query_pool.add_query(
+                launcher_type=core_entities.LauncherTypes.GROUP,
+                launcher_id=event.group.id,
+                sender_id=event.sender.id,
+                message_event=event,
+                message_chain=event.message_chain,
+                adapter=adapter,
+                pipeline_uuid=self.bot_entity.use_pipeline_uuid
+            )
+
+        self.adapter.register_listener(
+            platform_events.FriendMessage,
+            on_friend_message
+        )
+        self.adapter.register_listener(
+            platform_events.GroupMessage,
+            on_group_message
+        )
+
     async def run(self):
 
         async def exception_wrapper():
@@ -135,41 +170,10 @@ class PlatformManager:
             bot_entity = persistence_bot.Bot(**bot_entity._mapping)
         elif isinstance(bot_entity, dict):
             bot_entity = persistence_bot.Bot(**bot_entity)
-        
-        async def on_friend_message(event: platform_events.FriendMessage, adapter: msadapter.MessagePlatformAdapter):
-
-            await self.ap.query_pool.add_query(
-                launcher_type=core_entities.LauncherTypes.PERSON,
-                launcher_id=event.sender.id,
-                sender_id=event.sender.id,
-                message_event=event,
-                message_chain=event.message_chain,
-                adapter=adapter
-            )
-
-        async def on_group_message(event: platform_events.GroupMessage, adapter: msadapter.MessagePlatformAdapter):
-
-            await self.ap.query_pool.add_query(
-                launcher_type=core_entities.LauncherTypes.GROUP,
-                launcher_id=event.group.id,
-                sender_id=event.sender.id,
-                message_event=event,
-                message_chain=event.message_chain,
-                adapter=adapter
-            )
 
         adapter_inst = self.adapter_dict[bot_entity.adapter](
             bot_entity.adapter_config,
             self.ap
-        )
-
-        adapter_inst.register_listener(
-            platform_events.FriendMessage,
-            on_friend_message
-        )
-        adapter_inst.register_listener(
-            platform_events.GroupMessage,
-            on_group_message
         )
 
         runtime_bot = RuntimeBot(
@@ -177,6 +181,8 @@ class PlatformManager:
             bot_entity=bot_entity,
             adapter=adapter_inst
         )
+
+        await runtime_bot.initialize()
 
         self.bots.append(runtime_bot)
 

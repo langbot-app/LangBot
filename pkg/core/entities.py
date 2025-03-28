@@ -57,6 +57,12 @@ class Query(pydantic.BaseModel):
     message_chain: platform_message.MessageChain
     """消息链，platform收到的原始消息链"""
 
+    pipeline_uuid: typing.Optional[str] = None
+    """流水线UUID。"""
+
+    pipeline_config: typing.Optional[dict[str, typing.Any]] = None
+    """流水线配置，由 Pipeline 在运行开始时设置。"""
+
     adapter: msadapter.MessagePlatformAdapter
     """消息平台适配器对象，单个app中可能启用了多个消息平台适配器，此对象表明发起此query的适配器"""
 

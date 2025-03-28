@@ -33,7 +33,8 @@ class QueryPool:
         sender_id: typing.Union[int, str],
         message_event: platform_events.MessageEvent,
         message_chain: platform_message.MessageChain,
-        adapter: msadapter.MessagePlatformAdapter
+        adapter: msadapter.MessagePlatformAdapter,
+        pipeline_uuid: str
     ) -> entities.Query:
         async with self.condition:
             query = entities.Query(
@@ -43,6 +44,7 @@ class QueryPool:
                 sender_id=sender_id,
                 message_event=message_event,
                 message_chain=message_chain,
+                pipeline_uuid=pipeline_uuid,
                 resp_messages=[],
                 resp_message_chain=[],
                 adapter=adapter
