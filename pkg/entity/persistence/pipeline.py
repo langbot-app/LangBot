@@ -7,7 +7,7 @@ class LegacyPipeline(Base):
     """旧版流水线"""
     __tablename__ = 'legacy_pipelines'
 
-    uuid = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
+    uuid = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True, unique=True)
     name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     description = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now())
@@ -22,7 +22,7 @@ class PipelineRunRecord(Base):
     """流水线运行记录"""
     __tablename__ = 'pipeline_run_records'
 
-    uuid = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
+    uuid = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True, unique=True)
     pipeline_uuid = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     status = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now())

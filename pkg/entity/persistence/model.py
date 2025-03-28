@@ -8,7 +8,7 @@ class LLMModel(Base):
     """LLM 模型"""
     __tablename__ = 'llm_models'
 
-    uuid = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
+    uuid = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True, unique=True)
     name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     description = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     requester = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
