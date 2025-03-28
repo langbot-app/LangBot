@@ -198,8 +198,8 @@ class PipelineManager:
         stage_containers = []
         for stage_name in pipeline_entity.stages:
             stage_containers.append(stagemgr.StageInstContainer(
-                stage_name=stage_name,
-                stage_class=self.stage_dict[stage_name]
+                inst_name=stage_name,
+                inst=self.stage_dict[stage_name](self.ap)
             ))
         
         runtime_pipeline = RuntimePipeline(self.ap, pipeline_entity, stage_containers)
