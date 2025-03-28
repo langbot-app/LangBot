@@ -66,8 +66,42 @@ class HTTPController:
 
         @self.quart_app.route("/")
         async def index():
-            return await quart.send_from_directory(frontend_path, "index.html")
+            return await quart.send_from_directory(
+                frontend_path,
+                "index.html",
+                mimetype="text/html"
+            )
 
         @self.quart_app.route("/<path:path>")
         async def static_file(path: str):
-            return await quart.send_from_directory(frontend_path, path)
+
+            mimetype = None
+
+            if path.endswith(".html"):
+                mimetype = "text/html"
+            elif path.endswith(".js"):
+                mimetype = "application/javascript"
+            elif path.endswith(".css"):
+                mimetype = "text/css"
+            elif path.endswith(".png"):
+                mimetype = "image/png"
+            elif path.endswith(".jpg"):
+                mimetype = "image/jpeg"
+            elif path.endswith(".jpeg"):
+                mimetype = "image/jpeg"
+            elif path.endswith(".gif"):
+                mimetype = "image/gif"
+            elif path.endswith(".svg"):
+                mimetype = "image/svg+xml"
+            elif path.endswith(".ico"):
+                mimetype = "image/x-icon"
+            elif path.endswith(".json"):
+                mimetype = "application/json"
+            elif path.endswith(".txt"):
+                mimetype = "text/plain"
+
+            return await quart.send_from_directory(
+                frontend_path,
+                path,
+                mimetype=mimetype
+            )
