@@ -20,7 +20,7 @@ from ..audit.center import v2 as center_mgr
 from ..command import cmdmgr
 from ..plugin import manager as plugin_mgr
 from ..pipeline import pool
-from ..pipeline import controller, stagemgr
+from ..pipeline import controller, stagemgr, pipelinemgr
 from ..utils import version as version_mgr, proxy as proxy_mgr, announce as announce_mgr
 from ..persistence import mgr as persistencemgr
 from ..api.http.controller import main as http_controller
@@ -101,6 +101,8 @@ class Application:
     ctrl: controller.Controller = None
 
     stage_mgr: stagemgr.StageManager = None
+
+    pipeline_mgr: pipelinemgr.PipelineManager = None
 
     ver_mgr: version_mgr.VersionManager = None
 

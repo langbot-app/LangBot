@@ -58,7 +58,7 @@ class StageManager:
         """初始化
         """
         
-        for name, cls in stage._stage_classes.items():
+        for name, cls in stage.preregistered_stages.items():
             self.stage_containers.append(StageInstContainer(
                 inst_name=name,
                 inst=cls(self.ap)

@@ -56,7 +56,10 @@ class PipelineService:
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_pipeline.LegacyPipeline).values(**pipeline_data)
         )
-        # TODO: 更新到pipeline manager
+        
+        pipeline = await self.get_pipeline(pipeline_data['uuid'])
+
+        await self.ap.pipeline_mgr.load_pipeline(pipeline)
 
         return pipeline_data['uuid']
 
@@ -67,10 +70,15 @@ class PipelineService:
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_pipeline.LegacyPipeline).where(persistence_pipeline.LegacyPipeline.uuid == pipeline_uuid).values(**pipeline_data)
         )
-        # TODO: 更新到pipeline manager
+
+        await self.ap.pipeline_mgr.remove_pipeline(pipeline_uuid)
+
+        pipeline = await self.get_pipeline(pipeline_uuid)
+
+        await self.ap.pipeline_mgr.load_pipeline(pipeline)
 
     async def delete_pipeline(self, pipeline_uuid: str) -> None:
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.delete(persistence_pipeline.LegacyPipeline).where(persistence_pipeline.LegacyPipeline.uuid == pipeline_uuid)
         )
-        # TODO: 更新到pipeline manager
+        await self.ap.pipeline_mgr.remove_pipeline(pipeline_uuid)

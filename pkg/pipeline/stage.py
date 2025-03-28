@@ -7,13 +7,13 @@ from ..core import app, entities as core_entities
 from . import entities
 
 
-_stage_classes: dict[str, PipelineStage] = {}
+preregistered_stages: dict[str, PipelineStage] = {}
 
 
 def stage_class(name: str):
 
     def decorator(cls):
-        _stage_classes[name] = cls
+        preregistered_stages[name] = cls
         return cls
     
     return decorator

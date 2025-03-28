@@ -72,10 +72,12 @@ class ModelManager:
 
         self.requester_dict = requester_dict
 
-        await self.load_model_from_db()
+        await self.load_models_from_db()
 
-    async def load_model_from_db(self):
+    async def load_models_from_db(self):
         """从数据库加载模型"""
+        self.ap.logger.info('Loading models from db...')
+
         self.llm_models = []
 
         # llm models

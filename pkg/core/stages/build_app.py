@@ -6,7 +6,7 @@ from .. import stage, app
 from ...utils import version, proxy, announce, platform
 from ...audit.center import v2 as center_v2
 from ...audit import identifier
-from ...pipeline import pool, controller, stagemgr
+from ...pipeline import pool, controller, stagemgr, pipelinemgr
 from ...plugin import manager as plugin_mgr
 from ...command import cmdmgr
 from ...provider.session import sessionmgr as llm_session_mgr
@@ -118,6 +118,10 @@ class BuildAppStage(stage.BootingStage):
         stage_mgr = stagemgr.StageManager(ap)
         await stage_mgr.initialize()
         ap.stage_mgr = stage_mgr
+
+        pipeline_mgr = pipelinemgr.PipelineManager(ap)
+        await pipeline_mgr.initialize()
+        ap.pipeline_mgr = pipeline_mgr
 
         http_ctrl = http_controller.HTTPController(ap)
         await http_ctrl.initialize()
