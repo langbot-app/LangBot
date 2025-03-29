@@ -14,6 +14,6 @@ class VolcArkChatCompletions(chatcmpl.OpenAIChatCompletions):
     client: openai.AsyncClient
 
     default_config: dict[str, typing.Any] = {
-        'base-url': 'https://ark.cn-beijing.volces.com/api/v3',
+        'base_url': 'https://ark.cn-beijing.volces.com/api/v3',
         'timeout': 120,
     }

@@ -4,7 +4,7 @@ from ...core import app, entities as core_entities
 from . import handler
 from .handlers import chat, command
 from .. import entities
-from .. import stage, entities, stagemgr
+from .. import stage, entities
 from ...core import entities as core_entities
 from ...config import manager as cfg_mgr
 
@@ -23,7 +23,7 @@ class Processor(stage.PipelineStage):
 
     chat_handler: handler.MessageHandler
 
-    async def initialize(self):
+    async def initialize(self, pipeline_config: dict):
         self.cmd_handler = command.CommandHandler(self.ap)
         self.chat_handler = chat.ChatMessageHandler(self.ap)
 

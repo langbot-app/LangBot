@@ -10,7 +10,7 @@ import datetime
 import aiohttp
 
 from .. import runner
-from ...core import entities as core_entities
+from ...core import app, entities as core_entities
 from .. import entities as llm_entities
 from ...utils import image
 
@@ -23,24 +23,24 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
     dify_client: client.AsyncDifyServiceClient
 
-    async def initialize(self):
-        """初始化"""
+    def __init__(self, ap: app.Application, pipeline_config: dict):
+        self.ap = ap
+        self.pipeline_config = pipeline_config
+
         valid_app_types = ["chat", "agent", "workflow"]
         if (
-            self.ap.provider_cfg.data["dify-service-api"]["app-type"]
+            self.pipeline_config["ai"]["dify-service-api"]["app-type"]
             not in valid_app_types
         ):
             raise errors.DifyAPIError(
-                f"不支持的 Dify 应用类型: {self.ap.provider_cfg.data['dify-service-api']['app-type']}"
+                f"不支持的 Dify 应用类型: {self.pipeline_config['ai']['dify-service-api']['app-type']}"
             )
 
-        api_key = self.ap.provider_cfg.data["dify-service-api"][
-            self.ap.provider_cfg.data["dify-service-api"]["app-type"]
-        ]["api-key"]
+        api_key = self.pipeline_config["ai"]["dify-service-api"]["api-key"]
 
         self.dify_client = client.AsyncDifyServiceClient(
             api_key=api_key,
-            base_url=self.ap.provider_cfg.data["dify-service-api"]["base-url"],
+            base_url=self.pipeline_config["ai"]["dify-service-api"]["base-url"],
         )
 
     def _try_convert_thinking(self, resp_text: str) -> str:
@@ -48,13 +48,13 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         if not resp_text.startswith("<details style=\"color:gray;background-color: #f8f8f8;padding: 8px;border-radius: 4px;\" open> <summary> Thinking... </summary>"):
             return resp_text
 
-        if self.ap.provider_cfg.data["dify-service-api"]["options"]["convert-thinking-tips"] == "original":
+        if self.pipeline_config["ai"]["dify-service-api"]["thinking-convert"] == "original":
             return resp_text
         
-        if self.ap.provider_cfg.data["dify-service-api"]["options"]["convert-thinking-tips"] == "remove":
+        if self.pipeline_config["ai"]["dify-service-api"]["thinking-convert"] == "remove":
             return re.sub(r'<details style="color:gray;background-color: #f8f8f8;padding: 8px;border-radius: 4px;" open> <summary> Thinking... </summary>.*?</details>', '', resp_text, flags=re.DOTALL)
         
-        if self.ap.provider_cfg.data["dify-service-api"]["options"]["convert-thinking-tips"] == "plain":
+        if self.pipeline_config["ai"]["dify-service-api"]["thinking-convert"] == "plain":
             pattern = r'<details style="color:gray;background-color: #f8f8f8;padding: 8px;border-radius: 4px;" open> <summary> Thinking... </summary>(.*?)</details>'
             thinking_text = re.search(pattern, resp_text, flags=re.DOTALL)
             content_text = re.sub(pattern, '', resp_text, flags=re.DOTALL)
@@ -121,7 +121,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             user=f"{query.session.launcher_type.value}_{query.session.launcher_id}",
             conversation_id=cov_id,
             files=files,
-            timeout=self.ap.provider_cfg.data["dify-service-api"]["chat"]["timeout"],
+            timeout=self.pipeline_config["ai"]["dify-service-api"]["timeout"],
         ):
             self.ap.logger.debug("dify-chat-chunk: " + str(chunk))
 
@@ -177,7 +177,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             response_mode="streaming",
             conversation_id=cov_id,
             files=files,
-            timeout=self.ap.provider_cfg.data["dify-service-api"]["chat"]["timeout"],
+            timeout=self.pipeline_config["ai"]["dify-service-api"]["timeout"],
         ):
             self.ap.logger.debug("dify-agent-chunk: " + str(chunk))
 
@@ -264,7 +264,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             inputs=inputs,
             user=f"{query.session.launcher_type.value}_{query.session.launcher_id}",
             files=files,
-            timeout=self.ap.provider_cfg.data["dify-service-api"]["workflow"]["timeout"],
+            timeout=self.pipeline_config["ai"]["dify-service-api"]["timeout"],
         ):
             self.ap.logger.debug("dify-workflow-chunk: " + str(chunk))
             if chunk["event"] in ignored_events:
@@ -301,11 +301,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
                 msg = llm_entities.Message(
                     role="assistant",
-                    content=chunk["data"]["outputs"][
-                        self.ap.provider_cfg.data["dify-service-api"]["workflow"][
-                            "output-key"
-                        ]
-                    ],
+                    content=chunk["data"]["outputs"]["summary"],
                 )
 
                 yield msg
@@ -314,16 +310,16 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         self, query: core_entities.Query
     ) -> typing.AsyncGenerator[llm_entities.Message, None]:
         """运行请求"""
-        if self.ap.provider_cfg.data["dify-service-api"]["app-type"] == "chat":
+        if self.pipeline_config["ai"]["dify-service-api"]["app-type"] == "chat":
             async for msg in self._chat_messages(query):
                 yield msg
-        elif self.ap.provider_cfg.data["dify-service-api"]["app-type"] == "agent":
+        elif self.pipeline_config["ai"]["dify-service-api"]["app-type"] == "agent":
             async for msg in self._agent_chat_messages(query):
                 yield msg
-        elif self.ap.provider_cfg.data["dify-service-api"]["app-type"] == "workflow":
+        elif self.pipeline_config["ai"]["dify-service-api"]["app-type"] == "workflow":
             async for msg in self._workflow_messages(query):
                 yield msg
         else:
             raise errors.DifyAPIError(
-                f"不支持的 Dify 应用类型: {self.ap.provider_cfg.data['dify-service-api']['app-type']}"
+                f"不支持的 Dify 应用类型: {self.pipeline_config['ai']['dify-service-api']['app-type']}"
             )

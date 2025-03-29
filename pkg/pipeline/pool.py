@@ -28,23 +28,23 @@ class QueryPool:
 
     async def add_query(
         self,
+        bot_uuid: str,
         launcher_type: entities.LauncherTypes,
         launcher_id: typing.Union[int, str],
         sender_id: typing.Union[int, str],
         message_event: platform_events.MessageEvent,
         message_chain: platform_message.MessageChain,
         adapter: msadapter.MessagePlatformAdapter,
-        pipeline_uuid: str
     ) -> entities.Query:
         async with self.condition:
             query = entities.Query(
+                bot_uuid=bot_uuid,
                 query_id=self.query_id_counter,
                 launcher_type=launcher_type,
                 launcher_id=launcher_id,
                 sender_id=sender_id,
                 message_event=message_event,
                 message_chain=message_chain,
-                pipeline_uuid=pipeline_uuid,
                 resp_messages=[],
                 resp_message_chain=[],
                 adapter=adapter

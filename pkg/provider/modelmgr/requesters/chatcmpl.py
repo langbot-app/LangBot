@@ -26,7 +26,7 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
     client: openai.AsyncClient
 
     default_config: dict[str, typing.Any] = {
-        "base-url": "https://api.openai.com/v1",
+        "base_url": "https://api.openai.com/v1",
         "timeout": 120,
     }
 
@@ -34,7 +34,7 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
 
         self.client = openai.AsyncClient(
             api_key="",
-            base_url=self.requester_cfg["base-url"],
+            base_url=self.requester_cfg["base_url"],
             timeout=self.requester_cfg["timeout"],
             http_client=httpx.AsyncClient(
                 trust_env=True, timeout=self.requester_cfg["timeout"]
@@ -65,16 +65,14 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
         self,
         query: core_entities.Query,
         req_messages: list[dict],
-        use_model: entities.LLMModelInfo,
+        use_model: requester.RuntimeLLMModel,
         use_funcs: list[tools_entities.LLMFunction] = None,
         extra_args: dict[str, typing.Any] = {}, # TODO: 所有的args都改为从此参数读取
     ) -> llm_entities.Message:
         self.client.api_key = use_model.token_mgr.get_token()
 
-        args = self.requester_cfg["args"].copy()
-        args["model"] = (
-            use_model.name if use_model.model_name is None else use_model.model_name
-        )
+        args = extra_args.copy()
+        args["model"] = use_model.model_entity.name
 
         if use_funcs:
             tools = await self.ap.tool_mgr.generate_tools_for_openai(use_funcs)
@@ -104,10 +102,10 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
 
         return message
 
-    async def call(
+    async def invoke_llm(
         self,
         query: core_entities.Query,
-        model: entities.LLMModelInfo,
+        model: requester.RuntimeLLMModel,
         messages: typing.List[llm_entities.Message],
         funcs: typing.List[tools_entities.LLMFunction] = None,
         extra_args: dict[str, typing.Any] = {},

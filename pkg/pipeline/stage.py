@@ -28,7 +28,7 @@ class PipelineStage(metaclass=abc.ABCMeta):
     def __init__(self, ap: app.Application):
         self.ap = ap
 
-    async def initialize(self):
+    async def initialize(self, pipeline_config: dict):
         """初始化
         """
         pass

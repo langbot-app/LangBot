@@ -5,7 +5,7 @@ from ...core import app
 from . import entities as rule_entities, rule
 from .rules import atbot, prefix, regexp, random
 
-from .. import stage, entities, stagemgr
+from .. import stage, entities
 from ...core import entities as core_entities
 from ...config import manager as cfg_mgr
 
@@ -20,7 +20,7 @@ class GroupRespondRuleCheckStage(stage.PipelineStage):
     rule_matchers: list[rule.GroupRespondRule]
     """检查器实例"""
 
-    async def initialize(self):
+    async def initialize(self, pipeline_config: dict):
         """初始化检查器
         """
 

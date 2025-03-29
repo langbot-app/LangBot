@@ -8,7 +8,7 @@ import asyncio
 import pydantic.v1 as pydantic
 
 from ..provider import entities as llm_entities
-from ..provider.modelmgr import entities
+from ..provider.modelmgr import entities, modelmgr, requester
 from ..provider.sysprompt import entities as sysprompt_entities
 from ..provider.tools import entities as tools_entities
 from ..platform import adapter as msadapter
@@ -57,6 +57,9 @@ class Query(pydantic.BaseModel):
     message_chain: platform_message.MessageChain
     """消息链，platform收到的原始消息链"""
 
+    bot_uuid: typing.Optional[str] = None
+    """机器人UUID。"""
+
     pipeline_uuid: typing.Optional[str] = None
     """流水线UUID。"""
 
@@ -81,8 +84,8 @@ class Query(pydantic.BaseModel):
     variables: typing.Optional[dict[str, typing.Any]] = None
     """变量，由前置处理器阶段设置。在prompt中嵌入或由 Runner 传递到 LLMOps 平台。"""
 
-    use_model: typing.Optional[entities.LLMModelInfo] = None
-    """使用的模型，由前置处理器阶段设置"""
+    use_llm_model: typing.Optional[requester.RuntimeLLMModel] = None
+    """使用的对话模型，由前置处理器阶段设置"""
 
     use_funcs: typing.Optional[list[tools_entities.LLMFunction]] = None
     """使用的函数，由前置处理器阶段设置"""
@@ -94,7 +97,7 @@ class Query(pydantic.BaseModel):
     """回复消息链，从resp_messages包装而得"""
 
     # ======= 内部保留 =======
-    current_stage: "pkg.pipeline.stagemgr.StageInstContainer" = None
+    current_stage: "pkg.pipeline.pipelinemgr.StageInstContainer" = None
     """当前所处阶段"""
 
     class Config:
@@ -132,12 +135,15 @@ class Conversation(pydantic.BaseModel):
 
     update_time: typing.Optional[datetime.datetime] = pydantic.Field(default_factory=datetime.datetime.now)
 
-    use_model: entities.LLMModelInfo
+    use_llm_model: requester.RuntimeLLMModel
 
     use_funcs: typing.Optional[list[tools_entities.LLMFunction]]
 
     uuid: typing.Optional[str] = None
     """该对话的 uuid，在创建时不会自动生成。而是当使用 Dify API 等由外部管理对话信息的服务时，用于绑定外部的会话。具体如何使用，取决于 Runner。"""
+
+    class Config:
+        arbitrary_types_allowed = True
 
 
 class Session(pydantic.BaseModel):

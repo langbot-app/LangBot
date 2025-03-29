@@ -9,7 +9,9 @@ import json
 from .. import handler
 from ... import entities
 from ....core import entities as core_entities
-from ....provider import entities as llm_entities, runnermgr
+from ....provider import entities as llm_entities
+from ....provider import runner as runner_module
+from ....provider.runners import localagent, difysvapi, dashscopeapi
 from ....plugin import events
 
 from ....platform.types import message as platform_message
@@ -56,12 +58,6 @@ class ChatMessageHandler(handler.MessageHandler):
                 )
         else:
 
-            if not self.ap.provider_cfg.data['enable-chat']:
-                yield entities.StageProcessResult(
-                    result_type=entities.ResultType.INTERRUPT,
-                    new_query=query,
-                )
-
             if event_ctx.event.alter is not None:
                 # if isinstance(event_ctx.event, str):  # 现在暂时不考虑多模态alter
                 query.user_message.content = event_ctx.event.alter
@@ -72,7 +68,12 @@ class ChatMessageHandler(handler.MessageHandler):
 
             try:
 
-                runner = self.ap.runner_mgr.get_runner()
+                for r in runner_module.preregistered_runners:
+                    if r.name == query.pipeline_config["ai"]["runner"]["runner"]:
+                        runner = r(self.ap, query.pipeline_config)
+                        break
+                else:
+                    raise ValueError(f"未找到请求运行器: {query.pipeline_config['ai']['runner']['runner']}")
 
                 async for result in runner.run(query):
                     query.resp_messages.append(result)
@@ -93,10 +94,12 @@ class ChatMessageHandler(handler.MessageHandler):
                 
                 self.ap.logger.error(f'对话({query.query_id})请求失败: {type(e).__name__} {str(e)}')
 
+                hide_exception_info = query.pipeline_config['output']['misc']['hide-exception']
+
                 yield entities.StageProcessResult(
                     result_type=entities.ResultType.INTERRUPT,
                     new_query=query,
-                    user_notice='请求失败' if self.ap.platform_cfg.data['hide-exception-info'] else f'{e}',
+                    user_notice='请求失败' if hide_exception_info else f'{e}',
                     error_notice=f'{e}',
                     debug_notice=traceback.format_exc()
                 )

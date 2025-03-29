@@ -238,4 +238,6 @@ class AiocqhttpAdapter(adapter.MessagePlatformAdapter):
         await self.bot._server_app.run_task(**self.config)
 
     async def kill(self) -> bool:
+        # Current issue: existing connection will not be closed
+        # self.should_shutdown = True
         return False

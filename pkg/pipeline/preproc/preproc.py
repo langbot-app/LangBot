@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 
-from .. import stage, entities, stagemgr
+from .. import stage, entities
 from ...core import entities as core_entities
 from ...provider import entities as llm_entities
 from ...plugin import events
@@ -33,16 +33,16 @@ class PreProcessor(stage.PipelineStage):
         """
         session = await self.ap.sess_mgr.get_session(query)
 
-        conversation = await self.ap.sess_mgr.get_conversation(session)
+        conversation = await self.ap.sess_mgr.get_conversation(query, session)
 
         # 设置query
         query.session = session
         query.prompt = conversation.prompt.copy()
         query.messages = conversation.messages.copy()
 
-        query.use_model = conversation.use_model
+        query.use_llm_model = conversation.use_llm_model
 
-        query.use_funcs = conversation.use_funcs if query.use_model.tool_call_supported else None
+        query.use_funcs = conversation.use_funcs if query.use_llm_model.model_entity.abilities.__contains__('tool_call') else None
 
         query.variables = {
             "session_id": f"{query.session.launcher_type.value}_{query.session.launcher_id}",
@@ -50,8 +50,9 @@ class PreProcessor(stage.PipelineStage):
             "msg_create_time": int(query.message_event.time) if query.message_event.time else int(datetime.datetime.now().timestamp()),
         }
 
-        # 检查vision是否启用，没启用就删除所有图片
-        if not self.ap.provider_cfg.data['enable-vision'] or (self.ap.provider_cfg.data['runner'] == 'local-agent' and not query.use_model.vision_supported):
+        # Check if this model supports vision, if not, remove all images
+        # TODO this checking should be performed in runner, and in this stage, the image should be reserved
+        if query.pipeline_config['ai']['runner']['runner'] == 'local-agent' and not query.use_llm_model.model_entity.abilities.__contains__('vision'):
             for msg in query.messages:
                 if isinstance(msg.content, list):
                     for me in msg.content:
@@ -69,7 +70,7 @@ class PreProcessor(stage.PipelineStage):
                 )
                 plain_text += me.text
             elif isinstance(me, platform_message.Image):
-                if self.ap.provider_cfg.data['enable-vision'] and (self.ap.provider_cfg.data['runner'] != 'local-agent' or query.use_model.vision_supported):
+                if query.pipeline_config['ai']['runner']['runner'] != 'local-agent' or query.use_llm_model.model_entity.abilities.__contains__('vision'):
                     if me.base64 is not None:
                         content_list.append(
                             llm_entities.ContentElement.from_image_base64(me.base64)

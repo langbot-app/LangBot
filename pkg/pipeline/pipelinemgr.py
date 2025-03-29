@@ -8,9 +8,34 @@ import sqlalchemy
 from ..core import app, entities
 from . import entities as pipeline_entities
 from ..entity.persistence import pipeline as persistence_pipeline
-from . import stagemgr, stage
+from . import stage
 from ..platform.types import message as platform_message, events as platform_events
 from ..plugin import events
+
+from .resprule import resprule
+from .bansess import bansess
+from .cntfilter import cntfilter
+from .process import process
+from .longtext import longtext
+from .respback import respback
+from .wrapper import wrapper
+from .preproc import preproc
+from .ratelimit import ratelimit
+from .msgtrun import msgtrun
+
+
+class StageInstContainer():
+    """阶段实例容器
+    """
+
+    inst_name: str
+
+    inst: stage.PipelineStage
+
+    def __init__(self, inst_name: str, inst: stage.PipelineStage):
+        self.inst_name = inst_name
+        self.inst = inst
+
 
 class RuntimePipeline:
     """运行时流水线"""
@@ -20,10 +45,10 @@ class RuntimePipeline:
     pipeline_entity: persistence_pipeline.LegacyPipeline
     """流水线实体"""
 
-    stage_containers: list[stagemgr.StageInstContainer]
+    stage_containers: list[StageInstContainer]
     """阶段实例容器"""
 
-    def __init__(self, ap: app.Application, pipeline_entity: persistence_pipeline.LegacyPipeline, stage_containers: list[stagemgr.StageInstContainer]):
+    def __init__(self, ap: app.Application, pipeline_entity: persistence_pipeline.LegacyPipeline, stage_containers: list[StageInstContainer]):
         self.ap = ap
         self.pipeline_entity = pipeline_entity
         self.stage_containers = stage_containers
@@ -47,10 +72,18 @@ class RuntimePipeline:
                     *result.user_notice
                 )
 
-            await self.ap.platform_mgr.send(
-                query.message_event,
-                result.user_notice,
-                query.adapter
+            if query.pipeline_config['output']['misc']['at-sender'] and isinstance(query.message_event, platform_events.GroupMessage):
+                result.user_notice.insert(
+                    0,
+                    platform_message.At(
+                        query.message_event.sender.id
+                    )
+                )
+
+            await query.adapter.reply_message(
+                message_source=query.message_event,
+                message=result.user_notice,
+                quote_origin=query.pipeline_config['output']['misc']['quote-origin']
             )
         if result.debug_notice:
             self.ap.logger.debug(result.debug_notice)
@@ -195,12 +228,15 @@ class PipelineManager:
             pipeline_entity = persistence_pipeline.LegacyPipeline(**pipeline_entity)
 
         # initialize stage containers according to pipeline_entity.stages
-        stage_containers = []
+        stage_containers: list[StageInstContainer] = []
         for stage_name in pipeline_entity.stages:
-            stage_containers.append(stagemgr.StageInstContainer(
+            stage_containers.append(StageInstContainer(
                 inst_name=stage_name,
                 inst=self.stage_dict[stage_name](self.ap)
             ))
+
+        for stage_container in stage_containers:
+            await stage_container.inst.initialize(pipeline_entity.config)
         
         runtime_pipeline = RuntimePipeline(self.ap, pipeline_entity, stage_containers)
         self.pipelines.append(runtime_pipeline)

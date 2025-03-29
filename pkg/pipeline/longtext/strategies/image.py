@@ -8,6 +8,7 @@ import re
 
 from PIL import Image, ImageDraw, ImageFont
 
+import functools
 from ....platform.types import message as platform_message
 
 from .. import strategy as strategy_model
@@ -17,15 +18,18 @@ from ....core import entities as core_entities
 @strategy_model.strategy_class("image")
 class Text2ImageStrategy(strategy_model.LongTextStrategy):
 
-    text_render_font: ImageFont.FreeTypeFont
-
     async def initialize(self):
-        self.text_render_font = ImageFont.truetype(self.ap.platform_cfg.data['long-text-process']['font-path'], 32, encoding="utf-8")
+        pass
+
+    @functools.lru_cache(maxsize=16)
+    def get_font(self, query: core_entities.Query):
+        return ImageFont.truetype(query.pipeline_config['output']['long-text-processing']['font-path'], 32, encoding="utf-8")
     
     async def process(self, message: str, query: core_entities.Query) -> list[platform_message.MessageComponent]:
         img_path = self.text_to_image(
             text_str=message,
-            save_as='temp/{}.png'.format(int(time.time()))
+            save_as='temp/{}.png'.format(int(time.time())),
+            query=query
         )
 
         compressed_path, size = self.compress_image(
@@ -127,7 +131,7 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
         return outfile, self.get_size(outfile)
 
 
-    def text_to_image(self, text_str: str, save_as="temp.png", width=800):
+    def text_to_image(self, text_str: str, save_as="temp.png", width=800, query: core_entities.Query = None):
 
         text_str = text_str.replace("\t", "    ")
         
@@ -142,7 +146,7 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
         self.ap.logger.debug("lines: {}, text_width: {}".format(lines, text_width))
         for line in lines:
             # 如果长了就分割
-            line_width = self.text_render_font.getlength(line)
+            line_width = self.get_font(query).getlength(line)
             self.ap.logger.debug("line_width: {}".format(line_width))
             if line_width < text_width:
                 final_lines.append(line)

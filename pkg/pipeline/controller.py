@@ -54,9 +54,13 @@ class Controller:
                     async def _process_query(selected_query: entities.Query):
                         async with self.semaphore:  # 总并发上限
                             # find pipeline
-                            pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(selected_query.pipeline_uuid)
-                            if pipeline:
-                                await pipeline.run(selected_query)
+                            # Here firstly find the bot, then find the pipeline, in case the bot adapter's config is not the latest one.
+                            # Like aiocqhttp, once a client is connected, even the adapter was updated and restarted, the existing client connection will not be affected.
+                            bot = await self.ap.platform_mgr.get_bot_by_uuid(selected_query.bot_uuid)
+                            if bot:
+                                pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(bot.bot_entity.use_pipeline_uuid)
+                                if pipeline:
+                                    await pipeline.run(selected_query)
                         
                         async with self.ap.query_pool:
                             (await self.ap.sess_mgr.get_session(selected_query)).semaphore.release()

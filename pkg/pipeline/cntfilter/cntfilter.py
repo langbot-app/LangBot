@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from ...core import app
 
-from .. import stage, entities, stagemgr
+from .. import stage, entities
 from ...core import entities as core_entities
 from ...config import manager as cfg_mgr
 from . import filter as filter_model, entities as filter_entities
@@ -35,7 +35,7 @@ class ContentFilterStage(stage.PipelineStage):
         self.filter_chain = []
         super().__init__(ap)
 
-    async def initialize(self):
+    async def initialize(self, pipeline_config: dict):
 
         filters_required = [
             "content-ignore",

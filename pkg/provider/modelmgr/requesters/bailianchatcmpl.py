@@ -14,6 +14,6 @@ class BailianChatCompletions(chatcmpl.OpenAIChatCompletions):
     client: openai.AsyncClient
 
     default_config: dict[str, typing.Any] = {
-        'base-url': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        'base_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
         'timeout': 120,
     }

@@ -41,7 +41,7 @@ class SessionManager:
         self.session_list.append(session)
         return session
 
-    async def get_conversation(self, session: core_entities.Session) -> core_entities.Conversation:
+    async def get_conversation(self, query: core_entities.Query, session: core_entities.Session) -> core_entities.Conversation:
         """获取对话或创建对话"""
 
         if not session.conversations:
@@ -51,7 +51,9 @@ class SessionManager:
             conversation = core_entities.Conversation(
                 prompt=await self.ap.prompt_mgr.get_prompt(session.use_prompt_name),
                 messages=[],
-                use_model=await self.ap.model_mgr.get_model_by_name(self.ap.provider_cfg.data['model']),
+                use_llm_model=await self.ap.model_mgr.get_model_by_uuid(
+                    query.pipeline_config['ai']['local-agent']['model']
+                ),
                 use_funcs=await self.ap.tool_mgr.get_all_functions(
                     plugin_enabled=True,
                 ),
