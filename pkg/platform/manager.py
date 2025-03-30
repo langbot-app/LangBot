@@ -110,7 +110,7 @@ class PlatformManager:
         if len(self.adapters) == 0:
             self.ap.logger.warning('未运行平台适配器，请根据文档配置并启用平台适配器。')
 
-    async def write_back_config(self, adapter_name: str, adapter_inst: msadapter.MessagePlatformAdapter, config: dict):
+    def write_back_config(self, adapter_name: str, adapter_inst: msadapter.MessagePlatformAdapter, config: dict):
         index = -2
 
         for i, adapter in enumerate(self.adapters):
@@ -137,7 +137,7 @@ class PlatformManager:
             **config
         }
         self.ap.platform_cfg.data['platform-adapters'][real_index] = new_cfg
-        await self.ap.platform_cfg.dump_config()
+        self.ap.platform_cfg.dump_config_sync()
 
     async def send(self, event: platform_events.MessageEvent, msg: platform_message.MessageChain, adapter: msadapter.MessagePlatformAdapter):
         

@@ -428,26 +428,28 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
             self.config["token"]
         )
 
-        app_id, error_msg = self.bot.login(self.config["app_id"])
-        if error_msg:
-            raise Exception(f"Gewechat 登录失败: {error_msg}")
+        def gewechat_login_process():
 
-        self.config["app_id"] = app_id
+            app_id, error_msg = self.bot.login(self.config["app_id"])
+            if error_msg:
+                raise Exception(f"Gewechat 登录失败: {error_msg}")
 
-        self.ap.logger.info(f"Gewechat 登录成功，app_id: {app_id}")
+            self.config["app_id"] = app_id
 
-        await self.ap.platform_mgr.write_back_config('gewechat', self, self.config)
+            self.ap.logger.info(f"Gewechat 登录成功，app_id: {app_id}")
 
-        # 获取 nickname
-        profile = self.bot.get_profile(self.config["app_id"])
-        self.bot_account_id = profile["data"]["nickName"]
+            self.ap.platform_mgr.write_back_config('gewechat', self, self.config)
 
-        def thread_set_callback():
-            time.sleep(3)
+            # 获取 nickname
+            profile = self.bot.get_profile(self.config["app_id"])
+            self.bot_account_id = profile["data"]["nickName"]
+
+            time.sleep(2)
+
             ret = self.bot.set_callback(self.config["token"], self.config["callback_url"])
             print('设置 Gewechat 回调：', ret)
 
-        threading.Thread(target=thread_set_callback).start()
+        threading.Thread(target=gewechat_login_process).start()
 
         async def shutdown_trigger_placeholder():
             while True:
