@@ -310,6 +310,9 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
         async def gewechat_callback():
             data = await quart.request.json
             # print(json.dumps(data, indent=4, ensure_ascii=False))
+            self.ap.logger.debug(
+                f"Gewechat callback event: {data}"
+            )
             
             if 'data' in data:
                 data['Data'] = data['data']

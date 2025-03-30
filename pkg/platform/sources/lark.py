@@ -328,6 +328,10 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
             try:
                 data = await quart.request.json
 
+                self.ap.logger.debug(
+                    f"Lark callback event: {data}"
+                )
+
                 if 'encrypt' in data:
                     cipher = AESCipher(self.config['encrypt-key'])
                     data = cipher.decrypt_string(data['encrypt'])
