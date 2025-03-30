@@ -59,8 +59,10 @@ class AnthropicMessages(requester.LLMAPIRequester):
             if m.role == "system":
                 system_role_message = m
 
-                messages.pop(i)
                 break
+
+        if system_role_message:
+            messages.pop(i)
 
         if isinstance(system_role_message, llm_entities.Message) \
             and isinstance(system_role_message.content, str):
