@@ -36,7 +36,7 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
 
         self.client = openai.AsyncClient(
             api_key="",
-            base_url=self.requester_cfg['base-url'],
+            base_url=self.requester_cfg['base-url'].replace(' ', ''),
             timeout=self.requester_cfg['timeout'],
             http_client=httpx.AsyncClient(
                 trust_env=True,

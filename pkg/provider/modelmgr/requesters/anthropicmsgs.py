@@ -25,7 +25,7 @@ class AnthropicMessages(requester.LLMAPIRequester):
     async def initialize(self):
 
         httpx_client = anthropic._base_client.AsyncHttpxClientWrapper(
-            base_url=self.ap.provider_cfg.data['requester']['anthropic-messages']['base-url'],
+            base_url=self.ap.provider_cfg.data['requester']['anthropic-messages']['base-url'].replace(' ', ''),
             # cast to a valid type because mypy doesn't understand our type narrowing
             timeout=typing.cast(httpx.Timeout, self.ap.provider_cfg.data['requester']['anthropic-messages']['timeout']),
             limits=anthropic._constants.DEFAULT_CONNECTION_LIMITS,
