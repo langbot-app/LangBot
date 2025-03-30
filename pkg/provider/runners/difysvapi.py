@@ -225,6 +225,8 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                         role="assistant",
                         content=[llm_entities.ContentElement.from_image_url(image_url)],
                     )
+            if chunk['event'] == 'error':
+                raise errors.DifyAPIError("dify 服务错误: " + chunk['message'])
 
         query.session.using_conversation.uuid = chunk["conversation_id"]
 
