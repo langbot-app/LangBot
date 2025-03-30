@@ -30,7 +30,7 @@ class GiteeAIChatCompletions(chatcmpl.OpenAIChatCompletions):
     ) -> llm_entities.Message:
         self.client.api_key = use_model.token_mgr.get_token()
 
-        args = self.requester_cfg['args'].copy()
+        args = {}
         args["model"] = use_model.name if use_model.model_name is None else use_model.model_name
 
         if use_funcs:
@@ -46,7 +46,7 @@ class GiteeAIChatCompletions(chatcmpl.OpenAIChatCompletions):
 
         args["messages"] = req_messages
 
-        resp = await self._req(args)
+        resp = await self._req(args, extra_body=self.requester_cfg['args'])
 
         message = await self._make_msg(resp)
 

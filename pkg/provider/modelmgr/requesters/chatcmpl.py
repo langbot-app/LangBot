@@ -47,8 +47,9 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
     async def _req(
         self,
         args: dict,
+        extra_body: dict = {},
     ) -> chat_completion.ChatCompletion:
-        return await self.client.chat.completions.create(**args)
+        return await self.client.chat.completions.create(**args, extra_body=extra_body)
 
     async def _make_msg(
         self,
@@ -73,7 +74,7 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
     ) -> llm_entities.Message:
         self.client.api_key = use_model.token_mgr.get_token()
 
-        args = self.requester_cfg['args'].copy()
+        args = {}
         args["model"] = use_model.name if use_model.model_name is None else use_model.model_name
 
         if use_funcs:
@@ -99,7 +100,7 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
         args["messages"] = messages
 
         # 发送请求
-        resp = await self._req(args)
+        resp = await self._req(args, extra_body=self.requester_cfg['args'])
 
         # 处理请求结果
         message = await self._make_msg(resp)

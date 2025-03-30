@@ -23,7 +23,7 @@ class DeepseekChatCompletions(chatcmpl.OpenAIChatCompletions):
     ) -> llm_entities.Message:
         self.client.api_key = use_model.token_mgr.get_token()
 
-        args = self.requester_cfg['args'].copy()
+        args = {}
         args["model"] = use_model.name if use_model.model_name is None else use_model.model_name
 
         if use_funcs:
@@ -43,7 +43,7 @@ class DeepseekChatCompletions(chatcmpl.OpenAIChatCompletions):
         args["messages"] = messages
 
         # 发送请求
-        resp = await self._req(args)
+        resp = await self._req(args, extra_body=self.requester_cfg['args'])
 
         if resp is None:
             raise errors.RequesterError('接口返回为空，请确定模型提供商服务是否正常')
