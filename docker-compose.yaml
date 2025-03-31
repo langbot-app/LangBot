@@ -8,6 +8,8 @@ services:
       - ./data:/app/data
       - ./plugins:/app/plugins
     restart: on-failure
+    environment:
+      - TZ=Asia/Shanghai
     ports:
       - 5300:5300  # 供 WebUI 使用
       - 2280-2290:2280-2290  # 供消息平台适配器方向连接
