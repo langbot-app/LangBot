@@ -86,9 +86,10 @@ class TelegramMessageConverter(adapter.MessageConverter):
         if message.text:
             message_text = message.text
             message_components.extend(parse_message_text(message_text))
-        
+
         if message.photo:
-            message_components.extend(parse_message_text(message.caption))
+            if message.caption:
+                message_components.extend(parse_message_text(message.caption))
 
             file = await message.photo[-1].get_file()
 
