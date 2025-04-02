@@ -4,7 +4,7 @@ import telegram
 import telegram.ext
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
-
+import telegramify_markdown
 import typing
 import asyncio
 import traceback
@@ -201,14 +201,14 @@ class TelegramAdapter(adapter.MessagePlatformAdapter):
         
         for component in components:
             if component['type'] == 'text':
+                content = telegramify_markdown.markdownify(
+                    content= component['text'],
+                )
                 args = {
                     "chat_id": message_source.source_platform_object.effective_chat.id,
-                    "text": component['text'],
+                    "text": content,
                 }
                 if self.config['markdown_card'] is True:
-                    escape_chars = r"_*[]()~`>#+-=|{}.!"
-                    for char in escape_chars:
-                        args["text"] = args["text"].replace(char, f"\\{char}")  # 逐个字符转义
                     args["parse_mode"] = "MarkdownV2"
         if quote_origin:
             args['reply_to_message_id'] = message_source.source_platform_object.message.id

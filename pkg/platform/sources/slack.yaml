@@ -31,13 +31,6 @@ spec:
       type: int
       required: true
       default: 2288
-    - name: host
-      label:
-        en_US: Host
-        zh_CN: 监听主机
-      type: string
-      required: true
-      default: 0.0.0.0
 execution:
   python:
     path: ./slack.py
