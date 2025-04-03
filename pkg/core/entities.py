@@ -9,7 +9,6 @@ import pydantic.v1 as pydantic
 
 from ..provider import entities as llm_entities
 from ..provider.modelmgr import entities, modelmgr, requester
-from ..provider.sysprompt import entities as sysprompt_entities
 from ..provider.tools import entities as tools_entities
 from ..platform import adapter as msadapter
 from ..platform.types import message as platform_message
@@ -75,7 +74,7 @@ class Query(pydantic.BaseModel):
     messages: typing.Optional[list[llm_entities.Message]] = []
     """历史消息列表，由前置处理器阶段设置"""
 
-    prompt: typing.Optional[sysprompt_entities.Prompt] = None
+    prompt: typing.Optional[llm_entities.Prompt] = None
     """情景预设内容，由前置处理器阶段设置"""
 
     user_message: typing.Optional[llm_entities.Message] = None
@@ -127,7 +126,7 @@ class Query(pydantic.BaseModel):
 class Conversation(pydantic.BaseModel):
     """对话，包含于 Session 中，一个 Session 可以有多个历史 Conversation，但只有一个当前使用的 Conversation"""
 
-    prompt: sysprompt_entities.Prompt
+    prompt: llm_entities.Prompt
 
     messages: list[llm_entities.Message]
 

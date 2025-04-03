@@ -79,9 +79,12 @@ class PipelineService:
         return pipeline_data['uuid']
 
     async def update_pipeline(self, pipeline_uuid: str, pipeline_data: dict) -> None:
-        del pipeline_data['uuid']
-        del pipeline_data['for_version']
-        del pipeline_data['stages']
+        if 'uuid' in pipeline_data:
+            del pipeline_data['uuid']
+        if 'for_version' in pipeline_data:
+            del pipeline_data['for_version']
+        if 'stages' in pipeline_data:
+            del pipeline_data['stages']
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_pipeline.LegacyPipeline).where(persistence_pipeline.LegacyPipeline.uuid == pipeline_uuid).values(**pipeline_data)
         )

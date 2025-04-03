@@ -11,7 +11,6 @@ import os
 from ..platform import manager as im_mgr
 from ..provider.session import sessionmgr as llm_session_mgr
 from ..provider.modelmgr import modelmgr as llm_model_mgr
-from ..provider.sysprompt import sysprompt as llm_prompt_mgr
 from ..provider.tools import toolmgr as llm_tool_mgr
 from ..config import manager as config_mgr
 from ..config import settings as settings_mgr
@@ -51,9 +50,6 @@ class Application:
     sess_mgr: llm_session_mgr.SessionManager = None
 
     model_mgr: llm_model_mgr.ModelManager = None
-
-    # TODO 移动到 pipeline 里
-    prompt_mgr: llm_prompt_mgr.PromptManager = None
 
     # TODO 移动到 pipeline 里
     tool_mgr: llm_tool_mgr.ToolManager = None
@@ -228,10 +224,6 @@ class Application:
                 llm_session_mgr_inst = llm_session_mgr.SessionManager(self)
                 await llm_session_mgr_inst.initialize()
                 self.sess_mgr = llm_session_mgr_inst
-
-                llm_prompt_mgr_inst = llm_prompt_mgr.PromptManager(self)
-                await llm_prompt_mgr_inst.initialize()
-                self.prompt_mgr = llm_prompt_mgr_inst
 
                 llm_tool_mgr_inst = llm_tool_mgr.ToolManager(self)
                 await llm_tool_mgr_inst.initialize()

@@ -11,7 +11,6 @@ from ...plugin import manager as plugin_mgr
 from ...command import cmdmgr
 from ...provider.session import sessionmgr as llm_session_mgr
 from ...provider.modelmgr import modelmgr as llm_model_mgr
-from ...provider.sysprompt import sysprompt as llm_prompt_mgr
 from ...provider.tools import toolmgr as llm_tool_mgr
 from ...platform import manager as im_mgr
 from ...persistence import mgr as persistencemgr
@@ -94,10 +93,6 @@ class BuildAppStage(stage.BootingStage):
         llm_session_mgr_inst = llm_session_mgr.SessionManager(ap)
         await llm_session_mgr_inst.initialize()
         ap.sess_mgr = llm_session_mgr_inst
-
-        llm_prompt_mgr_inst = llm_prompt_mgr.PromptManager(ap)
-        await llm_prompt_mgr_inst.initialize()
-        ap.prompt_mgr = llm_prompt_mgr_inst
 
         llm_tool_mgr_inst = llm_tool_mgr.ToolManager(ap)
         await llm_tool_mgr_inst.initialize()
