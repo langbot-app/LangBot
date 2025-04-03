@@ -54,9 +54,16 @@ stages:
         label:
           en_US: Prompt
           zh_CN: 提示词
-        type: string
+        type: array
         required: true
-        default: "You are a helpful assistant."
+        items:
+          type: object
+          properties:
+            role:
+              type: string
+              default: user
+            content:
+              type: string
   - name: dify-service-api
     label:
       en_US: Dify Service API

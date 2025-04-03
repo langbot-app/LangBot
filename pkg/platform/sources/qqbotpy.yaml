@@ -28,9 +28,11 @@ spec:
       label:
         en_US: Intents
         zh_CN: 权限
-      type: array[string]
+      type: array
       required: true
       default: []
+      items:
+        type: string
 execution:
   python:
     path: ./qqbotpy.py
