@@ -233,3 +233,10 @@ class AsyncTaskManager:
             if not wrapper.task.done() and scope in wrapper.scopes:
 
                 wrapper.task.cancel()
+
+    def cancel_task(self, task_id: int):
+        for wrapper in self.tasks:
+            if wrapper.id == task_id:
+                if not wrapper.task.done():
+                    wrapper.task.cancel()
+                return

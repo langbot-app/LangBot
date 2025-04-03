@@ -8,7 +8,7 @@ import re
 import dashscope
 
 from .. import runner
-from ...core import entities as core_entities
+from ...core import app, entities as core_entities
 from .. import entities as llm_entities
 from ...utils import image
 
@@ -29,12 +29,14 @@ class DashScopeAPIRunner(runner.RequestRunner):
     app_id: str                     # 应用ID
     api_key: str                    # API Key
     references_quote: str           # 引用资料提示（当展示回答来源功能开启时，这个变量会作为引用资料名前的提示，可在provider.json中配置）
-    biz_params: dict = {}           # 工作流应用参数（仅在工作流应用中生效）
 
-    async def initialize(self):
+    def __init__(self, ap: app.Application, pipeline_config: dict):
         """初始化"""
+        self.ap = ap
+        self.pipeline_config = pipeline_config
+
         valid_app_types = ["agent", "workflow"]
-        self.app_type = self.ap.provider_cfg.data["dashscope-app-api"]["app-type"]
+        self.app_type = self.pipeline_config["ai"]["dashscope-app-api"]["app-type"]
         #检查配置文件中使用的应用类型是否支持
         if (self.app_type not in valid_app_types):
             raise DashscopeAPIError(
@@ -42,10 +44,9 @@ class DashScopeAPIRunner(runner.RequestRunner):
             )
         
         #初始化Dashscope 参数配置
-        self.app_id = self.ap.provider_cfg.data["dashscope-app-api"][self.app_type]["app-id"]
-        self.api_key = self.ap.provider_cfg.data["dashscope-app-api"]["api-key"]
-        self.references_quote = self.ap.provider_cfg.data["dashscope-app-api"][self.app_type]["references_quote"]
-        self.biz_params = self.ap.provider_cfg.data["dashscope-app-api"]["workflow"]["biz_params"]
+        self.app_id = self.pipeline_config["ai"]["dashscope-app-api"]["app-id"]
+        self.api_key = self.pipeline_config["ai"]["dashscope-app-api"]["api-key"]
+        self.references_quote = self.pipeline_config["ai"]["dashscope-app-api"]["references_quote"]
      
     def _replace_references(self, text, references_dict):
         """阿里云百炼平台的自定义应用支持资料引用，此函数可以将引用标签替换为参考资料"""
@@ -169,7 +170,6 @@ class DashScopeAPIRunner(runner.RequestRunner):
         plain_text, image_ids = await self._preprocess_user_message(query)
 
         biz_params = {}
-        biz_params.update(self.biz_params)
         biz_params.update(query.variables)
         
         #发送对话请求
@@ -220,21 +220,19 @@ class DashScopeAPIRunner(runner.RequestRunner):
             content=pending_content,
         )
     
-    
-    
     async def run(
         self, query: core_entities.Query
     ) -> typing.AsyncGenerator[llm_entities.Message, None]:
         """运行"""
-        if self.ap.provider_cfg.data["dashscope-app-api"]["app-type"] == "agent":
+        if self.app_type == "agent":
             async for msg in self._agent_messages(query):
                 yield msg
-        elif self.ap.provider_cfg.data["dashscope-app-api"]["app-type"] == "workflow":
+        elif self.app_type == "workflow":
             async for msg in self._workflow_messages(query):
                 yield msg
         else:
             raise DashscopeAPIError(
-                f"不支持的 Dashscope 应用类型: {self.ap.provider_cfg.data['dashscope-app-api']['app-type']}"
+                f"不支持的 Dashscope 应用类型: {self.app_type}"
             )
 
 

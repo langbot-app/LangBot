@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .. import stage, entities, stagemgr
+from .. import stage, entities
 from ...core import entities as core_entities
 from . import truncator
 from .truncators import round
@@ -14,8 +14,8 @@ class ConversationMessageTruncator(stage.PipelineStage):
     """
     trun: truncator.Truncator
 
-    async def initialize(self):
-        use_method = self.ap.pipeline_cfg.data['msg-truncate']['method']
+    async def initialize(self, pipeline_config: dict):
+        use_method = "round"
 
         for trun in truncator.preregistered_truncators:
             if trun.name == use_method:

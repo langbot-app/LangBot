@@ -42,7 +42,7 @@ stages:
           zh_CN: 模型
         type: select
         required: true
-        scope: llm-model
+        scope: /provider/models/llm
       - name: max-round
         label:
           en_US: Max Round
@@ -56,9 +56,14 @@ stages:
           zh_CN: 提示词
         type: array
         required: true
-        default: []
         items:
-          type: string
+          type: object
+          properties:
+            role:
+              type: string
+              default: user
+            content:
+              type: string
   - name: dify-service-api
     label:
       en_US: Dify Service API

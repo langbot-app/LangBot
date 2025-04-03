@@ -11,16 +11,14 @@ import os
 from ..platform import manager as im_mgr
 from ..provider.session import sessionmgr as llm_session_mgr
 from ..provider.modelmgr import modelmgr as llm_model_mgr
-from ..provider.sysprompt import sysprompt as llm_prompt_mgr
 from ..provider.tools import toolmgr as llm_tool_mgr
-from ..provider import runnermgr
 from ..config import manager as config_mgr
 from ..config import settings as settings_mgr
 from ..audit.center import v2 as center_mgr
 from ..command import cmdmgr
 from ..plugin import manager as plugin_mgr
 from ..pipeline import pool
-from ..pipeline import controller, stagemgr, pipelinemgr
+from ..pipeline import controller, pipelinemgr
 from ..utils import version as version_mgr, proxy as proxy_mgr, announce as announce_mgr
 from ..persistence import mgr as persistencemgr
 from ..api.http.controller import main as http_controller
@@ -53,11 +51,8 @@ class Application:
 
     model_mgr: llm_model_mgr.ModelManager = None
 
-    prompt_mgr: llm_prompt_mgr.PromptManager = None
-
+    # TODO 移动到 pipeline 里
     tool_mgr: llm_tool_mgr.ToolManager = None
-
-    runner_mgr: runnermgr.RunnerManager = None
 
     settings_mgr: settings_mgr.SettingsManager = None
 
@@ -99,8 +94,6 @@ class Application:
     query_pool: pool.QueryPool = None
 
     ctrl: controller.Controller = None
-
-    stage_mgr: stagemgr.StageManager = None
 
     pipeline_mgr: pipelinemgr.PipelineManager = None
 
@@ -232,16 +225,8 @@ class Application:
                 await llm_session_mgr_inst.initialize()
                 self.sess_mgr = llm_session_mgr_inst
 
-                llm_prompt_mgr_inst = llm_prompt_mgr.PromptManager(self)
-                await llm_prompt_mgr_inst.initialize()
-                self.prompt_mgr = llm_prompt_mgr_inst
-
                 llm_tool_mgr_inst = llm_tool_mgr.ToolManager(self)
                 await llm_tool_mgr_inst.initialize()
                 self.tool_mgr = llm_tool_mgr_inst
-
-                runner_mgr_inst = runnermgr.RunnerManager(self)
-                await runner_mgr_inst.initialize()
-                self.runner_mgr = runner_mgr_inst
             case _:
                 pass

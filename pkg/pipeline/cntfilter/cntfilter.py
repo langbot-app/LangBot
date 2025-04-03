@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from ...core import app
 
-from .. import stage, entities, stagemgr
+from .. import stage, entities
 from ...core import entities as core_entities
 from ...config import manager as cfg_mgr
 from . import filter as filter_model, entities as filter_entities
@@ -35,17 +35,18 @@ class ContentFilterStage(stage.PipelineStage):
         self.filter_chain = []
         super().__init__(ap)
 
-    async def initialize(self):
+    async def initialize(self, pipeline_config: dict):
 
         filters_required = [
             "content-ignore",
         ]
 
-        if self.ap.pipeline_cfg.data['check-sensitive-words']:
+        if pipeline_config['safety']['content-filter']['check-sensitive-words']:
             filters_required.append("ban-word-filter")
 
-        if self.ap.pipeline_cfg.data['baidu-cloud-examine']['enable']:
-            filters_required.append("baidu-cloud-examine")
+        # TODO revert it
+        # if self.ap.pipeline_cfg.data['baidu-cloud-examine']['enable']:
+        #     filters_required.append("baidu-cloud-examine")
 
         for filter in filter_model.preregistered_filters:
             if filter.name in filters_required:
@@ -65,7 +66,7 @@ class ContentFilterStage(stage.PipelineStage):
         只要有一个不通过就不放行，只放行 PASS 的消息
         """
 
-        if not self.ap.pipeline_cfg.data['income-msg-check']:
+        if query.pipeline_config['safety']['content-filter']['scope'] == 'output-msg':
             return entities.StageProcessResult(
                 result_type=entities.ResultType.CONTINUE,
                 new_query=query
@@ -73,7 +74,7 @@ class ContentFilterStage(stage.PipelineStage):
         else:
             for filter in self.filter_chain:
                 if filter_entities.EnableStage.PRE in filter.enable_stages:
-                    result = await filter.process(message)
+                    result = await filter.process(query, message)
 
                     if result.level in [
                         filter_entities.ResultLevel.BLOCK,
@@ -105,7 +106,7 @@ class ContentFilterStage(stage.PipelineStage):
         """请求llm后处理响应
         只要是 PASS 或者 MASKED 的就通过此 filter，将其 replacement 设置为message，进入下一个 filter
         """
-        if message is None:
+        if query.pipeline_config['safety']['content-filter']['scope'] == 'income-msg':
             return entities.StageProcessResult(
                 result_type=entities.ResultType.CONTINUE,
                 new_query=query
@@ -114,7 +115,7 @@ class ContentFilterStage(stage.PipelineStage):
             message = message.strip()
             for filter in self.filter_chain:
                 if filter_entities.EnableStage.POST in filter.enable_stages:
-                    result = await filter.process(message)
+                    result = await filter.process(query, message)
 
                     if result.level == filter_entities.ResultLevel.BLOCK:
                         return entities.StageProcessResult(

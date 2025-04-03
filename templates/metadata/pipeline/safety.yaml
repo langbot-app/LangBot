@@ -46,7 +46,7 @@ stages:
           zh_CN: 窗口长度（秒）
         type: integer
         required: true
-        default: 10
+        default: 60
       - name: limitation
         label:
           en_US: Limitation
@@ -54,3 +54,19 @@ stages:
         type: integer
         required: true
         default: 60
+      - name: strategy
+        label:
+          en_US: Strategy
+          zh_CN: 策略
+        type: select
+        required: true
+        default: drop
+        options:
+          - name: drop
+            label:
+              en_US: Drop
+              zh_CN: 丢弃
+          - name: wait
+            label:
+              en_US: Wait
+              zh_CN: 等待

@@ -4,6 +4,7 @@ import aiohttp
 
 from .. import entities
 from .. import filter as filter_model
+from ....core import entities as core_entities
 
 
 BAIDU_EXAMINE_URL = "https://aip.baidubce.com/rest/2.0/solution/v1/text_censor/v2/user_defined?access_token={}"
@@ -26,7 +27,7 @@ class BaiduCloudExamine(filter_model.ContentFilter):
             ) as resp:
                 return (await resp.json())['access_token']
 
-    async def process(self, message: str) -> entities.FilterResult:
+    async def process(self, query: core_entities.Query, message: str) -> entities.FilterResult:
 
         async with aiohttp.ClientSession() as session:
             async with session.post(

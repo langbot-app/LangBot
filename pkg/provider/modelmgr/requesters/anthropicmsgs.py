@@ -24,16 +24,16 @@ class AnthropicMessages(requester.LLMAPIRequester):
     client: anthropic.AsyncAnthropic
 
     default_config: dict[str, typing.Any] = {
-        'base-url': 'https://api.anthropic.com/v1',
+        'base_url': 'https://api.anthropic.com/v1',
         'timeout': 120,
     }
 
     async def initialize(self):
 
         httpx_client = anthropic._base_client.AsyncHttpxClientWrapper(
-            base_url=self.ap.provider_cfg.data['requester']['anthropic-messages']['base-url'],
+            base_url=self.requester_cfg['base_url'],
             # cast to a valid type because mypy doesn't understand our type narrowing
-            timeout=typing.cast(httpx.Timeout, self.ap.provider_cfg.data['requester']['anthropic-messages']['timeout']),
+            timeout=typing.cast(httpx.Timeout, self.requester_cfg['timeout']),
             limits=anthropic._constants.DEFAULT_CONNECTION_LIMITS,
             follow_redirects=True,
             trust_env=True,
@@ -44,17 +44,18 @@ class AnthropicMessages(requester.LLMAPIRequester):
             http_client=httpx_client,
         )
 
-    async def call(
+    async def invoke_llm(
         self,
         query: core_entities.Query,
-        model: entities.LLMModelInfo,
+        model: requester.RuntimeLLMModel,
         messages: typing.List[llm_entities.Message],
         funcs: typing.List[tools_entities.LLMFunction] = None,
+        extra_args: dict[str, typing.Any] = {},
     ) -> llm_entities.Message:
         self.client.api_key = model.token_mgr.get_token()
 
-        args = self.ap.provider_cfg.data['requester']['anthropic-messages']['args'].copy()
-        args["model"] = model.name if model.model_name is None else model.model_name
+        args = extra_args.copy()
+        args["model"] = model.model_entity.name
 
         # 处理消息
 

@@ -50,6 +50,41 @@ class RuntimeBot:
         self.adapter = adapter
         self.task_context = taskmgr.TaskContext()
 
+    async def initialize(self):
+        
+        async def on_friend_message(event: platform_events.FriendMessage, adapter: msadapter.MessagePlatformAdapter):
+
+            await self.ap.query_pool.add_query(
+                bot_uuid=self.bot_entity.uuid,
+                launcher_type=core_entities.LauncherTypes.PERSON,
+                launcher_id=event.sender.id,
+                sender_id=event.sender.id,
+                message_event=event,
+                message_chain=event.message_chain,
+                adapter=adapter,
+            )
+
+        async def on_group_message(event: platform_events.GroupMessage, adapter: msadapter.MessagePlatformAdapter):
+
+            await self.ap.query_pool.add_query(
+                bot_uuid=self.bot_entity.uuid,
+                launcher_type=core_entities.LauncherTypes.GROUP,
+                launcher_id=event.group.id,
+                sender_id=event.sender.id,
+                message_event=event,
+                message_chain=event.message_chain,
+                adapter=adapter,
+            )
+
+        self.adapter.register_listener(
+            platform_events.FriendMessage,
+            on_friend_message
+        )
+        self.adapter.register_listener(
+            platform_events.GroupMessage,
+            on_group_message
+        )
+
     async def run(self):
 
         async def exception_wrapper():
@@ -78,14 +113,16 @@ class RuntimeBot:
     async def shutdown(self):
         await self.adapter.kill()
 
+        self.ap.task_mgr.cancel_task(self.task_wrapper.id)
+
 
 # 控制QQ消息输入输出的类
 class PlatformManager:
     
     # adapter: msadapter.MessageSourceAdapter = None
-    adapters: list[msadapter.MessagePlatformAdapter] = []
+    adapters: list[msadapter.MessagePlatformAdapter] = []  # deprecated
 
-    message_platform_adapter_components: list[engine.Component] = []
+    message_platform_adapter_components: list[engine.Component] = []  # deprecated
 
     # ====== 4.0 ======
     ap: app.Application = None
@@ -135,41 +172,10 @@ class PlatformManager:
             bot_entity = persistence_bot.Bot(**bot_entity._mapping)
         elif isinstance(bot_entity, dict):
             bot_entity = persistence_bot.Bot(**bot_entity)
-        
-        async def on_friend_message(event: platform_events.FriendMessage, adapter: msadapter.MessagePlatformAdapter):
-
-            await self.ap.query_pool.add_query(
-                launcher_type=core_entities.LauncherTypes.PERSON,
-                launcher_id=event.sender.id,
-                sender_id=event.sender.id,
-                message_event=event,
-                message_chain=event.message_chain,
-                adapter=adapter
-            )
-
-        async def on_group_message(event: platform_events.GroupMessage, adapter: msadapter.MessagePlatformAdapter):
-
-            await self.ap.query_pool.add_query(
-                launcher_type=core_entities.LauncherTypes.GROUP,
-                launcher_id=event.group.id,
-                sender_id=event.sender.id,
-                message_event=event,
-                message_chain=event.message_chain,
-                adapter=adapter
-            )
 
         adapter_inst = self.adapter_dict[bot_entity.adapter](
             bot_entity.adapter_config,
             self.ap
-        )
-
-        adapter_inst.register_listener(
-            platform_events.FriendMessage,
-            on_friend_message
-        )
-        adapter_inst.register_listener(
-            platform_events.GroupMessage,
-            on_group_message
         )
 
         runtime_bot = RuntimeBot(
@@ -177,6 +183,8 @@ class PlatformManager:
             bot_entity=bot_entity,
             adapter=adapter_inst
         )
+
+        await runtime_bot.initialize()
 
         self.bots.append(runtime_bot)
 
@@ -209,50 +217,36 @@ class PlatformManager:
         return None
 
     async def write_back_config(self, adapter_name: str, adapter_inst: msadapter.MessagePlatformAdapter, config: dict):
-        index = -2
+        # index = -2
 
-        for i, adapter in enumerate(self.adapters):
-            if adapter == adapter_inst:
-                index = i
-                break
+        # for i, adapter in enumerate(self.adapters):
+        #     if adapter == adapter_inst:
+        #         index = i
+        #         break
 
-        if index == -2:
-            raise Exception('平台适配器未找到')
+        # if index == -2:
+        #     raise Exception('平台适配器未找到')
 
-        # 只修改启用的适配器
-        real_index = -1
+        # # 只修改启用的适配器
+        # real_index = -1
 
-        for i, adapter in enumerate(self.ap.platform_cfg.data['platform-adapters']):
-            if adapter['enable']:
-                index -= 1
-                if index == -1:
-                    real_index = i
-                    break
+        # for i, adapter in enumerate(self.ap.platform_cfg.data['platform-adapters']):
+        #     if adapter['enable']:
+        #         index -= 1
+        #         if index == -1:
+        #             real_index = i
+        #             break
 
-        new_cfg = {
-            'adapter': adapter_name,
-            'enable': True,
-            **config
-        }
-        self.ap.platform_cfg.data['platform-adapters'][real_index] = new_cfg
-        await self.ap.platform_cfg.dump_config()
+        # new_cfg = {
+        #     'adapter': adapter_name,
+        #     'enable': True,
+        #     **config
+        # }
+        # self.ap.platform_cfg.data['platform-adapters'][real_index] = new_cfg
+        # await self.ap.platform_cfg.dump_config()
 
-    async def send(self, event: platform_events.MessageEvent, msg: platform_message.MessageChain, adapter: msadapter.MessagePlatformAdapter):
-        
-        if self.ap.platform_cfg.data['at-sender'] and isinstance(event, platform_events.GroupMessage):
-
-            msg.insert(
-                0,
-                platform_message.At(
-                    event.sender.id
-                )
-            )
-
-        await adapter.reply_message(
-            event,
-            msg,
-            quote_origin=True if self.ap.platform_cfg.data['quote-origin'] else False
-        )
+        # TODO implement this
+        pass
 
     async def run(self):        
         # This method will only be called when the application launching

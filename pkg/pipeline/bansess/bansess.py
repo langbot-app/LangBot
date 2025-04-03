@@ -1,7 +1,7 @@
 from __future__ import annotations
 import re
 
-from .. import stage, entities, stagemgr
+from .. import stage, entities
 from ...core import entities as core_entities
 from ...config import manager as cfg_mgr
 
@@ -13,7 +13,7 @@ class BanSessionCheckStage(stage.PipelineStage):
     仅检查query中群号或个人号是否在访问控制列表中。
     """
 
-    async def initialize(self):
+    async def initialize(self, pipeline_config: dict):
         pass
 
     async def process(
@@ -24,9 +24,9 @@ class BanSessionCheckStage(stage.PipelineStage):
         
         found = False
 
-        mode = self.ap.pipeline_cfg.data['access-control']['mode']
+        mode = query.pipeline_config['trigger']['access-control']['mode']
 
-        sess_list = self.ap.pipeline_cfg.data['access-control'][mode]
+        sess_list = query.pipeline_config['trigger']['access-control'][mode]
 
         if (query.launcher_type.value == 'group' and 'group_*' in sess_list) \
             or (query.launcher_type.value == 'person' and 'person_*' in sess_list):

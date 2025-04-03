@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import typing
 
-from .. import entities, stagemgr, stage
+from .. import entities, stage
 from . import algo
 from .algos import fixedwin
 from ...core import entities as core_entities
@@ -18,9 +18,9 @@ class RateLimit(stage.PipelineStage):
 
     algo: algo.ReteLimitAlgo
 
-    async def initialize(self):
+    async def initialize(self, pipeline_config: dict):
 
-        algo_name = self.ap.pipeline_cfg.data['rate-limit']['algo']
+        algo_name = 'fixwin'
 
         algo_class = None
 
@@ -46,6 +46,7 @@ class RateLimit(stage.PipelineStage):
         """
         if stage_inst_name == "RequireRateLimitOccupancy":
             if await self.algo.require_access(
+                query,
                 query.launcher_type.value,
                 query.launcher_id,
             ):
@@ -62,6 +63,7 @@ class RateLimit(stage.PipelineStage):
                 )
         elif stage_inst_name == "ReleaseRateLimitOccupancy":
             await self.algo.release_access(
+                query,
                 query.launcher_type.value,
                 query.launcher_id,
             )

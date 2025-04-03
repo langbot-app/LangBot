@@ -4,6 +4,8 @@ import typing
 import enum
 import pydantic.v1 as pydantic
 
+from pkg.provider import entities
+
 
 from ..platform.types import message as platform_message
 
@@ -124,3 +126,13 @@ class Message(pydantic.BaseModel):
                     mc.insert(0, platform_message.Plain(prefix_text))
 
             return platform_message.MessageChain(mc)
+
+
+class Prompt(pydantic.BaseModel):
+    """供AI使用的Prompt"""
+
+    name: str
+    """名称"""
+
+    messages: list[entities.Message]
+    """消息列表"""

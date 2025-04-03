@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import typing
 import sqlalchemy
+import pydantic.v1 as pydantic
 
 from . import entities, requester
 from ...core import app
@@ -15,23 +16,6 @@ from .requesters import bailianchatcmpl, chatcmpl, anthropicmsgs, moonshotchatcm
 
 FETCH_MODEL_LIST_URL = "https://api.qchatgpt.rockchin.top/api/v2/fetch/model_list"
 
-
-class RuntimeLLMModel:
-    """运行时模型"""
-
-    model_entity: persistence_model.LLMModel
-    """模型数据"""
-
-    token_mgr: token.TokenManager
-    """api key管理器"""
-
-    requester: requester.LLMAPIRequester
-    """请求器实例"""
-    
-    def __init__(self, model_entity: persistence_model.LLMModel, token_mgr: token.TokenManager, requester: requester.LLMAPIRequester):
-        self.model_entity = model_entity
-        self.token_mgr = token_mgr
-        self.requester = requester
 
 
 class ModelManager:
@@ -47,7 +31,7 @@ class ModelManager:
 
     ap: app.Application
 
-    llm_models: list[RuntimeLLMModel]
+    llm_models: list[requester.RuntimeLLMModel]
 
     requester_components: list[engine.Component]
 
@@ -99,16 +83,20 @@ class ModelManager:
         elif isinstance(model_info, dict):
             model_info = persistence_model.LLMModel(**model_info)
 
-        runtime_llm_model = RuntimeLLMModel(
+        requester_inst = self.requester_dict[model_info.requester](
+            ap=self.ap,
+            config=model_info.requester_config
+        )
+
+        await requester_inst.initialize()
+
+        runtime_llm_model = requester.RuntimeLLMModel(
             model_entity=model_info,
             token_mgr=token.TokenManager(
                 name=model_info.uuid,
                 tokens=model_info.api_keys,
             ),
-            requester=self.requester_dict[model_info.requester](
-                ap=self.ap,
-                config=model_info.requester_config
-            )
+            requester=requester_inst
         )
         self.llm_models.append(runtime_llm_model)
 

@@ -16,14 +16,12 @@ class LocalAgentRunner(runner.RequestRunner):
     async def run(self, query: core_entities.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
         """运行请求
         """
-        await query.use_model.requester.preprocess(query)
-
         pending_tool_calls = []
 
         req_messages = query.prompt.messages.copy() + query.messages.copy() + [query.user_message]
 
         # 首次请求
-        msg = await query.use_model.requester.call(query, query.use_model, req_messages, query.use_funcs)
+        msg = await query.use_llm_model.requester.invoke_llm(query, query.use_llm_model, req_messages, query.use_funcs)
 
         yield msg
 
@@ -61,7 +59,7 @@ class LocalAgentRunner(runner.RequestRunner):
                     req_messages.append(err_msg)
 
             # 处理完所有调用，再次请求
-            msg = await query.use_model.requester.call(query, query.use_model, req_messages, query.use_funcs)
+            msg = await query.use_llm_model.requester.invoke_llm(query, query.use_llm_model, req_messages, query.use_funcs)
 
             yield msg
 

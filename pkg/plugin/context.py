@@ -222,10 +222,10 @@ class EventContext:
         Args:
             message_chain (platform.types.MessageChain): 源平台的消息链，若用户使用的不是源平台适配器，程序也能自动转换为目标平台消息链
         """
-        await self.host.ap.platform_mgr.send(
-            event=self.event.query.message_event,
-            msg=message_chain,
-            adapter=self.event.query.adapter,
+        # TODO 添加 at_sender 和 quote_origin 参数
+        await self.event.query.adapter.reply_message(
+            message_source=self.event.query.message_event,
+            message=message_chain
         )
     
     async def send_message(

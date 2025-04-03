@@ -14,6 +14,6 @@ class LmStudioChatCompletions(chatcmpl.OpenAIChatCompletions):
     client: openai.AsyncClient
 
     default_config: dict[str, typing.Any] = {
-        'base-url': 'http://127.0.0.1:1234/v1',
+        'base_url': 'http://127.0.0.1:1234/v1',
         'timeout': 120,
     }

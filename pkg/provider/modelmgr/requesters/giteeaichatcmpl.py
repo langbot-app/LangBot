@@ -18,7 +18,7 @@ class GiteeAIChatCompletions(chatcmpl.OpenAIChatCompletions):
     """Gitee AI ChatCompletions API 请求器"""
 
     default_config: dict[str, typing.Any] = {
-        'base-url': 'https://ai.gitee.com/v1',
+        'base_url': 'https://ai.gitee.com/v1',
         'timeout': 120,
     }
 
@@ -26,14 +26,14 @@ class GiteeAIChatCompletions(chatcmpl.OpenAIChatCompletions):
         self,
         query: core_entities.Query,
         req_messages: list[dict],
-        use_model: entities.LLMModelInfo,
+        use_model: requester.RuntimeLLMModel,
         use_funcs: list[tools_entities.LLMFunction] = None,
         extra_args: dict[str, typing.Any] = {},
     ) -> llm_entities.Message:
         self.client.api_key = use_model.token_mgr.get_token()
 
-        args = self.requester_cfg['args'].copy()
-        args["model"] = use_model.name if use_model.model_name is None else use_model.model_name
+        args = extra_args.copy()
+        args["model"] = use_model.model_entity.name
 
         if use_funcs:
             tools = await self.ap.tool_mgr.generate_tools_for_openai(use_funcs)

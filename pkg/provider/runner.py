@@ -27,11 +27,11 @@ class RequestRunner(abc.ABC):
 
     ap: app.Application
 
-    def __init__(self, ap: app.Application):
-        self.ap = ap
+    pipeline_config: dict
 
-    async def initialize(self):
-        pass
+    def __init__(self, ap: app.Application, pipeline_config: dict):
+        self.ap = ap
+        self.pipeline_config = pipeline_config
 
     @abc.abstractmethod
     async def run(self, query: core_entities.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:

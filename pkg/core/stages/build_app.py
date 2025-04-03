@@ -6,14 +6,12 @@ from .. import stage, app
 from ...utils import version, proxy, announce, platform
 from ...audit.center import v2 as center_v2
 from ...audit import identifier
-from ...pipeline import pool, controller, stagemgr, pipelinemgr
+from ...pipeline import pool, controller, pipelinemgr
 from ...plugin import manager as plugin_mgr
 from ...command import cmdmgr
 from ...provider.session import sessionmgr as llm_session_mgr
 from ...provider.modelmgr import modelmgr as llm_model_mgr
-from ...provider.sysprompt import sysprompt as llm_prompt_mgr
 from ...provider.tools import toolmgr as llm_tool_mgr
-from ...provider import runnermgr
 from ...platform import manager as im_mgr
 from ...persistence import mgr as persistencemgr
 from ...api.http.controller import main as http_controller
@@ -61,10 +59,7 @@ class BuildAppStage(stage.BootingStage):
             },
             runtime_info={
                 "admin_id": "{}".format(ap.system_cfg.data["admin-sessions"]),
-                "msg_source": str([
-                    adapter_cfg['adapter'] if 'adapter' in adapter_cfg else 'unknown'
-                    for adapter_cfg in ap.platform_cfg.data['platform-adapters'] if adapter_cfg['enable']
-                ]),
+                "msg_source": str([]),
             },
         )
         ap.ctr_mgr = center_v2_api
@@ -99,25 +94,13 @@ class BuildAppStage(stage.BootingStage):
         await llm_session_mgr_inst.initialize()
         ap.sess_mgr = llm_session_mgr_inst
 
-        llm_prompt_mgr_inst = llm_prompt_mgr.PromptManager(ap)
-        await llm_prompt_mgr_inst.initialize()
-        ap.prompt_mgr = llm_prompt_mgr_inst
-
         llm_tool_mgr_inst = llm_tool_mgr.ToolManager(ap)
         await llm_tool_mgr_inst.initialize()
         ap.tool_mgr = llm_tool_mgr_inst
 
-        runner_mgr_inst = runnermgr.RunnerManager(ap)
-        await runner_mgr_inst.initialize()
-        ap.runner_mgr = runner_mgr_inst
-
         im_mgr_inst = im_mgr.PlatformManager(ap=ap)
         await im_mgr_inst.initialize()
         ap.platform_mgr = im_mgr_inst
-
-        stage_mgr = stagemgr.StageManager(ap)
-        await stage_mgr.initialize()
-        ap.stage_mgr = stage_mgr
 
         pipeline_mgr = pipelinemgr.PipelineManager(ap)
         await pipeline_mgr.initialize()

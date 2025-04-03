@@ -5,7 +5,7 @@ from ...core import app
 from . import entities as rule_entities, rule
 from .rules import atbot, prefix, regexp, random
 
-from .. import stage, entities, stagemgr
+from .. import stage, entities
 from ...core import entities as core_entities
 from ...config import manager as cfg_mgr
 
@@ -20,7 +20,7 @@ class GroupRespondRuleCheckStage(stage.PipelineStage):
     rule_matchers: list[rule.GroupRespondRule]
     """检查器实例"""
 
-    async def initialize(self):
+    async def initialize(self, pipeline_config: dict):
         """初始化检查器
         """
 
@@ -39,12 +39,13 @@ class GroupRespondRuleCheckStage(stage.PipelineStage):
                 new_query=query
             )
 
-        rules = self.ap.pipeline_cfg.data['respond-rules']
+        rules = query.pipeline_config['trigger']['group-respond-rules']
 
-        use_rule = rules['default']
+        use_rule = rules
 
-        if str(query.launcher_id) in rules:
-            use_rule = rules[str(query.launcher_id)]
+        # TODO revert it
+        # if str(query.launcher_id) in rules:
+        #     use_rule = rules[str(query.launcher_id)]
 
         for rule_matcher in self.rule_matchers:  # 任意一个匹配就放行
             res = await rule_matcher.match(str(query.message_chain), query.message_chain, use_rule, query)

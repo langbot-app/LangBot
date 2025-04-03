@@ -5,8 +5,23 @@ import datetime
 import sqlalchemy
 
 from ....core import app
-from ....pipeline import stagemgr
 from ....entity.persistence import pipeline as persistence_pipeline
+
+
+default_stage_order = [
+    "GroupRespondRuleCheckStage",  # 群响应规则检查
+    "BanSessionCheckStage",  # 封禁会话检查
+    "PreContentFilterStage",  # 内容过滤前置阶段
+    "PreProcessor",  # 预处理器
+    "ConversationMessageTruncator",  # 会话消息截断器
+    "RequireRateLimitOccupancy",  # 请求速率限制占用
+    "MessageProcessor",  # 处理器
+    "ReleaseRateLimitOccupancy",  # 释放速率限制占用
+    "PostContentFilterStage",  # 内容过滤后置阶段
+    "ResponseWrapper",  # 响应包装器
+    "LongTextProcessStage",  # 长文本处理
+    "SendResponseBackStage",  # 发送响应
+]
 
 
 class PipelineService:
@@ -49,7 +64,7 @@ class PipelineService:
     async def create_pipeline(self, pipeline_data: dict) -> str:
         pipeline_data['uuid'] = str(uuid.uuid4())
         pipeline_data['for_version'] = self.ap.ver_mgr.get_current_version()
-        pipeline_data['stages'] = stagemgr.stage_order.copy()
+        pipeline_data['stages'] = default_stage_order.copy()
 
         # TODO: 检查pipeline config是否完整
 
@@ -64,9 +79,12 @@ class PipelineService:
         return pipeline_data['uuid']
 
     async def update_pipeline(self, pipeline_uuid: str, pipeline_data: dict) -> None:
-        del pipeline_data['uuid']
-        del pipeline_data['for_version']
-        del pipeline_data['stages']
+        if 'uuid' in pipeline_data:
+            del pipeline_data['uuid']
+        if 'for_version' in pipeline_data:
+            del pipeline_data['for_version']
+        if 'stages' in pipeline_data:
+            del pipeline_data['stages']
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_pipeline.LegacyPipeline).where(persistence_pipeline.LegacyPipeline.uuid == pipeline_uuid).values(**pipeline_data)
         )

@@ -5,7 +5,7 @@ import typing
 
 from ...core import app, entities as core_entities
 from .. import entities
-from .. import stage, entities, stagemgr
+from .. import stage, entities
 from ...core import entities as core_entities
 from ...config import manager as cfg_mgr
 from ...plugin import events
@@ -22,7 +22,7 @@ class ResponseWrapper(stage.PipelineStage):
         - resp_message_chain
     """
 
-    async def initialize(self):
+    async def initialize(self, pipeline_config: dict):
         pass
 
     async def process(
@@ -110,7 +110,7 @@ class ResponseWrapper(stage.PipelineStage):
 
                         query.resp_message_chain.append(platform_message.MessageChain([platform_message.Plain(reply_text)]))
 
-                        if self.ap.platform_cfg.data['track-function-calls']:
+                        if query.pipeline_config['output']['misc']['track-function-calls']:
                             
                             event_ctx = await self.ap.plugin_mgr.emit_event(
                                 event=events.NormalMessageResponded(

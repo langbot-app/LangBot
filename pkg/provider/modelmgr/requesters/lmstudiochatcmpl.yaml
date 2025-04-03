@@ -7,7 +7,7 @@ metadata:
     zh_CN: LM Studio
 spec:
   config:
-    - name: base-url
+    - name: base_url
       label:
         en_US: Base URL
         zh_CN: 基础 URL
