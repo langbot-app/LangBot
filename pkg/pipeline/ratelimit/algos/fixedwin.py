@@ -3,6 +3,7 @@ import asyncio
 import time
 import typing
 from .. import algo
+from ....core import entities as core_entities
 
 # 固定窗口算法
 class SessionContainer:
@@ -30,7 +31,7 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
         self.containers_lock = asyncio.Lock()
         self.containers = {}
 
-    async def require_access(self, launcher_type: str, launcher_id: typing.Union[int, str]) -> bool:
+    async def require_access(self, query: core_entities.Query, launcher_type: str, launcher_id: typing.Union[int, str]) -> bool:
         # 加锁，找容器
         container: SessionContainer = None
 
@@ -47,12 +48,13 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
         async with container.wait_lock:
 
             # 获取窗口大小和限制
-            window_size = self.ap.pipeline_cfg.data['rate-limit']['fixwin']['default']['window-size']
-            limitation = self.ap.pipeline_cfg.data['rate-limit']['fixwin']['default']['limit']
+            window_size = query.pipeline_config['safety']['rate-limit']['window-length']
+            limitation = query.pipeline_config['safety']['rate-limit']['limitation']
 
-            if session_name in self.ap.pipeline_cfg.data['rate-limit']['fixwin']:
-                window_size = self.ap.pipeline_cfg.data['rate-limit']['fixwin'][session_name]['window-size']
-                limitation = self.ap.pipeline_cfg.data['rate-limit']['fixwin'][session_name]['limit']
+            # TODO revert it
+            # if session_name in self.ap.pipeline_cfg.data['rate-limit']['fixwin']:
+            #     window_size = self.ap.pipeline_cfg.data['rate-limit']['fixwin'][session_name]['window-size']
+            #     limitation = self.ap.pipeline_cfg.data['rate-limit']['fixwin'][session_name]['limit']
 
             # 获取当前时间戳
             now = int(time.time())
@@ -65,9 +67,9 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
 
             # 如果访问次数超过了限制
             if count >= limitation:
-                if self.ap.pipeline_cfg.data['rate-limit']['strategy'] == 'drop':
+                if query.pipeline_config['safety']['rate-limit']['strategy'] == 'drop':
                     return False
-                elif self.ap.pipeline_cfg.data['rate-limit']['strategy'] == 'wait':
+                elif query.pipeline_config['safety']['rate-limit']['strategy'] == 'wait':
                     # 等待下一窗口
                     await asyncio.sleep(window_size - time.time() % window_size)
     
@@ -84,5 +86,5 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
             # 返回True
             return True
         
-    async def release_access(self, launcher_type: str, launcher_id: typing.Union[int, str]):
+    async def release_access(self, query: core_entities.Query, launcher_type: str, launcher_id: typing.Union[int, str]):
         pass

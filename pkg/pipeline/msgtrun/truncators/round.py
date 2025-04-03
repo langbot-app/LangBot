@@ -12,7 +12,7 @@ class RoundTruncator(truncator.Truncator):
     async def truncate(self, query: core_entities.Query) -> core_entities.Query:
         """截断
         """
-        max_round = self.ap.pipeline_cfg.data['msg-truncate']['round']['max-round']
+        max_round = query.pipeline_config['ai']['local-agent']['max-round']
 
         temp_messages = []
 

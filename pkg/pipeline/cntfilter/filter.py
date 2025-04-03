@@ -3,7 +3,7 @@ from __future__ import annotations
 import abc
 import typing
 
-from ...core import app
+from ...core import app, entities as core_entities
 from . import entities
 from ...provider import entities as llm_entities
 
@@ -64,7 +64,7 @@ class ContentFilter(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    async def process(self, message: str=None, image_url=None) -> entities.FilterResult:
+    async def process(self, query: core_entities.Query, message: str=None, image_url=None) -> entities.FilterResult:
         """处理消息
 
         分为前后阶段，具体取决于 enable_stages 的值。

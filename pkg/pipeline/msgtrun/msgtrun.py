@@ -15,7 +15,7 @@ class ConversationMessageTruncator(stage.PipelineStage):
     trun: truncator.Truncator
 
     async def initialize(self, pipeline_config: dict):
-        use_method = self.ap.pipeline_cfg.data['msg-truncate']['method']
+        use_method = "round"
 
         for trun in truncator.preregistered_truncators:
             if trun.name == use_method:

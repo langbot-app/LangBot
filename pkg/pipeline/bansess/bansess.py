@@ -24,9 +24,9 @@ class BanSessionCheckStage(stage.PipelineStage):
         
         found = False
 
-        mode = self.ap.pipeline_cfg.data['access-control']['mode']
+        mode = query.pipeline_config['trigger']['access-control']['mode']
 
-        sess_list = self.ap.pipeline_cfg.data['access-control'][mode]
+        sess_list = query.pipeline_config['trigger']['access-control'][mode]
 
         if (query.launcher_type.value == 'group' and 'group_*' in sess_list) \
             or (query.launcher_type.value == 'person' and 'person_*' in sess_list):
