@@ -33,7 +33,7 @@ class PreProcessor(stage.PipelineStage):
         """
         session = await self.ap.sess_mgr.get_session(query)
 
-        conversation = await self.ap.sess_mgr.get_conversation(query, session, query.pipeline_config)
+        conversation = await self.ap.sess_mgr.get_conversation(query, session, query.pipeline_config['ai']['local-agent']['prompt'])
 
         # 设置query
         query.session = session
