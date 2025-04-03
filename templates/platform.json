@@ -71,38 +71,38 @@
             "token": ""
         },
         {
-            "adapter":"officialaccount",
+            "adapter": "officialaccount",
             "enable": false,
             "token": "",
-            "EncodingAESKey":"",
-            "AppID":"",
-            "AppSecret":"",
-            "Mode":"drop",
-            "LoadingMessage":"AI正在思考中，请发送任意内容获取回复。",
+            "EncodingAESKey": "",
+            "AppID": "",
+            "AppSecret": "",
+            "Mode": "drop",
+            "LoadingMessage": "AI正在思考中，请发送任意内容获取回复。",
             "host": "0.0.0.0",
             "port": 2287
         },
         {
-            "adapter":"dingtalk",
+            "adapter": "dingtalk",
             "enable": false,
-            "client_id":"",
-            "client_secret":"",
-            "robot_code":"",
-            "robot_name":"",
-            "markdown_card":false
+            "client_id": "",
+            "client_secret": "",
+            "robot_code": "",
+            "robot_name": "",
+            "markdown_card": false
         },
         {
-            "adapter":"telegram",
+            "adapter": "telegram",
             "enable": false,
-            "token":"",
-            "markdown_card":false
+            "token": "",
+            "markdown_card": false
         },
         {
-            "adapter":"slack",
-            "enable":true,
-            "bot_token":"",
-            "signing_secret":"",
-            "port":2288
+            "adapter": "slack",
+            "enable": false,
+            "bot_token": "",
+            "signing_secret": "",
+            "port": 2288
         }
     ],
     "track-function-calls": true,
