@@ -13,15 +13,12 @@ required_files = {
     "data/config/platform.json": "templates/platform.json",
     "data/config/provider.json": "templates/provider.json",
     "data/config/system.json": "templates/system.json",
-    "data/scenario/default.json": "templates/scenario-template.json",
 }
 
 required_paths = [
     "temp",
     "data",
     "data/metadata",
-    "data/prompts",
-    "data/scenario",
     "data/logs",
     "data/config",
     "data/labels",

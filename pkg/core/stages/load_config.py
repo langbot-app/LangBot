@@ -75,9 +75,6 @@ class LoadConfigStage(stage.BootingStage):
         ap.adapter_qq_botpy_meta = await config.load_json_config("data/metadata/adapter-qq-botpy.json", "templates/metadata/adapter-qq-botpy.json")
         await ap.adapter_qq_botpy_meta.dump_config()
 
-        ap.llm_models_meta = await config.load_json_config("data/metadata/llm-models.json", "templates/metadata/llm-models.json")
-        await ap.llm_models_meta.dump_config()
-
         ap.instance_secret_meta = await config.load_json_config("data/metadata/instance-secret.json", template_data={
             'jwt_secret': secrets.token_hex(16)
         })
