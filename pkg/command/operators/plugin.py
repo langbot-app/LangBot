@@ -28,8 +28,6 @@ class PluginOperator(operator.CommandOperator):
                         plugin.plugin_description,
                         plugin.plugin_version, plugin.plugin_author)
 
-            # TODO 从元数据调远程地址
-
             idx += 1
 
         yield entities.CommandReturn(text=reply_str)

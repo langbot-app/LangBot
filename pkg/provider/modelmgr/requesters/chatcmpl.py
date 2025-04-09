@@ -67,7 +67,7 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
         req_messages: list[dict],
         use_model: requester.RuntimeLLMModel,
         use_funcs: list[tools_entities.LLMFunction] = None,
-        extra_args: dict[str, typing.Any] = {}, # TODO: 所有的args都改为从此参数读取
+        extra_args: dict[str, typing.Any] = {},
     ) -> llm_entities.Message:
         self.client.api_key = use_model.token_mgr.get_token()
 
