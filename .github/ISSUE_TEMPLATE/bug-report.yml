@@ -3,22 +3,6 @@ description: 报错或漏洞请使用这个模板创建，不使用此模板创�
 title: "[Bug]: "
 labels: ["bug?"]
 body:
-  - type: dropdown
-    attributes:
-      label: 消息平台适配器
-      description: "接入的消息平台类型"
-      options:
-        - 其他（或暂未使用）
-        - Nakuru（go-cqhttp）
-        - aiocqhttp（使用 OneBot 协议接入的）
-        - qq-botpy（QQ官方API WebSocket）
-        - qqofficial（QQ官方API Webhook）
-        - lark（飞书）
-        - wecom（企业微信）
-        - gewechat（个人微信）
-        - discord
-    validations:
-      required: true
   - type: input
     attributes:
       label: 运行环境
