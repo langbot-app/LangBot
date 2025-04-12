@@ -92,6 +92,8 @@ class PluginManifestLoader(loader.PluginLoader):
                 plugin_class = plugin_manifest.get_python_component_class()
                 current_plugin_container.plugin_class = plugin_class
 
+                # TODO load component extensions
+
                 self.plugins.append(current_plugin_container)
             except Exception as e:
                 self.ap.logger.error(f'加载插件 {plugin_manifest.metadata.name} 时发生错误')
