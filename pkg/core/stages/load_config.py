@@ -66,9 +66,6 @@ class LoadConfigStage(stage.BootingStage):
             doc_link="https://docs.langbot.app/config/function/system.html"
         )
 
-        ap.plugin_setting_meta = await config.load_json_config("plugins/plugins.json", "templates/plugin-settings.json")
-        await ap.plugin_setting_meta.dump_config()
-
         ap.sensitive_meta = await config.load_json_config("data/metadata/sensitive-words.json", "templates/metadata/sensitive-words.json")
         await ap.sensitive_meta.dump_config()
 

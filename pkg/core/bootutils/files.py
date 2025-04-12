@@ -7,7 +7,6 @@ import sys
 
 required_files = {
     "plugins/__init__.py": "templates/__init__.py",
-    "plugins/plugins.json": "templates/plugin-settings.json",
     "data/config/command.json": "templates/command.json",
     "data/config/pipeline.json": "templates/pipeline.json",
     "data/config/platform.json": "templates/platform.json",
