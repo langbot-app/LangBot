@@ -34,6 +34,7 @@ class I18nString(pydantic.BaseModel):
             dic['ja_JP'] = self.ja_JP
         return dic
 
+
 class Metadata(pydantic.BaseModel):
     """元数据"""
 
@@ -46,8 +47,17 @@ class Metadata(pydantic.BaseModel):
     description: typing.Optional[I18nString] = None
     """描述"""
 
+    version: typing.Optional[str] = None
+    """版本"""
+
     icon: typing.Optional[str] = None
     """图标"""
+
+    author: typing.Optional[str] = None
+    """作者"""
+
+    repository: typing.Optional[str] = None
+    """仓库"""
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -96,6 +106,9 @@ class Component(pydantic.BaseModel):
     rel_path: str
     """组件清单相对main.py的路径"""
 
+    rel_dir: str
+    """组件清单相对main.py的目录"""
+
     _metadata: Metadata
     """组件元数据"""
 
@@ -109,11 +122,17 @@ class Component(pydantic.BaseModel):
         super().__init__(
             owner=owner,
             manifest=manifest,
-            rel_path=rel_path
+            rel_path=rel_path,
+            rel_dir=os.path.dirname(rel_path)
         )
         self._metadata = Metadata(**manifest['metadata'])
         self._spec = manifest['spec']
         self._execution = Execution(**manifest['execution']) if 'execution' in manifest else None
+
+    @classmethod
+    def is_component_manifest(cls, manifest: typing.Dict[str, typing.Any]) -> bool:
+        """判断是否为组件清单"""
+        return 'apiVersion' in manifest and 'kind' in manifest and 'metadata' in manifest and 'spec' in manifest
 
     @property
     def kind(self) -> str:
@@ -132,13 +151,12 @@ class Component(pydantic.BaseModel):
     
     @property
     def execution(self) -> Execution:
-        """组件执行"""
+        """组件可执行文件信息"""
         return self._execution
     
     def get_python_component_class(self) -> typing.Type[typing.Any]:
         """获取Python组件类"""
-        parent_path = os.path.dirname(self.rel_path)
-        module_path = os.path.join(parent_path, self.execution.python.path)
+        module_path = os.path.join(self.rel_dir, self.execution.python.path)
         if module_path.endswith('.py'):
             module_path = module_path[:-3]
         module_path = module_path.replace('/', '.').replace('\\', '.')
@@ -168,10 +186,12 @@ class ComponentDiscoveryEngine:
     def __init__(self, ap: app.Application):
         self.ap = ap
 
-    def load_component_manifest(self, path: str, owner: str = 'builtin', no_save: bool = False) -> Component:
+    def load_component_manifest(self, path: str, owner: str = 'builtin', no_save: bool = False) -> Component | None:
         """加载组件清单"""
         with open(path, 'r', encoding='utf-8') as f:
             manifest = yaml.safe_load(f)
+            if not Component.is_component_manifest(manifest):
+                return None
             comp = Component(
                 owner=owner,
                 manifest=manifest,
@@ -183,12 +203,22 @@ class ComponentDiscoveryEngine:
                 self.components[comp.kind].append(comp)
             return comp
         
-    def load_component_manifests_in_dir(self, path: str, owner: str = 'builtin', no_save: bool = False) -> typing.List[Component]:
+    def load_component_manifests_in_dir(self, path: str, owner: str = 'builtin', no_save: bool = False, max_depth: int = 1) -> typing.List[Component]:
         """加载目录中的组件清单"""
         components: typing.List[Component] = []
-        for file in os.listdir(path):
-            if file.endswith('.yaml') or file.endswith('.yml'):
-                components.append(self.load_component_manifest(os.path.join(path, file), owner, no_save))
+
+        def recursive_load_component_manifests_in_dir(path: str, depth: int = 1):
+            if depth > max_depth:
+                return
+            for file in os.listdir(path):
+                if (not os.path.isdir(os.path.join(path, file))) and (file.endswith('.yaml') or file.endswith('.yml')):
+                    comp = self.load_component_manifest(os.path.join(path, file), owner, no_save)
+                    if comp is not None:
+                        components.append(comp)
+                elif os.path.isdir(os.path.join(path, file)):
+                    recursive_load_component_manifests_in_dir(os.path.join(path, file), depth + 1)
+
+        recursive_load_component_manifests_in_dir(path)
         return components
     
     def load_blueprint_comp_group(self, group: dict, owner: str = 'builtin', no_save: bool = False) -> typing.List[Component]:
@@ -196,17 +226,21 @@ class ComponentDiscoveryEngine:
         components: typing.List[Component] = []
         if 'fromFiles' in group:
             for file in group['fromFiles']:
-                components.append(self.load_component_manifest(file, owner, no_save))
+                comp = self.load_component_manifest(file, owner, no_save)
+                if comp is not None:
+                    components.append(comp)
         if 'fromDirs' in group:
             for dir in group['fromDirs']:
                 path = dir['path']
-                # depth = dir['depth']
-                components.extend(self.load_component_manifests_in_dir(path, owner, no_save))
+                max_depth = dir['maxDepth'] if 'maxDepth' in dir else 1
+                components.extend(self.load_component_manifests_in_dir(path, owner, no_save, max_depth))
         return components
 
     def discover_blueprint(self, blueprint_manifest_path: str, owner: str = 'builtin'):
         """发现蓝图"""
         blueprint_manifest = self.load_component_manifest(blueprint_manifest_path, owner, no_save=True)
+        if blueprint_manifest is None:
+            raise ValueError(f'Invalid blueprint manifest: {blueprint_manifest_path}')
         assert blueprint_manifest.kind == 'Blueprint', '`Kind` must be `Blueprint`'
         components: typing.Dict[str, typing.List[Component]] = {}
 
@@ -223,9 +257,16 @@ class ComponentDiscoveryEngine:
 
         return blueprint_manifest, components
 
-
     def get_components_by_kind(self, kind: str) -> typing.List[Component]:
         """获取指定类型的组件"""
         if kind not in self.components:
             raise ValueError(f'No components found for kind: {kind}')
         return self.components[kind]
+
+    def find_components(self, kind: str, component_list: typing.List[Component]) -> typing.List[Component]:
+        """查找组件"""
+        result: typing.List[Component] = []
+        for component in component_list:
+            if component.kind == kind:
+                result.append(component)
+        return result

@@ -99,9 +99,11 @@ class GitHubRepoInstaller(installer.PluginInstaller):
         task_context.trace("安装插件依赖...", "install-plugin")
         await self.install_requirements("plugins/" + repo_label)
         task_context.trace("完成.", "install-plugin")
-        await self.ap.plugin_mgr.setting.record_installed_plugin_source(
-            "plugins/" + repo_label + '/', plugin_source
-        )
+        
+        # Caution: in the v4.0, plugin without manifest will not be able to be updated
+        # await self.ap.plugin_mgr.setting.record_installed_plugin_source(
+        #     "plugins/" + repo_label + '/', plugin_source
+        # )
 
     async def uninstall_plugin(
         self,
@@ -129,8 +131,8 @@ class GitHubRepoInstaller(installer.PluginInstaller):
         if plugin_container is None:
             raise errors.PluginInstallerError('插件不存在或未成功加载')
         else:
-            if plugin_container.plugin_source:
-                plugin_source = plugin_container.plugin_source
+            if plugin_container.plugin_repository:
+                plugin_source = plugin_container.plugin_repository
                 task_context.trace("转交安装任务.", "update-plugin")
                 await self.install_plugin(plugin_source, task_context)
             else:

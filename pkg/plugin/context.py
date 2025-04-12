@@ -8,6 +8,7 @@ import enum
 from . import events
 from ..provider.tools import entities as tools_entities
 from ..core import app
+from ..discover import engine as discover_engine
 from ..platform.types import message as platform_message
 from ..platform import adapter as platform_adapter
 
@@ -86,9 +87,13 @@ class BasePlugin(metaclass=abc.ABCMeta):
     ap: app.Application
     """应用程序对象"""
 
+    config: dict
+    """插件配置"""
+
     def __init__(self, host: APIHost):
         """初始化阶段被调用"""
         self.host = host
+        self.config = {}
 
     async def initialize(self):
         """初始化阶段被调用"""
@@ -308,7 +313,10 @@ class RuntimeContainer(pydantic.BaseModel):
     plugin_name: str
     """插件名称"""
 
-    plugin_description: str
+    plugin_label: discover_engine.I18nString
+    """插件标签"""
+
+    plugin_description: discover_engine.I18nString
     """插件描述"""
 
     plugin_version: str
@@ -317,7 +325,7 @@ class RuntimeContainer(pydantic.BaseModel):
     plugin_author: str
     """插件作者"""
 
-    plugin_source: str
+    plugin_repository: str
     """插件源码地址"""
 
     main_file: str
@@ -335,6 +343,12 @@ class RuntimeContainer(pydantic.BaseModel):
     priority: typing.Optional[int] = 0
     """优先级"""
 
+    config_schema: typing.Optional[list[dict]] = []
+    """插件配置模板"""
+
+    plugin_config: typing.Optional[dict] = {}
+    """插件配置"""
+
     plugin_inst: typing.Optional[BasePlugin] = None
     """插件实例"""
 
@@ -343,7 +357,7 @@ class RuntimeContainer(pydantic.BaseModel):
     ]] = {}
     """事件处理器"""
 
-    content_functions: list[tools_entities.LLMFunction] = []
+    tools: list[tools_entities.LLMFunction] = []
     """内容函数"""
 
     status: RuntimeContainerStatus = RuntimeContainerStatus.MOUNTED
@@ -355,10 +369,10 @@ class RuntimeContainer(pydantic.BaseModel):
     def to_setting_dict(self):
         return {
             'name': self.plugin_name,
-            'description': self.plugin_description,
+            'description': self.plugin_description.to_dict(),
             'version': self.plugin_version,
             'author': self.plugin_author,
-            'source': self.plugin_source,
+            'source': self.plugin_repository,
             'main_file': self.main_file,
             'pkg_path': self.pkg_path,
             'priority': self.priority,
@@ -369,26 +383,28 @@ class RuntimeContainer(pydantic.BaseModel):
         self,
         setting: dict
     ):
-        self.plugin_source = setting['source']
+        self.plugin_repository = setting['source']
         self.priority = setting['priority']
         self.enabled = setting['enabled']
 
     def model_dump(self, *args, **kwargs):
         return {
             'name': self.plugin_name,
-            'description': self.plugin_description,
+            'label': self.plugin_label.to_dict(),
+            'description': self.plugin_description.to_dict(),
             'version': self.plugin_version,
             'author': self.plugin_author,
-            'source': self.plugin_source,
+            'repository': self.plugin_repository,
             'main_file': self.main_file,
             'pkg_path': self.pkg_path,
             'enabled': self.enabled,
             'priority': self.priority,
+            "config_schema": self.config_schema,
             'event_handlers': {
                 event_name.__name__: handler.__name__
                 for event_name, handler in self.event_handlers.items()
             },
-            'content_functions': [
+            'tools': [
                 {
                     'name': function.name,
                     'human_desc': function.human_desc,
@@ -396,7 +412,7 @@ class RuntimeContainer(pydantic.BaseModel):
                     'parameters': function.parameters,
                     'func': function.func.__name__,
                 }
-                for function in self.content_functions
+                for function in self.tools
             ],
             'status': self.status.value,
         }
