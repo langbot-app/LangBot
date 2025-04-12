@@ -9,7 +9,7 @@ from .. import loader, events, context, models
 from ...core import entities as core_entities
 from ...provider.tools import entities as tools_entities
 from ...utils import funcschema
-
+from ...discover import engine as discover_engine
 
 class PluginLoader(loader.PluginLoader):
     """加载 plugins/ 目录下的插件"""
@@ -31,13 +31,6 @@ class PluginLoader(loader.PluginLoader):
 
     async def initialize(self):
         """初始化"""
-        setattr(models, 'register', self.register)
-        setattr(models, 'on', self.on)
-        setattr(models, 'func', self.func)
-
-        setattr(context, 'register', self.register)
-        setattr(context, 'handler', self.handler)
-        setattr(context, 'llm_func', self.llm_func)
 
     def register(
         self,
@@ -49,14 +42,15 @@ class PluginLoader(loader.PluginLoader):
         self.ap.logger.debug(f'注册插件 {name} {version} by {author}')
         container = context.RuntimeContainer(
             plugin_name=name,
-            plugin_description=description,
+            plugin_label=discover_engine.I18nString(en_US=name, zh_CN=name),
+            plugin_description=discover_engine.I18nString(en_US=description, zh_CN=description),
             plugin_version=version,
             plugin_author=author,
-            plugin_source='',
+            plugin_repository='',
             pkg_path=self._current_pkg_path,
             main_file=self._current_module_path,
             event_handlers={},
-            content_functions=[],
+            tools=[],
         )
 
         self._current_container = container
@@ -126,7 +120,7 @@ class PluginLoader(loader.PluginLoader):
                 func=handler,
             )
 
-            self._current_container.content_functions.append(llm_function)
+            self._current_container.tools.append(llm_function)
 
             return func
         
@@ -165,7 +159,7 @@ class PluginLoader(loader.PluginLoader):
                 func=func,
             )
 
-            self._current_container.content_functions.append(llm_function)
+            self._current_container.tools.append(llm_function)
 
             return func
         
@@ -205,4 +199,11 @@ class PluginLoader(loader.PluginLoader):
     async def load_plugins(self):
         """加载插件
         """
+        setattr(models, 'register', self.register)
+        setattr(models, 'on', self.on)
+        setattr(models, 'func', self.func)
+
+        setattr(context, 'register', self.register)
+        setattr(context, 'handler', self.handler)
+        setattr(context, 'llm_func', self.llm_func)
         await self._walk_plugin_path(__import__("plugins", fromlist=[""]))

@@ -23,7 +23,7 @@ class PluginToolLoader(loader.ToolLoader):
         for plugin in self.ap.plugin_mgr.plugins(
             enabled=enabled, status=plugin_context.RuntimeContainerStatus.INITIALIZED
         ):
-            all_functions.extend(plugin.content_functions)
+            all_functions.extend(plugin.tools)
 
         return all_functions
 
@@ -32,7 +32,7 @@ class PluginToolLoader(loader.ToolLoader):
         for plugin in self.ap.plugin_mgr.plugins(
             enabled=True, status=plugin_context.RuntimeContainerStatus.INITIALIZED
         ):
-            for function in plugin.content_functions:
+            for function in plugin.tools:
                 if function.name == name:
                     return True
         return False
@@ -44,7 +44,7 @@ class PluginToolLoader(loader.ToolLoader):
         for plugin in self.ap.plugin_mgr.plugins(
             enabled=True, status=plugin_context.RuntimeContainerStatus.INITIALIZED
         ):
-            for function in plugin.content_functions:
+            for function in plugin.tools:
                 if function.name == name:
                     return function, plugin.plugin_inst
         return None, None
@@ -70,7 +70,7 @@ class PluginToolLoader(loader.ToolLoader):
             plugin = None
 
             for p in self.ap.plugin_mgr.plugins():
-                if function in p.content_functions:
+                if function in p.tools:
                     plugin = p
                     break
 
@@ -79,7 +79,7 @@ class PluginToolLoader(loader.ToolLoader):
                 await self.ap.ctr_mgr.usage.post_function_record(
                     plugin={
                         "name": plugin.plugin_name,
-                        "remote": plugin.plugin_source,
+                        "remote": plugin.plugin_repository,
                         "version": plugin.plugin_version,
                         "author": plugin.plugin_author,
                     },

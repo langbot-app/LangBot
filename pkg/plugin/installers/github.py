@@ -129,8 +129,8 @@ class GitHubRepoInstaller(installer.PluginInstaller):
         if plugin_container is None:
             raise errors.PluginInstallerError('插件不存在或未成功加载')
         else:
-            if plugin_container.plugin_source:
-                plugin_source = plugin_container.plugin_source
+            if plugin_container.plugin_repository:
+                plugin_source = plugin_container.plugin_repository
                 task_context.trace("转交安装任务.", "update-plugin")
                 await self.install_plugin(plugin_source, task_context)
             else:

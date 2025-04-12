@@ -36,7 +36,7 @@ class SettingManager:
                     if plugin_container.pkg_path == value['pkg_path']:
                         matched = True
 
-                        plugin_container.plugin_source = value['source']
+                        plugin_container.plugin_repository = value['source']
                         break
 
                 if not matched:
