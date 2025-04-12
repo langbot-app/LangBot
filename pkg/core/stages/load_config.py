@@ -5,7 +5,6 @@ import secrets
 from .. import stage, app
 from ..bootutils import config
 from ...config import settings as settings_mgr
-from ...utils import schema
 
 
 @stage.stage_class("LoadConfigStage")
@@ -30,7 +29,6 @@ class LoadConfigStage(stage.BootingStage):
             name="command.json",
             description="命令配置",
             manager=ap.command_cfg,
-            schema=schema.CONFIG_COMMAND_SCHEMA,
             doc_link="https://docs.langbot.app/config/function/command.html"
         )
 
@@ -38,7 +36,6 @@ class LoadConfigStage(stage.BootingStage):
             name="pipeline.json",
             description="消息处理流水线配置",
             manager=ap.pipeline_cfg,
-            schema=schema.CONFIG_PIPELINE_SCHEMA,
             doc_link="https://docs.langbot.app/config/function/pipeline.html"
         )
 
@@ -46,7 +43,6 @@ class LoadConfigStage(stage.BootingStage):
             name="platform.json",
             description="消息平台配置",
             manager=ap.platform_cfg,
-            schema=schema.CONFIG_PLATFORM_SCHEMA,
             doc_link="https://docs.langbot.app/config/function/platform.html"
         )
 
@@ -54,7 +50,6 @@ class LoadConfigStage(stage.BootingStage):
             name="provider.json",
             description="大模型能力配置",
             manager=ap.provider_cfg,
-            schema=schema.CONFIG_PROVIDER_SCHEMA,
             doc_link="https://docs.langbot.app/config/function/provider.html"
         )
 
@@ -62,7 +57,6 @@ class LoadConfigStage(stage.BootingStage):
             name="system.json",
             description="系统配置",
             manager=ap.system_cfg,
-            schema=schema.CONFIG_SYSTEM_SCHEMA,
             doc_link="https://docs.langbot.app/config/function/system.html"
         )
 
