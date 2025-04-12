@@ -87,9 +87,13 @@ class BasePlugin(metaclass=abc.ABCMeta):
     ap: app.Application
     """应用程序对象"""
 
+    config: dict
+    """插件配置"""
+
     def __init__(self, host: APIHost):
         """初始化阶段被调用"""
         self.host = host
+        self.config = {}
 
     async def initialize(self):
         """初始化阶段被调用"""

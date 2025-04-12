@@ -66,6 +66,22 @@ class PluginsRouterGroup(group.RouterGroup):
                 return self.success(data={
                     'task_id': wrapper.id
                 })
+            
+        @self.route('/<author>/<plugin_name>/config', methods=['GET', 'PUT'], auth_type=group.AuthType.USER_TOKEN)
+        async def _(author: str, plugin_name: str) -> quart.Response:
+            plugin = self.ap.plugin_mgr.get_plugin(author, plugin_name)
+            if plugin is None:
+                return self.http_status(404, -1, 'plugin not found')
+            if quart.request.method == 'GET':
+                return self.success(data={
+                    'config': plugin.plugin_config
+                })
+            elif quart.request.method == 'PUT':
+                data = await quart.request.json
+
+                await self.ap.plugin_mgr.set_plugin_config(plugin, data)
+
+                return self.success(data={})
 
         @self.route('/reorder', methods=['PUT'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:

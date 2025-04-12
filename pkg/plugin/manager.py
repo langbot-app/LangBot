@@ -138,6 +138,7 @@ class PluginManager:
     async def initialize_plugin(self, plugin: context.RuntimeContainer):
         self.ap.logger.debug(f'初始化插件 {plugin.plugin_name}')
         plugin.plugin_inst = plugin.plugin_class(self.api_host)
+        plugin.plugin_inst.config = plugin.plugin_config
         plugin.plugin_inst.ap = self.ap
         plugin.plugin_inst.host = self.api_host
         await plugin.plugin_inst.initialize()
@@ -359,3 +360,10 @@ class PluginManager:
         self.plugin_containers.sort(key=lambda x: x.priority, reverse=True)
 
         await self.dump_plugin_container_setting(self.plugin_containers)
+
+    async def set_plugin_config(self, plugin_container: context.RuntimeContainer, new_config: dict):
+        plugin_container.plugin_config = new_config
+
+        plugin_container.plugin_inst.config = new_config
+
+        await self.dump_plugin_container_setting(plugin_container)
