@@ -133,7 +133,10 @@ class PluginLoader(loader.PluginLoader):
         """注册事件处理器"""
         self.ap.logger.debug(f'注册事件处理器 {event.__name__}')
         def wrapper(func: typing.Callable) -> typing.Callable:
-            
+
+            if self._current_container is None:  # None indicates this plugin is registered through manifest, so ignore it here
+                return func
+
             self._current_container.event_handlers[event] = func
 
             return func
@@ -147,6 +150,9 @@ class PluginLoader(loader.PluginLoader):
         """注册内容函数"""
         self.ap.logger.debug(f'注册内容函数 {name}')
         def wrapper(func: typing.Callable) -> typing.Callable:
+            
+            if self._current_container is None:  # None indicates this plugin is registered through manifest, so ignore it here
+                return func
             
             function_schema = funcschema.get_func_schema(func)
             function_name = self._current_container.plugin_name + '-' + (func.__name__ if name is None else name)

@@ -44,20 +44,28 @@ class PluginsRouterGroup(group.RouterGroup):
                 'task_id': wrapper.id
             })
         
-        @self.route('/<author>/<plugin_name>', methods=['DELETE'], auth_type=group.AuthType.USER_TOKEN)
+        @self.route('/<author>/<plugin_name>', methods=['GET', 'DELETE'], auth_type=group.AuthType.USER_TOKEN)
         async def _(author: str, plugin_name: str) -> str:
-            ctx = taskmgr.TaskContext.new()
-            wrapper = self.ap.task_mgr.create_user_task(
-                self.ap.plugin_mgr.uninstall_plugin(plugin_name, task_context=ctx),
-                kind="plugin-operation",
-                name=f'plugin-remove-{plugin_name}',
-                label=f'删除插件 {plugin_name}',
-                context=ctx
-            )
+            if quart.request.method == 'GET':
+                plugin = self.ap.plugin_mgr.get_plugin(author, plugin_name)
+                if plugin is None:
+                    return self.http_status(404, -1, 'plugin not found')
+                return self.success(data={
+                    'plugin': plugin.model_dump()
+                })
+            elif quart.request.method == 'DELETE':
+                ctx = taskmgr.TaskContext.new()
+                wrapper = self.ap.task_mgr.create_user_task(
+                    self.ap.plugin_mgr.uninstall_plugin(plugin_name, task_context=ctx),
+                    kind="plugin-operation",
+                    name=f'plugin-remove-{plugin_name}',
+                    label=f'删除插件 {plugin_name}',
+                    context=ctx
+                )
 
-            return self.success(data={
-                'task_id': wrapper.id
-            })
+                return self.success(data={
+                    'task_id': wrapper.id
+                })
 
         @self.route('/reorder', methods=['PUT'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:

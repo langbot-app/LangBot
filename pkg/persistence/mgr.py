@@ -8,7 +8,7 @@ import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
 import sqlalchemy
 
 from . import database
-from ..entity.persistence import base, user, model, pipeline, bot
+from ..entity.persistence import base, user, model, pipeline, bot, plugin
 from ..core import app
 from .databases import sqlite
 

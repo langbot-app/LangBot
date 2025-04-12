@@ -3,10 +3,13 @@ from __future__ import annotations
 import typing
 import traceback
 
+import sqlalchemy
+
 from ..core import app, taskmgr
-from . import context, loader, events, installer, setting, models
+from . import context, loader, events, installer, models
 from .loaders import classic, manifest
 from .installers import github
+from ..entity.persistence import plugin as persistence_plugin
 
 
 class PluginManager:
@@ -17,8 +20,6 @@ class PluginManager:
     loaders: list[loader.PluginLoader]
 
     installer: installer.PluginInstaller
-
-    setting: setting.SettingManager
 
     api_host: context.APIHost
 
@@ -40,6 +41,18 @@ class PluginManager:
             plugins = [plugin for plugin in plugins if plugin.status == status]
 
         return plugins
+    
+    def get_plugin(
+        self,
+        author: str,
+        plugin_name: str,
+    ) -> context.RuntimeContainer:
+        """通过作者和插件名获取插件
+        """
+        for plugin in self.plugins():
+            if plugin.plugin_author == author and plugin.plugin_name == plugin_name:
+                return plugin
+        return None
 
     def __init__(self, ap: app.Application):
         self.ap = ap
@@ -48,7 +61,6 @@ class PluginManager:
             manifest.PluginManifestLoader(ap),
         ]
         self.installer = github.GitHubRepoInstaller(ap)
-        self.setting = setting.SettingManager(ap)
         self.api_host = context.APIHost(ap)
         self.plugin_containers = []
 
@@ -56,22 +68,72 @@ class PluginManager:
         for loader in self.loaders:
             await loader.initialize()
         await self.installer.initialize()
-        await self.setting.initialize()
         await self.api_host.initialize()
 
         setattr(models, 'require_ver', self.api_host.require_ver)
 
     async def load_plugins(self):
+        self.ap.logger.info('Loading all plugins...')
+
         for loader in self.loaders:
             await loader.load_plugins()
             self.plugin_containers.extend(loader.plugins)
 
-        await self.setting.sync_setting(self.plugin_containers)
+        await self.load_plugin_settings(self.plugin_containers)
 
         # 按优先级倒序
         self.plugin_containers.sort(key=lambda x: x.priority, reverse=True)
 
         self.ap.logger.debug(f'优先级排序后的插件列表 {self.plugin_containers}')
+
+    async def load_plugin_settings(
+        self,
+        plugin_containers: list[context.RuntimeContainer]
+    ):
+        for plugin_container in plugin_containers:
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(persistence_plugin.PluginSetting) \
+                    .where(persistence_plugin.PluginSetting.plugin_author == plugin_container.plugin_author)
+                    .where(persistence_plugin.PluginSetting.plugin_name == plugin_container.plugin_name)
+            )
+
+            setting = result.first()
+
+            if setting is None:
+
+                new_setting_data = {
+                    'plugin_author': plugin_container.plugin_author,
+                    'plugin_name': plugin_container.plugin_name,
+                    'enabled': plugin_container.enabled,
+                    'priority': plugin_container.priority,
+                    'config': plugin_container.plugin_config,
+                }
+
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.insert(persistence_plugin.PluginSetting).values(**new_setting_data)
+                )
+                continue
+            else:
+                plugin_container.enabled = setting.enabled
+                plugin_container.priority = setting.priority
+                plugin_container.plugin_config = setting.config
+
+    async def dump_plugin_container_setting(
+        self,
+        plugin_container: context.RuntimeContainer
+    ):
+        """保存单个插件容器的设置到数据库
+        """
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.update(persistence_plugin.PluginSetting)
+            .where(persistence_plugin.PluginSetting.plugin_author == plugin_container.plugin_author)
+            .where(persistence_plugin.PluginSetting.plugin_name == plugin_container.plugin_name)
+            .values(
+                enabled=plugin_container.enabled,
+                priority=plugin_container.priority,
+                config=plugin_container.plugin_config
+            )
+        )
 
     async def initialize_plugin(self, plugin: context.RuntimeContainer):
         self.ap.logger.debug(f'初始化插件 {plugin.plugin_name}')
@@ -275,7 +337,7 @@ class PluginManager:
 
                     plugin.enabled = new_status
                     
-                    await self.setting.dump_container_setting(self.plugin_containers)
+                    await self.dump_plugin_container_setting(self.plugin_containers)
 
                     break
 
@@ -296,4 +358,4 @@ class PluginManager:
 
         self.plugin_containers.sort(key=lambda x: x.priority, reverse=True)
 
-        await self.setting.dump_container_setting(self.plugin_containers)
+        await self.dump_plugin_container_setting(self.plugin_containers)

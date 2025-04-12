@@ -68,6 +68,8 @@ class PluginManifestLoader(loader.PluginLoader):
 
         for plugin_manifest in plugin_manifests:
             try:
+                config_schema = plugin_manifest.spec['config'] if 'config' in plugin_manifest.spec else []
+
                 current_plugin_container = context.RuntimeContainer(
                     plugin_name=plugin_manifest.metadata.name,
                     plugin_label=plugin_manifest.metadata.label,
@@ -77,6 +79,7 @@ class PluginManifestLoader(loader.PluginLoader):
                     plugin_repository=plugin_manifest.metadata.repository,
                     main_file=os.path.join(plugin_manifest.rel_dir, plugin_manifest.execution.python.path),
                     pkg_path=plugin_manifest.rel_dir,
+                    config_schema=config_schema,
                     event_handlers={},
                     tools=[],
                 )

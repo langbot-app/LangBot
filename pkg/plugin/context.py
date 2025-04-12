@@ -339,6 +339,12 @@ class RuntimeContainer(pydantic.BaseModel):
     priority: typing.Optional[int] = 0
     """优先级"""
 
+    config_schema: typing.Optional[list[dict]] = []
+    """插件配置模板"""
+
+    plugin_config: typing.Optional[dict] = {}
+    """插件配置"""
+
     plugin_inst: typing.Optional[BasePlugin] = None
     """插件实例"""
 
@@ -389,6 +395,7 @@ class RuntimeContainer(pydantic.BaseModel):
             'pkg_path': self.pkg_path,
             'enabled': self.enabled,
             'priority': self.priority,
+            "config_schema": self.config_schema,
             'event_handlers': {
                 event_name.__name__: handler.__name__
                 for event_name, handler in self.event_handlers.items()
