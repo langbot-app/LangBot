@@ -237,12 +237,8 @@ class OfficialMessageConverter(adapter_model.MessageConverter):
 class OfficialEventConverter(adapter_model.EventConverter):
     """事件转换器"""
 
-    member_openid_mapping: OpenIDMapping[str, int]
-    group_openid_mapping: OpenIDMapping[str, int]
-
-    def __init__(self, member_openid_mapping: OpenIDMapping[str, int], group_openid_mapping: OpenIDMapping[str, int]):
-        self.member_openid_mapping = member_openid_mapping
-        self.group_openid_mapping = group_openid_mapping
+    def __init__(self):
+        pass
 
     def yiri2target(self, event: typing.Type[platform_events.Event]):
         if event == platform_events.GroupMessage:
@@ -313,16 +309,16 @@ class OfficialEventConverter(adapter_model.EventConverter):
             )
         elif type(event) == botpy_message.GroupMessage:  # 群聊，转群聊事件
 
-            replacing_member_id = self.member_openid_mapping.save_openid(event.author.member_openid)
+            author_member_id = event.author.member_openid
 
             return OfficialGroupMessage(
                 sender=platform_entities.GroupMember(
-                    id=replacing_member_id,
-                    member_name=replacing_member_id,
+                    id=author_member_id,
+                    member_name=author_member_id,
                     permission="MEMBER",
                     group=platform_entities.Group(
-                        id=self.group_openid_mapping.save_openid(event.group_openid),
-                        name=replacing_member_id,
+                        id=event.group_openid,
+                        name=author_member_id,
                         permission=platform_entities.Permission.Member,
                     ),
                     special_title="",
@@ -341,7 +337,7 @@ class OfficialEventConverter(adapter_model.EventConverter):
             )
         elif type(event) == botpy_message.C2CMessage:  # 私聊，转私聊事件
 
-            user_id_alter = self.member_openid_mapping.save_openid(event.author.user_openid)  # 实测这里的user_openid与group的member_openid是一样的
+            user_id_alter = event.author.user_openid
 
             return OfficialFriendMessage(
                 sender=platform_entities.Friend(
@@ -381,9 +377,6 @@ class OfficialAdapter(adapter_model.MessagePlatformAdapter):
     ap: app.Application
 
     metadata: cfg_mgr.ConfigManager = None
-
-    member_openid_mapping: OpenIDMapping[str, int] = None
-    group_openid_mapping: OpenIDMapping[str, int] = None
 
     group_msg_seq = None
     c2c_msg_seq = None
@@ -478,9 +471,7 @@ class OfficialAdapter(adapter_model.MessagePlatformAdapter):
                 if "file_image" in args:  # 暂不支持发送文件图片
                     continue
 
-                args["group_openid"] = self.group_openid_mapping.getkey(
-                    message_source.sender.group.id
-                )
+                args["group_openid"] = message_source.sender.group.id
 
                 if "image" in args:
                     uploadMedia = await self.bot.api.post_group_file(
@@ -503,9 +494,7 @@ class OfficialAdapter(adapter_model.MessagePlatformAdapter):
             elif type(message_source) == OfficialFriendMessage:
                 if "file_image" in args:
                     continue
-                args["openid"] = self.member_openid_mapping.getkey(
-                    message_source.sender.id
-                )
+                args["openid"] = message_source.sender.id
 
                 if "image" in args:
                     uploadMedia = await self.bot.api.post_c2c_file(
@@ -569,20 +558,8 @@ class OfficialAdapter(adapter_model.MessagePlatformAdapter):
 
         self.metadata = self.ap.adapter_qq_botpy_meta
 
-        self.member_openid_mapping = OpenIDMapping(
-            map=self.metadata.data["mapping"]["members"],
-            dump_func=self.metadata.dump_config_sync,
-        )
-
-        self.group_openid_mapping = OpenIDMapping(
-            map=self.metadata.data["mapping"]["groups"],
-            dump_func=self.metadata.dump_config_sync,
-        )
-
         self.message_converter = OfficialMessageConverter()
-        self.event_converter = OfficialEventConverter(
-            self.member_openid_mapping, self.group_openid_mapping
-        )
+        self.event_converter = OfficialEventConverter()
 
         self.cfg['ret_coro'] = True
 

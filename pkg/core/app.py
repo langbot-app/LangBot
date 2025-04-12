@@ -72,8 +72,6 @@ class Application:
 
     sensitive_meta: config_mgr.ConfigManager = None
 
-    adapter_qq_botpy_meta: config_mgr.ConfigManager = None
-
     llm_models_meta: config_mgr.ConfigManager = None
 
     instance_secret_meta: config_mgr.ConfigManager = None

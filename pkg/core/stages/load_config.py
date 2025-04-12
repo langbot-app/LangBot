@@ -69,9 +69,6 @@ class LoadConfigStage(stage.BootingStage):
         ap.sensitive_meta = await config.load_json_config("data/metadata/sensitive-words.json", "templates/metadata/sensitive-words.json")
         await ap.sensitive_meta.dump_config()
 
-        ap.adapter_qq_botpy_meta = await config.load_json_config("data/metadata/adapter-qq-botpy.json", "templates/metadata/adapter-qq-botpy.json")
-        await ap.adapter_qq_botpy_meta.dump_config()
-
         ap.instance_secret_meta = await config.load_json_config("data/metadata/instance-secret.json", template_data={
             'jwt_secret': secrets.token_hex(16)
         })
