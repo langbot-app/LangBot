@@ -127,7 +127,7 @@ class TelegramEventConverter(adapter.EventConverter):
                 time=event.message.date.timestamp(),
                 source_platform_object=event
             )
-        elif event.effective_chat.type == 'group':
+        elif event.effective_chat.type == 'group' or 'supergroup' :
             return platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
                     id=event.effective_chat.id,
@@ -202,9 +202,12 @@ class TelegramAdapter(adapter.MessagePlatformAdapter):
         
         for component in components:
             if component['type'] == 'text':
-                content = telegramify_markdown.markdownify(
-                    content= component['text'],
-                )
+                if self.config['markdown_card'] is True:
+                    content = telegramify_markdown.markdownify(
+                        content= component['text'],
+                    )
+                else:
+                    content = component['text']
                 args = {
                     "chat_id": message_source.source_platform_object.effective_chat.id,
                     "text": content,
