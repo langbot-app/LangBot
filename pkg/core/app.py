@@ -8,12 +8,11 @@ import enum
 import sys
 import os
 
-from ..platform import manager as im_mgr
+from ..platform import botmgr as im_mgr
 from ..provider.session import sessionmgr as llm_session_mgr
 from ..provider.modelmgr import modelmgr as llm_model_mgr
 from ..provider.tools import toolmgr as llm_tool_mgr
 from ..config import manager as config_mgr
-from ..config import settings as settings_mgr
 from ..audit.center import v2 as center_mgr
 from ..command import cmdmgr
 from ..plugin import manager as plugin_mgr
@@ -54,25 +53,23 @@ class Application:
     # TODO 移动到 pipeline 里
     tool_mgr: llm_tool_mgr.ToolManager = None
 
-    settings_mgr: settings_mgr.SettingsManager = None
-
     # ======= 配置管理器 =======
 
-    command_cfg: config_mgr.ConfigManager = None
+    command_cfg: config_mgr.ConfigManager = None  # deprecated
 
-    pipeline_cfg: config_mgr.ConfigManager = None
+    pipeline_cfg: config_mgr.ConfigManager = None  # deprecated
 
-    platform_cfg: config_mgr.ConfigManager = None
+    platform_cfg: config_mgr.ConfigManager = None  # deprecated
 
-    provider_cfg: config_mgr.ConfigManager = None
+    provider_cfg: config_mgr.ConfigManager = None  # deprecated
 
-    system_cfg: config_mgr.ConfigManager = None
+    system_cfg: config_mgr.ConfigManager = None  # deprecated
+
+    instance_config: config_mgr.ConfigManager = None
 
     # ======= 元数据配置管理器 =======
 
     sensitive_meta: config_mgr.ConfigManager = None
-
-    llm_models_meta: config_mgr.ConfigManager = None
 
     instance_secret_meta: config_mgr.ConfigManager = None
 
@@ -156,7 +153,7 @@ class Application:
 
         public_ip = await ip.get_myip()
 
-        port = self.system_cfg.data['http-api']['port']
+        port = self.instance_config.data['api']['port']
 
         tips = f"""
 =======================================

@@ -8,7 +8,7 @@ import quart_cors
 
 from ....core import app, entities as core_entities
 
-from .groups import logs, system, settings, plugins, stats, user, pipelines
+from .groups import logs, system, plugins, stats, user, pipelines
 from .groups.provider import models, requesters
 from .groups.platform import bots, adapters
 from . import group
@@ -29,7 +29,7 @@ class HTTPController:
         await self.register_routes()
 
     async def run(self) -> None:
-        if self.ap.system_cfg.data["http-api"]["enable"]:
+        if True:
 
             async def shutdown_trigger_placeholder():
                 while True:
@@ -45,8 +45,8 @@ class HTTPController:
 
             self.ap.task_mgr.create_task(
                 exception_handler(
-                    host=self.ap.system_cfg.data["http-api"]["host"],
-                    port=self.ap.system_cfg.data["http-api"]["port"],
+                    host='0.0.0.0',
+                    port=self.ap.instance_config.data['api']['port'],
                     shutdown_trigger=shutdown_trigger_placeholder,
                 ),
                 name="http-api-quart",

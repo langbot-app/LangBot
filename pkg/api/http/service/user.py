@@ -56,8 +56,8 @@ class UserService:
         return await self.generate_jwt_token(user_email)
 
     async def generate_jwt_token(self, user_email: str) -> str:
-        jwt_secret = self.ap.instance_secret_meta.data['jwt_secret']
-        jwt_expire = self.ap.system_cfg.data['http-api']['jwt-expire']
+        jwt_secret = self.ap.instance_config.data['system']['jwt']['secret']
+        jwt_expire = self.ap.instance_config.data['system']['jwt']['expire']
 
         payload = {
             'user': user_email,
@@ -68,6 +68,6 @@ class UserService:
         return jwt.encode(payload, jwt_secret, algorithm='HS256')
     
     async def verify_jwt_token(self, token: str) -> str:
-        jwt_secret = self.ap.instance_secret_meta.data['jwt_secret']
+        jwt_secret = self.ap.instance_config.data['system']['jwt']['secret']
 
         return jwt.decode(token, jwt_secret, algorithms=['HS256'])['user']

@@ -12,7 +12,7 @@ from ...command import cmdmgr
 from ...provider.session import sessionmgr as llm_session_mgr
 from ...provider.modelmgr import modelmgr as llm_model_mgr
 from ...provider.tools import toolmgr as llm_tool_mgr
-from ...platform import manager as im_mgr
+from ...platform import botmgr as im_mgr
 from ...persistence import mgr as persistencemgr
 from ...api.http.controller import main as http_controller
 from ...api.http.service import user as user_service
@@ -50,7 +50,7 @@ class BuildAppStage(stage.BootingStage):
 
         center_v2_api = center_v2.V2CenterAPI(
             ap,
-            backend_url=ap.system_cfg.data["qcg-center-url"],
+            backend_url=ap.instance_config.data['telemetry']['url'],
             basic_info={
                 "host_id": identifier.identifier["host_id"],
                 "instance_id": identifier.identifier["instance_id"],
@@ -58,7 +58,7 @@ class BuildAppStage(stage.BootingStage):
                 "platform": platform.get_platform(),
             },
             runtime_info={
-                "admin_id": "{}".format(ap.system_cfg.data["admin-sessions"]),
+                "admin_id": "{}".format(ap.instance_config.data["admins"]),
                 "msg_source": str([]),
             },
         )

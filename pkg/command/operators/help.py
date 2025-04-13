@@ -16,7 +16,7 @@ class HelpOperator(operator.CommandOperator):
         self,
         context: entities.ExecuteContext
     ) -> typing.AsyncGenerator[entities.CommandReturn, None]:
-        help = self.ap.system_cfg.data['help-message']
+        help = 'LangBot - 大语言模型原生即时通信机器人平台\n链接：https://langbot.app'
 
         help += '\n发送命令 !cmd 可查看命令列表'
 

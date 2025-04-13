@@ -108,7 +108,7 @@ class RuntimeMCPSession:
         """关闭工具"""
         await self.session._exit_stack.aclose()
 
-@loader.loader_class("mcp")
+# @loader.loader_class("mcp")
 class MCPLoader(loader.ToolLoader):
     """MCP 工具加载器。
     

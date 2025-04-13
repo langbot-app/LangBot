@@ -29,10 +29,7 @@ class SessionManager:
             if query.launcher_type == session.launcher_type and query.launcher_id == session.launcher_id:
                 return session
 
-        session_concurrency = self.ap.system_cfg.data['session-concurrency']['default']
-
-        if f'{query.launcher_type.value}_{query.launcher_id}' in self.ap.system_cfg.data['session-concurrency']:
-            session_concurrency = self.ap.system_cfg.data['session-concurrency'][f'{query.launcher_type.value}_{query.launcher_id}']
+        session_concurrency = self.ap.instance_config.data['concurrency']['session']
 
         session = core_entities.Session(
             launcher_type=query.launcher_type,

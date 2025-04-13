@@ -42,7 +42,7 @@ class Processor(stage.PipelineStage):
         self.ap.logger.info(f"处理 {query.launcher_type.value}_{query.launcher_id} 的请求({query.query_id}): {message_text}")
 
         async def generator():
-            cmd_prefix = self.ap.command_cfg.data['command-prefix']
+            cmd_prefix = self.ap.instance_config.data['command']['prefix']
 
             if any(message_text.startswith(prefix) for prefix in cmd_prefix):
                 async for result in self.cmd_handler.handle(query):

@@ -20,7 +20,7 @@ class Controller:
 
     def __init__(self, ap: app.Application):
         self.ap = ap
-        self.semaphore = asyncio.Semaphore(self.ap.system_cfg.data['pipeline-concurrency'])
+        self.semaphore = asyncio.Semaphore(self.ap.instance_config.data['concurrency']['pipeline'])
 
     async def consumer(self):
         """事件处理循环
