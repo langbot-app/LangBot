@@ -59,7 +59,7 @@ async def install_deps(deps: list[str]):
         pip.main(["install", required_deps[dep]])
 
 async def precheck_plugin_deps():
-    print('Prechecking plugin dependencies...')
+    print('[Startup] Prechecking plugin dependencies...')
 
     for dir in os.listdir("plugins"):
         subdir = os.path.join("plugins", dir)
