@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import openai
 
-from . import chatcmpl
+from . import chatcmpl, modelscopechatcmpl
 from .. import requester
 from ....core import app
 
 
-class BailianChatCompletions(chatcmpl.OpenAIChatCompletions):
+class BailianChatCompletions(modelscopechatcmpl.ModelScopeChatCompletions):
     """阿里云百炼大模型平台 ChatCompletion API 请求器"""
 
     client: openai.AsyncClient
@@ -18,3 +18,4 @@ class BailianChatCompletions(chatcmpl.OpenAIChatCompletions):
         self.ap = ap
 
         self.requester_cfg = self.ap.provider_cfg.data['requester']['bailian-chat-completions']
+        
