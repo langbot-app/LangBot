@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 
 from .. import stage, app
 from .. import migration
@@ -23,6 +24,15 @@ class MigrationStage(stage.BootingStage):
     async def run(self, ap: app.Application):
         """启动
         """
+
+        if any([
+            ap.command_cfg is None,
+            ap.pipeline_cfg is None,
+            ap.platform_cfg is None,
+            ap.provider_cfg is None,
+            ap.system_cfg is None,
+        ]):  # only run migration when version is 3.x
+            return
 
         migrations = migration.preregistered_migrations
 
