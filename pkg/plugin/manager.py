@@ -4,6 +4,7 @@ import typing
 import traceback
 
 import sqlalchemy
+import logging
 
 from ..core import app, taskmgr
 from . import context, loader, events, installer, models

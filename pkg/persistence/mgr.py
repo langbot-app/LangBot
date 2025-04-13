@@ -30,6 +30,8 @@ class PersistenceManager:
         self.meta = base.Base.metadata
 
     async def initialize(self):
+
+        self.ap.logger.info("Initializing database...")
         
         for manager in database.preregistered_managers:
             self.db = manager(self.ap)

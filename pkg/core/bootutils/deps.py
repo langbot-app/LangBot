@@ -1,4 +1,6 @@
 import pip
+import os
+from ...utils import pkgmgr
 
 # 检查依赖，防止用户未安装
 # 左边为引入名称，右边为依赖名称
@@ -55,3 +57,13 @@ async def install_deps(deps: list[str]):
     
     for dep in deps:
         pip.main(["install", required_deps[dep]])
+
+async def precheck_plugin_deps():
+    print('Prechecking plugin dependencies...')
+
+    for dir in os.listdir("plugins"):
+        subdir = os.path.join("plugins", dir)
+        if not os.path.isdir(subdir):
+            continue
+        if 'requirements.txt' in os.listdir(subdir):
+            pkgmgr.install_requirements(os.path.join(subdir, 'requirements.txt'), extra_params=['-q', '-q', '-q'])

@@ -3,6 +3,7 @@ from __future__ import annotations
 import typing
 import pkgutil
 import importlib
+import os
 import traceback
 
 from .. import loader, events, context, models
@@ -10,6 +11,8 @@ from ...core import entities as core_entities
 from ...provider.tools import entities as tools_entities
 from ...utils import funcschema
 from ...discover import engine as discover_engine
+from ...utils import pkgmgr
+
 
 class PluginLoader(loader.PluginLoader):
     """加载 plugins/ 目录下的插件"""

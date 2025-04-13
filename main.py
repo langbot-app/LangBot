@@ -35,6 +35,9 @@ async def main_entry(loop: asyncio.AbstractEventLoop):
         await deps.install_deps(missing_deps)
         print("已自动安装缺失的依赖包，请重启程序。")
         sys.exit(0)
+    
+    # check plugin deps
+    await deps.precheck_plugin_deps()
 
     # 检查pydantic版本，如果没有 pydantic.v1，则把 pydantic 映射为 v1
     import pydantic.version
