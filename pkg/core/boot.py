@@ -10,12 +10,13 @@ from . import stage
 from ..utils import constants
 
 # 引入启动阶段实现以便注册
-from .stages import load_config, setup_logger, build_app, migrate, show_notes
+from .stages import load_config, setup_logger, build_app, migrate, show_notes, genkeys
 
 
 stage_order = [
     "LoadConfigStage",
     "MigrationStage",
+    "GenKeysStage",
     "SetupLoggerStage",
     "BuildAppStage",
     "ShowNotesStage"

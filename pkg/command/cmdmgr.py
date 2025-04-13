@@ -40,8 +40,8 @@ class CommandManager:
 
         # 应用命令权限配置
         for cls in operator.preregistered_operators:
-            if cls.path in self.ap.command_cfg.data['privilege']:
-                cls.lowest_privilege = self.ap.command_cfg.data['privilege'][cls.path]
+            if cls.path in self.ap.instance_config.data['command']['privilege']:
+                cls.lowest_privilege = self.ap.instance_config.data['command']['privilege'][cls.path]
 
         # 实例化所有类
         self.cmd_list = [cls(self.ap) for cls in operator.preregistered_operators]
@@ -108,7 +108,7 @@ class CommandManager:
 
         privilege = 1
 
-        if f'{query.launcher_type.value}_{query.launcher_id}' in self.ap.system_cfg.data['admin-sessions']:
+        if f'{query.launcher_type.value}_{query.launcher_id}' in self.ap.instance_config.data['admins']:
             privilege = 2
 
         ctx = entities.ExecuteContext(

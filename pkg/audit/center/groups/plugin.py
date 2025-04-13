@@ -12,7 +12,7 @@ class V2PluginDataAPI(apigroup.APIGroup):
         super().__init__(prefix+"/plugin", ap)
 
     async def do(self, *args, **kwargs):
-        if not self.ap.system_cfg.data['report-usage']:
+        if not self.ap.instance_config.data['telemetry']['report']:
             return None
         return await super().do(*args, **kwargs)
 

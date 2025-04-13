@@ -7,11 +7,7 @@ import sys
 
 required_files = {
     "plugins/__init__.py": "templates/__init__.py",
-    "data/config/command.json": "templates/command.json",
-    "data/config/pipeline.json": "templates/pipeline.json",
-    "data/config/platform.json": "templates/platform.json",
-    "data/config/provider.json": "templates/provider.json",
-    "data/config/system.json": "templates/system.json",
+    "data/config.yaml": "templates/config.yaml",
 }
 
 required_paths = [
@@ -19,7 +15,6 @@ required_paths = [
     "data",
     "data/metadata",
     "data/logs",
-    "data/config",
     "data/labels",
     "plugins"
 ]

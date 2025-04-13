@@ -11,7 +11,7 @@ import sqlalchemy
 from .sources import qqofficial
 
 #     FriendMessage, Image, MessageChain, Plain
-from ..platform import adapter as msadapter
+from . import adapter as msadapter
 
 from ..core import app, entities as core_entities, taskmgr
 from ..plugin import events
