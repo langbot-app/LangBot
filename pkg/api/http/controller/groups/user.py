@@ -1,5 +1,5 @@
 import quart
-import sqlalchemy
+import jwt
 import argon2
 
 from .. import group
@@ -42,6 +42,10 @@ class UserRouterGroup(group.RouterGroup):
                 'token': token
             })
 
-        @self.route('/check-token', methods=['GET'])
-        async def _() -> str:
-            return self.success()
+        @self.route('/check-token', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        async def _(user_email: str) -> str:
+            token = await self.ap.user_service.generate_jwt_token(user_email)
+
+            return self.success(data={
+                'token': token
+            })

@@ -260,7 +260,7 @@ class ComponentDiscoveryEngine:
     def get_components_by_kind(self, kind: str) -> typing.List[Component]:
         """获取指定类型的组件"""
         if kind not in self.components:
-            raise ValueError(f'No components found for kind: {kind}')
+            return []
         return self.components[kind]
 
     def find_components(self, kind: str, component_list: typing.List[Component]) -> typing.List[Component]:
