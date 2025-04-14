@@ -127,7 +127,7 @@ class APIHost:
         Returns:
             list[platform.adapter.MessageSourceAdapter]: 已启用的消息平台适配器列表
         """
-        return self.ap.platform_mgr.adapters
+        return self.ap.platform_mgr.get_running_adapters()
     
     async def send_active_message(
         self,

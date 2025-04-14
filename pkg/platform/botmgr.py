@@ -118,11 +118,6 @@ class RuntimeBot:
 
 # 控制QQ消息输入输出的类
 class PlatformManager:
-    
-    # adapter: msadapter.MessageSourceAdapter = None
-    adapters: list[msadapter.MessagePlatformAdapter] = []  # deprecated
-
-    message_platform_adapter_components: list[engine.Component] = []  # deprecated
 
     # ====== 4.0 ======
     ap: app.Application = None
@@ -136,7 +131,6 @@ class PlatformManager:
     def __init__(self, ap: app.Application = None):
 
         self.ap = ap
-        self.adapters = []
         self.bots = []
         self.adapter_components = []
         self.adapter_dict = {}
@@ -150,6 +144,9 @@ class PlatformManager:
         self.adapter_dict = adapter_dict
 
         await self.load_bots_from_db()
+
+    def get_running_adapters(self) -> list[msadapter.MessagePlatformAdapter]:
+        return [bot.adapter for bot in self.bots if bot.enable]
 
     async def load_bots_from_db(self):
         self.ap.logger.info('Loading bots from db...')
@@ -207,13 +204,19 @@ class PlatformManager:
     def get_available_adapters_info(self) -> list[dict]:
         return [
             component.to_plain_dict()
-            for component in self.message_platform_adapter_components
+            for component in self.adapter_components
         ]
 
     def get_available_adapter_info_by_name(self, name: str) -> dict | None:
-        for component in self.message_platform_adapter_components:
+        for component in self.adapter_components:
             if component.metadata.name == name:
                 return component.to_plain_dict()
+        return None
+    
+    def get_available_adapter_manifest_by_name(self, name: str) -> engine.Component | None:
+        for component in self.adapter_components:
+            if component.metadata.name == name:
+                return component
         return None
 
     async def write_back_config(self, adapter_name: str, adapter_inst: msadapter.MessagePlatformAdapter, config: dict):

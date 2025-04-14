@@ -23,3 +23,18 @@ class AdaptersRouterGroup(group.RouterGroup):
             return self.success(data={
                 'adapter': adapter_info
             })
+        
+        @self.route('/<adapter_name>/icon', methods=['GET'])
+        async def _(adapter_name: str) -> quart.Response:
+
+            adapter_manifest = self.ap.platform_mgr.get_available_adapter_manifest_by_name(adapter_name)
+
+            if adapter_manifest is None:
+                return self.http_status(404, -1, 'adapter not found')
+
+            icon_path = adapter_manifest.icon_rel_path
+
+            if icon_path is None:
+                return self.http_status(404, -1, 'icon not found')
+
+            return await quart.send_file(icon_path)

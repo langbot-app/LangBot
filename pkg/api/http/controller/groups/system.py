@@ -16,7 +16,7 @@ class SystemRouterGroup(group.RouterGroup):
                 data={
                     "version": constants.semantic_version,
                     "debug": constants.debug_mode,
-                    "enabled_platform_count": len(self.ap.platform_mgr.adapters)
+                    "enabled_platform_count": len(self.ap.platform_mgr.get_running_adapters())
                 }
             )
 
