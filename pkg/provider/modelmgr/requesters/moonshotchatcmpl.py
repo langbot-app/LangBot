@@ -42,8 +42,8 @@ class MoonshotChatCompletions(chatcmpl.OpenAIChatCompletions):
             if 'content' in m and isinstance(m["content"], list):
                 m["content"] = " ".join([c["text"] for c in m["content"]])
 
-        # 删除空的
-        messages = [m for m in messages if m["content"].strip() != ""]
+        # 删除空的，不知道干嘛的，直接删了。
+        # messages = [m for m in messages if m["content"].strip() != "" and ('tool_calls' not in m or not m['tool_calls'])]
 
         args["messages"] = messages
 
