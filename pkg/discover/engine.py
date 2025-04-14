@@ -4,7 +4,7 @@ import typing
 import importlib
 import os
 import inspect
-
+import mimetypes
 import yaml
 import pydantic
 
@@ -153,6 +153,11 @@ class Component(pydantic.BaseModel):
     def execution(self) -> Execution:
         """组件可执行文件信息"""
         return self._execution
+    
+    @property
+    def icon_rel_path(self) -> str:
+        """图标相对路径"""
+        return os.path.join(self.rel_dir, self.metadata.icon) if self.metadata.icon is not None and self.metadata.icon.strip() != '' else None
     
     def get_python_component_class(self) -> typing.Type[typing.Any]:
         """获取Python组件类"""

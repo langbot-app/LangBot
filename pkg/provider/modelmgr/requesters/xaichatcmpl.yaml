@@ -5,6 +5,7 @@ metadata:
   label:
     en_US: xAI
     zh_CN: xAI
+  icon: xai.svg
 spec:
   config:
     - name: base_url
