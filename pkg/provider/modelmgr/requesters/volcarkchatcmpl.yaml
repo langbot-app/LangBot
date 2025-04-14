@@ -5,6 +5,7 @@ metadata:
   label:
     en_US: Volc Engine Ark
     zh_CN: 火山方舟
+  icon: volcark.svg
 spec:
   config:
     - name: base_url

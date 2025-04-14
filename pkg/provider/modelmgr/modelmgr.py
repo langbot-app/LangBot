@@ -135,6 +135,13 @@ class ModelManager:
             if component.metadata.name == name:
                 return component.to_plain_dict()
         return None
+    
+    def get_available_requester_manifest_by_name(self, name: str) -> engine.Component | None:
+        """通过名称获取请求器清单"""
+        for component in self.requester_components:
+            if component.metadata.name == name:
+                return component
+        return None
 
     async def invoke_llm(
         self,

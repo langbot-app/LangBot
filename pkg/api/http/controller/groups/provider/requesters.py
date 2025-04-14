@@ -24,3 +24,17 @@ class RequestersRouterGroup(group.RouterGroup):
             return self.success(data={
                 'requester': requester_info
             })
+        
+        @self.route('/<requester_name>/icon', methods=['GET'])
+        async def _(requester_name: str) -> quart.Response:
+            requester_manifest = self.ap.model_mgr.get_available_requester_manifest_by_name(requester_name)
+
+            if requester_manifest is None:
+                return self.http_status(404, -1, 'requester not found')
+
+            icon_path = requester_manifest.icon_rel_path
+
+            if icon_path is None:
+                return self.http_status(404, -1, 'icon not found')
+
+            return await quart.send_file(icon_path)
