@@ -61,6 +61,12 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
         if 'role' not in chatcmpl_message or chatcmpl_message['role'] is None:
             chatcmpl_message['role'] = 'assistant'
 
+        reasoning_content = chatcmpl_message['reasoning_content'] if 'reasoning_content' in chatcmpl_message else None
+        
+        # deepseek的reasoner模型
+        if reasoning_content is not None:
+            chatcmpl_message['content'] = "<think>\n" + reasoning_content + "\n</think>\n\n"+ chatcmpl_message['content']
+
         message = llm_entities.Message(**chatcmpl_message)
 
         return message
