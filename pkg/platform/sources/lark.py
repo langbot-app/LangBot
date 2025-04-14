@@ -343,7 +343,6 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
                     type = context.header.event_type
                 
                 if 'url_verification' == type:
-                    print(data.get("challenge"))
                     # todo 验证verification token
                     return {
                         "challenge": data.get("challenge")
