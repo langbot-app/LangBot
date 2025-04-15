@@ -9,16 +9,13 @@ command:
 concurrency:
     pipeline: 20
     session: 1
-persistence:
-    sqlite:
-        path: data/langbot.db
 proxy:
     http: ''
     https: ''
 system:
     jwt:
         expire: 604800
-        secret: bab3ba329e1fd7be096ac2c82f9b66f4
+        secret: ''
 telemetry:
     report: true
     url: https://api.qchatgpt.rockchin.top/api/v2
