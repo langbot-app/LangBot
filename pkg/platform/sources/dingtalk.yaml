@@ -7,7 +7,7 @@ metadata:
     zh_CN: 钉钉
   description:
     en_US: DingTalk Adapter
-    zh_CN: 钉钉适配器
+    zh_CN: 钉钉适配器，请查看文档了解使用方式
   icon: dingtalk.svg
 spec:
   config:

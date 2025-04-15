@@ -7,7 +7,7 @@ metadata:
     zh_CN: OneBot v11 适配器
   description:
     en_US: OneBot v11 Adapter
-    zh_CN: OneBot v11 适配器
+    zh_CN: OneBot v11 适配器，请查看文档了解使用方式
   icon: onebot.png
 spec:
   config:
@@ -15,6 +15,9 @@ spec:
       label:
         en_US: Host
         zh_CN: 主机
+      description:
+        en_US: The host that OneBot v11 listens on for reverse WebSocket connections. Unless you know what you're doing, use 0.0.0.0
+        zh_CN: OneBot v11 监听的反向 WS 主机，除非你知道自己在做什么，否则请写 0.0.0.0
       type: string
       required: true
       default: 0.0.0.0
@@ -22,6 +25,9 @@ spec:
       label:
         en_US: Port
         zh_CN: 端口
+      description:
+        en_US: Port
+        zh_CN: 监听的端口
       type: integer
       required: true
       default: 2280
@@ -29,6 +35,9 @@ spec:
       label:
         en_US: Access Token
         zh_CN: 访问令牌
+      description:
+        en_US: Custom connection token for the protocol endpoint. If the protocol endpoint is not set, don't fill it
+        zh_CN: 自定义的与协议端的连接令牌，若协议端未设置，则不填
       type: string
       required: false
       default: ""

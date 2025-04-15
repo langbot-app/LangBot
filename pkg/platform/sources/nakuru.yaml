@@ -7,7 +7,7 @@ metadata:
     zh_CN: Nakuru
   description:
     en_US: Nakuru Adapter
-    zh_CN: Nakuru 适配器(go-cqhttp)
+    zh_CN: Nakuru 适配器(go-cqhttp)，请查看文档了解使用方式
   icon: nakuru.png
 spec:
   config:

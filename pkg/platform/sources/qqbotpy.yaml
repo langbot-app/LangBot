@@ -7,7 +7,7 @@ metadata:
     zh_CN: QQBotPy
   description:
     en_US: QQ Official API (WebSocket)
-    zh_CN: QQ 官方 API (WebSocket)
+    zh_CN: QQ 官方 API (WebSocket)，请查看文档了解使用方式
   icon: qqbotpy.svg
 spec:
   config:
