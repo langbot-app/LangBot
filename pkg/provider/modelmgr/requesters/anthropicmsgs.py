@@ -4,8 +4,6 @@ import typing
 import json
 import traceback
 import base64
-import platform
-import socket
 
 import anthropic
 import httpx
@@ -47,11 +45,11 @@ class AnthropicMessages(requester.LLMAPIRequester):
         )
 
     async def call(
-        self,
-        query: core_entities.Query,
-        model: entities.LLMModelInfo,
-        messages: typing.List[llm_entities.Message],
-        funcs: typing.List[tools_entities.LLMFunction] = None,
+            self,
+            query: core_entities.Query,
+            model: entities.LLMModelInfo,
+            messages: typing.List[llm_entities.Message],
+            funcs: typing.List[tools_entities.LLMFunction] = None,
     ) -> llm_entities.Message:
         self.client.api_key = model.token_mgr.get_token()
 
@@ -73,7 +71,7 @@ class AnthropicMessages(requester.LLMAPIRequester):
             messages.pop(i)
 
         if isinstance(system_role_message, llm_entities.Message) \
-            and isinstance(system_role_message.content, str):
+                and isinstance(system_role_message.content, str):
             args['system'] = system_role_message.content
 
         req_messages = []
@@ -134,10 +132,9 @@ class AnthropicMessages(requester.LLMAPIRequester):
                 del msg_dict["tool_calls"]
 
             req_messages.append(msg_dict)
-                
 
         args["messages"] = req_messages
-        
+
         if funcs:
             tools = await self.ap.tool_mgr.generate_tools_for_anthropic(funcs)
 
@@ -152,7 +149,7 @@ class AnthropicMessages(requester.LLMAPIRequester):
                 'content': '',
                 'role': resp.role,
             }
-            
+
             assert type(resp) is anthropic.types.message.Message
 
             for block in resp.content:
