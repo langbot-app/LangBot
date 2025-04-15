@@ -8,6 +8,7 @@ metadata:
   description:
     en_US: OneBot v11 Adapter
     zh_CN: OneBot v11 适配器
+  icon: onebot.png
 spec:
   config:
     - name: host

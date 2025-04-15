@@ -8,6 +8,7 @@ metadata:
   description:
     en_US: Discord Adapter
     zh_CN: Discord 适配器
+  icon: discord.svg
 spec:
   config:
     - name: client_id

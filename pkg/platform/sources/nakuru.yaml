@@ -8,6 +8,7 @@ metadata:
   description:
     en_US: Nakuru Adapter
     zh_CN: Nakuru 适配器(go-cqhttp)
+  icon: nakuru.png
 spec:
   config:
     - name: host

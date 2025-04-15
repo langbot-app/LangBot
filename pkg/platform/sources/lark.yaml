@@ -8,6 +8,7 @@ metadata:
   description:
     en_US: Lark Adapter
     zh_CN: 飞书适配器
+  icon: lark.svg
 spec:
   config:
     - name: app_id

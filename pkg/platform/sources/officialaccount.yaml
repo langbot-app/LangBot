@@ -8,6 +8,7 @@ metadata:
   description:
     en_US: Official Account Adapter
     zh_CN: 微信公众号适配器
+  icon: officialaccount.png
 spec:
   config:
     - name: token

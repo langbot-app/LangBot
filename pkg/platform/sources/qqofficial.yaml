@@ -8,6 +8,7 @@ metadata:
   description:
     en_US: QQ Official API (Webhook)
     zh_CN: QQ 官方 API (Webhook)
+  icon: qqofficial.svg
 spec:
   config:
     - name: appid

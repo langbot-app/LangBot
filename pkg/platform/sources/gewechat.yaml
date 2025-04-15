@@ -8,6 +8,7 @@ metadata:
   description:
     en_US: GeWeChat Adapter
     zh_CN: GeWeChat 适配器
+  icon: gewechat.png
 spec:
   config:
     - name: gewechat_url

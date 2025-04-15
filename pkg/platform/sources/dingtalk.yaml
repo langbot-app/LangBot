@@ -8,6 +8,7 @@ metadata:
   description:
     en_US: DingTalk Adapter
     zh_CN: 钉钉适配器
+  icon: dingtalk.svg
 spec:
   config:
     - name: client_id

@@ -8,6 +8,7 @@ metadata:
   description:
     en_US: Telegram Adapter
     zh_CN: 电报适配器
+  icon: telegram.svg
 spec:
   config:
     - name: token
