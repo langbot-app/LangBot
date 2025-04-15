@@ -1,28 +1,27 @@
-from __future__ import annotations
-
-import typing
 import json
 import traceback
 import base64
+import platform
+import socket
 
 import anthropic
 import httpx
 
 from .. import entities, errors, requester
-
-from .. import entities, errors
 from ....core import entities as core_entities
 from ... import entities as llm_entities
 from ...tools import entities as tools_entities
-from ....utils import image
-
 
 class AnthropicMessages(requester.LLMAPIRequester):
-    """Anthropic Messages API 请求器"""
-
     client: anthropic.AsyncAnthropic
 
     async def initialize(self):
+        # 兼容 Windows 缺失 TCP_KEEPINTVL 和 TCP_KEEPCNT 的问题
+        if platform.system() == "Windows":
+            if not hasattr(socket, "TCP_KEEPINTVL"):
+                socket.TCP_KEEPINTVL = 0
+            if not hasattr(socket, "TCP_KEEPCNT"):
+                socket.TCP_KEEPCNT = 0
 
         httpx_client = anthropic._base_client.AsyncHttpxClientWrapper(
             base_url=self.ap.provider_cfg.data['requester']['anthropic-messages']['base-url'].replace(' ', ''),
@@ -30,23 +29,20 @@ class AnthropicMessages(requester.LLMAPIRequester):
             timeout=typing.cast(httpx.Timeout, self.ap.provider_cfg.data['requester']['anthropic-messages']['timeout']),
             limits=anthropic._constants.DEFAULT_CONNECTION_LIMITS,
             follow_redirects=True,
-            trust_env=True,
         )
 
         self.client = anthropic.AsyncAnthropic(
-            api_key="",
-            http_client=httpx_client,
+            api_key=self.ap.api_key,
+            client=httpx_client
         )
 
     async def call(
         self,
-        query: core_entities.Query,
-        model: entities.LLMModelInfo,
-        messages: typing.List[llm_entities.Message],
-        funcs: typing.List[tools_entities.LLMFunction] = None,
+        model: core_entities.Model,
+        messages: list[llm_entities.Message],
+        funcs: list[tools_entities.FunctionTool] | None = None,
+        stream: bool = False,
     ) -> llm_entities.Message:
-        self.client.api_key = model.token_mgr.get_token()
-
         args = self.ap.provider_cfg.data['requester']['anthropic-messages']['args'].copy()
         args["model"] = model.name if model.model_name is None else model.model_name
 
@@ -80,7 +76,7 @@ class AnthropicMessages(requester.LLMAPIRequester):
                         {
                             "type": "tool_result",
                             "tool_use_id": tool_call_id,
-                            "content": m.content
+                            "content": m.content,
                         }
                     ]
                 })
@@ -126,7 +122,6 @@ class AnthropicMessages(requester.LLMAPIRequester):
                 del msg_dict["tool_calls"]
 
             req_messages.append(msg_dict)
-                
 
         args["messages"] = req_messages
         
@@ -144,7 +139,7 @@ class AnthropicMessages(requester.LLMAPIRequester):
                 'content': '',
                 'role': resp.role,
             }
-            
+
             assert type(resp) is anthropic.types.message.Message
 
             for block in resp.content:
@@ -170,9 +165,4 @@ class AnthropicMessages(requester.LLMAPIRequester):
         except anthropic.AuthenticationError as e:
             raise errors.RequesterError(f'api-key 无效: {e.message}')
         except anthropic.BadRequestError as e:
-            raise errors.RequesterError(str(e.message))
-        except anthropic.NotFoundError as e:
-            if 'model: ' in str(e):
-                raise errors.RequesterError(f'模型无效: {e.message}')
-            else:
-                raise errors.RequesterError(f'请求地址无效: {e.message}')
+            raise errors.RequesterError(f'请求参数错误: {e.message}')
