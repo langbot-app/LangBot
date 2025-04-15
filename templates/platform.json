@@ -103,6 +103,15 @@
             "bot_token": "",
             "signing_secret": "",
             "port": 2288
+        },
+        {
+            "adapter": "wecomcs",
+            "enable": false,
+            "port": 2289,
+            "corpid": "",
+            "secret": "",
+            "token": "",
+            "EncodingAESKey": ""
         }
     ],
     "track-function-calls": true,
