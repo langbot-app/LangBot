@@ -89,4 +89,4 @@ stages:
           zh_CN: 跟踪函数调用
         type: boolean
         required: true
-        default: true
+        default: false
