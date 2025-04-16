@@ -61,10 +61,11 @@ class PipelineService:
 
         return self.ap.persistence_mgr.serialize_model(persistence_pipeline.LegacyPipeline, pipeline)
 
-    async def create_pipeline(self, pipeline_data: dict) -> str:
+    async def create_pipeline(self, pipeline_data: dict, default: bool = False) -> str:
         pipeline_data['uuid'] = str(uuid.uuid4())
         pipeline_data['for_version'] = self.ap.ver_mgr.get_current_version()
         pipeline_data['stages'] = default_stage_order.copy()
+        pipeline_data['is_default'] = default
 
         # TODO: 检查pipeline config是否完整
 

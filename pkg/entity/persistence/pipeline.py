@@ -13,6 +13,7 @@ class LegacyPipeline(Base):
     created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now())
     updated_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now(), onupdate=sqlalchemy.func.now())
     for_version = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
+    is_default = sqlalchemy.Column(sqlalchemy.Boolean, nullable=False, default=False)
 
     stages = sqlalchemy.Column(sqlalchemy.JSON, nullable=False)
     config = sqlalchemy.Column(sqlalchemy.JSON, nullable=False)

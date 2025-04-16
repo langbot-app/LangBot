@@ -31,7 +31,7 @@ async def init_logging(extra_handlers: list[logging.Handler] = None) -> logging.
         "%Y-%m-%d", time.localtime()
     )
 
-    qcg_logger = logging.getLogger("qcg")
+    qcg_logger = logging.getLogger("langbot")
 
     qcg_logger.setLevel(level)
 

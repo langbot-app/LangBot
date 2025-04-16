@@ -366,27 +366,6 @@ class RuntimeContainer(pydantic.BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
-    def to_setting_dict(self):
-        return {
-            'name': self.plugin_name,
-            'description': self.plugin_description.to_dict(),
-            'version': self.plugin_version,
-            'author': self.plugin_author,
-            'source': self.plugin_repository,
-            'main_file': self.main_file,
-            'pkg_path': self.pkg_path,
-            'priority': self.priority,
-            'enabled': self.enabled,
-        }
-
-    def set_from_setting_dict(
-        self,
-        setting: dict
-    ):
-        self.plugin_repository = setting['source']
-        self.priority = setting['priority']
-        self.enabled = setting['enabled']
-
     def model_dump(self, *args, **kwargs):
         return {
             'name': self.plugin_name,

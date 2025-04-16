@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import datetime
 import typing
+import json
+import uuid
 
 import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
 import sqlalchemy
@@ -13,6 +15,7 @@ from ..core import app
 from .databases import sqlite
 from ..utils import constants
 from .migrations import dbm001_migrate_v3_config
+from ..api.http.service import pipeline as pipeline_service
 
 
 class PersistenceManager:
@@ -47,7 +50,10 @@ class PersistenceManager:
 
             await conn.commit()
 
+        # ======= write initial data =======
+
         # write initial metadata
+        self.ap.logger.info("Creating initial metadata...")
         for item in metadata.initial_metadata:
             # check if the item exists
             result = await self.execute_async(
@@ -58,6 +64,30 @@ class PersistenceManager:
                 await self.execute_async(
                     sqlalchemy.insert(metadata.Metadata).values(item)
                 )
+        
+        # write default pipeline
+        result = await self.execute_async(
+            sqlalchemy.select(pipeline.LegacyPipeline)
+        )
+        if result.first() is None:
+            self.ap.logger.info("Creating default pipeline...")
+
+            pipeline_config = json.load(open('templates/default-pipeline-config.json'))
+
+            pipeline_data = {
+                'uuid': str(uuid.uuid4()),
+                'for_version': self.ap.ver_mgr.get_current_version(),
+                'stages': pipeline_service.default_stage_order,
+                'is_default': True,
+                'name': 'Chat Pipeline',
+                'description': '默认对话配置流水线',
+                'config': pipeline_config,
+            }
+
+            await self.execute_async(
+                sqlalchemy.insert(pipeline.LegacyPipeline).values(pipeline_data)
+            )
+        # =================================
 
         # run migrations
         database_version = await self.execute_async(

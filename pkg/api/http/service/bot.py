@@ -6,6 +6,7 @@ import sqlalchemy
 
 from ....core import app
 from ....entity.persistence import bot as persistence_bot
+from ....entity.persistence import pipeline as persistence_pipeline
 
 
 class BotService:
@@ -46,6 +47,16 @@ class BotService:
         """创建机器人"""
         # TODO: 检查配置信息格式
         bot_data['uuid'] = str(uuid.uuid4())
+
+        # checkout the default pipeline
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(persistence_pipeline.LegacyPipeline.is_default == True)
+        )
+        pipeline = result.first()
+        if pipeline is not None:
+            bot_data['use_pipeline_uuid'] = pipeline.uuid
+            bot_data['use_pipeline_name'] = pipeline.name
+
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_bot.Bot).values(bot_data)
         )
@@ -60,6 +71,18 @@ class BotService:
         """更新机器人"""
         if 'uuid' in bot_data:
             del bot_data['uuid']
+
+        # set use_pipeline_name
+        if 'use_pipeline_uuid' in bot_data:
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(persistence_pipeline.LegacyPipeline.uuid == bot_data['use_pipeline_uuid'])
+            )
+            pipeline = result.first()
+            if pipeline is not None:
+                bot_data['use_pipeline_name'] = pipeline.name
+            else:
+                raise Exception("Pipeline not found")
+
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_bot.Bot).values(bot_data).where(persistence_bot.Bot.uuid == bot_uuid)
         )
