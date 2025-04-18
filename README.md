@@ -8,7 +8,7 @@
 
 <a href="https://trendshift.io/repositories/12901" target="_blank"><img src="https://trendshift.io/api/badge/repositories/12901" alt="RockChinQ%2FLangBot | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
-<a href="https://docs.langbot.app">项目主页</a> ｜
+<a href="https://langbot.app">项目主页</a> ｜
 <a href="https://docs.langbot.app/insight/intro.html">功能介绍</a> ｜
 <a href="https://docs.langbot.app/insight/guide.html">部署文档</a> ｜
 <a href="https://docs.langbot.app/usage/faq.html">常见问题</a> ｜
@@ -110,6 +110,7 @@
 | [Anthropic](https://www.anthropic.com/) | ✅ |  |
 | [xAI](https://x.ai/) | ✅ |  |
 | [智谱AI](https://open.bigmodel.cn/) | ✅ |  |
+| [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | ✅ | 大模型和 GPU 资源平台 |
 | [Dify](https://dify.ai) | ✅ | LLMOps 平台 |
 | [Ollama](https://ollama.com/) | ✅ | 本地大模型运行平台 |
 | [LMStudio](https://lmstudio.ai/) | ✅ | 本地大模型运行平台 |

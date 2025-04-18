@@ -7,7 +7,7 @@
 
 <a href="https://trendshift.io/repositories/12901" target="_blank"><img src="https://trendshift.io/api/badge/repositories/12901" alt="RockChinQ%2FLangBot | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
-<a href="https://docs.langbot.app">ホーム</a> ｜
+<a href="https://langbot.app">ホーム</a> ｜
 <a href="https://docs.langbot.app/insight/intro.html">機能</a> ｜
 <a href="https://docs.langbot.app/insight/guide.html">デプロイ</a> ｜
 <a href="https://docs.langbot.app/usage/faq.html">FAQ</a> ｜
@@ -106,6 +106,7 @@ LangBotはBTPanelにリストされています。BTPanelをインストール�
 | [Anthropic](https://www.anthropic.com/) | ✅ |  |
 | [xAI](https://x.ai/) | ✅ |  |
 | [Zhipu AI](https://open.bigmodel.cn/) | ✅ |  |
+| [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | ✅ | 大模型とGPUリソースプラットフォーム |
 | [Dify](https://dify.ai) | ✅ | LLMOpsプラットフォーム |
 | [Ollama](https://ollama.com/) | ✅ | ローカルLLM実行プラットフォーム |
 | [LMStudio](https://lmstudio.ai/) | ✅ | ローカルLLM実行プラットフォーム |
