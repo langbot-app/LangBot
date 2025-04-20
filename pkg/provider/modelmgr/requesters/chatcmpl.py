@@ -65,7 +65,7 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
         
         # deepseek的reasoner模型
         if reasoning_content is not None:
-            chatcmpl_message['content'] = "<think>\n" + reasoning_content + "\n</think>\n\n"+ chatcmpl_message['content']
+            chatcmpl_message['content'] = "<think>\n" + reasoning_content + "\n</think>\n"+ chatcmpl_message['content']
 
         message = llm_entities.Message(**chatcmpl_message)
 
