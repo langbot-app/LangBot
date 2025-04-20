@@ -10,7 +10,7 @@ from .. import note, app
 
 @note.note_class("PrintVersion", 3)
 class PrintVersion(note.LaunchNote):
-    """打印版本信息
+    """Print Version Information
     """
 
     async def need_show(self) -> bool:
@@ -18,4 +18,4 @@ class PrintVersion(note.LaunchNote):
 
     async def yield_note(self) -> typing.AsyncGenerator[typing.Tuple[str, int], None]:
 
-        yield f"当前版本：{self.ap.ver_mgr.get_current_version()}", logging.INFO
+        yield f"Current Version: {self.ap.ver_mgr.get_current_version()}", logging.INFO

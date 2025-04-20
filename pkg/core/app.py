@@ -71,7 +71,7 @@ class Application:
 
     sensitive_meta: config_mgr.ConfigManager = None
 
-    instance_secret_meta: config_mgr.ConfigManager = None
+    instance_secret_meta: config_mgr.ConfigManager = None  # deprecated
 
     pipeline_config_meta_trigger: config_mgr.ConfigManager = None
     pipeline_config_meta_safety: config_mgr.ConfigManager = None

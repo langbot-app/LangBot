@@ -108,7 +108,7 @@ class RuntimeMCPSession:
         """关闭工具"""
         await self.session._exit_stack.aclose()
 
-# @loader.loader_class("mcp")
+@loader.loader_class("mcp")
 class MCPLoader(loader.ToolLoader):
     """MCP 工具加载器。
     
@@ -126,7 +126,7 @@ class MCPLoader(loader.ToolLoader):
 
     async def initialize(self):
 
-        for server_config in self.ap.provider_cfg.data.get("mcp", {}).get("servers", []):
+        for server_config in self.ap.instance_config.data.get("mcp", {}).get("servers", []):
             if not server_config["enable"]:
                 continue
             session = RuntimeMCPSession(server_config["name"], server_config, self.ap)
