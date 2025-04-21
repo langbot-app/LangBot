@@ -5,7 +5,7 @@
 }
 
 .changeFormButtonGroupContainer {
-    width: 250px;
+    width: 320px;
     display: flex;
     flex-direction: row;
     justify-content: space-between;
