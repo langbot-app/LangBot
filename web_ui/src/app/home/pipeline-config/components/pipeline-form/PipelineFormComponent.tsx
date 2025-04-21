@@ -211,9 +211,7 @@ export default function PipelineFormComponent({
                 style={{ display: getNowFormLabel().name === "trigger" ? 'block' : 'none' }}
             >
                 {/* 群响应规则块 */}
-                <Form.Item>
-                    群响应规则
-                </Form.Item>
+                <div className={`${styles.formItemSubtitle}`}> 群响应规则 </div>
                 <Form.Item
                     label={"是否在消息@机器人时触发"}
                     name={["group-respond-rules", "at"]}
@@ -253,10 +251,7 @@ export default function PipelineFormComponent({
                         step={0.05}
                     />
                 </Form.Item>
-
-                <Form.Item>
-                    访问控制
-                </Form.Item>
+                <div className={`${styles.formItemSubtitle}`}> 访问控制 </div>
                 <Form.Item
                     label={"模式"}
                     name={["access-control", "mode"]}
@@ -293,10 +288,7 @@ export default function PipelineFormComponent({
                     />
                 </Form.Item>
 
-                <Form.Item
-                    label={"消息忽略规则"}
-                >
-                </Form.Item>
+                <div className={`${styles.formItemSubtitle}`}> 消息忽略规则 </div>
 
                 <Form.Item
                     label={"前缀"}
@@ -329,6 +321,7 @@ export default function PipelineFormComponent({
                 style={{ display: getNowFormLabel().name === "safety" ? 'block' : 'none' }}
             >
                 {/* 内容过滤块 content-filter */}
+                <div className={`${styles.formItemSubtitle}`}> 内容过滤 </div>
                 <Form.Item
                     label={"检查范围"}
                     name={["content-filter", "scope"]}
@@ -352,7 +345,7 @@ export default function PipelineFormComponent({
                 </Form.Item>
 
                 {/* 速率限制块 rate-limit */}
-
+                <div className={`${styles.formItemSubtitle}`}> 速率限制 </div>
                 <Form.Item
                     label={"窗口长度（秒）"}
                     name={["rate-limit", "window-length"]}
@@ -391,7 +384,7 @@ export default function PipelineFormComponent({
                 style={{ display: getNowFormLabel().name === "output" ? 'block' : 'none' }}
             >
                 {/* 长文本处理区块 */}
-                <Form.Item label="长文本处理" />
+                <div className={`${styles.formItemSubtitle}`}> 长文本处理 </div>
                 <Form.Item
                     label="阈值"
                     name={["long-text-processing", "threshold"]}
@@ -420,7 +413,7 @@ export default function PipelineFormComponent({
                 </Form.Item>
 
                 {/* 强制延迟区块 */}
-                <Form.Item label="强制延迟" />
+                <div className={`${styles.formItemSubtitle}`}> 强制延迟 </div>
                 <Form.Item
                     label="最小秒数"
                     name={["force-delay", "min"]}
@@ -437,7 +430,7 @@ export default function PipelineFormComponent({
                 </Form.Item>
 
                 {/* 杂项区块 */}
-                <Form.Item label="杂项" />
+                <div className={`${styles.formItemSubtitle}`}> 杂项 </div>
                 <Form.Item
                     label="不输出异常信息给用户"
                     name={["misc", "hide-exception"]}
@@ -489,6 +482,13 @@ export default function PipelineFormComponent({
                     iconPosition={"end"}
                 >
                     {getNextFormLabel()?.label || "暂无更多"}
+                </Button>
+
+                <Button
+                    type="primary"
+                    onClick={addFormLabelIndex}
+                >
+                    提交
                 </Button>
             </div>
 
