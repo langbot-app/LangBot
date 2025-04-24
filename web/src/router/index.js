@@ -10,16 +10,16 @@ import DashBoard from '../pages/DashBoard.vue'
 import Settings from '../pages/Settings.vue'
 import Logs from '../pages/Logs.vue'
 import Plugins from '../pages/Plugins.vue'
-import InitDialog from '../components/InitDialog.vue'
-import LoginDialog from '../components/LoginDialog.vue'
+import Auth from '../components/Auth.vue'
 
 const routes = [
   { path: '/', component: DashBoard, meta: { requiresAuth: true } },
   { path: '/settings', component: Settings, meta: { requiresAuth: true } },
   { path: '/logs', component: Logs, meta: { requiresAuth: true } },
   { path: '/plugins', component: Plugins, meta: { requiresAuth: true } },
-  { path: '/init', component: InitDialog },
-  { path: '/login', component: LoginDialog },
+  { path: '/init', component: Auth },
+  { path: '/login', component: Auth },
+  { path: '/auth', component: Auth, redirect: '/login' }, // 添加一个默认的 auth 路径，重定向到 login
 ]
 
 const router = createRouter({
