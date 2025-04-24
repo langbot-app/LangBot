@@ -7,11 +7,11 @@
             </v-card-title>
 
             <v-card-text class="d-flex flex-column" style="gap: 0.5rem;margin-bottom: -2rem;margin-top: 1rem;">
-                
+
                 <v-text-field v-model="user" variant="outlined" label="邮箱" :rules="[rules.required, rules.email]"
-                    clearable />
-                <v-text-field v-model="password" variant="outlined" label="密码" :rules="[rules.required]"
-                    type="password" clearable />
+                    clearable @keyup.enter="login" />
+                <v-text-field v-model="password" variant="outlined" label="密码" :rules="[rules.required]" type="password"
+                    clearable @keyup.enter="login" />
             </v-card-text>
 
             <v-card-actions>
@@ -50,8 +50,15 @@ const login = () => {
         if (res.data.code == 0) {
             emit('success', '登录成功')
             localStorage.setItem('user-token', res.data.data.token)
+            // 设置axios默认请求头
+            proxy.$axios.defaults.headers.common['Authorization'] = `Bearer ${res.data.data.token}`
+            // 更新用户状态
+            proxy.$store.state.user.jwtToken = res.data.data.token
+            // 调用checkToken触发token验证
+            emit('checkToken')
+            // 导航到根路径
             setTimeout(() => {
-                location.reload()
+                window.location.href = window.location.origin + window.location.pathname + '#/'
             }, 1000)
         } else {
             emit('error', res.data.msg)
