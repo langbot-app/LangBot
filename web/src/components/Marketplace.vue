@@ -1,9 +1,9 @@
 <template>
     <div id="marketplace-container">
         <div id="marketplace-search-bar">
-            
+
             <span style="width: 14rem;">
-                <v-text-field id="marketplace-search-bar-search-input" variant="solo" v-model="proxy.$store.state.marketplaceParams.query" label="搜索"
+                <v-text-field id="marketplace-search-bar-search-input" variant="solo" v-model="searchQuery" label="搜索"
                     density="compact" @update:model-value="updateSearch" />
             </span>
             <!--下拉选择排序-->
@@ -13,19 +13,25 @@
             </span>
             <span style="margin-left: 1rem;">
                 <div id="marketplace-search-bar-total-plugins-count">
-                    共 {{ proxy.$store.state.marketplaceTotalPluginsCount }} 个插件
+                    共 {{ totalPluginsCount }} 个插件
                 </div>
             </span>
             <span style="margin-left: 1rem;">
                 <!-- 分页 -->
-                <v-pagination style="width: 14rem;" v-model="proxy.$store.state.marketplaceParams.page"
-                    :length="proxy.$store.state.marketplaceTotalPages" variant="solo" density="compact"
-                    total-visible="4" @update:model-value="updatePage" />
+                <v-pagination style="width: 14rem;" v-model="currentPage" :length="totalPages" variant="solo"
+                    density="compact" total-visible="4" @update:model-value="updatePage" />
             </span>
         </div>
         <div id="marketplace-plugins-container" ref="pluginsContainer">
-            <div id="marketplace-plugins-container-inner">
-                <MarketPluginCard v-for="plugin in proxy.$store.state.marketplacePlugins" :key="plugin.id" :plugin="plugin" @install="installPlugin" />
+            <div v-if="isLoading" class="loading-indicator">
+                <v-progress-circular indeterminate color="primary"></v-progress-circular>
+                <span class="ml-2">加载中...</span>
+            </div>
+            <div v-else-if="fetchError" class="error-message">{{ fetchError }}</div>
+            <div v-else-if="storePlugins.length === 0" class="no-data-message">没有找到插件</div>
+            <div v-else id="marketplace-plugins-grid">
+                <MarketPluginCard v-for="plugin in storePlugins" :key="plugin.id" :plugin="plugin"
+                    @install="installPlugin" />
             </div>
         </div>
     </div>
@@ -33,24 +39,31 @@
 
 <script setup>
 import MarketPluginCard from './MarketPluginCard.vue'
-
-import { ref, getCurrentInstance, onMounted } from 'vue'
-
+import { ref, getCurrentInstance, onMounted, onUnmounted, computed } from 'vue'
 import { inject } from "vue";
 
 const snackbar = inject('snackbar');
-
 const { proxy } = getCurrentInstance()
-
 const pluginsContainer = ref(null)
+const isLoading = ref(false);
+const fetchError = ref(null);
 
-const sortItems = ref([
+// 使用计算属性获取 store 中的数据，避免直接访问
+const storePlugins = computed(() => proxy.$store.state.marketplacePlugins);
+const totalPluginsCount = computed(() => proxy.$store.state.marketplaceTotalPluginsCount);
+const totalPages = computed(() => proxy.$store.state.marketplaceTotalPages);
+
+// 本地数据绑定
+const searchQuery = ref(proxy.$store.state.marketplaceParams.query);
+const currentPage = ref(proxy.$store.state.marketplaceParams.page);
+
+const sortItems = [
     '最近新增',
     '最多星标',
     '最近更新',
-])
+]
 
-const sortParams = ref({
+const sortParams = {
     '最近新增': {
         sort_by: 'created_at',
         sort_order: 'DESC',
@@ -63,102 +76,133 @@ const sortParams = ref({
         sort_by: 'pushed_at',
         sort_order: 'DESC',
     }
-})
+}
 
-const sort = ref(sortItems.value[0])
+const sort = ref(sortItems[0])
 
-proxy.$store.state.marketplaceParams.sort_by = sortParams.value[sort.value].sort_by
-proxy.$store.state.marketplaceParams.sort_order = sortParams.value[sort.value].sort_order
-
+// 更新排序参数并获取数据
 const updateSort = (value) => {
-    console.log(value)
-    proxy.$store.state.marketplaceParams.sort_by = sortParams.value[value].sort_by
-    proxy.$store.state.marketplaceParams.sort_order = sortParams.value[value].sort_order
-    proxy.$store.state.marketplaceParams.page = 1
+    proxy.$store.state.marketplaceParams.sort_by = sortParams[value].sort_by;
+    proxy.$store.state.marketplaceParams.sort_order = sortParams[value].sort_order;
+    proxy.$store.state.marketplaceParams.page = 1;
+    currentPage.value = 1; // 同步本地页码状态
 
-    console.log(proxy.$store.state.marketplaceParams)
-    fetchMarketplacePlugins()
+    fetchMarketplacePlugins();
 }
 
+// 更新页码并获取数据
 const updatePage = (value) => {
-    proxy.$store.state.marketplaceParams.page = value
-    fetchMarketplacePlugins()
+    proxy.$store.state.marketplaceParams.page = value;
+    fetchMarketplacePlugins();
 }
 
-const updateSearch = (value) => {
-    console.log(value)
-    proxy.$store.state.marketplaceParams.query = value
-    proxy.$store.state.marketplaceParams.page = 1
-    fetchMarketplacePlugins()
+// 简单的 debounce 实现
+const debounce = (fn, delay) => {
+    let timer = null;
+    return function (...args) {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+            fn.apply(this, args);
+            timer = null;
+        }, delay);
+    };
 }
 
+// 带 debounce 的搜索处理
+const updateSearch = debounce((value) => {
+    proxy.$store.state.marketplaceParams.query = value;
+    searchQuery.value = value; // 保证本地状态同步
+    proxy.$store.state.marketplaceParams.page = 1;
+    currentPage.value = 1;
+    fetchMarketplacePlugins();
+}, 500); // 500ms 延迟，避免频繁请求
+
+// 优化每页插件数量的计算
 const calculatePluginsPerPage = () => {
-    if (!pluginsContainer.value) return 10
-    
-    const containerWidth = pluginsContainer.value.clientWidth
-    const containerHeight = pluginsContainer.value.clientHeight
+    if (!pluginsContainer.value) return 10;
 
-    console.log(containerWidth, containerHeight)
-    
-    // 每个卡片宽度18rem + gap 16px
-    const cardWidth = 18 * 16 + 16 // rem转px
-    // 每个卡片高度9rem + gap 16px
-    const cardHeight = 9 * 16 + 16
-    
-    // 计算每行可以放几个卡片
-    const cardsPerRow = Math.floor(containerWidth / cardWidth)
-    // 计算每行可以放几行
-    const rows = Math.floor(containerHeight / cardHeight)
-    
-    // 计算每页总数
-    const perPage = cardsPerRow * rows
-    
-    proxy.$store.state.marketplaceParams.per_page = perPage > 0 ? perPage : 10
+    const containerWidth = pluginsContainer.value.clientWidth;
+    const containerHeight = pluginsContainer.value.clientHeight;
+
+    // 卡片尺寸计算
+    const cardWidth = 18 * 16 + 16;
+    const cardHeight = 9 * 16 + 16;
+
+    const cardsPerRow = Math.max(1, Math.floor(containerWidth / cardWidth));
+    const rows = Math.max(1, Math.floor(containerHeight / cardHeight));
+
+    return Math.max(1, cardsPerRow * rows);
 }
 
+// 带异常处理的数据获取
 const fetchMarketplacePlugins = async () => {
-    calculatePluginsPerPage()
-    proxy.$axios.post('https://space.langbot.app/api/v1/market/plugins', {
-        query: proxy.$store.state.marketplaceParams.query,
-        sort_by: proxy.$store.state.marketplaceParams.sort_by,
-        sort_order: proxy.$store.state.marketplaceParams.sort_order,
-        page: proxy.$store.state.marketplaceParams.page,
-        page_size: proxy.$store.state.marketplaceParams.per_page,
-    }).then(response => {
-        console.log(response.data)
+    if (isLoading.value) return; // 防止重复请求
+
+    isLoading.value = true;
+    fetchError.value = null;
+
+    try {
+        // 获取最新的每页数量
+        const perPage = calculatePluginsPerPage();
+        proxy.$store.state.marketplaceParams.per_page = perPage;
+
+        const response = await proxy.$axios.post('https://space.langbot.app/api/v1/market/plugins', {
+            query: proxy.$store.state.marketplaceParams.query,
+            sort_by: proxy.$store.state.marketplaceParams.sort_by,
+            sort_order: proxy.$store.state.marketplaceParams.sort_order,
+            page: proxy.$store.state.marketplaceParams.page,
+            page_size: perPage,
+        });
+
         if (response.data.code != 0) {
-            snackbar.error(response.data.msg)
-            return
+            throw new Error(response.data.msg || '获取插件列表失败');
         }
 
-        // 解析出 name 和 author
-        response.data.data.plugins.forEach(plugin => {
-            plugin.name = plugin.repository.split('/')[2]
-            plugin.author = plugin.repository.split('/')[1]
-        })
+        // 高效处理插件数据
+        const processedPlugins = response.data.data.plugins.map(plugin => {
+            const parts = plugin.repository.split('/');
+            return {
+                ...plugin,
+                name: parts.length >= 3 ? parts[2] : '未知名称',
+                author: parts.length >= 2 ? parts[1] : '未知作者'
+            };
+        });
 
-        proxy.$store.state.marketplacePlugins = response.data.data.plugins
-        proxy.$store.state.marketplaceTotalPluginsCount = response.data.data.total
-
-        let totalPages = Math.floor(response.data.data.total / proxy.$store.state.marketplaceParams.per_page)
-        if (response.data.data.total % proxy.$store.state.marketplaceParams.per_page != 0) {
-            totalPages += 1
-        }
-        proxy.$store.state.marketplaceTotalPages = totalPages
-    }).catch(error => {
-        snackbar.error(error)
-    })
+        proxy.$store.state.marketplacePlugins = processedPlugins;
+        proxy.$store.state.marketplaceTotalPluginsCount = response.data.data.total;
+        proxy.$store.state.marketplaceTotalPages = Math.ceil(response.data.data.total / perPage) || 1;
+    } catch (error) {
+        console.error('获取插件市场数据失败:', error);
+        fetchError.value = typeof error === 'string' ? error : error.message || '网络错误';
+        snackbar.error(fetchError.value);
+    } finally {
+        isLoading.value = false;
+    }
 }
+
+// 带 debounce 的resize处理函数
+const handleResize = debounce(() => {
+    const oldPerPage = proxy.$store.state.marketplaceParams.per_page;
+    const newPerPage = calculatePluginsPerPage();
+
+    // 只有当每页数量变化时才重新获取数据
+    if (oldPerPage !== newPerPage) {
+        proxy.$store.state.marketplaceParams.per_page = newPerPage;
+        fetchMarketplacePlugins();
+    }
+}, 300); // 300ms 延迟
 
 onMounted(() => {
-    calculatePluginsPerPage()
-    fetchMarketplacePlugins()
-    
-    // 监听窗口大小变化
-    window.addEventListener('resize', () => {
-        calculatePluginsPerPage()
-        fetchMarketplacePlugins()
-    })
+    calculatePluginsPerPage();
+    fetchMarketplacePlugins();
+
+    // 添加 resize 监听，使用 debounce 处理函数
+    window.addEventListener('resize', handleResize);
+})
+
+onUnmounted(() => {
+    // 移除监听器，防止内存泄漏
+    window.removeEventListener('resize', handleResize);
 })
 
 const emit = defineEmits(['installPlugin'])
@@ -185,6 +229,7 @@ const installPlugin = (plugin) => {
     padding-right: 1rem;
     gap: 1rem;
     width: 100%;
+    align-items: center;
 }
 
 #marketplace-search-bar-search-input {
@@ -202,27 +247,49 @@ const installPlugin = (plugin) => {
 }
 
 .plugin-card {
-    width: 18rem;
     height: 9rem;
 }
 
 #marketplace-plugins-container {
     display: flex;
-    flex-direction: row;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    gap: 16px;
-    margin-inline: 0rem;
+    flex-direction: column;
     width: 100%;
     height: calc(100vh - 16rem);
     overflow-y: auto;
+    position: relative;
+    /* 添加定位上下文 */
 }
 
-#marketplace-plugins-container-inner {
-    display: flex;
-    flex-direction: row;
-    justify-content: flex-start;
-    flex-wrap: wrap;
+/* 将flex布局替换为grid布局 */
+#marketplace-plugins-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+    /* 自动填充列 */
     gap: 16px;
+    width: 100%;
+    padding: 1rem;
+    box-sizing: border-box;
+}
+
+/* 新增状态展示样式 */
+.loading-indicator,
+.error-message,
+.no-data-message {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+}
+
+.error-message {
+    color: #ff5252;
+}
+
+.no-data-message {
+    color: #757575;
 }
 </style>
