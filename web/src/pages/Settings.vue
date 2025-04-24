@@ -13,8 +13,7 @@
     <v-tabs-window id="settings-tab-window" v-model="proxy.$store.state.settingsPageTab">
       <v-tabs-window-item v-for="manager in managerList" :key="manager.name" :value="manager.name"
         class="config-tab-window">
-        <SettingWindow style="height: 100%;width: 100%;" :name="manager.name" />
-        <!-- {{ manager.name }} -->
+        <SettingWindow :name="manager.name" />
       </v-tabs-window-item>
     </v-tabs-window>
   </v-card>
