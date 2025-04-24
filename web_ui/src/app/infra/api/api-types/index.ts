@@ -9,6 +9,10 @@ export interface I18nText {
     zh_CN: string;
 }
 
+export interface AsyncTaskCreatedResp {
+    task_id: number;
+}
+
 export interface ApiRespProviderRequesters {
     requesters: Requester[];
 }
@@ -100,4 +104,79 @@ export interface Bot {
     use_pipeline_uuid: string;
     created_at: string;
     updated_at: string;
+}
+
+// plugins
+export interface ApiRespPlugins {
+    plugins: Plugin[];
+}
+
+export interface ApiRespPlugin {
+    plugin: Plugin;
+}
+
+export interface Plugin {
+    author: string;
+    name: string;
+    description: I18nText;
+    label: I18nText;
+    version: string;
+    enabled: boolean;
+    priority: number;
+    status: string;
+    tools: object[];
+    event_handlers: object;
+    main_file: string;
+    pkg_path: string;
+    repository: string;
+    config_schema: object;
+}
+
+export interface ApiRespPluginConfig {
+    config: object;
+}
+
+export interface PluginReorderElement {
+    author: string;
+    name: string;
+    priority: number;
+}
+
+// system
+export interface ApiRespSystemInfo {
+    debug: boolean;
+    version: string;
+}
+
+export interface ApiRespAsyncTasks {
+    tasks: AsyncTask[];
+}
+
+export interface ApiRespAsyncTask {
+    task: AsyncTask;
+}
+
+export interface AsyncTaskRuntimeInfo {
+    done: boolean;
+    exception?: string;
+    result?: object;
+    state: string;
+}
+
+export interface AsyncTaskTaskContext {
+    current_action: string;
+    log: string;
+}
+
+export interface AsyncTask {
+    id: number;
+    kind: string;
+    name: string;
+    task_type: string;  // system or user
+    runtime: AsyncTaskRuntimeInfo;
+    task_context: AsyncTaskTaskContext;
+}
+
+export interface ApiRespUserToken {
+    token: string;
 }
