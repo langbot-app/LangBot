@@ -50,6 +50,62 @@ export default createStore({
     },
     setUserToken(state, token) {
       state.user.jwtToken = token
+    },
+    setTokenValid(state, isValid) {
+      state.user.tokenValid = isValid
+    },
+    setTokenChecked(state, isChecked) {
+      state.user.tokenChecked = isChecked
+    },
+    setSystemInitialized(state, isInitialized) {
+      state.user.systemInitialized = isInitialized
+    },
+    clearUserData(state) {
+      state.user.jwtToken = ''
+      state.user.tokenValid = false
+      localStorage.removeItem('user-token')
+    }
+  },
+  actions: {
+    async logout({ commit }) {
+      commit('clearUserData')
+      axios.defaults.headers.common['Authorization'] = ''
+      router.push('/login')
+    },
+    async checkTokenValidity({ state, commit }) {
+      if (!state.user.jwtToken) {
+        commit('setTokenValid', false)
+        commit('setTokenChecked', true)
+        return false
+      }
+
+      try {
+        const response = await axios.get('/user/check-token')
+        const isValid = response.data.code === 0
+        commit('setTokenValid', isValid)
+        commit('setTokenChecked', true)
+        return isValid
+      } catch (error) {
+        commit('setTokenValid', false)
+        commit('setTokenChecked', true)
+        return false
+      }
+    },
+    // 添加系统重载功能
+    async reloadSystem({ commit }, { scope }) {
+      try {
+        const response = await axios.post('/system/reload', { scope })
+        if (response.data.code === 0) {
+          // 重新获取系统信息
+          commit('fetchSystemInfo')
+          return true
+        } else {
+          throw new Error(response.data.msg || '重载失败')
+        }
+      } catch (error) {
+        console.error('系统重载失败:', error)
+        throw error
+      }
     }
   },
   modules: {
