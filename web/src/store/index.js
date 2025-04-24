@@ -47,6 +47,9 @@ export default createStore({
         this.state.debug = response.data.data.debug
         this.state.enabledPlatformCount = response.data.data.enabled_platform_count
       })
+    },
+    setUserToken(state, token) {
+      state.user.jwtToken = token
     }
   },
   modules: {
