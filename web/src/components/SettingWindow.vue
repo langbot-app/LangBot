@@ -210,7 +210,7 @@ onMounted(() => {
 
 <style scoped>
 .config-tab-window {
-    overflow: hidden;
+    overflow: visible;
 }
 
 .config-tab-toolbar {
@@ -238,15 +238,15 @@ onMounted(() => {
 
 #config-tab-content {
     margin: 0.2rem;
-    height: calc(100% - 1rem);
-    overflow: hidden;
+    height: auto;
+    overflow: visible;
 }
 
 #config-tab-content-ui {
     margin: 0.5rem;
-    height: calc(100vh - 15rem);
+    height: auto;
     margin-top: 1rem;
-    overflow: hidden;
+    overflow: visible;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -254,25 +254,25 @@ onMounted(() => {
 }
 
 #config-tab-content-ui-form {
-    height: 100%;
+    height: auto;
     width: calc(100% - 1.5rem);
     margin-left: 0.5rem;
-    overflow-y: auto;
+    overflow: visible;
 }
 
 #config-tab-content-ui-form-vjsf {
-    height: 100%;
+    height: auto;
     width: calc(100% - 1rem);
 }
 
 #config-tab-content-json {
     margin: 0.5rem;
-    height: calc(100vh - 16rem);
+    height: auto;
     margin-top: 1rem;
 }
 
 #config-tab-content-json-json-editor-vue {
-    height: 100%;
+    height: auto;
     width: 100%;
 }
 

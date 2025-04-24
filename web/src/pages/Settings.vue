@@ -4,8 +4,7 @@
   <v-card id="settings-card">
     <v-tabs id="settings-tabs" v-model="proxy.$store.state.settingsPageTab" show-arrows center-active
       @update:model-value="onTabChange">
-      <v-tooltip v-for="manager in managerList" :key="manager.name" :text="manager.description"
-        location="top">
+      <v-tooltip v-for="manager in managerList" :key="manager.name" :text="manager.description" location="top">
         <template v-slot:activator="{ props }">
           <v-tab v-bind="props" :value="manager.name" style="text-transform: none;">{{ manager.name }}</v-tab>
         </template>
@@ -15,7 +14,7 @@
       <v-tabs-window-item v-for="manager in managerList" :key="manager.name" :value="manager.name"
         class="config-tab-window">
         <SettingWindow style="height: 100%;width: 100%;" :name="manager.name" />
-         <!-- {{ manager.name }} -->
+        <!-- {{ manager.name }} -->
       </v-tabs-window-item>
     </v-tabs-window>
   </v-card>
@@ -28,7 +27,7 @@ import PageTitle from '@/components/PageTitle.vue'
 import SettingWindow from '@/components/SettingWindow.vue'
 import { ref, getCurrentInstance, onMounted } from 'vue'
 
-import {inject} from "vue";
+import { inject } from "vue";
 
 const snackbar = inject('snackbar');
 
@@ -67,23 +66,23 @@ onMounted(async () => {
 <style scoped>
 #settings-card {
   margin: 1rem;
-  height: calc(100% - 5rem);
-  /* max-height: calc(100% - 5rem); */
+  height: auto;
+  min-height: calc(100% - 5rem);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  /* background-color: #f0f0f0; */
+  overflow: visible;
 }
 
 #settings-tabs {
   height: 3rem;
-  overflow: hidden;
 }
 
 #settings-tab-window {
-  height: calc(100vh - 9rem);
-  overflow: hidden;
-  /* background-color: aqua; */
+  height: auto;
+  overflow: visible;
 }
 
+.config-tab-window {
+  overflow: visible;
+}
 </style>

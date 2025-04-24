@@ -1,23 +1,30 @@
 <template>
   <v-app>
-    <v-layout v-if="shouldShowLayout">
-      <!-- 顶部导航条 -->
-      <v-app-bar class="px-2" flat>
-        <template v-slot:prepend>
-          <v-app-bar-nav-icon @click="sidebarVisible = !sidebarVisible"></v-app-bar-nav-icon>
-        </template>
-
-        <v-toolbar-title>LangBot</v-toolbar-title>
-      </v-app-bar>
-
-      <!-- 侧边栏 - 使用提取出来的Sidebar组件 -->
-      <SidebarComponent v-model="sidebarVisible" />
-
-      <!-- 主内容区域 -->
-      <v-main>
-        <router-view />
-      </v-main>
-    </v-layout>
+    <div v-if="shouldShowLayout" class="app">
+      <div class="up">
+        <header>
+          <!-- 顶部导航条 -->
+          <v-app-bar class="px-2" flat>
+            <template v-slot:prepend>
+              <v-app-bar-nav-icon @click="sidebarVisible = !sidebarVisible"></v-app-bar-nav-icon>
+            </template>
+            <v-toolbar-title>LangBot</v-toolbar-title>
+          </v-app-bar>
+        </header>
+      </div>
+      <div class="down">
+        <div class="sidebar">
+          <!-- 侧边栏 - 使用提取出来的Sidebar组件 -->
+          <SidebarComponent v-model="sidebarVisible" />
+        </div>
+        <div class="app-main">
+          <!-- 主内容区域 -->
+          <v-main>
+            <router-view />
+          </v-main>
+        </div>
+      </div>
+    </div>
 
     <!-- 当不需要Layout时直接显示路由内容 -->
     <router-view v-else />
@@ -97,6 +104,31 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.up {
+  width: 100%;
+}
+
+.down {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.sidebar {
+  height: 100%;
+}
+
+.app-main {
+  flex: 1;
+  overflow-y: auto;
+}
+
 #app-container {
   display: flex;
   height: 100vh;
