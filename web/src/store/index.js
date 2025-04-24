@@ -5,8 +5,8 @@ import axios from 'axios'
 export default createStore({
   state: {
     // 开发时使用
-    // apiBaseUrl: 'http://localhost:5300/api/v1',
-    apiBaseUrl: '/api/v1',
+    apiBaseUrl: 'http://localhost:5300/api/v1',
+    // apiBaseUrl: '/api/v1',
     autoRefreshLog: false,
     autoScrollLog: true,
     settingsPageTab: '',
@@ -49,5 +49,30 @@ export default createStore({
       })
     }
   },
-  actions: {},
+  modules: {
+    user: {
+      namespaced: true,
+      actions: {
+        async logout({ rootState }) {
+          try {
+            // 不调用后端API，只在前端处理登出逻辑
+
+            // 清除本地存储的token
+            localStorage.removeItem('user-token')
+
+            // 更新状态
+            rootState.user.jwtToken = ''
+            rootState.user.tokenValid = false
+
+            // 更新请求头
+            axios.defaults.headers.common['Authorization'] = ''
+
+            return Promise.resolve()
+          } catch (error) {
+            return Promise.reject(error)
+          }
+        }
+      }
+    }
+  },
 })

@@ -1,8 +1,8 @@
 <template>
   <v-app>
-      <v-snackbar v-model="snackbar" :color="color" :timeout="timeout" :location="location">
-        {{ text }}
-      </v-snackbar>
+    <v-snackbar v-model="snackbar" :color="color" :timeout="timeout" :location="location">
+      {{ text }}
+    </v-snackbar>
 
     <div id="app-container" v-if="proxy.$store.state.user.tokenChecked && proxy.$store.state.user.tokenValid">
       <v-layout>
@@ -85,6 +85,14 @@
                           重载 LLM 管理器
                         </v-list-item-title>
                       </v-list-item>
+
+                      <v-divider></v-divider>
+
+                      <v-list-item @click="logout" color="error">
+                        <v-list-item-title class="text-error">
+                          退出登录
+                        </v-list-item-title>
+                      </v-list-item>
                     </v-list>
                   </v-menu>
                 </v-list-item>
@@ -106,11 +114,13 @@
       </div>
     </div>
 
-    <div id="login-container" v-if="proxy.$store.state.user.tokenChecked && !proxy.$store.state.user.tokenValid && proxy.$store.state.user.systemInitialized">
+    <div id="login-container"
+      v-if="proxy.$store.state.user.tokenChecked && !proxy.$store.state.user.tokenValid && proxy.$store.state.user.systemInitialized">
       <LoginDialog @error="error" @success="success" @checkToken="checkToken" />
     </div>
 
-    <div id="uninitialized-container" v-if="proxy.$store.state.user.tokenChecked && !proxy.$store.state.user.systemInitialized">
+    <div id="uninitialized-container"
+      v-if="proxy.$store.state.user.tokenChecked && !proxy.$store.state.user.systemInitialized">
       <InitDialog @error="error" @success="success" @checkSystemInitialized="checkSystemInitialized" />
     </div>
   </v-app>
@@ -235,6 +245,14 @@ function checkToken() {
     proxy.$store.state.user.tokenValid = false
   }).finally(() => {
     proxy.$store.state.user.tokenChecked = true
+  })
+}
+
+function logout() {
+  proxy.$store.dispatch('user/logout').then(() => {
+    proxy.$router.push('/login')
+  }).catch(err => {
+    error('退出登录失败：' + err)
   })
 }
 
