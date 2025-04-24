@@ -1,8 +1,13 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
+import {
+    ApiResponse, ApiRespProviderRequesters, ApiRespProviderRequester, ApiRespProviderLLMModels,
+    ApiRespProviderLLMModel, LLMModel, ApiRespPipelines, ApiRespPipeline, Pipeline, ApiRespPlatformAdapters,
+    ApiRespPlatformAdapter, ApiRespPlatformBots, ApiRespPlatformBot, Bot
+} from '../api/api-types'
 
 type JSONValue = string | number | boolean | JSONObject | JSONArray | null
 interface JSONObject { [key: string]: JSONValue }
-interface JSONArray extends Array<JSONValue> {}
+interface JSONArray extends Array<JSONValue> { }
 
 export interface ResponseData<T = unknown> {
     code: number
@@ -42,7 +47,7 @@ class HttpClient {
             return ""
         }
         // 客户端环境
-            return ""
+        return ""
     }
 
     // 获取Session
@@ -172,6 +177,98 @@ class HttpClient {
     public delete<T = unknown>(url: string, config?: RequestConfig) {
         return this.request<T>({ method: 'delete', url, ...config })
     }
+
+    // real api request implementation
+    // ============ Provider API ============
+    public getProviderRequesters(): Promise<ApiResponse<ApiRespProviderRequesters>> {
+        return this.get('/api/v1/provider/requesters')
+    }
+
+    public getProviderRequester(name: string): Promise<ApiResponse<ApiRespProviderRequester>> {
+        return this.get(`/api/v1/provider/requesters/${name}`)
+    }
+
+    public getProviderRequesterIconURL(name: string): string {
+        return `/api/v1/provider/requesters/${name}/icon`
+    }
+
+    // ============ Provider Model LLM ============
+    public getProviderLLMModels(): Promise<ApiResponse<ApiRespProviderLLMModels>> {
+        return this.get('/api/v1/provider/models/llm')
+    }
+
+    public getProviderLLMModel(uuid: string): Promise<ApiResponse<ApiRespProviderLLMModel>> {
+        return this.get(`/api/v1/provider/models/llm/${uuid}`)
+    }
+
+    public createProviderLLMModel(model: LLMModel): Promise<ApiResponse<object>> {
+        return this.post('/api/v1/provider/models/llm', model)
+    }
+
+    public deleteProviderLLMModel(uuid: string): Promise<ApiResponse<object>> {
+        return this.delete(`/api/v1/provider/models/llm/${uuid}`)
+    }
+
+    // ============ Pipeline API ============
+    public getGeneralPipelineMetadata(): Promise<ApiResponse<object>> {  // as designed, this method will be deprecated, and only for developer to check the prefered config schema
+        return this.get('/api/v1/pipelines/_/metadata')
+    }
+
+    public getPipelines(): Promise<ApiResponse<ApiRespPipelines>> {
+        return this.get('/api/v1/pipelines')
+    }
+
+    public getPipeline(uuid: string): Promise<ApiResponse<ApiRespPipeline>> {
+        return this.get(`/api/v1/pipelines/${uuid}`)
+    }
+
+    public createPipeline(pipeline: Pipeline): Promise<ApiResponse<object>> {
+        return this.post('/api/v1/pipelines', pipeline)
+    }
+
+    public updatePipeline(uuid: string, pipeline: Pipeline): Promise<ApiResponse<object>> {
+        return this.put(`/api/v1/pipelines/${uuid}`, pipeline)
+    }
+
+    public deletePipeline(uuid: string): Promise<ApiResponse<object>> {
+        return this.delete(`/api/v1/pipelines/${uuid}`)
+    }
+
+    // ============ Platform API ============
+    public getAdapters(): Promise<ApiResponse<ApiRespPlatformAdapters>> {
+        return this.get('/api/v1/platform/adapters')
+    }
+
+    public getAdapter(name: string): Promise<ApiResponse<ApiRespPlatformAdapter>> {
+        return this.get(`/api/v1/platform/adapters/${name}`)
+    }
+
+    public getAdapterIconURL(name: string): string {
+        return `/api/v1/platform/adapters/${name}/icon`
+    }
+
+    // ============ Platform Bots ============
+    public getBots(): Promise<ApiResponse<ApiRespPlatformBots>> {
+        return this.get('/api/v1/platform/bots')
+    }
+
+    public getBot(uuid: string): Promise<ApiResponse<ApiRespPlatformBot>> {
+        return this.get(`/api/v1/platform/bots/${uuid}`)
+    }
+
+    public createBot(bot: Bot): Promise<ApiResponse<object>> {
+        return this.post('/api/v1/platform/bots', bot)
+    }
+
+    public updateBot(uuid: string, bot: Bot): Promise<ApiResponse<object>> {
+        return this.put(`/api/v1/platform/bots/${uuid}`, bot)
+    }
+
+    public deleteBot(uuid: string): Promise<ApiResponse<object>> {
+        return this.delete(`/api/v1/platform/bots/${uuid}`)
+    }
+
+    // ============ Plugins API ============
 }
 
 export const httpClient = new HttpClient()
