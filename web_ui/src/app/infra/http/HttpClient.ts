@@ -2,7 +2,9 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } f
 import {
     ApiResponse, ApiRespProviderRequesters, ApiRespProviderRequester, ApiRespProviderLLMModels,
     ApiRespProviderLLMModel, LLMModel, ApiRespPipelines, ApiRespPipeline, Pipeline, ApiRespPlatformAdapters,
-    ApiRespPlatformAdapter, ApiRespPlatformBots, ApiRespPlatformBot, Bot
+    ApiRespPlatformAdapter, ApiRespPlatformBots, ApiRespPlatformBot, Bot, ApiRespPlugins, ApiRespPlugin, Plugin,
+    ApiRespPluginConfig, PluginReorderElement, AsyncTaskCreatedResp, ApiRespSystemInfo, ApiRespAsyncTasks, AsyncTask,
+    ApiRespAsyncTask, ApiRespUserToken
 } from '../api/api-types'
 
 type JSONValue = string | number | boolean | JSONObject | JSONArray | null
@@ -269,6 +271,71 @@ class HttpClient {
     }
 
     // ============ Plugins API ============
+    public getPlugins(): Promise<ApiResponse<ApiRespPlugins>> {
+        return this.get('/api/v1/plugins')
+    }
+
+    public getPlugin(author: string, name: string): Promise<ApiResponse<ApiRespPlugin>> {
+        return this.get(`/api/v1/plugins/${author}/${name}`)
+    }
+
+    public getPluginConfig(author: string, name: string): Promise<ApiResponse<ApiRespPluginConfig>> {
+        return this.get(`/api/v1/plugins/${author}/${name}/config`)
+    }
+
+    public updatePluginConfig(author: string, name: string, config: object): Promise<ApiResponse<object>> {
+        return this.put(`/api/v1/plugins/${author}/${name}/config`, config)
+    }
+
+    public togglePlugin(author: string, name: string, target_enabled: boolean): Promise<ApiResponse<object>> {
+        return this.post(`/api/v1/plugins/${author}/${name}/toggle`, { target_enabled })
+    }
+
+    public reorderPlugins(plugins: PluginReorderElement[]): Promise<ApiResponse<object>> {
+        return this.post('/api/v1/plugins/reorder', plugins)
+    }
+
+    public updatePlugin(author: string, name: string): Promise<ApiResponse<AsyncTaskCreatedResp>> {
+        return this.post(`/api/v1/plugins/${author}/${name}/update`)
+    }
+
+    public installPluginFromGithub(source: string): Promise<ApiResponse<AsyncTaskCreatedResp>> {
+        return this.post('/api/v1/plugins/install/github', { source })
+    }
+
+    public removePlugin(author: string, name: string): Promise<ApiResponse<AsyncTaskCreatedResp>> {
+        return this.delete(`/api/v1/plugins/${author}/${name}`)
+    }
+
+    // ============ System API ============
+    public getSystemInfo(): Promise<ApiResponse<ApiRespSystemInfo>> {
+        return this.get('/api/v1/system/info')
+    }
+
+    public getAsyncTasks(): Promise<ApiResponse<ApiRespAsyncTasks>> {
+        return this.get('/api/v1/system/tasks')
+    }
+
+    public getAsyncTask(id: number): Promise<ApiResponse<ApiRespAsyncTask>> {
+        return this.get(`/api/v1/system/tasks/${id}`)
+    }
+
+    // ============ User API ============
+    public checkIfInited(): Promise<ApiResponse<object>> {
+        return this.get('/api/v1/user/init')
+    }
+
+    public initUser(user: string, password: string): Promise<ApiResponse<object>> {
+        return this.post('/api/v1/user/init', { user, password })
+    }
+
+    public authUser(user: string, password: string): Promise<ApiResponse<ApiRespUserToken>> {
+        return this.post('/api/v1/user/auth', { user, password })
+    }
+
+    public checkUserToken(): Promise<ApiResponse<ApiRespUserToken>> {
+        return this.get('/api/v1/user/check-token')
+    }
 }
 
 export const httpClient = new HttpClient()
