@@ -44,6 +44,7 @@
 >
 > - どのデプロイ方法を始める前に、必ず[新規ユーザーガイド](https://docs.langbot.app/insight/guide.html)をお読みください。  
 > - すべてのドキュメントは中国語で提供されています。近い将来、i18nバージョンを提供する予定です。
+> - Read [the auto-generated wiki on DeepWiki](https://deepwiki.com/RockChinQ/LangBot)。
 
 #### Docker Compose デプロイ
 
