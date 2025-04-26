@@ -1,5 +1,4 @@
 import {BotFormEntity, IBotFormEntity} from "@/app/home/bots/components/bot-form/BotFormEntity";
-import {fetchAdapterList} from "@/app/home/mock-api/index"
 import {Button, Form, Input, Select, Space} from "antd";
 import {useEffect, useState} from "react";
 import {IChooseAdapterEntity} from "@/app/home/bots/components/bot-form/ChooseAdapterEntity";
@@ -11,6 +10,7 @@ import {
 import {UUID} from 'uuidjs'
 import DynamicFormComponent from "@/app/home/components/dynamic-form/DynamicFormComponent";
 import {ICreateLLMField} from "@/app/home/models/ICreateLLMField";
+import {httpClient} from "@/app/infra/http/HttpClient";
 
 export default function BotForm({
     initBotId,
@@ -39,10 +39,10 @@ export default function BotForm({
 
     async function initBotFormComponent() {
         // 拉取adapter
-        const rawAdapterList = await fetchAdapterList()
+        const rawAdapterList = await httpClient.getAdapters()
         // 初始化适配器选择列表
         setAdapterNameList(
-            rawAdapterList.map(item => {
+            rawAdapterList.adapters.map(item => {
                 return {
                     label: item.label.zh_CN,
                     value: item.name
@@ -50,7 +50,7 @@ export default function BotForm({
             })
         )
         // 初始化适配器表单map
-        rawAdapterList.forEach(rawAdapter => {
+        rawAdapterList.adapters.forEach(rawAdapter => {
             adapterNameToDynamicConfigMap.set(
                 rawAdapter.name,
                 rawAdapter.spec.config.map(item =>
