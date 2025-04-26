@@ -1,12 +1,12 @@
 "use client"
 
 import {useState} from "react";
-import {LLMCardVO} from "@/app/home/llm-config/component/llm-card/LLMCardVO";
+import {LLMCardVO} from "@/app/home/models/component/llm-card/LLMCardVO";
 import styles from "./LLMConfig.module.css"
 import EmptyAndCreateComponent from "@/app/home/components/empty-and-create-component/EmptyAndCreateComponent";
 import {Modal} from "antd";
-import LLMCard from "@/app/home/llm-config/component/llm-card/LLMCard";
-import LLMForm from "@/app/home/llm-config/component/llm-form/LLMForm";
+import LLMCard from "@/app/home/models/component/llm-card/LLMCard";
+import LLMForm from "@/app/home/models/component/llm-form/LLMForm";
 import CreateCardComponent from "@/app/infra/basic-component/create-card-component/CreateCardComponent";
 
 export default function LLMConfigPage() {

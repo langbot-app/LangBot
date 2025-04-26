@@ -4,10 +4,10 @@ import {useEffect, useState} from "react";
 import styles from "./botConfig.module.css";
 import EmptyAndCreateComponent from "@/app/home/components/empty-and-create-component/EmptyAndCreateComponent";
 import {useRouter} from "next/navigation";
-import {BotCardVO} from "@/app/home/bot-config/components/bot-card/BotCardVO";
+import {BotCardVO} from "@/app/home/bots/components/bot-card/BotCardVO";
 import {Modal} from "antd";
-import BotForm from "@/app/home/bot-config/components/bot-form/BotForm";
-import BotCard from "@/app/home/bot-config/components/bot-card/BotCard";
+import BotForm from "@/app/home/bots/components/bot-form/BotForm";
+import BotCard from "@/app/home/bots/components/bot-card/BotCard";
 import CreateCardComponent from "@/app/infra/basic-component/create-card-component/CreateCardComponent"
 
 
@@ -105,7 +105,7 @@ export default function BotConfigPage() {
                     subTitle={"快去创建一个吧！"}
                     buttonText={"创建大模型 GO！"}
                     onButtonClick={() => {
-                        router.push("/home/llm-config");
+                        router.push("/home/models");
                     }}
                 />
             }

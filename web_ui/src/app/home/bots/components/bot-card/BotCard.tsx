@@ -1,10 +1,10 @@
-import styles from "../../LLMConfig.module.css"
-import {LLMCardVO} from "@/app/home/llm-config/component/llm-card/LLMCardVO";
+import {BotCardVO} from "@/app/home/bots/components/bot-card/BotCardVO";
+import styles from "./botCard.module.css";
 
-export default function LLMCard({
-    cardVO
+export default function BotCard({
+    botCardVO
 }: {
-    cardVO: LLMCardVO
+    botCardVO: BotCardVO;
 }) {
     return (
         <div className={`${styles.cardContainer}`}>
@@ -17,23 +17,23 @@ export default function LLMCard({
                 {/*  bot基本信息  */}
                 <div className={`${styles.basicInfoContainer}`}>
                     <div className={`${styles.basicInfoText}  ${styles.bigText}`}>
-                        {cardVO.name}
+                        {botCardVO.name}
                     </div>
                     <div className={`${styles.basicInfoText}`}>
-                        使用模型：{cardVO.model}
+                        平台：{botCardVO.adapter}
                     </div>
                     <div className={`${styles.basicInfoText}`}>
-                        厂商：{cardVO.company}
+                        绑定流水线：{botCardVO.pipelineName}
                     </div>
                 </div>
             </div>
-            {/*  URL和创建时间  */}
+            {/*  描述和创建时间  */}
             <div className={`${styles.urlAndUpdateText}`}>
-                URL：{cardVO.URL}
+                描述：{botCardVO.description}
             </div>
             <div className={`${styles.urlAndUpdateText}`}>
-                更新时间：{cardVO.updateTime}
+                更新时间：{botCardVO.updateTime}
             </div>
         </div>
-    );
+    )
 }
