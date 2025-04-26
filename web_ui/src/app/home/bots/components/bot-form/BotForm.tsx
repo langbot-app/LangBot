@@ -1,8 +1,8 @@
-import {BotFormEntity, IBotFormEntity} from "@/app/home/bot-config/components/bot-form/BotFormEntity";
+import {BotFormEntity, IBotFormEntity} from "@/app/home/bots/components/bot-form/BotFormEntity";
 import {fetchAdapterList} from "@/app/home/mock-api/index"
 import {Button, Form, Input, Select, Space} from "antd";
 import {useEffect, useState} from "react";
-import {IChooseAdapterEntity} from "@/app/home/bot-config/components/bot-form/ChooseAdapterEntity";
+import {IChooseAdapterEntity} from "@/app/home/bots/components/bot-form/ChooseAdapterEntity";
 import {
     DynamicFormItemConfig,
     IDynamicFormItemConfig,
@@ -10,7 +10,7 @@ import {
 } from "@/app/home/components/dynamic-form/DynamicFormItemConfig";
 import {UUID} from 'uuidjs'
 import DynamicFormComponent from "@/app/home/components/dynamic-form/DynamicFormComponent";
-import {ICreateLLMField} from "@/app/home/llm-config/ICreateLLMField";
+import {ICreateLLMField} from "@/app/home/models/ICreateLLMField";
 
 export default function BotForm({
     initBotId,

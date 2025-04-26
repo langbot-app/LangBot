@@ -1,6 +1,6 @@
-import styles from "@/app/home/llm-config/LLMConfig.module.css";
+import styles from "@/app/home/models/LLMConfig.module.css";
 import {Button, Form, Input, Select, SelectProps, Space} from "antd";
-import {ICreateLLMField} from "@/app/home/llm-config/ICreateLLMField";
+import {ICreateLLMField} from "@/app/home/models/ICreateLLMField";
 import {useEffect, useState} from "react";
 
 export default function LLMForm({
