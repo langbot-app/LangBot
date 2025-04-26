@@ -1,0 +1,49 @@
+.cardContainer {
+    width: 360px;
+    height: 129px;
+    background-color: #FFF;
+    border-radius: 9px;
+    box-shadow: rgba(0, 0, 0, 0.4) 0 1px 1px -1px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: space-evenly;
+}
+
+.cardHeader {
+    width: 100%;
+    height: 30px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    background-color: #79c1f4;
+
+    .iconVersionContainer {
+        width: 100px;
+        height: 100%;
+        background-color: #063a5a;
+    }
+}
+
+.cardContent {
+    width: 100%;
+    height: 70px;
+    background-color: #e38787;
+}
+
+.cardFooter {
+    width: 100%;
+    height: 30px;
+    background-color: #f8ff6d;
+}
+
+
+.fontGray {
+    color: #6C6C6C;
+}
+
+.boldFont {
+    font-size: 22px;
+    font-weight: bold;
+}
