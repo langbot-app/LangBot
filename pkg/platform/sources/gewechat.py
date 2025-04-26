@@ -26,7 +26,7 @@ from ..types import events as platform_events
 from ..types import entities as platform_entities
 from ...utils import image
 import xml.etree.ElementTree as ET
-
+from typing import Optional, List, Tuple
 
 class GewechatMessageConverter(adapter.MessageConverter):
 
@@ -60,10 +60,14 @@ class GewechatMessageConverter(adapter.MessageConverter):
                                      'link_thumb_url': component.link_thumb_url, 'link_url': component.link_url})
             elif isinstance(component, platform_message.WeChatForwardLink):
                 content_list.append({'type': 'WeChatForwardLink', 'xml_data': component.xml_data})
-
-
             elif isinstance(component, platform_message.Voice):
-                content_list.append({"type": "voice", "url": component.url, "length": component.length})
+                content_list.append({"type": "voice", "url": component.url, "length": component.length})       
+            elif isinstance(component, platform_message.WeChatForwardImage):
+                content_list.append({'type': 'WeChatForwardImage', 'xml_data': component.xml_data})
+            elif isinstance(component, platform_message.WeChatForwardFile):
+                content_list.append({'type': 'WeChatForwardFile', 'xml_data': component.xml_data})
+            elif isinstance(component, platform_message.WeChatAppMsg):
+                content_list.append({'type': 'WeChatAppMsg', 'app_msg': component.app_msg})               
             elif isinstance(component, platform_message.Forward):
                 for node in component.node_list:
                     content_list.extend(await GewechatMessageConverter.yiri2target(node.message_chain))
@@ -76,48 +80,47 @@ class GewechatMessageConverter(adapter.MessageConverter):
         bot_account_id: str
     ) -> platform_message.MessageChain:
 
+        from_user_name = message['Data']['FromUserName']['string'] # 消息发送方
+        raw_content = message["Data"]["Content"]["string"]         # 原始消息内容
+        sender_id_in_prefix = Optional[str]                        # 群消息的prefix wxid
 
-
-        if message["Data"]["MsgType"] == 1:
+        # 群聊消息处理艾特前缀
+        if from_user_name.endswith("@chatroom"):
             # 检查消息开头，如果有 wxid_sbitaz0mt65n22:\n 则删掉
-            regex = re.compile(r"^wxid_.*:")
-            # print(message)
-
-            line_split = message["Data"]["Content"]["string"].split("\n")
-
+            # add: 有些用户的wxid不是上述格式。换成user_name: 
+            regex = re.compile(r"^[a-zA-Z0-9_\-]{5,20}:")
+            line_split = raw_content.split("\n")
             if len(line_split) > 0 and regex.match(line_split[0]):
-                message["Data"]["Content"]["string"] = "\n".join(line_split[1:])
+                raw_content = "\n".join(line_split[1:])
+                sender_id_in_prefix = line_split[0].strip(":")
 
-
+        # 文本消息
+        if message["Data"]["MsgType"] == 1:
             # 正则表达式模式，匹配'@'后跟任意数量的非空白字符
             pattern = r'@\S+'
             at_string = f"@{bot_account_id}"
             content_list = []
-            if at_string in message["Data"]["Content"]["string"]:
+            if at_string in raw_content:
                 content_list.append(platform_message.At(target=bot_account_id))
-                content_list.append(platform_message.Plain(message["Data"]["Content"]["string"].replace(at_string, '', 1)))
+                content_list.append(platform_message.Plain(raw_content.replace(at_string, '', 1)))
             # 更优雅的替换改名后@机器人，仅仅限于单独AT的情况
             elif "PushContent" in message['Data'] and '在群聊中@了你' in message["Data"]["PushContent"]:
-                if '@所有人' in message["Data"]["Content"]["string"]:  # at全员时候传入atll不当作at自己
+                if '@所有人' in raw_content:  # at全员时候传入atll不当作at自己
                     content_list.append(platform_message.AtAll())
                 else:
                     content_list.append(platform_message.At(target=bot_account_id))
-                content_list.append(platform_message.Plain(re.sub(pattern, '', message["Data"]["Content"]["string"])))
+                content_list.append(platform_message.Plain(re.sub(pattern, '',raw_content)))
             else:
-                content_list = [platform_message.Plain(message["Data"]["Content"]["string"])]
+                content_list = [platform_message.Plain(raw_content)]
 
             return platform_message.MessageChain(content_list)
                     
         elif message["Data"]["MsgType"] == 3:
-            image_xml = message["Data"]["Content"]["string"]
-            if image_xml.startswith('wxid'):  # 此处处理群聊发送图片会有微信id开头
-                xml_list = image_xml.split('\n')[2:]
-                image_xml = '\n'.join(xml_list)
+            image_xml = raw_content # 已经去除群聊消息前缀
             if not image_xml:
                 return platform_message.MessageChain([
                     platform_message.Plain(text="[图片内容为空]")
                 ])
-
 
             try:
                 base64_str, image_format = await image.get_gewechat_image_base64(
@@ -128,10 +131,10 @@ class GewechatMessageConverter(adapter.MessageConverter):
                     token=self.config["token"],
                     image_type=2,
                 )
-
                 return platform_message.MessageChain([
                     platform_message.Image(
-                        base64=f"data:image/{image_format};base64,{base64_str}"
+                        base64=f"data:image/{image_format};base64,{base64_str}",
+                        xml_data = image_xml
                     )
                 ])
             except Exception as e:
@@ -151,19 +154,14 @@ class GewechatMessageConverter(adapter.MessageConverter):
                 )
         elif message["Data"]["MsgType"] == 49:
             # 支持微信聊天记录的消息类型，将 XML 内容转换为 MessageChain 传递
-            content = message["Data"]["Content"]["string"]
-            try:
-                # content = message["Data"]["Content"]["string"]
-                # 有三种可能的消息结构weid开头，私聊直接<?xml>和直接<msg>
-                if content.startswith('wxid'):
-                    xml_list = content.split('\n')[2:]
+            #content = message["Data"]["Content"]["string"]
+            try:                
+                # raw_content已经不会是wxid开头了
+                # 下方是移除<?xml,
+                xml_data = raw_content
+                if raw_content.startswith('<?xml'):
+                    xml_list = raw_content.split('\n')[1:]
                     xml_data = '\n'.join(xml_list)
-                elif content.startswith('<?xml'):
-                    xml_list = content.split('\n')[1:]
-                    xml_data = '\n'.join(xml_list)
-                else:
-                    xml_data = content
-
                 content_data = ET.fromstring(xml_data)
                 # print(xml_data)
                 # 拿到细分消息类型，按照gewe接口中描述
@@ -173,54 +171,81 @@ class GewechatMessageConverter(adapter.MessageConverter):
                 转账消息：2000
                 红包消息：2001
                 视频号消息：51
+                文件发送完成: 6
                 '''
                 appmsg_data = content_data.find('.//appmsg')
                 data_type = appmsg_data.find('.//type').text
                 if data_type == '57':
-                    user_data = appmsg_data.find('.//title').text  # 拿到用户消息
-                    quote_data = appmsg_data.find('.//refermsg').find('.//content').text  # 引用原文
-                    sender_id = appmsg_data.find('.//refermsg').find('.//chatusr').text  # 引用用户id
-                    from_name = message['Data']['FromUserName']['string']
+                    user_data = appmsg_data.findtext('.//title') or ""                  # 用户消息
+                    quote_data = appmsg_data.find('.//refermsg').findtext('.//content') # 引用原文
+                    launcher_id = message['Data']['FromUserName']['string']             # 发送方：消息发送人的wxid/群id
+                    sender_id = content_data.findtext('.//fromusername')                # 发送方：单聊用户/群member
+                    tousername = message['Wxid']                                        # 接收方: 所属微信的wxid
+                    quote_id = appmsg_data.find('.//refermsg').findtext('.//chatusr')   # 引用消息的原发送者
+
                     message_list =[]
-                    if message['Wxid'] == sender_id and from_name.endswith('@chatroom'):  # 因为引用机制暂时无法响应用户，所以当引用用户是机器人是构建一个at激活机器人
-                        message_list.append(platform_message.At(target=bot_account_id))
+                    # 群特殊处理：引用消息的原发送者是bot or @bot
+                    if launcher_id.endswith('@chatroom'): 
+                        # 艾特bot处理逻辑
+                        is_ats_bot = f"@{bot_account_id}" in raw_content
+                        msg_source = message['Data']['MsgSource']
+                        msg_source_data = ET.fromstring(msg_source)
+                        atuserlist = msg_source_data.findtext("atuserlist") or ""
+                        is_ats_bot = is_ats_bot or (tousername in atuserlist)
+                        is_ats_all = '@所有人' in raw_content
+                        
+                        # 引用判断
+                        if (quote_id == tousername or is_ats_bot):
+                            # 群消息没有@，会被AtBotRule过滤掉
+                            message_list.append(platform_message.At(target=bot_account_id))                        
+                    
                     message_list.append(platform_message.Quote(
                             sender_id=sender_id,
                             origin=platform_message.MessageChain(
+                                # 这里是文本或者xml, 历史原因定义的Plain
                                 [platform_message.Plain(quote_data)]
                             )))
-                    message_list.append(platform_message.Plain(user_data))
+                    message_list.append(platform_message.Plain(user_data)) # FIXME: 这里还有wxid
                     return platform_message.MessageChain(message_list)
                 elif data_type == '51':
                     return platform_message.MessageChain(
                         [  # platform_message.Plain(text=f'[视频号消息]'),
-                         platform_message.Unknown(text=content)]
+                         # 消息链中未知消息，把xml和发送人记录
+                         platform_message.Unknown(text=raw_content, 
+                                                  sender_id_in_prefix=sender_id_in_prefix)]
                     )
                     # print(content_data)
                 elif data_type == '2000':
                     return platform_message.MessageChain(
                         [  # platform_message.Plain(text=f'[转账消息]'),
-                         platform_message.Unknown(text=content)]
+                         platform_message.Unknown(text=raw_content, 
+                                                  sender_id_in_prefix=sender_id_in_prefix)]
                     )
                 elif data_type == '2001':
                     return platform_message.MessageChain(
                         [  # platform_message.Plain(text=f'[红包消息]'),
-                         platform_message.Unknown(text=content)]
+                         platform_message.Unknown(text=raw_content, 
+                                                  sender_id_in_prefix=sender_id_in_prefix)]
                     )
                 elif data_type == '5':
                     return platform_message.MessageChain(
                         [  # platform_message.Plain(text=f'[公众号消息]'),
-                         platform_message.Unknown(text=content)]
+                         platform_message.Unknown(text=raw_content, 
+                                                  sender_id_in_prefix=sender_id_in_prefix)]
                     )
                 elif data_type == '33' or data_type == '36':
                     return platform_message.MessageChain(
                         [  # platform_message.Plain(text=f'[小程序消息]'),
-                         platform_message.Unknown(text=content)]
+                         platform_message.Unknown(text=raw_content, 
+                                                  sender_id_in_prefix=sender_id_in_prefix)]
                     )
+                # elif data_type == "6":
+                #     pass
                 # print(data_type.text)
                 else:
                     return platform_message.MessageChain(
-                            [platform_message.Unknown(text=content)]
+                            [platform_message.Unknown(text=raw_content, 
+                                                  sender_id_in_prefix=sender_id_in_prefix)]
                         )
 
                     # try:
@@ -237,7 +262,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
                 print(f"Error processing type 49 message: {str(e)}")
                 return platform_message.MessageChain(
                     [  # platform_message.Plain(text="[无法解析的消息]"),
-                     platform_message.Unknown(text=content)]
+                     platform_message.Unknown(text=raw_content)]
                 )
 
 class GewechatEventConverter(adapter.EventConverter):
@@ -365,55 +390,117 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
 
                 return 'ok'
 
+    async def _handle_message(
+        self,
+        message: platform_message.MessageChain,
+        target_id: str
+    ):
+        """统一消息处理核心逻辑"""
+        content_list = await self.message_converter.yiri2target(message)
+        at_targets = [item["target"] for item in content_list if item["type"] == "at"]
+
+        # 处理@逻辑
+        at_targets = at_targets or []
+        member_info = []
+        if at_targets:
+            member_info = self.bot.get_chatroom_member_detail(
+                self.config["app_id"],
+                target_id,
+                at_targets[::-1]
+            )["data"]
+
+        # 处理消息组件
+        for msg in content_list:
+            # 文本消息处理@
+            if msg['type'] == 'text' and at_targets:
+                for member in member_info:
+                    msg['content'] = f'@{member["nickName"]} {msg["content"]}'
+
+            # 统一消息派发
+            handler_map = {
+                'text': lambda msg: self.bot.post_text(
+                    app_id=self.config['app_id'],
+                    to_wxid=target_id,
+                    content=msg['content'],
+                    ats=",".join(at_targets)
+                ),
+                'image': lambda msg: self.bot.post_image(
+                    app_id=self.config['app_id'],
+                    to_wxid=target_id,
+                    img_url=msg["image"]
+                ),
+                'WeChatForwardMiniPrograms': lambda msg: self.bot.forward_mini_app(
+                    app_id=self.config['app_id'],
+                    to_wxid=target_id,
+                    xml=msg['xml_data'],
+                    cover_img_url=msg.get('image_url')
+                ),
+                'WeChatEmoji': lambda msg: self.bot.post_emoji(
+                    app_id=self.config['app_id'],
+                    to_wxid=target_id,
+                    emoji_md5=msg['emoji_md5'],
+                    emoji_size=msg['emoji_size']
+                ),
+                'WeChatLink': lambda msg: self.bot.post_link(
+                    app_id=self.config['app_id'],
+                    to_wxid=target_id,
+                    title=msg['link_title'],
+                    desc=msg['link_desc'],
+                    link_url=msg['link_url'],
+                    thumb_url=msg['link_thumb_url'],
+                ),
+                'WeChatMiniPrograms': lambda msg: self.bot.post_mini_app(
+                    app_id=self.config['app_id'],
+                    to_wxid=target_id,
+                    mini_app_id=msg['mini_app_id'],
+                    display_name=msg['display_name'],
+                    page_path=msg['page_path'],
+                    cover_img_url=msg['cover_img_url'],
+                    title=msg['title'],
+                    user_name=msg['user_name']
+                ),
+                'WeChatForwardLink': lambda msg: self.bot.forward_url(
+                    app_id=self.config['app_id'],
+                    to_wxid=target_id,
+                    xml=msg['xml_data']
+                ),
+                'WeChatForwardImage': lambda msg: self.bot.forward_image(
+                    app_id=self.config['app_id'],
+                    to_wxid=target_id,
+                    xml=msg['xml_data']
+                ),
+                'WeChatForwardFile': lambda msg: self.bot.forward_file(
+                    app_id=self.config['app_id'],
+                    to_wxid=target_id,
+                    xml=msg['xml_data']
+                ),
+                'voice': lambda msg: self.bot.post_voice(
+                    app_id=self.config['app_id'],
+                    to_wxid=target_id,
+                    voice_url=msg['url'],
+                    voice_duration=msg['length']
+                ),
+                'WeChatAppMsg': lambda msg: self.bot.post_app_msg(
+                    app_id=self.config['app_id'],
+                    to_wxid=target_id,
+                    appmsg=msg['app_msg']
+                )
+            }
+
+            if handler := handler_map.get(msg['type']):
+                handler(msg)
+            else:
+                self.ap.logger.warning(f"未处理的消息类型: {msg['type']}")
+                continue
+
     async def send_message(
         self,
         target_type: str,
         target_id: str,
         message: platform_message.MessageChain
     ):
-        geweap_msg = await self.message_converter.yiri2target(message)
-        # 此处加上群消息at处理
-        ats = [item["target"] for item in geweap_msg if item["type"] == "at"]
-
-
-        for msg in geweap_msg:
-            # at主动发送消息
-            if msg['type'] == 'text':
-                if ats:
-                    member_info = self.bot.get_chatroom_member_detail(
-                        self.config["app_id"],
-                        target_id,
-                        ats[::-1]
-                    )["data"]
-
-                    for member in member_info:
-                        msg['content'] = f'@{member["nickName"]} {msg["content"]}'
-                self.bot.post_text(app_id=self.config['app_id'], to_wxid=target_id, content=msg['content'],
-                                   ats=",".join(ats))
-
-            elif msg['type'] == 'image':
-
-                self.bot.post_image(app_id=self.config['app_id'], to_wxid=target_id, img_url=msg["image"])
-            elif msg['type'] == 'WeChatMiniPrograms':
-                self.bot.post_mini_app(app_id=self.config['app_id'], to_wxid=target_id, mini_app_id=msg['mini_app_id']
-                                       , display_name=msg['display_name'], page_path=msg['page_path']
-                                       , cover_img_url=msg['cover_img_url'], title=msg['title'], user_name=msg['user_name'])
-            elif msg['type'] == 'WeChatForwardMiniPrograms':
-                self.bot.forward_mini_app(app_id=self.config['app_id'], to_wxid=target_id, xml=msg['xml_data'], cover_img_url=msg['image_url'])
-            elif msg['type'] == 'WeChatEmoji':
-                self.bot.post_emoji(app_id=self.config['app_id'], to_wxid=target_id,
-                                    emoji_md5=msg['emoji_md5'], emoji_size=msg['emoji_size'])
-            elif msg['type'] == 'WeChatLink':
-                self.bot.post_link(app_id=self.config['app_id'], to_wxid=target_id
-                                   ,title=msg['link_title'], desc=msg['link_desc']
-                                   , link_url=msg['link_url'], thumb_url=msg['link_thumb_url'])
-
-            elif msg['type'] == 'WeChatForwardLink':
-                self.bot.forward_url(app_id=self.config['app_id'], to_wxid=target_id, xml=msg['xml_data'])
-            elif msg['type'] == 'voice':
-                self.bot.post_voice(app_id=self.config['app_id'], to_wxid=target_id, voice_url=msg['url'],voice_duration=msg['length'])
-
-
+        """主动发送消息"""
+        return await self._handle_message(message, target_id)
 
     async def reply_message(
         self,
@@ -421,51 +508,10 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
         message: platform_message.MessageChain,
         quote_origin: bool = False
     ):
-        content_list = await self.message_converter.yiri2target(message)
-
-        ats = [item["target"] for item in content_list if item["type"] == "at"]
-        target_id = message_source.source_platform_object["Data"]["FromUserName"]["string"]
-
-        for msg in content_list:
-            if msg["type"] == "text":
-
-                if ats:
-                    member_info = self.bot.get_chatroom_member_detail(
-                        self.config["app_id"],
-                        message_source.source_platform_object["Data"]["FromUserName"]["string"],
-                        ats[::-1]
-                    )["data"]
-
-                    for member in member_info:
-                        msg['content'] = f'@{member["nickName"]} {msg["content"]}'
-
-                self.bot.post_text(
-                    app_id=self.config["app_id"],
-                    to_wxid=message_source.source_platform_object["Data"]["FromUserName"]["string"],
-                    content=msg["content"],
-                    ats=",".join(ats)
-                )
-            elif msg['type'] == 'image':
-
-                self.bot.post_image(app_id=self.config['app_id'], to_wxid=target_id, img_url=msg["image"])
-            elif msg['type'] == 'WeChatMiniPrograms':
-                self.bot.post_mini_app(app_id=self.config['app_id'], to_wxid=target_id, mini_app_id=msg['mini_app_id']
-                                       , display_name=msg['display_name'], page_path=msg['page_path']
-                                       , cover_img_url=msg['cover_img_url'], title=msg['title'], user_name=msg['user_name'])
-            elif msg['type'] == 'WeChatForwardMiniPrograms':
-                self.bot.forward_mini_app(app_id=self.config['app_id'], to_wxid=target_id, xml=msg['xml_data'], cover_img_url=msg['image_url'])
-            elif msg['type'] == 'WeChatEmoji':
-                self.bot.post_emoji(app_id=self.config['app_id'], to_wxid=target_id,
-                                    emoji_md5=msg['emoji_md5'], emoji_size=msg['emoji_size'])
-            elif msg['type'] == 'WeChatLink':
-                self.bot.post_link(app_id=self.config['app_id'], to_wxid=target_id
-                                   , title=msg['link_title'], desc=msg['link_desc']
-                                   , link_url=msg['link_url'], thumb_url=msg['link_thumb_url'])
-            elif msg['type'] == 'WeChatForwardLink':
-                self.bot.forward_url(app_id=self.config['app_id'], to_wxid=target_id, xml=msg['xml_data'])
-            elif msg['type'] == 'voice':
-                self.bot.post_voice(app_id=self.config['app_id'], to_wxid=target_id, voice_url=msg['url'],
-                                    voice_duration=msg['length'])
+        """回复消息"""
+        if message_source.source_platform_object:
+            target_id = message_source.source_platform_object["Data"]["FromUserName"]["string"]
+            return await self._handle_message(message, target_id)
 
     async def is_muted(self, group_id: int) -> bool:
         pass
@@ -519,8 +565,13 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
 
             time.sleep(2)
 
-            ret = self.bot.set_callback(self.config["token"], self.config["callback_url"])
-            print('设置 Gewechat 回调：', ret)
+            try:
+                # gewechat-server容器重启, token会变，但是还会登录成功
+                # 换新token也会收不到回调，要重新登陆下。
+                ret = self.bot.set_callback(self.config["token"], self.config["callback_url"])
+            except Exception as e:       
+                raise Exception(f"设置 Gewechat 回调失败， token失效： {e}")
+                
 
         threading.Thread(target=gewechat_login_process).start()
 

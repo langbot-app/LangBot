@@ -1,15 +1,14 @@
 import itertools
 import logging
+import typing
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-import typing
 
 import pydantic.v1 as pydantic
 
 from . import entities as platform_entities
 from .base import PlatformBaseModel, PlatformIndexedMetaclass, PlatformIndexedModel
-
 
 logger = logging.getLogger(__name__)
 
@@ -522,12 +521,16 @@ class Image(MessageComponent):
     """图片的路径，发送本地图片。"""
     base64: typing.Optional[str] = None
     """图片的 Base64 编码。"""
+    xml_data: typing.Optional[str] = None
+    """个人微信专用: 图片的xml,用于后续转发用"""
     def __eq__(self, other):
         return isinstance(
             other, Image
         ) and self.type == other.type and self.uuid == other.uuid
 
     def __str__(self):
+        if self.xml_data:
+            return f'[图片xml]:{self.xml_data}'
         return '[图片]'
 
     @pydantic.validator('path')
@@ -642,7 +645,10 @@ class Unknown(MessageComponent):
     """消息组件类型。"""
     text: str
     """文本。"""
-
+    sender_id_in_prefix: typing.Optional[str]
+    """消息文本中的发送者"""
+    def __str__(self):
+        return f'Unknow Message: {self.text}'
 
 class Voice(MessageComponent):
     """语音。"""
@@ -807,6 +813,8 @@ class File(MessageComponent):
     """文件名称。"""
     size: int
     """文件大小。"""
+    xml: typing.Optional[str]
+    """个人微信专属, xml """
 
     def __str__(self):
         return f'[文件]{self.name}'
@@ -837,6 +845,8 @@ class WeChatForwardMiniPrograms(MessageComponent):
     xml_data: str
     """首页图片"""
     image_url: typing.Optional[str] = None
+    def __str__(self):
+        return self.xml_data
 
 
 class WeChatEmoji(MessageComponent):
@@ -866,4 +876,27 @@ class WeChatForwardLink(MessageComponent):
     type: str = 'WeChatForwardLink'
     """xml数据"""
     xml_data: str
+    def __str__(self):
+        return self.xml_data
 
+class WeChatForwardImage(MessageComponent):
+    """转发图片。个人微信专用组件。"""
+    type: str = 'fxml'
+    """xml数据"""
+    xml_data: str
+    def __str__(self):
+        return self.xml_data
+
+class WeChatForwardFile(MessageComponent):
+    """转发文件。个人微信专用组件。"""
+    type: str = 'WeChatForwardFile'
+    """xml数据"""
+    xml_data: str
+    def __str__(self):
+        return self.xml_data
+
+class WeChatAppMsg(MessageComponent):
+    """通用appmsg发送。个人微信专用组件。"""
+    type: str = 'WeChatAppMsg'
+    """xml数据"""
+    app_msg: str
