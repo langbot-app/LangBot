@@ -2,27 +2,27 @@ import {SidebarChildVO} from "@/app/home/components/home-sidebar/HomeSidebarChil
 
 export const sidebarConfigList = [
     new SidebarChildVO({
-        id: "llm-config",
-        name: "大模型配置",
+        id: "models",
+        name: "模型配置",
         icon: "",
-        route: "/home/llm-config",
+        route: "/home/models",
     }),
     new SidebarChildVO({
-        id: "platform-config",
-        name: "机器人配置",
+        id: "bots",
+        name: "机器人",
         icon: "",
-        route: "/home/bot-config",
+        route: "/home/bots",
     }),
     new SidebarChildVO({
-        id: "plugin-config",
-        name: "插件配置",
+        id: "plugins",
+        name: "插件管理",
         icon: "",
-        route: "/home/plugin-config",
+        route: "/home/plugins",
     }),
     new SidebarChildVO({
-        id: "pipeline-config",
-        name: "流水线配置",
+        id: "pipelines",
+        name: "流水线",
         icon: "",
-        route: "/home/pipeline-config",
+        route: "/home/pipelines",
     })
 ]
