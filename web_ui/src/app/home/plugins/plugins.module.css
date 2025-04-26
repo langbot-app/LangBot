@@ -1,0 +1,25 @@
+.pluginListContainer {
+    align-self: flex-start;
+    justify-self: flex-start;
+    width: calc(100% - 60px);
+    margin:  auto;
+    display: grid;
+    grid-template-rows: repeat(auto-fill, minmax(160px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 15px;
+    justify-items: center;
+    align-items: center;
+}
+
+.modalTitle {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.modalBody {
+    height: 80px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+}

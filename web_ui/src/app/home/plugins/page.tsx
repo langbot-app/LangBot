@@ -3,6 +3,7 @@ import { Radio } from 'antd';
 import {useState} from "react";
 import PluginInstalledComponent from "@/app/home/plugins/plugin-installed/PluginInstalledComponent";
 import PluginMarketComponent from "@/app/home/plugins/plugin-market/PluginMarketComponent";
+import styles from './plugins.module.css'
 
 export default function PluginConfigPage() {
     enum PageType {
@@ -31,7 +32,7 @@ export default function PluginConfigPage() {
                     }}
                 />
             </div>
-            <div>
+            <div className={``}>
                 {
                     nowPageType === PageType.INSTALLED && <PluginInstalledComponent/>
                 }
