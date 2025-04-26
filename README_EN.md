@@ -45,6 +45,7 @@
 >
 > - Before you start deploying in any way, please read the [New User Guide](https://docs.langbot.app/insight/guide.html).  
 > - All documentation is in Chinese, we will provide i18n version in the near future.
+> - Read [the auto-generated wiki on DeepWiki](https://deepwiki.com/RockChinQ/LangBot).
 
 #### Docker Compose Deployment
 
