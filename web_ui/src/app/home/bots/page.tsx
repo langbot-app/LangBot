@@ -9,6 +9,7 @@ import {Modal} from "antd";
 import BotForm from "@/app/home/bots/components/bot-form/BotForm";
 import BotCard from "@/app/home/bots/components/bot-card/BotCard";
 import CreateCardComponent from "@/app/infra/basic-component/create-card-component/CreateCardComponent"
+import {httpClient} from "@/app/infra/http/HttpClient";
 
 
 export default function BotConfigPage() {
@@ -23,13 +24,17 @@ export default function BotConfigPage() {
         // TODO：补齐加载转圈逻辑
         checkHasLLM().then((hasLLM) => {
             if (hasLLM) {
-                const botList = getBotList()
-                if (botList.length === 0) {
-                    setPageShowRule(BotConfigPageShowRule.NO_BOT)
-                } else {
+                getBotList().then((botList) => {
+                    if (botList.length === 0) {
+                        setPageShowRule(BotConfigPageShowRule.NO_BOT)
+                    } else {
                     setPageShowRule(BotConfigPageShowRule.HAVE_BOT)
-                }
-                setBotList(botList)
+                    }
+                    setBotList(botList)
+                }).catch((err) => {
+                    // TODO error toast
+                    console.error("get bot list error (useEffect)", err)
+                })
             } else {
                 setPageShowRule(BotConfigPageShowRule.NO_LLM)
             }
@@ -41,27 +46,28 @@ export default function BotConfigPage() {
         return true
     }
 
-    function getBotList(): BotCardVO[] {
-        let botList: BotCardVO[] = [
-            new BotCardVO({
-                adapter: "QQ bot",
-                description: "1111",
-                id: "1111",
-                name: "第一个bot",
-                updateTime: "202300001111",
-                pipelineName: "默认流水线",
-            }),
-            new BotCardVO({
-                adapter: "WX bot",
-                description: "22211",
-                id: "2222",
-                name: "第2个bot",
-                updateTime: "2025011011",
-                pipelineName: "默认流水线",
-            }),
-        ]
-        // botList = []
-        return botList
+    function getBotList(): Promise<BotCardVO[]> {
+
+        return new Promise((resolve) => {
+            httpClient.getBots().then((resp) => {
+                console.log("get bot list (getBotList)", resp)
+                const botList: BotCardVO[] = resp.bots.map((bot: any) => {
+                    return new BotCardVO({
+                        adapter: bot.adapter,
+                        description: bot.description,
+                        id: bot.id,
+                        name: bot.name,
+                        updateTime: bot.update_time,
+                        pipelineName: bot.pipeline_name,
+                    })
+                })
+                resolve(botList)
+            }).catch((err) => {
+                // TODO error toast
+                console.error("get bot list error", err)
+                resolve([])
+            })
+        })
     }
 
     function handleCreateBotClick() {

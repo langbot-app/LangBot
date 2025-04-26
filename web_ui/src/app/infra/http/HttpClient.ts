@@ -43,6 +43,7 @@ class HttpClient {
 
     // 兜底URL，如果使用未配置会走到这里
     private getBaseUrl(): string {
+        return "http://localhost:5300"
         // NOT IMPLEMENT
         if (typeof window === 'undefined') {
             // 服务端环境
@@ -61,7 +62,7 @@ class HttpClient {
     // 同步获取Session
     private getSessionSync() {
         // NOT IMPLEMENT
-        return ""
+        return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjoicm9ja2NoaW5xQGdtYWlsLmNvbSIsImlzcyI6IkxhbmdCb3QtY29tbXVuaXR5IiwiZXhwIjoyMzUwNDk1NTQ3fQ.d6r0lNGud1OecOLMM-ADDDwiABmek3hkMIFH7ZBkaX4"
     }
 
     // 拦截器配置
@@ -71,8 +72,9 @@ class HttpClient {
             async (config) => {
                 // 服务端请求自动携带 cookie, Langbot暂时用不到SSR相关
                 // if (typeof window === 'undefined' && config.isSSR) { }
-                const { cookies } = await import('next/headers')
-                config.headers.Cookie = cookies().toString()
+                // cookie not required
+                // const { cookies } = await import('next/headers')
+                // config.headers.Cookie = cookies().toString()
 
                 // 客户端添加认证头
                 if (typeof window !== 'undefined') {
@@ -182,11 +184,11 @@ class HttpClient {
 
     // real api request implementation
     // ============ Provider API ============
-    public getProviderRequesters(): Promise<ApiResponse<ApiRespProviderRequesters>> {
+    public getProviderRequesters(): Promise<ApiRespProviderRequesters> {
         return this.get('/api/v1/provider/requesters')
     }
 
-    public getProviderRequester(name: string): Promise<ApiResponse<ApiRespProviderRequester>> {
+    public getProviderRequester(name: string): Promise<ApiRespProviderRequester> {
         return this.get(`/api/v1/provider/requesters/${name}`)
     }
 
@@ -195,53 +197,53 @@ class HttpClient {
     }
 
     // ============ Provider Model LLM ============
-    public getProviderLLMModels(): Promise<ApiResponse<ApiRespProviderLLMModels>> {
+    public getProviderLLMModels(): Promise<ApiRespProviderLLMModels> {
         return this.get('/api/v1/provider/models/llm')
     }
 
-    public getProviderLLMModel(uuid: string): Promise<ApiResponse<ApiRespProviderLLMModel>> {
+    public getProviderLLMModel(uuid: string): Promise<ApiRespProviderLLMModel> {
         return this.get(`/api/v1/provider/models/llm/${uuid}`)
     }
 
-    public createProviderLLMModel(model: LLMModel): Promise<ApiResponse<object>> {
+    public createProviderLLMModel(model: LLMModel): Promise<object> {
         return this.post('/api/v1/provider/models/llm', model)
     }
 
-    public deleteProviderLLMModel(uuid: string): Promise<ApiResponse<object>> {
+    public deleteProviderLLMModel(uuid: string): Promise<object> {
         return this.delete(`/api/v1/provider/models/llm/${uuid}`)
     }
 
     // ============ Pipeline API ============
-    public getGeneralPipelineMetadata(): Promise<ApiResponse<object>> {  // as designed, this method will be deprecated, and only for developer to check the prefered config schema
+    public getGeneralPipelineMetadata(): Promise<object> {  // as designed, this method will be deprecated, and only for developer to check the prefered config schema
         return this.get('/api/v1/pipelines/_/metadata')
     }
 
-    public getPipelines(): Promise<ApiResponse<ApiRespPipelines>> {
+    public getPipelines(): Promise<ApiRespPipelines> {
         return this.get('/api/v1/pipelines')
     }
 
-    public getPipeline(uuid: string): Promise<ApiResponse<ApiRespPipeline>> {
+    public getPipeline(uuid: string): Promise<ApiRespPipeline> {
         return this.get(`/api/v1/pipelines/${uuid}`)
     }
 
-    public createPipeline(pipeline: Pipeline): Promise<ApiResponse<object>> {
+    public createPipeline(pipeline: Pipeline): Promise<object> {
         return this.post('/api/v1/pipelines', pipeline)
     }
 
-    public updatePipeline(uuid: string, pipeline: Pipeline): Promise<ApiResponse<object>> {
+    public updatePipeline(uuid: string, pipeline: Pipeline): Promise<object> {
         return this.put(`/api/v1/pipelines/${uuid}`, pipeline)
     }
 
-    public deletePipeline(uuid: string): Promise<ApiResponse<object>> {
+    public deletePipeline(uuid: string): Promise<object> {
         return this.delete(`/api/v1/pipelines/${uuid}`)
     }
 
     // ============ Platform API ============
-    public getAdapters(): Promise<ApiResponse<ApiRespPlatformAdapters>> {
+    public getAdapters(): Promise<ApiRespPlatformAdapters> {
         return this.get('/api/v1/platform/adapters')
     }
 
-    public getAdapter(name: string): Promise<ApiResponse<ApiRespPlatformAdapter>> {
+    public getAdapter(name: string): Promise<ApiRespPlatformAdapter> {
         return this.get(`/api/v1/platform/adapters/${name}`)
     }
 
@@ -250,90 +252,90 @@ class HttpClient {
     }
 
     // ============ Platform Bots ============
-    public getBots(): Promise<ApiResponse<ApiRespPlatformBots>> {
+    public getBots(): Promise<ApiRespPlatformBots> {
         return this.get('/api/v1/platform/bots')
     }
 
-    public getBot(uuid: string): Promise<ApiResponse<ApiRespPlatformBot>> {
+    public getBot(uuid: string): Promise<ApiRespPlatformBot> {
         return this.get(`/api/v1/platform/bots/${uuid}`)
     }
 
-    public createBot(bot: Bot): Promise<ApiResponse<object>> {
+    public createBot(bot: Bot): Promise<object> {
         return this.post('/api/v1/platform/bots', bot)
     }
 
-    public updateBot(uuid: string, bot: Bot): Promise<ApiResponse<object>> {
+    public updateBot(uuid: string, bot: Bot): Promise<object> {
         return this.put(`/api/v1/platform/bots/${uuid}`, bot)
     }
 
-    public deleteBot(uuid: string): Promise<ApiResponse<object>> {
+    public deleteBot(uuid: string): Promise<object> {
         return this.delete(`/api/v1/platform/bots/${uuid}`)
     }
 
     // ============ Plugins API ============
-    public getPlugins(): Promise<ApiResponse<ApiRespPlugins>> {
+    public getPlugins(): Promise<ApiRespPlugins> {
         return this.get('/api/v1/plugins')
     }
 
-    public getPlugin(author: string, name: string): Promise<ApiResponse<ApiRespPlugin>> {
+    public getPlugin(author: string, name: string): Promise<ApiRespPlugin> {
         return this.get(`/api/v1/plugins/${author}/${name}`)
     }
 
-    public getPluginConfig(author: string, name: string): Promise<ApiResponse<ApiRespPluginConfig>> {
+    public getPluginConfig(author: string, name: string): Promise<ApiRespPluginConfig> {
         return this.get(`/api/v1/plugins/${author}/${name}/config`)
     }
 
-    public updatePluginConfig(author: string, name: string, config: object): Promise<ApiResponse<object>> {
+    public updatePluginConfig(author: string, name: string, config: object): Promise<object> {
         return this.put(`/api/v1/plugins/${author}/${name}/config`, config)
     }
 
-    public togglePlugin(author: string, name: string, target_enabled: boolean): Promise<ApiResponse<object>> {
+    public togglePlugin(author: string, name: string, target_enabled: boolean): Promise<object> {
         return this.post(`/api/v1/plugins/${author}/${name}/toggle`, { target_enabled })
     }
 
-    public reorderPlugins(plugins: PluginReorderElement[]): Promise<ApiResponse<object>> {
+    public reorderPlugins(plugins: PluginReorderElement[]): Promise<object> {
         return this.post('/api/v1/plugins/reorder', plugins)
     }
 
-    public updatePlugin(author: string, name: string): Promise<ApiResponse<AsyncTaskCreatedResp>> {
+    public updatePlugin(author: string, name: string): Promise<AsyncTaskCreatedResp> {
         return this.post(`/api/v1/plugins/${author}/${name}/update`)
     }
 
-    public installPluginFromGithub(source: string): Promise<ApiResponse<AsyncTaskCreatedResp>> {
+    public installPluginFromGithub(source: string): Promise<AsyncTaskCreatedResp> {
         return this.post('/api/v1/plugins/install/github', { source })
     }
 
-    public removePlugin(author: string, name: string): Promise<ApiResponse<AsyncTaskCreatedResp>> {
+    public removePlugin(author: string, name: string): Promise<AsyncTaskCreatedResp> {
         return this.delete(`/api/v1/plugins/${author}/${name}`)
     }
 
     // ============ System API ============
-    public getSystemInfo(): Promise<ApiResponse<ApiRespSystemInfo>> {
+    public getSystemInfo(): Promise<ApiRespSystemInfo> {
         return this.get('/api/v1/system/info')
     }
 
-    public getAsyncTasks(): Promise<ApiResponse<ApiRespAsyncTasks>> {
+    public getAsyncTasks(): Promise<ApiRespAsyncTasks> {
         return this.get('/api/v1/system/tasks')
     }
 
-    public getAsyncTask(id: number): Promise<ApiResponse<ApiRespAsyncTask>> {
+    public getAsyncTask(id: number): Promise<ApiRespAsyncTask> {
         return this.get(`/api/v1/system/tasks/${id}`)
     }
 
     // ============ User API ============
-    public checkIfInited(): Promise<ApiResponse<object>> {
+    public checkIfInited(): Promise<object> {
         return this.get('/api/v1/user/init')
     }
 
-    public initUser(user: string, password: string): Promise<ApiResponse<object>> {
+    public initUser(user: string, password: string): Promise<object> {
         return this.post('/api/v1/user/init', { user, password })
     }
 
-    public authUser(user: string, password: string): Promise<ApiResponse<ApiRespUserToken>> {
+    public authUser(user: string, password: string): Promise<ApiRespUserToken> {
         return this.post('/api/v1/user/auth', { user, password })
     }
 
-    public checkUserToken(): Promise<ApiResponse<ApiRespUserToken>> {
+    public checkUserToken(): Promise<ApiRespUserToken> {
         return this.get('/api/v1/user/check-token')
     }
 }
