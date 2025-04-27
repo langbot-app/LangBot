@@ -31,9 +31,8 @@ export default function LLMConfigPage() {
                     return new LLMCardVO({
                         id: model.uuid,
                         name: model.name,
-                        model: model.name,
                         company: model.requester,
-                        URL: model.requester_config.base_url,
+                        URL: model.requester_config?.base_url,
                     })
                 })
                 resolve(llmModelList)
