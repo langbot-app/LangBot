@@ -4,7 +4,6 @@ export interface ILLMCardVO {
     model: string;
     company: string;
     URL: string;
-    updateTime: string;
 }
 
 export class LLMCardVO implements ILLMCardVO {
@@ -13,7 +12,6 @@ export class LLMCardVO implements ILLMCardVO {
     model: string;
     company: string;
     URL: string;
-    updateTime: string;
 
     constructor(props: ILLMCardVO) {
         this.id = props.id;
@@ -21,7 +19,6 @@ export class LLMCardVO implements ILLMCardVO {
         this.model = props.model;
         this.company = props.company;
         this.URL = props.URL;
-        this.updateTime = props.updateTime;
     }
 
 }

@@ -2,6 +2,8 @@ import styles from "@/app/home/models/LLMConfig.module.css";
 import {Button, Form, Input, Select, SelectProps, Space} from "antd";
 import {ICreateLLMField} from "@/app/home/models/ICreateLLMField";
 import {useEffect, useState} from "react";
+import {IChooseRequesterEntity} from "@/app/home/models/component/llm-form/ChooseAdapterEntity";
+import { httpClient } from "@/app/infra/http/HttpClient";
 
 export default function LLMForm({
     editMode,
@@ -27,7 +29,10 @@ export default function LLMForm({
             value: 'vision',
         },
     ];
+    const [requesterNameList, setRequesterNameList] = useState<IChooseRequesterEntity[]>([])
+
     useEffect(() => {
+        initLLMModelFormComponent()
         if (editMode && initLLMId) {
             getLLMConfig(initLLMId).then(val => {
                 form.setFieldsValue(val)
@@ -35,7 +40,18 @@ export default function LLMForm({
         } else {
             form.resetFields()
         }
-    })
+    }, [])
+
+    async function initLLMModelFormComponent() {
+        const requesterNameList = await httpClient.getProviderRequesters()
+        setRequesterNameList(requesterNameList.requesters.map(item => {
+            return {
+                label: item.label.zh_CN,
+                value: item.name
+            }
+        }))
+        // TODO 拉取初始化表单信息
+    }
 
     async function getLLMConfig(id: string): Promise<ICreateLLMField> {
         return {
@@ -102,11 +118,7 @@ export default function LLMForm({
                         style={{width: 120}}
                         onChange={() => {
                         }}
-                        options={[
-                            {value: 'OpenAI', label: 'OpenAI'},
-                            {value: 'OLAMA', label: 'OLAMA'},
-                            {value: 'DeepSeek', label: 'DeepSeek'},
-                        ]}
+                        options={requesterNameList}
                     />
                 </Form.Item>
 
