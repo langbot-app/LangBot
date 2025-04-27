@@ -521,16 +521,12 @@ class Image(MessageComponent):
     """图片的路径，发送本地图片。"""
     base64: typing.Optional[str] = None
     """图片的 Base64 编码。"""
-    xml_data: typing.Optional[str] = None
-    """个人微信专用: 图片的xml,用于后续转发用"""
     def __eq__(self, other):
         return isinstance(
             other, Image
         ) and self.type == other.type and self.uuid == other.uuid
 
     def __str__(self):
-        if self.xml_data:
-            return f'[图片xml]:{self.xml_data}'
         return '[图片]'
 
     @pydantic.validator('path')
