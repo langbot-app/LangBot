@@ -54,13 +54,21 @@ export default function LLMForm({
     }
 
     async function getLLMConfig(id: string): Promise<ICreateLLMField> {
+
+        const llmModel = await httpClient.getProviderLLMModel(id)
+
+        let fakeExtraArgs = []
+        const extraArgs = llmModel.model.extra_args as Record<string, string>
+        for (const key in extraArgs) {
+            fakeExtraArgs.push(`${key}:${extraArgs[key]}`)
+        }
         return {
-            name: id,
-            model_provider: "OpenAI",
-            url: "www.aaa.com",
-            api_key: "",
-            abilities: [],
-            extra_args: [],
+            name: llmModel.model.name,
+            model_provider: llmModel.model.requester,
+            url: llmModel.model.requester_config?.base_url,
+            api_key: llmModel.model.api_keys[0],
+            abilities: llmModel.model.abilities,
+            extra_args: fakeExtraArgs,
         }
     }
 

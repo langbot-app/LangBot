@@ -20,9 +20,6 @@ export default function LLMCard({
                         {cardVO.name}
                     </div>
                     <div className={`${styles.basicInfoText}`}>
-                        使用模型：{cardVO.model}
-                    </div>
-                    <div className={`${styles.basicInfoText}`}>
                         厂商：{cardVO.company}
                     </div>
                 </div>

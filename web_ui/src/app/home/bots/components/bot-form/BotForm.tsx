@@ -9,7 +9,6 @@ import {
 } from "@/app/home/components/dynamic-form/DynamicFormItemConfig";
 import {UUID} from 'uuidjs'
 import DynamicFormComponent from "@/app/home/components/dynamic-form/DynamicFormComponent";
-import {ICreateLLMField} from "@/app/home/models/ICreateLLMField";
 import {httpClient} from "@/app/infra/http/HttpClient";
 import { Bot } from "@/app/infra/api/api-types";
 
