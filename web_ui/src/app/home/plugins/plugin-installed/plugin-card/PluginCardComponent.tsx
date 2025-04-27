@@ -17,7 +17,7 @@ export default function PluginCardComponent({
                 {/*  right icon & version  */}
                 <div className={`${styles.iconVersionContainer}`}>
                     <GithubOutlined
-                        style={{fontSize: '30px'}}
+                        style={{fontSize: '26px'}}
                         type="setting"
                     />
                     <Tag color="#108ee9">v{cardVO.version}</Tag>

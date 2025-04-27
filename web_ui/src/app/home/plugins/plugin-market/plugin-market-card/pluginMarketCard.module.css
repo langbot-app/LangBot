@@ -1,0 +1,77 @@
+.cardContainer {
+    width: 360px;
+    height: 140px;
+    box-sizing: border-box;
+    background-color: #FFF;
+    border-radius: 9px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    box-shadow: rgba(0, 0, 0, 0.4) 0 1px 1px -1px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-evenly;
+}
+
+.cardHeader {
+    width: 90%;
+    height: 30px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+
+    .iconVersionContainer {
+        width: 90px;
+        height: 100%;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+    }
+}
+
+.cardContent {
+    width: 90%;
+
+    height: 70px;
+}
+
+.cardFooter {
+    width: 90%;
+    height: 30px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+
+.fontGray {
+    color: #6C6C6C;
+}
+
+.boldFont {
+    font-size: 22px;
+    font-weight: bold;
+}
+
+.linkSettingContainer {
+    width: 80px;
+    height: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+
+    .link {
+        width: 32px;
+        cursor: pointer;
+        text-align: center;
+        display: flex;
+        flex-direction: row;
+        color: #6062E7;
+        align-self: center;
+        justify-content: space-between;
+    }
+}

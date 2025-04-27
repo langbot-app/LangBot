@@ -12,6 +12,7 @@
     "@ant-design/v5-patch-for-react-19": "^1.0.3",
     "antd": "^5.24.6",
     "axios": "^1.8.4",
+    "lodash": "^4.17.21",
     "next": "15.2.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@types/lodash": "^4.17.16",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
