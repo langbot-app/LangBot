@@ -11,6 +11,8 @@ import {UUID} from 'uuidjs'
 import DynamicFormComponent from "@/app/home/components/dynamic-form/DynamicFormComponent";
 import {httpClient} from "@/app/infra/http/HttpClient";
 import { Bot } from "@/app/infra/api/api-types";
+import { notification } from "antd";
+
 
 export default function BotForm({
     initBotId,
@@ -27,6 +29,7 @@ export default function BotForm({
     const [dynamicForm] = Form.useForm();
     const [adapterNameList, setAdapterNameList] = useState<IChooseAdapterEntity[]>([])
     const [dynamicFormConfigList, setDynamicFormConfigList] = useState<IDynamicFormItemConfig[]>([])
+    const [isLoading, setIsLoading] = useState<boolean>(false)
 
     useEffect(() => {
         initBotFormComponent()
@@ -121,6 +124,8 @@ export default function BotForm({
 
     // 只有通过外层固定表单验证才会走到这里，真正的提交逻辑在这里
     function onDynamicFormSubmit(value: object) {
+        setIsLoading(true)
+        console.log('setloading',  true)
         if (initBotId) {
             // 编辑提交
             console.log('submit edit', form.getFieldsValue() ,value)
@@ -135,9 +140,20 @@ export default function BotForm({
                 // TODO success toast
                 console.log("update bot success", res)
                 onFormSubmit(form.getFieldsValue())
+                notification.success({
+                    message: "更新成功",
+                    description: "机器人更新成功"
+                })
             }).catch(err => {
                 // TODO error toast
-                console.log("update bot error", err)
+                notification.error({
+                    message: "更新失败",
+                    description: "机器人更新失败"
+                })
+            }).finally(() => {
+                setIsLoading(false)
+                form.resetFields()
+                dynamicForm.resetFields()
             })
         } else {
             // 创建提交
@@ -150,16 +166,28 @@ export default function BotForm({
             }
             httpClient.createBot(newBot).then(res => {
                 // TODO success toast
+                notification.success({
+                    message: "创建成功",
+                    description: "机器人创建成功"
+                })
                 console.log(res)
                 onFormSubmit(form.getFieldsValue())
             }).catch(err => {
                 // TODO error toast
-                console.log(err)
+                notification.error({
+                    message: "创建失败",
+                    description: "机器人创建失败"
+                })
+            }).finally(() => {
+                setIsLoading(false)
+                form.resetFields()
+                dynamicForm.resetFields()
             })
         }
         setShowDynamicForm(false)
-        form.resetFields()
-        dynamicForm.resetFields()
+        console.log('setloading',  false)
+        // TODO 刷新bot列表
+        // TODO 关闭当前弹窗 Already closed @setShowDynamicForm(false)?
     }
 
     function handleSaveButton() {
@@ -174,6 +202,7 @@ export default function BotForm({
                 wrapperCol={{span: 18}}
                 layout='vertical'
                 onFinish={handleFormFinish}
+                disabled={isLoading}
             >
                 <Form.Item<IBotFormEntity>
                     label={"机器人名称"}
@@ -225,6 +254,7 @@ export default function BotForm({
                         type="primary"
                         htmlType="button"
                         onClick={handleSubmitButton}
+                        loading={isLoading}
                     >
                         提交
                     </Button>
@@ -235,13 +265,14 @@ export default function BotForm({
                         type="primary"
                         htmlType="submit"
                         onClick={handleSaveButton}
+                        loading={isLoading}
                     >
                         保存
                     </Button>
                 }
                 <Button htmlType="button" onClick={() => {
                     onFormCancel(form.getFieldsValue())
-                }}>
+                }} disabled={isLoading}>
                     取消
                 </Button>
             </Space>
