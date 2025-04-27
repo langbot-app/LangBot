@@ -14,7 +14,7 @@ export default function PluginConfigPage() {
     const [nowPageType, setNowPageType] = useState(PageType.INSTALLED)
 
     return (
-        <div className={``}>
+        <div className={`${styles.pageContainer}`}>
             <div>
                 <Radio.Group
                     block
@@ -32,7 +32,7 @@ export default function PluginConfigPage() {
                     }}
                 />
             </div>
-            <div className={``}>
+            <div className={`${styles.pageContainer}`}>
                 {
                     nowPageType === PageType.INSTALLED && <PluginInstalledComponent/>
                 }

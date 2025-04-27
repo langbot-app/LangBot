@@ -4,10 +4,10 @@ import {useCallback, useEffect, useState} from "react";
 import styles from "@/app/home/plugins/plugins.module.css";
 import {PluginMarketCardVO} from "@/app/home/plugins/plugin-market/plugin-market-card/PluginMarketCardVO";
 import PluginMarketCardComponent from "@/app/home/plugins/plugin-market/plugin-market-card/PluginMarketCardComponent";
-import {Input} from "antd";
+import {Input, Pagination} from "antd";
 import {debounce} from "lodash"
 
-export default function PluginInstalledComponent () {
+export default function PluginMarketComponent () {
     const [marketPluginList, setMarketPluginList] = useState<PluginMarketCardVO[]>([])
     const [searchKeyword, setSearchKeyword] = useState("")
 
@@ -16,9 +16,7 @@ export default function PluginInstalledComponent () {
     }, [])
 
     function initData() {
-        getPluginList().then((value) => {
-            setMarketPluginList(value)
-        })
+        getPluginList()
     }
 
     function onInputSearchKeyword(keyword: string) {
@@ -35,7 +33,7 @@ export default function PluginInstalledComponent () {
         }, 500), []
     )
 
-    async function searchPlugin(keyword: string): Promise<PluginMarketCardVO[]> {
+    async function searchPlugin(keyword: string, pageNumber: number = 1): Promise<PluginMarketCardVO[]> {
         // TODO 实现搜索
         const demoResult: PluginMarketCardVO[] =  []
         for (let i = 0; i < keyword.length; i ++) {
@@ -52,33 +50,66 @@ export default function PluginInstalledComponent () {
         return demoResult
     }
 
-    async function getPluginList(): Promise<PluginMarketCardVO[]> {
-        return [
-            new PluginMarketCardVO({
-                pluginId: "aaa",
-                description: "一般的描述",
-                name: "插件AAA",
-                author: "/hana",
-                version: "0.1",
-                githubURL: "",
-                starCount: 23
-            }),
-        ]
+    function getPluginList(pageNumber: number = 1) {
+        new Promise<PluginMarketCardVO[]>((resolve, reject) => {
+            const result = [
+                new PluginMarketCardVO({
+                    pluginId: "aaa",
+                    description: "一般的描述",
+                    name: "插件AAA",
+                    author: "/hana",
+                    version: "0.1",
+                    githubURL: "",
+                    starCount: 23
+                }),
+            ]
+            for (let i = 0; i < pageNumber; i ++) {
+                result.push(
+                    new PluginMarketCardVO({
+                        pluginId: "aaa",
+                        description: "一般的描述",
+                        name: "插件AAA",
+                        author: "/hana",
+                        version: "0.1",
+                        githubURL: "",
+                        starCount: 23
+                    })
+                )
+            }
+            resolve(result)
+        }).then((value) => {
+            setMarketPluginList(value)
+        })
     }
 
     return (
-        <div className={`${styles.pluginListContainer}`}>
+        <div className={`${styles.marketComponentBody}`}>
             <Input
+                style={{
+                    width: '300px',
+                    marginTop: '10px',
+                }}
                 value={searchKeyword}
+                placeholder="搜索插件"
                 onChange={(e) => onInputSearchKeyword(e.target.value)}
             />
-            {
-                marketPluginList.map((vo, index) => {
-                    return <div key={index}>
-                        <PluginMarketCardComponent cardVO={vo}/>
-                    </div>
-                })
-            }
+            <div className={`${styles.pluginListContainer}`}>
+                {
+                    marketPluginList.map((vo, index) => {
+                        return <div key={index}>
+                            <PluginMarketCardComponent cardVO={vo}/>
+                        </div>
+                    })
+                }
+            </div>
+            <Pagination
+                defaultCurrent={1}
+                total={500}
+                onChange={(pageNumber) => {
+                    getPluginList(pageNumber)
+                }}
+            />
         </div>
+
     )
 }
