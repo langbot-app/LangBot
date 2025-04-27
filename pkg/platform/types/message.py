@@ -642,7 +642,7 @@ class Unknown(MessageComponent):
     text: str
     """文本。"""
     def __str__(self):
-        return f'Unknow Message: {self.text}'
+        return f'Unknown Message: {self.text}'
 
 class Voice(MessageComponent):
     """语音。"""
