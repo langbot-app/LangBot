@@ -1,6 +1,6 @@
 .sidebarContainer {
     box-sizing: border-box;
-    width: 240px;
+    width: 200px;
     height: 100vh;
     background-color: #FFF;
     display: flex;
@@ -9,7 +9,7 @@
 }
 
 .langbotIconContainer {
-    width: 240px;
+    width: 200px;
     height: 70px;
     display: flex;
     flex-direction: row;
@@ -20,7 +20,7 @@
         width: 54px;
         height: 54px;
         border-radius: 12px;
-        background: #6062E7;
+        background: #2288ee;
         color: #fbfbfb;
         font-weight: 600;
         font-size: 36px;
@@ -36,7 +36,7 @@
 
 .sidebarChildContainer {
     box-sizing: border-box;
-    width: 198px;
+    width: 160px;
     height: 48px;
     margin: 12px 0;
     font-size: 16px;
@@ -49,8 +49,9 @@
 }
 
 .sidebarSelected {
-    background-color: #6062E7;
+    background-color: #2288ee;
     color: white;
+    box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.1);
 }
 
 .sidebarUnselected {
