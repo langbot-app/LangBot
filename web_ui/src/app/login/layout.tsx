@@ -12,7 +12,7 @@ export default function LoginLayout({
         <ConfigProvider
             theme={{
                 token: {
-                    colorPrimary: '#6f42c1',
+                    colorPrimary: '#2288ee',
                     borderRadius: 6,
                 },
                 algorithm: theme.defaultAlgorithm,
