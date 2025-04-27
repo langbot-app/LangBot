@@ -877,7 +877,7 @@ class WeChatForwardLink(MessageComponent):
 
 class WeChatForwardImage(MessageComponent):
     """转发图片。个人微信专用组件。"""
-    type: str = 'fxml'
+    type: str = 'WeChatForwardImage'
     """xml数据"""
     xml_data: str
     def __str__(self):
