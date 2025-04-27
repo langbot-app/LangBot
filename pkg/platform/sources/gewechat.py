@@ -159,7 +159,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
                 content_data = ET.fromstring(xml_data)      
                 # raw_content已经不会是wxid开头了
                
-                print(xml_data)
+                #print(xml_data)
                 # 拿到细分消息类型，按照gewe接口中描述
                 '''
                 小程序：33/36
@@ -187,7 +187,8 @@ class GewechatMessageConverter(adapter.MessageConverter):
                     content_list.append(platform_message.Quote(
                             sender_id=sender_id,
                             origin=platform_message.MessageChain(
-                                # 这里是文本或者xml, 历史原因定义的Plain
+                                # 这里是文本或者xml, 历史原因用了plain 
+                                # TODO: 后面需要重构一下,根据type解析具体的消息类型
                                 [platform_message.Plain(quote_data)]
                             )))
                     content_list.append(platform_message.Plain(user_data)) # FIXME: 这里还有wxid
@@ -209,17 +210,23 @@ class GewechatMessageConverter(adapter.MessageConverter):
                          platform_message.Unknown(text=raw_content)]
                     )
                 elif data_type == '5':
-                    return platform_message.MessageChain(
-                        [  # platform_message.Plain(text=f'[公众号消息]'),
-                         platform_message.Unknown(text=raw_content)]
+                    content_list.append(
+                        # platform_message.Plain(text=f'[公众号消息]'),
+                        platform_message.WeChatForwardLink(xml_data=raw_content)
                     )
+                    return platform_message.MessageChain(content_list)
                 elif data_type == '33' or data_type == '36':
                     return platform_message.MessageChain(
                         [  # platform_message.Plain(text=f'[小程序消息]'),
                          platform_message.Unknown(text=raw_content)]
                     )
-                # elif data_type == "6":
-                #     pass
+                elif data_type == "6":
+                    # 文件消息
+                    content_list.append(
+                        # platform_message.Plain(text=f'[文件消息]'),
+                       platform_message.WeChatForwardFile(xml_data=raw_content)
+                    )
+                    return platform_message.MessageChain(content_list)
                 # print(data_type.text)
                 else:
                     return platform_message.MessageChain(
@@ -260,7 +267,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
             push_content = message.get('Data', {}).get('PushContent', '')
             ats_bot =  ats_bot or ('在群聊中@了你' in push_content)
             # step 3
-            msg_source = message.get('Data', {}).get('MsgSource', '')
+            msg_source = message.get('Data', {}).get('MsgSource', '') or ''
             if len(msg_source) > 0:
                 msg_source_data = ET.fromstring(msg_source)
                 at_user_list = msg_source_data.findtext("atuserlist") or ""
