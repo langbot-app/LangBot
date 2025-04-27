@@ -11,6 +11,7 @@ import {UUID} from 'uuidjs'
 import DynamicFormComponent from "@/app/home/components/dynamic-form/DynamicFormComponent";
 import {ICreateLLMField} from "@/app/home/models/ICreateLLMField";
 import {httpClient} from "@/app/infra/http/HttpClient";
+import { Bot } from "@/app/infra/api/api-types";
 
 export default function BotForm({
     initBotId,
@@ -69,6 +70,7 @@ export default function BotForm({
         if (initBotId) {
             getBotFieldById(initBotId).then(val => {
                 form.setFieldsValue(val)
+                // TODO 这里有个bug，adapter config 并没有被设置到表单中，表单一直都只显示默认值
                 handleAdapterSelect(val.adapter)
             })
         } else {
@@ -86,22 +88,20 @@ export default function BotForm({
     }
 
     async function getBotFieldById(botId: string): Promise<IBotFormEntity> {
-        return new BotFormEntity({
-            adapter: "telegram",
-            description: "模拟拉取bot",
-            name: "模拟电报bot",
-            adapter_config: {
-                token: "aaabbbccc"
-            },
+        const bot = (await httpClient.getBot(botId)).bot
+        let botFormEntity = new BotFormEntity({
+            adapter: bot.adapter,
+            description: bot.description,
+            name: bot.name,
+            adapter_config: bot.adapter_config
         })
+        return botFormEntity
     }
 
     function handleAdapterSelect(adapterName: string) {
         if (adapterName) {
-            console.log(adapterNameToDynamicConfigMap)
             const dynamicFormConfigList = adapterNameToDynamicConfigMap.get(adapterName)
             if (dynamicFormConfigList) {
-                console.log(dynamicFormConfigList)
                 setDynamicFormConfigList(dynamicFormConfigList)
             }
             setShowDynamicForm(true)
@@ -123,19 +123,47 @@ export default function BotForm({
         if (initBotId) {
             // 编辑提交
             console.log('submit edit', form.getFieldsValue() ,value)
+            let updateBot: Bot = {
+                uuid: initBotId,
+                name: form.getFieldsValue().name,
+                description: form.getFieldsValue().description,
+                adapter: form.getFieldsValue().adapter,
+                adapter_config: value
+            }
+            httpClient.updateBot(initBotId, updateBot).then(res => {
+                // TODO success toast
+                console.log("update bot success", res)
+            }).catch(err => {
+                // TODO error toast
+                console.log("update bot error", err)
+            })
         } else {
             // 创建提交
             console.log('submit create', form.getFieldsValue() ,value)
+            let newBot: Bot = {
+                name: form.getFieldsValue().name,
+                description: form.getFieldsValue().description,
+                adapter: form.getFieldsValue().adapter,
+                adapter_config: value
+            }
+            httpClient.createBot(newBot).then(res => {
+                // TODO success toast
+                console.log(res)
+            }).catch(err => {
+                // TODO error toast
+                console.log(err)
+            })
         }
         onFormSubmit(form.getFieldsValue())
         setShowDynamicForm(false)
         form.resetFields()
         dynamicForm.resetFields()
-
+        // TODO 刷新bot列表
+        // TODO 关闭当前弹窗
     }
 
     function handleSaveButton() {
-
+        form.submit()
     }
 
     return (
