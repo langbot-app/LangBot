@@ -23,7 +23,7 @@
     width: 200px;
     height: 50px;
     border-radius: 20px;
-    background-color: #6062E7;
+    background-color: #2288ee;
     color: #FFF;
     font-size: 20px;
     font-weight: bold;
@@ -33,7 +33,7 @@
 }
 
 .emptyCreateButton:hover {
-    background-color: #4b4de3;
+    background-color: #1b77d2;
 }
 
 .emptyInfoContainer {
