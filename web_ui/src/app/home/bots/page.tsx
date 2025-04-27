@@ -10,7 +10,7 @@ import BotForm from "@/app/home/bots/components/bot-form/BotForm";
 import BotCard from "@/app/home/bots/components/bot-card/BotCard";
 import CreateCardComponent from "@/app/infra/basic-component/create-card-component/CreateCardComponent"
 import {httpClient} from "@/app/infra/http/HttpClient";
-
+import { Bot } from "@/app/infra/api/api-types";
 
 export default function BotConfigPage() {
     const router = useRouter();
@@ -50,15 +50,14 @@ export default function BotConfigPage() {
 
         return new Promise((resolve) => {
             httpClient.getBots().then((resp) => {
-                console.log("get bot list (getBotList)", resp)
-                const botList: BotCardVO[] = resp.bots.map((bot: any) => {
+                const botList: BotCardVO[] = resp.bots.map((bot: Bot) => {
                     return new BotCardVO({
                         adapter: bot.adapter,
                         description: bot.description,
-                        id: bot.id,
+                        id: bot.uuid || "",
                         name: bot.name,
-                        updateTime: bot.update_time,
-                        pipelineName: bot.pipeline_name,
+                        updateTime: bot.updated_at || "",
+                        pipelineName: bot.use_pipeline_name || "",
                     })
                 })
                 resolve(botList)

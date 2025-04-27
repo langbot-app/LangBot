@@ -94,16 +94,16 @@ export interface ApiRespPlatformBot {
 }
 
 export interface Bot {
-    uuid: string;
+    uuid?: string;
     name: string;
     description: string;
-    enable: boolean;
+    enable?: boolean;
     adapter: string;
     adapter_config: object;
-    use_pipeline_name: string;
-    use_pipeline_uuid: string;
-    created_at: string;
-    updated_at: string;
+    use_pipeline_name?: string;
+    use_pipeline_uuid?: string;
+    created_at?: string;
+    updated_at?: string;
 }
 
 // plugins

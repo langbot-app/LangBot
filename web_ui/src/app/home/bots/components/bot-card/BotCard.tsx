@@ -31,9 +31,9 @@ export default function BotCard({
             <div className={`${styles.urlAndUpdateText}`}>
                 描述：{botCardVO.description}
             </div>
-            <div className={`${styles.urlAndUpdateText}`}>
+            {/* <div className={`${styles.urlAndUpdateText}`}>
                 更新时间：{botCardVO.updateTime}
-            </div>
+            </div> */}
         </div>
     )
 }
