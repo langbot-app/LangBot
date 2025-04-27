@@ -18,13 +18,10 @@ export default function LLMConfigPage() {
     const [nowSelectedLLM, setNowSelectedLLM] = useState<LLMCardVO | null>(null)
 
     useEffect(() => {
-        getLLMModelList().then((llmModelList) => {
-            setCardList(llmModelList)
-        })
+        getLLMModelList()
     }, [])
 
-    function getLLMModelList(): Promise<LLMCardVO[]> {
-        return new Promise((resolve) => {
+    function getLLMModelList() {
             httpClient.getProviderLLMModels().then((resp) => {
                 const llmModelList: LLMCardVO[] = resp.models.map((model: LLMModel) => {
                     console.log("model", model)
@@ -35,13 +32,12 @@ export default function LLMConfigPage() {
                         URL: model.requester_config?.base_url,
                     })
                 })
-                resolve(llmModelList)
+                console.log("get llmModelList", llmModelList)
+                setCardList(llmModelList)
             }).catch((err) => {
                 // TODO error toast
                 console.error("get LLM model list error", err)
-                resolve([])
             })
-        })
     }
 
     function selectLLM(cardVO: LLMCardVO) {
@@ -59,9 +55,10 @@ export default function LLMConfigPage() {
     return (
         <div className={styles.configPageContainer}>
             <Modal
-                title={isEditForm ? "编辑模型" : "创建模型"}
+                title={isEditForm ? "预览模型" : "创建模型"}
                 centered
                 open={modalOpen}
+                destroyOnClose={true}
                 onOk={() => setModalOpen(false)}
                 onCancel={() => setModalOpen(false)}
                 width={700}
@@ -72,9 +69,14 @@ export default function LLMConfigPage() {
                     initLLMId={nowSelectedLLM?.id}
                     onFormSubmit={() => {
                         setModalOpen(false);
+                        getLLMModelList()
                     }}
                     onFormCancel={() => {
                         setModalOpen(false);
+                    }}
+                    onLLMDeleted={() => {
+                        setModalOpen(false)
+                        getLLMModelList()
                     }}
                 />
             </Modal>
