@@ -70,7 +70,8 @@ class GewechatMessageConverter(adapter.MessageConverter):
                 content_list.append({'type': 'WeChatAppMsg', 'app_msg': component.app_msg})               
             elif isinstance(component, platform_message.Forward):
                 for node in component.node_list:
-                    content_list.extend(await GewechatMessageConverter.yiri2target(node.message_chain))
+                    if node.message_chain:
+                        content_list.extend(await GewechatMessageConverter.yiri2target(node.message_chain))
 
         return content_list
 
@@ -80,48 +81,38 @@ class GewechatMessageConverter(adapter.MessageConverter):
         bot_account_id: str
     ) -> platform_message.MessageChain:
 
-        from_user_name = message['Data']['FromUserName']['string'] # 消息发送方
-        raw_content = message["Data"]["Content"]["string"]         # 原始消息内容
-        sender_id_in_prefix = Optional[str]                        # 群消息的prefix wxid
-
-        # 群聊消息处理艾特前缀
-        if from_user_name.endswith("@chatroom"):
-            # 检查消息开头，如果有 wxid_sbitaz0mt65n22:\n 则删掉
-            # add: 有些用户的wxid不是上述格式。换成user_name: 
-            regex = re.compile(r"^[a-zA-Z0-9_\-]{5,20}:")
-            line_split = raw_content.split("\n")
-            if len(line_split) > 0 and regex.match(line_split[0]):
-                raw_content = "\n".join(line_split[1:])
-                sender_id_in_prefix = line_split[0].strip(":")
-
-        # 文本消息
-        if message["Data"]["MsgType"] == 1:
-            # 正则表达式模式，匹配'@'后跟任意数量的非空白字符
-            pattern = r'@\S+'
-            at_string = f"@{bot_account_id}"
-            content_list = []
-            if at_string in raw_content:
+        # 预处理
+        content_list = []
+        ats_bot = False
+        raw_content = message["Data"]["Content"]["string"]
+        is_group_message = self.__is_group_message(message)
+        if is_group_message:
+            ats_bot = self.__ats_bot(message, bot_account_id)
+            # 优先处理艾特全体成员，
+            if "@所有人" in raw_content: ## at全员时候传入atll不当作at自己
+                content_list.append(platform_message.AtAll())
+            elif ats_bot:
                 content_list.append(platform_message.At(target=bot_account_id))
-                content_list.append(platform_message.Plain(raw_content.replace(at_string, '', 1)))
-            # 更优雅的替换改名后@机器人，仅仅限于单独AT的情况
-            elif "PushContent" in message['Data'] and '在群聊中@了你' in message["Data"]["PushContent"]:
-                if '@所有人' in raw_content:  # at全员时候传入atll不当作at自己
-                    content_list.append(platform_message.AtAll())
-                else:
-                    content_list.append(platform_message.At(target=bot_account_id))
-                content_list.append(platform_message.Plain(re.sub(pattern, '',raw_content)))
-            else:
-                content_list = [platform_message.Plain(raw_content)]
+            raw_content, sender_id = self.__extract_content_and_sender(raw_content)
 
+        # 消息类型
+        msg_type = message["Data"]["MsgType"]
+        
+        # 文本消息
+        if msg_type == 1: 
+            # 文本清洗，仅替换群文本中的@文本[空格]，的文本
+            if is_group_message and ats_bot:
+                pattern = r'@\S+'
+                raw_content = re.sub(pattern, '',raw_content)
+            content_list.append(platform_message.Plain(raw_content))
             return platform_message.MessageChain(content_list)
-                    
-        elif message["Data"]["MsgType"] == 3:
+
+        # 图像    
+        elif msg_type == 3:
             image_xml = raw_content # 已经去除群聊消息前缀
             if not image_xml:
-                return platform_message.MessageChain([
-                    platform_message.Plain(text="[图片内容为空]")
-                ])
-
+                content_list.append(platform_message.Plain(text="[图片内容为空]"))
+                return platform_message.MessageChain(content_list)
             try:
                 base64_str, image_format = await image.get_gewechat_image_base64(
                     gewechat_url=self.config["gewechat_url"],
@@ -131,18 +122,21 @@ class GewechatMessageConverter(adapter.MessageConverter):
                     token=self.config["token"],
                     image_type=2,
                 )
-                return platform_message.MessageChain([
-                    platform_message.Image(
-                        base64=f"data:image/{image_format};base64,{base64_str}",
-                        xml_data = image_xml
-                    )
-                ])
+
+                content_list.append(platform_message.Image(
+                    base64=f"data:image/{image_format};base64,{base64_str}"
+                ))
+                # 消息链中加一个WeChatForwardImage的xml用于转发
+                content_list.append(platform_message.WeChatForwardImage(
+                    xml_data = image_xml
+                ))
+                return platform_message.MessageChain(content_list)
             except Exception as e:
                 print(f"处理图片消息失败: {str(e)}")
-                return platform_message.MessageChain([
-                    platform_message.Plain(text=f"[图片处理失败]")
-                ])
-        elif message["Data"]["MsgType"] == 34:
+                content_list.append(platform_message.Plain(text=f"[图片处理失败]"))
+                return platform_message.MessageChain(content_list)
+        # 语音消息
+        elif msg_type == 34:
             try:
                 audio_base64 = message["Data"]["ImgBuf"]["buffer"]
                 return platform_message.MessageChain(
@@ -152,18 +146,20 @@ class GewechatMessageConverter(adapter.MessageConverter):
                 return platform_message.MessageChain(
                     [platform_message.Plain(text="[无法解析群聊语音的消息]")]  # 小测了一下，免费版拿不到群聊语音消息的base64，或者用什么办法解析xml里的url?
                 )
-        elif message["Data"]["MsgType"] == 49:
+            finally:
+                return platform_message.MessageChain(content_list) 
+        elif msg_type == 49:
             # 支持微信聊天记录的消息类型，将 XML 内容转换为 MessageChain 传递
-            #content = message["Data"]["Content"]["string"]
-            try:                
-                # raw_content已经不会是wxid开头了
+            try:    
                 # 下方是移除<?xml,
                 xml_data = raw_content
                 if raw_content.startswith('<?xml'):
                     xml_list = raw_content.split('\n')[1:]
                     xml_data = '\n'.join(xml_list)
-                content_data = ET.fromstring(xml_data)
-                # print(xml_data)
+                content_data = ET.fromstring(xml_data)      
+                # raw_content已经不会是wxid开头了
+               
+                print(xml_data)
                 # 拿到细分消息类型，按照gewe接口中描述
                 '''
                 小程序：33/36
@@ -174,78 +170,60 @@ class GewechatMessageConverter(adapter.MessageConverter):
                 文件发送完成: 6
                 '''
                 appmsg_data = content_data.find('.//appmsg')
-                data_type = appmsg_data.find('.//type').text
+                data_type = appmsg_data.findtext('.//type')
                 if data_type == '57':
                     user_data = appmsg_data.findtext('.//title') or ""                  # 用户消息
                     quote_data = appmsg_data.find('.//refermsg').findtext('.//content') # 引用原文
-                    launcher_id = message['Data']['FromUserName']['string']             # 发送方：消息发送人的wxid/群id
                     sender_id = content_data.findtext('.//fromusername')                # 发送方：单聊用户/群member
                     tousername = message['Wxid']                                        # 接收方: 所属微信的wxid
                     quote_id = appmsg_data.find('.//refermsg').findtext('.//chatusr')   # 引用消息的原发送者
 
-                    message_list =[]
                     # 群特殊处理：引用消息的原发送者是bot or @bot
-                    if launcher_id.endswith('@chatroom'): 
-                        # 艾特bot处理逻辑
-                        is_ats_bot = f"@{bot_account_id}" in raw_content
-                        msg_source = message['Data']['MsgSource']
-                        msg_source_data = ET.fromstring(msg_source)
-                        atuserlist = msg_source_data.findtext("atuserlist") or ""
-                        is_ats_bot = is_ats_bot or (tousername in atuserlist)
-                        is_ats_all = '@所有人' in raw_content
-                        
-                        # 引用判断
-                        if (quote_id == tousername or is_ats_bot):
-                            # 群消息没有@，会被AtBotRule过滤掉
-                            message_list.append(platform_message.At(target=bot_account_id))                        
+                    # 引用判断:quote_id == tousername
+                    if is_group_message and (quote_id == tousername):
+                        if not platform_message.MessageChain(content_list).has(platform_message.At):
+                            content_list.append(platform_message.At(target=bot_account_id))                        
                     
-                    message_list.append(platform_message.Quote(
+                    content_list.append(platform_message.Quote(
                             sender_id=sender_id,
                             origin=platform_message.MessageChain(
                                 # 这里是文本或者xml, 历史原因定义的Plain
                                 [platform_message.Plain(quote_data)]
                             )))
-                    message_list.append(platform_message.Plain(user_data)) # FIXME: 这里还有wxid
-                    return platform_message.MessageChain(message_list)
+                    content_list.append(platform_message.Plain(user_data)) # FIXME: 这里还有wxid
+                    return platform_message.MessageChain(content_list)
                 elif data_type == '51':
                     return platform_message.MessageChain(
                         [  # platform_message.Plain(text=f'[视频号消息]'),
-                         # 消息链中未知消息，把xml和发送人记录
-                         platform_message.Unknown(text=raw_content, 
-                                                  sender_id_in_prefix=sender_id_in_prefix)]
+                         platform_message.Unknown(text=raw_content)]
                     )
                     # print(content_data)
                 elif data_type == '2000':
                     return platform_message.MessageChain(
                         [  # platform_message.Plain(text=f'[转账消息]'),
-                         platform_message.Unknown(text=raw_content, 
-                                                  sender_id_in_prefix=sender_id_in_prefix)]
+                         platform_message.Unknown(text=raw_content)]
                     )
                 elif data_type == '2001':
                     return platform_message.MessageChain(
                         [  # platform_message.Plain(text=f'[红包消息]'),
-                         platform_message.Unknown(text=raw_content, 
-                                                  sender_id_in_prefix=sender_id_in_prefix)]
+                         platform_message.Unknown(text=raw_content)]
                     )
                 elif data_type == '5':
                     return platform_message.MessageChain(
                         [  # platform_message.Plain(text=f'[公众号消息]'),
-                         platform_message.Unknown(text=raw_content, 
-                                                  sender_id_in_prefix=sender_id_in_prefix)]
+                         platform_message.Unknown(text=raw_content)]
                     )
                 elif data_type == '33' or data_type == '36':
                     return platform_message.MessageChain(
                         [  # platform_message.Plain(text=f'[小程序消息]'),
-                         platform_message.Unknown(text=raw_content, 
-                                                  sender_id_in_prefix=sender_id_in_prefix)]
+                         platform_message.Unknown(text=raw_content)]
                     )
                 # elif data_type == "6":
                 #     pass
                 # print(data_type.text)
                 else:
                     return platform_message.MessageChain(
-                            [platform_message.Unknown(text=raw_content, 
-                                                  sender_id_in_prefix=sender_id_in_prefix)]
+                            [platform_message.Unknown(text=raw_content)]
                         )
 
                     # try:
@@ -264,6 +242,54 @@ class GewechatMessageConverter(adapter.MessageConverter):
                     [  # platform_message.Plain(text="[无法解析的消息]"),
                      platform_message.Unknown(text=raw_content)]
                 )
+            finally:
+                return platform_message.MessageChain(content_list)
+        else:
+            content_list.append(platform_message.Unknown(text=f"[未知消息类型 msg_type:{msg_type}"))
+            return platform_message.MessageChain(content_list)
+
+    # 返回是否被艾特
+    def __ats_bot(self, message: dict, bot_account_id:str) -> bool:
+        ats_bot = False
+        try:
+            to_user_name = message['Wxid']                               # 接收方: 所属微信的wxid
+            raw_content = message["Data"]["Content"]["string"]         # 原始消息内容
+            # step 1
+            ats_bot =  ats_bot or (f"@{bot_account_id}" in raw_content)
+            # step 2
+            push_content = message.get('Data', {}).get('PushContent', '')
+            ats_bot =  ats_bot or ('在群聊中@了你' in push_content)
+            # step 3
+            msg_source = message.get('Data', {}).get('MsgSource', '')
+            if len(msg_source) > 0:
+                msg_source_data = ET.fromstring(msg_source)
+                at_user_list = msg_source_data.findtext("atuserlist") or ""
+                ats_bot = ats_bot or (to_user_name in at_user_list)
+        except Exception as e:
+            print(f"__ats_bot got except: {e}")
+        finally:
+            return ats_bot
+
+    # 提取一下content前面的sender_id, 和去掉前缀的内容
+    def __extract_content_and_sender(self, raw_content: str) -> Tuple[str, Optional[str]]:
+        try:
+            # 检查消息开头，如果有 wxid_sbitaz0mt65n22:\n 则删掉
+            # add: 有些用户的wxid不是上述格式。换成user_name: 
+            regex = re.compile(r"^[a-zA-Z0-9_\-]{5,20}:")
+            line_split = raw_content.split("\n")
+            if len(line_split) > 0 and regex.match(line_split[0]):
+                raw_content = "\n".join(line_split[1:])
+                sender_id = line_split[0].strip(":")
+                return raw_content, sender_id
+        except Exception as e:
+            print(f"__extract_content_and_sender got except: {e}")
+        finally:
+            return raw_content, None
+
+    # 是否是群消息
+    def __is_group_message(self, message: dict)->bool:
+        from_user_name = message['Data']['FromUserName']['string']
+        return from_user_name.endswith("@chatroom")
 
 class GewechatEventConverter(adapter.EventConverter):
 
@@ -484,7 +510,8 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
                     app_id=self.config['app_id'],
                     to_wxid=target_id,
                     appmsg=msg['app_msg']
-                )
+                ),
+                'at': lambda msg: None
             }
 
             if handler := handler_map.get(msg['type']):
