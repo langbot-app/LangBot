@@ -6,6 +6,7 @@ import {
     ApiRespPluginConfig, PluginReorderElement, AsyncTaskCreatedResp, ApiRespSystemInfo, ApiRespAsyncTasks, AsyncTask,
     ApiRespAsyncTask, ApiRespUserToken
 } from '../api/api-types'
+import { notification } from 'antd'
 
 type JSONValue = string | number | boolean | JSONObject | JSONArray | null
 interface JSONObject { [key: string]: JSONValue }
@@ -111,6 +112,12 @@ class HttpClient {
                             break
                         case 500:
                             // TODO 弹Toast窗
+                            // NOTE: move to component layer for customized message?
+                            notification.error({
+                                message: "服务器错误",
+                                description: errMessage,
+                                placement: "bottomRight",
+                            })
                             console.error('Server error:', errMessage)
                             break
                     }
