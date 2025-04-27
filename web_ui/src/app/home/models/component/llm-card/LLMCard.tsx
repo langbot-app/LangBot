@@ -31,9 +31,6 @@ export default function LLMCard({
             <div className={`${styles.urlAndUpdateText}`}>
                 URL：{cardVO.URL}
             </div>
-            <div className={`${styles.urlAndUpdateText}`}>
-                更新时间：{cardVO.updateTime}
-            </div>
         </div>
     );
 }

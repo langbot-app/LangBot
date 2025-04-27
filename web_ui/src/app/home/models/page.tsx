@@ -1,6 +1,6 @@
 "use client"
 
-import {useState} from "react";
+import {useState, useEffect} from "react";
 import {LLMCardVO} from "@/app/home/models/component/llm-card/LLMCardVO";
 import styles from "./LLMConfig.module.css"
 import EmptyAndCreateComponent from "@/app/home/components/empty-and-create-component/EmptyAndCreateComponent";
@@ -8,53 +8,42 @@ import {Modal} from "antd";
 import LLMCard from "@/app/home/models/component/llm-card/LLMCard";
 import LLMForm from "@/app/home/models/component/llm-form/LLMForm";
 import CreateCardComponent from "@/app/infra/basic-component/create-card-component/CreateCardComponent";
+import { httpClient } from "@/app/infra/http/HttpClient";
+import { LLMModel } from "@/app/infra/api/api-types";
 
 export default function LLMConfigPage() {
-    const [cardList, setCardList] = useState<LLMCardVO[]>([
-        new LLMCardVO({
-            id: "1",
-            name: "测试模型",
-            model: "GPT-4o",
-            URL: "www.openai.com",
-            company: "OpenAI",
-            updateTime: "2025.1.2"
-        }),
-        new LLMCardVO({
-            id: "2",
-            name: "测试模型",
-            model: "GPT-4o",
-            URL: "www.openai.com",
-            company: "OpenAI",
-            updateTime: "2025.1.2"
-        }),
-        new LLMCardVO({
-            id: "3",
-            name: "测试模型",
-            model: "GPT-4o",
-            URL: "www.openai.com",
-            company: "OpenAI",
-            updateTime: "2025.1.2"
-        }),
-        new LLMCardVO({
-            id: "4",
-            name: "测试模型",
-            model: "GPT-4o",
-            URL: "www.openai.com",
-            company: "OpenAI",
-            updateTime: "2025.1.2"
-        }),
-        new LLMCardVO({
-            id: "5",
-            name: "测试模型",
-            model: "GPT-4o",
-            URL: "www.openai.com",
-            company: "OpenAI",
-            updateTime: "2025.1.2"
-        }),
-    ])
+    const [cardList, setCardList] = useState<LLMCardVO[]>([])
     const [modalOpen, setModalOpen] = useState<boolean>(false);
     const [isEditForm, setIsEditForm] = useState(false)
     const [nowSelectedLLM, setNowSelectedLLM] = useState<LLMCardVO | null>(null)
+
+    useEffect(() => {
+        getLLMModelList().then((llmModelList) => {
+            setCardList(llmModelList)
+        })
+    }, [])
+
+    function getLLMModelList(): Promise<LLMCardVO[]> {
+        return new Promise((resolve) => {
+            httpClient.getProviderLLMModels().then((resp) => {
+                const llmModelList: LLMCardVO[] = resp.models.map((model: LLMModel) => {
+                    console.log("model", model)
+                    return new LLMCardVO({
+                        id: model.uuid,
+                        name: model.name,
+                        model: model.name,
+                        company: model.requester,
+                        URL: model.requester_config.base_url,
+                    })
+                })
+                resolve(llmModelList)
+            }).catch((err) => {
+                // TODO error toast
+                console.error("get LLM model list error", err)
+                resolve([])
+            })
+        })
+    }
 
     function selectLLM(cardVO: LLMCardVO) {
         setIsEditForm(true)
