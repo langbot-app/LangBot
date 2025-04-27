@@ -14,15 +14,15 @@ export const sidebarConfigList = [
         route: "/home/bots",
     }),
     new SidebarChildVO({
+        id: "pipelines",
+        name: "流水线",
+        icon: "",
+        route: "/home/pipelines",
+    }),
+    new SidebarChildVO({
         id: "plugins",
         name: "插件管理",
         icon: "",
         route: "/home/plugins",
     }),
-    new SidebarChildVO({
-        id: "pipelines",
-        name: "流水线",
-        icon: "",
-        route: "/home/pipelines",
-    })
 ]
