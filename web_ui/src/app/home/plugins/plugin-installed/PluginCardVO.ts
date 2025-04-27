@@ -6,7 +6,7 @@ export interface IPluginCardVO {
     handlerCount: number,
 }
 
-export class PluginCardVO implements IPluginCardVO{
+export class PluginCardVO implements IPluginCardVO {
     description: string;
     handlerCount: number;
     name: string;
