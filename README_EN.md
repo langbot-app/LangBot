@@ -122,10 +122,3 @@ Thank you for the following [code contributors](https://github.com/RockChinQ/Lan
 <a href="https://github.com/RockChinQ/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=RockChinQ/LangBot" />
 </a>
-
-And the core team members of LangBot:
-
-- [RockChinQ](https://github.com/RockChinQ)
-- [the-lazy-me](https://github.com/the-lazy-me)
-- [wangcham](https://github.com/wangcham)
-- [KaedeSAMA](https://github.com/KaedeSAMA)

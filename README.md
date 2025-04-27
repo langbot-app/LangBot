@@ -139,10 +139,3 @@
 <a href="https://github.com/RockChinQ/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=RockChinQ/LangBot" />
 </a>
-
-以及 LangBot 核心团队成员：
-
-- [RockChinQ](https://github.com/RockChinQ)
-- [the-lazy-me](https://github.com/the-lazy-me)
-- [wangcham](https://github.com/wangcham)
-- [KaedeSAMA](https://github.com/KaedeSAMA)
