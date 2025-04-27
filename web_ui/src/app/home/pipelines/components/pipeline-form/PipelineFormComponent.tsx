@@ -1,7 +1,11 @@
-import {Form, Button, Switch, Select, Input, InputNumber} from "antd";
+import {Form, Button, Switch, Select, Input, InputNumber, SelectProps} from "antd";
 import { CaretLeftOutlined, CaretRightOutlined } from '@ant-design/icons';
-import {useState} from "react";
+import {useEffect, useState} from "react";
 import styles from "./pipelineFormStyle.module.css"
+import {httpClient} from "@/app/infra/http/HttpClient";
+import {LLMModel, Pipeline} from "@/app/infra/api/api-types";
+import {LLMCardVO} from "@/app/home/models/component/llm-card/LLMCardVO";
+import {UUID} from "uuidjs";
 
 export default function PipelineFormComponent({
     onFinish,
@@ -11,13 +15,38 @@ export default function PipelineFormComponent({
     onCancel: () => void;
 }) {
     const [nowFormIndex, setNowFormIndex] = useState<number>(0)
+    const [nowAIRunner, setNowAIRunner] = useState("")
+    const [llmModelList, setLlmModelList] = useState<SelectProps['options']>([])
     // 这里不好，可以改成enum等
     const formLabelList: FormLabel[] = [
+        {label: "基础", name: "basic"},
         {label: "AI能力", name: "ai"},
         {label: "触发条件", name: "trigger"},
         {label: "安全能力", name: "safety"},
         {label: "输出处理", name: "output"},
     ]
+    const [basicForm] = Form.useForm()
+    const [aiForm] = Form.useForm()
+    const [triggerForm] = Form.useForm()
+    const [safetyForm] = Form.useForm()
+    const [outputForm] = Form.useForm()
+
+    useEffect(() => {
+        getLLMModelList()
+    }, [])
+
+    function getLLMModelList() {
+        httpClient.getProviderLLMModels().then((resp) => {
+            setLlmModelList(resp.models.map((model: LLMModel) => {
+                return {
+                    value: model.uuid,
+                    label: model.name,
+                }
+            }))
+        }).catch((err) => {
+            console.error("get LLM model list error", err)
+        })
+    }
 
     function getNowFormLabel() {
         return formLabelList[nowFormIndex]
@@ -52,6 +81,50 @@ export default function PipelineFormComponent({
         }
     }
 
+    function handleCommit() {
+        Promise.all([
+            basicForm.validateFields(),
+            aiForm.validateFields(),
+            triggerForm.validateFields(),
+            safetyForm.validateFields(),
+            outputForm.validateFields(),
+        ]).then(() => {
+            const pipeline = assembleForm()
+            httpClient.createPipeline(pipeline).then(r =>
+                onFinish()
+            )
+        }).catch(e => {
+            console.error(e)
+        })
+    }
+
+    // TODO 类型混乱，需要优化
+    function assembleForm(): Pipeline {
+        console.log("basicForm:", basicForm.getFieldsValue())
+        console.log("aiForm:", aiForm.getFieldsValue())
+        console.log("triggerForm:", triggerForm.getFieldsValue())
+        console.log("safetyForm:", safetyForm.getFieldsValue())
+        console.log("outputForm:", outputForm.getFieldsValue())
+        const config: object = {
+            ai: aiForm.getFieldsValue(),
+            trigger: triggerForm.getFieldsValue(),
+            safety: safetyForm.getFieldsValue(),
+            output: outputForm.getFieldsValue(),
+        }
+
+        return {
+            config,
+            created_at: "",
+            description: basicForm.getFieldsValue().description,
+            for_version: "",
+            name: basicForm.getFieldsValue().name,
+            stages: [],
+            updated_at: "",
+            uuid: UUID.generate(),
+        }
+    }
+
+
     return (
         <div
             style={{ maxHeight: '70vh', overflowY: 'auto' }}
@@ -59,10 +132,35 @@ export default function PipelineFormComponent({
             <h1>
                 {getNowFormLabel().label}
             </h1>
+            <Form
+                layout={"vertical"}
+                style={{ display: getNowFormLabel().name === "basic" ? 'block' : 'none' }}
+                form={basicForm}>
+                <Form.Item
+                    label="流水线名称"
+                    name={"name"}
+                    rules={[{
+                        required: true,
+                    }]}
+                >
+                    <Input/>
+                </Form.Item>
+
+                <Form.Item
+                    label="流水线描述"
+                    name={"description"}
+                    rules={[{
+                        required: true,
+                    }]}
+                >
+                    <Input/>
+                </Form.Item>
+            </Form>
             {/*  AI能力表单 ai  */}
             <Form
                 layout={"vertical"}
                 style={{ display: getNowFormLabel().name === "ai" ? 'block' : 'none' }}
+                form={aiForm}
             >
                 {/* Runner 配置区块 */}
                 <div className={`${styles.formItemSubtitle}`}>运行器</div>
@@ -77,163 +175,179 @@ export default function PipelineFormComponent({
                             { label: "Dify 服务 API", value: "dify-service-api" },
                             { label: "阿里云百炼平台 API", value: "dashscope-app-api" }
                         ]}
+                        onChange={value => setNowAIRunner(value)}
                     />
                 </Form.Item>
 
                 {/* 内置 Agent 配置区块 */}
-                <div className={`${styles.formItemSubtitle}`}>配置内置Agent</div>
-                {/*  TODO 这里要拉模型  */}
-                <Form.Item
-                    label="模型"
-                    name={["local-agent", "model"]}
-                    rules={[{ required: true }]}
-                    tooltip="从模型库中选择"
-                >
-                    <Select
-                        options={[]}
-                        placeholder="请选择语言模型"
-                        showSearch
-                    />
-                </Form.Item>
-                <Form.Item
-                    label="最大回合数"
-                    name={["local-agent", "max-round"]}
-                    rules={[{
-                        required: true,
-                    }]}
-                >
-                    <InputNumber
-                        precision={0}
-                    />
-                </Form.Item>
-                {/*  TODO 这里要做转换处理  */}
-                <Form.Item
-                    label="提示词"
-                    name={["local-agent", "prompt"]}
-                    rules={[{ required: true }]}
-                    tooltip="按JSON格式输入"
-                >
-                    <Input.TextArea
-                        rows={4}
-                        placeholder={`示例结构：{ "role": "user", "content": "你好" } `}
-                    />
-                </Form.Item>
+                {
+                    nowAIRunner === "local-agent" &&
+                    <>
+                        <div className={`${styles.formItemSubtitle}`}>配置内置Agent</div>
+                        {/*  TODO 这里要拉模型  */}
+                        <Form.Item
+                            label="模型"
+                            name={["local-agent", "model"]}
+                            rules={[{required: true}]}
+                            tooltip="从模型库中选择"
+                        >
+                            <Select
+                                options={llmModelList}
+                                placeholder="请选择语言模型"
+                                showSearch
+                            />
+                        </Form.Item>
+                        <Form.Item
+                            label="最大回合数"
+                            name={["local-agent", "max-round"]}
+                            rules={[{
+                                required: true,
+                            }]}
+                        >
+                            <InputNumber
+                                precision={0}
+                            />
+                        </Form.Item>
+                        {/*  TODO 这里要做转换处理  */}
+                        <Form.Item
+                            label="提示词"
+                            name={["local-agent", "prompt"]}
+                            rules={[{required: true}]}
+                            tooltip="按JSON格式输入"
+                        >
+                            <Input.TextArea
+                                rows={4}
+                                placeholder={`示例结构：{ "role": "user", "content": "你好" } `}
+                            />
+                        </Form.Item>
 
+                    </>
+                }
                 {/* Dify 服务 API 区块 */}
-                <div className={`${styles.formItemSubtitle}`}>配置Dify服务API</div>
-                <Form.Item
-                    label="基础 URL"
-                    name={["dify-service-api", "base-url"]}
-                    rules={[
-                        { required: true },
-                        { type: 'url', message: '请输入有效的URL地址' }
-                    ]}
-                >
-                    <Input/>
-                </Form.Item>
-                <Form.Item
-                    label="应用类型"
-                    name={["dify-service-api", "app-type"]}
-                    initialValue={"chat"}
-                    rules={[{ required: true }]}
-                >
-                    <Select
-                        options={[
-                            { label: "聊天（包括Chatflow）", value: "chat" },
-                            { label: "Agent", value: "agent" },
-                            { label: "工作流", value: "workflow" }
-                        ]}
-                    />
-                </Form.Item>
-                <Form.Item
-                    label="API 密钥"
-                    name={["dify-service-api", "api-key"]}
-                    rules={[{ required: true }]}
-                >
-                    <Input.Password visibilityToggle={false} />
-                </Form.Item>
-                <Form.Item
-                    label="思维链转换"
-                    name={["dify-service-api", "thinking-convert"]}
-                    rules={[{ required: true }]}
-                >
-                    <Select
-                        options={[
-                            { label: "转换成 \<think\>...\<\/think\>", value: "plain" },
-                            { label: "原始", value: "original" },
-                            { label: "移除", value: "remove" }
-                        ]}
-                    />
-                </Form.Item>
-
+                {
+                    nowAIRunner === "dify-service-api" &&
+                    <>
+                        <div className={`${styles.formItemSubtitle}`}>配置Dify服务API</div>
+                        <Form.Item
+                            label="基础 URL"
+                            name={["dify-service-api", "base-url"]}
+                            rules={[
+                                {required: true},
+                                {type: 'url', message: '请输入有效的URL地址'}
+                            ]}
+                        >
+                            <Input/>
+                        </Form.Item>
+                        <Form.Item
+                            label="应用类型"
+                            name={["dify-service-api", "app-type"]}
+                            initialValue={"chat"}
+                            rules={[{required: true}]}
+                        >
+                            <Select
+                                options={[
+                                    {label: "聊天（包括Chatflow）", value: "chat"},
+                                    {label: "Agent", value: "agent"},
+                                    {label: "工作流", value: "workflow"}
+                                ]}
+                            />
+                        </Form.Item>
+                        <Form.Item
+                            label="API 密钥"
+                            name={["dify-service-api", "api-key"]}
+                            rules={[{required: true}]}
+                        >
+                            <Input.Password visibilityToggle={false}/>
+                        </Form.Item>
+                        <Form.Item
+                            label="思维链转换"
+                            name={["dify-service-api", "thinking-convert"]}
+                            rules={[{required: true}]}
+                        >
+                            <Select
+                                options={[
+                                    {label: "转换成 \<think\>...\<\/think\>", value: "plain"},
+                                    {label: "原始", value: "original"},
+                                    {label: "移除", value: "remove"}
+                                ]}
+                            />
+                        </Form.Item>
+                    </>
+                }
                 {/* 阿里云百炼区块 */}
-                <div className={`${styles.formItemSubtitle}`}>配置阿里云百炼平台 API</div>
-                <Form.Item
-                    label="应用类型"
-                    name={["dashscope-app-api", "app-type"]}
-                    rules={[{ required: true }]}
-                >
-                    <Select
-                        options={[
-                            { label: "Agent", value: "agent" },
-                            { label: "工作流", value: "workflow" }
-                        ]}
-                    />
-                </Form.Item>
-                <Form.Item
-                    label="API 密钥"
-                    name={["dashscope-app-api", "api-key"]}
-                    rules={[{ required: true }]}
-                >
-                    <Input.Password visibilityToggle={false} />
-                </Form.Item>
-                <Form.Item
-                    label="应用 ID"
-                    name={["dashscope-app-api", "app-id"]}
-                    rules={[
-                        { required: true },
-                    ]}
-                >
-                    <Input />
-                </Form.Item>
-                <Form.Item
-                    label="引用文本"
-                    name={["dashscope-app-api", "references_quote"]}
-                    initialValue={"参考资料来自:"}
-                >
-                    <Input.TextArea rows={2} />
-                </Form.Item>
+                {
+                    nowAIRunner === "dashscope-app-api" &&
+                    <>
+                        <div className={`${styles.formItemSubtitle}`}>配置阿里云百炼平台 API</div>
+                        <Form.Item
+                            label="应用类型"
+                            name={["dashscope-app-api", "app-type"]}
+                            rules={[{required: true}]}
+                        >
+                            <Select
+                                options={[
+                                    {label: "Agent", value: "agent"},
+                                    {label: "工作流", value: "workflow"}
+                                ]}
+                            />
+                        </Form.Item>
+                        <Form.Item
+                            label="API 密钥"
+                            name={["dashscope-app-api", "api-key"]}
+                            rules={[{required: true}]}
+                        >
+                            <Input.Password visibilityToggle={false}/>
+                        </Form.Item>
+                        <Form.Item
+                            label="应用 ID"
+                            name={["dashscope-app-api", "app-id"]}
+                            rules={[
+                                {required: true},
+                            ]}
+                        >
+                            <Input/>
+                        </Form.Item>
+                        <Form.Item
+                            label="引用文本"
+                            name={["dashscope-app-api", "references_quote"]}
+                            initialValue={"参考资料来自:"}
+                        >
+                            <Input.TextArea rows={2}/>
+                        </Form.Item>
+                    </>
+                }
             </Form>
 
             {/*  触发条件表单 trigger */}
             <Form
                 layout={"vertical"}
-                style={{ display: getNowFormLabel().name === "trigger" ? 'block' : 'none' }}
+                style={{display: getNowFormLabel().name === "trigger" ? 'block' : 'none'}}
+                form={triggerForm}
             >
                 {/* 群响应规则块 */}
-                <div className={`${styles.formItemSubtitle}`}> 群响应规则 </div>
+                <div className={`${styles.formItemSubtitle}`}> 群响应规则</div>
                 <Form.Item
                     label={"是否在消息@机器人时触发"}
                     name={["group-respond-rules", "at"]}
-                    rules={[{ required: true }]}
+                    rules={[{required: true}]}
                 >
-                    <Switch />
+                    <Switch/>
                 </Form.Item>
                 <Form.Item
                     label={"消息前缀"}
                     name={["group-respond-rules", "prefix"]}
-                    rules={[{ required: true }]}
+                    rules={[{required: true}]}
                 >
                     <Select
                         options={[
-                            { value: "\"type\": \"string\"", label: "\"type\": \"string\"" },
+                            {value: "\"type\": \"string\"", label: "\"type\": \"string\""},
                         ]}
                     />
                 </Form.Item>
                 <Form.Item
                     label={"正则表达式"}
                     name={["group-respond-rules", "regexp"]}
-                    rules={[{ required: true }]}
+                    rules={[{required: true}]}
                 >
                     <Select
                         mode="tags"
@@ -319,6 +433,7 @@ export default function PipelineFormComponent({
             <Form
                 layout={"vertical"}
                 style={{ display: getNowFormLabel().name === "safety" ? 'block' : 'none' }}
+                form={safetyForm}
             >
                 {/* 内容过滤块 content-filter */}
                 <div className={`${styles.formItemSubtitle}`}> 内容过滤 </div>
@@ -382,6 +497,7 @@ export default function PipelineFormComponent({
             <Form
                 layout={"vertical"}
                 style={{ display: getNowFormLabel().name === "output" ? 'block' : 'none' }}
+                form={outputForm}
             >
                 {/* 长文本处理区块 */}
                 <div className={`${styles.formItemSubtitle}`}> 长文本处理 </div>
@@ -486,7 +602,7 @@ export default function PipelineFormComponent({
 
                 <Button
                     type="primary"
-                    onClick={addFormLabelIndex}
+                    onClick={handleCommit}
                 >
                     提交
                 </Button>
@@ -507,6 +623,11 @@ interface FormPageLabel {
 }
 
 interface FormLabel {
+    label: string,
+    name: string,
+}
+
+interface LLMSelectList {
     label: string,
     name: string,
 }

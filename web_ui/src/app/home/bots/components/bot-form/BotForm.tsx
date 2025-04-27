@@ -134,6 +134,7 @@ export default function BotForm({
             httpClient.updateBot(initBotId, updateBot).then(res => {
                 // TODO success toast
                 console.log("update bot success", res)
+                onFormSubmit(form.getFieldsValue())
             }).catch(err => {
                 // TODO error toast
                 console.log("update bot error", err)
@@ -150,13 +151,13 @@ export default function BotForm({
             httpClient.createBot(newBot).then(res => {
                 // TODO success toast
                 console.log(res)
+                onFormSubmit(form.getFieldsValue())
             }).catch(err => {
                 // TODO error toast
                 console.log(err)
             })
         }
         setShowDynamicForm(false)
-        onFormSubmit(form.getFieldsValue())
         form.resetFields()
         dynamicForm.resetFields()
     }
