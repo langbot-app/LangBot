@@ -72,7 +72,7 @@ class PersistenceManager:
         if result.first() is None:
             self.ap.logger.info("Creating default pipeline...")
 
-            pipeline_config = json.load(open('templates/default-pipeline-config.json'))
+            pipeline_config = json.load(open('templates/default-pipeline-config.json', encoding='utf-8'))
 
             pipeline_data = {
                 'uuid': str(uuid.uuid4()),

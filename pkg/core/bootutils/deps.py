@@ -61,9 +61,11 @@ async def install_deps(deps: list[str]):
 async def precheck_plugin_deps():
     print('[Startup] Prechecking plugin dependencies...')
 
-    for dir in os.listdir("plugins"):
-        subdir = os.path.join("plugins", dir)
-        if not os.path.isdir(subdir):
-            continue
-        if 'requirements.txt' in os.listdir(subdir):
-            pkgmgr.install_requirements(os.path.join(subdir, 'requirements.txt'), extra_params=['-q', '-q', '-q'])
+    # 只有在plugins目录存在时才执行插件依赖安装
+    if os.path.exists("plugins"):
+        for dir in os.listdir("plugins"):
+            subdir = os.path.join("plugins", dir)
+            if not os.path.isdir(subdir):
+                continue
+            if 'requirements.txt' in os.listdir(subdir):
+                pkgmgr.install_requirements(os.path.join(subdir, 'requirements.txt'), extra_params=['-q', '-q', '-q'])
