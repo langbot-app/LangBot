@@ -1,12 +1,62 @@
 'use client';
 import { Button, Input, Form, Checkbox, Divider } from 'antd';
-import { GoogleOutlined, AppleOutlined, LockOutlined, UserOutlined } from '@ant-design/icons';
+import {GoogleOutlined, AppleOutlined, LockOutlined, UserOutlined, QqCircleFilled, QqOutlined} from '@ant-design/icons';
 import styles from './login.module.css';
-import { useState } from 'react';
+import {useEffect, useState} from 'react';
+
+
+import {httpClient} from "@/app/infra/http/HttpClient";
+import '@ant-design/v5-patch-for-react-19';
+import {useRouter} from "next/navigation";
+
 
 export default function Home() {
-    const [form] = Form.useForm();
+    const router = useRouter();
+    const [form] = Form.useForm<LoginField>();
     const [rememberMe, setRememberMe] = useState(false);
+    const [isRegisterMode, setIsRegisterMode] = useState(false);
+    const [isInitialized, setIsInitialized] = useState(false)
+
+    useEffect(() => {
+        getIsInitialized()
+    }, [])
+
+
+    // 检查是否为首次启动项目，只为首次启动的用户提供注册资格
+    function getIsInitialized() {
+        httpClient.checkIfInited().then(res => {
+            setIsInitialized(res.initialized)
+        }).catch(err => {
+            console.log("error at getIsInitialized: ", err)
+        })
+    }
+
+    function handleFormSubmit(formField: LoginField) {
+        if (isRegisterMode) {
+            handleRegister(formField.email, formField.password);
+        } else {
+            handleLogin(formField.email, formField.password)
+        }
+    }
+
+    function handleRegister(username: string, password: string) {
+        httpClient.initUser(username, password).then(res => {
+            console.log("init user success: ", res)
+        }).catch(err => {
+            console.log("init user error: ", err)
+        })
+    }
+
+    function handleLogin(username: string, password: string) {
+        httpClient.authUser(username, password).then(res => {
+            localStorage.setItem("token", res.token)
+            console.log("login success: ", res)
+            router.push("/home")
+        }).catch(err => {
+            console.log("login error: ", err)
+        })
+    }
+
 
     return (
         // 使用 Ant Design 的组件库，使用 antd 的样式
@@ -18,8 +68,21 @@ export default function Home() {
                 {/* left 为注册的表单，需要填入的内容有：邮箱，密码 */}
                 <div className={styles.left}>
                     <div className={styles.loginForm}>
-                        <h1 className={styles.title}>欢迎回来</h1>
-                        <Form form={form} layout="vertical">
+                        {
+                            isRegisterMode &&
+                            <h1 className={styles.title}>注册 LangBot 账号</h1>
+                        }
+                        {
+                            !isRegisterMode &&
+                            <h1 className={styles.title}>欢迎回到 LangBot</h1>
+                        }
+                        <Form
+                            form={form}
+                            layout="vertical"
+                            onFinish={(values) => {
+                                handleFormSubmit(values)
+                            }}
+                        >
                             <Form.Item
                                 name="email"
                                 rules={[
@@ -54,12 +117,45 @@ export default function Home() {
                                 >
                                     30天内自动登录
                                 </Checkbox>
-                                <a href="#">忘记密码?</a>
+                                <span>
+                                    <a href="#" className={`${styles.forgetPassword}`}>忘记密码?</a>
+                                    {
+                                        !isRegisterMode &&
+                                        <a href=""
+                                           onClick={(event) => {
+                                               setIsRegisterMode(true)
+                                               event.preventDefault()
+                                           }}
+                                        >去注册？</a>
+                                    }
+                                    {
+                                        isRegisterMode &&
+                                        <a href=""
+                                           onClick={(event) => {
+                                               setIsRegisterMode(false)
+                                               event.preventDefault()
+                                           }}
+                                        >去登录</a>
+                                    }
+                                </span>
                             </div>
 
-                            <Button type="primary" size="large" className={styles.loginButton} block>
-                                登录
+
+                            <Button
+                                type="primary"
+                                size="large"
+                                className={styles.loginButton}
+                                block
+                                htmlType="submit"
+                                disabled={isRegisterMode && isInitialized}
+                            >
+                                {
+                                    isRegisterMode ? (
+                                        isInitialized ? "暂不提供注册" : "注册"
+                                    ) : "登录"
+                                }
                             </Button>
+
 
                             <Divider className={styles.divider}>或</Divider>
 
@@ -68,6 +164,7 @@ export default function Home() {
                                     className={styles.socialButton}
                                     icon={<GoogleOutlined />}
                                     size="large"
+                                    disabled={true}
                                 >
                                     使用谷歌账号登录
                                 </Button>
@@ -76,37 +173,22 @@ export default function Home() {
                             <div className={styles.socialLogin}>
                                 <Button
                                     className={styles.socialButton}
-                                    icon={<AppleOutlined />}
+                                    icon={<QqOutlined />}
                                     size="large"
+                                    disabled={true}
                                 >
-                                    使用苹果账号登录
+                                    使用QQ账号登录
                                 </Button>
                             </div>
                         </Form>
                     </div>
                 </div>
-                {/* right 为左侧布局，显示的是应用截图，测试阶段使用 picsum.photos 代替 */}
-                <div className={styles.right}>
-                    <img
-                        src="https://picsum.photos/800/1000"
-                        alt="应用预览"
-                        style={{
-                            width: '100%',
-                            height: '100%',
-                            objectFit: 'cover',
-                            objectPosition: 'left center'
-                        }}
-                    />
-                    {/* 在右上角添加logo */}
-                    <div className={styles.logoContainer}>
-                        <img
-                            src="https://picsum.photos/100/100"
-                            alt="Logo"
-                            className={styles.logo}
-                        />
-                    </div>
-                </div>
             </div>
         </div>
     );
+}
+
+interface LoginField {
+    email: string;
+    password: string;
 }

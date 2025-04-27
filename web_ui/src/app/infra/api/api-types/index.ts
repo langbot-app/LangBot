@@ -46,8 +46,8 @@ export interface LLMModel {
     extra_args: object;
     api_keys: string[];
     abilities: string[];
-    created_at: string;
-    updated_at: string;
+    // created_at: string;
+    // updated_at: string;
 }
 
 export interface ApiRespPipelines {

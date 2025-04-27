@@ -9,7 +9,7 @@
 
 .login {
     display: flex;
-    width: 80%;
+    width: 30%;
     height: 80vh;
     background-color: white;
     border-radius: 16px;
@@ -26,14 +26,6 @@
     padding: 2rem;
 }
 
-.right {
-    flex: 1.5;
-    background-color: #f9f9f9;
-    position: relative;
-    overflow: hidden;
-    border-top-right-radius: 16px;
-    border-bottom-right-radius: 16px;
-}
 
 .loginForm {
     width: 100%;
@@ -76,6 +68,10 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: 1rem;
+
+    .forgetPassword {
+        margin-right: 1rem;
+    }
 }
 
 /* 修改Logo样式，调整位置确保正确对齐 */

@@ -62,7 +62,7 @@ class HttpClient {
     // 同步获取Session
     private getSessionSync() {
         // NOT IMPLEMENT
-        return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjoicm9ja2NoaW5xQGdtYWlsLmNvbSIsImlzcyI6IkxhbmdCb3QtY29tbXVuaXR5IiwiZXhwIjoyMzUwNDk1NTQ3fQ.d6r0lNGud1OecOLMM-ADDDwiABmek3hkMIFH7ZBkaX4"
+        return localStorage.getItem("token")
     }
 
     // 拦截器配置
@@ -323,7 +323,7 @@ class HttpClient {
     }
 
     // ============ User API ============
-    public checkIfInited(): Promise<object> {
+    public checkIfInited(): Promise<{initialized: boolean}> {
         return this.get('/api/v1/user/init')
     }
 
@@ -340,4 +340,4 @@ class HttpClient {
     }
 }
 
-export const httpClient = new HttpClient()
+export const httpClient = new HttpClient("https://version-4.langbot.dev")
