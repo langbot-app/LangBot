@@ -24,17 +24,7 @@ export default function BotConfigPage() {
         // TODO：补齐加载转圈逻辑
         checkHasLLM().then((hasLLM) => {
             if (hasLLM) {
-                getBotList().then((botList) => {
-                    if (botList.length === 0) {
-                        setPageShowRule(BotConfigPageShowRule.NO_BOT)
-                    } else {
-                    setPageShowRule(BotConfigPageShowRule.HAVE_BOT)
-                    }
-                    setBotList(botList)
-                }).catch((err) => {
-                    // TODO error toast
-                    console.error("get bot list error (useEffect)", err)
-                })
+                getBotList()
             } else {
                 setPageShowRule(BotConfigPageShowRule.NO_LLM)
             }
@@ -46,26 +36,27 @@ export default function BotConfigPage() {
         return true
     }
 
-    function getBotList(): Promise<BotCardVO[]> {
-
-        return new Promise((resolve) => {
-            httpClient.getBots().then((resp) => {
-                const botList: BotCardVO[] = resp.bots.map((bot: Bot) => {
-                    return new BotCardVO({
-                        adapter: bot.adapter,
-                        description: bot.description,
-                        id: bot.uuid || "",
-                        name: bot.name,
-                        updateTime: bot.updated_at || "",
-                        pipelineName: bot.use_pipeline_name || "",
-                    })
+    function getBotList() {
+        httpClient.getBots().then((resp) => {
+            const botList: BotCardVO[] = resp.bots.map((bot: Bot) => {
+                return new BotCardVO({
+                    adapter: bot.adapter,
+                    description: bot.description,
+                    id: bot.uuid || "",
+                    name: bot.name,
+                    updateTime: bot.updated_at || "",
+                    pipelineName: bot.use_pipeline_name || "",
                 })
-                resolve(botList)
-            }).catch((err) => {
-                // TODO error toast
-                console.error("get bot list error", err)
-                resolve([])
             })
+            if (botList.length === 0) {
+                setPageShowRule(BotConfigPageShowRule.NO_BOT)
+            } else {
+                setPageShowRule(BotConfigPageShowRule.HAVE_BOT)
+            }
+            setBotList(botList)
+        }).catch((err) => {
+            // TODO error toast
+            console.error("get bot list error", err)
         })
     }
 
@@ -100,7 +91,10 @@ export default function BotConfigPage() {
             >
                 <BotForm
                     initBotId={nowSelectedBotCard?.id}
-                    onFormSubmit={() => setIsEditForm(false)}
+                    onFormSubmit={() => {
+                        getBotList()
+                        setModalOpen(false)
+                    }}
                     onFormCancel={() => setModalOpen(false)}
                 />
             </Modal>

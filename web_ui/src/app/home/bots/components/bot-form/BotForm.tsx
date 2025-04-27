@@ -69,8 +69,8 @@ export default function BotForm({
         if (initBotId) {
             getBotFieldById(initBotId).then(val => {
                 form.setFieldsValue(val)
-                // TODO 这里有个bug，adapter config 并没有被设置到表单中，表单一直都只显示默认值
                 handleAdapterSelect(val.adapter)
+                dynamicForm.setFieldsValue(val.adapter_config)
             })
         } else {
             form.resetFields()
@@ -98,8 +98,10 @@ export default function BotForm({
     }
 
     function handleAdapterSelect(adapterName: string) {
+        console.log("Select adapter: ", adapterName)
         if (adapterName) {
             const dynamicFormConfigList = adapterNameToDynamicConfigMap.get(adapterName)
+            console.log(dynamicFormConfigList)
             if (dynamicFormConfigList) {
                 setDynamicFormConfigList(dynamicFormConfigList)
             }
@@ -153,12 +155,10 @@ export default function BotForm({
                 console.log(err)
             })
         }
-        onFormSubmit(form.getFieldsValue())
         setShowDynamicForm(false)
+        onFormSubmit(form.getFieldsValue())
         form.resetFields()
         dynamicForm.resetFields()
-        // TODO 刷新bot列表
-        // TODO 关闭当前弹窗
     }
 
     function handleSaveButton() {
