@@ -45,8 +45,8 @@ export default function NotFound() {
                             <div className="error-button" style={{ marginBottom: '24px' }}>
                                 <Space>
                                     <Button type="primary" style={{
-                                        backgroundColor: '#000',
-                                        borderColor: '#000',
+                                        backgroundColor: '#2288ee',
+                                        borderColor: '#2288ee',
                                         borderRadius: '4px',
                                         height: '36px',
                                         padding: '0 16px'
