@@ -1,10 +1,10 @@
 "use client"
 
 import styles from "./HomeSidebar.module.css"
-import {useEffect, useState} from "react";
-import {SidebarChild, SidebarChildVO} from "@/app/home/components/home-sidebar/HomeSidebarChild";
-import {useRouter, usePathname, useSearchParams} from "next/navigation";
-import {sidebarConfigList} from "@/app/home/components/home-sidebar/sidbarConfigList";
+import { useEffect, useState } from "react";
+import { SidebarChild, SidebarChildVO } from "@/app/home/components/home-sidebar/HomeSidebarChild";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { sidebarConfigList } from "@/app/home/components/home-sidebar/sidbarConfigList";
 
 // TODO 侧边导航栏要加动画
 export default function HomeSidebar({
@@ -38,7 +38,18 @@ export default function HomeSidebar({
     }
 
     function initSelect() {
-        handleChildClick(sidebarConfigList[0])
+        // 根据当前URL路径选择相应的菜单项，而不是总是使用第一个菜单项
+        const currentPath = pathname;
+        const matchedChild = sidebarConfigList.find(child => child.route === currentPath);
+
+        if (matchedChild) {
+            // 如果找到匹配的菜单项，则选择它
+            setSelectedChild(matchedChild);
+            onSelectedChange(matchedChild);
+        } else {
+            // 如果没有匹配项，则回退到默认选择第一个菜单项
+            handleChildClick(sidebarConfigList[0]);
+        }
     }
 
     function handleRoute(child: SidebarChildVO) {

@@ -1,12 +1,10 @@
 import styles from "./createCartComponent.module.css";
 
 export default function CreateCardComponent({
-    width,
     height,
     plusSize,
     onClick,
 }: {
-    width: number;
     height: number;
     plusSize: number;
     onClick: () => void
@@ -15,7 +13,7 @@ export default function CreateCardComponent({
         <div
             className={`${styles.cardContainer} ${styles.createCardContainer} `}
             style={{
-                width: `${width}px`,
+                width: `100%`,
                 height: `${height}px`,
                 fontSize: `${plusSize}px`
             }}

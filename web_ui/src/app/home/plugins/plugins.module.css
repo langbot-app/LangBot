@@ -1,7 +1,7 @@
 .pageContainer {
     width: 100%;
-    height: calc(100% - 30px);
 }
+
 
 .marketComponentBody {
     width: 100%;
@@ -11,17 +11,13 @@
 .pluginListContainer {
     align-self: flex-start;
     justify-self: flex-start;
-    width: calc(100% - 60px);
-    height: 100%;
-    max-height: 100%;
-    margin:  auto;
+    margin: auto;
     display: grid;
     grid-template-rows: repeat(auto-fill, minmax(160px, 1fr));
     grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
     gap: 15px;
-    justify-items: center;
+    /* justify-items: center; */
     align-items: center;
-    overflow-y: scroll;
 }
 
 .modalTitle {

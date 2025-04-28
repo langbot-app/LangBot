@@ -1,6 +1,6 @@
 "use client"
 import { Radio } from 'antd';
-import {useState} from "react";
+import { useState } from "react";
 import PluginInstalledComponent from "@/app/home/plugins/plugin-installed/PluginInstalledComponent";
 import PluginMarketComponent from "@/app/home/plugins/plugin-market/PluginMarketComponent";
 import styles from './plugins.module.css'
@@ -15,7 +15,7 @@ export default function PluginConfigPage() {
 
     return (
         <div className={`${styles.pageContainer}`}>
-            <div>
+            <div className="up"  style={{ marginBottom: '20px' }}>
                 <Radio.Group
                     block
                     options={[
@@ -30,16 +30,17 @@ export default function PluginConfigPage() {
                         // 这里静态类型检测有问题
                         setNowPageType(e.target.value)
                     }}
-                />
-            </div>
-            <div className={`${styles.pageContainer}`}>
-                {
-                    nowPageType === PageType.INSTALLED && <PluginInstalledComponent/>
-                }
-                {
-                    nowPageType === PageType.MARKET && <PluginMarketComponent/>
-                }
-            </div>
+                /></div>
+            <div className="down">
+                <div className={`${styles.pageContainer}`}>
+                    {
+                        nowPageType === PageType.INSTALLED && <PluginInstalledComponent />
+                    }
+                    {
+                        nowPageType === PageType.MARKET && <PluginMarketComponent />
+                    }
+                </div></div>
+
 
         </div>
     );

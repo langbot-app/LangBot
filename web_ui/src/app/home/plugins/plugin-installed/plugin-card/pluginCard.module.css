@@ -1,5 +1,6 @@
 .cardContainer {
-    width: 360px;
+    width: 100%;
+    /* 修改为 100% 以撑满整个网格单元 */
     height: 140px;
     box-sizing: border-box;
     background-color: #FFF;

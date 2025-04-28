@@ -1,14 +1,14 @@
 "use client"
 
 import CreateCardComponent from "@/app/infra/basic-component/create-card-component/CreateCardComponent";
-import {PluginCardVO} from "@/app/home/plugins/plugin-installed/PluginCardVO";
-import {useEffect, useState} from "react";
+import { PluginCardVO } from "@/app/home/plugins/plugin-installed/PluginCardVO";
+import { useEffect, useState } from "react";
 import PluginCardComponent from "@/app/home/plugins/plugin-installed/plugin-card/PluginCardComponent";
 import styles from "@/app/home/plugins/plugins.module.css";
-import {Modal, Input} from "antd";
-import {GithubOutlined} from "@ant-design/icons";
+import { Modal, Input } from "antd";
+import { GithubOutlined } from "@ant-design/icons";
 
-export default function PluginInstalledComponent () {
+export default function PluginInstalledComponent() {
     const [pluginList, setPluginList] = useState<PluginCardVO[]>([])
     const [modalOpen, setModalOpen] = useState(false)
     const [githubURL, setGithubURL] = useState("")
@@ -39,8 +39,122 @@ export default function PluginInstalledComponent () {
                 name: "插件AAA",
                 author: "/hana",
                 version: "0.1"
+            }), new PluginCardVO({
+                description: "一般的描述",
+                handlerCount: 0,
+                name: "插件AAA",
+                author: "/hana",
+                version: "0.1"
+            }), new PluginCardVO({
+                description: "一般的描述",
+                handlerCount: 0,
+                name: "插件AAA",
+                author: "/hana",
+                version: "0.1"
+            }), new PluginCardVO({
+                description: "一般的描述",
+                handlerCount: 0,
+                name: "插件AAA",
+                author: "/hana",
+                version: "0.1"
+            }), new PluginCardVO({
+                description: "一般的描述",
+                handlerCount: 0,
+                name: "插件AAA",
+                author: "/hana",
+                version: "0.1"
+            }), new PluginCardVO({
+                description: "一般的描述",
+                handlerCount: 0,
+                name: "插件AAA",
+                author: "/hana",
+                version: "0.1"
+            }), new PluginCardVO({
+                description: "一般的描述",
+                handlerCount: 0,
+                name: "插件AAA",
+                author: "/hana",
+                version: "0.1"
+            }), new PluginCardVO({
+                description: "一般的描述",
+                handlerCount: 0,
+                name: "插件AAA",
+                author: "/hana",
+                version: "0.1"
+            }), new PluginCardVO({
+                description: "一般的描述",
+                handlerCount: 0,
+                name: "插件AAA",
+                author: "/hana",
+                version: "0.1"
+            }), new PluginCardVO({
+                description: "一般的描述",
+                handlerCount: 0,
+                name: "插件AAA",
+                author: "/hana",
+                version: "0.1"
             }),
             new PluginCardVO({
+                description: "一般的描述",
+                handlerCount: 0,
+                name: "插件AAA",
+                author: "/hana",
+                version: "0.1"
+            }), new PluginCardVO({
+                description: "一般的描述",
+                handlerCount: 0,
+                name: "插件AAA",
+                author: "/hana",
+                version: "0.1"
+            }), new PluginCardVO({
+                description: "一般的描述",
+                handlerCount: 0,
+                name: "插件AAA",
+                author: "/hana",
+                version: "0.1"
+            }), new PluginCardVO({
+                description: "一般的描述",
+                handlerCount: 0,
+                name: "插件AAA",
+                author: "/hana",
+                version: "0.1"
+            }), new PluginCardVO({
+                description: "一般的描述",
+                handlerCount: 0,
+                name: "插件AAA",
+                author: "/hana",
+                version: "0.1"
+            }), new PluginCardVO({
+                description: "一般的描述",
+                handlerCount: 0,
+                name: "插件AAA",
+                author: "/hana",
+                version: "0.1"
+            }), new PluginCardVO({
+                description: "一般的描述",
+                handlerCount: 0,
+                name: "插件AAA",
+                author: "/hana",
+                version: "0.1"
+            }), new PluginCardVO({
+                description: "一般的描述",
+                handlerCount: 0,
+                name: "插件AAA",
+                author: "/hana",
+                version: "0.1"
+            }), new PluginCardVO({
+                description: "一般的描述",
+                handlerCount: 0,
+                name: "插件AAA",
+                author: "/hana",
+                version: "0.1"
+            }), new PluginCardVO({
+                description: "一般的描述",
+                handlerCount: 0,
+                name: "插件AAA",
+                author: "/hana",
+                version: "0.1"
+            }), new PluginCardVO({
                 description: "一般的描述",
                 handlerCount: 0,
                 name: "插件AAA",
@@ -102,12 +216,11 @@ export default function PluginInstalledComponent () {
             {
                 pluginList.map((vo, index) => {
                     return <div key={index}>
-                        <PluginCardComponent cardVO={vo}/>
+                        <PluginCardComponent cardVO={vo} />
                     </div>
                 })
             }
             <CreateCardComponent
-                width={360}
                 height={140}
                 plusSize={90}
                 onClick={() => {

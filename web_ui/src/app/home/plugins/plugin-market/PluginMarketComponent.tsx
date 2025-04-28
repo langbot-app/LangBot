@@ -1,85 +1,90 @@
 "use client"
 
-import {useCallback, useEffect, useState} from "react";
+import { useCallback, useEffect, useState } from "react";
 import styles from "@/app/home/plugins/plugins.module.css";
-import {PluginMarketCardVO} from "@/app/home/plugins/plugin-market/plugin-market-card/PluginMarketCardVO";
+import { PluginMarketCardVO } from "@/app/home/plugins/plugin-market/plugin-market-card/PluginMarketCardVO";
 import PluginMarketCardComponent from "@/app/home/plugins/plugin-market/plugin-market-card/PluginMarketCardComponent";
-import {Input, Pagination} from "antd";
-import {debounce} from "lodash"
+import { Input, Pagination } from "antd";
+import { debounce } from "lodash"
 
-export default function PluginMarketComponent () {
+export default function PluginMarketComponent() {
     const [marketPluginList, setMarketPluginList] = useState<PluginMarketCardVO[]>([])
     const [searchKeyword, setSearchKeyword] = useState("")
+    const [currentPage, setCurrentPage] = useState(1)
+    const [totalItems, setTotalItems] = useState(0)
+    const [loading, setLoading] = useState(false)
+    const pageSize = 10 // 每页显示的项目数量
 
     useEffect(() => {
-        initData()
-    }, [])
+        fetchPlugins(searchKeyword, currentPage)
+    }, [currentPage])
 
-    function initData() {
-        getPluginList()
+    // 获取插件列表，整合了搜索和分页功能
+    async function fetchPlugins(keyword: string = "", page: number = 1): Promise<void> {
+        setLoading(true)
+        try {
+            // 实际应用中，这里应该调用API获取数据
+            const result = await mockFetchPlugins(keyword, page, pageSize)
+            setMarketPluginList(result.data)
+            setTotalItems(result.total)
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    // 模拟从API获取数据
+    async function mockFetchPlugins(keyword: string, page: number, pageSize: number): Promise<{ data: PluginMarketCardVO[], total: number }> {
+        // 模拟API延迟
+        await new Promise(resolve => setTimeout(resolve, 300))
+
+        // 创建模拟数据
+        const allPlugins: PluginMarketCardVO[] = []
+        const totalPlugins = 50 // 模拟总数据量
+
+        for (let i = 0; i < totalPlugins; i++) {
+            allPlugins.push(new PluginMarketCardVO({
+                pluginId: `plugin-${i}`,
+                description: `这是插件 ${i} 的描述，包含一些详细信息`,
+                name: `插件 ${i}`,
+                author: `/author-${i % 5}`, // 模拟5个不同的作者
+                version: `0.${i % 10}`,
+                githubURL: `https://github.com/author-${i % 5}/plugin-${i}`,
+                starCount: 10 + Math.floor(Math.random() * 100)
+            }))
+        }
+
+        // 根据关键词过滤
+        const filtered = keyword
+            ? allPlugins.filter(p =>
+                p.name.toLowerCase().includes(keyword.toLowerCase()) ||
+                p.description.toLowerCase().includes(keyword.toLowerCase()))
+            : allPlugins
+
+        // 分页处理
+        const start = (page - 1) * pageSize
+        const end = start + pageSize
+        const paginatedData = filtered.slice(start, end)
+
+        return {
+            data: paginatedData,
+            total: filtered.length
+        }
     }
 
     function onInputSearchKeyword(keyword: string) {
         setSearchKeyword(keyword)
+        setCurrentPage(1) // 搜索时重置为第一页
         debounceSearch(keyword)
     }
 
     const debounceSearch = useCallback(
         debounce((keyword: string) => {
-            console.log("debounce search", keyword)
-            searchPlugin(keyword).then(marketPluginList => {
-                setMarketPluginList(marketPluginList)
-            })
+            fetchPlugins(keyword, 1)
         }, 500), []
     )
 
-    async function searchPlugin(keyword: string, pageNumber: number = 1): Promise<PluginMarketCardVO[]> {
-        // TODO 实现搜索
-        const demoResult: PluginMarketCardVO[] =  []
-        for (let i = 0; i < keyword.length; i ++) {
-            demoResult.push(new PluginMarketCardVO({
-                author: "/hanahana",
-                description: "一个搜索测试的描述",
-                githubURL: "？",
-                name: "搜索插件" + i,
-                pluginId: `${i}`,
-                starCount: 19 + i,
-                version: `0.${i}`,
-            }))
-        }
-        return demoResult
-    }
-
-    function getPluginList(pageNumber: number = 1) {
-        new Promise<PluginMarketCardVO[]>((resolve, reject) => {
-            const result = [
-                new PluginMarketCardVO({
-                    pluginId: "aaa",
-                    description: "一般的描述",
-                    name: "插件AAA",
-                    author: "/hana",
-                    version: "0.1",
-                    githubURL: "",
-                    starCount: 23
-                }),
-            ]
-            for (let i = 0; i < pageNumber; i ++) {
-                result.push(
-                    new PluginMarketCardVO({
-                        pluginId: "aaa",
-                        description: "一般的描述",
-                        name: "插件AAA",
-                        author: "/hana",
-                        version: "0.1",
-                        githubURL: "",
-                        starCount: 23
-                    })
-                )
-            }
-            resolve(result)
-        }).then((value) => {
-            setMarketPluginList(value)
-        })
+    function handlePageChange(page: number) {
+        setCurrentPage(page)
     }
 
     return (
@@ -87,29 +92,36 @@ export default function PluginMarketComponent () {
             <Input
                 style={{
                     width: '300px',
-                    marginTop: '10px',
+                    marginBottom: '10px',
                 }}
                 value={searchKeyword}
                 placeholder="搜索插件"
                 onChange={(e) => onInputSearchKeyword(e.target.value)}
             />
             <div className={`${styles.pluginListContainer}`}>
-                {
-                    marketPluginList.map((vo, index) => {
-                        return <div key={index}>
-                            <PluginMarketCardComponent cardVO={vo}/>
+                {loading ? (
+                    <div style={{ textAlign: 'center', padding: '20px' }}>加载中...</div>
+                ) : marketPluginList.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '20px' }}>没有找到匹配的插件</div>
+                ) : (
+                    marketPluginList.map((vo, index) => (
+                        <div key={`${vo.pluginId}-${index}`}>
+                            <PluginMarketCardComponent cardVO={vo} />
                         </div>
-                    })
-                }
+                    ))
+                )}
             </div>
-            <Pagination
-                defaultCurrent={1}
-                total={500}
-                onChange={(pageNumber) => {
-                    getPluginList(pageNumber)
-                }}
-            />
+            {totalItems > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '20px' }}>
+                    <Pagination
+                        current={currentPage}
+                        total={totalItems}
+                        pageSize={pageSize}
+                        onChange={handlePageChange}
+                        showSizeChanger={false}
+                    />
+                </div>
+            )}
         </div>
-
     )
 }
