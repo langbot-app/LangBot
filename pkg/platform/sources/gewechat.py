@@ -1,5 +1,3 @@
-    from __future__ import annotations
-
 import gewechat_client
 
 import typing
@@ -249,15 +247,24 @@ class GewechatMessageConverter(adapter.MessageConverter):
         if quote_data:
             quote_data_message_list = platform_message.MessageChain()
             # 文本消息
-            if "appmsg" not in quote_data or "type" not in quote_data:
-                quote_data_message_list.append(platform_message.Plain(quote_data))
-            else:
-                try:
-                    # 引用消息展开
-                    quote_data_message_list.extend(await self._handler_compound(None, quote_data))
-                except Exception as e:
-                    print(f"处理引用消息异常 expcetion:{e}")
+            try:
+                if "<msg>" not in quote_data:
                     quote_data_message_list.append(platform_message.Plain(quote_data))
+                else:
+                    # 引用消息展开
+                    quote_data_xml = ET.fromstring(quote_data)
+                    if quote_data_xml.find("img"):
+                        quote_data_message_list.extend(await self._handler_image(None, quote_data))
+                    elif quote_data_xml.find("voicemsg"):
+                        quote_data_message_list.extend(await self._handler_voice(None, quote_data))
+                    elif quote_data_xml.find("videomsg"):
+                        quote_data_message_list.extend(await self._handler_default(None, quote_data)) # 先不处理
+                    else:
+                        # appmsg
+                        quote_data_message_list.extend(await self._handler_compound(None, quote_data))
+            except Exception as e:
+                print(f"处理引用消息异常 expcetion:{e}")
+                quote_data_message_list.append(platform_message.Plain(quote_data))
             message_list.append(
                 platform_message.Quote(
                     sender_id=sender_id,
@@ -268,14 +275,14 @@ class GewechatMessageConverter(adapter.MessageConverter):
                 pattern = r'^@\S+'
                 user_data = re.sub(pattern, '', user_data)
                 message_list.append(platform_message.Plain(user_data))
-        print(f"**_handler_compound_quote message_list len={len(message_list)}")
-        for comp in message_list:
-            if isinstance(comp, platform_message.Quote):
-                print(f"**_handler_compound_quote send_id {comp.sender_id}" )
-                for quote_item in comp.origin:
-                    print(f"******* _handler_compound_quote item {quote_item.type} + message: {quote_item}" )
-            else:
-                print(f"_handler_compound_quote type: {comp.type} + message: {comp}")
+        # print(f"**_handler_compound_quote message_list len={len(message_list)}")
+        # for comp in message_list:
+        #     if isinstance(comp, platform_message.Quote):
+        #         print(f"**_handler_compound_quote send_id {comp.sender_id}" )
+        #         for quote_item in comp.origin:
+        #             print(f"******* _handler_compound_quote item {quote_item.type} + message: {quote_item}" )
+        #     else:
+        #         print(f"_handler_compound_quote type: {comp.type} + message: {comp}")
         return platform_message.MessageChain(message_list)
 
     async def _handler_compound_file(
@@ -334,11 +341,14 @@ class GewechatMessageConverter(adapter.MessageConverter):
 
     async def _handler_default(
         self,
-        message: dict,
+        message: Optional[dict],
         content_no_preifx: str
     ) -> platform_message.MessageChain:
         """处理未知消息类型"""
-        msg_type = message["Data"]["MsgType"]
+        if message:
+            msg_type = message["Data"]["MsgType"]
+        else:
+            msg_type = ""
         return platform_message.MessageChain([
             platform_message.Unknown(text=f"[未知消息类型 msg_type:{msg_type}]")
         ])
