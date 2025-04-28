@@ -51,7 +51,7 @@ export default function NotFound() {
                                         height: '36px',
                                         padding: '0 16px'
                                     }} onClick={() => router.back()}>
-                                        Go back
+                                        上一级
                                     </Button>
                                     <Button style={{
                                         borderColor: '#d9d9d9',
