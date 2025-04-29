@@ -107,9 +107,9 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
         content = await OAMessageConverter.yiri2target(
             message
         )
-        if type(self.bot) == OAClient:
+        if isinstance(self.bot, OAClient):
             await self.bot.set_message(message_source.message_chain.message_id,content)
-        if type(self.bot) == OAClientForLongerResponse:
+        elif isinstance(self.bot, OAClientForLongerResponse):
             from_user = message_source.sender.id
             await self.bot.set_message(from_user,message_source.message_chain.message_id,content)
 

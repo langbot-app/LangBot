@@ -255,7 +255,7 @@ class OfficialEventConverter(adapter_model.EventConverter):
         event: typing.Union[botpy_message.Message, botpy_message.DirectMessage, botpy_message.GroupMessage, botpy_message.C2CMessage],
     ) -> platform_events.Event:
 
-        if type(event) == botpy_message.Message:  # 频道内，转群聊事件
+        if isinstance(event, botpy_message.Message):  # 频道内，转群聊事件
             permission = "MEMBER"
 
             if "2" in event.member.roles:
@@ -291,7 +291,7 @@ class OfficialEventConverter(adapter_model.EventConverter):
                     ).timestamp()
                 ),
             )
-        elif type(event) == botpy_message.DirectMessage:  # 频道私聊，转私聊事件
+        elif isinstance(event, botpy_message.DirectMessage):  # 频道私聊，转私聊事件
             return platform_events.FriendMessage(
                 sender=platform_entities.Friend(
                     id=event.guild_id,
@@ -307,7 +307,7 @@ class OfficialEventConverter(adapter_model.EventConverter):
                     ).timestamp()
                 ),
             )
-        elif type(event) == botpy_message.GroupMessage:  # 群聊，转群聊事件
+        elif isinstance(event, botpy_message.GroupMessage):  # 群聊，转群聊事件
 
             author_member_id = event.author.member_openid
 
@@ -335,7 +335,7 @@ class OfficialEventConverter(adapter_model.EventConverter):
                     ).timestamp()
                 ),
             )
-        elif type(event) == botpy_message.C2CMessage:  # 私聊，转私聊事件
+        elif isinstance(event, botpy_message.C2CMessage):  # 私聊，转私聊事件
 
             user_id_alter = event.author.user_openid
 
@@ -454,19 +454,19 @@ class OfficialAdapter(adapter_model.MessagePlatformAdapter):
                     ]
                 )
 
-            if type(message_source) == platform_events.GroupMessage:
+            if isinstance(message_source, platform_events.GroupMessage):
                 args["channel_id"] = str(message_source.sender.group.id)
                 args["msg_id"] = cached_message_ids[
                     str(message_source.message_chain.message_id)
                 ]
                 await self.bot.api.post_message(**args)
-            elif type(message_source) == platform_events.FriendMessage:
+            elif isinstance(message_source, platform_events.FriendMessage):
                 args["guild_id"] = str(message_source.sender.id)
                 args["msg_id"] = cached_message_ids[
                     str(message_source.message_chain.message_id)
                 ]
                 await self.bot.api.post_dms(**args)
-            elif type(message_source) == OfficialGroupMessage:
+            elif isinstance(message_source, OfficialGroupMessage):
 
                 if "file_image" in args:  # 暂不支持发送文件图片
                     continue
@@ -491,7 +491,7 @@ class OfficialAdapter(adapter_model.MessagePlatformAdapter):
                 self.group_msg_seq += 1
 
                 await self.bot.api.post_group_message(**args)
-            elif type(message_source) == OfficialFriendMessage:
+            elif isinstance(message_source, OfficialFriendMessage):
                 if "file_image" in args:
                     continue
                 args["openid"] = message_source.sender.id

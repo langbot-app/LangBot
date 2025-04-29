@@ -130,7 +130,7 @@ class DiscordEventConverter(adapter.EventConverter):
     ) -> platform_events.Event:
         message_chain = await DiscordMessageConverter.target2yiri(event)
 
-        if type(event.channel) == discord.DMChannel:
+        if isinstance(event.channel, discord.DMChannel):
             return platform_events.FriendMessage(
                 sender=platform_entities.Friend(
                     id=event.author.id,
@@ -141,7 +141,7 @@ class DiscordEventConverter(adapter.EventConverter):
                 time=event.created_at.timestamp(),
                 source_platform_object=event,
             )
-        elif type(event.channel) == discord.TextChannel:
+        elif isinstance(event.channel, discord.TextChannel):
             return platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
                     id=event.author.id,

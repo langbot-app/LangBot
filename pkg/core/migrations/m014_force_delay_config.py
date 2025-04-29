@@ -9,7 +9,7 @@ class ForceDelayConfigMigration(migration.Migration):
 
     async def need_migrate(self) -> bool:
         """判断当前环境是否需要运行此迁移"""
-        return type(self.ap.platform_cfg.data['force-delay']) == list
+        return isinstance(self.ap.platform_cfg.data['force-delay'], list)
 
     async def run(self):
         """执行迁移"""
