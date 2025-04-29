@@ -228,6 +228,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
         xml_data: ET.Element
     ) -> platform_message.MessageChain:
         """处理引用消息 (data_type=57)"""
+        message_list = []
         # print("_handler_compound_quote", ET.tostring(xml_data, encoding='unicode'))
         appmsg_data = xml_data.find('.//appmsg')
         quote_data = ""  # 引用原文
@@ -238,11 +239,9 @@ class GewechatMessageConverter(adapter.MessageConverter):
         if appmsg_data:
             user_data = appmsg_data.findtext('.//title') or "" 
             quote_data = appmsg_data.find('.//refermsg').findtext('.//content')
-            quote_id = appmsg_data.find('.//refermsg').findtext('.//chatusr')  
+            quote_id = appmsg_data.find('.//refermsg').findtext('.//chatusr') 
         if message:
             tousername = message['Wxid']                       
-
-        message_list = []
         # quote_data原始的消息
         if quote_data:
             quote_data_message_list = platform_message.MessageChain()
@@ -376,8 +375,8 @@ class GewechatMessageConverter(adapter.MessageConverter):
             to_user_name = message['Wxid']                               # 接收方: 所属微信的wxid
             raw_content = message["Data"]["Content"]["string"]         # 原始消息内容
             content_no_prefix, _ = self._extract_content_and_sender(raw_content)
-            # 直接艾特机器人
-            ats_bot =  ats_bot or (f"@{bot_account_id}" in content_no_prefix)
+            # 直接艾特机器人（这个有bug，当被引用的消息里面有@bot,会套娃
+            # ats_bot =  ats_bot or (f"@{bot_account_id}" in content_no_prefix)
             # 文本类@bot
             push_content = message.get('Data', {}).get('PushContent', '')
             ats_bot =  ats_bot or ('在群聊中@了你' in push_content)
@@ -392,7 +391,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
                 xml_data = ET.fromstring(content_no_prefix)
                 appmsg_data = xml_data.find('.//appmsg')
                 tousername = message['Wxid']                                        # 接收方: 所属微信的wxid
-                quote_id = appmsg_data.find('.//refermsg').findtext('.//chatusr')   # 引用消息的原发送者
+                quote_id = appmsg_data.find('.//refermsg').findtext('.//chatusr')  # 引用消息的原发送者
                 ats_bot =  ats_bot or (quote_id == tousername)      
         except Exception as e:
             print(f"_ats_bot got except: {e}")
