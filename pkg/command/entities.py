@@ -4,8 +4,8 @@ import typing
 
 import pydantic.v1 as pydantic
 
-from ..core import app, entities as core_entities
-from . import errors, operator
+from ..core import entities as core_entities
+from . import errors
 from ..platform.types import message as platform_message
 
 

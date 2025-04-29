@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 
-from ...core import app
-from . import entities as rule_entities, rule
-from .rules import atbot, prefix, regexp, random
+from . import rule
 
 from .. import stage, entities
 from ...core import entities as core_entities
-from ...config import manager as cfg_mgr
+from ...utils import importutil
+
+from . import rules
+
+importutil.import_modules_in_pkg(rules)
 
 
 @stage.stage_class("GroupRespondRuleCheckStage")

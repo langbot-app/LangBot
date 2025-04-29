@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 
-import traceback
 
 import quart
 
-from .....core import app, taskmgr
+from .....core import taskmgr
 from .. import group
 
 

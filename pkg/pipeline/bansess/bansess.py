@@ -1,9 +1,7 @@
 from __future__ import annotations
-import re
 
 from .. import stage, entities
 from ...core import entities as core_entities
-from ...config import manager as cfg_mgr
 
 
 @stage.stage_class('BanSessionCheckStage')

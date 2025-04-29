@@ -4,8 +4,12 @@ import typing
 
 from .. import entities, stage
 from . import algo
-from .algos import fixedwin
 from ...core import entities as core_entities
+from ...utils import importutil
+
+from . import algos
+
+importutil.import_modules_in_pkg(algos)
 
 
 @stage.stage_class("RequireRateLimitOccupancy")

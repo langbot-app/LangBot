@@ -2,16 +2,13 @@ from __future__ import annotations
 
 import typing
 import json
-import traceback
-import base64
 
 import anthropic
 import httpx
 
-from ....core import app
-from .. import entities, errors, requester
+from .. import errors, requester
 
-from .. import entities, errors
+from .. import errors
 from ....core import entities as core_entities
 from ... import entities as llm_entities
 from ...tools import entities as tools_entities

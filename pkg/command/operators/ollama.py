@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import typing
-import traceback
 
 import ollama
 from .. import operator, entities, errors

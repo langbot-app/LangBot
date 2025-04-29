@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import datetime
 import typing
 import json
@@ -10,12 +9,16 @@ import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
 import sqlalchemy
 
 from . import database, migration
-from ..entity.persistence import base, user, model, pipeline, bot, plugin, metadata
+from ..entity.persistence import base, pipeline, metadata
+from ..entity import persistence
 from ..core import app
-from .databases import sqlite
-from ..utils import constants
-from .migrations import dbm001_migrate_v3_config
+from ..utils import constants, importutil
 from ..api.http.service import pipeline as pipeline_service
+from . import databases, migrations
+
+importutil.import_modules_in_pkg(databases)
+importutil.import_modules_in_pkg(migrations)
+importutil.import_modules_in_pkg(persistence)
 
 
 class PersistenceManager:

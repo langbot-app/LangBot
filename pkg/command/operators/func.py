@@ -1,8 +1,7 @@
 from __future__ import annotations
 from typing import AsyncGenerator
 
-from .. import operator, entities, cmdmgr
-from ...plugin import context as plugin_context
+from .. import operator, entities
 
 
 @operator.operator_class(name="func", help="查看所有已注册的内容函数", usage='!func')

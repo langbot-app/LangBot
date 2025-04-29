@@ -3,7 +3,7 @@ from __future__ import annotations
 import typing
 import abc
 
-from ..core import app, entities as core_entities
+from ..core import app
 from . import entities
 
 

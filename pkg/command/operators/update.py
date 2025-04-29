@@ -3,7 +3,7 @@ from __future__ import annotations
 import typing
 import traceback
 
-from .. import operator, entities, cmdmgr, errors
+from .. import operator, entities, errors
 
 
 @operator.operator_class(

@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import logging
 import asyncio
-import threading
 import traceback
-import enum
 import sys
 import os
 
@@ -29,7 +27,6 @@ from ..discover import engine as discover_engine
 from ..utils import logcache, ip
 from . import taskmgr
 from . import entities as core_entities
-from .bootutils import config
 
 
 class Application:

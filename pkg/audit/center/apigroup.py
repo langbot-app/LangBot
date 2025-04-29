@@ -3,11 +3,9 @@ from __future__ import annotations
 import abc
 import uuid
 import json
-import logging
 import asyncio
 
 import aiohttp
-import requests
 
 from ...core import app, entities as core_entities
 

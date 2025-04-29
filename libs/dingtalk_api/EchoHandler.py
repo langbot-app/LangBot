@@ -1,5 +1,4 @@
 import asyncio
-import json
 import dingtalk_stream
 from dingtalk_stream import AckMessage
 

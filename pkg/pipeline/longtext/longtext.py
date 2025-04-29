@@ -2,15 +2,16 @@ from __future__ import annotations
 import os
 import traceback
 
-from PIL import Image, ImageDraw, ImageFont
 
-from ...core import app
 from . import strategy
-from .strategies import image, forward
 from .. import stage, entities
 from ...core import entities as core_entities
-from ...config import manager as cfg_mgr
 from ...platform.types import message as platform_message
+from ...utils import importutil
+
+from . import strategies
+
+importutil.import_modules_in_pkg(strategies)
 
 
 @stage.stage_class("LongTextProcessStage")

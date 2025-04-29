@@ -8,18 +8,13 @@ import traceback
 import time
 import re
 import base64
-import uuid
-import json
-import os
 import copy
-import datetime
 import threading
 
 import quart
 import aiohttp
 
 from .. import adapter
-from ...pipeline.longtext.strategies import forward
 from ...core import app
 from ..types import message as platform_message
 from ..types import events as platform_events

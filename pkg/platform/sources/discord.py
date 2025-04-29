@@ -3,25 +3,19 @@ from __future__ import annotations
 import discord
 
 import typing
-import asyncio
-import traceback
-import time
 import re
 import base64
 import uuid
-import json
 import os
 import datetime
 
 import aiohttp
 
 from .. import adapter
-from ...pipeline.longtext.strategies import forward
 from ...core import app
 from ..types import message as platform_message
 from ..types import events as platform_events
 from ..types import entities as platform_entities
-from ...utils import image
 
 
 class DiscordMessageConverter(adapter.MessageConverter):

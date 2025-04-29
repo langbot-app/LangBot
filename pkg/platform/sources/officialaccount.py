@@ -7,7 +7,6 @@ import datetime
 from pkg.core import app
 from pkg.platform.adapter import MessagePlatformAdapter
 from pkg.platform.types import events as platform_events, message as platform_message
-from collections import deque
 from libs.official_account_api.oaevent import OAEvent
 from pkg.platform.adapter import MessagePlatformAdapter
 from pkg.platform.types import events as platform_events, message as platform_message

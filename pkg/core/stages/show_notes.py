@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from .. import stage, app, note
-from ..notes import n001_classic_msgs, n002_selection_mode_on_windows, n003_print_version
+from ...utils import importutil
+
+from .. import notes
+importutil.import_modules_in_pkg(notes)
 
 
 @stage.stage_class("ShowNotesStage")

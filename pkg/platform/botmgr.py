@@ -1,23 +1,16 @@
 from __future__ import annotations
 
-import json
-import os
 import sys
-import logging
 import asyncio
 import traceback
 import sqlalchemy
 
-from .sources import qqofficial
 
 #     FriendMessage, Image, MessageChain, Plain
 from . import adapter as msadapter
 
 from ..core import app, entities as core_entities, taskmgr
-from ..plugin import events
-from .types import message as platform_message
 from .types import events as platform_events
-from .types import entities as platform_entities
 
 from ..discover import engine
 

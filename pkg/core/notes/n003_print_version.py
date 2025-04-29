@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import typing
-import os
-import sys
 import logging
 
-from .. import note, app
+from .. import note
 
 
 @note.note_class("PrintVersion", 3)

@@ -4,13 +4,11 @@ import random
 import asyncio
 
 
-from ...core import app
 from ...platform.types import events as platform_events
 from ...platform.types import message as platform_message
 
 from .. import stage, entities
 from ...core import entities as core_entities
-from ...config import manager as cfg_mgr
 
 
 @stage.stage_class("SendResponseBackStage")

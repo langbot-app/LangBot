@@ -1,17 +1,13 @@
 from __future__ import annotations
 
-import json
 
-import asyncio
-import aiohttp
 import typing
 
 from . import chatcmpl
-from .. import entities, errors, requester
-from ....core import app, entities as core_entities
+from .. import requester
+from ....core import entities as core_entities
 from ... import entities as llm_entities
 from ...tools import entities as tools_entities
-from .. import entities as modelmgr_entities
 
 
 class GiteeAIChatCompletions(chatcmpl.OpenAIChatCompletions):

@@ -3,7 +3,6 @@ from __future__ import annotations
 import quart
 
 from .. import group
-from .....entity.persistence import pipeline
 
 
 @group.group_class('pipelines', '/api/v1/pipelines')

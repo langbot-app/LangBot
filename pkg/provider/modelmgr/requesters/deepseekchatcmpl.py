@@ -3,8 +3,8 @@ from __future__ import annotations
 import typing
 
 from . import chatcmpl
-from .. import entities, errors, requester
-from ....core import entities as core_entities, app
+from .. import errors, requester
+from ....core import entities as core_entities
 from ... import entities as llm_entities
 from ...tools import entities as tools_entities
 

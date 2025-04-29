@@ -4,13 +4,14 @@ from ...core import app
 
 from .. import stage, entities
 from ...core import entities as core_entities
-from ...config import manager as cfg_mgr
 from . import filter as filter_model, entities as filter_entities
-from .filters import cntignore, banwords, baiduexamine
 from ...provider import entities as llm_entities
 from ...platform.types import message as platform_message
-from ...platform.types import events as platform_events
-from ...platform.types import entities as platform_entities
+from ...utils import importutil
+
+from . import filters
+
+importutil.import_modules_in_pkg(filters)
 
 
 @stage.stage_class('PostContentFilterStage')

@@ -2,8 +2,6 @@
 """
 此模块提供事件模型。
 """
-from datetime import datetime
-from enum import Enum
 import typing
 
 import pydantic.v1 as pydantic

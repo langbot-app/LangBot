@@ -1,9 +1,7 @@
 import quart
-import jwt
 import argon2
 
 from .. import group
-from .....entity.persistence import user
 
 
 @group.group_class('user', '/api/v1/user')

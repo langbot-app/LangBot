@@ -1,19 +1,16 @@
 # 微信公众号的加解密算法与企业微信一样，所以直接使用企业微信的加解密算法文件
-from collections import deque
 import time
 import traceback
 from ..wecom_api.WXBizMsgCrypt3 import WXBizMsgCrypt
 import xml.etree.ElementTree as ET
 from quart import Quart,request
 import hashlib
-from typing import Callable, Dict, Any
+from typing import Callable
 from .oaevent import OAEvent
-import httpx
 
 import asyncio
 import time
 import xml.etree.ElementTree as ET
-from pkg.platform.sources import officialaccount as oa
 
 
 

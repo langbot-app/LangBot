@@ -11,17 +11,21 @@ from ..entity.persistence import pipeline as persistence_pipeline
 from . import stage
 from ..platform.types import message as platform_message, events as platform_events
 from ..plugin import events
+from ..utils import importutil
 
-from .resprule import resprule
-from .bansess import bansess
-from .cntfilter import cntfilter
-from .process import process
-from .longtext import longtext
-from .respback import respback
-from .wrapper import wrapper
-from .preproc import preproc
-from .ratelimit import ratelimit
-from .msgtrun import msgtrun
+from . import resprule, bansess, cntfilter, process, longtext, respback, wrapper, preproc, ratelimit, msgtrun
+importutil.import_modules_in_pkgs([
+    resprule,
+    bansess,
+    cntfilter,
+    process,
+    longtext,
+    respback,
+    wrapper,
+    preproc,
+    ratelimit,
+    msgtrun
+])
 
 
 class StageInstContainer():

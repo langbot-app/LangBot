@@ -3,11 +3,10 @@ from __future__ import annotations
 import typing
 
 
-from ...core import app, entities as core_entities
+from ...core import entities as core_entities
 from .. import entities
 from .. import stage, entities
 from ...core import entities as core_entities
-from ...config import manager as cfg_mgr
 from ...plugin import events
 from ...platform.types import message as platform_message
 

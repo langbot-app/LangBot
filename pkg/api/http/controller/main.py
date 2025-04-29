@@ -7,10 +7,16 @@ import quart
 import quart_cors
 
 from ....core import app, entities as core_entities
+from ....utils import importutil
 
-from .groups import logs, system, plugins, stats, user, pipelines
-from .groups.provider import models, requesters
-from .groups.platform import bots, adapters
+from . import groups
+from .groups import provider as groups_provider
+from .groups import platform as groups_platform
+
+importutil.import_modules_in_pkg(groups)
+importutil.import_modules_in_pkg(groups_provider)
+importutil.import_modules_in_pkg(groups_platform)
+
 from . import group
 
 

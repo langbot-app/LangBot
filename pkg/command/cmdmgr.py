@@ -3,12 +3,12 @@ from __future__ import annotations
 import typing
 
 from ..core import app, entities as core_entities
-from ..provider import entities as llm_entities
 from . import entities, operator, errors
-from ..config import manager as cfg_mgr
+from ..utils import importutil
 
 # 引入所有算子以便注册
-from .operators import func, plugin, reset, list as list_cmd, last, next, delc, resend, prompt, cmd, help, version, update, ollama, model
+from . import operators
+importutil.import_modules_in_pkg(operators)
 
 
 class CommandManager:

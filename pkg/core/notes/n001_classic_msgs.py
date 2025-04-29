@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import typing
 
-from .. import note, app
+from .. import note
 
 
 @note.note_class("ClassicNotes", 1)

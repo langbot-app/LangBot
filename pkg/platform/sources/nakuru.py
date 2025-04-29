@@ -4,7 +4,6 @@
 import asyncio
 import typing
 import traceback
-import logging
 
 
 import nakuru

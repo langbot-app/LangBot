@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import traceback
 
 import quart
 
-from .....core import app
 from .. import group
 
 

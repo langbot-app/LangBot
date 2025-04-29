@@ -4,7 +4,7 @@ import typing
 import traceback
 
 from .. import loader, entities as tools_entities
-from ....core import app, entities as core_entities
+from ....core import entities as core_entities
 from ....plugin import context as plugin_context
 
 

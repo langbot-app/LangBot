@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import typing
-import json
-import base64
 import re
 
 import dashscope
@@ -10,7 +8,6 @@ import dashscope
 from .. import runner
 from ...core import app, entities as core_entities
 from .. import entities as llm_entities
-from ...utils import image
 
 class DashscopeAPIError(Exception):
     """Dashscope API 请求失败"""

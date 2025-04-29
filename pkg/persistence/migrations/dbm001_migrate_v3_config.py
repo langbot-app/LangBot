@@ -1,4 +1,3 @@
-from .. import migration
 
 # TODO fill this
 # @migration.migration_class(1)

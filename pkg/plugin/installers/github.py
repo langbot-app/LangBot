@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 import os
-import shutil
 import zipfile
 import ssl
 import certifi

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import typing
 import datetime
-import traceback
 
 from . import app
 from . import entities as core_entities

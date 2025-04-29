@@ -1,10 +1,8 @@
 
-import typing
 import enum
 
 import pydantic.v1 as pydantic
 
-from ...provider import entities as llm_entities
 
 
 class ResultLevel(enum.Enum):

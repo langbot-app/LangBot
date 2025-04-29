@@ -3,33 +3,21 @@ from __future__ import annotations
 import telegram
 import telegram.ext
 from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 
 import typing
-import asyncio
 import traceback
-import time
-import re
 import base64
-import uuid
-import json
-import datetime
-import hashlib
 import base64
 import aiohttp
-from Crypto.Cipher import AES
 
-from flask import jsonify
 from lark_oapi.api.im.v1 import *
-from lark_oapi.api.verification.v1 import GetVerificationRequest
 
 from .. import adapter
-from ...pipeline.longtext.strategies import forward
 from ...core import app
 from ..types import message as platform_message
 from ..types import events as platform_events
 from ..types import entities as platform_entities
-from ...utils import image
 
 
 class TelegramMessageConverter(adapter.MessageConverter):

@@ -1,5 +1,4 @@
 import sqlalchemy
-import sqlmodel
 
 from .base import Base
 

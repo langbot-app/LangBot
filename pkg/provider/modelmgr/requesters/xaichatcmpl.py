@@ -4,8 +4,6 @@ import typing
 import openai
 
 from . import chatcmpl
-from .. import requester
-from ....core import app
 
 
 class XaiChatCompletions(chatcmpl.OpenAIChatCompletions):

@@ -8,9 +8,6 @@ import aiohttp
 import PIL.Image
 import httpx
 
-import os
-import aiofiles
-import pathlib
 import asyncio
 from urllib.parse import urlparse
 

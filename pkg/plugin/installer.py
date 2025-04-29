@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import typing
 import abc
 
 from ..core import app, taskmgr

@@ -7,10 +7,11 @@ import os
 from . import app
 from ..audit import identifier
 from . import stage
-from ..utils import constants
+from ..utils import constants, importutil
 
 # 引入启动阶段实现以便注册
-from .stages import load_config, setup_logger, build_app, migrate, show_notes, genkeys
+from . import stages
+importutil.import_modules_in_pkg(stages)
 
 
 stage_order = [

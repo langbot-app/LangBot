@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 
 from ...core import app, entities as core_entities
-from ...plugin import context as plugin_context
 from ...provider import entities as provider_entities
 
 

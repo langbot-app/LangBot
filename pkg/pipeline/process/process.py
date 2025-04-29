@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from ...core import app, entities as core_entities
+from ...core import entities as core_entities
 from . import handler
 from .handlers import chat, command
 from .. import entities
 from .. import stage, entities
 from ...core import entities as core_entities
-from ...config import manager as cfg_mgr
 
 
 @stage.stage_class("MessageProcessor")

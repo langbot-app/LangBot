@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import typing
-import abc
 import os
 import traceback
 
 from ...core import app
-from .. import context, events, models
+from .. import context, events
 from .. import loader
 from ...utils import funcschema
 from ...provider.tools import entities as tools_entities

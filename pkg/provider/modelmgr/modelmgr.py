@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import typing
 import sqlalchemy
-import pydantic.v1 as pydantic
 
 from . import entities, requester
 from ...core import app
@@ -12,7 +10,6 @@ from ..tools import entities as tools_entities
 from ...discover import engine
 from . import token
 from ...entity.persistence import model as persistence_model
-from .requesters import bailianchatcmpl, chatcmpl, anthropicmsgs, moonshotchatcmpl, deepseekchatcmpl, ollamachat, giteeaichatcmpl, volcarkchatcmpl, xaichatcmpl, zhipuaichatcmpl, lmstudiochatcmpl, siliconflowchatcmpl, volcarkchatcmpl
 
 FETCH_MODEL_LIST_URL = "https://api.qchatgpt.rockchin.top/api/v2/fetch/model_list"
 

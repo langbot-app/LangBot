@@ -1,5 +1,4 @@
 import sqlalchemy
-import datetime
 
 from .base import Base
 

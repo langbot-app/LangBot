@@ -4,7 +4,7 @@ import json
 import typing
 
 from .. import runner
-from ...core import app, entities as core_entities
+from ...core import entities as core_entities
 from .. import entities as llm_entities
 
 

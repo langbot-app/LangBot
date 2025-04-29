@@ -1,18 +1,11 @@
 import time
 from quart import request
-import base64
-import binascii
 import httpx
 from quart import Quart
-import xml.etree.ElementTree as ET
 from typing import Callable, Dict, Any
-from pkg.platform.types import events as platform_events, message as platform_message
-import aiofiles
+from pkg.platform.types import events as platform_events
 from .qqofficialevent import QQOfficialEvent
 import json
-import hmac
-import base64
-import hashlib
 import traceback
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from .qqofficialevent import QQOfficialEvent

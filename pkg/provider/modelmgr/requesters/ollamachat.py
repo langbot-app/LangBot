@@ -6,16 +6,13 @@ import typing
 from typing import Union, Mapping, Any, AsyncIterator
 import uuid
 import json
-import base64
 
-import async_lru
 import ollama
 
-from .. import entities, errors, requester
+from .. import errors, requester
 from ... import entities as llm_entities
 from ...tools import entities as tools_entities
-from ....core import app, entities as core_entities
-from ....utils import image
+from ....core import entities as core_entities
 
 REQUESTER_NAME: str = "ollama-chat"
 

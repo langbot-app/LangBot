@@ -8,12 +8,11 @@ import asyncio
 import pydantic.v1 as pydantic
 
 from ..provider import entities as llm_entities
-from ..provider.modelmgr import entities, modelmgr, requester
+from ..provider.modelmgr import requester
 from ..provider.tools import entities as tools_entities
 from ..platform import adapter as msadapter
 from ..platform.types import message as platform_message
 from ..platform.types import events as platform_events
-from ..platform.types import entities as platform_entities
 
 
 

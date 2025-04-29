@@ -2,22 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import typing
-import json
-import base64
-from typing import AsyncGenerator
 
 import openai
 import openai.types.chat.chat_completion as chat_completion
-import openai.types.chat.chat_completion_message_tool_call as chat_completion_message_tool_call
 import httpx
-import aiohttp
-import async_lru
 
-from .. import entities, errors, requester
-from ....core import entities as core_entities, app
+from .. import errors, requester
+from ....core import entities as core_entities
 from ... import entities as llm_entities
 from ...tools import entities as tools_entities
-from ....utils import image
 
 
 class OpenAIChatCompletions(requester.LLMAPIRequester):

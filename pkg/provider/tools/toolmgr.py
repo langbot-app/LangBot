@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import typing
-import traceback
 
 from ...core import app, entities as core_entities
 from . import entities, loader as tools_loader
-from ...plugin import context as plugin_context
-from .loaders import plugin, mcp
+from ...utils import importutil
+from . import loaders
+
+importutil.import_modules_in_pkg(loaders)
 
 
 class ToolManager:

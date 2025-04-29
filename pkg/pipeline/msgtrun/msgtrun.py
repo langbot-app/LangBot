@@ -3,7 +3,11 @@ from __future__ import annotations
 from .. import stage, entities
 from ...core import entities as core_entities
 from . import truncator
-from .truncators import round
+from ...utils import importutil
+
+from . import truncators
+
+importutil.import_modules_in_pkg(truncators)
 
 
 @stage.stage_class("ConversationMessageTruncator")

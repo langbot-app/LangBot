@@ -3,9 +3,7 @@ from __future__ import annotations
 import typing
 import openai
 
-from ....core import app
 from . import chatcmpl
-from .. import requester
 
 
 class ZhipuAIChatCompletions(chatcmpl.OpenAIChatCompletions):

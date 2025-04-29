@@ -1,8 +1,6 @@
 # 转发消息组件
 from __future__ import annotations
-import typing
 
-import pydantic.v1 as pydantic
 
 from .. import strategy as strategy_model
 from ....core import entities as core_entities

@@ -1,8 +1,6 @@
 import quart
-import uuid
 
 from ... import group
-from ......entity.persistence import model
 
 
 @group.group_class('models/llm', '/api/v1/provider/models/llm')

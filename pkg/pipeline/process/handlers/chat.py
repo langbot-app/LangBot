@@ -3,18 +3,19 @@ from __future__ import annotations
 import typing
 import time
 import traceback
-import json
 
 
 from .. import handler
 from ... import entities
 from ....core import entities as core_entities
-from ....provider import entities as llm_entities
 from ....provider import runner as runner_module
-from ....provider.runners import localagent, difysvapi, dashscopeapi
 from ....plugin import events
 
 from ....platform.types import message as platform_message
+from ....utils import importutil
+from ....provider import runners
+
+importutil.import_modules_in_pkg(runners)
 
 
 class ChatMessageHandler(handler.MessageHandler):

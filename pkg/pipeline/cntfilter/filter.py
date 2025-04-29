@@ -5,7 +5,6 @@ import typing
 
 from ...core import app, entities as core_entities
 from . import entities
-from ...provider import entities as llm_entities
 
 
 preregistered_filters: list[typing.Type[ContentFilter]] = []

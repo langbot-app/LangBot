@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 
 from .. import stage, app
 from ...utils import version, proxy, announce, platform
