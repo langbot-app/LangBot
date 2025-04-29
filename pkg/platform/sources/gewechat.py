@@ -124,7 +124,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
     ) -> platform_message.MessageChain:
         """处理文本消息 (msg_type=1)"""
         if message and self._is_group_message(message):
-            pattern = r'@\S+'
+            pattern = r'@\S{1,20}'
             content_no_preifx = re.sub(pattern, '', content_no_preifx)
         
         return platform_message.MessageChain([platform_message.Plain(content_no_preifx)])
@@ -275,14 +275,15 @@ class GewechatMessageConverter(adapter.MessageConverter):
                 pattern = r'^@\S+'
                 user_data = re.sub(pattern, '', user_data)
                 message_list.append(platform_message.Plain(user_data))
-        # print(f"**_handler_compound_quote message_list len={len(message_list)}")
+        
         # for comp in message_list:
         #     if isinstance(comp, platform_message.Quote):
-        #         print(f"**_handler_compound_quote send_id {comp.sender_id}" )
+        #         print(f"quote_message_chain len={len(message_list)}")
+        #         print(f"quote_message_chain send_id={comp.sender_id}" )
         #         for quote_item in comp.origin:
-        #             print(f"******* _handler_compound_quote item {quote_item.type} + message: {quote_item}" )
+        #             print(f"--quote_message_component [msg_type={quote_item.type}][message={quote_item}]" )
         #     else:
-        #         print(f"_handler_compound_quote type: {comp.type} + message: {comp}")
+        #         print(f"quote_message_chain plain [msg_type={comp.type}][message={comp.text}]")
         return platform_message.MessageChain(message_list)
 
     async def _handler_compound_file(
