@@ -1,10 +1,10 @@
 "use client"
 
-import {useState, useEffect} from "react";
-import {LLMCardVO} from "@/app/home/models/component/llm-card/LLMCardVO";
+import { useState, useEffect } from "react";
+import { LLMCardVO } from "@/app/home/models/component/llm-card/LLMCardVO";
 import styles from "./LLMConfig.module.css"
 import EmptyAndCreateComponent from "@/app/home/components/empty-and-create-component/EmptyAndCreateComponent";
-import {Modal} from "antd";
+import { Modal } from "antd";
 import LLMCard from "@/app/home/models/component/llm-card/LLMCard";
 import LLMForm from "@/app/home/models/component/llm-form/LLMForm";
 import CreateCardComponent from "@/app/infra/basic-component/create-card-component/CreateCardComponent";
@@ -22,22 +22,22 @@ export default function LLMConfigPage() {
     }, [])
 
     function getLLMModelList() {
-            httpClient.getProviderLLMModels().then((resp) => {
-                const llmModelList: LLMCardVO[] = resp.models.map((model: LLMModel) => {
-                    console.log("model", model)
-                    return new LLMCardVO({
-                        id: model.uuid,
-                        name: model.name,
-                        company: model.requester,
-                        URL: model.requester_config?.base_url,
-                    })
+        httpClient.getProviderLLMModels().then((resp) => {
+            const llmModelList: LLMCardVO[] = resp.models.map((model: LLMModel) => {
+                console.log("model", model)
+                return new LLMCardVO({
+                    id: model.uuid,
+                    name: model.name,
+                    company: model.requester,
+                    URL: model.requester_config?.base_url,
                 })
-                console.log("get llmModelList", llmModelList)
-                setCardList(llmModelList)
-            }).catch((err) => {
-                // TODO error toast
-                console.error("get LLM model list error", err)
             })
+            console.log("get llmModelList", llmModelList)
+            setCardList(llmModelList)
+        }).catch((err) => {
+            // TODO error toast
+            console.error("get LLM model list error", err)
+        })
     }
 
     function selectLLM(cardVO: LLMCardVO) {
@@ -85,13 +85,12 @@ export default function LLMConfigPage() {
                 <div className={`${styles.modelListContainer}`}
                 >
                     {cardList.map(cardVO => {
-                        return <div key={cardVO.id} onClick={() => {selectLLM(cardVO)}}>
+                        return <div key={cardVO.id} onClick={() => { selectLLM(cardVO) }}
+                            style={{ width: "100%", height: "100%" }}>
                             <LLMCard cardVO={cardVO}></LLMCard>
                         </div>
                     })}
                     <CreateCardComponent
-                        width={360}
-                        height={200}
                         plusSize={90}
                         onClick={handleCreateModelClick}
                     />
@@ -111,6 +110,6 @@ export default function LLMConfigPage() {
                     />
                 </div>
             }
-        </div>
+        </div >
     )
 }

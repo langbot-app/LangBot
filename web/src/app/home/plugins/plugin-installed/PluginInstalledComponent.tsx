@@ -85,13 +85,13 @@ export default function PluginInstalledComponent() {
       </Modal>
       {pluginList.map((vo, index) => {
         return (
-          <div key={index}>
+          <div key={index}
+            style={{ width: "100%", height: "100%" }}>
             <PluginCardComponent cardVO={vo} />
           </div>
         );
       })}
       <CreateCardComponent
-        height={140}
         plusSize={90}
         onClick={() => {
           setModalOpen(true);

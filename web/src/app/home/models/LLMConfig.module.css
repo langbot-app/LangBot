@@ -12,10 +12,9 @@
 .modelListContainer {
     align-self: flex-start;
     justify-self: flex-start;
-    width: calc(100% - 60px);
     margin:  auto;
     display: grid;
-    grid-template-rows: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-rows: 220px;
     grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
     gap: 15px;
     justify-items: center;
@@ -32,8 +31,8 @@
 }
 
 .cardContainer {
-    width: 360px;
-    height: 200px;
+    width: 100%;
+    height: 100%;
     background-color: #FFF;
     border-radius: 9px;
     box-shadow: rgba(0, 0, 0, 0.4) 0 1px 1px -1px;

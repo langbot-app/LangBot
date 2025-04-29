@@ -145,13 +145,13 @@ export default function BotConfigPage() {
                 onClick={() => {
                   selectBot(cardVO);
                 }}
+                style={{ width: "100%", height: "100%" }}
               >
                 <BotCard botCardVO={cardVO} />
               </div>
             );
           })}
           <CreateCardComponent
-            height={200}
             plusSize={90}
             onClick={handleCreateBotClick}
           />

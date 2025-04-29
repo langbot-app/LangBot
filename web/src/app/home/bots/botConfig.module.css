@@ -12,10 +12,10 @@
 .botListContainer {
     align-self: flex-start;
     justify-self: flex-start;
-    width: calc(100% - 60px);
     margin: auto;
     display: grid;
-    grid-template-rows: repeat(auto-fill, minmax(220px, 1fr));
+    /* 使用 grid-row 限制，而不是auto，父元素负责网格，子元素负责撑开。 */
+    grid-auto-rows: 220px;
     grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
     gap: 15px;
     justify-items: center;
