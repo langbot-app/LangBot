@@ -208,7 +208,7 @@ class WXBizMsgCrypt(object):
         try:
             self.key = base64.b64decode(sEncodingAESKey + "=")
             assert len(self.key) == 32
-        except:
+        except Exception:
             throw_exception("[error]: EncodingAESKey unvalid !", FormatException)
             # return ierror.WXBizMsgCrypt_IllegalAesKey,None
         self.m_sToken = sToken
