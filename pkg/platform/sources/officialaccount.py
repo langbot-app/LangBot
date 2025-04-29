@@ -127,7 +127,7 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
                 return await callback(
                     await self.event_converter.target2yiri(event), self
                 )
-            except:
+            except Exception:
                 traceback.print_exc()
 
         if event_type == platform_events.FriendMessage:

@@ -216,7 +216,7 @@ class AiocqhttpAdapter(adapter.MessagePlatformAdapter):
             self.bot_account_id = event.self_id
             try:
                 return await callback(await self.event_converter.target2yiri(event), self)
-            except:
+            except Exception:
                 traceback.print_exc()
 
         if event_type == platform_events.GroupMessage:

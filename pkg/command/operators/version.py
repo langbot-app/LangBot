@@ -21,7 +21,7 @@ class VersionCommand(operator.CommandOperator):
         try:
             if await self.ap.ver_mgr.is_new_version_available():
                 reply_str += "\n\n有新版本可用。"
-        except:
+        except Exception:
             pass
 
         yield entities.CommandReturn(text=reply_str.strip())

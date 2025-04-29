@@ -199,7 +199,7 @@ class PluginLoader(loader.PluginLoader):
                     if self._current_container is not None:
                         self.plugins.append(self._current_container)
                         self.ap.logger.debug(f'插件 {self._current_container} 已加载')
-                except:
+                except Exception:
                     self.ap.logger.error(f'加载插件模块 {prefix + item.name} 时发生错误')
                     traceback.print_exc()
 

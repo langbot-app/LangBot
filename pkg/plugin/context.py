@@ -168,7 +168,7 @@ class APIHost:
 
         try:
             langbot_version = self.ap.ver_mgr.get_current_version()  # 从updater模块获取版本号
-        except:
+        except Exception:
             return False
 
         if self.ap.ver_mgr.compare_version_str(langbot_version, ge) < 0 or \

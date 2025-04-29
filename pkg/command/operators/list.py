@@ -22,7 +22,7 @@ class ListOperator(operator.CommandOperator):
         if len(context.crt_params) > 0:
             try:
                 page = int(context.crt_params[0]-1)
-            except:
+            except Exception:
                 yield entities.CommandReturn(error=errors.CommandOperationError('页码应为整数'))
                 return
 

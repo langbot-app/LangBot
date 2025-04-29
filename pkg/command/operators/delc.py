@@ -22,7 +22,7 @@ class DelOperator(operator.CommandOperator):
             if len(context.crt_params) > 0:
                 try:
                     delete_index = int(context.crt_params[0])
-                except:
+                except Exception:
                     yield entities.CommandReturn(error=errors.CommandOperationError('索引必须是整数'))
                     return
                 

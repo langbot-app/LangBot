@@ -44,7 +44,7 @@ class LongTextProcessStage(stage.PipelineStage):
                         self.ap.logger.warn("未找到字体文件，且无法使用系统自带字体，更换为转发消息组件以发送长消息，您可以在配置文件中调整相关设置。")
 
                         pipeline_config['output']['long-text-processing']['strategy'] = "forward"
-            except:
+            except Exception:
                 traceback.print_exc()
                 self.ap.logger.error("加载字体文件失败({})，更换为转发消息组件以发送长消息，您可以在配置文件中调整相关设置。".format(use_font))
 

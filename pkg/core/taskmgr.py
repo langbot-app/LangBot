@@ -124,13 +124,13 @@ class TaskWrapper:
             if self.task_stack is None:
                 self.task_stack = self.task.get_stack()
             return exception
-        except:
+        except Exception:
             return None
 
     def assume_result(self):
         try:
             return self.task.result()
-        except:
+        except Exception:
             return None
 
     def to_dict(self) -> dict:
