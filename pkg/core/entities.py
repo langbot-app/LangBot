@@ -96,7 +96,7 @@ class Query(pydantic.BaseModel):
     """回复消息链，从resp_messages包装而得"""
 
     # ======= 内部保留 =======
-    current_stage: 'pkg.pipeline.pipelinemgr.StageInstContainer' = None
+    current_stage = None  # pkg.pipeline.pipelinemgr.StageInstContainer
     """当前所处阶段"""
 
     class Config:
