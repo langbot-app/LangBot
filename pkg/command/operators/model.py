@@ -49,7 +49,7 @@ class ModelShowOperator(operator.CommandOperator):
         if model is None:
             yield entities.CommandReturn(error=errors.CommandError(f"未找到模型 {model_name}"))
         else:
-            content = f"模型详情\n"
+            content = "模型详情\n"
             content += f"名称: {model.name}\n"
             if model.model_name is not None:
                 content += f"请求模型名称: {model.model_name}\n"

@@ -116,7 +116,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
             except Exception as e:
                 print(f"处理图片消息失败: {str(e)}")
                 return platform_message.MessageChain([
-                    platform_message.Plain(text=f"[图片处理失败]")
+                    platform_message.Plain(text="[图片处理失败]")
                 ])
         elif message["Data"]["MsgType"] == 34:
             audio_base64 = message["Data"]["ImgBuf"]["buffer"]
@@ -166,24 +166,24 @@ class GewechatMessageConverter(adapter.MessageConverter):
                     return platform_message.MessageChain(message_list)
                 elif data_type == '51':
                     return platform_message.MessageChain(
-                        [platform_message.Plain(text=f'[视频号消息]')]
+                        [platform_message.Plain(text='[视频号消息]')]
                     )
                     # print(content_data)
                 elif data_type == '2000':
                     return platform_message.MessageChain(
-                        [platform_message.Plain(text=f'[转账消息]')]
+                        [platform_message.Plain(text='[转账消息]')]
                     )
                 elif data_type == '2001':
                     return platform_message.MessageChain(
-                        [platform_message.Plain(text=f'[红包消息]')]
+                        [platform_message.Plain(text='[红包消息]')]
                     )
                 elif data_type == '5':
                     return platform_message.MessageChain(
-                        [platform_message.Plain(text=f'[公众号消息]')]
+                        [platform_message.Plain(text='[公众号消息]')]
                     )
                 elif data_type == '33' or data_type == '36':
                     return platform_message.MessageChain(
-                        [platform_message.Plain(text=f'[小程序消息]')]
+                        [platform_message.Plain(text='[小程序消息]')]
                     )
                 # print(data_type.text)
                 else:

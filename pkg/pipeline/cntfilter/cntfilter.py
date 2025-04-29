@@ -157,7 +157,7 @@ class ContentFilterStage(stage.PipelineStage):
                     break
 
             if contain_non_text:
-                self.ap.logger.debug(f"消息中包含非文本消息，跳过内容过滤器检查。")
+                self.ap.logger.debug("消息中包含非文本消息，跳过内容过滤器检查。")
                 return entities.StageProcessResult(
                     result_type=entities.ResultType.CONTINUE,
                     new_query=query
@@ -175,7 +175,7 @@ class ContentFilterStage(stage.PipelineStage):
                     query
                 )
             else:
-                self.ap.logger.debug(f"resp_messages[-1] 不是 Message 类型或 query.resp_messages[-1].content 不是 str 类型，跳过内容过滤器检查。")
+                self.ap.logger.debug("resp_messages[-1] 不是 Message 类型或 query.resp_messages[-1].content 不是 str 类型，跳过内容过滤器检查。")
                 return entities.StageProcessResult(
                     result_type=entities.ResultType.CONTINUE,
                     new_query=query

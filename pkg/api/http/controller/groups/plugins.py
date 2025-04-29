@@ -97,7 +97,7 @@ class PluginsRouterGroup(group.RouterGroup):
             wrapper = self.ap.task_mgr.create_user_task(
                 self.ap.plugin_mgr.install_plugin(data['source'], task_context=ctx),
                 kind="plugin-operation",
-                name=f'plugin-install-github',
+                name='plugin-install-github',
                 label=f'安装插件 ...{short_source_str}',
                 context=ctx
             )
