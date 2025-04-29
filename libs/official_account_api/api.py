@@ -114,7 +114,7 @@ class OAClient():
                     print("请求失效：暂不支持公众号超过15秒的请求，如有需求，请联系 LangBot 团队。")
                     return ''
 
-        except Exception as e:
+        except Exception:
             traceback.print_exc()
 
     
@@ -193,7 +193,6 @@ class OAClientForLongerResponse():
 
     async def handle_callback_request(self):
         try:
-            start_time = time.time()
             signature = request.args.get("signature", "")
             timestamp = request.args.get("timestamp", "")
             nonce = request.args.get("nonce", "")
@@ -265,7 +264,7 @@ class OAClientForLongerResponse():
 
                         return response_xml
 
-        except Exception as e:
+        except Exception:
             traceback.print_exc()
 
 

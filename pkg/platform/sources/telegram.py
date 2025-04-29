@@ -166,7 +166,7 @@ class TelegramAdapter(adapter.MessagePlatformAdapter):
             try:
                 lb_event = await self.event_converter.target2yiri(update, self.bot, self.bot_account_id)
                 await self.listeners[type(lb_event)](lb_event, self)
-            except Exception as e:
+            except Exception:
                 print(traceback.format_exc())
         
         self.application = ApplicationBuilder().token(self.config['token']).build()

@@ -24,7 +24,7 @@ class OllamaOperator(operator.CommandOperator):
                 content += f"修改时间: {model['modified_at']}\n"
                 content += f"大小: {bytes_to_mb(model['size'])}MB\n\n"
             yield entities.CommandReturn(text=f"{content.strip()}")
-        except ollama.ResponseError as e:
+        except ollama.ResponseError:
             yield entities.CommandReturn(error=errors.CommandError(f"无法获取模型列表，请确认 Ollama 服务正常"))
 
 
@@ -57,7 +57,7 @@ class OllamaShowOperator(operator.CommandOperator):
 
             content += json.dumps(show, indent=4)
             yield entities.CommandReturn(text=content.strip())
-        except ollama.ResponseError as e:
+        except ollama.ResponseError:
             yield entities.CommandReturn(error=errors.CommandError(f"无法获取模型详情，请确认 Ollama 服务正常"))
 
 @operator.operator_class(
@@ -75,7 +75,7 @@ class OllamaPullOperator(operator.CommandOperator):
             if context.crt_params[0] in [model['name'] for model in model_list]:
                 yield entities.CommandReturn(text="模型已存在")
                 return
-        except ollama.ResponseError as e:
+        except ollama.ResponseError:
             yield entities.CommandReturn(error=errors.CommandError(f"无法获取模型列表，请确认 Ollama 服务正常"))
             return
 

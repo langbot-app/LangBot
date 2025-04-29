@@ -94,6 +94,6 @@ class PluginManifestLoader(loader.PluginLoader):
                 # TODO load component extensions
 
                 self.plugins.append(current_plugin_container)
-            except Exception as e:
+            except Exception:
                 self.ap.logger.error(f'加载插件 {plugin_manifest.metadata.name} 时发生错误')
                 traceback.print_exc()

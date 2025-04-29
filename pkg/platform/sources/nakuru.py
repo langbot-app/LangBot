@@ -68,7 +68,7 @@ class NakuruProjectMessageConverter(adapter_model.MessageConverter):
                             content=content_list
                         )
                         nakuru_forward_node_list.append(nakuru_forward_node)
-                    except Exception as e:
+                    except Exception:
                         import traceback
                         traceback.print_exc()
 
@@ -319,7 +319,7 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
             if resp.status_code == 403:
                 raise Exception("go-cqhttp拒绝访问，请检查配置文件中nakuru适配器的配置")
             self.bot_account_id = int(resp.json()['data']['user_id'])
-        except Exception as e:
+        except Exception:
             raise Exception("获取go-cqhttp账号信息失败, 请检查是否已启动go-cqhttp并配置正确")
         await self.bot._run()
         self.ap.logger.info("运行 Nakuru 适配器")

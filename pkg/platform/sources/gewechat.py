@@ -195,7 +195,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
                         return platform_message.MessageChain(
                             [platform_message.Unknown(content=decoded_content)]
                         )
-                    except Exception as e:
+                    except Exception:
                         return platform_message.MessageChain(
                             [platform_message.Plain(text=content)]
                         )
@@ -319,7 +319,7 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
                 try:
 
                     event = await self.event_converter.target2yiri(data.copy(), self.bot_account_id)
-                except Exception as e:
+                except Exception:
                     traceback.print_exc()
 
                 if event.__class__ in self.listeners:

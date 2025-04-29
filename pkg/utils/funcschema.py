@@ -38,12 +38,12 @@ def get_func_schema(function: callable) -> dict:
     doc_spt = func_doc.split('\n\n')
     desc = doc_spt[0]
     args = doc_spt[1] if len(doc_spt) > 1 else ""
-    returns = doc_spt[2] if len(doc_spt) > 2 else ""
+    # returns = doc_spt[2] if len(doc_spt) > 2 else ""
 
     # extract args
     # delete the first line of args
     arg_lines = args.split('\n')[1:]
-    arg_doc_list = re.findall(r'(\w+)(\((\w+)\))?:\s*(.*)', args)
+    # arg_doc_list = re.findall(r'(\w+)(\((\w+)\))?:\s*(.*)', args)
     args_doc = {}
     for arg_line in arg_lines:
         doc_tuple = re.findall(r'(\w+)(\(([\w\[\]]+)\))?:\s*(.*)', arg_line)
@@ -52,7 +52,7 @@ def get_func_schema(function: callable) -> dict:
         args_doc[doc_tuple[0][0]] = doc_tuple[0][3]
 
     # extract returns
-    return_doc_list = re.findall(r'(\w+):\s*(.*)', returns)
+    # return_doc_list = re.findall(r'(\w+):\s*(.*)', returns)
 
     params = enumerate(inspect.signature(function).parameters.values())
     parameters = {

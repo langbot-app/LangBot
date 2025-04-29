@@ -185,7 +185,7 @@ class OfficialMessageConverter(adapter_model.MessageConverter):
                         offcial_messages.extend(
                             OfficialMessageConverter.yiri2target(message_chain)
                         )
-                    except Exception as e:
+                    except Exception:
                         import traceback
 
                         traceback.print_exc()

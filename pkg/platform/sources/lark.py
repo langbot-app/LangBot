@@ -351,14 +351,14 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
                 if 'im.message.receive_v1' == type:
                     try:
                         event = await self.event_converter.target2yiri(p2v1, self.api_client)
-                    except Exception as e:
+                    except Exception:
                         traceback.print_exc()
 
                     if event.__class__ in self.listeners:
                         await self.listeners[event.__class__](event, self)
 
                 return {"code": 200, "message": "ok"}
-            except Exception as e:
+            except Exception:
                 traceback.print_exc()
                 return {"code": 500, "message": "error"}
 

@@ -27,5 +27,5 @@ class ShowNotesStage(stage.BootingStage):
                         msg, level = ret
                         if msg:
                             ap.logger.log(level, msg)
-            except Exception as e:
+            except Exception:
                 continue

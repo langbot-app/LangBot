@@ -218,7 +218,7 @@ class DingTalkClient:
         }
         try:
             async with httpx.AsyncClient() as client:
-                response  = await client.post(url,headers=headers,json=data)
+                await client.post(url,headers=headers,json=data)
         except Exception:
             traceback.print_exc()
 
@@ -242,7 +242,7 @@ class DingTalkClient:
         }
         try:
             async with httpx.AsyncClient() as client:
-                response  = await client.post(url,headers=headers,json=data)
+                await client.post(url,headers=headers,json=data)
         except Exception:
             traceback.print_exc()
     
