@@ -71,6 +71,8 @@ class WecomCSClient():
     
     async def get_detailed_message_list(self,xml_msg:str):
         # 在本方法中解析消息，并且获得消息的具体内容
+        if isinstance(xml_msg, bytes):
+            xml_msg = xml_msg.decode('utf-8')
         root = ET.fromstring(xml_msg)
         token = root.find("Token").text
         open_kfid = root.find("OpenKfId").text
@@ -92,11 +94,12 @@ class WecomCSClient():
             }
             response = await client.post(url,json=params)
             data = response.json()
-            if data['errcode'] != 0:
-                raise Exception("Failed to get message")
             if data['errcode'] == 40014 or data['errcode'] == 42001:
                 self.access_token = await self.get_access_token(self.secret)
                 return await self.get_detailed_message_list(xml_msg)
+            if data['errcode'] != 0:
+                raise Exception("Failed to get message")
+            
             last_msg_data = data['msg_list'][-1]
             open_kfid = last_msg_data.get("open_kfid")
             # 进行获取图片操作
@@ -182,8 +185,11 @@ class WecomCSClient():
             response = await client.post(url, json=payload)
 
             data = response.json()
-            if data.get("errcode") != 0:
-                raise Exception(f"消息发送失败: {data}")
+            if data['errcode'] == 40014 or data['errcode'] == 42001:
+                self.access_token = await self.get_access_token(self.secret)
+                return await self.send_text_msg(open_kfid,external_userid,msgid,content)
+            if data['errcode'] != 0:
+                raise Exception("Failed to send message")
             return data
 
 
