@@ -10,14 +10,13 @@ from ....core import app, entities as core_entities
 from ....utils import importutil
 
 from . import groups
+from . import group
 from .groups import provider as groups_provider
 from .groups import platform as groups_platform
 
 importutil.import_modules_in_pkg(groups)
 importutil.import_modules_in_pkg(groups_provider)
 importutil.import_modules_in_pkg(groups_platform)
-
-from . import group
 
 
 class HTTPController:

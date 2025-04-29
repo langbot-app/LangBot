@@ -1,9 +1,9 @@
 # 输出工作路径
 import os
+import time
+import json
 print("工作路径: " + os.getcwd())
 announcement = input("请输入公告内容: ")
-
-import json
 
 # 读取现有的公告文件 res/announcement.json
 with open("res/announcement.json", "r", encoding="utf-8") as f:
@@ -12,7 +12,6 @@ with open("res/announcement.json", "r", encoding="utf-8") as f:
 # 将公告内容写入公告文件
 
 # 当前自然时间
-import time
 now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
 # 获取最后一个公告的id

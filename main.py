@@ -1,3 +1,4 @@
+import asyncio
 # LangBot 终端启动入口
 # 在此层级解决依赖项检查。
 # LangBot/main.py
@@ -12,9 +13,6 @@ asciiart = r"""
 ⭐️开源地址: https://github.com/RockChinQ/LangBot
 📖文档地址: https://docs.langbot.app
 """
-
-
-import asyncio
 
 
 async def main_entry(loop: asyncio.AbstractEventLoop):
