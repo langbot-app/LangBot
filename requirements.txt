@@ -35,6 +35,7 @@ python-telegram-bot
 certifi
 mcp
 sqlmodel
+ruff
 
 # indirect
 taskgroup==0.0.0a4

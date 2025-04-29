@@ -6,6 +6,8 @@ ignore = [
     "F403", # * used, unable to detect undefined names
     "F405", # may be undefined, or defined from star imports
     "E741", # Ambiguous variable name: `l`
+    "E722", # bare-except
+    "E721", # type-comparison
 ]
 
 [format]
