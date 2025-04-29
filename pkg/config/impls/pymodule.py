@@ -25,10 +25,10 @@ class PythonModuleConfigFile(file_model.ConfigFile):
     async def create(self):
         shutil.copyfile(self.template_file_name, self.config_file_name)
 
-    async def load(self, completion: bool=True) -> dict:
+    async def load(self, completion: bool = True) -> dict:
         module_name = os.path.splitext(os.path.basename(self.config_file_name))[0]
         module = importlib.import_module(module_name)
-        
+
         cfg = {}
 
         allowed_types = (int, float, str, bool, list, dict)

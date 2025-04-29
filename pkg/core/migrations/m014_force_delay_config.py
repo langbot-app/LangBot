@@ -3,7 +3,7 @@ from __future__ import annotations
 from .. import migration
 
 
-@migration.migration_class("force-delay-config", 14)
+@migration.migration_class('force-delay-config', 14)
 class ForceDelayConfigMigration(migration.Migration):
     """迁移"""
 
@@ -15,8 +15,8 @@ class ForceDelayConfigMigration(migration.Migration):
         """执行迁移"""
 
         self.ap.platform_cfg.data['force-delay'] = {
-            "min": self.ap.platform_cfg.data['force-delay'][0],
-            "max": self.ap.platform_cfg.data['force-delay'][1]
+            'min': self.ap.platform_cfg.data['force-delay'][0],
+            'max': self.ap.platform_cfg.data['force-delay'][1],
         }
 
         await self.ap.platform_cfg.dump_config()

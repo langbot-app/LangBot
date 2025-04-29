@@ -16,6 +16,7 @@ identifier = {
 HOST_ID_FILE = os.path.expanduser('~/.langbot/host_id.json')
 INSTANCE_ID_FILE = 'data/labels/instance_id.json'
 
+
 def init():
     global identifier
 
@@ -23,14 +24,11 @@ def init():
         os.mkdir(os.path.expanduser('~/.langbot'))
 
     if not os.path.exists(HOST_ID_FILE):
-        new_host_id = 'host_'+str(uuid.uuid4())
+        new_host_id = 'host_' + str(uuid.uuid4())
         new_host_create_ts = int(time.time())
 
         with open(HOST_ID_FILE, 'w') as f:
-            json.dump({
-                'host_id': new_host_id,
-                'host_create_ts': new_host_create_ts
-            }, f)
+            json.dump({'host_id': new_host_id, 'host_create_ts': new_host_create_ts}, f)
 
         identifier['host_id'] = new_host_id
         identifier['host_create_ts'] = new_host_create_ts
@@ -51,20 +49,25 @@ def init():
         instance_id = {}
         with open(INSTANCE_ID_FILE, 'r') as f:
             instance_id = json.load(f)
-        
-        if instance_id['host_id'] != identifier['host_id']: # 如果实例 id 不是当前主机的，删除
+
+        if (
+            instance_id['host_id'] != identifier['host_id']
+        ):  # 如果实例 id 不是当前主机的，删除
             os.remove(INSTANCE_ID_FILE)
 
     if not os.path.exists(INSTANCE_ID_FILE):
-        new_instance_id = 'instance_'+str(uuid.uuid4())
+        new_instance_id = 'instance_' + str(uuid.uuid4())
         new_instance_create_ts = int(time.time())
 
         with open(INSTANCE_ID_FILE, 'w') as f:
-            json.dump({
-                'host_id': identifier['host_id'],
-                'instance_id': new_instance_id,
-                'instance_create_ts': new_instance_create_ts
-            }, f)
+            json.dump(
+                {
+                    'host_id': identifier['host_id'],
+                    'instance_id': new_instance_id,
+                    'instance_create_ts': new_instance_create_ts,
+                },
+                f,
+            )
 
         identifier['instance_id'] = new_instance_id
         identifier['instance_create_ts'] = new_instance_create_ts
@@ -79,6 +82,7 @@ def init():
 
         identifier['instance_id'] = loaded_instance_id
         identifier['instance_create_ts'] = loaded_instance_create_ts
+
 
 def print_out():
     global identifier

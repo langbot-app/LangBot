@@ -13,8 +13,7 @@ from ..platform.types import message as platform_message, events as platform_eve
 from ..plugin import events
 from ..utils import importutil
 
-from . import resprule, bansess, cntfilter, process, longtext, respback, wrapper, preproc, ratelimit, msgtrun
-importutil.import_modules_in_pkgs([
+from . import (
     resprule,
     bansess,
     cntfilter,
@@ -24,13 +23,27 @@ importutil.import_modules_in_pkgs([
     wrapper,
     preproc,
     ratelimit,
-    msgtrun
-])
+    msgtrun,
+)
+
+importutil.import_modules_in_pkgs(
+    [
+        resprule,
+        bansess,
+        cntfilter,
+        process,
+        longtext,
+        respback,
+        wrapper,
+        preproc,
+        ratelimit,
+        msgtrun,
+    ]
+)
 
 
-class StageInstContainer():
-    """阶段实例容器
-    """
+class StageInstContainer:
+    """阶段实例容器"""
 
     inst_name: str
 
@@ -52,7 +65,12 @@ class RuntimePipeline:
     stage_containers: list[StageInstContainer]
     """阶段实例容器"""
 
-    def __init__(self, ap: app.Application, pipeline_entity: persistence_pipeline.LegacyPipeline, stage_containers: list[StageInstContainer]):
+    def __init__(
+        self,
+        ap: app.Application,
+        pipeline_entity: persistence_pipeline.LegacyPipeline,
+        stage_containers: list[StageInstContainer],
+    ):
         self.ap = ap
         self.pipeline_entity = pipeline_entity
         self.stage_containers = stage_containers
@@ -61,9 +79,10 @@ class RuntimePipeline:
         query.pipeline_config = self.pipeline_entity.config
         await self.process_query(query)
 
-    async def _check_output(self, query: entities.Query, result: pipeline_entities.StageProcessResult):
-        """检查输出
-        """
+    async def _check_output(
+        self, query: entities.Query, result: pipeline_entities.StageProcessResult
+    ):
+        """检查输出"""
         if result.user_notice:
             # 处理str类型
 
@@ -72,22 +91,19 @@ class RuntimePipeline:
                     platform_message.Plain(result.user_notice)
                 )
             elif isinstance(result.user_notice, list):
-                result.user_notice = platform_message.MessageChain(
-                    *result.user_notice
-                )
+                result.user_notice = platform_message.MessageChain(*result.user_notice)
 
-            if query.pipeline_config['output']['misc']['at-sender'] and isinstance(query.message_event, platform_events.GroupMessage):
+            if query.pipeline_config['output']['misc']['at-sender'] and isinstance(
+                query.message_event, platform_events.GroupMessage
+            ):
                 result.user_notice.insert(
-                    0,
-                    platform_message.At(
-                        query.message_event.sender.id
-                    )
+                    0, platform_message.At(query.message_event.sender.id)
                 )
 
             await query.adapter.reply_message(
                 message_source=query.message_event,
                 message=result.user_notice,
-                quote_origin=query.pipeline_config['output']['misc']['quote-origin']
+                quote_origin=query.pipeline_config['output']['misc']['quote-origin'],
             )
         if result.debug_notice:
             self.ap.logger.debug(result.debug_notice)
@@ -127,32 +143,44 @@ class RuntimePipeline:
             stage_container = self.stage_containers[i]
 
             query.current_stage = stage_container  # 标记到 Query 对象里
-            
+
             result = stage_container.inst.process(query, stage_container.inst_name)
 
             if isinstance(result, typing.Coroutine):
                 result = await result
 
             if isinstance(result, pipeline_entities.StageProcessResult):  # 直接返回结果
-                self.ap.logger.debug(f"Stage {stage_container.inst_name} processed query {query} res {result}")
+                self.ap.logger.debug(
+                    f'Stage {stage_container.inst_name} processed query {query} res {result}'
+                )
                 await self._check_output(query, result)
 
                 if result.result_type == pipeline_entities.ResultType.INTERRUPT:
-                    self.ap.logger.debug(f"Stage {stage_container.inst_name} interrupted query {query}")
+                    self.ap.logger.debug(
+                        f'Stage {stage_container.inst_name} interrupted query {query}'
+                    )
                     break
                 elif result.result_type == pipeline_entities.ResultType.CONTINUE:
                     query = result.new_query
             elif isinstance(result, typing.AsyncGenerator):  # 生成器
-                self.ap.logger.debug(f"Stage {stage_container.inst_name} processed query {query} gen")
+                self.ap.logger.debug(
+                    f'Stage {stage_container.inst_name} processed query {query} gen'
+                )
 
                 async for sub_result in result:
-                    self.ap.logger.debug(f"Stage {stage_container.inst_name} processed query {query} res {sub_result}")
+                    self.ap.logger.debug(
+                        f'Stage {stage_container.inst_name} processed query {query} res {sub_result}'
+                    )
                     await self._check_output(query, sub_result)
 
                     if sub_result.result_type == pipeline_entities.ResultType.INTERRUPT:
-                        self.ap.logger.debug(f"Stage {stage_container.inst_name} interrupted query {query}")
+                        self.ap.logger.debug(
+                            f'Stage {stage_container.inst_name} interrupted query {query}'
+                        )
                         break
-                    elif sub_result.result_type == pipeline_entities.ResultType.CONTINUE:
+                    elif (
+                        sub_result.result_type == pipeline_entities.ResultType.CONTINUE
+                    ):
                         query = sub_result.new_query
                         await self._execute_from_stage(i + 1, query)
                 break
@@ -160,12 +188,14 @@ class RuntimePipeline:
             i += 1
 
     async def process_query(self, query: entities.Query):
-        """处理请求
-        """
+        """处理请求"""
         try:
-
             # ======== 触发 MessageReceived 事件 ========
-            event_type = events.PersonMessageReceived if query.launcher_type == entities.LauncherTypes.PERSON else events.GroupMessageReceived
+            event_type = (
+                events.PersonMessageReceived
+                if query.launcher_type == entities.LauncherTypes.PERSON
+                else events.GroupMessageReceived
+            )
 
             event_ctx = await self.ap.plugin_mgr.emit_event(
                 event=event_type(
@@ -173,22 +203,26 @@ class RuntimePipeline:
                     launcher_id=query.launcher_id,
                     sender_id=query.sender_id,
                     message_chain=query.message_chain,
-                    query=query
+                    query=query,
                 )
             )
 
             if event_ctx.is_prevented_default():
                 return
-            
-            self.ap.logger.debug(f"Processing query {query}")
+
+            self.ap.logger.debug(f'Processing query {query}')
 
             await self._execute_from_stage(0, query)
         except Exception as e:
-            inst_name = query.current_stage.inst_name if query.current_stage else 'unknown'
-            self.ap.logger.error(f"处理请求时出错 query_id={query.query_id} stage={inst_name} : {e}")
-            self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
+            inst_name = (
+                query.current_stage.inst_name if query.current_stage else 'unknown'
+            )
+            self.ap.logger.error(
+                f'处理请求时出错 query_id={query.query_id} stage={inst_name} : {e}'
+            )
+            self.ap.logger.debug(f'Traceback: {traceback.format_exc()}')
         finally:
-            self.ap.logger.debug(f"Query {query} processed")
+            self.ap.logger.debug(f'Query {query} processed')
 
 
 class PipelineManager:
@@ -207,7 +241,9 @@ class PipelineManager:
         self.pipelines = []
 
     async def initialize(self):
-        self.stage_dict = {name: cls for name, cls in stage.preregistered_stages.items()}
+        self.stage_dict = {
+            name: cls for name, cls in stage.preregistered_stages.items()
+        }
 
         await self.load_pipelines_from_db()
 
@@ -224,24 +260,31 @@ class PipelineManager:
         for pipeline in pipelines:
             await self.load_pipeline(pipeline)
 
-    async def load_pipeline(self, pipeline_entity: persistence_pipeline.LegacyPipeline | sqlalchemy.Row[persistence_pipeline.LegacyPipeline] | dict):
-        
+    async def load_pipeline(
+        self,
+        pipeline_entity: persistence_pipeline.LegacyPipeline
+        | sqlalchemy.Row[persistence_pipeline.LegacyPipeline]
+        | dict,
+    ):
         if isinstance(pipeline_entity, sqlalchemy.Row):
-            pipeline_entity = persistence_pipeline.LegacyPipeline(**pipeline_entity._mapping)
+            pipeline_entity = persistence_pipeline.LegacyPipeline(
+                **pipeline_entity._mapping
+            )
         elif isinstance(pipeline_entity, dict):
             pipeline_entity = persistence_pipeline.LegacyPipeline(**pipeline_entity)
 
         # initialize stage containers according to pipeline_entity.stages
         stage_containers: list[StageInstContainer] = []
         for stage_name in pipeline_entity.stages:
-            stage_containers.append(StageInstContainer(
-                inst_name=stage_name,
-                inst=self.stage_dict[stage_name](self.ap)
-            ))
+            stage_containers.append(
+                StageInstContainer(
+                    inst_name=stage_name, inst=self.stage_dict[stage_name](self.ap)
+                )
+            )
 
         for stage_container in stage_containers:
             await stage_container.inst.initialize(pipeline_entity.config)
-        
+
         runtime_pipeline = RuntimePipeline(self.ap, pipeline_entity, stage_containers)
         self.pipelines.append(runtime_pipeline)
 

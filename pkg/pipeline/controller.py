@@ -7,8 +7,8 @@ from ..core import app, entities
 
 
 class Controller:
-    """总控制器
-    """
+    """总控制器"""
+
     ap: app.Application
 
     semaphore: asyncio.Semaphore = None
@@ -16,11 +16,12 @@ class Controller:
 
     def __init__(self, ap: app.Application):
         self.ap = ap
-        self.semaphore = asyncio.Semaphore(self.ap.instance_config.data['concurrency']['pipeline'])
+        self.semaphore = asyncio.Semaphore(
+            self.ap.instance_config.data['concurrency']['pipeline']
+        )
 
     async def consumer(self):
-        """事件处理循环
-        """
+        """事件处理循环"""
         try:
             while True:
                 selected_query: entities.Query = None
@@ -31,7 +32,9 @@ class Controller:
 
                     for query in queries:
                         session = await self.ap.sess_mgr.get_session(query)
-                        self.ap.logger.debug(f"Checking query {query} session {session}")
+                        self.ap.logger.debug(
+                            f'Checking query {query} session {session}'
+                        )
 
                         if not session.semaphore.locked():
                             selected_query = query
@@ -52,30 +55,40 @@ class Controller:
                             # find pipeline
                             # Here firstly find the bot, then find the pipeline, in case the bot adapter's config is not the latest one.
                             # Like aiocqhttp, once a client is connected, even the adapter was updated and restarted, the existing client connection will not be affected.
-                            bot = await self.ap.platform_mgr.get_bot_by_uuid(selected_query.bot_uuid)
+                            bot = await self.ap.platform_mgr.get_bot_by_uuid(
+                                selected_query.bot_uuid
+                            )
                             if bot:
-                                pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(bot.bot_entity.use_pipeline_uuid)
+                                pipeline = (
+                                    await self.ap.pipeline_mgr.get_pipeline_by_uuid(
+                                        bot.bot_entity.use_pipeline_uuid
+                                    )
+                                )
                                 if pipeline:
                                     await pipeline.run(selected_query)
-                        
+
                         async with self.ap.query_pool:
-                            (await self.ap.sess_mgr.get_session(selected_query)).semaphore.release()
+                            (
+                                await self.ap.sess_mgr.get_session(selected_query)
+                            ).semaphore.release()
                             # 通知其他协程，有新的请求可以处理了
                             self.ap.query_pool.condition.notify_all()
 
                     self.ap.task_mgr.create_task(
                         _process_query(selected_query),
-                        kind="query",
-                        name=f"query-{selected_query.query_id}",
-                        scopes=[entities.LifecycleControlScope.APPLICATION, entities.LifecycleControlScope.PLATFORM],
+                        kind='query',
+                        name=f'query-{selected_query.query_id}',
+                        scopes=[
+                            entities.LifecycleControlScope.APPLICATION,
+                            entities.LifecycleControlScope.PLATFORM,
+                        ],
                     )
 
         except Exception as e:
             # traceback.print_exc()
-            self.ap.logger.error(f"控制器循环出错: {e}")
-            self.ap.logger.error(f"Traceback: {traceback.format_exc()}")
+            self.ap.logger.error(f'控制器循环出错: {e}')
+            self.ap.logger.error(f'Traceback: {traceback.format_exc()}')
 
     async def run(self):
-        """运行控制器
-        """
+        """运行控制器"""
         await self.consumer()

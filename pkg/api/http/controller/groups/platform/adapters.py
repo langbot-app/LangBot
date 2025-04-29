@@ -5,29 +5,31 @@ from ... import group
 
 @group.group_class('adapters', '/api/v1/platform/adapters')
 class AdaptersRouterGroup(group.RouterGroup):
-
     async def initialize(self) -> None:
         @self.route('', methods=['GET'])
         async def _() -> str:
-            return self.success(data={
-                'adapters': self.ap.platform_mgr.get_available_adapters_info()
-            })
-        
+            return self.success(
+                data={'adapters': self.ap.platform_mgr.get_available_adapters_info()}
+            )
+
         @self.route('/<adapter_name>', methods=['GET'])
         async def _(adapter_name: str) -> str:
-            adapter_info = self.ap.platform_mgr.get_available_adapter_info_by_name(adapter_name)
+            adapter_info = self.ap.platform_mgr.get_available_adapter_info_by_name(
+                adapter_name
+            )
 
             if adapter_info is None:
                 return self.http_status(404, -1, 'adapter not found')
 
-            return self.success(data={
-                'adapter': adapter_info
-            })
-        
+            return self.success(data={'adapter': adapter_info})
+
         @self.route('/<adapter_name>/icon', methods=['GET'])
         async def _(adapter_name: str) -> quart.Response:
-
-            adapter_manifest = self.ap.platform_mgr.get_available_adapter_manifest_by_name(adapter_name)
+            adapter_manifest = (
+                self.ap.platform_mgr.get_available_adapter_manifest_by_name(
+                    adapter_name
+                )
+            )
 
             if adapter_manifest is None:
                 return self.http_status(404, -1, 'adapter not found')

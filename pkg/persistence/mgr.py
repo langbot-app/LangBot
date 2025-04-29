@@ -36,9 +36,8 @@ class PersistenceManager:
         self.meta = base.Base.metadata
 
     async def initialize(self):
+        self.ap.logger.info('Initializing database...')
 
-        self.ap.logger.info("Initializing database...")
-        
         for manager in database.preregistered_managers:
             self.db = manager(self.ap)
             await self.db.initialize()
@@ -46,7 +45,6 @@ class PersistenceManager:
         await self.create_tables()
 
     async def create_tables(self):
-
         # create tables
         async with self.get_db_engine().connect() as conn:
             await conn.run_sync(self.meta.create_all)
@@ -56,26 +54,28 @@ class PersistenceManager:
         # ======= write initial data =======
 
         # write initial metadata
-        self.ap.logger.info("Creating initial metadata...")
+        self.ap.logger.info('Creating initial metadata...')
         for item in metadata.initial_metadata:
             # check if the item exists
             result = await self.execute_async(
-                sqlalchemy.select(metadata.Metadata).where(metadata.Metadata.key == item['key'])
+                sqlalchemy.select(metadata.Metadata).where(
+                    metadata.Metadata.key == item['key']
+                )
             )
             row = result.first()
             if row is None:
                 await self.execute_async(
                     sqlalchemy.insert(metadata.Metadata).values(item)
                 )
-        
-        # write default pipeline
-        result = await self.execute_async(
-            sqlalchemy.select(pipeline.LegacyPipeline)
-        )
-        if result.first() is None:
-            self.ap.logger.info("Creating default pipeline...")
 
-            pipeline_config = json.load(open('templates/default-pipeline-config.json', 'r', encoding='utf-8'))
+        # write default pipeline
+        result = await self.execute_async(sqlalchemy.select(pipeline.LegacyPipeline))
+        if result.first() is None:
+            self.ap.logger.info('Creating default pipeline...')
+
+            pipeline_config = json.load(
+                open('templates/default-pipeline-config.json', 'r', encoding='utf-8')
+            )
 
             pipeline_data = {
                 'uuid': str(uuid.uuid4()),
@@ -94,7 +94,9 @@ class PersistenceManager:
 
         # run migrations
         database_version = await self.execute_async(
-            sqlalchemy.select(metadata.Metadata).where(metadata.Metadata.key == 'database_version')
+            sqlalchemy.select(metadata.Metadata).where(
+                metadata.Metadata.key == 'database_version'
+            )
         )
 
         database_version = int(database_version.fetchone()[1])
@@ -109,24 +111,27 @@ class PersistenceManager:
             for migration_cls in migrations:
                 migration_instance = migration_cls(self.ap)
 
-                if migration_instance.number > database_version and migration_instance.number <= required_database_version:
+                if (
+                    migration_instance.number > database_version
+                    and migration_instance.number <= required_database_version
+                ):
                     await migration_instance.upgrade()
                     await self.execute_async(
-                        sqlalchemy.update(metadata.Metadata).where(metadata.Metadata.key == 'database_version').values(
-                            {
-                                'value': str(migration_instance.number)
-                            }
-                        )
+                        sqlalchemy.update(metadata.Metadata)
+                        .where(metadata.Metadata.key == 'database_version')
+                        .values({'value': str(migration_instance.number)})
                     )
                     last_migration_number = migration_instance.number
-                    self.ap.logger.info(f'Migration {migration_instance.number} completed.')
-            
-            self.ap.logger.info(f'Successfully upgraded database to version {last_migration_number}.')
+                    self.ap.logger.info(
+                        f'Migration {migration_instance.number} completed.'
+                    )
+
+            self.ap.logger.info(
+                f'Successfully upgraded database to version {last_migration_number}.'
+            )
 
     async def execute_async(
-        self,
-        *args,
-        **kwargs
+        self, *args, **kwargs
     ) -> sqlalchemy.engine.cursor.CursorResult:
         async with self.get_db_engine().connect() as conn:
             result = await conn.execute(*args, **kwargs)
@@ -135,9 +140,13 @@ class PersistenceManager:
 
     def get_db_engine(self) -> sqlalchemy_asyncio.AsyncEngine:
         return self.db.get_engine()
-    
-    def serialize_model(self, model: typing.Type[sqlalchemy.Base], data: sqlalchemy.Base) -> dict:
+
+    def serialize_model(
+        self, model: typing.Type[sqlalchemy.Base], data: sqlalchemy.Base
+    ) -> dict:
         return {
-            column.name: getattr(data, column.name) if not isinstance(getattr(data, column.name), (datetime.datetime)) else getattr(data, column.name).isoformat()
+            column.name: getattr(data, column.name)
+            if not isinstance(getattr(data, column.name), (datetime.datetime))
+            else getattr(data, column.name).isoformat()
             for column in model.__table__.columns
         }

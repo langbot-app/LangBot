@@ -18,6 +18,7 @@ from ..entity.persistence import bot as persistence_bot
 
 # 处理 3.4 移除了 YiriMirai 之后，插件的兼容性问题
 from . import types as mirai
+
 sys.modules['mirai'] = mirai
 
 
@@ -36,7 +37,12 @@ class RuntimeBot:
 
     task_context: taskmgr.TaskContext
 
-    def __init__(self, ap: app.Application, bot_entity: persistence_bot.Bot, adapter: msadapter.MessagePlatformAdapter):
+    def __init__(
+        self,
+        ap: app.Application,
+        bot_entity: persistence_bot.Bot,
+        adapter: msadapter.MessagePlatformAdapter,
+    ):
         self.ap = ap
         self.bot_entity = bot_entity
         self.enable = bot_entity.enable
@@ -44,9 +50,10 @@ class RuntimeBot:
         self.task_context = taskmgr.TaskContext()
 
     async def initialize(self):
-        
-        async def on_friend_message(event: platform_events.FriendMessage, adapter: msadapter.MessagePlatformAdapter):
-
+        async def on_friend_message(
+            event: platform_events.FriendMessage,
+            adapter: msadapter.MessagePlatformAdapter,
+        ):
             await self.ap.query_pool.add_query(
                 bot_uuid=self.bot_entity.uuid,
                 launcher_type=core_entities.LauncherTypes.PERSON,
@@ -57,8 +64,10 @@ class RuntimeBot:
                 adapter=adapter,
             )
 
-        async def on_group_message(event: platform_events.GroupMessage, adapter: msadapter.MessagePlatformAdapter):
-
+        async def on_group_message(
+            event: platform_events.GroupMessage,
+            adapter: msadapter.MessagePlatformAdapter,
+        ):
             await self.ap.query_pool.add_query(
                 bot_uuid=self.bot_entity.uuid,
                 launcher_type=core_entities.LauncherTypes.GROUP,
@@ -69,17 +78,10 @@ class RuntimeBot:
                 adapter=adapter,
             )
 
-        self.adapter.register_listener(
-            platform_events.FriendMessage,
-            on_friend_message
-        )
-        self.adapter.register_listener(
-            platform_events.GroupMessage,
-            on_group_message
-        )
+        self.adapter.register_listener(platform_events.FriendMessage, on_friend_message)
+        self.adapter.register_listener(platform_events.GroupMessage, on_group_message)
 
     async def run(self):
-
         async def exception_wrapper():
             try:
                 self.task_context.set_current_action('Running...')
@@ -91,16 +93,19 @@ class RuntimeBot:
                     return
                 self.task_context.set_current_action('Exited with error.')
                 self.task_context.log(f'平台适配器运行出错: {e}')
-                self.task_context.log(f"Traceback: {traceback.format_exc()}")
+                self.task_context.log(f'Traceback: {traceback.format_exc()}')
                 self.ap.logger.error(f'平台适配器运行出错: {e}')
-                self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
+                self.ap.logger.debug(f'Traceback: {traceback.format_exc()}')
 
         self.task_wrapper = self.ap.task_mgr.create_task(
             exception_wrapper(),
-            kind="platform-adapter",
-            name=f"platform-adapter-{self.adapter.__class__.__name__}",
+            kind='platform-adapter',
+            name=f'platform-adapter-{self.adapter.__class__.__name__}',
             context=self.task_context,
-            scopes=[core_entities.LifecycleControlScope.APPLICATION, core_entities.LifecycleControlScope.PLATFORM]
+            scopes=[
+                core_entities.LifecycleControlScope.APPLICATION,
+                core_entities.LifecycleControlScope.PLATFORM,
+            ],
         )
 
     async def shutdown(self):
@@ -111,7 +116,6 @@ class RuntimeBot:
 
 # 控制QQ消息输入输出的类
 class PlatformManager:
-
     # ====== 4.0 ======
     ap: app.Application = None
 
@@ -122,18 +126,20 @@ class PlatformManager:
     adapter_dict: dict[str, type[msadapter.MessagePlatformAdapter]]
 
     def __init__(self, ap: app.Application = None):
-
         self.ap = ap
         self.bots = []
         self.adapter_components = []
         self.adapter_dict = {}
-    
-    async def initialize(self):
 
-        self.adapter_components = self.ap.discover.get_components_by_kind('MessagePlatformAdapter')
+    async def initialize(self):
+        self.adapter_components = self.ap.discover.get_components_by_kind(
+            'MessagePlatformAdapter'
+        )
         adapter_dict: dict[str, type[msadapter.MessagePlatformAdapter]] = {}
         for component in self.adapter_components:
-            adapter_dict[component.metadata.name] = component.get_python_component_class()
+            adapter_dict[component.metadata.name] = (
+                component.get_python_component_class()
+            )
         self.adapter_dict = adapter_dict
 
         await self.load_bots_from_db()
@@ -151,12 +157,15 @@ class PlatformManager:
         )
 
         bots = result.all()
-        
+
         for bot in bots:
             # load all bots here, enable or disable will be handled in runtime
             await self.load_bot(bot)
 
-    async def load_bot(self, bot_entity: persistence_bot.Bot | sqlalchemy.Row[persistence_bot.Bot] | dict) -> RuntimeBot:
+    async def load_bot(
+        self,
+        bot_entity: persistence_bot.Bot | sqlalchemy.Row[persistence_bot.Bot] | dict,
+    ) -> RuntimeBot:
         """加载机器人"""
         if isinstance(bot_entity, sqlalchemy.Row):
             bot_entity = persistence_bot.Bot(**bot_entity._mapping)
@@ -164,14 +173,11 @@ class PlatformManager:
             bot_entity = persistence_bot.Bot(**bot_entity)
 
         adapter_inst = self.adapter_dict[bot_entity.adapter](
-            bot_entity.adapter_config,
-            self.ap
+            bot_entity.adapter_config, self.ap
         )
 
         runtime_bot = RuntimeBot(
-            ap=self.ap,
-            bot_entity=bot_entity,
-            adapter=adapter_inst
+            ap=self.ap, bot_entity=bot_entity, adapter=adapter_inst
         )
 
         await runtime_bot.initialize()
@@ -179,7 +185,7 @@ class PlatformManager:
         self.bots.append(runtime_bot)
 
         return runtime_bot
-    
+
     async def get_bot_by_uuid(self, bot_uuid: str) -> RuntimeBot | None:
         for bot in self.bots:
             if bot.bot_entity.uuid == bot_uuid:
@@ -195,24 +201,28 @@ class PlatformManager:
                 return
 
     def get_available_adapters_info(self) -> list[dict]:
-        return [
-            component.to_plain_dict()
-            for component in self.adapter_components
-        ]
+        return [component.to_plain_dict() for component in self.adapter_components]
 
     def get_available_adapter_info_by_name(self, name: str) -> dict | None:
         for component in self.adapter_components:
             if component.metadata.name == name:
                 return component.to_plain_dict()
         return None
-    
-    def get_available_adapter_manifest_by_name(self, name: str) -> engine.Component | None:
+
+    def get_available_adapter_manifest_by_name(
+        self, name: str
+    ) -> engine.Component | None:
         for component in self.adapter_components:
             if component.metadata.name == name:
                 return component
         return None
 
-    async def write_back_config(self, adapter_name: str, adapter_inst: msadapter.MessagePlatformAdapter, config: dict):
+    async def write_back_config(
+        self,
+        adapter_name: str,
+        adapter_inst: msadapter.MessagePlatformAdapter,
+        config: dict,
+    ):
         # index = -2
 
         # for i, adapter in enumerate(self.adapters):
@@ -244,7 +254,7 @@ class PlatformManager:
         # TODO implement this
         pass
 
-    async def run(self):        
+    async def run(self):
         # This method will only be called when the application launching
         for bot in self.bots:
             if bot.enable:

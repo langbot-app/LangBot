@@ -28,13 +28,15 @@ class BotService:
             self.ap.persistence_mgr.serialize_model(persistence_bot.Bot, bot)
             for bot in bots
         ]
-    
+
     async def get_bot(self, bot_uuid: str) -> dict | None:
         """获取机器人"""
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_bot.Bot).where(persistence_bot.Bot.uuid == bot_uuid)
+            sqlalchemy.select(persistence_bot.Bot).where(
+                persistence_bot.Bot.uuid == bot_uuid
+            )
         )
-        
+
         bot = result.first()
 
         if bot is None:
@@ -49,7 +51,9 @@ class BotService:
 
         # checkout the default pipeline
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(persistence_pipeline.LegacyPipeline.is_default == True)
+            sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
+                persistence_pipeline.LegacyPipeline.is_default == True
+            )
         )
         pipeline = result.first()
         if pipeline is not None:
@@ -63,7 +67,7 @@ class BotService:
         bot = await self.get_bot(bot_data['uuid'])
 
         await self.ap.platform_mgr.load_bot(bot)
-        
+
         return bot_data['uuid']
 
     async def update_bot(self, bot_uuid: str, bot_data: dict) -> None:
@@ -74,19 +78,24 @@ class BotService:
         # set use_pipeline_name
         if 'use_pipeline_uuid' in bot_data:
             result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(persistence_pipeline.LegacyPipeline.uuid == bot_data['use_pipeline_uuid'])
+                sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
+                    persistence_pipeline.LegacyPipeline.uuid
+                    == bot_data['use_pipeline_uuid']
+                )
             )
             pipeline = result.first()
             if pipeline is not None:
                 bot_data['use_pipeline_name'] = pipeline.name
             else:
-                raise Exception("Pipeline not found")
+                raise Exception('Pipeline not found')
 
         await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.update(persistence_bot.Bot).values(bot_data).where(persistence_bot.Bot.uuid == bot_uuid)
+            sqlalchemy.update(persistence_bot.Bot)
+            .values(bot_data)
+            .where(persistence_bot.Bot.uuid == bot_uuid)
         )
         await self.ap.platform_mgr.remove_bot(bot_uuid)
-        
+
         # select from db
         bot = await self.get_bot(bot_uuid)
 
@@ -99,7 +108,7 @@ class BotService:
         """删除机器人"""
         await self.ap.platform_mgr.remove_bot(bot_uuid)
         await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.delete(persistence_bot.Bot).where(persistence_bot.Bot.uuid == bot_uuid)
+            sqlalchemy.delete(persistence_bot.Bot).where(
+                persistence_bot.Bot.uuid == bot_uuid
+            )
         )
-
-

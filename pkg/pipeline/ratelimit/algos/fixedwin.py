@@ -5,9 +5,9 @@ import typing
 from .. import algo
 from ....core import entities as core_entities
 
+
 # 固定窗口算法
 class SessionContainer:
-    
     wait_lock: asyncio.Lock
 
     records: dict[int, int]
@@ -18,9 +18,8 @@ class SessionContainer:
         self.records = {}
 
 
-@algo.algo_class("fixwin")
+@algo.algo_class('fixwin')
 class FixedWindowAlgo(algo.ReteLimitAlgo):
-
     containers_lock: asyncio.Lock
     """访问记录容器锁"""
 
@@ -31,7 +30,12 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
         self.containers_lock = asyncio.Lock()
         self.containers = {}
 
-    async def require_access(self, query: core_entities.Query, launcher_type: str, launcher_id: typing.Union[int, str]) -> bool:
+    async def require_access(
+        self,
+        query: core_entities.Query,
+        launcher_type: str,
+        launcher_id: typing.Union[int, str],
+    ) -> bool:
         # 加锁，找容器
         container: SessionContainer = None
 
@@ -46,7 +50,6 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
 
         # 等待锁
         async with container.wait_lock:
-
             # 获取窗口大小和限制
             window_size = query.pipeline_config['safety']['rate-limit']['window-length']
             limitation = query.pipeline_config['safety']['rate-limit']['limitation']
@@ -69,13 +72,15 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
             if count >= limitation:
                 if query.pipeline_config['safety']['rate-limit']['strategy'] == 'drop':
                     return False
-                elif query.pipeline_config['safety']['rate-limit']['strategy'] == 'wait':
+                elif (
+                    query.pipeline_config['safety']['rate-limit']['strategy'] == 'wait'
+                ):
                     # 等待下一窗口
                     await asyncio.sleep(window_size - time.time() % window_size)
-    
+
                     now = int(time.time())
                     now = now - now % window_size
-            
+
             if now not in container.records:
                 container.records = {}
                 container.records[now] = 1
@@ -85,6 +90,11 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
 
             # 返回True
             return True
-        
-    async def release_access(self, query: core_entities.Query, launcher_type: str, launcher_id: typing.Union[int, str]):
+
+    async def release_access(
+        self,
+        query: core_entities.Query,
+        launcher_type: str,
+        launcher_id: typing.Union[int, str],
+    ):
         pass

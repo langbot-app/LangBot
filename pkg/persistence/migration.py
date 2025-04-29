@@ -8,6 +8,7 @@ from ..core import app
 
 preregistered_db_migrations: list[typing.Type[DBMigration]] = []
 
+
 def migration_class(number: int):
     """迁移类装饰器"""
 
@@ -15,6 +16,7 @@ def migration_class(number: int):
         cls.number = number
         preregistered_db_migrations.append(cls)
         return cls
+
     return wrapper
 
 

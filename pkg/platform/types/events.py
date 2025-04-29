@@ -2,6 +2,7 @@
 """
 此模块提供事件模型。
 """
+
 import typing
 
 import pydantic.v1 as pydantic
@@ -16,15 +17,23 @@ class Event(pydantic.BaseModel):
     Args:
         type: 事件名。
     """
+
     type: str
     """事件名。"""
+
     def __repr__(self):
-        return self.__class__.__name__ + '(' + ', '.join(
-            (
-                f'{k}={repr(v)}'
-                for k, v in self.__dict__.items() if k != 'type' and v
+        return (
+            self.__class__.__name__
+            + '('
+            + ', '.join(
+                (
+                    f'{k}={repr(v)}'
+                    for k, v in self.__dict__.items()
+                    if k != 'type' and v
+                )
             )
-        ) + ')'
+            + ')'
+        )
 
     @classmethod
     def parse_subtype(cls, obj: dict) -> 'Event':
@@ -50,6 +59,7 @@ class MessageEvent(Event):
         type: 事件名。
         message_chain: 消息内容。
     """
+
     type: str
     """事件名。"""
     message_chain: platform_message.MessageChain
@@ -72,6 +82,7 @@ class FriendMessage(MessageEvent):
         sender: 发送消息的好友。
         message_chain: 消息内容。
     """
+
     type: str = 'FriendMessage'
     """事件名。"""
     sender: platform_entities.Friend
@@ -88,12 +99,14 @@ class GroupMessage(MessageEvent):
         sender: 发送消息的群成员。
         message_chain: 消息内容。
     """
+
     type: str = 'GroupMessage'
     """事件名。"""
     sender: platform_entities.GroupMember
     """发送消息的群成员。"""
     message_chain: platform_message.MessageChain
     """消息内容。"""
+
     @property
     def group(self) -> platform_entities.Group:
         return self.sender.group

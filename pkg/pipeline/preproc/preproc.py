@@ -9,7 +9,7 @@ from ...plugin import events
 from ...platform.types import message as platform_message
 
 
-@stage.stage_class("PreProcessor")
+@stage.stage_class('PreProcessor')
 class PreProcessor(stage.PipelineStage):
     """请求预处理阶段
 
@@ -29,11 +29,12 @@ class PreProcessor(stage.PipelineStage):
         query: core_entities.Query,
         stage_inst_name: str,
     ) -> entities.StageProcessResult:
-        """处理
-        """
+        """处理"""
         session = await self.ap.sess_mgr.get_session(query)
 
-        conversation = await self.ap.sess_mgr.get_conversation(query, session, query.pipeline_config['ai']['local-agent']['prompt'])
+        conversation = await self.ap.sess_mgr.get_conversation(
+            query, session, query.pipeline_config['ai']['local-agent']['prompt']
+        )
 
         # 设置query
         query.session = session
@@ -42,17 +43,26 @@ class PreProcessor(stage.PipelineStage):
 
         query.use_llm_model = conversation.use_llm_model
 
-        query.use_funcs = conversation.use_funcs if query.use_llm_model.model_entity.abilities.__contains__('tool_call') else None
+        query.use_funcs = (
+            conversation.use_funcs
+            if query.use_llm_model.model_entity.abilities.__contains__('tool_call')
+            else None
+        )
 
         query.variables = {
-            "session_id": f"{query.session.launcher_type.value}_{query.session.launcher_id}",
-            "conversation_id": conversation.uuid,
-            "msg_create_time": int(query.message_event.time) if query.message_event.time else int(datetime.datetime.now().timestamp()),
+            'session_id': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+            'conversation_id': conversation.uuid,
+            'msg_create_time': int(query.message_event.time)
+            if query.message_event.time
+            else int(datetime.datetime.now().timestamp()),
         }
 
         # Check if this model supports vision, if not, remove all images
         # TODO this checking should be performed in runner, and in this stage, the image should be reserved
-        if query.pipeline_config['ai']['runner']['runner'] == 'local-agent' and not query.use_llm_model.model_entity.abilities.__contains__('vision'):
+        if (
+            query.pipeline_config['ai']['runner']['runner'] == 'local-agent'
+            and not query.use_llm_model.model_entity.abilities.__contains__('vision')
+        ):
             for msg in query.messages:
                 if isinstance(msg.content, list):
                     for me in msg.content:
@@ -61,16 +71,17 @@ class PreProcessor(stage.PipelineStage):
 
         content_list = []
 
-        plain_text = ""
+        plain_text = ''
 
         for me in query.message_chain:
             if isinstance(me, platform_message.Plain):
-                content_list.append(
-                    llm_entities.ContentElement.from_text(me.text)
-                )
+                content_list.append(llm_entities.ContentElement.from_text(me.text))
                 plain_text += me.text
             elif isinstance(me, platform_message.Image):
-                if query.pipeline_config['ai']['runner']['runner'] != 'local-agent' or query.use_llm_model.model_entity.abilities.__contains__('vision'):
+                if (
+                    query.pipeline_config['ai']['runner']['runner'] != 'local-agent'
+                    or query.use_llm_model.model_entity.abilities.__contains__('vision')
+                ):
                     if me.base64 is not None:
                         content_list.append(
                             llm_entities.ContentElement.from_image_base64(me.base64)
@@ -78,10 +89,7 @@ class PreProcessor(stage.PipelineStage):
 
         query.variables['user_message_text'] = plain_text
 
-        query.user_message = llm_entities.Message(
-            role='user',
-            content=content_list
-        )
+        query.user_message = llm_entities.Message(role='user', content=content_list)
         # =========== 触发事件 PromptPreProcessing
 
         event_ctx = await self.ap.plugin_mgr.emit_event(
@@ -89,7 +97,7 @@ class PreProcessor(stage.PipelineStage):
                 session_name=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
                 default_prompt=query.prompt.messages,
                 prompt=query.messages,
-                query=query
+                query=query,
             )
         )
 
@@ -97,6 +105,5 @@ class PreProcessor(stage.PipelineStage):
         query.messages = event_ctx.event.prompt
 
         return entities.StageProcessResult(
-            result_type=entities.ResultType.CONTINUE,
-            new_query=query
+            result_type=entities.ResultType.CONTINUE, new_query=query
         )

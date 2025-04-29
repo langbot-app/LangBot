@@ -23,26 +23,22 @@ from ...utils import logcache
 from .. import taskmgr
 
 
-@stage.stage_class("BuildAppStage")
+@stage.stage_class('BuildAppStage')
 class BuildAppStage(stage.BootingStage):
-    """构建应用阶段
-    """
+    """构建应用阶段"""
 
     async def run(self, ap: app.Application):
-        """构建app对象的各个组件对象并初始化
-        """
+        """构建app对象的各个组件对象并初始化"""
         ap.task_mgr = taskmgr.AsyncTaskManager(ap)
 
         discover = discover_engine.ComponentDiscoveryEngine(ap)
-        discover.discover_blueprint(
-            "components.yaml"
-        )
+        discover.discover_blueprint('components.yaml')
         ap.discover = discover
 
         proxy_mgr = proxy.ProxyManager(ap)
         await proxy_mgr.initialize()
         ap.proxy_mgr = proxy_mgr
-        
+
         ver_mgr = version.VersionManager(ap)
         await ver_mgr.initialize()
         ap.ver_mgr = ver_mgr
@@ -51,14 +47,14 @@ class BuildAppStage(stage.BootingStage):
             ap,
             backend_url=ap.instance_config.data['telemetry']['url'],
             basic_info={
-                "host_id": identifier.identifier["host_id"],
-                "instance_id": identifier.identifier["instance_id"],
-                "semantic_version": ver_mgr.get_current_version(),
-                "platform": platform.get_platform(),
+                'host_id': identifier.identifier['host_id'],
+                'instance_id': identifier.identifier['instance_id'],
+                'semantic_version': ver_mgr.get_current_version(),
+                'platform': platform.get_platform(),
             },
             runtime_info={
-                "admin_id": "{}".format(ap.instance_config.data["admins"]),
-                "msg_source": str([]),
+                'admin_id': '{}'.format(ap.instance_config.data['admins']),
+                'msg_source': str([]),
             },
         )
         ap.ctr_mgr = center_v2_api

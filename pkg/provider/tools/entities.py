@@ -5,7 +5,6 @@ import typing
 import pydantic.v1 as pydantic
 
 
-
 class LLMFunction(pydantic.BaseModel):
     """函数"""
 

@@ -18,11 +18,11 @@ class TaskContext:
     """记录日志"""
 
     def __init__(self):
-        self.current_action = "default"
-        self.log = ""
+        self.current_action = 'default'
+        self.log = ''
 
     def _log(self, msg: str):
-        self.log += msg + "\n"
+        self.log += msg + '\n'
 
     def set_current_action(self, action: str):
         self.current_action = action
@@ -36,16 +36,16 @@ class TaskContext:
             self.set_current_action(action)
 
         self._log(
-            f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {self.current_action} | {msg}"
+            f'{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} | {self.current_action} | {msg}'
         )
 
     def to_dict(self) -> dict:
-        return {"current_action": self.current_action, "log": self.log}
-    
+        return {'current_action': self.current_action, 'log': self.log}
+
     @staticmethod
     def new() -> TaskContext:
         return TaskContext()
-    
+
     @staticmethod
     def placeholder() -> TaskContext:
         global placeholder_context
@@ -68,16 +68,16 @@ class TaskWrapper:
     id: int
     """任务ID"""
 
-    task_type: str = "system"  # 任务类型: system 或 user
+    task_type: str = 'system'  # 任务类型: system 或 user
     """任务类型"""
 
-    kind: str = "system_task"  # 由发起者确定任务种类，通常同质化的任务种类相同
+    kind: str = 'system_task'  # 由发起者确定任务种类，通常同质化的任务种类相同
     """任务种类"""
 
-    name: str = ""
+    name: str = ''
     """任务唯一名称"""
 
-    label: str = ""
+    label: str = ''
     """任务显示名称"""
 
     task_context: TaskContext
@@ -99,12 +99,14 @@ class TaskWrapper:
         self,
         ap: app.Application,
         coro: typing.Coroutine,
-        task_type: str = "system",
-        kind: str = "system_task",
-        name: str = "",
-        label: str = "",
+        task_type: str = 'system',
+        kind: str = 'system_task',
+        name: str = '',
+        label: str = '',
         context: TaskContext = None,
-        scopes: list[core_entities.LifecycleControlScope] = [core_entities.LifecycleControlScope.APPLICATION],
+        scopes: list[core_entities.LifecycleControlScope] = [
+            core_entities.LifecycleControlScope.APPLICATION
+        ],
     ):
         self.id = TaskWrapper._id_index
         TaskWrapper._id_index += 1
@@ -114,7 +116,7 @@ class TaskWrapper:
         self.task_type = task_type
         self.kind = kind
         self.name = name
-        self.label = label if label != "" else name
+        self.label = label if label != '' else name
         self.task.set_name(name)
         self.scopes = scopes
 
@@ -134,33 +136,36 @@ class TaskWrapper:
             return None
 
     def to_dict(self) -> dict:
-
         exception_traceback = None
         if self.assume_exception() is not None:
             exception_traceback = 'Traceback (most recent call last):\n'
 
             for frame in self.task_stack:
-                exception_traceback += f"  File \"{frame.f_code.co_filename}\", line {frame.f_lineno}, in {frame.f_code.co_name}\n"
+                exception_traceback += f'  File "{frame.f_code.co_filename}", line {frame.f_lineno}, in {frame.f_code.co_name}\n'
 
-            exception_traceback += f"    {self.assume_exception().__str__()}\n"
+            exception_traceback += f'    {self.assume_exception().__str__()}\n'
 
         return {
-            "id": self.id,
-            "task_type": self.task_type,
-            "kind": self.kind,
-            "name": self.name,
-            "label": self.label,
-            "scopes": [scope.value for scope in self.scopes],
-            "task_context": self.task_context.to_dict(),
-            "runtime": {
-                "done": self.task.done(),
-                "state": self.task._state,
-                "exception": self.assume_exception().__str__() if self.assume_exception() is not None else None,
-                "exception_traceback": exception_traceback,
-                "result": self.assume_result().__str__() if self.assume_result() is not None else None,
+            'id': self.id,
+            'task_type': self.task_type,
+            'kind': self.kind,
+            'name': self.name,
+            'label': self.label,
+            'scopes': [scope.value for scope in self.scopes],
+            'task_context': self.task_context.to_dict(),
+            'runtime': {
+                'done': self.task.done(),
+                'state': self.task._state,
+                'exception': self.assume_exception().__str__()
+                if self.assume_exception() is not None
+                else None,
+                'exception_traceback': exception_traceback,
+                'result': self.assume_result().__str__()
+                if self.assume_result() is not None
+                else None,
             },
         }
-    
+
     def cancel(self):
         self.task.cancel()
 
@@ -181,27 +186,33 @@ class AsyncTaskManager:
     def create_task(
         self,
         coro: typing.Coroutine,
-        task_type: str = "system",
-        kind: str = "system-task",
-        name: str = "",
-        label: str = "",
+        task_type: str = 'system',
+        kind: str = 'system-task',
+        name: str = '',
+        label: str = '',
         context: TaskContext = None,
-        scopes: list[core_entities.LifecycleControlScope] = [core_entities.LifecycleControlScope.APPLICATION],
+        scopes: list[core_entities.LifecycleControlScope] = [
+            core_entities.LifecycleControlScope.APPLICATION
+        ],
     ) -> TaskWrapper:
-        wrapper = TaskWrapper(self.ap, coro, task_type, kind, name, label, context, scopes)
+        wrapper = TaskWrapper(
+            self.ap, coro, task_type, kind, name, label, context, scopes
+        )
         self.tasks.append(wrapper)
         return wrapper
 
     def create_user_task(
         self,
         coro: typing.Coroutine,
-        kind: str = "user-task",
-        name: str = "",
-        label: str = "",
+        kind: str = 'user-task',
+        name: str = '',
+        label: str = '',
         context: TaskContext = None,
-        scopes: list[core_entities.LifecycleControlScope] = [core_entities.LifecycleControlScope.APPLICATION],
+        scopes: list[core_entities.LifecycleControlScope] = [
+            core_entities.LifecycleControlScope.APPLICATION
+        ],
     ) -> TaskWrapper:
-        return self.create_task(coro, "user", kind, name, label, context, scopes)
+        return self.create_task(coro, 'user', kind, name, label, context, scopes)
 
     async def wait_all(self):
         await asyncio.gather(*[t.task for t in self.tasks], return_exceptions=True)
@@ -214,12 +225,12 @@ class AsyncTaskManager:
         type: str = None,
     ) -> dict:
         return {
-            "tasks": [
+            'tasks': [
                 t.to_dict() for t in self.tasks if type is None or t.task_type == type
             ],
-            "id_index": TaskWrapper._id_index,
+            'id_index': TaskWrapper._id_index,
         }
-    
+
     def get_task_by_id(self, id: int) -> TaskWrapper | None:
         for t in self.tasks:
             if t.id == id:
@@ -228,9 +239,7 @@ class AsyncTaskManager:
 
     def cancel_by_scope(self, scope: core_entities.LifecycleControlScope):
         for wrapper in self.tasks:
-            
             if not wrapper.task.done() and scope in wrapper.scopes:
-
                 wrapper.task.cancel()
 
     def cancel_task(self, task_id: int):

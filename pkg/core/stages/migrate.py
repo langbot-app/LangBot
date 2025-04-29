@@ -9,22 +9,22 @@ from .. import migrations
 importutil.import_modules_in_pkg(migrations)
 
 
-@stage.stage_class("MigrationStage")
+@stage.stage_class('MigrationStage')
 class MigrationStage(stage.BootingStage):
-    """迁移阶段
-    """
+    """迁移阶段"""
 
     async def run(self, ap: app.Application):
-        """启动
-        """
+        """启动"""
 
-        if any([
-            ap.command_cfg is None,
-            ap.pipeline_cfg is None,
-            ap.platform_cfg is None,
-            ap.provider_cfg is None,
-            ap.system_cfg is None,
-        ]):  # only run migration when version is 3.x
+        if any(
+            [
+                ap.command_cfg is None,
+                ap.pipeline_cfg is None,
+                ap.platform_cfg is None,
+                ap.provider_cfg is None,
+                ap.system_cfg is None,
+            ]
+        ):  # only run migration when version is 3.x
             return
 
         migrations = migration.preregistered_migrations

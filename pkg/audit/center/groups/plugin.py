@@ -9,39 +9,33 @@ class V2PluginDataAPI(apigroup.APIGroup):
 
     def __init__(self, prefix: str, ap: app.Application):
         self.ap = ap
-        super().__init__(prefix+"/plugin", ap)
+        super().__init__(prefix + '/plugin', ap)
 
     async def do(self, *args, **kwargs):
         if not self.ap.instance_config.data['telemetry']['report']:
             return None
         return await super().do(*args, **kwargs)
 
-    async def post_install_record(
-        self,
-        plugin: dict
-    ):
+    async def post_install_record(self, plugin: dict):
         """提交插件安装记录"""
         return await self.do(
-            "POST",
-            "/install",
+            'POST',
+            '/install',
             data={
-                "basic": self.basic_info(),
-                "plugin": plugin,
-            }
+                'basic': self.basic_info(),
+                'plugin': plugin,
+            },
         )
 
-    async def post_remove_record(
-        self,
-        plugin: dict
-    ):
+    async def post_remove_record(self, plugin: dict):
         """提交插件卸载记录"""
         return await self.do(
-            "POST",
-            "/remove",
+            'POST',
+            '/remove',
             data={
-                "basic": self.basic_info(),
-                "plugin": plugin,
-            }
+                'basic': self.basic_info(),
+                'plugin': plugin,
+            },
         )
 
     async def post_update_record(
@@ -52,14 +46,14 @@ class V2PluginDataAPI(apigroup.APIGroup):
     ):
         """提交插件更新记录"""
         return await self.do(
-            "POST",
-            "/update",
+            'POST',
+            '/update',
             data={
-                "basic": self.basic_info(),
-                "plugin": plugin,
-                "update_info": {
-                    "old_version": old_version,
-                    "new_version": new_version,
-                }
-            }
+                'basic': self.basic_info(),
+                'plugin': plugin,
+                'update_info': {
+                    'old_version': old_version,
+                    'new_version': new_version,
+                },
+            },
         )

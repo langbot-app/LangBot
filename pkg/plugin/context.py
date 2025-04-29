@@ -14,13 +14,10 @@ from ..platform import adapter as platform_adapter
 
 
 def register(
-    name: str,
-    description: str,
-    version: str,
-    author: str
+    name: str, description: str, version: str, author: str
 ) -> typing.Callable[[typing.Type[BasePlugin]], typing.Type[BasePlugin]]:
     """注册插件类
-    
+
     使用示例：
 
     @register(
@@ -34,15 +31,16 @@ def register(
     """
     pass
 
+
 def handler(
-    event: typing.Type[events.BaseEventModel]
+    event: typing.Type[events.BaseEventModel],
 ) -> typing.Callable[[typing.Callable], typing.Callable]:
     """注册事件监听器
-    
+
     使用示例：
 
     class MyPlugin(BasePlugin):
-    
+
         @handler(NormalMessageResponded)
         async def on_normal_message_responded(self, ctx: EventContext):
             pass
@@ -51,14 +49,14 @@ def handler(
 
 
 def llm_func(
-    name: str=None,
+    name: str = None,
 ) -> typing.Callable:
     """注册内容函数
-    
+
     使用示例：
 
     class MyPlugin(BasePlugin):
-    
+
         @llm_func("access_the_web_page")
         async def _(self, query, url: str, brief_len: int):
             \"""Call this function to search about the question before you answer any questions.
@@ -98,7 +96,7 @@ class BasePlugin(metaclass=abc.ABCMeta):
     async def initialize(self):
         """初始化阶段被调用"""
         pass
-    
+
     async def destroy(self):
         """释放/禁用插件时被调用"""
         pass
@@ -123,12 +121,12 @@ class APIHost:
 
     def get_platform_adapters(self) -> list[platform_adapter.MessagePlatformAdapter]:
         """获取已启用的消息平台适配器列表
-        
+
         Returns:
             list[platform.adapter.MessageSourceAdapter]: 已启用的消息平台适配器列表
         """
         return self.ap.platform_mgr.get_running_adapters()
-    
+
     async def send_active_message(
         self,
         adapter: platform_adapter.MessagePlatformAdapter,
@@ -137,7 +135,7 @@ class APIHost:
         message: platform_message.MessageChain,
     ):
         """发送主动消息
-        
+
         Args:
             adapter (platform.adapter.MessageSourceAdapter): 消息平台适配器对象，调用 host.get_platform_adapters() 获取并取用其中某个
             target_type (str): 目标类型，`person`或`group`
@@ -153,7 +151,7 @@ class APIHost:
     def require_ver(
         self,
         ge: str,
-        le: str='v999.999.999',
+        le: str = 'v999.999.999',
     ) -> bool:
         """插件版本要求装饰器
 
@@ -164,16 +162,23 @@ class APIHost:
         Returns:
             bool: 是否满足要求, False时为无法获取版本号，True时为满足要求，报错为不满足要求
         """
-        langbot_version = ""
+        langbot_version = ''
 
         try:
-            langbot_version = self.ap.ver_mgr.get_current_version()  # 从updater模块获取版本号
+            langbot_version = (
+                self.ap.ver_mgr.get_current_version()
+            )  # 从updater模块获取版本号
         except Exception:
             return False
 
-        if self.ap.ver_mgr.compare_version_str(langbot_version, ge) < 0 or \
-            (self.ap.ver_mgr.compare_version_str(langbot_version, le) > 0):
-            raise Exception("LangBot 版本不满足要求，某些功能（可能是由插件提供的）无法正常使用。（要求版本：{}-{}，但当前版本：{}）".format(ge, le, langbot_version))
+        if self.ap.ver_mgr.compare_version_str(langbot_version, ge) < 0 or (
+            self.ap.ver_mgr.compare_version_str(langbot_version, le) > 0
+        ):
+            raise Exception(
+                'LangBot 版本不满足要求，某些功能（可能是由插件提供的）无法正常使用。（要求版本：{}-{}，但当前版本：{}）'.format(
+                    ge, le, langbot_version
+                )
+            )
 
         return True
 
@@ -220,36 +225,30 @@ class EventContext:
         if key not in self.__return_value__:
             self.__return_value__[key] = []
         self.__return_value__[key].append(ret)
-    
+
     async def reply(self, message_chain: platform_message.MessageChain):
         """回复此次消息请求
-        
+
         Args:
             message_chain (platform.types.MessageChain): 源平台的消息链，若用户使用的不是源平台适配器，程序也能自动转换为目标平台消息链
         """
         # TODO 添加 at_sender 和 quote_origin 参数
         await self.event.query.adapter.reply_message(
-            message_source=self.event.query.message_event,
-            message=message_chain
+            message_source=self.event.query.message_event, message=message_chain
         )
-    
+
     async def send_message(
-        self,
-        target_type: str,
-        target_id: str,
-        message: platform_message.MessageChain
+        self, target_type: str, target_id: str, message: platform_message.MessageChain
     ):
         """主动发送消息
-        
+
         Args:
             target_type (str): 目标类型，`person`或`group`
             target_id (str): 目标ID
             message (platform.types.MessageChain): 源平台的消息链，若用户使用的不是源平台适配器，程序也能自动转换为目标平台消息链
         """
         await self.event.query.adapter.send_message(
-            target_type=target_type,
-            target_id=target_id,
-            message=message
+            target_type=target_type, target_id=target_id, message=message
         )
 
     def prevent_postorder(self):
@@ -281,10 +280,8 @@ class EventContext:
     def is_prevented_postorder(self):
         """是否阻止后序插件执行"""
         return self.__prevent_postorder__
-    
 
     def __init__(self, host: APIHost, event: events.BaseEventModel):
-
         self.eid = EventContext.eid
         self.host = host
         self.event = event
@@ -297,16 +294,16 @@ class EventContext:
 class RuntimeContainerStatus(enum.Enum):
     """插件容器状态"""
 
-    MOUNTED = "mounted"
+    MOUNTED = 'mounted'
     """已加载进内存，所有位于运行时记录中的 RuntimeContainer 至少是这个状态"""
 
-    INITIALIZED = "initialized"
+    INITIALIZED = 'initialized'
     """已初始化"""
 
 
 class RuntimeContainer(pydantic.BaseModel):
     """运行时的插件容器
-    
+
     运行期间存储单个插件的信息
     """
 
@@ -352,9 +349,10 @@ class RuntimeContainer(pydantic.BaseModel):
     plugin_inst: typing.Optional[BasePlugin] = None
     """插件实例"""
 
-    event_handlers: dict[typing.Type[events.BaseEventModel], typing.Callable[
-        [BasePlugin, EventContext], typing.Awaitable[None]
-    ]] = {}
+    event_handlers: dict[
+        typing.Type[events.BaseEventModel],
+        typing.Callable[[BasePlugin, EventContext], typing.Awaitable[None]],
+    ] = {}
     """事件处理器"""
 
     tools: list[tools_entities.LLMFunction] = []
@@ -378,7 +376,7 @@ class RuntimeContainer(pydantic.BaseModel):
             'pkg_path': self.pkg_path,
             'enabled': self.enabled,
             'priority': self.priority,
-            "config_schema": self.config_schema,
+            'config_schema': self.config_schema,
             'event_handlers': {
                 event_name.__name__: handler.__name__
                 for event_name, handler in self.event_handlers.items()

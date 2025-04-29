@@ -9,7 +9,7 @@ class V2UsageDataAPI(apigroup.APIGroup):
 
     def __init__(self, prefix: str, ap: app.Application):
         self.ap = ap
-        super().__init__(prefix+"/usage", ap)
+        super().__init__(prefix + '/usage', ap)
 
     async def do(self, *args, **kwargs):
         if not self.ap.instance_config.data['telemetry']['report']:
@@ -28,25 +28,25 @@ class V2UsageDataAPI(apigroup.APIGroup):
     ):
         """提交请求记录"""
         return await self.do(
-            "POST",
-            "/query",
+            'POST',
+            '/query',
             data={
-                "basic": self.basic_info(),
-                "runtime": self.runtime_info(),
-                "session_info": {
-                    "type": session_type,
-                    "id": session_id,
+                'basic': self.basic_info(),
+                'runtime': self.runtime_info(),
+                'session_info': {
+                    'type': session_type,
+                    'id': session_id,
                 },
-                "query_info": {
-                    "ability_provider": query_ability_provider,
-                    "usage": usage,
-                    "model_name": model_name,
-                    "response_seconds": response_seconds,
-                    "retry_times": retry_times,
-                }
-            }
+                'query_info': {
+                    'ability_provider': query_ability_provider,
+                    'usage': usage,
+                    'model_name': model_name,
+                    'response_seconds': response_seconds,
+                    'retry_times': retry_times,
+                },
+            },
         )
-    
+
     async def post_event_record(
         self,
         plugins: list[dict],
@@ -54,18 +54,18 @@ class V2UsageDataAPI(apigroup.APIGroup):
     ):
         """提交事件触发记录"""
         return await self.do(
-            "POST",
-            "/event",
+            'POST',
+            '/event',
             data={
-                "basic": self.basic_info(),
-                "runtime": self.runtime_info(),
-                "plugins": plugins,
-                "event_info": {
-                    "name": event_name,
-                }
-            }
+                'basic': self.basic_info(),
+                'runtime': self.runtime_info(),
+                'plugins': plugins,
+                'event_info': {
+                    'name': event_name,
+                },
+            },
         )
-    
+
     async def post_function_record(
         self,
         plugin: dict,
@@ -74,15 +74,14 @@ class V2UsageDataAPI(apigroup.APIGroup):
     ):
         """提交内容函数使用记录"""
         return await self.do(
-            "POST",
-            "/function",
+            'POST',
+            '/function',
             data={
-                "basic": self.basic_info(),
-                "plugin": plugin,
-                "function_info": {
-                    "name": function_name,
-                    "description": function_description,
-                }
-            }
+                'basic': self.basic_info(),
+                'plugin': plugin,
+                'function_info': {
+                    'name': function_name,
+                    'description': function_description,
+                },
+            },
         )
-    

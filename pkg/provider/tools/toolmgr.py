@@ -23,13 +23,14 @@ class ToolManager:
         self.loaders = []
 
     async def initialize(self):
-
         for loader_cls in tools_loader.preregistered_loaders:
             loader_inst = loader_cls(self.ap)
             await loader_inst.initialize()
             self.loaders.append(loader_inst)
 
-    async def get_all_functions(self, plugin_enabled: bool=None) -> list[entities.LLMFunction]:
+    async def get_all_functions(
+        self, plugin_enabled: bool = None
+    ) -> list[entities.LLMFunction]:
         """获取所有函数"""
         all_functions: list[entities.LLMFunction] = []
 
@@ -38,17 +39,19 @@ class ToolManager:
 
         return all_functions
 
-    async def generate_tools_for_openai(self, use_funcs: list[entities.LLMFunction]) -> list:
+    async def generate_tools_for_openai(
+        self, use_funcs: list[entities.LLMFunction]
+    ) -> list:
         """生成函数列表"""
         tools = []
 
         for function in use_funcs:
             function_schema = {
-                "type": "function",
-                "function": {
-                    "name": function.name,
-                    "description": function.description,
-                    "parameters": function.parameters,
+                'type': 'function',
+                'function': {
+                    'name': function.name,
+                    'description': function.description,
+                    'parameters': function.parameters,
                 },
             }
             tools.append(function_schema)
@@ -84,9 +87,9 @@ class ToolManager:
 
         for function in use_funcs:
             function_schema = {
-                "name": function.name,
-                "description": function.description,
-                "input_schema": function.parameters,
+                'name': function.name,
+                'description': function.description,
+                'input_schema': function.parameters,
             }
             tools.append(function_schema)
 
@@ -101,7 +104,7 @@ class ToolManager:
             if await loader.has_tool(name):
                 return await loader.invoke_tool(query, name, parameters)
         else:
-            raise ValueError(f"未找到工具: {name}")
+            raise ValueError(f'未找到工具: {name}')
 
     async def shutdown(self):
         """关闭所有工具"""

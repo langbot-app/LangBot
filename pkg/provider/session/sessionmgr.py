@@ -7,8 +7,7 @@ from ...provider import entities as provider_entities
 
 
 class SessionManager:
-    """会话管理器
-    """
+    """会话管理器"""
 
     ap: app.Application
 
@@ -22,10 +21,12 @@ class SessionManager:
         pass
 
     async def get_session(self, query: core_entities.Query) -> core_entities.Session:
-        """获取会话
-        """
+        """获取会话"""
         for session in self.session_list:
-            if query.launcher_type == session.launcher_type and query.launcher_id == session.launcher_id:
+            if (
+                query.launcher_type == session.launcher_type
+                and query.launcher_id == session.launcher_id
+            ):
                 return session
 
         session_concurrency = self.ap.instance_config.data['concurrency']['session']
@@ -38,7 +39,12 @@ class SessionManager:
         self.session_list.append(session)
         return session
 
-    async def get_conversation(self, query: core_entities.Query, session: core_entities.Session, prompt_config: list[dict]) -> core_entities.Conversation:
+    async def get_conversation(
+        self,
+        query: core_entities.Query,
+        session: core_entities.Session,
+        prompt_config: list[dict],
+    ) -> core_entities.Conversation:
         """获取对话或创建对话"""
 
         if not session.conversations:
@@ -51,7 +57,7 @@ class SessionManager:
             prompt_messages.append(provider_entities.Message(**prompt_message))
 
         prompt = provider_entities.Prompt(
-            name="default",
+            name='default',
             messages=prompt_messages,
         )
 

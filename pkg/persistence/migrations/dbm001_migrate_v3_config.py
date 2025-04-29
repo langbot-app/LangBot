@@ -1,4 +1,3 @@
-
 # TODO fill this
 # @migration.migration_class(1)
 # class DBMigrationV3(migration.DBMigration):

@@ -31,7 +31,6 @@ class ImageURLContentObject(pydantic.BaseModel):
 
 
 class ContentElement(pydantic.BaseModel):
-
     type: str
     """内容类型"""
 
@@ -56,7 +55,7 @@ class ContentElement(pydantic.BaseModel):
     @classmethod
     def from_image_url(cls, image_url: str):
         return cls(type='image_url', image_url=ImageURLContentObject(url=image_url))
-    
+
     @classmethod
     def from_image_base64(cls, image_base64: str):
         return cls(type='image_base64', image_base64=image_base64)
@@ -81,15 +80,19 @@ class Message(pydantic.BaseModel):
 
     def readable_str(self) -> str:
         if self.content is not None:
-            return str(self.role) + ": " + str(self.get_content_platform_message_chain())
+            return (
+                str(self.role) + ': ' + str(self.get_content_platform_message_chain())
+            )
         elif self.tool_calls is not None:
             return f'调用工具: {self.tool_calls[0].id}'
         else:
             return '未知消息'
 
-    def get_content_platform_message_chain(self, prefix_text: str="") -> platform_message.MessageChain | None:
+    def get_content_platform_message_chain(
+        self, prefix_text: str = ''
+    ) -> platform_message.MessageChain | None:
         """将内容转换为平台消息 MessageChain 对象
-        
+
         Args:
             prefix_text (str): 首个文字组件的前缀文本
         """
@@ -97,21 +100,22 @@ class Message(pydantic.BaseModel):
         if self.content is None:
             return None
         elif isinstance(self.content, str):
-            return platform_message.MessageChain([platform_message.Plain(prefix_text+self.content)])
+            return platform_message.MessageChain(
+                [platform_message.Plain(prefix_text + self.content)]
+            )
         elif isinstance(self.content, list):
             mc = []
             for ce in self.content:
                 if ce.type == 'text':
                     mc.append(platform_message.Plain(ce.text))
                 elif ce.type == 'image_url':
-                    if ce.image_url.url.startswith("http"):
+                    if ce.image_url.url.startswith('http'):
                         mc.append(platform_message.Image(url=ce.image_url.url))
                     else:  # base64
-                        
                         b64_str = ce.image_url.url
 
-                        if b64_str.startswith("data:"):
-                            b64_str = b64_str.split(",")[1]
+                        if b64_str.startswith('data:'):
+                            b64_str = b64_str.split(',')[1]
 
                         mc.append(platform_message.Image(base64=b64_str))
 
@@ -119,7 +123,7 @@ class Message(pydantic.BaseModel):
             if prefix_text:
                 for i, c in enumerate(mc):
                     if isinstance(c, platform_message.Plain):
-                        mc[i] = platform_message.Plain(prefix_text+c.text)
+                        mc[i] = platform_message.Plain(prefix_text + c.text)
                         break
                 else:
                     mc.insert(0, platform_message.Plain(prefix_text))

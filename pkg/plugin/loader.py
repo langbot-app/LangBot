@@ -23,4 +23,3 @@ class PluginLoader(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     async def load_plugins(self):
         pass
-

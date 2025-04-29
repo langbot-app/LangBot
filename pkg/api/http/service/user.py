@@ -11,7 +11,6 @@ from ....utils import constants
 
 
 class UserService:
-
     ap: app.Application
 
     def __init__(self, ap: app.Application) -> None:
@@ -24,7 +23,7 @@ class UserService:
 
         result_list = result.all()
         return result_list is not None and len(result_list) > 0
-    
+
     async def create_user(self, user_email: str, password: str) -> None:
         ph = argon2.PasswordHasher()
 
@@ -32,8 +31,7 @@ class UserService:
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(user.User).values(
-                user=user_email,
-                password=hashed_password
+                user=user_email, password=hashed_password
             )
         )
 
@@ -61,12 +59,12 @@ class UserService:
 
         payload = {
             'user': user_email,
-            'iss': 'LangBot-'+constants.edition,
-            'exp': datetime.datetime.now() + datetime.timedelta(seconds=jwt_expire)
+            'iss': 'LangBot-' + constants.edition,
+            'exp': datetime.datetime.now() + datetime.timedelta(seconds=jwt_expire),
         }
 
         return jwt.encode(payload, jwt_secret, algorithm='HS256')
-    
+
     async def verify_jwt_token(self, token: str) -> str:
         jwt_secret = self.ap.instance_config.data['system']['jwt']['secret']
 

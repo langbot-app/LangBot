@@ -11,8 +11,7 @@ from ...discover import engine
 from . import token
 from ...entity.persistence import model as persistence_model
 
-FETCH_MODEL_LIST_URL = "https://api.qchatgpt.rockchin.top/api/v2/fetch/model_list"
-
+FETCH_MODEL_LIST_URL = 'https://api.qchatgpt.rockchin.top/api/v2/fetch/model_list'
 
 
 class ModelManager:
@@ -33,7 +32,7 @@ class ModelManager:
     requester_components: list[engine.Component]
 
     requester_dict: dict[str, type[requester.LLMAPIRequester]]  # cache
-    
+
     def __init__(self, ap: app.Application):
         self.ap = ap
         self.model_list = []
@@ -42,14 +41,18 @@ class ModelManager:
         self.llm_models = []
         self.requester_components = []
         self.requester_dict = {}
-    
+
     async def initialize(self):
-        self.requester_components = self.ap.discover.get_components_by_kind('LLMAPIRequester')
+        self.requester_components = self.ap.discover.get_components_by_kind(
+            'LLMAPIRequester'
+        )
 
         # forge requester class dict
         requester_dict: dict[str, type[requester.LLMAPIRequester]] = {}
         for component in self.requester_components:
-            requester_dict[component.metadata.name] = component.get_python_component_class()
+            requester_dict[component.metadata.name] = (
+                component.get_python_component_class()
+            )
 
         self.requester_dict = requester_dict
 
@@ -71,18 +74,22 @@ class ModelManager:
         # load models
         for llm_model in llm_models:
             await self.load_llm_model(llm_model)
-    
-    async def load_llm_model(self, model_info: persistence_model.LLMModel | sqlalchemy.Row[persistence_model.LLMModel] | dict):
+
+    async def load_llm_model(
+        self,
+        model_info: persistence_model.LLMModel
+        | sqlalchemy.Row[persistence_model.LLMModel]
+        | dict,
+    ):
         """加载模型"""
-        
+
         if isinstance(model_info, sqlalchemy.Row):
             model_info = persistence_model.LLMModel(**model_info._mapping)
         elif isinstance(model_info, dict):
             model_info = persistence_model.LLMModel(**model_info)
 
         requester_inst = self.requester_dict[model_info.requester](
-            ap=self.ap,
-            config=model_info.requester_config
+            ap=self.ap, config=model_info.requester_config
         )
 
         await requester_inst.initialize()
@@ -93,24 +100,23 @@ class ModelManager:
                 name=model_info.uuid,
                 tokens=model_info.api_keys,
             ),
-            requester=requester_inst
+            requester=requester_inst,
         )
         self.llm_models.append(runtime_llm_model)
 
     async def get_model_by_name(self, name: str) -> entities.LLMModelInfo:  # deprecated
-        """通过名称获取模型
-        """
+        """通过名称获取模型"""
         for model in self.model_list:
             if model.name == name:
                 return model
-        raise ValueError(f"无法确定模型 {name} 的信息，请在元数据中配置")
-    
+        raise ValueError(f'无法确定模型 {name} 的信息，请在元数据中配置')
+
     async def get_model_by_uuid(self, uuid: str) -> entities.LLMModelInfo:
         """通过uuid获取模型"""
         for model in self.llm_models:
             if model.model_entity.uuid == uuid:
                 return model
-        raise ValueError(f"model {uuid} not found")
+        raise ValueError(f'model {uuid} not found')
 
     async def remove_llm_model(self, model_uuid: str):
         """移除模型"""
@@ -121,10 +127,7 @@ class ModelManager:
 
     def get_available_requesters_info(self) -> list[dict]:
         """获取所有可用的请求器"""
-        return [
-            component.to_plain_dict()
-            for component in self.requester_components
-        ]
+        return [component.to_plain_dict() for component in self.requester_components]
 
     def get_available_requester_info_by_name(self, name: str) -> dict | None:
         """通过名称获取请求器信息"""
@@ -132,8 +135,10 @@ class ModelManager:
             if component.metadata.name == name:
                 return component.to_plain_dict()
         return None
-    
-    def get_available_requester_manifest_by_name(self, name: str) -> engine.Component | None:
+
+    def get_available_requester_manifest_by_name(
+        self, name: str
+    ) -> engine.Component | None:
         """通过名称获取请求器清单"""
         for component in self.requester_components:
             if component.metadata.name == name:
@@ -148,4 +153,3 @@ class ModelManager:
         funcs: list[tools_entities.LLMFunction] = None,
     ) -> llm_entities.Message:
         pass
-

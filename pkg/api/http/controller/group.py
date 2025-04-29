@@ -13,6 +13,7 @@ from ....core import app
 preregistered_groups: list[type[RouterGroup]] = []
 """RouterGroup 的预注册列表"""
 
+
 def group_class(name: str, path: str) -> None:
     """注册一个 RouterGroup"""
 
@@ -27,12 +28,12 @@ def group_class(name: str, path: str) -> None:
 
 class AuthType(enum.Enum):
     """认证类型"""
+
     NONE = 'none'
     USER_TOKEN = 'user-token'
 
 
 class RouterGroup(abc.ABC):
-
     name: str
 
     path: str
@@ -49,17 +50,24 @@ class RouterGroup(abc.ABC):
     async def initialize(self) -> None:
         pass
 
-    def route(self, rule: str, auth_type: AuthType = AuthType.USER_TOKEN, **options: typing.Any) -> typing.Callable[[RouteCallable], RouteCallable]:  # decorator
+    def route(
+        self,
+        rule: str,
+        auth_type: AuthType = AuthType.USER_TOKEN,
+        **options: typing.Any,
+    ) -> typing.Callable[[RouteCallable], RouteCallable]:  # decorator
         """注册一个路由"""
+
         def decorator(f: RouteCallable) -> RouteCallable:
             nonlocal rule
             rule = self.path + rule
 
             async def handler_error(*args, **kwargs):
-
                 if auth_type == AuthType.USER_TOKEN:
                     # 从Authorization头中获取token
-                    token = quart.request.headers.get('Authorization', '').replace('Bearer ', '')
+                    token = quart.request.headers.get('Authorization', '').replace(
+                        'Bearer ', ''
+                    )
 
                     if not token:
                         return self.http_status(401, -1, '未提供有效的用户令牌')
@@ -79,7 +87,7 @@ class RouterGroup(abc.ABC):
                     traceback.print_exc()
                     # return self.http_status(500, -2, str(e))
                     return self.http_status(500, -2, 'internal server error')
-                
+
             new_f = handler_error
             new_f.__name__ = (self.name + rule).replace('/', '__')
             new_f.__doc__ = f.__doc__
@@ -91,20 +99,24 @@ class RouterGroup(abc.ABC):
 
     def success(self, data: typing.Any = None) -> quart.Response:
         """返回一个 200 响应"""
-        return quart.jsonify({
-            'code': 0,
-            'msg': 'ok',
-            'data': data,
-        })
-    
+        return quart.jsonify(
+            {
+                'code': 0,
+                'msg': 'ok',
+                'data': data,
+            }
+        )
+
     def fail(self, code: int, msg: str) -> quart.Response:
         """返回一个异常响应"""
 
-        return quart.jsonify({
-            'code': code,
-            'msg': msg,
-        })
-    
+        return quart.jsonify(
+            {
+                'code': code,
+                'msg': msg,
+            }
+        )
+
     def http_status(self, status: int, code: int, msg: str) -> quart.Response:
         """返回一个指定状态码的响应"""
         return self.fail(code, msg), status

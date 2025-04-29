@@ -8,15 +8,14 @@ from ....core import entities as core_entities
 from ....plugin import context as plugin_context
 
 
-@loader.loader_class("plugin-tool-loader")
+@loader.loader_class('plugin-tool-loader')
 class PluginToolLoader(loader.ToolLoader):
     """插件工具加载器。
-    
+
     本加载器中不存储工具信息，仅负责从插件系统中获取工具信息。
     """
 
-    async def get_tools(self, enabled: bool=True) -> list[tools_entities.LLMFunction]:
-
+    async def get_tools(self, enabled: bool = True) -> list[tools_entities.LLMFunction]:
         # 从插件系统获取工具（内容函数）
         all_functions: list[tools_entities.LLMFunction] = []
 
@@ -49,23 +48,23 @@ class PluginToolLoader(loader.ToolLoader):
                     return function, plugin.plugin_inst
         return None, None
 
-    async def invoke_tool(self, query: core_entities.Query, name: str, parameters: dict) -> typing.Any:
-
+    async def invoke_tool(
+        self, query: core_entities.Query, name: str, parameters: dict
+    ) -> typing.Any:
         try:
-
             function, plugin = await self._get_function_and_plugin(name)
             if function is None:
                 return None
 
             parameters = parameters.copy()
 
-            parameters = {"query": query, **parameters}
+            parameters = {'query': query, **parameters}
 
             return await function.func(plugin, **parameters)
         except Exception as e:
-            self.ap.logger.error(f"执行函数 {name} 时发生错误: {e}")
+            self.ap.logger.error(f'执行函数 {name} 时发生错误: {e}')
             traceback.print_exc()
-            return f"error occurred when executing function {name}: {e}"
+            return f'error occurred when executing function {name}: {e}'
         finally:
             plugin = None
 
@@ -75,13 +74,12 @@ class PluginToolLoader(loader.ToolLoader):
                     break
 
             if plugin is not None:
-
                 await self.ap.ctr_mgr.usage.post_function_record(
                     plugin={
-                        "name": plugin.plugin_name,
-                        "remote": plugin.plugin_repository,
-                        "version": plugin.plugin_version,
-                        "author": plugin.plugin_author,
+                        'name': plugin.plugin_name,
+                        'remote': plugin.plugin_repository,
+                        'version': plugin.plugin_version,
+                        'author': plugin.plugin_author,
                     },
                     function_name=function.name,
                     function_description=function.description,

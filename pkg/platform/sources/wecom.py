@@ -15,8 +15,8 @@ from ..types import entities as platform_entities
 from ...command.errors import ParamNotEnoughError
 from ...utils import image
 
-class WecomMessageConverter(adapter.MessageConverter):
 
+class WecomMessageConverter(adapter.MessageConverter):
     @staticmethod
     async def yiri2target(
         message_chain: platform_message.MessageChain, bot: WecomClient
@@ -25,23 +25,35 @@ class WecomMessageConverter(adapter.MessageConverter):
 
         for msg in message_chain:
             if type(msg) is platform_message.Plain:
-                content_list.append({
-                    "type": "text",
-                    "content": msg.text,
-                })
+                content_list.append(
+                    {
+                        'type': 'text',
+                        'content': msg.text,
+                    }
+                )
             elif type(msg) is platform_message.Image:
-                content_list.append({
-                    "type": "image",
-                    "media_id": await bot.get_media_id(msg),
-                })
+                content_list.append(
+                    {
+                        'type': 'image',
+                        'media_id': await bot.get_media_id(msg),
+                    }
+                )
             elif type(msg) is platform_message.Forward:
                 for node in msg.node_list:
-                    content_list.extend((await WecomMessageConverter.yiri2target(node.message_chain, bot)))
+                    content_list.extend(
+                        (
+                            await WecomMessageConverter.yiri2target(
+                                node.message_chain, bot
+                            )
+                        )
+                    )
             else:
-                content_list.append({
-                    "type": "text",
-                    "content": str(msg),
-                })
+                content_list.append(
+                    {
+                        'type': 'text',
+                        'content': str(msg),
+                    }
+                )
 
         return content_list
 
@@ -64,14 +76,17 @@ class WecomMessageConverter(adapter.MessageConverter):
             platform_message.Source(id=message_id, time=datetime.datetime.now())
         )
         image_base64, image_format = await image.get_wecom_image_base64(pic_url=picurl)
-        yiri_msg_list.append(platform_message.Image(base64=f"data:image/{image_format};base64,{image_base64}"))
+        yiri_msg_list.append(
+            platform_message.Image(
+                base64=f'data:image/{image_format};base64,{image_base64}'
+            )
+        )
         chain = platform_message.MessageChain(yiri_msg_list)
-        
+
         return chain
 
 
 class WecomEventConverter:
-
     @staticmethod
     async def yiri2target(
         event: platform_events.Event, bot_account_id: int, bot: WecomClient
@@ -82,18 +97,17 @@ class WecomEventConverter:
             pass
 
         if type(event) is platform_events.FriendMessage:
-
             payload = {
-                "MsgType": "text",
-                "Content": '',
-                "FromUserName": event.sender.id,
-                "ToUserName": bot_account_id,
-                "CreateTime": int(datetime.datetime.now().timestamp()),
-                "AgentID": event.sender.nickname,
+                'MsgType': 'text',
+                'Content': '',
+                'FromUserName': event.sender.id,
+                'ToUserName': bot_account_id,
+                'CreateTime': int(datetime.datetime.now().timestamp()),
+                'AgentID': event.sender.nickname,
             }
             wecom_event = WecomEvent.from_payload(payload=payload)
             if not wecom_event:
-                raise ValueError("无法从 message_data 构造 WecomEvent 对象")
+                raise ValueError('无法从 message_data 构造 WecomEvent 对象')
 
             return wecom_event
 
@@ -109,24 +123,24 @@ class WecomEventConverter:
             platform_events.FriendMessage: 转换后的 FriendMessage 对象。
         """
         # 转换消息链
-        if event.type == "text":
+        if event.type == 'text':
             yiri_chain = await WecomMessageConverter.target2yiri(
                 event.message, event.message_id
             )
             friend = platform_entities.Friend(
-                id=f"u{event.user_id}",
+                id=f'u{event.user_id}',
                 nickname=str(event.agent_id),
-                remark="",
+                remark='',
             )
 
             return platform_events.FriendMessage(
                 sender=friend, message_chain=yiri_chain, time=event.timestamp
             )
-        elif event.type == "image":
+        elif event.type == 'image':
             friend = platform_entities.Friend(
-                id=f"u{event.user_id}",
+                id=f'u{event.user_id}',
                 nickname=str(event.agent_id),
-                remark="",
+                remark='',
             )
 
             yiri_chain = await WecomMessageConverter.target2yiri_image(
@@ -139,7 +153,6 @@ class WecomEventConverter:
 
 
 class WecomAdapter(adapter.MessagePlatformAdapter):
-
     bot: WecomClient
     ap: app.Application
     bot_account_id: str
@@ -153,22 +166,22 @@ class WecomAdapter(adapter.MessagePlatformAdapter):
         self.ap = ap
 
         required_keys = [
-            "corpid",
-            "secret",
-            "token",
-            "EncodingAESKey",
-            "contacts_secret",
+            'corpid',
+            'secret',
+            'token',
+            'EncodingAESKey',
+            'contacts_secret',
         ]
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
-            raise ParamNotEnoughError("企业微信缺少相关配置项，请查看文档或联系管理员")
+            raise ParamNotEnoughError('企业微信缺少相关配置项，请查看文档或联系管理员')
 
         self.bot = WecomClient(
-            corpid=config["corpid"],
-            secret=config["secret"],
-            token=config["token"],
-            EncodingAESKey=config["EncodingAESKey"],
-            contacts_secret=config["contacts_secret"],
+            corpid=config['corpid'],
+            secret=config['secret'],
+            token=config['token'],
+            EncodingAESKey=config['EncodingAESKey'],
+            contacts_secret=config['contacts_secret'],
         )
 
     async def reply_message(
@@ -177,7 +190,6 @@ class WecomAdapter(adapter.MessagePlatformAdapter):
         message: platform_message.MessageChain,
         quote_origin: bool = False,
     ):
-
         Wecom_event = await WecomEventConverter.yiri2target(
             message_source, self.bot_account_id, self.bot
         )
@@ -186,11 +198,15 @@ class WecomAdapter(adapter.MessagePlatformAdapter):
         # 删掉开头的u
         fixed_user_id = fixed_user_id[1:]
         for content in content_list:
-            if content["type"] == "text":
-                await self.bot.send_private_msg(fixed_user_id, Wecom_event.agent_id, content["content"])
-            elif content["type"] == "image":
-                await self.bot.send_image(fixed_user_id, Wecom_event.agent_id, content["media_id"])
-  
+            if content['type'] == 'text':
+                await self.bot.send_private_msg(
+                    fixed_user_id, Wecom_event.agent_id, content['content']
+                )
+            elif content['type'] == 'image':
+                await self.bot.send_image(
+                    fixed_user_id, Wecom_event.agent_id, content['media_id']
+                )
+
     async def send_message(
         self, target_type: str, target_id: str, message: platform_message.MessageChain
     ):
@@ -198,15 +214,17 @@ class WecomAdapter(adapter.MessagePlatformAdapter):
         构造target_id的方式为前半部分为账户id，后半部分为agent_id,中间使用“|”符号隔开。
         """
         content_list = await WecomMessageConverter.yiri2target(message, self.bot)
-        parts = target_id.split("|")
+        parts = target_id.split('|')
         user_id = parts[0]
         agent_id = int(parts[1])
         if target_type == 'person':
             for content in content_list:
-                if content["type"] == "text":
-                    await self.bot.send_private_msg(user_id,agent_id,content["content"])
-                if content["type"] == "image":
-                    await self.bot.send_image(user_id,agent_id,content["media"])
+                if content['type'] == 'text':
+                    await self.bot.send_private_msg(
+                        user_id, agent_id, content['content']
+                    )
+                if content['type'] == 'image':
+                    await self.bot.send_image(user_id, agent_id, content['media'])
 
     def register_listener(
         self,
@@ -225,8 +243,8 @@ class WecomAdapter(adapter.MessagePlatformAdapter):
                 traceback.print_exc()
 
         if event_type == platform_events.FriendMessage:
-            self.bot.on_message("text")(on_message)
-            self.bot.on_message("image")(on_message)
+            self.bot.on_message('text')(on_message)
+            self.bot.on_message('image')(on_message)
         elif event_type == platform_events.GroupMessage:
             pass
 
@@ -236,8 +254,8 @@ class WecomAdapter(adapter.MessagePlatformAdapter):
                 await asyncio.sleep(1)
 
         await self.bot.run_task(
-            host=self.config["host"],
-            port=self.config["port"],
+            host=self.config['host'],
+            port=self.config['port'],
             shutdown_trigger=shutdown_trigger_placeholder,
         )
 
@@ -247,6 +265,8 @@ class WecomAdapter(adapter.MessagePlatformAdapter):
     async def unregister_listener(
         self,
         event_type: type,
-        callback: typing.Callable[[platform_events.Event, MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, MessagePlatformAdapter], None
+        ],
     ):
         return super().unregister_listener(event_type, callback)

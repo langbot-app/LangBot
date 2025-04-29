@@ -3,7 +3,7 @@ from __future__ import annotations
 from .. import migration
 
 
-@migration.migration_class("runner-config", 12)
+@migration.migration_class('runner-config', 12)
 class RunnerConfigMigration(migration.Migration):
     """迁移"""
 
@@ -13,7 +13,7 @@ class RunnerConfigMigration(migration.Migration):
 
     async def run(self):
         """执行迁移"""
-        
+
         self.ap.provider_cfg.data['runner'] = 'local-agent'
 
         await self.ap.provider_cfg.dump_config()

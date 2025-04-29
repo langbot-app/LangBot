@@ -47,7 +47,7 @@ class QueryPool:
                 message_chain=message_chain,
                 resp_messages=[],
                 resp_message_chain=[],
-                adapter=adapter
+                adapter=adapter,
             )
             self.queries.append(query)
             self.query_id_counter += 1

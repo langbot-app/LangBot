@@ -3,7 +3,7 @@ from __future__ import annotations
 from .. import migration
 
 
-@migration.migration_class("zhipuai-config", 19)
+@migration.migration_class('zhipuai-config', 19)
 class ZhipuaiConfigMigration(migration.Migration):
     """迁移"""
 
@@ -14,12 +14,10 @@ class ZhipuaiConfigMigration(migration.Migration):
     async def run(self):
         """执行迁移"""
         self.ap.provider_cfg.data['requester']['zhipuai-chat-completions'] = {
-            "base-url": "https://open.bigmodel.cn/api/paas/v4",
-            "args": {},
-            "timeout": 120
+            'base-url': 'https://open.bigmodel.cn/api/paas/v4',
+            'args': {},
+            'timeout': 120,
         }
-        self.ap.provider_cfg.data['keys']['zhipuai'] = [
-            "xxxxxxx"
-        ]
+        self.ap.provider_cfg.data['keys']['zhipuai'] = ['xxxxxxx']
 
         await self.ap.provider_cfg.dump_config()

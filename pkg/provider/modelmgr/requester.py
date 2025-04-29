@@ -22,16 +22,21 @@ class RuntimeLLMModel:
 
     requester: LLMAPIRequester
     """请求器实例"""
-    
-    def __init__(self, model_entity: persistence_model.LLMModel, token_mgr: token.TokenManager, requester: LLMAPIRequester):
+
+    def __init__(
+        self,
+        model_entity: persistence_model.LLMModel,
+        token_mgr: token.TokenManager,
+        requester: LLMAPIRequester,
+    ):
         self.model_entity = model_entity
         self.token_mgr = token_mgr
         self.requester = requester
 
 
 class LLMAPIRequester(metaclass=abc.ABCMeta):
-    """LLM API请求器
-    """
+    """LLM API请求器"""
+
     name: str = None
 
     ap: app.Application
@@ -42,9 +47,7 @@ class LLMAPIRequester(metaclass=abc.ABCMeta):
 
     def __init__(self, ap: app.Application, config: dict[str, typing.Any]):
         self.ap = ap
-        self.requester_cfg = {
-            **self.default_config
-        }
+        self.requester_cfg = {**self.default_config}
         self.requester_cfg.update(config)
 
     async def initialize(self):

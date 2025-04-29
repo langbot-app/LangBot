@@ -3,7 +3,7 @@ from __future__ import annotations
 from .. import migration
 
 
-@migration.migration_class("command-prefix-config", 11)
+@migration.migration_class('command-prefix-config', 11)
 class CommandPrefixConfigMigration(migration.Migration):
     """迁移"""
 
@@ -13,9 +13,7 @@ class CommandPrefixConfigMigration(migration.Migration):
 
     async def run(self):
         """执行迁移"""
-        
-        self.ap.command_cfg.data['command-prefix'] = [
-            "!", "！"
-        ]
+
+        self.ap.command_cfg.data['command-prefix'] = ['!', '！']
 
         await self.ap.command_cfg.dump_config()

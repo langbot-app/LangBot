@@ -15,13 +15,11 @@ from ..platform.types import message as platform_message
 from ..platform.types import events as platform_events
 
 
-
 class LifecycleControlScope(enum.Enum):
-
-    APPLICATION = "application"
-    PLATFORM = "platform"
-    PLUGIN = "plugin"
-    PROVIDER = "provider"
+    APPLICATION = 'application'
+    PLATFORM = 'platform'
+    PLUGIN = 'plugin'
+    PROVIDER = 'provider'
 
 
 class LauncherTypes(enum.Enum):
@@ -88,14 +86,17 @@ class Query(pydantic.BaseModel):
     use_funcs: typing.Optional[list[tools_entities.LLMFunction]] = None
     """使用的函数，由前置处理器阶段设置"""
 
-    resp_messages: typing.Optional[list[llm_entities.Message]] | typing.Optional[list[platform_message.MessageChain]] = []
+    resp_messages: (
+        typing.Optional[list[llm_entities.Message]]
+        | typing.Optional[list[platform_message.MessageChain]]
+    ) = []
     """由Process阶段生成的回复消息对象列表"""
 
     resp_message_chain: typing.Optional[list[platform_message.MessageChain]] = None
     """回复消息链，从resp_messages包装而得"""
 
     # ======= 内部保留 =======
-    current_stage: "pkg.pipeline.pipelinemgr.StageInstContainer" = None
+    current_stage: 'pkg.pipeline.pipelinemgr.StageInstContainer' = None
     """当前所处阶段"""
 
     class Config:
@@ -108,13 +109,13 @@ class Query(pydantic.BaseModel):
         if self.variables is None:
             self.variables = {}
         self.variables[key] = value
-    
+
     def get_variable(self, key: str) -> typing.Any:
         """获取变量"""
         if self.variables is None:
             return None
         return self.variables.get(key)
-    
+
     def get_variables(self) -> dict[str, typing.Any]:
         """获取所有变量"""
         if self.variables is None:
@@ -129,9 +130,13 @@ class Conversation(pydantic.BaseModel):
 
     messages: list[llm_entities.Message]
 
-    create_time: typing.Optional[datetime.datetime] = pydantic.Field(default_factory=datetime.datetime.now)
+    create_time: typing.Optional[datetime.datetime] = pydantic.Field(
+        default_factory=datetime.datetime.now
+    )
 
-    update_time: typing.Optional[datetime.datetime] = pydantic.Field(default_factory=datetime.datetime.now)
+    update_time: typing.Optional[datetime.datetime] = pydantic.Field(
+        default_factory=datetime.datetime.now
+    )
 
     use_llm_model: requester.RuntimeLLMModel
 
@@ -146,6 +151,7 @@ class Conversation(pydantic.BaseModel):
 
 class Session(pydantic.BaseModel):
     """会话，一个 Session 对应一个 {launcher_type.value}_{launcher_id}"""
+
     launcher_type: LauncherTypes
 
     launcher_id: typing.Union[int, str]
@@ -156,11 +162,17 @@ class Session(pydantic.BaseModel):
 
     using_conversation: typing.Optional[Conversation] = None
 
-    conversations: typing.Optional[list[Conversation]] = pydantic.Field(default_factory=list)
+    conversations: typing.Optional[list[Conversation]] = pydantic.Field(
+        default_factory=list
+    )
 
-    create_time: typing.Optional[datetime.datetime] = pydantic.Field(default_factory=datetime.datetime.now)
+    create_time: typing.Optional[datetime.datetime] = pydantic.Field(
+        default_factory=datetime.datetime.now
+    )
 
-    update_time: typing.Optional[datetime.datetime] = pydantic.Field(default_factory=datetime.datetime.now)
+    update_time: typing.Optional[datetime.datetime] = pydantic.Field(
+        default_factory=datetime.datetime.now
+    )
 
     semaphore: typing.Optional[asyncio.Semaphore] = None
     """当前会话的信号量，用于限制并发"""

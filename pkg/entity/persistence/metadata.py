@@ -13,6 +13,7 @@ initial_metadata = [
 
 class Metadata(Base):
     """数据库元数据"""
+
     __tablename__ = 'metadata'
 
     key = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)

@@ -4,16 +4,15 @@ from .. import stage, app, note
 from ...utils import importutil
 
 from .. import notes
+
 importutil.import_modules_in_pkg(notes)
 
 
-@stage.stage_class("ShowNotesStage")
+@stage.stage_class('ShowNotesStage')
 class ShowNotesStage(stage.BootingStage):
-    """显示启动信息阶段
-    """
+    """显示启动信息阶段"""
 
     async def run(self, ap: app.Application):
-
         # 排序
         note.preregistered_notes.sort(key=lambda x: x.number)
 

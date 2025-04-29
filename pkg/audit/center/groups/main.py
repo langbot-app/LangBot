@@ -9,7 +9,7 @@ class V2MainDataAPI(apigroup.APIGroup):
 
     def __init__(self, prefix: str, ap: app.Application):
         self.ap = ap
-        super().__init__(prefix+"/main", ap)
+        super().__init__(prefix + '/main', ap)
 
     async def do(self, *args, **kwargs):
         if not self.ap.instance_config.data['telemetry']['report']:
@@ -25,31 +25,31 @@ class V2MainDataAPI(apigroup.APIGroup):
     ):
         """提交更新记录"""
         return await self.do(
-            "POST",
-            "/update",
+            'POST',
+            '/update',
             data={
-                "basic": self.basic_info(),
-                "update_info": {
-                    "spent_seconds": spent_seconds,
-                    "infer_reason": infer_reason,
-                    "old_version": old_version,
-                    "new_version": new_version,
-                }
-            }
+                'basic': self.basic_info(),
+                'update_info': {
+                    'spent_seconds': spent_seconds,
+                    'infer_reason': infer_reason,
+                    'old_version': old_version,
+                    'new_version': new_version,
+                },
+            },
         )
-    
+
     async def post_announcement_showed(
         self,
         ids: list[int],
     ):
         """提交公告已阅"""
         return await self.do(
-            "POST",
-            "/announcement",
+            'POST',
+            '/announcement',
             data={
-                "basic": self.basic_info(),
-                "announcement_info": {
-                    "ids": ids,
-                }
-            }
+                'basic': self.basic_info(),
+                'announcement_info': {
+                    'ids': ids,
+                },
+            },
         )
