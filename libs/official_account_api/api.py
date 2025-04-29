@@ -9,8 +9,6 @@ from typing import Callable
 from .oaevent import OAEvent
 
 import asyncio
-import time
-import xml.etree.ElementTree as ET
 
 
 

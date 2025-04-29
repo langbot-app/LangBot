@@ -8,7 +8,6 @@ from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filte
 import typing
 import traceback
 import base64
-import base64
 import aiohttp
 
 from lark_oapi.api.im.v1 import *

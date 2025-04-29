@@ -4,8 +4,7 @@ from ...core import entities as core_entities
 from . import handler
 from .handlers import chat, command
 from .. import entities
-from .. import stage, entities
-from ...core import entities as core_entities
+from .. import stage
 
 
 @stage.stage_class("MessageProcessor")

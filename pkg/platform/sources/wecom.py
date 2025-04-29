@@ -9,11 +9,8 @@ from libs.wecom_api.api import WecomClient
 from pkg.platform.adapter import MessagePlatformAdapter
 from pkg.platform.types import events as platform_events, message as platform_message
 from libs.wecom_api.wecomevent import WecomEvent
-from pkg.core import app
 from .. import adapter
 from ...core import app
-from ..types import message as platform_message
-from ..types import events as platform_events
 from ..types import entities as platform_entities
 from ...command.errors import ParamNotEnoughError
 from ...utils import image

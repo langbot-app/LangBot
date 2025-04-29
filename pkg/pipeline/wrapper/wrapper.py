@@ -5,8 +5,7 @@ import typing
 
 from ...core import entities as core_entities
 from .. import entities
-from .. import stage, entities
-from ...core import entities as core_entities
+from .. import stage
 from ...plugin import events
 from ...platform.types import message as platform_message
 

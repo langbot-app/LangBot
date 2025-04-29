@@ -4,19 +4,13 @@ import asyncio
 import traceback
 
 import datetime
-from pkg.core import app
 from pkg.platform.adapter import MessagePlatformAdapter
 from pkg.platform.types import events as platform_events, message as platform_message
 from libs.official_account_api.oaevent import OAEvent
-from pkg.platform.adapter import MessagePlatformAdapter
-from pkg.platform.types import events as platform_events, message as platform_message
 from libs.official_account_api.api import OAClient
 from libs.official_account_api.api import OAClientForLongerResponse
-from pkg.core import app
 from .. import adapter
 from ...core import app
-from ..types import message as platform_message
-from ..types import events as platform_events
 from ..types import entities as platform_entities
 from ...command.errors import ParamNotEnoughError
 

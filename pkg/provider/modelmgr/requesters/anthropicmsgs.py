@@ -8,7 +8,6 @@ import httpx
 
 from .. import errors, requester
 
-from .. import errors
 from ....core import entities as core_entities
 from ... import entities as llm_entities
 from ...tools import entities as tools_entities

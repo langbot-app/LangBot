@@ -9,7 +9,6 @@ import PIL.Image
 import httpx
 
 import asyncio
-from urllib.parse import urlparse
 
 
 

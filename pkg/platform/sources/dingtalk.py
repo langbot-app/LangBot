@@ -4,14 +4,10 @@ import typing
 from libs.dingtalk_api.dingtalkevent import DingTalkEvent
 from pkg.platform.types import message as platform_message
 from pkg.platform.adapter import MessagePlatformAdapter
-from pkg.platform.types import events as platform_events, message as platform_message
-from pkg.core import app
 from .. import adapter
 from ...core import app
-from ..types import message as platform_message
 from ..types import events as platform_events
 from ..types import entities as platform_entities
-from ...command.errors import ParamNotEnoughError
 from libs.dingtalk_api.api import DingTalkClient
 import datetime
 
@@ -122,7 +118,7 @@ class DingTalkAdapter(adapter.MessagePlatformAdapter):
         ]
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
-            raise ParamNotEnoughError("钉钉缺少相关配置项，请查看文档或联系管理员")
+            raise Exception("钉钉缺少相关配置项，请查看文档或联系管理员")
 
         self.bot_account_id = self.config["robot_name"]
         

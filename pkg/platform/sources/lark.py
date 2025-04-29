@@ -11,7 +11,6 @@ import uuid
 import json
 import datetime
 import hashlib
-import base64
 from Crypto.Cipher import AES
 
 import aiohttp

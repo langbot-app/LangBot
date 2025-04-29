@@ -8,7 +8,6 @@ from .qqofficialevent import QQOfficialEvent
 import json
 import traceback
 from cryptography.hazmat.primitives.asymmetric import ed25519
-from .qqofficialevent import QQOfficialEvent
 
 def handle_validation(body: dict, bot_secret: str):
     
