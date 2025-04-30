@@ -202,25 +202,28 @@ class GewechatMessageConverter(adapter.MessageConverter):
         try:
             xml_data = ET.fromstring(content_no_preifx)
             appmsg_data = xml_data.find('.//appmsg')
-            data_type = appmsg_data.findtext('.//type', "")
+            if appmsg_data:
+                data_type = appmsg_data.findtext('.//type', "")
 
-            # 二次分派处理器
-            sub_handler_map = {
-                '57': self._handler_compound_quote,
-                '5': self._handler_compound_link,
-                '6': self._handler_compound_file,
-                '33': self._handler_compound_mini_program,
-                '36': self._handler_compound_mini_program,
-                '2000': partial(self._handler_compound_unsupported, text="[转账消息]"),
-                '2001': partial(self._handler_compound_unsupported, text="[红包消息]"),
-                '51': partial(self._handler_compound_unsupported, text="[视频号消息]"),
-            }
-            
-            handler = sub_handler_map.get(data_type, self._handler_compound_unsupported)
-            return await handler(
-                message=message,        #原始msg
-                xml_data=xml_data,      # xml数据
-            )
+                # 二次分派处理器
+                sub_handler_map = {
+                    '57': self._handler_compound_quote,
+                    '5': self._handler_compound_link,
+                    '6': self._handler_compound_file,
+                    '33': self._handler_compound_mini_program,
+                    '36': self._handler_compound_mini_program,
+                    '2000': partial(self._handler_compound_unsupported, text="[转账消息]"),
+                    '2001': partial(self._handler_compound_unsupported, text="[红包消息]"),
+                    '51': partial(self._handler_compound_unsupported, text="[视频号消息]"),
+                }
+                
+                handler = sub_handler_map.get(data_type, self._handler_compound_unsupported)
+                return await handler(
+                    message=message,        #原始msg
+                    xml_data=xml_data,      # xml数据
+                )
+            else:
+                return platform_message.MessageChain([platform_message.Unknown(text=content_no_preifx)])
         except Exception as e:
             print(f"解析复合消息失败: {str(e)}")
             return platform_message.MessageChain([platform_message.Unknown(text=content_no_preifx)])
@@ -397,9 +400,10 @@ class GewechatMessageConverter(adapter.MessageConverter):
             if  message.get('Data', {}).get('MsgType', 0) == 49: 
                 xml_data = ET.fromstring(content_no_prefix)
                 appmsg_data = xml_data.find('.//appmsg')
-                tousername = message['Wxid']                                        # 接收方: 所属微信的wxid
-                quote_id = appmsg_data.find('.//refermsg').findtext('.//chatusr')  # 引用消息的原发送者
-                ats_bot =  ats_bot or (quote_id == tousername)      
+                tousername = message['Wxid']
+                if appmsg_data:  # 接收方: 所属微信的wxid
+                    quote_id = appmsg_data.find('.//refermsg').findtext('.//chatusr')  # 引用消息的原发送者
+                    ats_bot =  ats_bot or (quote_id == tousername)      
         except Exception as e:
             print(f"_ats_bot got except: {e}")
         finally:
