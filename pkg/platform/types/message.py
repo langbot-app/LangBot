@@ -894,3 +894,11 @@ class WeChatAppMsg(MessageComponent):
     app_msg: str
     def __str__(self):
         return self.app_msg
+
+class WeChatForwardQuote(MessageComponent):
+    """转发引用消息。个人微信专用组件。"""
+    type: str = 'WeChatForwardQuote'
+    """xml数据"""
+    app_msg: str
+    def __str__(self):
+        return self.app_msg

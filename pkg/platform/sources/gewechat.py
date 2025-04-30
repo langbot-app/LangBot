@@ -66,7 +66,10 @@ class GewechatMessageConverter(adapter.MessageConverter):
             elif isinstance(component, platform_message.WeChatForwardFile):
                 content_list.append({'type': 'WeChatForwardFile', 'xml_data': component.xml_data})
             elif isinstance(component, platform_message.WeChatAppMsg):
-                content_list.append({'type': 'WeChatAppMsg', 'app_msg': component.app_msg})               
+                content_list.append({'type': 'WeChatAppMsg', 'app_msg': component.app_msg})
+            # 引用消息转发
+            elif isinstance(component, platform_message.WeChatForwardQuote):
+                content_list.append({'type': 'WeChatAppMsg', 'app_msg': component.app_msg})
             elif isinstance(component, platform_message.Forward):
                 for node in component.node_list:
                     if node.message_chain:
@@ -237,9 +240,13 @@ class GewechatMessageConverter(adapter.MessageConverter):
         user_data = "" # 用户消息
         sender_id = xml_data.findtext('.//fromusername')   # 发送方：单聊用户/群member
         if appmsg_data:
-            user_data = appmsg_data.findtext('.//title') or "" 
+            user_data = appmsg_data.findtext('.//title') or ""
             quote_data = appmsg_data.find('.//refermsg').findtext('.//content')
-            quote_id = appmsg_data.find('.//refermsg').findtext('.//chatusr') 
+            quote_id = appmsg_data.find('.//refermsg').findtext('.//chatusr')
+            message_list.append(
+                platform_message.WeChatForwardQuote(
+                    app_msg=ET.tostring(appmsg_data, encoding='unicode'))
+            ) 
         if message:
             tousername = message['Wxid']                       
         # quote_data原始的消息
@@ -271,7 +278,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
                 )
             )
             if len(user_data) > 0:
-                pattern = r'^@\S+'
+                pattern = r'@\S{1,20}'
                 user_data = re.sub(pattern, '', user_data)
                 message_list.append(platform_message.Plain(user_data))
         
