@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/rockchinq-langbot-badge.png)](https://mseep.ai/app/rockchinq-langbot)
+
 
 <p align="center">
 <a href="https://langbot.app">
