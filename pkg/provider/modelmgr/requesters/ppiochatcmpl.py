@@ -1,10 +1,11 @@
+
 from __future__ import annotations
 
 import openai
 
-from . import chatcmpl
+from . import chatcmpl, modelscopechatcmpl
+from .. import requester
 from ....core import app
-
 
 class PPIOChatCompletions(chatcmpl.OpenAIChatCompletions):
     """欧派云 ChatCompletion API 请求器"""

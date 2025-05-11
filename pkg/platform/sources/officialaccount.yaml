@@ -7,8 +7,7 @@ metadata:
     zh_CN: 微信公众号
   description:
     en_US: Official Account Adapter
-    zh_CN: 微信公众号适配器，请查看文档了解使用方式
-  icon: officialaccount.png
+    zh_CN: 微信公众号适配器
 spec:
   config:
     - name: token
@@ -39,20 +38,6 @@ spec:
       type: string
       required: true
       default: ""
-    - name: Mode
-      label:
-        en_US: Mode
-        zh_CN: 接入模式
-      type: string
-      required: true
-      default: "drop"
-    - name: LoadingMessage
-      label:
-        en_US: Loading Message
-        zh_CN: 加载消息
-      type: string
-      required: true
-      default: "AI正在思考中，请发送任意内容获取回复。"
     - name: host
       label:
         en_US: Host
@@ -64,7 +49,7 @@ spec:
       label:
         en_US: Port
         zh_CN: 监听端口
-      type: integer
+      type: int
       required: true
       default: 2287
 execution:

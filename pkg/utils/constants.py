@@ -1,7 +1,4 @@
-semantic_version = 'v4.0.0'
-
-required_database_version = 1
-"""标记本版本所需要的数据库结构版本，用于判断数据库迁移"""
+semantic_version = "v3.4.14.3"
 
 debug_mode = False
 

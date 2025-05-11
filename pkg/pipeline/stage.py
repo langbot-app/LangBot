@@ -7,27 +7,30 @@ from ..core import app, entities as core_entities
 from . import entities
 
 
-preregistered_stages: dict[str, PipelineStage] = {}
+_stage_classes: dict[str, PipelineStage] = {}
 
 
 def stage_class(name: str):
-    def decorator(cls):
-        preregistered_stages[name] = cls
-        return cls
 
+    def decorator(cls):
+        _stage_classes[name] = cls
+        return cls
+    
     return decorator
 
 
 class PipelineStage(metaclass=abc.ABCMeta):
-    """流水线阶段"""
+    """流水线阶段
+    """
 
     ap: app.Application
 
     def __init__(self, ap: app.Application):
         self.ap = ap
 
-    async def initialize(self, pipeline_config: dict):
-        """初始化"""
+    async def initialize(self):
+        """初始化
+        """
         pass
 
     @abc.abstractmethod
@@ -39,5 +42,6 @@ class PipelineStage(metaclass=abc.ABCMeta):
         entities.StageProcessResult,
         typing.AsyncGenerator[entities.StageProcessResult, None],
     ]:
-        """处理"""
+        """处理
+        """
         raise NotImplementedError

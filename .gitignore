@@ -29,7 +29,6 @@ qcapi
 claude.json
 bard.json
 /*yaml
-!.pre-commit-config.yaml
 !components.yaml
 !/docker-compose.yaml
 data/labels/instance_id.json

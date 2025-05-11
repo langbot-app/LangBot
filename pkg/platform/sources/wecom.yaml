@@ -7,17 +7,13 @@ metadata:
     zh_CN: 企业微信
   description:
     en_US: WeCom Adapter
-    zh_CN: 企业微信适配器，请查看文档了解使用方式
-  icon: wecom.png
+    zh_CN: 企业微信适配器
 spec:
   config:
     - name: host
       label:
         en_US: Host
         zh_CN: 监听主机
-      description:
-        en_US: Webhook host, unless you know what you're doing, please write 0.0.0.0
-        zh_CN: Webhook 监听主机，除非你知道自己在做什么，否则请写 0.0.0.0
       type: string
       required: true
       default: "0.0.0.0"
@@ -25,7 +21,7 @@ spec:
       label:
         en_US: Port
         zh_CN: 监听端口
-      type: integer
+      type: int
       required: true
       default: 2290
     - name: corpid

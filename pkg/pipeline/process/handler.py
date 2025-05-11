@@ -8,6 +8,7 @@ from .. import entities
 
 
 class MessageHandler(metaclass=abc.ABCMeta):
+    
     ap: app.Application
 
     def __init__(self, ap: app.Application):

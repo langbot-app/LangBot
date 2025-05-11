@@ -1,11 +1,14 @@
+
+import typing
 import enum
 
 import pydantic.v1 as pydantic
 
+from ...provider import entities as llm_entities
+
 
 class ResultLevel(enum.Enum):
     """结果等级"""
-
     PASS = enum.auto()
     """通过"""
 
@@ -21,7 +24,6 @@ class ResultLevel(enum.Enum):
 
 class EnableStage(enum.Enum):
     """启用阶段"""
-
     PRE = enum.auto()
     """预处理"""
 
@@ -53,15 +55,14 @@ class FilterResult(pydantic.BaseModel):
 
 class ManagerResultLevel(enum.Enum):
     """处理器结果等级"""
-
     CONTINUE = enum.auto()
     """继续"""
 
     INTERRUPT = enum.auto()
     """中断"""
 
-
 class FilterManagerResult(pydantic.BaseModel):
+
     level: ManagerResultLevel
 
     replacement: str

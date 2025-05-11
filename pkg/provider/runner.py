@@ -9,10 +9,9 @@ from . import entities as llm_entities
 
 preregistered_runners: list[typing.Type[RequestRunner]] = []
 
-
 def runner_class(name: str):
-    """注册一个请求运行器"""
-
+    """注册一个请求运行器
+    """
     def decorator(cls: typing.Type[RequestRunner]) -> typing.Type[RequestRunner]:
         cls.name = name
         preregistered_runners.append(cls)
@@ -22,19 +21,20 @@ def runner_class(name: str):
 
 
 class RequestRunner(abc.ABC):
-    """请求运行器"""
-
+    """请求运行器
+    """
     name: str = None
 
     ap: app.Application
 
-    pipeline_config: dict
-
-    def __init__(self, ap: app.Application, pipeline_config: dict):
+    def __init__(self, ap: app.Application):
         self.ap = ap
-        self.pipeline_config = pipeline_config
+
+    async def initialize(self):
+        pass
 
     @abc.abstractmethod
     async def run(self, query: core_entities.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
-        """运行请求"""
+        """运行请求
+        """
         pass

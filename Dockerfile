@@ -12,7 +12,7 @@ WORKDIR /app
 
 COPY . .
 
-COPY --from=node /app/web/out ./web/out
+COPY --from=node /app/web/dist ./web/dist
 
 RUN apt update \
     && apt install gcc -y \

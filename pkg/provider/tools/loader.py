@@ -9,10 +9,9 @@ from . import entities as tools_entities
 
 preregistered_loaders: list[typing.Type[ToolLoader]] = []
 
-
 def loader_class(name: str):
-    """注册一个工具加载器"""
-
+    """注册一个工具加载器
+    """
     def decorator(cls: typing.Type[ToolLoader]) -> typing.Type[ToolLoader]:
         cls.name = name
         preregistered_loaders.append(cls)
@@ -23,7 +22,7 @@ def loader_class(name: str):
 
 class ToolLoader(abc.ABC):
     """工具加载器"""
-
+    
     name: str = None
 
     ap: app.Application
@@ -35,7 +34,7 @@ class ToolLoader(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def get_tools(self, enabled: bool = True) -> list[tools_entities.LLMFunction]:
+    async def get_tools(self, enabled: bool=True) -> list[tools_entities.LLMFunction]:
         """获取所有工具"""
         pass
 
