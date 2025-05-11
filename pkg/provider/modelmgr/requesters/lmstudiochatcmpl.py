@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import typing
 import openai
 
 from . import chatcmpl
-from .. import requester
-from ....core import app
 
 
 class LmStudioChatCompletions(chatcmpl.OpenAIChatCompletions):
@@ -12,9 +11,7 @@ class LmStudioChatCompletions(chatcmpl.OpenAIChatCompletions):
 
     client: openai.AsyncClient
 
-    requester_cfg: dict
-
-    def __init__(self, ap: app.Application):
-        self.ap = ap
-
-        self.requester_cfg = self.ap.provider_cfg.data['requester']['lmstudio-chat-completions']
+    default_config: dict[str, typing.Any] = {
+        'base_url': 'http://127.0.0.1:1234/v1',
+        'timeout': 120,
+    }

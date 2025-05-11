@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import typing
 import openai
 
 from . import chatcmpl
-from .. import requester
-from ....core import app
 
 
 class VolcArkChatCompletions(chatcmpl.OpenAIChatCompletions):
@@ -12,9 +11,7 @@ class VolcArkChatCompletions(chatcmpl.OpenAIChatCompletions):
 
     client: openai.AsyncClient
 
-    requester_cfg: dict
-
-    def __init__(self, ap: app.Application):
-        self.ap = ap
-
-        self.requester_cfg = self.ap.provider_cfg.data['requester']['volcark-chat-completions']
+    default_config: dict[str, typing.Any] = {
+        'base_url': 'https://ark.cn-beijing.volces.com/api/v3',
+        'timeout': 120,
+    }

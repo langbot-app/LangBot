@@ -8,22 +8,18 @@ import asyncio
 import pydantic.v1 as pydantic
 
 from ..provider import entities as llm_entities
-from ..provider.modelmgr import entities
-from ..provider.sysprompt import entities as sysprompt_entities
+from ..provider.modelmgr import requester
 from ..provider.tools import entities as tools_entities
 from ..platform import adapter as msadapter
 from ..platform.types import message as platform_message
 from ..platform.types import events as platform_events
-from ..platform.types import entities as platform_entities
-
 
 
 class LifecycleControlScope(enum.Enum):
-
-    APPLICATION = "application"
-    PLATFORM = "platform"
-    PLUGIN = "plugin"
-    PROVIDER = "provider"
+    APPLICATION = 'application'
+    PLATFORM = 'platform'
+    PLUGIN = 'plugin'
+    PROVIDER = 'provider'
 
 
 class LauncherTypes(enum.Enum):
@@ -57,6 +53,15 @@ class Query(pydantic.BaseModel):
     message_chain: platform_message.MessageChain
     """消息链，platform收到的原始消息链"""
 
+    bot_uuid: typing.Optional[str] = None
+    """机器人UUID。"""
+
+    pipeline_uuid: typing.Optional[str] = None
+    """流水线UUID。"""
+
+    pipeline_config: typing.Optional[dict[str, typing.Any]] = None
+    """流水线配置，由 Pipeline 在运行开始时设置。"""
+
     adapter: msadapter.MessagePlatformAdapter
     """消息平台适配器对象，单个app中可能启用了多个消息平台适配器，此对象表明发起此query的适配器"""
 
@@ -66,7 +71,7 @@ class Query(pydantic.BaseModel):
     messages: typing.Optional[list[llm_entities.Message]] = []
     """历史消息列表，由前置处理器阶段设置"""
 
-    prompt: typing.Optional[sysprompt_entities.Prompt] = None
+    prompt: typing.Optional[llm_entities.Prompt] = None
     """情景预设内容，由前置处理器阶段设置"""
 
     user_message: typing.Optional[llm_entities.Message] = None
@@ -75,20 +80,22 @@ class Query(pydantic.BaseModel):
     variables: typing.Optional[dict[str, typing.Any]] = None
     """变量，由前置处理器阶段设置。在prompt中嵌入或由 Runner 传递到 LLMOps 平台。"""
 
-    use_model: typing.Optional[entities.LLMModelInfo] = None
-    """使用的模型，由前置处理器阶段设置"""
+    use_llm_model: typing.Optional[requester.RuntimeLLMModel] = None
+    """使用的对话模型，由前置处理器阶段设置"""
 
     use_funcs: typing.Optional[list[tools_entities.LLMFunction]] = None
     """使用的函数，由前置处理器阶段设置"""
 
-    resp_messages: typing.Optional[list[llm_entities.Message]] | typing.Optional[list[platform_message.MessageChain]] = []
+    resp_messages: (
+        typing.Optional[list[llm_entities.Message]] | typing.Optional[list[platform_message.MessageChain]]
+    ) = []
     """由Process阶段生成的回复消息对象列表"""
 
     resp_message_chain: typing.Optional[list[platform_message.MessageChain]] = None
     """回复消息链，从resp_messages包装而得"""
 
     # ======= 内部保留 =======
-    current_stage: "pkg.pipeline.stagemgr.StageInstContainer" = None
+    current_stage: typing.Optional['pkg.pipeline.pipelinemgr.StageInstContainer'] = None
     """当前所处阶段"""
 
     class Config:
@@ -101,13 +108,13 @@ class Query(pydantic.BaseModel):
         if self.variables is None:
             self.variables = {}
         self.variables[key] = value
-    
+
     def get_variable(self, key: str) -> typing.Any:
         """获取变量"""
         if self.variables is None:
             return None
         return self.variables.get(key)
-    
+
     def get_variables(self) -> dict[str, typing.Any]:
         """获取所有变量"""
         if self.variables is None:
@@ -118,7 +125,7 @@ class Query(pydantic.BaseModel):
 class Conversation(pydantic.BaseModel):
     """对话，包含于 Session 中，一个 Session 可以有多个历史 Conversation，但只有一个当前使用的 Conversation"""
 
-    prompt: sysprompt_entities.Prompt
+    prompt: llm_entities.Prompt
 
     messages: list[llm_entities.Message]
 
@@ -126,16 +133,20 @@ class Conversation(pydantic.BaseModel):
 
     update_time: typing.Optional[datetime.datetime] = pydantic.Field(default_factory=datetime.datetime.now)
 
-    use_model: entities.LLMModelInfo
+    use_llm_model: requester.RuntimeLLMModel
 
     use_funcs: typing.Optional[list[tools_entities.LLMFunction]]
 
     uuid: typing.Optional[str] = None
     """该对话的 uuid，在创建时不会自动生成。而是当使用 Dify API 等由外部管理对话信息的服务时，用于绑定外部的会话。具体如何使用，取决于 Runner。"""
 
+    class Config:
+        arbitrary_types_allowed = True
+
 
 class Session(pydantic.BaseModel):
     """会话，一个 Session 对应一个 {launcher_type.value}_{launcher_id}"""
+
     launcher_type: LauncherTypes
 
     launcher_id: typing.Union[int, str]

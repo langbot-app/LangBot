@@ -3,11 +3,12 @@ kind: MessagePlatformAdapter
 metadata:
   name: slack
   label:
-    en_US: Slack API
-    zh_CN: Slack API
+    en_US: Slack
+    zh_CN: Slack
   description:
-    en_US: Slack API
-    zh_CN: Slack API
+    en_US: Slack Adapter
+    zh_CN: Slack 适配器，请查看文档了解使用方式
+  icon: slack.png
 spec:
   config:
     - name: bot_token

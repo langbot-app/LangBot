@@ -2,6 +2,7 @@
 """
 此模块提供实体和配置项模型。
 """
+
 import abc
 from datetime import datetime
 from enum import Enum
@@ -12,8 +13,10 @@ import pydantic.v1 as pydantic
 
 class Entity(pydantic.BaseModel):
     """实体，表示一个用户或群。"""
+
     id: int
     """ID。"""
+
     @abc.abstractmethod
     def get_name(self) -> str:
         """名称。"""
@@ -21,31 +24,35 @@ class Entity(pydantic.BaseModel):
 
 class Friend(Entity):
     """私聊对象。"""
+
     id: typing.Union[int, str]
     """ID。"""
     nickname: typing.Optional[str]
     """昵称。"""
     remark: typing.Optional[str]
     """备注。"""
+
     def get_name(self) -> str:
         return self.nickname or self.remark or ''
 
 
-
 class Permission(str, Enum):
     """群成员身份权限。"""
-    Member = "MEMBER"
+
+    Member = 'MEMBER'
     """成员。"""
-    Administrator = "ADMINISTRATOR"
+    Administrator = 'ADMINISTRATOR'
     """管理员。"""
-    Owner = "OWNER"
+    Owner = 'OWNER'
     """群主。"""
+
     def __repr__(self) -> str:
         return repr(self.value)
 
 
 class Group(Entity):
     """群。"""
+
     id: typing.Union[int, str]
     """群号。"""
     name: str
@@ -59,6 +66,7 @@ class Group(Entity):
 
 class GroupMember(Entity):
     """群成员。"""
+
     id: typing.Union[int, str]
     """群员 ID。"""
     member_name: str

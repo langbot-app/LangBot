@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import typing
 import abc
 
 from ..core import app, taskmgr
@@ -23,8 +22,7 @@ class PluginInstaller(metaclass=abc.ABCMeta):
         plugin_source: str,
         task_context: taskmgr.TaskContext = taskmgr.TaskContext.placeholder(),
     ):
-        """安装插件
-        """
+        """安装插件"""
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -33,17 +31,15 @@ class PluginInstaller(metaclass=abc.ABCMeta):
         plugin_name: str,
         task_context: taskmgr.TaskContext = taskmgr.TaskContext.placeholder(),
     ):
-        """卸载插件
-        """
+        """卸载插件"""
         raise NotImplementedError
 
     @abc.abstractmethod
     async def update_plugin(
         self,
         plugin_name: str,
-        plugin_source: str=None,
+        plugin_source: str = None,
         task_context: taskmgr.TaskContext = taskmgr.TaskContext.placeholder(),
     ):
-        """更新插件
-        """
+        """更新插件"""
         raise NotImplementedError

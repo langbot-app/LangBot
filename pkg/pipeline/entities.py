@@ -10,7 +10,6 @@ from ..core import entities
 
 
 class ResultType(enum.Enum):
-
     CONTINUE = enum.auto()
     """继续流水线"""
 
@@ -19,12 +18,18 @@ class ResultType(enum.Enum):
 
 
 class StageProcessResult(pydantic.BaseModel):
-    
     result_type: ResultType
 
     new_query: entities.Query
 
-    user_notice: typing.Optional[typing.Union[str, list[platform_message.MessageComponent], platform_message.MessageChain, None]] = []
+    user_notice: typing.Optional[
+        typing.Union[
+            str,
+            list[platform_message.MessageComponent],
+            platform_message.MessageChain,
+            None,
+        ]
+    ] = []
     """只要设置了就会发送给用户"""
 
     console_notice: typing.Optional[str] = ''

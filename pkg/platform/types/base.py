@@ -1,4 +1,3 @@
-
 from typing import Dict, List, Type
 
 import pydantic.v1.main as pdm
@@ -25,14 +24,15 @@ class PlatformBaseModel(BaseModel, metaclass=PlatformMetaclass):
     2. 允许通过别名访问字段。
     3. 自动生成小驼峰风格的别名。
     """
+
     def __init__(self, *args, **kwargs):
         """"""
         super().__init__(*args, **kwargs)
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + '(' + ', '.join(
-            (f'{k}={repr(v)}' for k, v in self.__dict__.items() if v)
-        ) + ')'
+        return (
+            self.__class__.__name__ + '(' + ', '.join((f'{k}={repr(v)}' for k, v in self.__dict__.items() if v)) + ')'
+        )
 
     class Config:
         extra = 'allow'
@@ -42,6 +42,7 @@ class PlatformBaseModel(BaseModel, metaclass=PlatformMetaclass):
 
 class PlatformIndexedMetaclass(PlatformMetaclass):
     """可以通过子类名获取子类的类的元类。"""
+
     __indexedbases__: List[Type['PlatformIndexedModel']] = []
     __indexedmodel__ = None
 
@@ -69,6 +70,7 @@ class PlatformIndexedMetaclass(PlatformMetaclass):
 
 class PlatformIndexedModel(PlatformBaseModel, metaclass=PlatformIndexedMetaclass):
     """可以通过子类名获取子类的类。"""
+
     __indexes__: Dict[str, Type['PlatformIndexedModel']]
 
     @classmethod
@@ -86,7 +88,7 @@ class PlatformIndexedModel(PlatformBaseModel, metaclass=PlatformIndexedMetaclass
             if not (type_ and issubclass(type_, cls)):
                 raise ValueError(f'`{name}` 不是 `{cls.__name__}` 的子类！')
             return type_
-        except AttributeError as e:
+        except AttributeError:
             raise ValueError(f'`{name}` 不是 `{cls.__name__}` 的子类！') from None
 
     @classmethod

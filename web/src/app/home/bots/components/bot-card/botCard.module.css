@@ -1,0 +1,90 @@
+.cardContainer {
+  width: 100%;
+  height: 10rem;
+  background-color: #fff;
+  border-radius: 10px;
+  box-shadow: 0px 2px 2px 0 rgba(0, 0, 0, 0.2);
+  padding: 1.2rem;
+  cursor: pointer;
+}
+
+.cardContainer:hover {
+  box-shadow: 0px 2px 8px 0 rgba(0, 0, 0, 0.1);
+}
+
+.iconBasicInfoContainer {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: row;
+  gap: 0.8rem;
+  user-select: none;
+  /* background-color: aqua; */
+}
+
+.iconImage {
+  width: 4rem;
+  height: 4rem;
+  margin: 0.2rem;
+  /* border-radius: 50%; */
+}
+
+.basicInfoContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.basicInfoNameContainer {
+  display: flex;
+  flex-direction: column;
+}
+
+.basicInfoName {
+  font-size: 1.4rem;
+  font-weight: 500;
+}
+
+.basicInfoDescription {
+  font-size: 1rem;
+  font-weight: 300;
+  color: #b1b1b1;
+}
+
+.basicInfoAdapterContainer {
+  display: flex;
+  flex-direction: row;
+  gap: 0.4rem;
+}
+
+.basicInfoAdapterIcon {
+  width: 1.2rem;
+  height: 1.2rem;
+  margin-top: 0.2rem;
+  color: #626262;
+}
+
+.basicInfoAdapterLabel {
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: #626262;
+}
+
+.basicInfoPipelineContainer {
+  display: flex;
+  flex-direction: row;
+  gap: 0.4rem;
+}
+
+.basicInfoPipelineIcon {
+  width: 1.2rem;
+  height: 1.2rem;
+  color: #626262;
+  margin-top: 0.2rem;
+}
+
+.basicInfoPipelineLabel {
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: #626262;
+}

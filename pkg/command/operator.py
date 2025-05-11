@@ -3,7 +3,7 @@ from __future__ import annotations
 import typing
 import abc
 
-from ..core import app, entities as core_entities
+from ..core import app
 from . import entities
 
 
@@ -13,14 +13,14 @@ preregistered_operators: list[typing.Type[CommandOperator]] = []
 
 def operator_class(
     name: str,
-    help: str = "",
+    help: str = '',
     usage: str = None,
     alias: list[str] = [],
-    privilege: int=1,  # 1为普通用户，2为管理员
-    parent_class: typing.Type[CommandOperator] = None
+    privilege: int = 1,  # 1为普通用户，2为管理员
+    parent_class: typing.Type[CommandOperator] = None,
 ) -> typing.Callable[[typing.Type[CommandOperator]], typing.Type[CommandOperator]]:
     """命令类装饰器
-    
+
     Args:
         name (str): 名称
         help (str, optional): 帮助信息. Defaults to "".
@@ -35,7 +35,7 @@ def operator_class(
 
     def decorator(cls: typing.Type[CommandOperator]) -> typing.Type[CommandOperator]:
         assert issubclass(cls, CommandOperator)
-        
+
         cls.name = name
         cls.alias = alias
         cls.help = help
@@ -95,15 +95,12 @@ class CommandOperator(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    async def execute(
-        self,
-        context: entities.ExecuteContext
-    ) -> typing.AsyncGenerator[entities.CommandReturn, None]:
+    async def execute(self, context: entities.ExecuteContext) -> typing.AsyncGenerator[entities.CommandReturn, None]:
         """实现此方法以执行命令
 
         支持多次yield以返回多个结果。
         例如：一个安装插件的命令，可能会有下载、解压、安装等多个步骤，每个步骤都可以返回一个结果。
-        
+
         Args:
             context (entities.ExecuteContext): 命令执行上下文
 

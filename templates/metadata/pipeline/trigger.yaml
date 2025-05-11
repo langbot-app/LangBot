@@ -1,0 +1,119 @@
+name: trigger
+label:
+  en_US: Trigger
+  zh_CN: 触发条件
+stages:
+  - name: group-respond-rules
+    label:
+      en_US: Group Respond Rule
+      zh_CN: 群响应规则
+    description:
+      en_US: The respond rule of the messages in the groups
+      zh_CN: 群内消息的响应规则
+    config:
+      - name: at
+        label:
+          en_US: At
+          zh_CN: '@'
+        description:
+          en_US: Whether to trigger when the message mentions the bot
+          zh_CN: 是否在消息@机器人时触发
+        type: boolean
+        required: true
+        default: false
+      - name: prefix
+        label:
+          en_US: Prefix
+          zh_CN: 前缀
+        description:
+          en_US: Messages with these prefixes will be responded (the prefixes will be removed automatically when sending to AI)
+          zh_CN: 具有这些前缀的消息将被响应（发送给 AI 时会自动去除对应前缀）
+        type: array[string]
+        required: true
+        default: []
+      - name: regexp
+        label:
+          en_US: Regexp
+          zh_CN: 正则表达式
+        description:
+          en_US: Messages with these regular expressions will be responded
+          zh_CN: 符合这些正则表达式的消息将被响应
+        type: array[string]
+        required: true
+        default: []
+      - name: random
+        label:
+          en_US: Random
+          zh_CN: 随机
+        description:
+          en_US: The probability of the random response, range from 0.0 to 1.0
+          zh_CN: 随机响应概率，范围为 0.0-1.0，对应 0% 到 100%
+        type: float
+        required: false
+        default: 0
+  - name: access-control
+    label:
+      en_US: Access Control
+      zh_CN: 访问控制
+    config:
+      - name: mode
+        label:
+          en_US: Mode
+          zh_CN: 模式
+        description:
+          en_US: The mode of the access control
+          zh_CN: 访问控制模式
+        type: select
+        required: true
+        default: blacklist
+        options:
+          - name: blacklist
+            label:
+              en_US: Blacklist
+              zh_CN: 黑名单
+          - name: whitelist
+            label:
+              en_US: Whitelist
+              zh_CN: 白名单
+      - name: blacklist
+        label:
+          en_US: Blacklist
+          zh_CN: 黑名单
+        type: array[string]
+        required: true
+        default: []
+      - name: whitelist
+        label:
+          en_US: Whitelist
+          zh_CN: 白名单
+        type: array[string]
+        required: true
+        default: []
+  - name: ignore-rules
+    label:
+      en_US: Ignore Rules
+      zh_CN: 消息忽略规则
+    description:
+      en_US: Ignore rules that apply to both group and private messages
+      zh_CN: 对群聊、私聊消息均适用的忽略规则（优先级高于群响应规则）
+    config:
+      - name: prefix
+        label:
+          en_US: Prefix
+          zh_CN: 前缀
+        description:
+          en_US: Messages with these prefixes will be ignored
+          zh_CN: 包含这些前缀的消息将被忽略
+        type: array[string]
+        required: true
+        default: []
+      - name: regexp
+        label:
+          en_US: Regexp
+          zh_CN: 正则表达式
+        description:
+          en_US: Messages with these regular expressions will be ignored
+          zh_CN: 符合这些正则表达式的消息将被忽略
+        type: array[string]
+        required: true
+        default: []

@@ -4,15 +4,13 @@ from .. import truncator
 from ....core import entities as core_entities
 
 
-@truncator.truncator_class("round")
+@truncator.truncator_class('round')
 class RoundTruncator(truncator.Truncator):
-    """前文回合数阶段器
-    """
+    """前文回合数阶段器"""
 
     async def truncate(self, query: core_entities.Query) -> core_entities.Query:
-        """截断
-        """
-        max_round = self.ap.pipeline_cfg.data['msg-truncate']['round']['max-round']
+        """截断"""
+        max_round = query.pipeline_config['ai']['local-agent']['max-round']
 
         temp_messages = []
 
@@ -26,7 +24,7 @@ class RoundTruncator(truncator.Truncator):
                     current_round += 1
             else:
                 break
-        
+
         query.messages = temp_messages[::-1]
 
         return query

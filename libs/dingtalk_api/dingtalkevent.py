@@ -1,41 +1,39 @@
 from typing import Dict, Any, Optional
 import dingtalk_stream
 
+
 class DingTalkEvent(dict):
     @staticmethod
-    def from_payload(payload: Dict[str, Any]) -> Optional["DingTalkEvent"]:
+    def from_payload(payload: Dict[str, Any]) -> Optional['DingTalkEvent']:
         try:
             event = DingTalkEvent(payload)
             return event
         except KeyError:
             return None
-        
-    
-    @property
-    def content(self):
-        return self.get("Content","")
 
     @property
-    def incoming_message(self) -> Optional["dingtalk_stream.chatbot.ChatbotMessage"]:
-        return self.get("IncomingMessage")
+    def content(self):
+        return self.get('Content', '')
+
+    @property
+    def incoming_message(self) -> Optional['dingtalk_stream.chatbot.ChatbotMessage']:
+        return self.get('IncomingMessage')
 
     @property
     def type(self):
-        return self.get("Type","")
-    
+        return self.get('Type', '')
+
     @property
     def picture(self):
-        return self.get("Picture","")
-    
+        return self.get('Picture', '')
+
     @property
     def audio(self):
-        return self.get("Audio","")
+        return self.get('Audio', '')
 
     @property
     def conversation(self):
-        return self.get("conversation_type","")
-    
-    
+        return self.get('conversation_type', '')
 
     def __getattr__(self, key: str) -> Optional[Any]:
         """
@@ -66,4 +64,4 @@ class DingTalkEvent(dict):
         Returns:
             str: 字符串表示。
         """
-        return f"<DingTalkEvent {super().__repr__()}>"
+        return f'<DingTalkEvent {super().__repr__()}>'

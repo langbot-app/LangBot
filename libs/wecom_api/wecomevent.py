@@ -9,7 +9,7 @@ class WecomEvent(dict):
     """
 
     @staticmethod
-    def from_payload(payload: Dict[str, Any]) -> Optional["WecomEvent"]:
+    def from_payload(payload: Dict[str, Any]) -> Optional['WecomEvent']:
         """
         从企业微信事件数据构造 `WecomEvent` 对象。
 
@@ -34,14 +34,14 @@ class WecomEvent(dict):
         Returns:
             str: 事件类型。
         """
-        return self.get("MsgType", "")
-    
+        return self.get('MsgType', '')
+
     @property
     def picurl(self) -> str:
         """
         图片链接
         """
-        return self.get("PicUrl")
+        return self.get('PicUrl')
 
     @property
     def detail_type(self) -> str:
@@ -53,8 +53,8 @@ class WecomEvent(dict):
         Returns:
             str: 事件详细类型。
         """
-        if self.type == "event":
-            return self.get("Event", "")
+        if self.type == 'event':
+            return self.get('Event', '')
         return self.type
 
     @property
@@ -65,7 +65,7 @@ class WecomEvent(dict):
         Returns:
             str: 事件名。
         """
-        return f"{self.type}.{self.detail_type}"
+        return f'{self.type}.{self.detail_type}'
 
     @property
     def user_id(self) -> Optional[str]:
@@ -75,8 +75,8 @@ class WecomEvent(dict):
         Returns:
             Optional[str]: 用户 ID。
         """
-        return self.get("FromUserName")
-    
+        return self.get('FromUserName')
+
     @property
     def agent_id(self) -> Optional[int]:
         """
@@ -85,7 +85,7 @@ class WecomEvent(dict):
         Returns:
             Optional[int]: 机器人 ID。
         """
-        return self.get("AgentID")
+        return self.get('AgentID')
 
     @property
     def receiver_id(self) -> Optional[str]:
@@ -95,7 +95,7 @@ class WecomEvent(dict):
         Returns:
             Optional[str]: 接收者 ID。
         """
-        return self.get("ToUserName")
+        return self.get('ToUserName')
 
     @property
     def message_id(self) -> Optional[str]:
@@ -105,7 +105,7 @@ class WecomEvent(dict):
         Returns:
             Optional[str]: 消息 ID。
         """
-        return self.get("MsgId")
+        return self.get('MsgId')
 
     @property
     def message(self) -> Optional[str]:
@@ -115,7 +115,7 @@ class WecomEvent(dict):
         Returns:
             Optional[str]: 消息内容。
         """
-        return self.get("Content")
+        return self.get('Content')
 
     @property
     def media_id(self) -> Optional[str]:
@@ -125,7 +125,7 @@ class WecomEvent(dict):
         Returns:
             Optional[str]: 媒体文件 ID。
         """
-        return self.get("MediaId")
+        return self.get('MediaId')
 
     @property
     def timestamp(self) -> Optional[int]:
@@ -135,7 +135,7 @@ class WecomEvent(dict):
         Returns:
             Optional[int]: 时间戳。
         """
-        return self.get("CreateTime")
+        return self.get('CreateTime')
 
     @property
     def event_key(self) -> Optional[str]:
@@ -145,7 +145,7 @@ class WecomEvent(dict):
         Returns:
             Optional[str]: 事件 Key。
         """
-        return self.get("EventKey")
+        return self.get('EventKey')
 
     def __getattr__(self, key: str) -> Optional[Any]:
         """
@@ -176,4 +176,4 @@ class WecomEvent(dict):
         Returns:
             str: 字符串表示。
         """
-        return f"<WecomEvent {super().__repr__()}>"
+        return f'<WecomEvent {super().__repr__()}>'

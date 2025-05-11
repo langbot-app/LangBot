@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 from .. import migration
 
 
-@migration.migration_class("gewechat-file-url-config", 34)
+@migration.migration_class('gewechat-file-url-config', 34)
 class GewechatFileUrlConfigMigration(migration.Migration):
     """迁移"""
 
@@ -24,6 +24,6 @@ class GewechatFileUrlConfigMigration(migration.Migration):
             if adapter['adapter'] == 'gewechat':
                 if 'gewechat_file_url' not in adapter:
                     parsed_url = urlparse(adapter['gewechat_url'])
-                    adapter['gewechat_file_url'] = f"{parsed_url.scheme}://{parsed_url.hostname}:2532"
+                    adapter['gewechat_file_url'] = f'{parsed_url.scheme}://{parsed_url.hostname}:2532'
 
         await self.ap.platform_cfg.dump_config()

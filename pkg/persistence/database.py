@@ -9,6 +9,7 @@ from ..core import app
 
 preregistered_managers: list[type[BaseDatabaseManager]] = []
 
+
 def manager_class(name: str) -> None:
     """注册一个数据库管理类"""
 

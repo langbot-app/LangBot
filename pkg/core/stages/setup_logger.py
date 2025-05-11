@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import logging
-import asyncio
-from datetime import datetime
 
 from .. import stage, app
 from ..bootutils import log
@@ -12,6 +10,7 @@ class PersistenceHandler(logging.Handler, object):
     """
     保存日志到数据库
     """
+
     ap: app.Application
 
     def __init__(self, name, ap: app.Application):
@@ -28,19 +27,17 @@ class PersistenceHandler(logging.Handler, object):
             msg = self.format(record)
             if self.ap.log_cache is not None:
                 self.ap.log_cache.add_log(msg)
-                
+
         except Exception:
             self.handleError(record)
 
 
-@stage.stage_class("SetupLoggerStage")
+@stage.stage_class('SetupLoggerStage')
 class SetupLoggerStage(stage.BootingStage):
-    """设置日志器阶段
-    """
+    """设置日志器阶段"""
 
     async def run(self, ap: app.Application):
-        """启动
-        """
+        """启动"""
         persistence_handler = PersistenceHandler('LoggerHandler', ap)
 
         extra_handlers = []

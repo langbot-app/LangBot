@@ -2,7 +2,6 @@ import itertools
 import logging
 import typing
 from datetime import datetime
-from enum import Enum
 from pathlib import Path
 
 import pydantic.v1 as pydantic
@@ -15,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 class MessageComponentMetaclass(PlatformIndexedMetaclass):
     """消息组件元类。"""
+
     __message_component__ = None
 
     def __new__(cls, name, bases, attrs, **kwargs):
@@ -40,26 +40,26 @@ class MessageComponentMetaclass(PlatformIndexedMetaclass):
 
 class MessageComponent(PlatformIndexedModel, metaclass=MessageComponentMetaclass):
     """消息组件。"""
+
     type: str
     """消息组件类型。"""
+
     def __str__(self):
         return ''
 
     def __repr__(self):
-        return self.__class__.__name__ + '(' + ', '.join(
-            (
-                f'{k}={repr(v)}'
-                for k, v in self.__dict__.items() if k != 'type' and v
-            )
-        ) + ')'
+        return (
+            self.__class__.__name__
+            + '('
+            + ', '.join((f'{k}={repr(v)}' for k, v in self.__dict__.items() if k != 'type' and v))
+            + ')'
+        )
 
     def __init__(self, *args, **kwargs):
         # 解析参数列表，将位置参数转化为具名参数
         parameter_names = self.__parameter_names__
         if len(args) > len(parameter_names):
-            raise TypeError(
-                f'`{self.type}`需要{len(parameter_names)}个参数，但传入了{len(args)}个。'
-            )
+            raise TypeError(f'`{self.type}`需要{len(parameter_names)}个参数，但传入了{len(args)}个。')
         for name, value in zip(parameter_names, args):
             if name in kwargs:
                 raise TypeError(f'在 `{self.type}` 中，具名参数 `{name}` 与位置参数重复。')
@@ -116,6 +116,7 @@ class MessageChain(PlatformBaseModel):
     ```
 
     """
+
     __root__: typing.List[MessageComponent]
 
     @staticmethod
@@ -129,11 +130,9 @@ class MessageChain(PlatformBaseModel):
             elif isinstance(msg, str):
                 result.append(Plain(msg))
             else:
-                raise TypeError(
-                    f"消息链中元素需为 dict 或 str 或 MessageComponent，当前类型：{type(msg)}"
-                )
+                raise TypeError(f'消息链中元素需为 dict 或 str 或 MessageComponent，当前类型：{type(msg)}')
         return result
-    
+
     @pydantic.validator('__root__', always=True, pre=True)
     def _parse_component(cls, msg_chain):
         if isinstance(msg_chain, (str, MessageComponent)):
@@ -156,7 +155,7 @@ class MessageChain(PlatformBaseModel):
         super().__init__(__root__=__root__)
 
     def __str__(self):
-        return "".join(str(component) for component in self.__root__)
+        return ''.join(str(component) for component in self.__root__)
 
     def __repr__(self):
         return f'{self.__class__.__name__}({self.__root__!r})'
@@ -164,8 +163,7 @@ class MessageChain(PlatformBaseModel):
     def __iter__(self):
         yield from self.__root__
 
-    def get_first(self,
-                  t: typing.Type[TMessageComponent]) -> typing.Optional[TMessageComponent]:
+    def get_first(self, t: typing.Type[TMessageComponent]) -> typing.Optional[TMessageComponent]:
         """获取消息链中第一个符合类型的消息组件。"""
         for component in self:
             if isinstance(component, t):
@@ -173,35 +171,34 @@ class MessageChain(PlatformBaseModel):
         return None
 
     @typing.overload
-    def __getitem__(self, index: int) -> MessageComponent:
-        ...
+    def __getitem__(self, index: int) -> MessageComponent: ...
 
     @typing.overload
-    def __getitem__(self, index: slice) -> typing.List[MessageComponent]:
-        ...
+    def __getitem__(self, index: slice) -> typing.List[MessageComponent]: ...
 
     @typing.overload
-    def __getitem__(self,
-                    index: typing.Type[TMessageComponent]) -> typing.List[TMessageComponent]:
-        ...
+    def __getitem__(self, index: typing.Type[TMessageComponent]) -> typing.List[TMessageComponent]: ...
 
     @typing.overload
     def __getitem__(
         self, index: typing.Tuple[typing.Type[TMessageComponent], int]
-    ) -> typing.List[TMessageComponent]:
-        ...
+    ) -> typing.List[TMessageComponent]: ...
 
     def __getitem__(
-        self, index: typing.Union[int, slice, typing.Type[TMessageComponent],
-                           typing.Tuple[typing.Type[TMessageComponent], int]]
-    ) -> typing.Union[MessageComponent, typing.List[MessageComponent],
-               typing.List[TMessageComponent]]:
+        self,
+        index: typing.Union[
+            int,
+            slice,
+            typing.Type[TMessageComponent],
+            typing.Tuple[typing.Type[TMessageComponent], int],
+        ],
+    ) -> typing.Union[MessageComponent, typing.List[MessageComponent], typing.List[TMessageComponent]]:
         return self.get(index)
 
     def __setitem__(
-        self, key: typing.Union[int, slice],
-        value: typing.Union[MessageComponent, str, typing.Iterable[typing.Union[MessageComponent,
-                                                           str]]]
+        self,
+        key: typing.Union[int, slice],
+        value: typing.Union[MessageComponent, str, typing.Iterable[typing.Union[MessageComponent, str]]],
     ):
         if isinstance(value, str):
             value = Plain(value)
@@ -216,8 +213,8 @@ class MessageChain(PlatformBaseModel):
         return reversed(self.__root__)
 
     def has(
-        self, sub: typing.Union[MessageComponent, typing.Type[MessageComponent],
-                         'MessageChain', str]
+        self,
+        sub: typing.Union[MessageComponent, typing.Type[MessageComponent], 'MessageChain', str],
     ) -> bool:
         """判断消息链中：
         1. 是否有某个消息组件。
@@ -241,7 +238,7 @@ class MessageChain(PlatformBaseModel):
                 if i == sub:
                     return True
             return False
-        raise TypeError(f"类型不匹配，当前类型：{type(sub)}")
+        raise TypeError(f'类型不匹配，当前类型：{type(sub)}')
 
     def __contains__(self, sub) -> bool:
         return self.has(sub)
@@ -252,9 +249,7 @@ class MessageChain(PlatformBaseModel):
     def __len__(self) -> int:
         return len(self.__root__)
 
-    def __add__(
-        self, other: typing.Union['MessageChain', MessageComponent, str]
-    ) -> 'MessageChain':
+    def __add__(self, other: typing.Union['MessageChain', MessageComponent, str]) -> 'MessageChain':
         if isinstance(other, MessageChain):
             return self.__class__(self.__root__ + other.__root__)
         if isinstance(other, str):
@@ -267,9 +262,7 @@ class MessageChain(PlatformBaseModel):
         if isinstance(other, MessageComponent):
             return self.__class__([other] + self.__root__)
         if isinstance(other, str):
-            return self.__class__(
-                [typing.cast(MessageComponent, Plain(other))] + self.__root__
-            )
+            return self.__class__([typing.cast(MessageComponent, Plain(other))] + self.__root__)
         return NotImplemented
 
     def __mul__(self, other: int):
@@ -292,7 +285,7 @@ class MessageChain(PlatformBaseModel):
         self,
         x: typing.Union[MessageComponent, typing.Type[MessageComponent]],
         i: int = 0,
-        j: int = -1
+        j: int = -1,
     ) -> int:
         """返回 x 在消息链中首次出现项的索引号（索引号在 i 或其后且在 j 之前）。
 
@@ -322,10 +315,10 @@ class MessageChain(PlatformBaseModel):
             for index in range(i, j):
                 if type(self[index]) is x:
                     return index
-            raise ValueError("消息链中不存在该类型的组件。")
+            raise ValueError('消息链中不存在该类型的组件。')
         if isinstance(x, MessageComponent):
             return self.__root__.index(x, i, j)
-        raise TypeError(f"类型不匹配，当前类型：{type(x)}")
+        raise TypeError(f'类型不匹配，当前类型：{type(x)}')
 
     def count(self, x: typing.Union[MessageComponent, typing.Type[MessageComponent]]) -> int:
         """返回消息链中 x 出现的次数。
@@ -341,7 +334,7 @@ class MessageChain(PlatformBaseModel):
             return sum(1 for i in self if type(i) is x)
         if isinstance(x, MessageComponent):
             return self.__root__.count(x)
-        raise TypeError(f"类型不匹配，当前类型：{type(x)}")
+        raise TypeError(f'类型不匹配，当前类型：{type(x)}')
 
     def extend(self, x: typing.Iterable[typing.Union[MessageComponent, str]]):
         """将另一个消息链中的元素添加到消息链末尾。
@@ -393,7 +386,7 @@ class MessageChain(PlatformBaseModel):
     def exclude(
         self,
         x: typing.Union[MessageComponent, typing.Type[MessageComponent]],
-        count: int = -1
+        count: int = -1,
     ) -> 'MessageChain':
         """返回移除指定元素或指定类型的元素后剩余的消息链。
 
@@ -404,6 +397,7 @@ class MessageChain(PlatformBaseModel):
         Returns:
             MessageChain: 剩余的消息链。
         """
+
         def _exclude():
             nonlocal count
             x_is_type = isinstance(x, type)
@@ -421,10 +415,7 @@ class MessageChain(PlatformBaseModel):
 
     @classmethod
     def join(cls, *args: typing.Iterable[typing.Union[str, MessageComponent]]):
-        return cls(
-            Plain(c) if isinstance(c, str) else c
-            for c in itertools.chain(*args)
-        )
+        return cls(Plain(c) if isinstance(c, str) else c for c in itertools.chain(*args))
 
     @property
     def source(self) -> typing.Optional['Source']:
@@ -438,14 +429,19 @@ class MessageChain(PlatformBaseModel):
         return source.id if source else -1
 
 
-TMessage = typing.Union[MessageChain, typing.Iterable[typing.Union[MessageComponent, str]],
-                 MessageComponent, str]
+TMessage = typing.Union[
+    MessageChain,
+    typing.Iterable[typing.Union[MessageComponent, str]],
+    MessageComponent,
+    str,
+]
 """可以转化为 MessageChain 的类型。"""
 
 
 class Source(MessageComponent):
     """源。包含消息的基本信息。"""
-    type: str = "Source"
+
+    type: str = 'Source'
     """消息组件类型。"""
     id: typing.Union[int, str]
     """消息的识别号，用于引用回复（Source 类型永远为 MessageChain 的第一个元素）。"""
@@ -455,10 +451,12 @@ class Source(MessageComponent):
 
 class Plain(MessageComponent):
     """纯文本。"""
-    type: str = "Plain"
+
+    type: str = 'Plain'
     """消息组件类型。"""
     text: str
     """文字消息。"""
+
     def __str__(self):
         return self.text
 
@@ -468,7 +466,8 @@ class Plain(MessageComponent):
 
 class Quote(MessageComponent):
     """引用。"""
-    type: str = "Quote"
+
+    type: str = 'Quote'
     """消息组件类型。"""
     id: typing.Optional[int] = None
     """被引用回复的原消息的 message_id。"""
@@ -481,37 +480,42 @@ class Quote(MessageComponent):
     origin: MessageChain
     """被引用回复的原消息的消息链对象。"""
 
-    @pydantic.validator("origin", always=True, pre=True)
+    @pydantic.validator('origin', always=True, pre=True)
     def origin_formater(cls, v):
         return MessageChain.parse_obj(v)
 
 
 class At(MessageComponent):
     """At某人。"""
-    type: str = "At"
+
+    type: str = 'At'
     """消息组件类型。"""
     target: typing.Union[int, str]
     """群员 ID。"""
     display: typing.Optional[str] = None
     """At时显示的文字，发送消息时无效，自动使用群名片。"""
+
     def __eq__(self, other):
         return isinstance(other, At) and self.target == other.target
 
     def __str__(self):
-        return f"@{self.display or self.target}"
+        return f'@{self.display or self.target}'
 
 
 class AtAll(MessageComponent):
     """At全体。"""
-    type: str = "AtAll"
+
+    type: str = 'AtAll'
     """消息组件类型。"""
+
     def __str__(self):
-        return "@全体成员"
+        return '@全体成员'
 
 
 class Image(MessageComponent):
     """图片。"""
-    type: str = "Image"
+
+    type: str = 'Image'
     """消息组件类型。"""
     image_id: typing.Optional[str] = None
     """图片的 image_id，不为空时将忽略 url 属性。"""
@@ -521,10 +525,9 @@ class Image(MessageComponent):
     """图片的路径，发送本地图片。"""
     base64: typing.Optional[str] = None
     """图片的 Base64 编码。"""
+
     def __eq__(self, other):
-        return isinstance(
-            other, Image
-        ) and self.type == other.type and self.uuid == other.uuid
+        return isinstance(other, Image) and self.type == other.type and self.uuid == other.uuid
 
     def __str__(self):
         return '[图片]'
@@ -536,7 +539,7 @@ class Image(MessageComponent):
             try:
                 return str(Path(path).resolve(strict=True))
             except FileNotFoundError:
-                raise ValueError(f"无效路径：{path}")
+                raise ValueError(f'无效路径：{path}')
         else:
             return path
 
@@ -553,7 +556,7 @@ class Image(MessageComponent):
         self,
         filename: typing.Union[str, Path, None] = None,
         directory: typing.Union[str, Path, None] = None,
-        determine_type: bool = True
+        determine_type: bool = True,
     ):
         """下载图片到本地。
 
@@ -567,6 +570,7 @@ class Image(MessageComponent):
             return
 
         import httpx
+
         async with httpx.AsyncClient() as client:
             response = await client.get(self.url)
             response.raise_for_status()
@@ -576,19 +580,20 @@ class Image(MessageComponent):
                 path = Path(filename)
                 if determine_type:
                     import imghdr
-                    path = path.with_suffix(
-                        '.' + str(imghdr.what(None, content))
-                    )
+
+                    path = path.with_suffix('.' + str(imghdr.what(None, content)))
                 path.parent.mkdir(parents=True, exist_ok=True)
             elif directory:
                 import imghdr
+
                 path = Path(directory)
                 path.mkdir(parents=True, exist_ok=True)
                 path = path / f'{self.uuid}.{imghdr.what(None, content)}'
             else:
-                raise ValueError("请指定文件路径或文件夹路径！")
+                raise ValueError('请指定文件路径或文件夹路径！')
 
             import aiofiles
+
             async with aiofiles.open(path, 'wb') as f:
                 await f.write(content)
 
@@ -599,7 +604,7 @@ class Image(MessageComponent):
         cls,
         filename: typing.Union[str, Path, None] = None,
         content: typing.Optional[bytes] = None,
-    ) -> "Image":
+    ) -> 'Image':
         """从本地文件路径加载图片，以 base64 的形式传递。
 
         Args:
@@ -614,16 +619,18 @@ class Image(MessageComponent):
         elif filename:
             path = Path(filename)
             import aiofiles
+
             async with aiofiles.open(path, 'rb') as f:
                 content = await f.read()
         else:
-            raise ValueError("请指定图片路径或图片内容！")
+            raise ValueError('请指定图片路径或图片内容！')
         import base64
+
         img = cls(base64=base64.b64encode(content).decode())
         return img
 
     @classmethod
-    def from_unsafe_path(cls, path: typing.Union[str, Path]) -> "Image":
+    def from_unsafe_path(cls, path: typing.Union[str, Path]) -> 'Image':
         """从不安全的路径加载图片。
 
         Args:
@@ -637,16 +644,20 @@ class Image(MessageComponent):
 
 class Unknown(MessageComponent):
     """未知。"""
-    type: str = "Unknown"
+
+    type: str = 'Unknown'
     """消息组件类型。"""
     text: str
     """文本。"""
+
     def __str__(self):
         return f'Unknown Message: {self.text}'
 
+
 class Voice(MessageComponent):
     """语音。"""
-    type: str = "Voice"
+
+    type: str = 'Voice'
     """消息组件类型。"""
     voice_id: typing.Optional[str] = None
     """语音的 voice_id，不为空时将忽略 url 属性。"""
@@ -658,6 +669,7 @@ class Voice(MessageComponent):
     """语音的 Base64 编码。"""
     length: typing.Optional[int] = None
     """语音的长度，单位为秒。"""
+
     @pydantic.validator('path')
     def validate_path(cls, path: typing.Optional[str]):
         """修复 path 参数的行为，使之相对于 LangBot 的启动路径。"""
@@ -665,7 +677,7 @@ class Voice(MessageComponent):
             try:
                 return str(Path(path).resolve(strict=True))
             except FileNotFoundError:
-                raise ValueError(f"无效路径：{path}")
+                raise ValueError(f'无效路径：{path}')
         else:
             return path
 
@@ -675,7 +687,7 @@ class Voice(MessageComponent):
     async def download(
         self,
         filename: typing.Union[str, Path, None] = None,
-        directory: typing.Union[str, Path, None] = None
+        directory: typing.Union[str, Path, None] = None,
     ):
         """下载语音到本地。
 
@@ -688,6 +700,7 @@ class Voice(MessageComponent):
             return
 
         import httpx
+
         async with httpx.AsyncClient() as client:
             response = await client.get(self.url)
             response.raise_for_status()
@@ -701,9 +714,10 @@ class Voice(MessageComponent):
                 path.mkdir(parents=True, exist_ok=True)
                 path = path / f'{self.voice_id}.silk'
             else:
-                raise ValueError("请指定文件路径或文件夹路径！")
+                raise ValueError('请指定文件路径或文件夹路径！')
 
             import aiofiles
+
             async with aiofiles.open(path, 'wb') as f:
                 await f.write(content)
 
@@ -712,7 +726,7 @@ class Voice(MessageComponent):
         cls,
         filename: typing.Union[str, Path, None] = None,
         content: typing.Optional[bytes] = None,
-    ) -> "Voice":
+    ) -> 'Voice':
         """从本地文件路径加载语音，以 base64 的形式传递。
 
         Args:
@@ -724,17 +738,20 @@ class Voice(MessageComponent):
         if filename:
             path = Path(filename)
             import aiofiles
+
             async with aiofiles.open(path, 'rb') as f:
                 content = await f.read()
         else:
-            raise ValueError("请指定语音路径或语音内容！")
+            raise ValueError('请指定语音路径或语音内容！')
         import base64
+
         img = cls(base64=base64.b64encode(content).decode())
         return img
 
 
 class ForwardMessageNode(pydantic.BaseModel):
     """合并转发中的一条消息。"""
+
     sender_id: typing.Optional[typing.Union[int, str]] = None
     """发送人ID。"""
     sender_name: typing.Optional[str] = None
@@ -745,6 +762,7 @@ class ForwardMessageNode(pydantic.BaseModel):
     """消息的 message_id。"""
     time: typing.Optional[datetime] = None
     """发送时间。"""
+
     @pydantic.validator('message_chain', check_fields=False)
     def _validate_message_chain(cls, value: typing.Union[MessageChain, list]):
         if isinstance(value, list):
@@ -753,7 +771,9 @@ class ForwardMessageNode(pydantic.BaseModel):
 
     @classmethod
     def create(
-        cls, sender: typing.Union[platform_entities.Friend, platform_entities.GroupMember], message: MessageChain
+        cls,
+        sender: typing.Union[platform_entities.Friend, platform_entities.GroupMember],
+        message: MessageChain,
     ) -> 'ForwardMessageNode':
         """从消息链生成转发消息。
 
@@ -764,29 +784,27 @@ class ForwardMessageNode(pydantic.BaseModel):
         Returns:
             ForwardMessageNode: 生成的一条消息。
         """
-        return ForwardMessageNode(
-            sender_id=sender.id,
-            sender_name=sender.get_name(),
-            message_chain=message
-        )
+        return ForwardMessageNode(sender_id=sender.id, sender_name=sender.get_name(), message_chain=message)
 
 
 class ForwardMessageDiaplay(pydantic.BaseModel):
-    title: str = "群聊的聊天记录"
-    brief: str = "[聊天记录]"
-    source: str = "聊天记录"
+    title: str = '群聊的聊天记录'
+    brief: str = '[聊天记录]'
+    source: str = '聊天记录'
     preview: typing.List[str] = []
-    summary: str = "查看x条转发消息"
+    summary: str = '查看x条转发消息'
 
 
 class Forward(MessageComponent):
     """合并转发。"""
-    type: str = "Forward"
+
+    type: str = 'Forward'
     """消息组件类型。"""
     display: ForwardMessageDiaplay
     """显示信息"""
     node_list: typing.List[ForwardMessageNode]
     """转发消息节点列表。"""
+
     def __init__(self, *args, **kwargs):
         if len(args) == 1:
             self.node_list = args[0]
@@ -799,7 +817,8 @@ class Forward(MessageComponent):
 
 class File(MessageComponent):
     """文件。"""
-    type: str = "File"
+
+    type: str = 'File'
     """消息组件类型。"""
     id: str
     """文件识别 ID。"""
@@ -811,10 +830,13 @@ class File(MessageComponent):
     def __str__(self):
         return f'[文件]{self.name}'
 
+
 # ================ 个人微信专用组件 ================
+
 
 class WeChatMiniPrograms(MessageComponent):
     """小程序。个人微信专用组件。"""
+
     type: str = 'WeChatMiniPrograms'
     """小程序id"""
     mini_app_id: str
@@ -832,17 +854,20 @@ class WeChatMiniPrograms(MessageComponent):
 
 class WeChatForwardMiniPrograms(MessageComponent):
     """转发小程序。个人微信专用组件。"""
+
     type: str = 'WeChatForwardMiniPrograms'
     """xml数据"""
     xml_data: str
     """首页图片"""
     image_url: typing.Optional[str] = None
+
     def __str__(self):
         return self.xml_data
 
 
 class WeChatEmoji(MessageComponent):
     """emoji表情。个人微信专用组件。"""
+
     type: str = 'WeChatEmoji'
     """emojimd5"""
     emoji_md5: str
@@ -852,6 +877,7 @@ class WeChatEmoji(MessageComponent):
 
 class WeChatLink(MessageComponent):
     """发送链接。个人微信专用组件。"""
+
     type: str = 'WeChatLink'
     """标题"""
     link_title: str = ''
@@ -865,40 +891,54 @@ class WeChatLink(MessageComponent):
 
 class WeChatForwardLink(MessageComponent):
     """转发链接。个人微信专用组件。"""
+
     type: str = 'WeChatForwardLink'
     """xml数据"""
     xml_data: str
+
     def __str__(self):
         return self.xml_data
+
 
 class WeChatForwardImage(MessageComponent):
     """转发图片。个人微信专用组件。"""
+
     type: str = 'WeChatForwardImage'
     """xml数据"""
     xml_data: str
+
     def __str__(self):
         return self.xml_data
+
 
 class WeChatForwardFile(MessageComponent):
     """转发文件。个人微信专用组件。"""
+
     type: str = 'WeChatForwardFile'
     """xml数据"""
     xml_data: str
+
     def __str__(self):
         return self.xml_data
 
+
 class WeChatAppMsg(MessageComponent):
     """通用appmsg发送。个人微信专用组件。"""
+
     type: str = 'WeChatAppMsg'
     """xml数据"""
     app_msg: str
+
     def __str__(self):
         return self.app_msg
 
+
 class WeChatForwardQuote(MessageComponent):
     """转发引用消息。个人微信专用组件。"""
+
     type: str = 'WeChatForwardQuote'
     """xml数据"""
     app_msg: str
+
     def __str__(self):
         return self.app_msg

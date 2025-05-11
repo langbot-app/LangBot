@@ -10,7 +10,7 @@ preregistered_truncators: list[typing.Type[Truncator]] = []
 
 
 def truncator_class(
-    name: str
+    name: str,
 ) -> typing.Callable[[typing.Type[Truncator]], typing.Type[Truncator]]:
     """截断器类装饰器
 
@@ -20,6 +20,7 @@ def truncator_class(
     Returns:
         typing.Callable[[typing.Type[Truncator]], typing.Type[Truncator]]: 装饰器
     """
+
     def decorator(cls: typing.Type[Truncator]) -> typing.Type[Truncator]:
         assert issubclass(cls, Truncator)
 
@@ -33,13 +34,12 @@ def truncator_class(
 
 
 class Truncator(abc.ABC):
-    """消息截断器基类
-    """
+    """消息截断器基类"""
 
     name: str
 
     ap: app.Application
-    
+
     def __init__(self, ap: app.Application):
         self.ap = ap
 

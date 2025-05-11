@@ -7,7 +7,8 @@ metadata:
     zh_CN: Nakuru
   description:
     en_US: Nakuru Adapter
-    zh_CN: Nakuru 适配器(go-cqhttp)
+    zh_CN: Nakuru 适配器(go-cqhttp)，请查看文档了解使用方式
+  icon: nakuru.png
 spec:
   config:
     - name: host
@@ -21,14 +22,14 @@ spec:
       label:
         en_US: HTTP Port
         zh_CN: HTTP端口
-      type: int
+      type: integer
       required: true
       default: 5700
     - name: ws_port
       label:
         en_US: WebSocket Port
         zh_CN: WebSocket端口
-      type: int
+      type: integer
       required: true
       default: 8080
     - name: token

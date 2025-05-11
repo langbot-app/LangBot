@@ -4,14 +4,13 @@ import typing
 
 import pydantic.v1 as pydantic
 
-from ..core import app, entities as core_entities
-from . import errors, operator
+from ..core import entities as core_entities
+from . import errors
 from ..platform.types import message as platform_message
 
 
 class CommandReturn(pydantic.BaseModel):
-    """命令返回值
-    """
+    """命令返回值"""
 
     text: typing.Optional[str] = None
     """文本
@@ -24,7 +23,7 @@ class CommandReturn(pydantic.BaseModel):
     """图片链接
     """
 
-    error: typing.Optional[errors.CommandError]= None
+    error: typing.Optional[errors.CommandError] = None
     """错误
     """
 
@@ -33,8 +32,7 @@ class CommandReturn(pydantic.BaseModel):
 
 
 class ExecuteContext(pydantic.BaseModel):
-    """单次命令执行上下文
-    """
+    """单次命令执行上下文"""
 
     query: core_entities.Query
     """本次消息的请求对象"""

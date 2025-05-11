@@ -3,39 +3,32 @@ from __future__ import annotations
 import discord
 
 import typing
-import asyncio
-import traceback
-import time
 import re
 import base64
 import uuid
-import json
 import os
 import datetime
 
 import aiohttp
 
 from .. import adapter
-from ...pipeline.longtext.strategies import forward
 from ...core import app
 from ..types import message as platform_message
 from ..types import events as platform_events
 from ..types import entities as platform_entities
-from ...utils import image
 
 
 class DiscordMessageConverter(adapter.MessageConverter):
-
     @staticmethod
     async def yiri2target(
-        message_chain: platform_message.MessageChain
+        message_chain: platform_message.MessageChain,
     ) -> typing.Tuple[str, typing.List[discord.File]]:
         for ele in message_chain:
             if isinstance(ele, platform_message.At):
                 message_chain.remove(ele)
                 break
 
-        text_string = ""
+        text_string = ''
         image_files = []
 
         for ele in message_chain:
@@ -49,46 +42,45 @@ class DiscordMessageConverter(adapter.MessageConverter):
                         async with session.get(ele.url) as response:
                             image_bytes = await response.read()
                 elif ele.path:
-                    with open(ele.path, "rb") as f:
+                    with open(ele.path, 'rb') as f:
                         image_bytes = f.read()
 
-                image_files.append(discord.File(fp=image_bytes, filename=f"{uuid.uuid4()}.png"))
+                image_files.append(discord.File(fp=image_bytes, filename=f'{uuid.uuid4()}.png'))
             elif isinstance(ele, platform_message.Plain):
                 text_string += ele.text
             elif isinstance(ele, platform_message.Forward):
                 for node in ele.node_list:
-                    text_string, image_files = await DiscordMessageConverter.yiri2target(node.message_chain)
+                    (
+                        text_string,
+                        image_files,
+                    ) = await DiscordMessageConverter.yiri2target(node.message_chain)
                     text_string += text_string
                     image_files.extend(image_files)
 
         return text_string, image_files
 
     @staticmethod
-    async def target2yiri(
-        message: discord.Message
-    ) -> platform_message.MessageChain:
+    async def target2yiri(message: discord.Message) -> platform_message.MessageChain:
         lb_msg_list = []
 
-        msg_create_time = datetime.datetime.fromtimestamp(
-            int(message.created_at.timestamp())
-        )
+        msg_create_time = datetime.datetime.fromtimestamp(int(message.created_at.timestamp()))
 
-        lb_msg_list.append(
-            platform_message.Source(id=message.id, time=msg_create_time)
-        )
+        lb_msg_list.append(platform_message.Source(id=message.id, time=msg_create_time))
 
         element_list = []
 
-        def text_element_recur(text_ele: str) -> list[platform_message.MessageComponent]:
-            if text_ele == "":
+        def text_element_recur(
+            text_ele: str,
+        ) -> list[platform_message.MessageComponent]:
+            if text_ele == '':
                 return []
 
             # <@1234567890>
             # @everyone
             # @here
-            at_pattern = re.compile(r"(@everyone|@here|<@[\d]+>)")
+            at_pattern = re.compile(r'(@everyone|@here|<@[\d]+>)')
             at_matches = at_pattern.findall(text_ele)
-            
+
             if len(at_matches) > 0:
                 mid_at = at_matches[0]
 
@@ -96,18 +88,15 @@ class DiscordMessageConverter(adapter.MessageConverter):
 
                 mid_at_component = []
 
-                if mid_at == "@everyone" or mid_at == "@here":
+                if mid_at == '@everyone' or mid_at == '@here':
                     mid_at_component.append(platform_message.AtAll())
                 else:
                     mid_at_component.append(platform_message.At(target=mid_at[2:-1]))
 
-                return text_element_recur(text_split[0]) + \
-                    mid_at_component + \
-                    text_element_recur(text_split[1])
+                return text_element_recur(text_split[0]) + mid_at_component + text_element_recur(text_split[1])
             else:
                 return [platform_message.Plain(text=text_ele)]
 
-        
         element_list.extend(text_element_recur(message.content))
 
         # attachments
@@ -115,28 +104,23 @@ class DiscordMessageConverter(adapter.MessageConverter):
             async with aiohttp.ClientSession(trust_env=True) as session:
                 async with session.get(attachment.url) as response:
                     image_data = await response.read()
-                    image_base64 = base64.b64encode(image_data).decode("utf-8")
-                    image_format = response.headers["Content-Type"]
-                    element_list.append(platform_message.Image(base64=f"data:{image_format};base64,{image_base64}"))
+                    image_base64 = base64.b64encode(image_data).decode('utf-8')
+                    image_format = response.headers['Content-Type']
+                    element_list.append(platform_message.Image(base64=f'data:{image_format};base64,{image_base64}'))
 
         return platform_message.MessageChain(element_list)
 
 
 class DiscordEventConverter(adapter.EventConverter):
-
     @staticmethod
-    async def yiri2target(
-        event: platform_events.Event
-    ) -> discord.Message:
+    async def yiri2target(event: platform_events.Event) -> discord.Message:
         pass
 
     @staticmethod
-    async def target2yiri(
-        event: discord.Message
-    ) -> platform_events.Event:
+    async def target2yiri(event: discord.Message) -> platform_events.Event:
         message_chain = await DiscordMessageConverter.target2yiri(event)
 
-        if type(event.channel) == discord.DMChannel:
+        if isinstance(event.channel, discord.DMChannel):
             return platform_events.FriendMessage(
                 sender=platform_entities.Friend(
                     id=event.author.id,
@@ -147,7 +131,7 @@ class DiscordEventConverter(adapter.EventConverter):
                 time=event.created_at.timestamp(),
                 source_platform_object=event,
             )
-        elif type(event.channel) == discord.TextChannel:
+        elif isinstance(event.channel, discord.TextChannel):
             return platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
                     id=event.author.id,
@@ -158,7 +142,7 @@ class DiscordEventConverter(adapter.EventConverter):
                         name=event.channel.name,
                         permission=platform_entities.Permission.Member,
                     ),
-                    special_title="",
+                    special_title='',
                     join_timestamp=0,
                     last_speak_timestamp=0,
                     mute_time_remaining=0,
@@ -170,7 +154,6 @@ class DiscordEventConverter(adapter.EventConverter):
 
 
 class DiscordAdapter(adapter.MessagePlatformAdapter):
-
     bot: discord.Client
 
     bot_account_id: str  # 用于在流水线中识别at是否是本bot，直接以bot_name作为标识
@@ -191,12 +174,11 @@ class DiscordAdapter(adapter.MessagePlatformAdapter):
         self.config = config
         self.ap = ap
 
-        self.bot_account_id = self.config["client_id"]
+        self.bot_account_id = self.config['client_id']
 
         adapter_self = self
 
         class MyClient(discord.Client):
-
             async def on_message(self: discord.Client, message: discord.Message):
                 if message.author.id == self.user.id or message.author.bot:
                     return
@@ -209,14 +191,12 @@ class DiscordAdapter(adapter.MessagePlatformAdapter):
 
         args = {}
 
-        if os.getenv("http_proxy"):
-            args["proxy"] = os.getenv("http_proxy")
+        if os.getenv('http_proxy'):
+            args['proxy'] = os.getenv('http_proxy')
 
         self.bot = MyClient(intents=intents, **args)
-        
-    async def send_message(
-        self, target_type: str, target_id: str, message: platform_message.MessageChain
-    ):
+
+    async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         pass
 
     async def reply_message(
@@ -229,17 +209,17 @@ class DiscordAdapter(adapter.MessagePlatformAdapter):
         assert isinstance(message_source.source_platform_object, discord.Message)
 
         args = {
-            "content": msg_to_send,
+            'content': msg_to_send,
         }
 
         if len(image_files) > 0:
-            args["files"] = image_files
+            args['files'] = image_files
 
         if quote_origin:
-            args["reference"] = message_source.source_platform_object
+            args['reference'] = message_source.source_platform_object
 
         if message.has(platform_message.At):
-            args["mention_author"] = True
+            args['mention_author'] = True
 
         await message_source.source_platform_object.channel.send(**args)
 
@@ -262,7 +242,7 @@ class DiscordAdapter(adapter.MessagePlatformAdapter):
 
     async def run_async(self):
         async with self.bot:
-            await self.bot.start(self.config["token"], reconnect=True)
+            await self.bot.start(self.config['token'], reconnect=True)
 
     async def kill(self) -> bool:
         await self.bot.close()

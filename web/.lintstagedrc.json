@@ -1,0 +1,4 @@
+{
+  "*.{js,jsx,ts,tsx}": ["next lint --fix --file", "next lint --file"],
+  "**/*": ["bash -c 'cd \"$(pwd)\" && next build"]
+}

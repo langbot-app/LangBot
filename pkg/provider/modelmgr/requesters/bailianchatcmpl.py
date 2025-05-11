@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import typing
 import openai
 
-from . import chatcmpl, modelscopechatcmpl
-from .. import requester
-from ....core import app
+from . import modelscopechatcmpl
 
 
 class BailianChatCompletions(modelscopechatcmpl.ModelScopeChatCompletions):
@@ -12,10 +11,7 @@ class BailianChatCompletions(modelscopechatcmpl.ModelScopeChatCompletions):
 
     client: openai.AsyncClient
 
-    requester_cfg: dict
-
-    def __init__(self, ap: app.Application):
-        self.ap = ap
-
-        self.requester_cfg = self.ap.provider_cfg.data['requester']['bailian-chat-completions']
-        
+    default_config: dict[str, typing.Any] = {
+        'base_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        'timeout': 120,
+    }

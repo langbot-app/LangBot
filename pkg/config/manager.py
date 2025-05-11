@@ -6,7 +6,7 @@ from .impls import pymodule, json as json_file, yaml as yaml_file
 
 class ConfigManager:
     """配置文件管理器"""
-    
+
     name: str = None
     """配置管理器名"""
 
@@ -31,7 +31,7 @@ class ConfigManager:
         self.file = cfg_file
         self.data = {}
 
-    async def load_config(self, completion: bool=True):
+    async def load_config(self, completion: bool = True):
         self.data = await self.file.load(completion=completion)
 
     async def dump_config(self):
@@ -41,9 +41,9 @@ class ConfigManager:
         self.file.save_sync(self.data)
 
 
-async def load_python_module_config(config_name: str, template_name: str, completion: bool=True) -> ConfigManager:
+async def load_python_module_config(config_name: str, template_name: str, completion: bool = True) -> ConfigManager:
     """加载Python模块配置文件
-    
+
     Args:
         config_name (str): 配置文件名
         template_name (str): 模板文件名
@@ -52,10 +52,7 @@ async def load_python_module_config(config_name: str, template_name: str, comple
     Returns:
         ConfigManager: 配置文件管理器
     """
-    cfg_inst = pymodule.PythonModuleConfigFile(
-        config_name,
-        template_name
-    )
+    cfg_inst = pymodule.PythonModuleConfigFile(config_name, template_name)
 
     cfg_mgr = ConfigManager(cfg_inst)
     await cfg_mgr.load_config(completion=completion)
@@ -63,20 +60,21 @@ async def load_python_module_config(config_name: str, template_name: str, comple
     return cfg_mgr
 
 
-async def load_json_config(config_name: str, template_name: str=None, template_data: dict=None, completion: bool=True) -> ConfigManager:
+async def load_json_config(
+    config_name: str,
+    template_name: str = None,
+    template_data: dict = None,
+    completion: bool = True,
+) -> ConfigManager:
     """加载JSON配置文件
-    
+
     Args:
         config_name (str): 配置文件名
         template_name (str): 模板文件名
         template_data (dict): 模板数据
         completion (bool): 是否自动补全内存中的配置文件
     """
-    cfg_inst = json_file.JSONConfigFile(
-        config_name,
-        template_name,
-        template_data
-    )
+    cfg_inst = json_file.JSONConfigFile(config_name, template_name, template_data)
 
     cfg_mgr = ConfigManager(cfg_inst)
     await cfg_mgr.load_config(completion=completion)
@@ -84,9 +82,14 @@ async def load_json_config(config_name: str, template_name: str=None, template_d
     return cfg_mgr
 
 
-async def load_yaml_config(config_name: str, template_name: str=None, template_data: dict=None, completion: bool=True) -> ConfigManager:
+async def load_yaml_config(
+    config_name: str,
+    template_name: str = None,
+    template_data: dict = None,
+    completion: bool = True,
+) -> ConfigManager:
     """加载YAML配置文件
-    
+
     Args:
         config_name (str): 配置文件名
         template_name (str): 模板文件名
@@ -96,11 +99,7 @@ async def load_yaml_config(config_name: str, template_name: str=None, template_d
     Returns:
         ConfigManager: 配置文件管理器
     """
-    cfg_inst = yaml_file.YAMLConfigFile(
-        config_name,
-        template_name,
-        template_data
-    )
+    cfg_inst = yaml_file.YAMLConfigFile(config_name, template_name, template_data)
 
     cfg_mgr = ConfigManager(cfg_inst)
     await cfg_mgr.load_config(completion=completion)

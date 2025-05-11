@@ -3,7 +3,7 @@ from __future__ import annotations
 from .. import migration
 
 
-@migration.migration_class("wxoa-loading-message", 36)
+@migration.migration_class('wxoa-loading-message', 36)
 class WxoaLoadingMessageMigration(migration.Migration):
     """迁移"""
 

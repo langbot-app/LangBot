@@ -12,9 +12,8 @@ preregistered_stages: dict[str, typing.Type[BootingStage]] = {}
 当前阶段暂不支持扩展
 """
 
-def stage_class(
-    name: str
-):
+
+def stage_class(name: str):
     def decorator(cls: typing.Type[BootingStage]) -> typing.Type[BootingStage]:
         preregistered_stages[name] = cls
         return cls
@@ -23,12 +22,11 @@ def stage_class(
 
 
 class BootingStage(abc.ABC):
-    """启动阶段
-    """
+    """启动阶段"""
+
     name: str = None
 
     @abc.abstractmethod
     async def run(self, ap: app.Application):
-        """启动
-        """
+        """启动"""
         pass

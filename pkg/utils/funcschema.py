@@ -1,4 +1,3 @@
-import sys
 import re
 import inspect
 
@@ -33,18 +32,18 @@ def get_func_schema(function: callable) -> dict:
     func_doc = function.__doc__
     # Google Style Docstring
     if func_doc is None:
-        raise Exception("Function {} has no docstring.".format(function.__name__))
-    func_doc = func_doc.strip().replace('    ','').replace('\t', '')
+        raise Exception('Function {} has no docstring.'.format(function.__name__))
+    func_doc = func_doc.strip().replace('    ', '').replace('\t', '')
     # extract doc of args from docstring
     doc_spt = func_doc.split('\n\n')
     desc = doc_spt[0]
-    args = doc_spt[1] if len(doc_spt) > 1 else ""
-    returns = doc_spt[2] if len(doc_spt) > 2 else ""
+    args = doc_spt[1] if len(doc_spt) > 1 else ''
+    # returns = doc_spt[2] if len(doc_spt) > 2 else ""
 
     # extract args
     # delete the first line of args
     arg_lines = args.split('\n')[1:]
-    arg_doc_list = re.findall(r'(\w+)(\((\w+)\))?:\s*(.*)', args)
+    # arg_doc_list = re.findall(r'(\w+)(\((\w+)\))?:\s*(.*)', args)
     args_doc = {}
     for arg_line in arg_lines:
         doc_tuple = re.findall(r'(\w+)(\(([\w\[\]]+)\))?:\s*(.*)', arg_line)
@@ -53,18 +52,16 @@ def get_func_schema(function: callable) -> dict:
         args_doc[doc_tuple[0][0]] = doc_tuple[0][3]
 
     # extract returns
-    return_doc_list = re.findall(r'(\w+):\s*(.*)', returns)
+    # return_doc_list = re.findall(r'(\w+):\s*(.*)', returns)
 
     params = enumerate(inspect.signature(function).parameters.values())
     parameters = {
-        "type": "object",
-        "required": [],
-        "properties": {},
+        'type': 'object',
+        'required': [],
+        'properties': {},
     }
 
-
     for i, param in params:
-
         # 排除 self, query
         if param.name in ['self', 'query']:
             continue
@@ -72,24 +69,24 @@ def get_func_schema(function: callable) -> dict:
         param_type = param.annotation.__name__
 
         type_name_mapping = {
-            "str": "string",
-            "int": "integer",
-            "float": "number",
-            "bool": "boolean",
-            "list": "array",
-            "dict": "object",
+            'str': 'string',
+            'int': 'integer',
+            'float': 'number',
+            'bool': 'boolean',
+            'list': 'array',
+            'dict': 'object',
         }
 
         if param_type in type_name_mapping:
             param_type = type_name_mapping[param_type]
 
         parameters['properties'][param.name] = {
-            "type": param_type,
-            "description": args_doc[param.name],
+            'type': param_type,
+            'description': args_doc[param.name],
         }
 
         # add schema for array
-        if param_type == "array":
+        if param_type == 'array':
             # extract type of array, the int of list[int]
             # use re
             array_type_tuple = re.findall(r'list\[(\w+)\]', str(param.annotation))
@@ -102,15 +99,15 @@ def get_func_schema(function: callable) -> dict:
             if array_type in type_name_mapping:
                 array_type = type_name_mapping[array_type]
 
-            parameters['properties'][param.name]["items"] = {
-                "type": array_type,
+            parameters['properties'][param.name]['items'] = {
+                'type': array_type,
             }
 
         if param.default is inspect.Parameter.empty:
-            parameters["required"].append(param.name)
+            parameters['required'].append(param.name)
 
     return {
-        "function": function,
-        "description": desc,
-        "parameters": parameters,
+        'function': function,
+        'description': desc,
+        'parameters': parameters,
     }

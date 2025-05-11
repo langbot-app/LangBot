@@ -1,11 +1,9 @@
 from __future__ import annotations
-from abc import ABCMeta
 
-import typing
 import abc
 
 from ..core import app
-from . import context, events
+from . import context
 
 
 class PluginLoader(metaclass=abc.ABCMeta):
@@ -25,4 +23,3 @@ class PluginLoader(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     async def load_plugins(self):
         pass
-
