@@ -9,7 +9,7 @@ class WecomCSEvent(dict):
     """
 
     @staticmethod
-    def from_payload(payload: Dict[str, Any]) -> Optional["WecomCSEvent"]:
+    def from_payload(payload: Dict[str, Any]) -> Optional['WecomCSEvent']:
         """
         从企业微信(客服会话)事件数据构造 `WecomEvent` 对象。
 
@@ -21,7 +21,7 @@ class WecomCSEvent(dict):
         """
         try:
             event = WecomCSEvent(payload)
-            _ = event.type,
+            _ = (event.type,)
             return event
         except KeyError:
             return None
@@ -34,8 +34,8 @@ class WecomCSEvent(dict):
         Returns:
             str: 事件类型。
         """
-        return self.get("msgtype", "")
-    
+        return self.get('msgtype', '')
+
     @property
     def user_id(self) -> Optional[str]:
         """
@@ -44,7 +44,7 @@ class WecomCSEvent(dict):
         Returns:
             Optional[str]: 用户 ID。
         """
-        return self.get("external_userid")
+        return self.get('external_userid')
 
     @property
     def receiver_id(self) -> Optional[str]:
@@ -54,8 +54,8 @@ class WecomCSEvent(dict):
         Returns:
             Optional[str]: 接收者 ID。
         """
-        return self.get("open_kfid","")
-    
+        return self.get('open_kfid', '')
+
     @property
     def picurl(self) -> Optional[str]:
         """
@@ -65,7 +65,7 @@ class WecomCSEvent(dict):
             Optional[str]: 图片 URL。
         """
 
-        return self.get("picurl","")
+        return self.get('picurl', '')
 
     @property
     def message_id(self) -> Optional[str]:
@@ -75,7 +75,7 @@ class WecomCSEvent(dict):
         Returns:
             Optional[str]: 消息 ID。
         """
-        return self.get("msgid")
+        return self.get('msgid')
 
     @property
     def message(self) -> Optional[str]:
@@ -85,11 +85,10 @@ class WecomCSEvent(dict):
         Returns:
             Optional[str]: 消息内容。
         """
-        if self.get("msgtype") == 'text':
-            return self.get("text").get("content","")
+        if self.get('msgtype') == 'text':
+            return self.get('text').get('content', '')
         else:
             return None
-
 
     @property
     def timestamp(self) -> Optional[int]:
@@ -99,8 +98,7 @@ class WecomCSEvent(dict):
         Returns:
             Optional[int]: 时间戳。
         """
-        return self.get("send_time")
-
+        return self.get('send_time')
 
     def __getattr__(self, key: str) -> Optional[Any]:
         """
@@ -131,4 +129,4 @@ class WecomCSEvent(dict):
         Returns:
             str: 字符串表示。
         """
-        return f"<WecomEvent {super().__repr__()}>"
+        return f'<WecomEvent {super().__repr__()}>'

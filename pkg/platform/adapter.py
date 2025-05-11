@@ -17,7 +17,7 @@ class MessagePlatformAdapter(metaclass=abc.ABCMeta):
 
     bot_account_id: int
     """机器人账号ID，需要在初始化时设置"""
-    
+
     config: dict
 
     ap: app.Application
@@ -32,14 +32,9 @@ class MessagePlatformAdapter(metaclass=abc.ABCMeta):
         self.config = config
         self.ap = ap
 
-    async def send_message(  
-        self,
-        target_type: str,
-        target_id: str,
-        message: platform_message.MessageChain
-    ):
+    async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         """主动发送消息
-        
+
         Args:
             target_type (str): 目标类型，`person`或`group`
             target_id (str): 目标ID
@@ -51,7 +46,7 @@ class MessagePlatformAdapter(metaclass=abc.ABCMeta):
         self,
         message_source: platform_events.MessageEvent,
         message: platform_message.MessageChain,
-        quote_origin: bool = False
+        quote_origin: bool = False,
     ):
         """回复消息
 
@@ -69,23 +64,23 @@ class MessagePlatformAdapter(metaclass=abc.ABCMeta):
     def register_listener(
         self,
         event_type: typing.Type[platform_message.Event],
-        callback: typing.Callable[[platform_message.Event, MessagePlatformAdapter], None]
+        callback: typing.Callable[[platform_message.Event, MessagePlatformAdapter], None],
     ):
         """注册事件监听器
-        
+
         Args:
             event_type (typing.Type[platform.types.Event]): 事件类型
             callback (typing.Callable[[platform.types.Event], None]): 回调函数，接收一个参数，为事件
         """
         raise NotImplementedError
-    
+
     def unregister_listener(
         self,
         event_type: typing.Type[platform_message.Event],
-        callback: typing.Callable[[platform_message.Event, MessagePlatformAdapter], None]
+        callback: typing.Callable[[platform_message.Event, MessagePlatformAdapter], None],
     ):
         """注销事件监听器
-        
+
         Args:
             event_type (typing.Type[platform.types.Event]): 事件类型
             callback (typing.Callable[[platform.types.Event], None]): 回调函数，接收一个参数，为事件
@@ -98,7 +93,7 @@ class MessagePlatformAdapter(metaclass=abc.ABCMeta):
 
     async def kill(self) -> bool:
         """关闭适配器
-        
+
         Returns:
             bool: 是否成功关闭，热重载时若此函数返回False则不会重载MessageSource底层
         """
@@ -107,6 +102,7 @@ class MessagePlatformAdapter(metaclass=abc.ABCMeta):
 
 class MessageConverter:
     """消息链转换器基类"""
+
     @staticmethod
     def yiri2target(message_chain: platform_message.MessageChain):
         """将源平台消息链转换为目标平台消息链

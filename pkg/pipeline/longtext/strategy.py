@@ -12,7 +12,7 @@ preregistered_strategies: list[typing.Type[LongTextStrategy]] = []
 
 
 def strategy_class(
-    name: str
+    name: str,
 ) -> typing.Callable[[typing.Type[LongTextStrategy]], typing.Type[LongTextStrategy]]:
     """长文本处理策略类装饰器
 
@@ -36,8 +36,7 @@ def strategy_class(
 
 
 class LongTextStrategy(metaclass=abc.ABCMeta):
-    """长文本处理策略抽象类
-    """
+    """长文本处理策略抽象类"""
 
     name: str
 
@@ -45,10 +44,10 @@ class LongTextStrategy(metaclass=abc.ABCMeta):
 
     def __init__(self, ap: app.Application):
         self.ap = ap
-    
+
     async def initialize(self):
         pass
-    
+
     @abc.abstractmethod
     async def process(self, message: str, query: core_entities.Query) -> list[platform_message.MessageComponent]:
         """处理长文本

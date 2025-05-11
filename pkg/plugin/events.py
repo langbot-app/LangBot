@@ -27,7 +27,7 @@ class PersonMessageReceived(BaseEventModel):
 
     launcher_id: typing.Union[int, str]
     """发起对象ID(群号/QQ号)"""
-    
+
     sender_id: typing.Union[int, str]
     """发送者ID(QQ号)"""
 
@@ -40,7 +40,7 @@ class GroupMessageReceived(BaseEventModel):
     launcher_type: str
 
     launcher_id: typing.Union[int, str]
-    
+
     sender_id: typing.Union[int, str]
 
     message_chain: platform_message.MessageChain
@@ -52,7 +52,7 @@ class PersonNormalMessageReceived(BaseEventModel):
     launcher_type: str
 
     launcher_id: typing.Union[int, str]
-    
+
     sender_id: typing.Union[int, str]
 
     text_message: str
@@ -70,7 +70,7 @@ class PersonCommandSent(BaseEventModel):
     launcher_type: str
 
     launcher_id: typing.Union[int, str]
-    
+
     sender_id: typing.Union[int, str]
 
     command: str
@@ -94,7 +94,7 @@ class GroupNormalMessageReceived(BaseEventModel):
     launcher_type: str
 
     launcher_id: typing.Union[int, str]
-    
+
     sender_id: typing.Union[int, str]
 
     text_message: str
@@ -112,7 +112,7 @@ class GroupCommandSent(BaseEventModel):
     launcher_type: str
 
     launcher_id: typing.Union[int, str]
-    
+
     sender_id: typing.Union[int, str]
 
     command: str
@@ -136,7 +136,7 @@ class NormalMessageResponded(BaseEventModel):
     launcher_type: str
 
     launcher_id: typing.Union[int, str]
-    
+
     sender_id: typing.Union[int, str]
 
     session: core_entities.Session

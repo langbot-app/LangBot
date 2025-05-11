@@ -1,0 +1,12 @@
+.formItemSubtitle {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+.changeFormButtonGroupContainer {
+  width: 320px;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+}

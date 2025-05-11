@@ -5,8 +5,9 @@ LOG_PAGE_SIZE = 20
 MAX_CACHED_PAGES = 10
 
 
-class LogPage():
+class LogPage:
     """日志页"""
+
     number: int
     """页码"""
 
@@ -51,12 +52,12 @@ class LogCache:
         start_offset: int,
     ) -> tuple[str, int, int]:
         """获取指定页码和偏移量的日志"""
-        final_logs_str = ""
+        final_logs_str = ''
 
         for page in self.log_pages:
             if page.number == start_page_number:
-                final_logs_str += "\n".join(page.logs[start_offset:])
+                final_logs_str += '\n'.join(page.logs[start_offset:])
             elif page.number > start_page_number:
-                final_logs_str += "\n".join(page.logs)
+                final_logs_str += '\n'.join(page.logs)
 
         return final_logs_str, page.number, len(page.logs)

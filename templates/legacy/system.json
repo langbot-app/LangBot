@@ -1,0 +1,27 @@
+{
+    "admin-sessions": [],
+    "network-proxies": {
+        "http": null,
+        "https": null
+    },
+    "report-usage": true,
+    "logging-level": "info",
+    "session-concurrency": {
+        "default": 1
+    },
+    "pipeline-concurrency": 20,
+    "qcg-center-url": "https://api.qchatgpt.rockchin.top/api/v2",
+    "help-message": "LangBot - 😎高稳定性、🧩支持插件、🌏实时联网的 ChatGPT QQ 机器人🤖\n链接：https://q.rkcn.top",
+    "http-api": {
+        "enable": true,
+        "host": "0.0.0.0",
+        "port": 5300,
+        "jwt-expire": 604800
+    },
+    "persistence": {
+        "sqlite": {
+            "path": "data/langbot.db"
+        },
+        "use": "sqlite"
+    }
+}

@@ -22,7 +22,7 @@ class ConfigFile(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    async def load(self, completion: bool=True) -> dict:
+    async def load(self, completion: bool = True) -> dict:
         pass
 
     @abc.abstractmethod

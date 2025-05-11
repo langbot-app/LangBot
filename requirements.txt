@@ -34,8 +34,12 @@ dashscope
 python-telegram-bot
 certifi
 mcp
+sqlmodel
 slack_sdk
 telegramify-markdown
+
 # indirect
 taskgroup==0.0.0a4
+ruff
+pre-commit
 python-socks

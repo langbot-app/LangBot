@@ -7,7 +7,8 @@ metadata:
     zh_CN: QQ 官方 API
   description:
     en_US: QQ Official API (Webhook)
-    zh_CN: QQ 官方 API (Webhook)
+    zh_CN: QQ 官方 API (Webhook)，请查看文档了解使用方式
+  icon: qqofficial.svg
 spec:
   config:
     - name: appid
@@ -28,7 +29,7 @@ spec:
       label:
         en_US: Port
         zh_CN: 监听端口
-      type: int
+      type: integer
       required: true
       default: 2284
     - name: token

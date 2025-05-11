@@ -1,0 +1,42 @@
+
+line-length = 120
+
+[lint]
+
+ignore = [
+    "E712", # Comparison to true should be 'if cond is true:' or 'if cond:' (E712)
+    "F402", # Import `loader` from line 8 shadowed by loop variable
+    "F403", # * used, unable to detect undefined names
+    "F405", # may be undefined, or defined from star imports
+    "E741", # Ambiguous variable name: `l`
+    "E722", # bare-except
+    "E721", # type-comparison
+    "F821", # undefined-all
+    "FURB113", # repeated-append
+    "FURB152", # math-constant
+    "UP007", # non-pep604-annotation
+    "UP032", # f-string
+    "UP045", # non-pep604-annotation-optional
+    "B005", # strip-with-multi-characters
+    "B006", # mutable-argument-default
+    "B007", # unused-loop-control-variable
+    "B026", # star-arg-unpacking-after-keyword-arg
+    "B903", # class-as-data-structure
+    "B904", # raise-without-from-inside-except
+    "B905", # zip-without-explicit-strict
+    "N806", # non-lowercase-variable-in-function
+    "N815", # mixed-case-variable-in-class-scope
+    "PT011", # pytest-raises-too-broad
+    "SIM102", # collapsible-if
+    "SIM103", # needless-bool
+    "SIM105", # suppressible-exception
+    "SIM107", # return-in-try-except-finally
+    "SIM108", # if-else-block-instead-of-if-exp
+    "SIM113", # enumerate-for-loop
+    "SIM117", # multiple-with-statements
+    "SIM210", # if-expr-with-true-false
+]
+
+[format]
+# 5. Use single quotes in `ruff format`.
+quote-style = "single"

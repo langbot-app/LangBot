@@ -22,12 +22,20 @@ from ...platform.types import message as platform_message
 class OfficialGroupMessage(platform_events.GroupMessage):
     pass
 
+
 class OfficialFriendMessage(platform_events.FriendMessage):
     pass
 
+
 event_handler_mapping = {
-    platform_events.GroupMessage: ["on_at_message_create", "on_group_at_message_create"],
-    platform_events.FriendMessage: ["on_direct_message_create", "on_c2c_message_create"],
+    platform_events.GroupMessage: [
+        'on_at_message_create',
+        'on_group_at_message_create',
+    ],
+    platform_events.FriendMessage: [
+        'on_direct_message_create',
+        'on_c2c_message_create',
+    ],
 }
 
 
@@ -53,8 +61,9 @@ def char_to_value(char):
         return ord(char) - ord('0')
     elif 'A' <= char <= 'Z':
         return ord(char) - ord('A') + 10
-    
+
     return ord(char) - ord('a') + 36
+
 
 def digest(s: str) -> int:
     """计算字符串的hash值。"""
@@ -69,19 +78,24 @@ def digest(s: str) -> int:
 
     return number
 
-K = typing.TypeVar("K")
-V = typing.TypeVar("V")
+
+K = typing.TypeVar('K')
+V = typing.TypeVar('V')
 
 
 class OpenIDMapping(typing.Generic[K, V]):
-
     map: dict[K, V]
 
     dump_func: typing.Callable
 
     digest_func: typing.Callable[[K], V]
 
-    def __init__(self, map: dict[K, V], dump_func: typing.Callable, digest_func: typing.Callable[[K], V] = digest):
+    def __init__(
+        self,
+        map: dict[K, V],
+        dump_func: typing.Callable,
+        digest_func: typing.Callable[[K], V] = digest,
+    ):
         self.map = map
 
         self.dump_func = dump_func
@@ -104,12 +118,11 @@ class OpenIDMapping(typing.Generic[K, V]):
 
     def getkey(self, value: V) -> K:
         return list(self.map.keys())[list(self.map.values()).index(value)]
-    
+
     def save_openid(self, key: K) -> V:
-        
         if key in self.map:
             return self.map[key]
-        
+
         value = self.digest_func(key)
 
         self.map[key] = value
@@ -134,9 +147,7 @@ class OfficialMessageConverter(adapter_model.MessageConverter):
         elif type(message_chain) is str:
             msg_list = [platform_message.Plain(text=message_chain)]
         else:
-            raise Exception(
-                "Unknown message type: " + str(message_chain) + str(type(message_chain))
-            )
+            raise Exception('Unknown message type: ' + str(message_chain) + str(type(message_chain)))
 
         offcial_messages: list[dict] = []
         """
@@ -154,24 +165,18 @@ class OfficialMessageConverter(adapter_model.MessageConverter):
         # 遍历并转换
         for component in msg_list:
             if type(component) is platform_message.Plain:
-                offcial_messages.append({"type": "text", "content": component.text})
+                offcial_messages.append({'type': 'text', 'content': component.text})
             elif type(component) is platform_message.Image:
                 if component.url is not None:
-                    offcial_messages.append({"type": "image", "content": component.url})
+                    offcial_messages.append({'type': 'image', 'content': component.url})
                 elif component.path is not None:
-                    offcial_messages.append(
-                        {"type": "file_image", "content": component.path}
-                    )
+                    offcial_messages.append({'type': 'file_image', 'content': component.path})
             elif type(component) is platform_message.At:
-                offcial_messages.append({"type": "at", "content": ""})
+                offcial_messages.append({'type': 'at', 'content': ''})
             elif type(component) is platform_message.AtAll:
-                print(
-                    "上层组件要求发送 AtAll 消息，但 QQ 官方 API 不支持此消息类型，忽略此消息。"
-                )
+                print('上层组件要求发送 AtAll 消息，但 QQ 官方 API 不支持此消息类型，忽略此消息。')
             elif type(component) is platform_message.Voice:
-                print(
-                    "上层组件要求发送 Voice 消息，但 QQ 官方 API 不支持此消息类型，忽略此消息。"
-                )
+                print('上层组件要求发送 Voice 消息，但 QQ 官方 API 不支持此消息类型，忽略此消息。')
             elif type(component) is forward.Forward:
                 # 转发消息
                 yiri_forward_node_list = component.node_list
@@ -182,10 +187,8 @@ class OfficialMessageConverter(adapter_model.MessageConverter):
                         message_chain = yiri_forward_node.message_chain
 
                         # 平铺
-                        offcial_messages.extend(
-                            OfficialMessageConverter.yiri2target(message_chain)
-                        )
-                    except Exception as e:
+                        offcial_messages.extend(OfficialMessageConverter.yiri2target(message_chain))
+                    except Exception:
                         import traceback
 
                         traceback.print_exc()
@@ -194,23 +197,24 @@ class OfficialMessageConverter(adapter_model.MessageConverter):
 
     @staticmethod
     def extract_message_chain_from_obj(
-        message: typing.Union[botpy_message.Message, botpy_message.DirectMessage, botpy_message.GroupMessage, botpy_message.C2CMessage],
+        message: typing.Union[
+            botpy_message.Message,
+            botpy_message.DirectMessage,
+            botpy_message.GroupMessage,
+            botpy_message.C2CMessage,
+        ],
         message_id: str = None,
         bot_account_id: int = 0,
     ) -> platform_message.MessageChain:
         yiri_msg_list = []
         # 存id
 
-        yiri_msg_list.append(
-            platform_message.Source(
-                id=save_msg_id(message_id), time=datetime.datetime.now()
-            )
-        )
+        yiri_msg_list.append(platform_message.Source(id=save_msg_id(message_id), time=datetime.datetime.now()))
 
         if type(message) not in [botpy_message.DirectMessage, botpy_message.C2CMessage]:
             yiri_msg_list.append(platform_message.At(target=bot_account_id))
 
-        if hasattr(message, "mentions"):
+        if hasattr(message, 'mentions'):
             for mention in message.mentions:
                 if mention.bot:
                     continue
@@ -218,15 +222,13 @@ class OfficialMessageConverter(adapter_model.MessageConverter):
                 yiri_msg_list.append(platform_message.At(target=mention.id))
 
         for attachment in message.attachments:
-            if attachment.content_type.startswith("image"):
+            if attachment.content_type.startswith('image'):
                 yiri_msg_list.append(platform_message.Image(url=attachment.url))
             else:
-                logging.warning(
-                    "不支持的附件类型：" + attachment.content_type + "，忽略此附件。"
-                )
+                logging.warning('不支持的附件类型：' + attachment.content_type + '，忽略此附件。')
 
-        content = re.sub(r"<@!\d+>", "", str(message.content))
-        if content.strip() != "":
+        content = re.sub(r'<@!\d+>', '', str(message.content))
+        if content.strip() != '':
             yiri_msg_list.append(platform_message.Plain(text=content))
 
         chain = platform_message.MessageChain(yiri_msg_list)
@@ -237,12 +239,8 @@ class OfficialMessageConverter(adapter_model.MessageConverter):
 class OfficialEventConverter(adapter_model.EventConverter):
     """事件转换器"""
 
-    member_openid_mapping: OpenIDMapping[str, int]
-    group_openid_mapping: OpenIDMapping[str, int]
-
-    def __init__(self, member_openid_mapping: OpenIDMapping[str, int], group_openid_mapping: OpenIDMapping[str, int]):
-        self.member_openid_mapping = member_openid_mapping
-        self.group_openid_mapping = group_openid_mapping
+    def __init__(self):
+        pass
 
     def yiri2target(self, event: typing.Type[platform_events.Event]):
         if event == platform_events.GroupMessage:
@@ -250,22 +248,24 @@ class OfficialEventConverter(adapter_model.EventConverter):
         elif event == platform_events.FriendMessage:
             return botpy_message.DirectMessage
         else:
-            raise Exception(
-                "未支持转换的事件类型(YiriMirai -> Official): " + str(event)
-            )
+            raise Exception('未支持转换的事件类型(YiriMirai -> Official): ' + str(event))
 
     def target2yiri(
         self,
-        event: typing.Union[botpy_message.Message, botpy_message.DirectMessage, botpy_message.GroupMessage, botpy_message.C2CMessage],
+        event: typing.Union[
+            botpy_message.Message,
+            botpy_message.DirectMessage,
+            botpy_message.GroupMessage,
+            botpy_message.C2CMessage,
+        ],
     ) -> platform_events.Event:
+        if isinstance(event, botpy_message.Message):  # 频道内，转群聊事件
+            permission = 'MEMBER'
 
-        if type(event) == botpy_message.Message:  # 频道内，转群聊事件
-            permission = "MEMBER"
-
-            if "2" in event.member.roles:
-                permission = "ADMINISTRATOR"
-            elif "4" in event.member.roles:
-                permission = "OWNER"
+            if '2' in event.member.roles:
+                permission = 'ADMINISTRATOR'
+            elif '4' in event.member.roles:
+                permission = 'OWNER'
 
             return platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
@@ -277,71 +277,49 @@ class OfficialEventConverter(adapter_model.EventConverter):
                         name=event.author.username,
                         permission=platform_entities.Permission.Member,
                     ),
-                    special_title="",
+                    special_title='',
                     join_timestamp=int(
-                        datetime.datetime.strptime(
-                            event.member.joined_at, "%Y-%m-%dT%H:%M:%S%z"
-                        ).timestamp()
+                        datetime.datetime.strptime(event.member.joined_at, '%Y-%m-%dT%H:%M:%S%z').timestamp()
                     ),
                     last_speak_timestamp=datetime.datetime.now().timestamp(),
                     mute_time_remaining=0,
                 ),
-                message_chain=OfficialMessageConverter.extract_message_chain_from_obj(
-                    event, event.id
-                ),
-                time=int(
-                    datetime.datetime.strptime(
-                        event.timestamp, "%Y-%m-%dT%H:%M:%S%z"
-                    ).timestamp()
-                ),
+                message_chain=OfficialMessageConverter.extract_message_chain_from_obj(event, event.id),
+                time=int(datetime.datetime.strptime(event.timestamp, '%Y-%m-%dT%H:%M:%S%z').timestamp()),
             )
-        elif type(event) == botpy_message.DirectMessage:  # 频道私聊，转私聊事件
+        elif isinstance(event, botpy_message.DirectMessage):  # 频道私聊，转私聊事件
             return platform_events.FriendMessage(
                 sender=platform_entities.Friend(
                     id=event.guild_id,
                     nickname=event.author.username,
                     remark=event.author.username,
                 ),
-                message_chain=OfficialMessageConverter.extract_message_chain_from_obj(
-                    event, event.id
-                ),
-                time=int(
-                    datetime.datetime.strptime(
-                        event.timestamp, "%Y-%m-%dT%H:%M:%S%z"
-                    ).timestamp()
-                ),
+                message_chain=OfficialMessageConverter.extract_message_chain_from_obj(event, event.id),
+                time=int(datetime.datetime.strptime(event.timestamp, '%Y-%m-%dT%H:%M:%S%z').timestamp()),
             )
-        elif type(event) == botpy_message.GroupMessage:  # 群聊，转群聊事件
-
-            replacing_member_id = self.member_openid_mapping.save_openid(event.author.member_openid)
+        elif isinstance(event, botpy_message.GroupMessage):  # 群聊，转群聊事件
+            author_member_id = event.author.member_openid
 
             return OfficialGroupMessage(
                 sender=platform_entities.GroupMember(
-                    id=replacing_member_id,
-                    member_name=replacing_member_id,
-                    permission="MEMBER",
+                    id=author_member_id,
+                    member_name=author_member_id,
+                    permission='MEMBER',
                     group=platform_entities.Group(
-                        id=self.group_openid_mapping.save_openid(event.group_openid),
-                        name=replacing_member_id,
+                        id=event.group_openid,
+                        name=author_member_id,
                         permission=platform_entities.Permission.Member,
                     ),
-                    special_title="",
+                    special_title='',
                     join_timestamp=int(0),
                     last_speak_timestamp=datetime.datetime.now().timestamp(),
                     mute_time_remaining=0,
                 ),
-                message_chain=OfficialMessageConverter.extract_message_chain_from_obj(
-                    event, event.id
-                ),
-                time=int(
-                    datetime.datetime.strptime(
-                        event.timestamp, "%Y-%m-%dT%H:%M:%S%z"
-                    ).timestamp()
-                ),
+                message_chain=OfficialMessageConverter.extract_message_chain_from_obj(event, event.id),
+                time=int(datetime.datetime.strptime(event.timestamp, '%Y-%m-%dT%H:%M:%S%z').timestamp()),
             )
-        elif type(event) == botpy_message.C2CMessage:  # 私聊，转私聊事件
-
-            user_id_alter = self.member_openid_mapping.save_openid(event.author.user_openid)  # 实测这里的user_openid与group的member_openid是一样的
+        elif isinstance(event, botpy_message.C2CMessage):  # 私聊，转私聊事件
+            user_id_alter = event.author.user_openid
 
             return OfficialFriendMessage(
                 sender=platform_entities.Friend(
@@ -349,14 +327,8 @@ class OfficialEventConverter(adapter_model.EventConverter):
                     nickname=user_id_alter,
                     remark=user_id_alter,
                 ),
-                message_chain=OfficialMessageConverter.extract_message_chain_from_obj(
-                    event, event.id
-                ),
-                time=int(
-                    datetime.datetime.strptime(
-                        event.timestamp, "%Y-%m-%dT%H:%M:%S%z"
-                    ).timestamp()
-                ),
+                message_chain=OfficialMessageConverter.extract_message_chain_from_obj(event, event.id),
+                time=int(datetime.datetime.strptime(event.timestamp, '%Y-%m-%dT%H:%M:%S%z').timestamp()),
             )
 
 
@@ -382,9 +354,6 @@ class OfficialAdapter(adapter_model.MessagePlatformAdapter):
 
     metadata: cfg_mgr.ConfigManager = None
 
-    member_openid_mapping: OpenIDMapping[str, int] = None
-    group_openid_mapping: OpenIDMapping[str, int] = None
-
     group_msg_seq = None
     c2c_msg_seq = None
 
@@ -398,38 +367,36 @@ class OfficialAdapter(adapter_model.MessagePlatformAdapter):
 
         switchs = {}
 
-        for intent in cfg["intents"]:
+        for intent in cfg['intents']:
             switchs[intent] = True
 
-        del cfg["intents"]
+        del cfg['intents']
 
         intents = botpy.Intents(**switchs)
 
         self.bot = botpy.Client(intents=intents)
 
-    async def send_message(
-        self, target_type: str, target_id: str, message: platform_message.MessageChain
-    ):
+    async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         message_list = self.message_converter.yiri2target(message)
 
         for msg in message_list:
             args = {}
 
-            if msg["type"] == "text":
-                args["content"] = msg["content"]
-            elif msg["type"] == "image":
-                args["image"] = msg["content"]
-            elif msg["type"] == "file_image":
-                args["file_image"] = msg["content"]
+            if msg['type'] == 'text':
+                args['content'] = msg['content']
+            elif msg['type'] == 'image':
+                args['image'] = msg['content']
+            elif msg['type'] == 'file_image':
+                args['file_image'] = msg['content']
             else:
                 continue
 
-            if target_type == "group":
-                args["channel_id"] = str(target_id)
+            if target_type == 'group':
+                args['channel_id'] = str(target_id)
 
                 await self.bot.api.post_message(**args)
-            elif target_type == "person":
-                args["guild_id"] = str(target_id)
+            elif target_type == 'person':
+                args['guild_id'] = str(target_id)
 
                 await self.bot.api.post_dms(**args)
 
@@ -439,90 +406,72 @@ class OfficialAdapter(adapter_model.MessagePlatformAdapter):
         message: platform_message.MessageChain,
         quote_origin: bool = False,
     ):
-        
         message_list = self.message_converter.yiri2target(message)
 
         for msg in message_list:
             args = {}
 
-            if msg["type"] == "text":
-                args["content"] = msg["content"]
-            elif msg["type"] == "image":
-                args["image"] = msg["content"]
-            elif msg["type"] == "file_image":
-                args["file_image"] = msg["content"]
+            if msg['type'] == 'text':
+                args['content'] = msg['content']
+            elif msg['type'] == 'image':
+                args['image'] = msg['content']
+            elif msg['type'] == 'file_image':
+                args['file_image'] = msg['content']
             else:
                 continue
 
             if quote_origin:
-                args["message_reference"] = botpy_message_type.Reference(
-                    message_id=cached_message_ids[
-                        str(message_source.message_chain.message_id)
-                    ]
+                args['message_reference'] = botpy_message_type.Reference(
+                    message_id=cached_message_ids[str(message_source.message_chain.message_id)]
                 )
 
-            if type(message_source) == platform_events.GroupMessage:
-                args["channel_id"] = str(message_source.sender.group.id)
-                args["msg_id"] = cached_message_ids[
-                    str(message_source.message_chain.message_id)
-                ]
+            if isinstance(message_source, platform_events.GroupMessage):
+                args['channel_id'] = str(message_source.sender.group.id)
+                args['msg_id'] = cached_message_ids[str(message_source.message_chain.message_id)]
                 await self.bot.api.post_message(**args)
-            elif type(message_source) == platform_events.FriendMessage:
-                args["guild_id"] = str(message_source.sender.id)
-                args["msg_id"] = cached_message_ids[
-                    str(message_source.message_chain.message_id)
-                ]
+            elif isinstance(message_source, platform_events.FriendMessage):
+                args['guild_id'] = str(message_source.sender.id)
+                args['msg_id'] = cached_message_ids[str(message_source.message_chain.message_id)]
                 await self.bot.api.post_dms(**args)
-            elif type(message_source) == OfficialGroupMessage:
-
-                if "file_image" in args:  # 暂不支持发送文件图片
+            elif isinstance(message_source, OfficialGroupMessage):
+                if 'file_image' in args:  # 暂不支持发送文件图片
                     continue
 
-                args["group_openid"] = self.group_openid_mapping.getkey(
-                    message_source.sender.group.id
-                )
+                args['group_openid'] = message_source.sender.group.id
 
-                if "image" in args:
+                if 'image' in args:
                     uploadMedia = await self.bot.api.post_group_file(
-                        group_openid=args["group_openid"],
+                        group_openid=args['group_openid'],
                         file_type=1,
-                        url=str(args['image'])
+                        url=str(args['image']),
                     )
 
                     del args['image']
                     args['media'] = uploadMedia
                     args['msg_type'] = 7
 
-                args["msg_id"] = cached_message_ids[
-                    str(message_source.message_chain.message_id)
-                ]
-                args["msg_seq"] = self.group_msg_seq
+                args['msg_id'] = cached_message_ids[str(message_source.message_chain.message_id)]
+                args['msg_seq'] = self.group_msg_seq
                 self.group_msg_seq += 1
 
                 await self.bot.api.post_group_message(**args)
-            elif type(message_source) == OfficialFriendMessage:
-                if "file_image" in args:
+            elif isinstance(message_source, OfficialFriendMessage):
+                if 'file_image' in args:
                     continue
-                args["openid"] = self.member_openid_mapping.getkey(
-                    message_source.sender.id
-                )
+                args['openid'] = message_source.sender.id
 
-                if "image" in args:
+                if 'image' in args:
                     uploadMedia = await self.bot.api.post_c2c_file(
-                        openid=args["openid"],
-                        file_type=1,
-                        url=str(args['image'])
+                        openid=args['openid'], file_type=1, url=str(args['image'])
                     )
 
                     del args['image']
                     args['media'] = uploadMedia
                     args['msg_type'] = 7
 
-                args["msg_id"] = cached_message_ids[
-                    str(message_source.message_chain.message_id)
-                ]
+                args['msg_id'] = cached_message_ids[str(message_source.message_chain.message_id)]
 
-                args["msg_seq"] = self.c2c_msg_seq
+                args['msg_seq'] = self.c2c_msg_seq
                 self.c2c_msg_seq += 1
 
                 await self.bot.api.post_c2c_message(**args)
@@ -533,11 +482,8 @@ class OfficialAdapter(adapter_model.MessagePlatformAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[
-            [platform_events.Event, adapter_model.MessagePlatformAdapter], None
-        ],
+        callback: typing.Callable[[platform_events.Event, adapter_model.MessagePlatformAdapter], None],
     ):
-
         try:
 
             async def wrapper(
@@ -545,7 +491,7 @@ class OfficialAdapter(adapter_model.MessagePlatformAdapter):
                     botpy_message.Message,
                     botpy_message.DirectMessage,
                     botpy_message.GroupMessage,
-                ]
+                ],
             ):
                 self.cached_official_messages[str(message.id)] = message
                 await callback(self.event_converter.target2yiri(message), self)
@@ -559,34 +505,19 @@ class OfficialAdapter(adapter_model.MessagePlatformAdapter):
     def unregister_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[
-            [platform_events.Event, adapter_model.MessagePlatformAdapter], None
-        ],
+        callback: typing.Callable[[platform_events.Event, adapter_model.MessagePlatformAdapter], None],
     ):
         delattr(self.bot, event_handler_mapping[event_type])
 
     async def run_async(self):
-
         self.metadata = self.ap.adapter_qq_botpy_meta
 
-        self.member_openid_mapping = OpenIDMapping(
-            map=self.metadata.data["mapping"]["members"],
-            dump_func=self.metadata.dump_config_sync,
-        )
-
-        self.group_openid_mapping = OpenIDMapping(
-            map=self.metadata.data["mapping"]["groups"],
-            dump_func=self.metadata.dump_config_sync,
-        )
-
         self.message_converter = OfficialMessageConverter()
-        self.event_converter = OfficialEventConverter(
-            self.member_openid_mapping, self.group_openid_mapping
-        )
+        self.event_converter = OfficialEventConverter()
 
         self.cfg['ret_coro'] = True
 
-        self.ap.logger.info("运行 QQ 官方适配器")
+        self.ap.logger.info('运行 QQ 官方适配器')
         await (await self.bot.start(**self.cfg))
 
     async def kill(self) -> bool:

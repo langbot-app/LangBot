@@ -7,7 +7,8 @@ metadata:
     zh_CN: GeWeChat（个人微信）
   description:
     en_US: GeWeChat Adapter
-    zh_CN: GeWeChat 适配器
+    zh_CN: GeWeChat 适配器，请查看文档了解使用方式
+  icon: gewechat.png
 spec:
   config:
     - name: gewechat_url
@@ -28,7 +29,7 @@ spec:
       label:
         en_US: Port
         zh_CN: 端口
-      type: int
+      type: integer
       required: true
       default: 2286
     - name: callback_url

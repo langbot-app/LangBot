@@ -3,7 +3,7 @@ from __future__ import annotations
 from .. import migration
 
 
-@migration.migration_class("mcp-config", 37)
+@migration.migration_class('mcp-config', 37)
 class MCPConfigMigration(migration.Migration):
     """迁移"""
 
@@ -13,8 +13,6 @@ class MCPConfigMigration(migration.Migration):
 
     async def run(self):
         """执行迁移"""
-        self.ap.provider_cfg.data['mcp'] = {
-            "servers": []
-        }
+        self.ap.provider_cfg.data['mcp'] = {'servers': []}
 
         await self.ap.provider_cfg.dump_config()

@@ -4,7 +4,6 @@
 import asyncio
 import typing
 import traceback
-import logging
 
 
 import nakuru
@@ -19,6 +18,7 @@ from ...platform.types import events as platform_events
 
 class NakuruProjectMessageConverter(adapter_model.MessageConverter):
     """消息转换器"""
+
     @staticmethod
     def yiri2target(message_chain: platform_message.MessageChain) -> list:
         msg_list = []
@@ -29,10 +29,10 @@ class NakuruProjectMessageConverter(adapter_model.MessageConverter):
         elif type(message_chain) is str:
             msg_list = [platform_message.Plain(message_chain)]
         else:
-            raise Exception("Unknown message type: " + str(message_chain) + str(type(message_chain)))
-        
+            raise Exception('Unknown message type: ' + str(message_chain) + str(type(message_chain)))
+
         nakuru_msg_list = []
-        
+
         # 遍历并转换
         for component in msg_list:
             if type(component) is platform_message.Plain:
@@ -65,18 +65,21 @@ class NakuruProjectMessageConverter(adapter_model.MessageConverter):
                         nakuru_forward_node = nkc.Node(
                             name=yiri_forward_node.sender_name,
                             uin=yiri_forward_node.sender_id,
-                            time=int(yiri_forward_node.time.timestamp()) if yiri_forward_node.time is not None else None,
-                            content=content_list
+                            time=int(yiri_forward_node.time.timestamp())
+                            if yiri_forward_node.time is not None
+                            else None,
+                            content=content_list,
                         )
                         nakuru_forward_node_list.append(nakuru_forward_node)
-                    except Exception as e:
+                    except Exception:
                         import traceback
+
                         traceback.print_exc()
 
                 nakuru_msg_list.append(nakuru_forward_node_list)
             else:
                 nakuru_msg_list.append(nkc.Plain(str(component)))
-        
+
         return nakuru_msg_list
 
     @staticmethod
@@ -86,6 +89,7 @@ class NakuruProjectMessageConverter(adapter_model.MessageConverter):
 
         yiri_msg_list = []
         import datetime
+
         # 添加Source组件以标记message_id等信息
         yiri_msg_list.append(platform_message.Source(id=message_id, time=datetime.datetime.now()))
         for component in message_chain:
@@ -106,6 +110,7 @@ class NakuruProjectMessageConverter(adapter_model.MessageConverter):
 
 class NakuruProjectEventConverter(adapter_model.EventConverter):
     """事件转换器"""
+
     @staticmethod
     def yiri2target(event: typing.Type[platform_events.Event]):
         if event is platform_events.GroupMessage:
@@ -113,7 +118,7 @@ class NakuruProjectEventConverter(adapter_model.EventConverter):
         elif event is platform_events.FriendMessage:
             return nakuru.FriendMessage
         else:
-            raise Exception("未支持转换的事件类型: " + str(event))
+            raise Exception('未支持转换的事件类型: ' + str(event))
 
     @staticmethod
     def target2yiri(event: typing.Any) -> platform_events.Event:
@@ -123,18 +128,18 @@ class NakuruProjectEventConverter(adapter_model.EventConverter):
                 sender=platform_entities.Friend(
                     id=event.sender.user_id,
                     nickname=event.sender.nickname,
-                    remark=event.sender.nickname
+                    remark=event.sender.nickname,
                 ),
                 message_chain=yiri_chain,
-                time=event.time
+                time=event.time,
             )
         elif type(event) is nakuru.GroupMessage:  # 群聊消息事件
-            permission = "MEMBER"
+            permission = 'MEMBER'
 
-            if event.sender.role == "admin":
-                permission = "ADMINISTRATOR"
-            elif event.sender.role == "owner":
-                permission = "OWNER"
+            if event.sender.role == 'admin':
+                permission = 'ADMINISTRATOR'
+            elif event.sender.role == 'owner':
+                permission = 'OWNER'
 
             return platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
@@ -144,7 +149,7 @@ class NakuruProjectEventConverter(adapter_model.EventConverter):
                     group=platform_entities.Group(
                         id=event.group_id,
                         name=event.sender.nickname,
-                        permission=platform_entities.Permission.Member
+                        permission=platform_entities.Permission.Member,
                     ),
                     special_title=event.sender.title,
                     join_timestamp=0,
@@ -152,14 +157,15 @@ class NakuruProjectEventConverter(adapter_model.EventConverter):
                     mute_time_remaining=0,
                 ),
                 message_chain=yiri_chain,
-                time=event.time
+                time=event.time,
             )
         else:
-            raise Exception("未支持转换的事件类型: " + str(event))
+            raise Exception('未支持转换的事件类型: ' + str(event))
 
 
 class NakuruAdapter(adapter_model.MessagePlatformAdapter):
     """nakuru-project适配器"""
+
     bot: nakuru.CQHTTP
     bot_account_id: int
 
@@ -186,12 +192,12 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
         target_type: str,
         target_id: str,
         message: typing.Union[platform_message.MessageChain, list],
-        converted: bool = False
+        converted: bool = False,
     ):
         task = None
 
         converted_msg = self.message_converter.yiri2target(message) if not converted else message
-        
+
         # 检查是否有转发消息
         has_forward = False
         for msg in converted_msg:
@@ -200,19 +206,19 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
                 converted_msg = msg
                 break
         if has_forward:
-            if target_type == "group":
+            if target_type == 'group':
                 task = self.bot.sendGroupForwardMessage(int(target_id), converted_msg)
-            elif target_type == "person":
+            elif target_type == 'person':
                 task = self.bot.sendPrivateForwardMessage(int(target_id), converted_msg)
             else:
-                raise Exception("Unknown target type: " + target_type)
+                raise Exception('Unknown target type: ' + target_type)
         else:
-            if target_type == "group":
+            if target_type == 'group':
                 task = self.bot.sendGroupMessage(int(target_id), converted_msg)
-            elif target_type == "person":
+            elif target_type == 'person':
                 task = self.bot.sendFriendMessage(int(target_id), converted_msg)
             else:
-                raise Exception("Unknown target type: " + target_type)
+                raise Exception('Unknown target type: ' + target_type)
 
         await task
 
@@ -220,34 +226,27 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
         self,
         message_source: platform_events.MessageEvent,
         message: platform_message.MessageChain,
-        quote_origin: bool = False
+        quote_origin: bool = False,
     ):
         message = self.message_converter.yiri2target(message)
         if quote_origin:
             # 在前方添加引用组件
-            message.insert(0, nkc.Reply(
+            message.insert(
+                0,
+                nkc.Reply(
                     id=message_source.message_chain.message_id,
-                )
+                ),
             )
         if type(message_source) is platform_events.GroupMessage:
-            await self.send_message(
-                "group",
-                message_source.sender.group.id,
-                message,
-                converted=True
-            )
+            await self.send_message('group', message_source.sender.group.id, message, converted=True)
         elif type(message_source) is platform_events.FriendMessage:
-            await self.send_message(
-                "person",
-                message_source.sender.id,
-                message,
-                converted=True
-            )
+            await self.send_message('person', message_source.sender.id, message, converted=True)
         else:
-            raise Exception("Unknown message source type: " + str(type(message_source)))
+            raise Exception('Unknown message source type: ' + str(type(message_source)))
 
     def is_muted(self, group_id: int) -> bool:
         import time
+
         # 检查是否被禁言
         group_member_info = asyncio.run(self.bot.getGroupMemberInfo(group_id, self.bot_account_id))
         return group_member_info.shut_up_timestamp > int(time.time())
@@ -255,10 +254,9 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter_model.MessagePlatformAdapter], None]
+        callback: typing.Callable[[platform_events.Event, adapter_model.MessagePlatformAdapter], None],
     ):
         try:
-
             source_cls = NakuruProjectEventConverter.yiri2target(event_type)
 
             # 包装函数
@@ -268,9 +266,9 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
             # 将包装函数和原函数的对应关系存入列表
             self.listener_list.append(
                 {
-                    "event_type": event_type,
-                    "callable": callback,
-                    "wrapper": listener_wrapper,
+                    'event_type': event_type,
+                    'callable': callback,
+                    'wrapper': listener_wrapper,
                 }
             )
 
@@ -283,7 +281,7 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
     def unregister_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter_model.MessagePlatformAdapter], None]
+        callback: typing.Callable[[platform_events.Event, adapter_model.MessagePlatformAdapter], None],
     ):
         nakuru_event_name = self.event_converter.yiri2target(event_type).__name__
 
@@ -292,13 +290,13 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
         # 从本对象的监听器列表中查找并删除
         target_wrapper = None
         for listener in self.listener_list:
-            if listener["event_type"] == event_type and listener["callable"] == callback:
-                target_wrapper = listener["wrapper"]
+            if listener['event_type'] == event_type and listener['callable'] == callback:
+                target_wrapper = listener['wrapper']
                 self.listener_list.remove(listener)
                 break
 
         if target_wrapper is None:
-            raise Exception("未找到对应的监听器")
+            raise Exception('未找到对应的监听器')
 
         for func in self.bot.event[nakuru_event_name]:
             if func.callable != target_wrapper:
@@ -309,21 +307,20 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
     async def run_async(self):
         try:
             import requests
+
             resp = requests.get(
-                url="http://{}:{}/get_login_info".format(self.cfg['host'], self.cfg['http_port']),
-                headers={
-                    'Authorization': "Bearer " + self.cfg['token'] if 'token' in self.cfg else ""
-                },
+                url='http://{}:{}/get_login_info'.format(self.cfg['host'], self.cfg['http_port']),
+                headers={'Authorization': 'Bearer ' + self.cfg['token'] if 'token' in self.cfg else ''},
                 timeout=5,
-                proxies=None
+                proxies=None,
             )
             if resp.status_code == 403:
-                raise Exception("go-cqhttp拒绝访问，请检查配置文件中nakuru适配器的配置")
+                raise Exception('go-cqhttp拒绝访问，请检查配置文件中nakuru适配器的配置')
             self.bot_account_id = int(resp.json()['data']['user_id'])
-        except Exception as e:
-            raise Exception("获取go-cqhttp账号信息失败, 请检查是否已启动go-cqhttp并配置正确")
+        except Exception:
+            raise Exception('获取go-cqhttp账号信息失败, 请检查是否已启动go-cqhttp并配置正确')
         await self.bot._run()
-        self.ap.logger.info("运行 Nakuru 适配器")
+        self.ap.logger.info('运行 Nakuru 适配器')
         while True:
             await asyncio.sleep(1)
 

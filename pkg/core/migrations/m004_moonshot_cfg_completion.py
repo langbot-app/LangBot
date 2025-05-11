@@ -3,20 +3,19 @@ from __future__ import annotations
 from .. import migration
 
 
-@migration.migration_class("moonshot-config-completion", 4)
+@migration.migration_class('moonshot-config-completion', 4)
 class MoonshotConfigCompletionMigration(migration.Migration):
-    """OpenAI配置迁移
-    """
+    """OpenAI配置迁移"""
 
     async def need_migrate(self) -> bool:
-        """判断当前环境是否需要运行此迁移
-        """
-        return 'moonshot-chat-completions' not in self.ap.provider_cfg.data['requester'] \
+        """判断当前环境是否需要运行此迁移"""
+        return (
+            'moonshot-chat-completions' not in self.ap.provider_cfg.data['requester']
             or 'moonshot' not in self.ap.provider_cfg.data['keys']
+        )
 
     async def run(self):
-        """执行迁移
-        """
+        """执行迁移"""
         if 'moonshot-chat-completions' not in self.ap.provider_cfg.data['requester']:
             self.ap.provider_cfg.data['requester']['moonshot-chat-completions'] = {
                 'base-url': 'https://api.moonshot.cn/v1',

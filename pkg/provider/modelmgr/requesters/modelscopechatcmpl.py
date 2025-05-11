@@ -1,23 +1,17 @@
 from __future__ import annotations
- 
+
 import asyncio
 import typing
-import json
-import base64
-from typing import AsyncGenerator
 
 import openai
 import openai.types.chat.chat_completion as chat_completion
 import openai.types.chat.chat_completion_message_tool_call as chat_completion_message_tool_call
 import httpx
-import aiohttp
-import async_lru
 
 from .. import entities, errors, requester
 from ....core import entities as core_entities, app
 from ... import entities as llm_entities
 from ...tools import entities as tools_entities
-from ....utils import image
 
 
 class ModelScopeChatCompletions(requester.LLMAPIRequester):
@@ -33,26 +27,22 @@ class ModelScopeChatCompletions(requester.LLMAPIRequester):
         self.requester_cfg = self.ap.provider_cfg.data['requester']['modelscope-chat-completions']
 
     async def initialize(self):
-
         self.client = openai.AsyncClient(
-            api_key="",
+            api_key='',
             base_url=self.requester_cfg['base-url'],
             timeout=self.requester_cfg['timeout'],
-            http_client=httpx.AsyncClient(
-                trust_env=True,
-                timeout=self.requester_cfg['timeout']
-            )
+            http_client=httpx.AsyncClient(trust_env=True, timeout=self.requester_cfg['timeout']),
         )
 
     async def _req(
         self,
         args: dict,
     ) -> chat_completion.ChatCompletion:
-        args["stream"] = True
+        args['stream'] = True
 
         chunk = None
 
-        pending_content = ""
+        pending_content = ''
 
         tool_calls = []
 
@@ -74,7 +64,7 @@ class ModelScopeChatCompletions(requester.LLMAPIRequester):
                             break
                     else:
                         tool_calls.append(tool_call)
-            
+
             if chunk.choices[0].finish_reason is not None:
                 break
 
@@ -82,36 +72,41 @@ class ModelScopeChatCompletions(requester.LLMAPIRequester):
 
         for tc in tool_calls:
             function = chat_completion_message_tool_call.Function(
-                name=tc.function.name,
-                arguments=tc.function.arguments
+                name=tc.function.name, arguments=tc.function.arguments
             )
-            real_tool_calls.append(chat_completion_message_tool_call.ChatCompletionMessageToolCall(
-                id=tc.id,
-                function=function,
-                type="function"
-            ))
-
-        return chat_completion.ChatCompletion(
-            id=chunk.id,
-            object="chat.completion",
-            created=chunk.created,
-            choices=[
-                chat_completion.Choice(
-                    index=0,
-                    message=chat_completion.ChatCompletionMessage(
-                        role="assistant",
-                        content=pending_content,
-                        tool_calls=real_tool_calls if len(real_tool_calls) > 0 else None
-                    ),
-                    finish_reason=chunk.choices[0].finish_reason if hasattr(chunk.choices[0], 'finish_reason') and chunk.choices[0].finish_reason is not None else 'stop',
-                    logprobs=chunk.choices[0].logprobs,
+            real_tool_calls.append(
+                chat_completion_message_tool_call.ChatCompletionMessageToolCall(
+                    id=tc.id, function=function, type='function'
                 )
-            ],
-            model=chunk.model,
-            service_tier=chunk.service_tier if hasattr(chunk, 'service_tier') else None,
-            system_fingerprint=chunk.system_fingerprint if hasattr(chunk, 'system_fingerprint') else None,
-            usage=chunk.usage if hasattr(chunk, 'usage') else None
-        ) if chunk else None
+            )
+
+        return (
+            chat_completion.ChatCompletion(
+                id=chunk.id,
+                object='chat.completion',
+                created=chunk.created,
+                choices=[
+                    chat_completion.Choice(
+                        index=0,
+                        message=chat_completion.ChatCompletionMessage(
+                            role='assistant',
+                            content=pending_content,
+                            tool_calls=real_tool_calls if len(real_tool_calls) > 0 else None,
+                        ),
+                        finish_reason=chunk.choices[0].finish_reason
+                        if hasattr(chunk.choices[0], 'finish_reason') and chunk.choices[0].finish_reason is not None
+                        else 'stop',
+                        logprobs=chunk.choices[0].logprobs,
+                    )
+                ],
+                model=chunk.model,
+                service_tier=chunk.service_tier if hasattr(chunk, 'service_tier') else None,
+                system_fingerprint=chunk.system_fingerprint if hasattr(chunk, 'system_fingerprint') else None,
+                usage=chunk.usage if hasattr(chunk, 'usage') else None,
+            )
+            if chunk
+            else None
+        )
         return await self.client.chat.completions.create(**args)
 
     async def _make_msg(
@@ -138,29 +133,27 @@ class ModelScopeChatCompletions(requester.LLMAPIRequester):
         self.client.api_key = use_model.token_mgr.get_token()
 
         args = self.requester_cfg['args'].copy()
-        args["model"] = use_model.name if use_model.model_name is None else use_model.model_name
+        args['model'] = use_model.name if use_model.model_name is None else use_model.model_name
 
         if use_funcs:
             tools = await self.ap.tool_mgr.generate_tools_for_openai(use_funcs)
 
             if tools:
-                args["tools"] = tools
+                args['tools'] = tools
 
         # 设置此次请求中的messages
         messages = req_messages.copy()
 
         # 检查vision
         for msg in messages:
-            if 'content' in msg and isinstance(msg["content"], list):
-                for me in msg["content"]:
-                    if me["type"] == "image_base64":
-                        me["image_url"] = {
-                            "url": me["image_base64"]
-                        }
-                        me["type"] = "image_url"
-                        del me["image_base64"]
+            if 'content' in msg and isinstance(msg['content'], list):
+                for me in msg['content']:
+                    if me['type'] == 'image_base64':
+                        me['image_url'] = {'url': me['image_base64']}
+                        me['type'] = 'image_url'
+                        del me['image_base64']
 
-        args["messages"] = messages
+        args['messages'] = messages
 
         # 发送请求
         resp = await self._req(args)
@@ -180,12 +173,12 @@ class ModelScopeChatCompletions(requester.LLMAPIRequester):
         req_messages = []  # req_messages 仅用于类内，外部同步由 query.messages 进行
         for m in messages:
             msg_dict = m.dict(exclude_none=True)
-            content = msg_dict.get("content")
+            content = msg_dict.get('content')
             if isinstance(content, list):
                 # 检查 content 列表中是否每个部分都是文本
-                if all(isinstance(part, dict) and part.get("type") == "text" for part in content):
+                if all(isinstance(part, dict) and part.get('type') == 'text' for part in content):
                     # 将所有文本部分合并为一个字符串
-                    msg_dict["content"] = "\n".join(part["text"] for part in content)
+                    msg_dict['content'] = '\n'.join(part['text'] for part in content)
             req_messages.append(msg_dict)
 
         try:

@@ -7,15 +7,14 @@ from ....core import entities as core_entities
 from ....platform.types import message as platform_message
 
 
-@rule_model.rule_class("regexp")
+@rule_model.rule_class('regexp')
 class RegExpRule(rule_model.GroupRespondRule):
-
     async def match(
         self,
         message_text: str,
         message_chain: platform_message.MessageChain,
         rule_dict: dict,
-        query: core_entities.Query
+        query: core_entities.Query,
     ) -> entities.RuleJudgeResult:
         regexps = rule_dict['regexp']
 
@@ -27,8 +26,5 @@ class RegExpRule(rule_model.GroupRespondRule):
                     matching=True,
                     replacement=message_chain,
                 )
-        
-        return entities.RuleJudgeResult(
-            matching=False,
-            replacement=message_chain
-        )
+
+        return entities.RuleJudgeResult(matching=False, replacement=message_chain)

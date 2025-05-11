@@ -3,7 +3,7 @@ from __future__ import annotations
 from .. import migration
 
 
-@migration.migration_class("xai-config", 18)
+@migration.migration_class('xai-config', 18)
 class XaiConfigMigration(migration.Migration):
     """迁移"""
 
@@ -14,12 +14,10 @@ class XaiConfigMigration(migration.Migration):
     async def run(self):
         """执行迁移"""
         self.ap.provider_cfg.data['requester']['xai-chat-completions'] = {
-            "base-url": "https://api.x.ai/v1",
-            "args": {},
-            "timeout": 120
+            'base-url': 'https://api.x.ai/v1',
+            'args': {},
+            'timeout': 120,
         }
-        self.ap.provider_cfg.data['keys']['xai'] = [
-            "xai-1234567890"
-        ]
+        self.ap.provider_cfg.data['keys']['xai'] = ['xai-1234567890']
 
         await self.ap.provider_cfg.dump_config()

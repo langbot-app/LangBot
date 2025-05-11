@@ -3,16 +3,15 @@ from __future__ import annotations
 import abc
 import typing
 
-from ...core import app
+from ...core import app, entities as core_entities
 from . import entities
-from ...provider import entities as llm_entities
 
 
 preregistered_filters: list[typing.Type[ContentFilter]] = []
 
 
 def filter_class(
-    name: str
+    name: str,
 ) -> typing.Callable[[typing.Type[ContentFilter]], typing.Type[ContentFilter]]:
     """内容过滤器类装饰器
 
@@ -22,6 +21,7 @@ def filter_class(
     Returns:
         typing.Callable[[typing.Type[ContentFilter]], typing.Type[ContentFilter]]: 装饰器
     """
+
     def decorator(cls: typing.Type[ContentFilter]) -> typing.Type[ContentFilter]:
         assert issubclass(cls, ContentFilter)
 
@@ -53,23 +53,19 @@ class ContentFilter(metaclass=abc.ABCMeta):
         entity.EnableStage.PRE: 消息请求AI前，此时需要检查的内容是用户的输入消息。
         entity.EnableStage.POST: 消息请求AI后，此时需要检查的内容是AI的回复消息。
         """
-        return [
-            entities.EnableStage.PRE,
-            entities.EnableStage.POST
-        ]
+        return [entities.EnableStage.PRE, entities.EnableStage.POST]
 
     async def initialize(self):
-        """初始化过滤器
-        """
+        """初始化过滤器"""
         pass
 
     @abc.abstractmethod
-    async def process(self, message: str=None, image_url=None) -> entities.FilterResult:
+    async def process(self, query: core_entities.Query, message: str = None, image_url=None) -> entities.FilterResult:
         """处理消息
 
         分为前后阶段，具体取决于 enable_stages 的值。
         对于内容过滤器来说，不需要考虑消息所处的阶段，只需要检查消息内容即可。
-        
+
         Args:
             message (str): 需要检查的内容
             image_url (str): 要检查的图片的 URL

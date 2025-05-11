@@ -3,7 +3,7 @@ from __future__ import annotations
 from .. import migration
 
 
-@migration.migration_class("wxoa-mode", 35)
+@migration.migration_class('wxoa-mode', 35)
 class WxoaModeMigration(migration.Migration):
     """迁移"""
 

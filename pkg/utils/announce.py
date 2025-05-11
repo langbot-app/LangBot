@@ -14,7 +14,7 @@ from ..core import app
 
 class Announcement(pydantic.BaseModel):
     """公告"""
-    
+
     id: int
 
     time: str
@@ -27,11 +27,11 @@ class Announcement(pydantic.BaseModel):
 
     def to_dict(self) -> dict:
         return {
-            "id": self.id,
-            "time": self.time,
-            "timestamp": self.timestamp,
-            "content": self.content,
-            "enabled": self.enabled
+            'id': self.id,
+            'time': self.time,
+            'timestamp': self.timestamp,
+            'content': self.content,
+            'enabled': self.enabled,
         }
 
 
@@ -43,30 +43,26 @@ class AnnouncementManager:
     def __init__(self, ap: app.Application):
         self.ap = ap
 
-    async def fetch_all(
-        self
-    ) -> list[Announcement]:
+    async def fetch_all(self) -> list[Announcement]:
         """获取所有公告"""
         resp = requests.get(
-            url="https://api.github.com/repos/RockChinQ/LangBot/contents/res/announcement.json",
+            url='https://api.github.com/repos/RockChinQ/LangBot/contents/res/announcement.json',
             proxies=self.ap.proxy_mgr.get_forward_proxies(),
-            timeout=5
+            timeout=5,
         )
         obj_json = resp.json()
-        b64_content = obj_json["content"]
+        b64_content = obj_json['content']
         # 解码
-        content = base64.b64decode(b64_content).decode("utf-8")
+        content = base64.b64decode(b64_content).decode('utf-8')
 
         return [Announcement(**item) for item in json.loads(content)]
 
-    async def fetch_saved(
-        self
-    ) -> list[Announcement]:
-        if not os.path.exists("data/labels/announcement_saved.json"):
-            with open("data/labels/announcement_saved.json", "w", encoding="utf-8") as f:
-                f.write("[]")
+    async def fetch_saved(self) -> list[Announcement]:
+        if not os.path.exists('data/labels/announcement_saved.json'):
+            with open('data/labels/announcement_saved.json', 'w', encoding='utf-8') as f:
+                f.write('[]')
 
-        with open("data/labels/announcement_saved.json", "r", encoding="utf-8") as f:
+        with open('data/labels/announcement_saved.json', 'r', encoding='utf-8') as f:
             content = f.read()
 
         if not content:
@@ -74,19 +70,11 @@ class AnnouncementManager:
 
         return [Announcement(**item) for item in json.loads(content)]
 
-    async def write_saved(
-        self,
-        content: list[Announcement]
-    ):
+    async def write_saved(self, content: list[Announcement]):
+        with open('data/labels/announcement_saved.json', 'w', encoding='utf-8') as f:
+            f.write(json.dumps([item.to_dict() for item in content], indent=4, ensure_ascii=False))
 
-        with open("data/labels/announcement_saved.json", "w", encoding="utf-8") as f:
-            f.write(json.dumps([
-                item.to_dict() for item in content
-            ], indent=4, ensure_ascii=False))
-
-    async def fetch_new(
-        self
-    ) -> list[Announcement]:
+    async def fetch_new(self) -> list[Announcement]:
         """获取新公告"""
         all = await self.fetch_all()
         saved = await self.fetch_saved()
@@ -106,21 +94,15 @@ class AnnouncementManager:
         await self.write_saved(all)
         return to_show
 
-    async def show_announcements(
-        self
-    ) -> typing.Tuple[str, int]:
+    async def show_announcements(self) -> typing.Tuple[str, int]:
         """显示公告"""
         try:
             announcements = await self.fetch_new()
-            ann_text = ""
+            ann_text = ''
             for ann in announcements:
-                ann_text += f"[公告] {ann.time}: {ann.content}\n"
+                ann_text += f'[公告] {ann.time}: {ann.content}\n'
 
-            if announcements:
-
-                await self.ap.ctr_mgr.main.post_announcement_showed(
-                    ids=[item.id for item in announcements]
-                )
+            # TODO statistics
 
             return ann_text, logging.INFO
         except Exception as e:
