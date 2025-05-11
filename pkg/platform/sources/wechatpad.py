@@ -144,7 +144,7 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
             if image_data["Data"]['FileData'] == '':
                 image_data = self.bot.cdn_download(aeskey=aeskey, file_type=2, file_url=cdnthumburl)
             base64_str = image_data["Data"]['FileData']
-            # print(base64_str)
+            # print(f"data:image/png;base64,{base64_str}")
 
 
             elements = [
@@ -547,9 +547,9 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
     ):
         """统一消息处理核心逻辑"""
         content_list = await self.message_converter.yiri2target(message)
-        print(content_list)
+        # print(content_list)
         at_targets = [item["target"] for item in content_list if item["type"] == "at"]
-        print(at_targets)
+        # print(at_targets)
         # 处理@逻辑
         at_targets = at_targets or []
         member_info = []

@@ -32,6 +32,7 @@ def import_dir(path: str):
             rel_path = full_path.replace(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '')
             rel_path = rel_path[1:]
             rel_path = rel_path.replace('/', '.')[:-3]
+            rel_path = rel_path.replace("\\",".")
             importlib.import_module(rel_path)
 
 
