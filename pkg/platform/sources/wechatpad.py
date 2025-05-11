@@ -557,11 +557,7 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
             member_info = self.bot.get_chatroom_member_detail(
                 target_id,
             )["Data"]["member_data"]["chatroom_member_list"]
-
         # 处理消息组件
-        for msg in content_list:
-            # 文本消息处理@
-            if msg['type'] == 'text' and at_targets:
                 for member in member_info:
                     for at_target in at_targets:
                         if member["user_name"] == at_target:
@@ -699,14 +695,8 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
         # asyncio.create_task(wechat_login_process)
         threading.Thread(target=wechat_login_process).start()
         # wechat_login_process()
-        def connect_websocket_sync() -> None:
-            import websocket
-            import json
             import time
             thread_1.wait()
-            uri = f"{self.config['wechatpad_ws']}/GetSyncMsg?key={self.config['token']}"
-            self.ap.logger.info(f"Connecting to WebSocket: {uri}")
-
             def on_message(ws, message):
                 try:
                     data = json.loads(message)

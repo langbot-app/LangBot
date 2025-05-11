@@ -91,6 +91,7 @@ class LoginApi:
 
 
 
+<<<<<<< HEAD
     def login(self,admin_key):
         login_status = self.get_login_status()
         if login_status["Code"] == 300 and login_status["Text"] == "你已退出微信":
@@ -102,6 +103,8 @@ class LoginApi:
 
 
 
+=======
+>>>>>>> 更新了wechatpad接口，以及适配器
 
 
 
