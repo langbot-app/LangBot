@@ -460,7 +460,7 @@ class WeChatPadEventConverter(adapter.EventConverter):
 
         if '@chatroom' in event['from_user_name']['str']:
             # 找出开头的 wxid_ 字符串，以:结尾
-            sender_wxid = event['from_user_name']['str'].split(":")[0]
+            sender_wxid = event['content']['str'].split(":")[0]
 
             return platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
@@ -525,6 +525,7 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
     async def ws_message(self, data):
         """处理接收到的消息"""
         self.ap.logger.debug(f"Gewechat callback event: {data}")
+        # print(data)
 
 
         try:
@@ -546,22 +547,25 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
     ):
         """统一消息处理核心逻辑"""
         content_list = await self.message_converter.yiri2target(message)
+        print(content_list)
         at_targets = [item["target"] for item in content_list if item["type"] == "at"]
-
+        print(at_targets)
         # 处理@逻辑
         at_targets = at_targets or []
         member_info = []
         if at_targets:
             member_info = self.bot.get_chatroom_member_detail(
                 target_id,
-            )["Data"]
+            )["Data"]["member_data"]["chatroom_member_list"]
 
         # 处理消息组件
         for msg in content_list:
             # 文本消息处理@
             if msg['type'] == 'text' and at_targets:
                 for member in member_info:
-                    msg['content'] = f'@{member["nickName"]} {msg["content"]}'
+                    for at_target in at_targets:
+                        if member["user_name"] == at_target:
+                            msg['content'] = f'@{member["nick_name"]} {msg["content"]}'
 
             # 统一消息派发
             handler_map = {
@@ -672,6 +676,7 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
             self.config["token"]
         )
         print(self.config["token"])
+        thread_1 = threading.Event()
 
 
         def wechat_login_process():
@@ -688,16 +693,17 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
             print(profile)
             self.bot_account_id = profile["Data"]["userInfo"]["nickName"]["str"]
             self.config["wxid"] = profile["Data"]["userInfo"]["userName"]["str"]
+            thread_1.set()
 
 
         # asyncio.create_task(wechat_login_process)
         threading.Thread(target=wechat_login_process).start()
-
+        # wechat_login_process()
         def connect_websocket_sync() -> None:
             import websocket
             import json
             import time
-
+            thread_1.wait()
             uri = f"{self.config['wechatpad_ws']}/GetSyncMsg?key={self.config['token']}"
             self.ap.logger.info(f"Connecting to WebSocket: {uri}")
 
@@ -754,58 +760,3 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
     async def kill(self) -> bool:
         pass
 
-    async def connect_websocket(self) -> None:
-        uri = f"{self.config['wechatpad_ws']}/GetSyncMsg?key={self.config['token']}"
-        self.ap.logger.info(f"Connecting to WebSocket: {uri}")  # 添加连接日志
-
-        while True:
-            try:
-                async with websockets.connect(
-                        uri,
-                        ping_interval=20,  # 保持连接活性
-                        ping_timeout=20,
-                        close_timeout=10
-                ) as websocket:
-                    self.ap.logger.info("WebSocket connected successfully!")
-
-                    # 发送初始握手消息（如果需要）
-                    # await websocket.send(json.dumps({"type": "handshake"}))
-
-                    while True:
-                        try:
-                            message = await asyncio.wait_for(websocket.recv(), timeout=30)
-                            try:
-                                data = json.loads(message)
-                                self.ap.logger.debug(f"Received message: {data}")
-                                await self.ws_message(data)
-                            except json.JSONDecodeError:
-                                self.ap.logger.error(f"Non-JSON message: {message[:100]}...")
-                        except asyncio.TimeoutError:
-                            # 发送心跳维持连接
-                            await websocket.ping()
-                            continue
-
-            except websockets.exceptions.ConnectionClosedError as e:
-                self.ap.logger.error(f"Connection closed: {e}, reconnecting...")
-            except Exception as e:
-                self.ap.logger.error(f"WebSocket error: {str(e)[:200]}", exc_info=True)
-            await asyncio.sleep(5)
-
-    def start_websocket_client(self):
-        """启动WebSocket客户端（线程安全版）"""
-
-        def run_forever():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(self.connect_websocket())
-            finally:
-                loop.close()
-
-        thread = threading.Thread(
-            target=run_forever,
-            name="WebSocketClientThread",
-            daemon=True
-        )
-        thread.start()
-        self.ap.logger.info("WebSocket client thread started")
