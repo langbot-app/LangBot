@@ -12,6 +12,9 @@ stages:
         label:
           en_US: Threshold
           zh_CN: 阈值
+        description:
+          en_US: The threshold of the long text
+          zh_CN: 超过此长度的文本将被处理
         type: integer
         required: true
         default: 1000
@@ -19,6 +22,9 @@ stages:
         label:
           en_US: Strategy
           zh_CN: 策略
+        description:
+          en_US: The strategy of the long text
+          zh_CN: 长文本的处理策略
         type: select
         required: true
         default: forward
@@ -26,7 +32,7 @@ stages:
           - name: forward
             label:
               en_US: Forward Message Component
-              zh_CN: 转发消息组件
+              zh_CN: 转换为转发消息组件（部分平台不支持）
           - name: image
             label:
               en_US: Convert to Image
@@ -35,24 +41,30 @@ stages:
         label:
           en_US: Font Path
           zh_CN: 字体路径
+        description:
+          en_US: The path of the font to be used when converting to image
+          zh_CN: 选用转换为图片时，所使用的字体路径
         type: string
-        required: true
+        required: false
         default: ''
   - name: force-delay
     label:
       en_US: Force Delay
       zh_CN: 强制延迟
+    description:
+      en_US: Force the output to be delayed for a while
+      zh_CN: 强制延迟一段时间后再回复给用户
     config:
       - name: min
         label:
-          en_US: Min
+          en_US: Min Seconds
           zh_CN: 最小秒数
         type: integer
         required: true
         default: 0
       - name: max
         label:
-          en_US: Max
+          en_US: Max Seconds
           zh_CN: 最大秒数
         type: integer
         required: true
@@ -72,14 +84,14 @@ stages:
       - name: at-sender
         label:
           en_US: At Sender
-          zh_CN: 在回复中@发送者
+          zh_CN: 在群聊回复中@发送者
         type: boolean
         required: true
         default: true
       - name: quote-origin
         label:
-          en_US: Quote Origin
-          zh_CN: 引用原文
+          en_US: Quote Origin Message
+          zh_CN: 引用原消息
         type: boolean
         required: true
         default: false
@@ -87,6 +99,9 @@ stages:
         label:
           en_US: Track Function Calls
           zh_CN: 跟踪函数调用
+        description:
+          en_US: If enabled, the function calls will be tracked and output to the user
+          zh_CN: 启用后，Agent 每次调用工具时都会输出一个提示给用户
         type: boolean
         required: true
         default: false

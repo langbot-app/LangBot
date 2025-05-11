@@ -7,6 +7,9 @@ stages:
     label:
       en_US: Runner
       zh_CN: 运行方式
+    description:
+      en_US: Strategy to call AI to process messages
+      zh_CN: 调用 AI 处理消息的方式
     config:
       - name: runner
         label:
@@ -46,6 +49,9 @@ stages:
         label:
           en_US: Max Round
           zh_CN: 最大回合数
+        description:
+          en_US: The maximum number of previous messages that the agent can remember
+          zh_CN: 最大前文消息回合数
         type: integer
         required: true
         default: 10
@@ -53,6 +59,9 @@ stages:
         label:
           en_US: Prompt
           zh_CN: 提示词
+        description:
+          en_US: The prompt of the agent
+          zh_CN: 除非您了解消息结构，否则请只使用 system 单提示词
         type: prompt-editor
         required: true
   - name: dify-service-api
@@ -155,6 +164,9 @@ stages:
         label:
           en_US: References Quote
           zh_CN: 引用文本
+        description:
+          en_US: The text prompt when the references are included
+          zh_CN: 包含引用资料时的文本提示
         type: string
         required: false
         default: '参考资料来自:'

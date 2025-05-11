@@ -54,7 +54,7 @@ class DBMigrateV3Config(migration.DBMigration):
                             model_api_keys = self.ap.provider_cfg.data.get('keys', {})[_token_mgr]
 
                     if 'tool_call_supported' in item and item['tool_call_supported']:
-                        model_abilities.append(item['func_call'])
+                        model_abilities.append('func_call')
 
                     if 'vision_supported' in item and item['vision_supported']:
                         model_abilities.append('vision')

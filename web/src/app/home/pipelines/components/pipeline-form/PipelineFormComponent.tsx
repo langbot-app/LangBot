@@ -75,17 +75,13 @@ export default function PipelineFormComponent({
   const formLabelList: FormLabel[] = isEditMode
     ? [
         { label: '基础信息', name: 'basic' },
-        { label: 'AI能力', name: 'ai' },
+        { label: 'AI 能力', name: 'ai' },
         { label: '触发条件', name: 'trigger' },
-        { label: '安全能力', name: 'safety' },
+        { label: '安全控制', name: 'safety' },
         { label: '输出处理', name: 'output' },
       ]
     : [{ label: '基础信息', name: 'basic' }];
-  // const [basicForm] = Form.useForm();
-  // const [aiForm] = Form.useForm();
-  // const [triggerForm] = Form.useForm();
-  // const [safetyForm] = Form.useForm();
-  // const [outputForm] = Form.useForm();
+
   const [aiConfigTabSchema, setAIConfigTabSchema] =
     useState<PipelineConfigTab>();
   const [triggerConfigTabSchema, setTriggerConfigTabSchema] =

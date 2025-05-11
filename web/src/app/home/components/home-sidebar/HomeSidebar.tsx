@@ -123,7 +123,7 @@ export default function HomeSidebar({
       </div>
 
       <div className={`${styles.sidebarBottomContainer}`}>
-        <SidebarChild
+        {/* <SidebarChild
           onClick={() => {}}
           isSelected={false}
           icon={
@@ -136,7 +136,7 @@ export default function HomeSidebar({
             </svg>
           }
           name="系统设置"
-        />
+        /> */}
         <SidebarChild
           onClick={() => {
             // open docs.langbot.app

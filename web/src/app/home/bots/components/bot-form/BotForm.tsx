@@ -61,11 +61,13 @@ export default function BotForm({
   onFormSubmit,
   onFormCancel,
   onBotDeleted,
+  onNewBotCreated,
 }: {
   initBotId?: string;
   onFormSubmit: (value: z.infer<typeof formSchema>) => void;
   onFormCancel: () => void;
   onBotDeleted: () => void;
+  onNewBotCreated: (botId: string) => void;
 }) {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -106,6 +108,11 @@ export default function BotForm({
   const [, setIsLoading] = useState<boolean>(false);
 
   useEffect(() => {
+    setBotFormValues();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function setBotFormValues() {
     initBotFormComponent().then(() => {
       // 拉取初始化表单信息
       if (initBotId) {
@@ -128,8 +135,8 @@ export default function BotForm({
         form.reset();
       }
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }
+
   async function initBotFormComponent() {
     // 初始化流水线列表
     const pipelinesRes = await httpClient.getPipelines();
@@ -281,9 +288,13 @@ export default function BotForm({
       httpClient
         .createBot(newBot)
         .then((res) => {
-          console.log(res);
-          onFormSubmit(form.getValues());
-          toast.success('创建成功');
+          console.log('create bot success', res);
+          toast.success('创建成功 请启用或修改绑定流水线');
+          initBotId = res.uuid;
+
+          setBotFormValues();
+
+          onNewBotCreated(res.uuid);
         })
         .catch((err) => {
           toast.error('创建失败：' + err.message);

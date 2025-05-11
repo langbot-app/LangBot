@@ -328,7 +328,7 @@ class HttpClient {
     return this.get(`/api/v1/platform/bots/${uuid}`);
   }
 
-  public createBot(bot: Bot): Promise<object> {
+  public createBot(bot: Bot): Promise<{ uuid: string }> {
     return this.post('/api/v1/platform/bots', bot);
   }
 
@@ -445,8 +445,8 @@ class HttpClient {
 }
 
 // export const httpClient = new HttpClient("https://version-4.langbot.dev");
-export const httpClient = new HttpClient('http://localhost:5300');
-// export const httpClient = new HttpClient('/');
+// export const httpClient = new HttpClient('http://localhost:5300');
+export const httpClient = new HttpClient('/');
 
 // 临时写法，未来两种Client都继承自HttpClient父类，不允许共享方法
 export const spaceClient = new HttpClient('https://space.langbot.app');

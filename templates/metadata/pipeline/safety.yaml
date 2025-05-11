@@ -32,6 +32,9 @@ stages:
         label:
           en_US: Check Sensitive Words
           zh_CN: 检查敏感词
+        description:
+          en_US: Sensitive words can be configured in data/metadata/sensitive-words.json
+          zh_CN: 敏感词内容可以在 data/metadata/sensitive-words.json 中配置
         type: boolean
         required: true
         default: false

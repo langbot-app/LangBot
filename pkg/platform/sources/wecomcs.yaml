@@ -8,6 +8,7 @@ metadata:
   description:
     en_US: WeComCSAdapter
     zh_CN: 企业微信客服适配器
+  icon: wecom.png
 spec:
   config:
     - name: port
