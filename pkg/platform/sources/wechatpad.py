@@ -42,15 +42,34 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
             message_chain: platform_message.MessageChain
     ) -> list[dict]:
         content_list = []
+        current_file_path = os.path.abspath(__file__)
+
+        # 向上回退到项目根目录（假设项目结构为 /project/）
+        project_root = os.path.dirname(os.path.dirname(current_file_path))
+        dir_path = os.path.join(project_root, "data", "download")
+
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+
         for component in message_chain:
             if isinstance(component, platform_message.At):
                 content_list.append({"type": "at", "target": component.target})
             elif isinstance(component, platform_message.Plain):
                 content_list.append({"type": "text", "content": component.text})
             elif isinstance(component, platform_message.Image):
-                if not component.url:
-                    pass
-                content_list.append({"type": "image", "image": component.url})
+                if component.url:
+                    nowtime = datetime.datetime.now()
+                    file_name = component.url.split("/")[-1]
+                    if file_name.split(".")[-1] in ["jpg", "jpeg", "png", "webp"]:
+                        file_name = f"{nowtime}{file_name}"
+                    else:
+                        file_name = f"{nowtime}{file_name}.png"
+
+                    image_path = platform_message.Image.download(component.url,dir_path,file_name)
+                    image_base64 = platform_message.Image.from_local(image_path)
+                    content_list.append({"type": "image", "image": image_base64})
+                elif component.base64:
+                    content_list.append({"type": "image", "image": component.url})
 
             elif isinstance(component, platform_message.WeChatEmoji):
                 content_list.append(
