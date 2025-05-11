@@ -160,6 +160,8 @@ class PlatformManager:
         try:
             tasks = []
             for adapter in self.adapters:
+                # self.ap.logger.info(f'初始化平台适配器: {adapter.name}')
+
                 async def exception_wrapper(adapter: msadapter.MessagePlatformAdapter):
                     try:
                         await adapter.run_async()

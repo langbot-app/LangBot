@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: wechatpad
+  label:
+    en_US: WeChatPad
+    zh_CN: WeChatPad（个人微信ipad）
+  description:
+    en_US: WeChatPad Adapter
+    zh_CN: WeChatPad 适配器
+spec:
+  config:
+    - name: wechatpad_url
+      label:
+        en_US: WeChatPad ERL
+        zh_CN: WeChatPad URL
+      type: string
+      required: true
+      default: ""
+    - name: wechatpad_ws
+      label:
+        en_US: WeChatPad_Ws
+        zh_CN: WeChatPad_Ws
+      type: string
+      required: true
+      default: ""
+    - name: admin_key
+      label:
+        en_US: Admin_Key
+        zh_CN: 管理员密匙
+      type: string
+      required: true
+      default: ""
+    - name: token
+      label:
+        en_US: Token
+        zh_CN: 令牌
+      type: string
+      required: true
+      default: ""
+    - name: wxid
+      label:
+        en_US: wxid
+        zh_CN: wxid
+      type: string
+      required: true
+      default: ""
+execution:
+  python:
+    path: ./wechatpad.py
+    attr: WeChatPadAdapter
