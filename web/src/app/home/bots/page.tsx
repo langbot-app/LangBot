@@ -19,7 +19,7 @@ export default function BotConfigPage() {
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [botList, setBotList] = useState<BotCardVO[]>([]);
   const [isEditForm, setIsEditForm] = useState(false);
-  const [nowSelectedBotCard, setNowSelectedBotCard] = useState<BotCardVO>();
+  const [nowSelectedBotUUID, setNowSelectedBotUUID] = useState<string>();
 
   useEffect(() => {
     getBotList();
@@ -62,18 +62,13 @@ export default function BotConfigPage() {
 
   function handleCreateBotClick() {
     setIsEditForm(false);
-    setNowSelectedCard(undefined);
+    setNowSelectedBotUUID('');
     setModalOpen(true);
   }
 
-  function setNowSelectedCard(cardVO: BotCardVO | undefined) {
-    setNowSelectedBotCard(cardVO);
-  }
-
-  function selectBot(cardVO: BotCardVO) {
+  function selectBot(botUUID: string) {
+    setNowSelectedBotUUID(botUUID);
     setIsEditForm(true);
-    setNowSelectedCard(cardVO);
-    console.log('set now vo', cardVO);
     setModalOpen(true);
   }
 
@@ -88,7 +83,7 @@ export default function BotConfigPage() {
           </DialogHeader>
           <div className="flex-1 overflow-y-auto px-6">
             <BotForm
-              initBotId={nowSelectedBotCard?.id}
+              initBotId={nowSelectedBotUUID}
               onFormSubmit={() => {
                 getBotList();
                 setModalOpen(false);
@@ -97,6 +92,11 @@ export default function BotConfigPage() {
               onBotDeleted={() => {
                 getBotList();
                 setModalOpen(false);
+              }}
+              onNewBotCreated={(botId) => {
+                console.log('new bot created', botId);
+                getBotList();
+                selectBot(botId);
               }}
             />
           </div>
@@ -116,7 +116,7 @@ export default function BotConfigPage() {
             <div
               key={cardVO.id}
               onClick={() => {
-                selectBot(cardVO);
+                selectBot(cardVO.id);
               }}
             >
               <BotCard botCardVO={cardVO} />

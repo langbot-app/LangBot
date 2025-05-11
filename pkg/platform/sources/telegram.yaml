@@ -18,6 +18,13 @@ spec:
       type: string
       required: true
       default: ""
+    - name: markdown_card
+      label:
+        en_US: Markdown Card
+        zh_CN: 是否使用 Markdown 卡片
+      type: boolean
+      required: false
+      default: true
 execution:
   python:
     path: ./telegram.py

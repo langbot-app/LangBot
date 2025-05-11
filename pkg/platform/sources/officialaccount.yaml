@@ -39,6 +39,20 @@ spec:
       type: string
       required: true
       default: ""
+    - name: Mode
+      label:
+        en_US: Mode
+        zh_CN: 接入模式
+      type: string
+      required: true
+      default: "drop"
+    - name: LoadingMessage
+      label:
+        en_US: Loading Message
+        zh_CN: 加载消息
+      type: string
+      required: true
+      default: "AI正在思考中，请发送任意内容获取回复。"
     - name: host
       label:
         en_US: Host

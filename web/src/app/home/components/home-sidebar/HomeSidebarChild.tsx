@@ -6,6 +6,7 @@ export interface ISidebarChildVO {
   name: string;
   route: string;
   description: string;
+  helpLink: string;
 }
 
 export class SidebarChildVO {
@@ -14,6 +15,7 @@ export class SidebarChildVO {
   name: string;
   route: string;
   description: string;
+  helpLink: string;
 
   constructor(props: ISidebarChildVO) {
     this.id = props.id;
@@ -21,6 +23,7 @@ export class SidebarChildVO {
     this.name = props.name;
     this.route = props.route;
     this.description = props.description;
+    this.helpLink = props.helpLink;
   }
 }
 

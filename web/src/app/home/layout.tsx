@@ -13,9 +13,11 @@ export default function HomeLayout({
 }>) {
   const [title, setTitle] = useState<string>('');
   const [subtitle, setSubtitle] = useState<string>('');
+  const [helpLink, setHelpLink] = useState<string>('');
   const onSelectedChangeAction = (child: SidebarChildVO) => {
     setTitle(child.name);
     setSubtitle(child.description);
+    setHelpLink(child.helpLink);
   };
 
   return (
@@ -25,7 +27,7 @@ export default function HomeLayout({
       </aside>
 
       <div className={styles.main}>
-        <HomeTitleBar title={title} subtitle={subtitle} />
+        <HomeTitleBar title={title} subtitle={subtitle} helpLink={helpLink} />
 
         <main className={styles.mainContent}>{children}</main>
       </div>
