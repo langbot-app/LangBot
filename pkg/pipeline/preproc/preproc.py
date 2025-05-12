@@ -30,14 +30,18 @@ class PreProcessor(stage.PipelineStage):
         stage_inst_name: str,
     ) -> entities.StageProcessResult:
         """处理"""
+        selected_runner = query.pipeline_config['ai']['runner']['runner']
+
         session = await self.ap.sess_mgr.get_session(query)
 
         # 非 local-agent 时，llm_model 为 None
         llm_model = (
             await self.ap.model_mgr.get_model_by_uuid(query.pipeline_config['ai']['local-agent']['model'])
-            if query.pipeline_config['ai']['runner'] == 'local-agent'
+            if selected_runner == 'local-agent'
             else None
         )
+
+        print(llm_model)
 
         conversation = await self.ap.sess_mgr.get_conversation(
             query,
@@ -53,7 +57,7 @@ class PreProcessor(stage.PipelineStage):
 
         query.use_llm_model = conversation.use_llm_model
 
-        if query.pipeline_config['ai']['runner'] == 'local-agent':
+        if selected_runner == 'local-agent':
             query.use_funcs = (
                 conversation.use_funcs if query.use_llm_model.model_entity.abilities.__contains__('tool_call') else None
             )
@@ -68,9 +72,7 @@ class PreProcessor(stage.PipelineStage):
 
         # Check if this model supports vision, if not, remove all images
         # TODO this checking should be performed in runner, and in this stage, the image should be reserved
-        if query.pipeline_config['ai']['runner'][
-            'runner'
-        ] == 'local-agent' and not query.use_llm_model.model_entity.abilities.__contains__('vision'):
+        if selected_runner == 'local-agent' and not query.use_llm_model.model_entity.abilities.__contains__('vision'):
             for msg in query.messages:
                 if isinstance(msg.content, list):
                     for me in msg.content:
@@ -86,9 +88,9 @@ class PreProcessor(stage.PipelineStage):
                 content_list.append(llm_entities.ContentElement.from_text(me.text))
                 plain_text += me.text
             elif isinstance(me, platform_message.Image):
-                if query.pipeline_config['ai']['runner'][
-                    'runner'
-                ] != 'local-agent' or query.use_llm_model.model_entity.abilities.__contains__('vision'):
+                if selected_runner != 'local-agent' or query.use_llm_model.model_entity.abilities.__contains__(
+                    'vision'
+                ):
                     if me.base64 is not None:
                         content_list.append(llm_entities.ContentElement.from_image_base64(me.base64))
 
