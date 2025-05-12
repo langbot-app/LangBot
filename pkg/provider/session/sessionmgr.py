@@ -4,7 +4,6 @@ import asyncio
 
 from ...core import app, entities as core_entities
 from ...provider import entities as provider_entities
-from ...provider.modelmgr import entities as model_entities
 
 
 class SessionManager:
@@ -42,7 +41,6 @@ class SessionManager:
         query: core_entities.Query,
         session: core_entities.Session,
         prompt_config: list[dict],
-        llm_model: model_entities.LLMModelInfo,
     ) -> core_entities.Conversation:
         """获取对话或创建对话"""
 
@@ -64,7 +62,6 @@ class SessionManager:
             conversation = core_entities.Conversation(
                 prompt=prompt,
                 messages=[],
-                use_llm_model=llm_model,
                 use_funcs=await self.ap.tool_mgr.get_all_functions(
                     plugin_enabled=True,
                 ),

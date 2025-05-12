@@ -41,21 +41,20 @@ class PreProcessor(stage.PipelineStage):
             else None
         )
 
-        print(llm_model)
-
         conversation = await self.ap.sess_mgr.get_conversation(
             query,
             session,
             query.pipeline_config['ai']['local-agent']['prompt'],
-            llm_model,
         )
+
+        conversation.use_llm_model = llm_model
 
         # 设置query
         query.session = session
         query.prompt = conversation.prompt.copy()
         query.messages = conversation.messages.copy()
 
-        query.use_llm_model = conversation.use_llm_model
+        query.use_llm_model = llm_model
 
         if selected_runner == 'local-agent':
             query.use_funcs = (
