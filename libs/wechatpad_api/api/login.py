@@ -91,20 +91,12 @@ class LoginApi:
 
 
 
-<<<<<<< HEAD
     def login(self,admin_key):
         login_status = self.get_login_status()
         if login_status["Code"] == 300 and login_status["Text"] == "你已退出微信":
             print("token已经失效，重新获取")
             token_data = self.get_token(admin_key)
             self.token = token_data["Data"][0]
-
-
-
-
-
-=======
->>>>>>> 更新了wechatpad接口，以及适配器
 
 
 

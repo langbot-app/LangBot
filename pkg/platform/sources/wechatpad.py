@@ -29,13 +29,14 @@ from ...utils import image
 import xml.etree.ElementTree as ET
 from typing import Optional, List, Tuple
 from functools import partial
-
+import logging
 
 class WeChatPadMessageConverter(adapter.MessageConverter):
 
     def __init__(self, config: dict):
         self.config = config
         self.bot = WeChatPadClient(self.config["wechatpad_url"],self.config["token"])
+        self.logger = logging.getLogger("WeChatPadMessageConverter")
 
     @staticmethod
     async def yiri2target(
@@ -144,7 +145,7 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
             if image_data["Data"]['FileData'] == '':
                 image_data = self.bot.cdn_download(aeskey=aeskey, file_type=2, file_url=cdnthumburl)
             base64_str = image_data["Data"]['FileData']
-            # print(f"data:image/png;base64,{base64_str}")
+            # self.logger.info(f"data:image/png;base64,{base64_str}")
 
 
             elements = [
@@ -153,7 +154,7 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
             ]
             return platform_message.MessageChain(elements)
         except Exception as e:
-            print(f"处理图片失败: {str(e)}")
+            self.logger.error(f"处理图片失败: {str(e)}")
             return platform_message.MessageChain([platform_message.Unknown("[图片处理失败]")])
 
     async def _handler_voice(
@@ -191,10 +192,10 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
             message_List.append(voice_element)
 
         except KeyError as e:
-            print(f"语音数据字段缺失: {str(e)}")
+            self.logger.error(f"语音数据字段缺失: {str(e)}")
             message_List.append(platform_message.Unknown(text="[语音数据解析失败]"))
         except Exception as e:
-            print(f"处理语音消息异常: {str(e)}")
+            self.logger.error(f"处理语音消息异常: {str(e)}")
             message_List.append(platform_message.Unknown(text="[语音处理失败]"))
 
         return platform_message.MessageChain(message_List)
@@ -210,7 +211,6 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
             appmsg_data = xml_data.find('.//appmsg')
             if appmsg_data:
                 data_type = appmsg_data.findtext('.//type', "")
-
                 # 二次分派处理器
                 sub_handler_map = {
                     '57': self._handler_compound_quote,
@@ -231,7 +231,7 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
             else:
                 return platform_message.MessageChain([platform_message.Unknown(text=content_no_preifx)])
         except Exception as e:
-            print(f"解析复合消息失败: {str(e)}")
+            self.logger.error(f"解析复合消息失败: {str(e)}")
             return platform_message.MessageChain([platform_message.Unknown(text=content_no_preifx)])
 
     async def _handler_compound_quote(
@@ -241,24 +241,26 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
     ) -> platform_message.MessageChain:
         """处理引用消息 (data_type=57)"""
         message_list = []
-        # print("_handler_compound_quote", ET.tostring(xml_data, encoding='unicode'))
+#         self.logger.info("_handler_compound_quote", ET.tostring(xml_data, encoding='unicode'))
         appmsg_data = xml_data.find('.//appmsg')
         quote_data = ""  # 引用原文
         quote_id = None  # 引用消息的原发送者
         tousername = None  # 接收方: 所属微信的wxid
         user_data = ""  # 用户消息
         sender_id = xml_data.findtext('.//fromusername')  # 发送方：单聊用户/群member
+
+        # 引用消息转发
         if appmsg_data:
             user_data = appmsg_data.findtext('.//title') or ""
             quote_data = appmsg_data.find('.//refermsg').findtext('.//content')
             quote_id = appmsg_data.find('.//refermsg').findtext('.//chatusr')
             message_list.append(
-                platform_message.WeChatForwardQuote(
+                platform_message.WeChatAppMsg(
                     app_msg=ET.tostring(appmsg_data, encoding='unicode'))
             )
         if message:
-            tousername = message['Wxid']
-            # quote_data原始的消息
+            tousername = message['to_user_name']["str"]
+        
         if quote_data:
             quote_data_message_list = platform_message.MessageChain()
             # 文本消息
@@ -278,7 +280,7 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
                         # appmsg
                         quote_data_message_list.extend(await self._handler_compound(None, quote_data))
             except Exception as e:
-                print(f"处理引用消息异常 expcetion:{e}")
+                self.logger.error(f"处理引用消息异常 expcetion:{e}")
                 quote_data_message_list.append(platform_message.Plain(quote_data))
             message_list.append(
                 platform_message.Quote(
@@ -324,16 +326,14 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
                     link_thumb_url=appmsg.findtext("thumburl", '')  # 这个字段拿不到
                 )
             )
-            # 转发消息
-            xml_data_str = ET.tostring(xml_data, encoding='unicode')
-            # print(xml_data_str)
+            # 还没有发链接的接口, 暂时还需要自己构造appmsg, 先用WeChatAppMsg。
             message_list.append(
-                platform_message.WeChatForwardLink(
-                    xml_data=xml_data_str
+                platform_message.WeChatAppMsg(
+                    app_msg=ET.tostring(appmsg, encoding='unicode')
                 )
             )
         except Exception as e:
-            print(f"解析链接消息失败: {str(e)}")
+            self.logger.error(f"解析链接消息失败: {str(e)}")
         return platform_message.MessageChain(message_list)
 
     async def _handler_compound_mini_program(
@@ -398,12 +398,12 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
             if message.get('msg_type', 0) == 49:
                 xml_data = ET.fromstring(content_no_prefix)
                 appmsg_data = xml_data.find('.//appmsg')
-                tousername = message['Wxid']
+                tousername = message['to_user_name']['str']
                 if appmsg_data:  # 接收方: 所属微信的wxid
                     quote_id = appmsg_data.find('.//refermsg').findtext('.//chatusr')  # 引用消息的原发送者
                     ats_bot = ats_bot or (quote_id == tousername)
         except Exception as e:
-            print(f"_ats_bot got except: {e}")
+            self.logger.error(f"_ats_bot got except: {e}")
         finally:
             return ats_bot
 
@@ -419,7 +419,7 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
                 sender_id = line_split[0].strip(":")
                 return raw_content, sender_id
         except Exception as e:
-            print(f"_extract_content_and_sender got except: {e}")
+            self.logger.error(f"_extract_content_and_sender got except: {e}")
         finally:
             return raw_content, None
 
@@ -434,7 +434,8 @@ class WeChatPadEventConverter(adapter.EventConverter):
     def __init__(self, config: dict):
         self.config = config
         self.message_converter = WeChatPadMessageConverter(config)
-
+        self.logger = logging.getLogger("WeChatPadEventConverter")
+        
     @staticmethod
     async def yiri2target(
             event: platform_events.MessageEvent
@@ -539,7 +540,6 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
         return 'ok'
 
 
-
     async def _handle_message(
             self,
             message: platform_message.MessageChain,
@@ -557,11 +557,16 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
             member_info = self.bot.get_chatroom_member_detail(
                 target_id,
             )["Data"]["member_data"]["chatroom_member_list"]
+
         # 处理消息组件
+        for msg in content_list:
+            # 文本消息处理@
+            if msg['type'] == 'text' and at_targets:
+                at_nick_name_list = []
                 for member in member_info:
-                    for at_target in at_targets:
-                        if member["user_name"] == at_target:
-                            msg['content'] = f'@{member["nick_name"]} {msg["content"]}'
+                    if member["user_name"] in at_targets:
+                        at_nick_name_list.append(f'@{member["nick_name"]}')
+                msg['content'] = f'{" ".join(at_nick_name_list)} {msg["content"]}'
 
             # 统一消息派发
             handler_map = {
@@ -583,19 +588,19 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
 
                 'voice': lambda msg: self.bot.send_voice_message(
                     to_wxid=target_id,
-                    voice_url=msg['url'],
-                    voice_duration=msg['length']
+                    voice_url=msg['url']
                 ),
                 'WeChatAppMsg': lambda msg: self.bot.send_app_message(
                     to_wxid=target_id,
-                    appmsg=msg['app_msg'],
-                    type=msg['type'],
+                    app_message=msg['app_msg'],
+                    type=0,
                 ),
                 'at': lambda msg: None
             }
 
             if handler := handler_map.get(msg['type']):
                 handler(msg)
+                # self.ap.logger.warning(f"未处理的消息类型: {ret}")
             else:
                 self.ap.logger.warning(f"未处理的消息类型: {msg['type']}")
                 continue
@@ -648,7 +653,7 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
                     self.config["token"]
                 )
                 data = self.bot.get_login_status()
-                print(data)
+                self.ap.logger.info(data)
                 if data["Code"] == 300 and data["Text"] == "你已退出微信":
                     response = requests.post(
                         f"{self.config['wechatpad_url']}/admin/GenAuthKey1?key={self.config['admin_key']}",
@@ -671,22 +676,20 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
             self.config['wechatpad_url'],
             self.config["token"]
         )
-        print(self.config["token"])
+        self.ap.logger.info(self.config["token"])
         thread_1 = threading.Event()
 
 
         def wechat_login_process():
-            login_data =self.bot.get_login_qr()
+            # login_data =self.bot.get_login_qr()
 
             # url = login_data['Data']["QrCodeUrl"]
-            self.ap.logger.info(login_data)
-            print(login_data)
+            # self.ap.logger.info(login_data)
 
 
             profile =self.bot.get_profile()
             self.ap.logger.info(profile)
 
-            print(profile)
             self.bot_account_id = profile["Data"]["userInfo"]["nickName"]["str"]
             self.config["wxid"] = profile["Data"]["userInfo"]["userName"]["str"]
             thread_1.set()
@@ -694,9 +697,15 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
 
         # asyncio.create_task(wechat_login_process)
         threading.Thread(target=wechat_login_process).start()
-        # wechat_login_process()
+        # threading.Thread(target=wechat_login_process).start()
+
+        def connect_websocket_sync() -> None:
+            import websocket
+            import json
             import time
             thread_1.wait()
+            uri = f"{self.config['wechatpad_ws']}/GetSyncMsg?key={self.config['token']}"
+            self.ap.logger.info(f"Connecting to WebSocket: {uri}")
             def on_message(ws, message):
                 try:
                     data = json.loads(message)
@@ -742,11 +751,5 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
         thread.start()
         self.ap.logger.info("WebSocket client thread started")
 
-
-
-
-
-
     async def kill(self) -> bool:
         pass
-
