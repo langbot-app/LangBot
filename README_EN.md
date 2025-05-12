@@ -8,10 +8,10 @@
 <a href="https://trendshift.io/repositories/12901" target="_blank"><img src="https://trendshift.io/api/badge/repositories/12901" alt="RockChinQ%2FLangBot | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 <a href="https://langbot.app">Home</a> ｜
-<a href="https://docs.langbot.app/insight/intro.html">Features</a> ｜
-<a href="https://docs.langbot.app/insight/guide.html">Deployment</a> ｜
-<a href="https://docs.langbot.app/usage/faq.html">FAQ</a> ｜
-<a href="https://docs.langbot.app/plugin/plugin-intro.html">Plugin</a> ｜
+<a href="https://docs.langbot.app/zh/insight/intro.html">Features</a> ｜
+<a href="https://docs.langbot.app/zh/insight/guide.html">Deployment</a> ｜
+<a href="https://docs.langbot.app/zh/usage/faq.html">FAQ</a> ｜
+<a href="https://docs.langbot.app/zh/plugin/plugin-intro.html">Plugin</a> ｜
 <a href="https://github.com/RockChinQ/LangBot/issues/new?assignees=&labels=%E7%8B%AC%E7%AB%8B%E6%8F%92%E4%BB%B6&projects=&template=submit-plugin.yml&title=%5BPlugin%5D%3A+%E8%AF%B7%E6%B1%82%E7%99%BB%E8%AE%B0%E6%96%B0%E6%8F%92%E4%BB%B6">Submit Plugin</a>
 
 <div align="center">
@@ -36,24 +36,24 @@
 
 - 💬 Chat with LLM / Agent: Supports multiple LLMs, adapt to group chats and private chats; Supports multi-round conversations, tool calls, and multi-modal capabilities. Deeply integrates with [Dify](https://dify.ai). Currently supports QQ, QQ Channel, WeCom, personal WeChat, Lark, DingTalk, Discord, Telegram, etc.
 - 🛠️ High Stability, Feature-rich: Native access control, rate limiting, sensitive word filtering, etc. mechanisms; Easy to use, supports multiple deployment methods.
-- 🧩 Plugin Extension, Active Community: Support event-driven, component extension, etc. plugin mechanisms; Integrate Anthropic [MCP protocol](https://modelcontextprotocol.io/); Currently has dozens of [plugins](https://docs.langbot.app/plugin/plugin-intro.html)
-- 😻 [New] Web UI: Support management LangBot instance through the browser, for details, see [documentation](https://docs.langbot.app/webui/intro.html)
+- 🧩 Plugin Extension, Active Community: Support event-driven, component extension, etc. plugin mechanisms; Integrate Anthropic [MCP protocol](https://modelcontextprotocol.io/); Currently has hundreds of plugins.
+- 😻 [New] Web UI: Support management LangBot instance through the browser. No need to manually write configuration files.
 
 ## 📦 Getting Started
 
 > [!IMPORTANT]
 >
-> - Before you start deploying in any way, please read the [New User Guide](https://docs.langbot.app/insight/guide.html).  
+> - Before you start deploying in any way, please read the [New User Guide](https://docs.langbot.app/zh/insight/guide.html).  
 > - All documentation is in Chinese, we will provide i18n version in the near future.
 > - Read [the auto-generated wiki on DeepWiki](https://deepwiki.com/RockChinQ/LangBot).
 
 #### Docker Compose Deployment
 
-Suitable for users familiar with Docker, see the [Docker Deployment](https://docs.langbot.app/deploy/langbot/docker.html) documentation.
+Suitable for users familiar with Docker, see the [Docker Deployment](https://docs.langbot.app/zh/deploy/langbot/docker.html) documentation.
 
 #### One-click Deployment on BTPanel
 
-LangBot has been listed on the BTPanel, if you have installed the BTPanel, you can use the [document](https://docs.langbot.app/deploy/langbot/one-click/bt.html) to use it.
+LangBot has been listed on the BTPanel, if you have installed the BTPanel, you can use the [document](https://docs.langbot.app/zh/deploy/langbot/one-click/bt.html) to use it.
 
 #### Zeabur Cloud Deployment
 
@@ -67,7 +67,7 @@ Community contributed Zeabur template.
 
 #### Other Deployment Methods
 
-Directly use the released version to run, see the [Manual Deployment](https://docs.langbot.app/deploy/langbot/manual.html) documentation.
+Directly use the released version to run, see the [Manual Deployment](https://docs.langbot.app/zh/deploy/langbot/manual.html) documentation.
 
 ## 📸 Demo
 

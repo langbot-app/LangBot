@@ -9,10 +9,10 @@
 <a href="https://trendshift.io/repositories/12901" target="_blank"><img src="https://trendshift.io/api/badge/repositories/12901" alt="RockChinQ%2FLangBot | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 <a href="https://langbot.app">项目主页</a> ｜
-<a href="https://docs.langbot.app/insight/intro.html">功能介绍</a> ｜
-<a href="https://docs.langbot.app/insight/guide.html">部署文档</a> ｜
-<a href="https://docs.langbot.app/usage/faq.html">常见问题</a> ｜
-<a href="https://docs.langbot.app/plugin/plugin-intro.html">插件介绍</a> ｜
+<a href="https://docs.langbot.app/zh/insight/intro.html">功能介绍</a> ｜
+<a href="https://docs.langbot.app/zh/insight/guide.html">部署文档</a> ｜
+<a href="https://docs.langbot.app/zh/usage/faq.html">常见问题</a> ｜
+<a href="https://docs.langbot.app/zh/plugin/plugin-intro.html">插件介绍</a> ｜
 <a href="https://github.com/RockChinQ/LangBot/issues/new?assignees=&labels=%E7%8B%AC%E7%AB%8B%E6%8F%92%E4%BB%B6&projects=&template=submit-plugin.yml&title=%5BPlugin%5D%3A+%E8%AF%B7%E6%B1%82%E7%99%BB%E8%AE%B0%E6%96%B0%E6%8F%92%E4%BB%B6">提交插件</a>
 
 <div align="center">
@@ -39,22 +39,22 @@
 
 - 💬 大模型对话、Agent：支持多种大模型，适配群聊和私聊；具有多轮对话、工具调用、多模态能力，并深度适配 [Dify](https://dify.ai)。目前支持 QQ、QQ频道、企业微信、个人微信、飞书、Discord、Telegram 等平台。
 - 🛠️ 高稳定性、功能完备：原生支持访问控制、限速、敏感词过滤等机制；配置简单，支持多种部署方式。
-- 🧩 插件扩展、活跃社区：支持事件驱动、组件扩展等插件机制；适配 Anthropic [MCP 协议](https://modelcontextprotocol.io/)；目前已有数十个[插件](https://docs.langbot.app/plugin/plugin-intro.html)
-- 😻 [New] Web 管理面板：支持通过浏览器管理 LangBot 实例，具体支持功能，查看[文档](https://docs.langbot.app/webui/intro.html)
+- 🧩 插件扩展、活跃社区：支持事件驱动、组件扩展等插件机制；适配 Anthropic [MCP 协议](https://modelcontextprotocol.io/)；目前已有数百个插件。
+- 😻 Web 管理面板：支持通过浏览器管理 LangBot 实例，不再需要手动编写配置文件。
 
 ## 📦 开始使用
 
 > [!IMPORTANT]
 >
-> 在您开始任何方式部署之前，请务必阅读[新手指引](https://docs.langbot.app/insight/guide.html)。
+> 在您开始任何方式部署之前，请务必阅读[新手指引](https://docs.langbot.app/zh/insight/guide.html)。
 
 #### Docker Compose 部署
 
-适合熟悉 Docker 的用户，查看文档[Docker 部署](https://docs.langbot.app/deploy/langbot/docker.html)。
+适合熟悉 Docker 的用户，查看文档[Docker 部署](https://docs.langbot.app/zh/deploy/langbot/docker.html)。
 
 #### 宝塔面板部署
 
-已上架宝塔面板，若您已安装宝塔面板，可以根据[文档](https://docs.langbot.app/deploy/langbot/one-click/bt.html)使用。
+已上架宝塔面板，若您已安装宝塔面板，可以根据[文档](https://docs.langbot.app/zh/deploy/langbot/one-click/bt.html)使用。
 
 #### Zeabur 云部署
 
@@ -68,7 +68,7 @@
 
 #### 手动部署
 
-直接使用发行版运行，查看文档[手动部署](https://docs.langbot.app/deploy/langbot/manual.html)。
+直接使用发行版运行，查看文档[手动部署](https://docs.langbot.app/zh/deploy/langbot/manual.html)。
 
 ## 📸 效果展示
 
