@@ -30,36 +30,48 @@ class PreProcessor(stage.PipelineStage):
         stage_inst_name: str,
     ) -> entities.StageProcessResult:
         """处理"""
+        selected_runner = query.pipeline_config['ai']['runner']['runner']
+
         session = await self.ap.sess_mgr.get_session(query)
 
-        conversation = await self.ap.sess_mgr.get_conversation(
-            query, session, query.pipeline_config['ai']['local-agent']['prompt']
+        # 非 local-agent 时，llm_model 为 None
+        llm_model = (
+            await self.ap.model_mgr.get_model_by_uuid(query.pipeline_config['ai']['local-agent']['model'])
+            if selected_runner == 'local-agent'
+            else None
         )
+
+        conversation = await self.ap.sess_mgr.get_conversation(
+            query,
+            session,
+            query.pipeline_config['ai']['local-agent']['prompt'],
+        )
+
+        conversation.use_llm_model = llm_model
 
         # 设置query
         query.session = session
         query.prompt = conversation.prompt.copy()
         query.messages = conversation.messages.copy()
 
-        query.use_llm_model = conversation.use_llm_model
+        query.use_llm_model = llm_model
 
-        query.use_funcs = (
-            conversation.use_funcs if query.use_llm_model.model_entity.abilities.__contains__('tool_call') else None
-        )
+        if selected_runner == 'local-agent':
+            query.use_funcs = (
+                conversation.use_funcs if query.use_llm_model.model_entity.abilities.__contains__('tool_call') else None
+            )
 
         query.variables = {
             'session_id': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
             'conversation_id': conversation.uuid,
-            'msg_create_time': int(query.message_event.time)
-            if query.message_event.time
-            else int(datetime.datetime.now().timestamp()),
+            'msg_create_time': (
+                int(query.message_event.time) if query.message_event.time else int(datetime.datetime.now().timestamp())
+            ),
         }
 
         # Check if this model supports vision, if not, remove all images
         # TODO this checking should be performed in runner, and in this stage, the image should be reserved
-        if query.pipeline_config['ai']['runner'][
-            'runner'
-        ] == 'local-agent' and not query.use_llm_model.model_entity.abilities.__contains__('vision'):
+        if selected_runner == 'local-agent' and not query.use_llm_model.model_entity.abilities.__contains__('vision'):
             for msg in query.messages:
                 if isinstance(msg.content, list):
                     for me in msg.content:
@@ -75,9 +87,9 @@ class PreProcessor(stage.PipelineStage):
                 content_list.append(llm_entities.ContentElement.from_text(me.text))
                 plain_text += me.text
             elif isinstance(me, platform_message.Image):
-                if query.pipeline_config['ai']['runner'][
-                    'runner'
-                ] != 'local-agent' or query.use_llm_model.model_entity.abilities.__contains__('vision'):
+                if selected_runner != 'local-agent' or query.use_llm_model.model_entity.abilities.__contains__(
+                    'vision'
+                ):
                     if me.base64 is not None:
                         content_list.append(llm_entities.ContentElement.from_image_base64(me.base64))
 
