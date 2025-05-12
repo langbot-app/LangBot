@@ -32,8 +32,18 @@ class PreProcessor(stage.PipelineStage):
         """处理"""
         session = await self.ap.sess_mgr.get_session(query)
 
+        # 非 local-agent 时，llm_model 为 None
+        llm_model = (
+            await self.ap.model_mgr.get_model_by_uuid(query.pipeline_config['ai']['local-agent']['model'])
+            if query.pipeline_config['ai']['runner'] == 'local-agent'
+            else None
+        )
+
         conversation = await self.ap.sess_mgr.get_conversation(
-            query, session, query.pipeline_config['ai']['local-agent']['prompt']
+            query,
+            session,
+            query.pipeline_config['ai']['local-agent']['prompt'],
+            llm_model,
         )
 
         # 设置query
@@ -43,16 +53,17 @@ class PreProcessor(stage.PipelineStage):
 
         query.use_llm_model = conversation.use_llm_model
 
-        query.use_funcs = (
-            conversation.use_funcs if query.use_llm_model.model_entity.abilities.__contains__('tool_call') else None
-        )
+        if query.pipeline_config['ai']['runner'] == 'local-agent':
+            query.use_funcs = (
+                conversation.use_funcs if query.use_llm_model.model_entity.abilities.__contains__('tool_call') else None
+            )
 
         query.variables = {
             'session_id': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
             'conversation_id': conversation.uuid,
-            'msg_create_time': int(query.message_event.time)
-            if query.message_event.time
-            else int(datetime.datetime.now().timestamp()),
+            'msg_create_time': (
+                int(query.message_event.time) if query.message_event.time else int(datetime.datetime.now().timestamp())
+            ),
         }
 
         # Check if this model supports vision, if not, remove all images

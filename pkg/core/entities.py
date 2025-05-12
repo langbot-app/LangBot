@@ -133,7 +133,7 @@ class Conversation(pydantic.BaseModel):
 
     update_time: typing.Optional[datetime.datetime] = pydantic.Field(default_factory=datetime.datetime.now)
 
-    use_llm_model: requester.RuntimeLLMModel
+    use_llm_model: typing.Optional[requester.RuntimeLLMModel] = None
 
     use_funcs: typing.Optional[list[tools_entities.LLMFunction]]
 
