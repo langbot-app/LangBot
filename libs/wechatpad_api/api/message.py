@@ -37,7 +37,7 @@ class MessageApi:
 
 
 
-    def post_image(self, to_wxid, img_url,ats: list= []):
+    def post_image(self, to_wxid, img_url, ats: list= []):
         """发送图片消息"""
         # 这里好像可以尝试发送多个暂时未测试
         json_data = {

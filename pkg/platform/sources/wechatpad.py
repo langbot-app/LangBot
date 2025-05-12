@@ -1,5 +1,9 @@
 import requests
 import websockets
+import websocket
+import json
+import time
+import httpx
 
 from libs.wechatpad_api.client import WeChatPadClient
 
@@ -45,12 +49,7 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
         content_list = []
         current_file_path = os.path.abspath(__file__)
 
-        # 向上回退到项目根目录（假设项目结构为 /project/）
-        project_root = os.path.dirname(os.path.dirname(current_file_path))
-        dir_path = os.path.join(project_root, "data", "download")
 
-        if not os.path.exists(dir_path):
-            os.makedirs(dir_path)
 
         for component in message_chain:
             if isinstance(component, platform_message.At):
@@ -59,24 +58,24 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
                 content_list.append({"type": "text", "content": component.text})
             elif isinstance(component, platform_message.Image):
                 if component.url:
-                    nowtime = datetime.datetime.now()
-                    file_name = component.url.split("/")[-1]
-                    if file_name.split(".")[-1] in ["jpg", "jpeg", "png", "webp"]:
-                        file_name = f"{nowtime}{file_name}"
-                    else:
-                        file_name = f"{nowtime}{file_name}.png"
+                    async with httpx.AsyncClient() as client:
+                        response = await client.get(component.url)
 
-                    image_path = platform_message.Image.download(component.url,dir_path,file_name)
-                    image_base64 = platform_message.Image.from_local(image_path)
-                    content_list.append({"type": "image", "image": image_base64})
+                        if response.status_code == 200:
+                            file_bytes = response.content
+                            base64_str = base64.b64encode(file_bytes).decode('utf-8')  # 返回字符串格式
+                        else:
+                            raise Exception('获取文件失败')
+                    # pass
+                    content_list.append({"type": "image", "image": base64_str})
                 elif component.base64:
-                    content_list.append({"type": "image", "image": component.url})
+                    content_list.append({"type": "image", "image": component.base64})
 
             elif isinstance(component, platform_message.WeChatEmoji):
                 content_list.append(
                     {'type': 'WeChatEmoji', 'emoji_md5': component.emoji_md5, 'emoji_size': component.emoji_size})
             elif isinstance(component, platform_message.Voice):
-                content_list.append({"type": "voice", "url": component.url, "length": component.length})
+                content_list.append({"type": "voice", "data": component.url, "duration": component.length, "forma": 0})
             elif isinstance(component, platform_message.WeChatAppMsg):
                 content_list.append({'type': 'WeChatAppMsg', 'app_msg': component.app_msg})
             elif isinstance(component, platform_message.Forward):
@@ -85,6 +84,7 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
                         content_list.extend(await WeChatPadMessageConverter.yiri2target(node.message_chain))
 
         return content_list
+
 
     async def target2yiri(
             self,
@@ -197,7 +197,6 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
                 length = voicemsg.get('voicelength')
             voice_data = self.bot.get_msg_voice(buf_id=str(bufid), length=int(length), msgid=str(new_msg_id))
             audio_base64 = voice_data["Data"]['Base64']
-            # print(audio_base64)
 
             # 验证语音数据有效性
             if not audio_base64:
@@ -544,7 +543,7 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
 
     async def ws_message(self, data):
         """处理接收到的消息"""
-        self.ap.logger.debug(f"Gewechat callback event: {data}")
+        # self.ap.logger.debug(f"Gewechat callback event: {data}")
         # print(data)
 
 
@@ -607,7 +606,9 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
 
                 'voice': lambda msg: self.bot.send_voice_message(
                     to_wxid=target_id,
-                    voice_url=msg['url']
+                    voice_data=msg['data'],
+                    voice_duration=msg["duration"],
+                    voice_forma=msg["forma"],
                 ),
                 'WeChatAppMsg': lambda msg: self.bot.send_app_message(
                     to_wxid=target_id,
@@ -719,9 +720,7 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
         threading.Thread(target=wechat_login_process).start()
 
         def connect_websocket_sync() -> None:
-            import websocket
-            import json
-            import time
+
             thread_1.wait()
             uri = f"{self.config['wechatpad_ws']}/GetSyncMsg?key={self.config['token']}"
             self.ap.logger.info(f"Connecting to WebSocket: {uri}")

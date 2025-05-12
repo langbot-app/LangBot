@@ -1,4 +1,6 @@
 from libs.wechatpad_api.util.http_util import async_request, post_json
+import httpx
+import base64
 
 class DownloadApi:
     def __init__(self, base_url, token):
@@ -23,3 +25,15 @@ class DownloadApi:
         }
         url = self.base_url + "/message/GetMsgVoice"
         return post_json(url, token=self.token, data=json_data)
+
+
+    async def download_url_to_base64(self, download_url):
+        async with httpx.AsyncClient() as client:
+            response = await client.get(download_url)
+
+            if response.status_code == 200:
+                file_bytes = response.content
+                base64_str = base64.b64encode(file_bytes).decode('utf-8')  # 返回字符串格式
+                return base64_str
+            else:
+                raise Exception('获取文件失败')

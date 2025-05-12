@@ -47,9 +47,9 @@ class WeChatPadClient:
         """发送图片消息"""
         return  self._message_api.post_image(to_wxid, img_url, ats)
 
-    def send_voice_message(self, to_wxid, voice_url, ats: list=[]):
+    def send_voice_message(self, to_wxid, voice_data, voice_forma, voice_duration):
         """发送音频消息"""
-        return  self._message_api.post_voice(to_wxid, voice_url, ats)
+        return  self._message_api.post_voice(to_wxid, voice_data, voice_forma, voice_duration)
 
     def send_app_message(self, to_wxid, app_message, type):
         """发送app消息"""
@@ -86,6 +86,9 @@ class WeChatPadClient:
     def get_msg_voice(self,buf_id, length, msgid):
         """下载语音"""
         return self._download_api.get_msg_voice(buf_id, length, msgid)
+
+    async def download_base64(self,url):
+        return await self._download_api.download_url_to_base64(download_url=url)
 
     def get_chatroom_member_detail(self, chatroom_name):
         """查看群成员详情"""
