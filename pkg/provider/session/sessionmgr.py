@@ -62,9 +62,6 @@ class SessionManager:
             conversation = core_entities.Conversation(
                 prompt=prompt,
                 messages=[],
-                use_llm_model=await self.ap.model_mgr.get_model_by_uuid(
-                    query.pipeline_config['ai']['local-agent']['model']
-                ),
                 use_funcs=await self.ap.tool_mgr.get_all_functions(
                     plugin_enabled=True,
                 ),

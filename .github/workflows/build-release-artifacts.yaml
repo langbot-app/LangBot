@@ -46,7 +46,7 @@ jobs:
           npm run build
       - name: Package Output
         run: |
-          cp -r /tmp/langbot_build_web/web/dist ./web
+          cp -r /tmp/langbot_build_web/web/out ./web
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:

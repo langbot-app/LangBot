@@ -99,7 +99,7 @@ class ModelManager:
         for model in self.model_list:
             if model.name == name:
                 return model
-        raise ValueError(f'无法确定模型 {name} 的信息，请在元数据中配置')
+        raise ValueError(f'无法确定模型 {name} 的信息')
 
     async def get_model_by_uuid(self, uuid: str) -> entities.LLMModelInfo:
         """通过uuid获取模型"""
