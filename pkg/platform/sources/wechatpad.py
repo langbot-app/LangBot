@@ -681,6 +681,7 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
 
 
         def wechat_login_process():
+            # 不登录，这些先注释掉，避免登陆态尝试拉qrcode。
             # login_data =self.bot.get_login_qr()
 
             # url = login_data['Data']["QrCodeUrl"]
@@ -697,7 +698,6 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
 
         # asyncio.create_task(wechat_login_process)
         threading.Thread(target=wechat_login_process).start()
-        # threading.Thread(target=wechat_login_process).start()
 
         def connect_websocket_sync() -> None:
             import websocket
