@@ -2,7 +2,7 @@ import styles from './LLMCard.module.css';
 import { LLMCardVO } from '@/app/home/models/component/llm-card/LLMCardVO';
 import { useTranslation } from 'react-i18next';
 
-function checkAbilityBadges(abilities: string[]) {
+function AbilityBadges(abilities: string[]) {
   const { t } = useTranslation();
   const abilityBadges = {
     vision: (
@@ -89,7 +89,7 @@ export default function LLMCard({ cardVO }: { cardVO: LLMCardVO }) {
           </div>
           {/* 能力 */}
           <div className={`${styles.abilitiesContainer}`}>
-            {checkAbilityBadges(cardVO.abilities)}
+            {AbilityBadges(cardVO.abilities)}
           </div>
         </div>
       </div>
