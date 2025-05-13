@@ -35,7 +35,6 @@ import { CSS } from '@dnd-kit/utilities';
 interface PluginSortDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  plugins: PluginCardVO[];
   onSortComplete: () => void;
 }
 
@@ -74,17 +73,37 @@ function SortablePluginItem({ plugin }: { plugin: PluginCardVO }) {
 export default function PluginSortDialog({
   open,
   onOpenChange,
-  plugins,
   onSortComplete,
 }: PluginSortDialogProps) {
   const [sortedPlugins, setSortedPlugins] = useState<PluginCardVO[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
+  function getPluginList() {
+    httpClient.getPlugins().then((value) => {
+      setSortedPlugins(
+        value.plugins.map((plugin) => {
+          return new PluginCardVO({
+            author: plugin.author,
+            description: plugin.description.zh_CN,
+            enabled: plugin.enabled,
+            name: plugin.name,
+            version: plugin.version,
+            status: plugin.status,
+            tools: plugin.tools,
+            event_handlers: plugin.event_handlers,
+            repository: plugin.repository,
+            priority: plugin.priority,
+          });
+        }),
+      );
+    });
+  }
+
   useEffect(() => {
     if (open) {
-      setSortedPlugins([...plugins]);
+      getPluginList();
     }
-  }, [open, plugins]);
+  }, [open]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -95,6 +114,7 @@ export default function PluginSortDialog({
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
+    console.log('Drag end event:', { active, over });
 
     if (over && active.id !== over.id) {
       setSortedPlugins((items) => {
@@ -105,7 +125,9 @@ export default function PluginSortDialog({
           (item) => `${item.author}-${item.name}` === over.id,
         );
 
-        return arrayMove(items, oldIndex, newIndex);
+        const newItems = arrayMove(items, oldIndex, newIndex);
+
+        return newItems;
       });
     }
   }

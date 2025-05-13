@@ -34,37 +34,11 @@ export default function PluginConfigPage() {
     useState<PluginInstallStatus>(PluginInstallStatus.WAIT_INPUT);
   const [installError, setInstallError] = useState<string | null>(null);
   const [githubURL, setGithubURL] = useState('');
-  const [pluginList, setPluginList] = useState<PluginCardVO[]>([]);
   const pluginInstalledRef = useRef<PluginInstalledComponentRef>(null);
-
-  useEffect(() => {
-    getPluginList();
-  }, []);
 
   function handleModalConfirm() {
     installPlugin(githubURL);
   }
-  function getPluginList() {
-    httpClient.getPlugins().then((value) => {
-      setPluginList(
-        value.plugins.map((plugin) => {
-          return new PluginCardVO({
-            author: plugin.author,
-            description: plugin.description.zh_CN,
-            enabled: plugin.enabled,
-            name: plugin.name,
-            version: plugin.version,
-            status: plugin.status,
-            tools: plugin.tools,
-            event_handlers: plugin.event_handlers,
-            repository: plugin.repository,
-            priority: plugin.priority,
-          });
-        }),
-      );
-    });
-  }
-
   function installPlugin(url: string) {
     setPluginInstallStatus(PluginInstallStatus.INSTALLING);
     httpClient
@@ -93,7 +67,6 @@ export default function PluginConfigPage() {
                 setGithubURL('');
                 setModalOpen(false);
                 pluginInstalledRef.current?.refreshPluginList();
-                getPluginList(); // Refresh plugin list for sorting dialog
               }
             }
           });
@@ -209,8 +182,9 @@ export default function PluginConfigPage() {
       <PluginSortDialog
         open={sortModalOpen}
         onOpenChange={setSortModalOpen}
-        plugins={pluginList}
-        onSortComplete={getPluginList}
+        onSortComplete={() => {
+          pluginInstalledRef.current?.refreshPluginList();
+        }}
       />
     </div>
   );
