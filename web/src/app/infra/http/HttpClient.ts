@@ -69,7 +69,7 @@ class HttpClient {
     this.initInterceptors();
 
     this.loadSystemInfoFromCache();
-    
+
     if (this.systemInfo === null) {
       this.fetchAndCacheSystemInfo();
     }
