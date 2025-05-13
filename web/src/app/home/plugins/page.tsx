@@ -3,6 +3,7 @@ import PluginInstalledComponent, {
   PluginInstalledComponentRef,
 } from '@/app/home/plugins/plugin-installed/PluginInstalledComponent';
 import PluginMarketComponent from '@/app/home/plugins/plugin-market/PluginMarketComponent';
+import PluginSortDialog from '@/app/home/plugins/plugin-installed/plugin-sort/PluginSortDialog';
 import styles from './plugins.module.css';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -16,9 +17,10 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { GithubIcon } from 'lucide-react';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { toast } from 'sonner';
+import { PluginCardVO } from '@/app/home/plugins/plugin-installed/PluginCardVO';
 enum PluginInstallStatus {
   WAIT_INPUT = 'wait_input',
   INSTALLING = 'installing',
@@ -27,15 +29,42 @@ enum PluginInstallStatus {
 
 export default function PluginConfigPage() {
   const [modalOpen, setModalOpen] = useState(false);
+  const [sortModalOpen, setSortModalOpen] = useState(false);
   const [pluginInstallStatus, setPluginInstallStatus] =
     useState<PluginInstallStatus>(PluginInstallStatus.WAIT_INPUT);
   const [installError, setInstallError] = useState<string | null>(null);
   const [githubURL, setGithubURL] = useState('');
+  const [pluginList, setPluginList] = useState<PluginCardVO[]>([]);
   const pluginInstalledRef = useRef<PluginInstalledComponentRef>(null);
+
+  useEffect(() => {
+    getPluginList();
+  }, []);
 
   function handleModalConfirm() {
     installPlugin(githubURL);
   }
+  function getPluginList() {
+    httpClient.getPlugins().then((value) => {
+      setPluginList(
+        value.plugins.map((plugin) => {
+          return new PluginCardVO({
+            author: plugin.author,
+            description: plugin.description.zh_CN,
+            enabled: plugin.enabled,
+            name: plugin.name,
+            version: plugin.version,
+            status: plugin.status,
+            tools: plugin.tools,
+            event_handlers: plugin.event_handlers,
+            repository: plugin.repository,
+            priority: plugin.priority,
+          });
+        }),
+      );
+    });
+  }
+
   function installPlugin(url: string) {
     setPluginInstallStatus(PluginInstallStatus.INSTALLING);
     httpClient
@@ -64,6 +93,7 @@ export default function PluginConfigPage() {
                 setGithubURL('');
                 setModalOpen(false);
                 pluginInstalledRef.current?.refreshPluginList();
+                getPluginList(); // Refresh plugin list for sorting dialog
               }
             }
           });
@@ -90,6 +120,15 @@ export default function PluginConfigPage() {
           </TabsList>
 
           <div className="flex flex-row justify-end items-center">
+            <Button
+              variant="outline"
+              className="px-6 py-4 cursor-pointer mr-2"
+              onClick={() => {
+                setSortModalOpen(true);
+              }}
+            >
+              编排
+            </Button>
             <Button
               variant="default"
               className="px-6 py-4 cursor-pointer"
@@ -166,6 +205,13 @@ export default function PluginConfigPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PluginSortDialog
+        open={sortModalOpen}
+        onOpenChange={setSortModalOpen}
+        plugins={pluginList}
+        onSortComplete={getPluginList}
+      />
     </div>
   );
 }
