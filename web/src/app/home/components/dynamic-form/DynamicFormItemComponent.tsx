@@ -172,7 +172,8 @@ export default function DynamicFormItemComponent({
                               </div>
                             )}
                             {model.requester_config.timeout && (
-                              <div><span className="font-semibold">超时：</span>{' '}
+                              <div>
+                                <span className="font-semibold">超时：</span>{' '}
                                 {model.requester_config.timeout}秒
                               </div>
                             )}
