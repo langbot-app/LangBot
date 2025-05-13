@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import openai
+import typing
 
 from . import chatcmpl
-from ....core import app
 
 
 class PPIOChatCompletions(chatcmpl.OpenAIChatCompletions):
@@ -11,9 +11,7 @@ class PPIOChatCompletions(chatcmpl.OpenAIChatCompletions):
 
     client: openai.AsyncClient
 
-    requester_cfg: dict
-
-    def __init__(self, ap: app.Application):
-        self.ap = ap
-
-        self.requester_cfg = self.ap.provider_cfg.data['requester']['ppio-chat-completions']
+    default_config: dict[str, typing.Any] = {
+        'base_url': 'https://api.ppinfra.com/v3/openai',
+        'timeout': 120,
+    }
