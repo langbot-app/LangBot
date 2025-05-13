@@ -82,6 +82,7 @@ export default function Login() {
       .authUser(username, password)
       .then((res) => {
         localStorage.setItem('token', res.token);
+        localStorage.setItem('userEmail', username);
         console.log('login success: ', res);
         router.push('/home');
         toast.success('登录成功');
