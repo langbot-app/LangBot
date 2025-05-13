@@ -10,7 +10,6 @@ import { useRouter, usePathname } from 'next/navigation';
 import { sidebarConfigList } from '@/app/home/components/home-sidebar/sidbarConfigList';
 import langbotIcon from '@/app/assets/langbot-logo.webp';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { LogOut, User } from 'lucide-react';
 
 // TODO 侧边导航栏要加动画
 export default function HomeSidebar({
@@ -27,7 +26,6 @@ export default function HomeSidebar({
   }, [pathname]);
 
   const [selectedChild, setSelectedChild] = useState<SidebarChildVO>();
-  const [userEmail, setUserEmail] = useState<string>('');
 
   useEffect(() => {
     console.log('HomeSidebar挂载完成');
