@@ -29,15 +29,14 @@ export default function HomeSidebar({
   const [selectedChild, setSelectedChild] = useState<SidebarChildVO>();
 
   const { t } = useTranslation();
-  
+
   useEffect(() => {
-    console.log(t('sidebar.mounted'));
     initSelect();
     if (!localStorage.getItem('token')) {
       localStorage.setItem('token', 'test-token');
       localStorage.setItem('userEmail', 'test@example.com');
     }
-    return () => console.log(t('sidebar.unmounted'));
+    return () => console.log('sidebar.unmounted');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

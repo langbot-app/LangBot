@@ -17,11 +17,14 @@ const zhHans = {
     create: '创建',
     edit: '编辑',
     delete: '删除',
+    add: '添加',
+    select: '请选择',
     cancel: '取消',
     submit: '提交',
     error: '错误',
     success: '成功',
     save: '保存',
+    saving: '保存中...',
     confirm: '确认',
     confirmDelete: '删除确认',
     deleteConfirmation: '你确定要删除这个吗？',
@@ -33,15 +36,7 @@ const zhHans = {
     close: '关闭',
     deleteSuccess: '删除成功',
     deleteError: '删除失败：',
-  },
-  home: {
-    title: '首页',
-    mounted: 'Home组件挂载完成',
-    unmounted: 'Home组件卸载',
-  },
-  sidebar: {
-    mounted: 'HomeSidebar挂载完成',
-    unmounted: 'HomeSidebar卸载',
+    addRound: '添加回合',
   },
   models: {
     title: '模型配置',
@@ -82,9 +77,11 @@ const zhHans = {
     string: '字符串',
     number: '数字',
     boolean: '布尔值',
-    extraParametersDescription: '将在请求时附加到请求体中，如 max_tokens, temperature, top_p 等',
+    extraParametersDescription:
+      '将在请求时附加到请求体中，如 max_tokens, temperature, top_p 等',
     selectModelProvider: '选择模型供应商',
     modelProviderDescription: '请填写供应商向您提供的模型名称',
+    selectModel: '请选择模型',
   },
   bots: {
     title: '机器人',
@@ -135,6 +132,13 @@ const zhHans = {
     noMatchingPlugins: '没有找到匹配的插件',
     loading: '加载中...',
     getPluginListError: '获取插件列表失败:',
+    pluginConfig: '插件配置',
+    noPluginInstalled: '暂未安装任何插件',
+    pluginSort: '插件排序',
+    pluginSortDescription:
+      '插件顺序会影响同一事件内的处理顺序，请拖动插件卡片排序',
+    pluginSortSuccess: '插件排序成功',
+    pluginSortError: '插件排序失败：',
   },
   pipelines: {
     title: '流水线',
@@ -157,7 +161,8 @@ const zhHans = {
     createError: '创建失败：',
     saveSuccess: '保存成功',
     saveError: '保存失败：',
-    deleteConfirmation: '你确定要删除这个流水线吗？已绑定此流水线的机器人将无法使用。',
+    deleteConfirmation:
+      '你确定要删除这个流水线吗？已绑定此流水线的机器人将无法使用。',
     defaultPipelineCannotDelete: '默认流水线不可删除',
   },
 };

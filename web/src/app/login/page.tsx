@@ -35,7 +35,7 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
 
-const formSchema = (t: (key: string) => string) => 
+const formSchema = (t: (key: string) => string) =>
   z.object({
     email: z.string().email(t('common.invalidEmail')),
     password: z.string().min(1, t('common.emptyPassword')),
@@ -55,9 +55,27 @@ export default function Login() {
   });
 
   useEffect(() => {
+    judgeLanguage();
     getIsInitialized();
     checkIfAlreadyLoggedIn();
   }, []);
+
+  const judgeLanguage = () => {
+    // here's for user have never set the language
+    // judge the language by the browser
+    const language = navigator.language;
+    if (language) {
+      let lang = 'zh-Hans';
+      if (language === 'zh-CN') {
+        lang = 'zh-Hans';
+      } else {
+        lang = 'en-US';
+      }
+      i18n.changeLanguage(lang);
+      setCurrentLanguage(lang);
+      localStorage.setItem('langbot_language', lang);
+    }
+  };
 
   const handleLanguageChange = (value: string) => {
     i18n.changeLanguage(value);
@@ -114,9 +132,9 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <Card className="w-[360px]">
+      <Card className="w-[375px]">
         <CardHeader>
-          <div className="flex justify-end">
+          <div className="flex justify-end mb-6">
             <Select
               value={currentLanguage}
               onValueChange={handleLanguageChange}

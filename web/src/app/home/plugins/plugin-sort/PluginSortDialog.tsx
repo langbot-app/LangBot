@@ -31,6 +31,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useTranslation } from 'react-i18next';
 
 interface PluginSortDialogProps {
   open: boolean;
@@ -75,6 +76,7 @@ export default function PluginSortDialog({
   onOpenChange,
   onSortComplete,
 }: PluginSortDialogProps) {
+  const { t } = useTranslation();
   const [sortedPlugins, setSortedPlugins] = useState<PluginCardVO[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -146,12 +148,12 @@ export default function PluginSortDialog({
     httpClient
       .reorderPlugins(reorderElements)
       .then(() => {
-        toast.success('插件排序成功');
+        toast.success(t('plugins.pluginSortSuccess'));
         onSortComplete();
         onOpenChange(false);
       })
       .catch((err) => {
-        toast.error('排序失败：' + err.message);
+        toast.error(t('plugins.pluginSortError') + err.message);
       })
       .finally(() => {
         setIsLoading(false);
@@ -162,11 +164,11 @@ export default function PluginSortDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[700px] max-h-[80vh] p-0 flex flex-col">
         <DialogHeader className="px-6 pt-6 pb-0">
-          <DialogTitle>插件排序</DialogTitle>
+          <DialogTitle>{t('plugins.pluginSort')}</DialogTitle>
         </DialogHeader>
         <div className="flex-1 overflow-y-auto px-6 py-0">
           <p className="text-sm text-gray-500 mb-4">
-            插件顺序会影响同一事件内的处理顺序，请拖动插件卡片排序
+            {t('plugins.pluginSortDescription')}
           </p>
           <DndContext
             sensors={sensors}
@@ -194,10 +196,10 @@ export default function PluginSortDialog({
             onClick={() => onOpenChange(false)}
             disabled={isLoading}
           >
-            取消
+            {t('common.cancel')}
           </Button>
           <Button onClick={handleSave} disabled={isLoading}>
-            {isLoading ? '保存中...' : '保存'}
+            {isLoading ? t('common.saving') : t('common.save')}
           </Button>
         </DialogFooter>
       </DialogContent>
