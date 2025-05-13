@@ -1,0 +1,84 @@
+[project]
+name = "langbot"
+version = "4.0.1"
+description = "高稳定、支持扩展、多模态 - 大模型原生即时通信机器人平台"
+readme = "README.md"
+requires-python = ">=3.10.1"
+dependencies = [
+    "aiocqhttp>=1.4.4",
+    "aiofiles>=24.1.0",
+    "aiohttp>=3.11.18",
+    "aioshutil>=1.5",
+    "aiosqlite>=0.21.0",
+    "anthropic>=0.51.0",
+    "argon2-cffi>=23.1.0",
+    "async-lru>=2.0.5",
+    "certifi>=2025.4.26",
+    "colorlog~=6.6.0",
+    "cryptography>=44.0.3",
+    "dashscope>=1.23.2",
+    "dingtalk-stream>=0.24.0",
+    "discord-py>=2.5.2",
+    "gewechat-client>=0.1.5",
+    "lark-oapi>=1.4.15",
+    "mcp>=1.8.1",
+    "nakuru-project-idk>=0.0.2.1",
+    "ollama>=0.4.8",
+    "openai>1.0.0",
+    "pillow>=11.2.1",
+    "psutil>=7.0.0",
+    "pycryptodome>=3.22.0",
+    "pydantic>2.0",
+    "pyjwt>=2.10.1",
+    "python-telegram-bot>=22.0",
+    "pyyaml>=6.0.2",
+    "qq-botpy-rc>=1.2.1.6",
+    "quart>=0.20.0",
+    "quart-cors>=0.8.0",
+    "requests>=2.32.3",
+    "slack-sdk>=3.35.0",
+    "sqlalchemy[asyncio]>=2.0.40",
+    "sqlmodel>=0.0.24",
+    "telegramify-markdown>=0.5.1",
+    "tiktoken>=0.9.0",
+    "urllib3>=2.4.0",
+    "websockets>=15.0.1",
+    "python-socks>=2.7.1", # dingtalk missing dependency
+    "taskgroup==0.0.0a4", # graingert/taskgroup#20
+]
+keywords = [
+    "bot",
+    "agent",
+    "telegram",
+    "plugins",
+    "openai",
+    "instant-messaging",
+    "wechat",
+    "qq",
+    "dify",
+    "llm",
+    "chatgpt",
+    "deepseek",
+    "onebot",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: AsyncIO",
+    "Framework :: Robot Framework",
+    "Framework :: Robot Framework :: Library",
+    "License :: OSI Approved :: AGPL-3 License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Communications :: Chat",
+]
+
+[project.urls]
+Homepage = "https://langbot.app"
+Documentation = "https://docs.langbot.app"
+Repository = "https://github.com/RockChinQ/langbot"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.2.0",
+    "ruff>=0.11.9",
+]
