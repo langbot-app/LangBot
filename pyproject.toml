@@ -45,6 +45,7 @@ dependencies = [
     "websockets>=15.0.1",
     "python-socks>=2.7.1", # dingtalk missing dependency
     "taskgroup==0.0.0a4", # graingert/taskgroup#20
+    "pip>=25.1.1", # pkg.core.bootutils.deps
 ]
 keywords = [
     "bot",
@@ -82,3 +83,97 @@ dev = [
     "pre-commit>=4.2.0",
     "ruff>=0.11.9",
 ]
+
+[tool.ruff]
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
+]
+
+line-length = 120
+indent-width = 4
+
+# Assume Python 3.10
+target-version = "py310"
+
+[tool.ruff.lint]
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
+select = ["E4", "E7", "E9", "F"]
+ignore = [
+    "E712", # Comparison to true should be 'if cond is true:' or 'if cond:' (E712)
+    "F402", # Import `loader` from line 8 shadowed by loop variable
+    "F403", # * used, unable to detect undefined names
+    "F405", # may be undefined, or defined from star imports
+    "E741", # Ambiguous variable name: `l`
+    "E722", # bare-except
+    "E721", # type-comparison
+    "F821", # undefined-all
+    "FURB113", # repeated-append
+    "FURB152", # math-constant
+    "UP007", # non-pep604-annotation
+    "UP032", # f-string
+    "UP045", # non-pep604-annotation-optional
+    "B005", # strip-with-multi-characters
+    "B006", # mutable-argument-default
+    "B007", # unused-loop-control-variable
+    "B026", # star-arg-unpacking-after-keyword-arg
+    "B903", # class-as-data-structure
+    "B904", # raise-without-from-inside-except
+    "B905", # zip-without-explicit-strict
+    "N806", # non-lowercase-variable-in-function
+    "N815", # mixed-case-variable-in-class-scope
+    "PT011", # pytest-raises-too-broad
+    "SIM102", # collapsible-if
+    "SIM103", # needless-bool
+    "SIM105", # suppressible-exception
+    "SIM107", # return-in-try-except-finally
+    "SIM108", # if-else-block-instead-of-if-exp
+    "SIM113", # enumerate-for-loop
+    "SIM117", # multiple-with-statements
+    "SIM210", # if-expr-with-true-false
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "single"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
