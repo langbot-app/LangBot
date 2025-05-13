@@ -71,12 +71,12 @@ class HttpClient {
     this.initInterceptors();
 
     const isPageRefresh = this.isPageRefresh();
-    
+
     if (isPageRefresh) {
       this.fetchAndCacheSystemInfo();
     } else {
       this.loadSystemInfoFromCache();
-      
+
       if (this.systemInfo === null) {
         this.fetchAndCacheSystemInfo();
       }
@@ -98,13 +98,13 @@ class HttpClient {
     try {
       const lastPageLoad = localStorage.getItem(this.PAGE_LOAD_KEY);
       const currentTime = Date.now().toString();
-      
+
       localStorage.setItem(this.PAGE_LOAD_KEY, currentTime);
-      
-      if (!lastPageLoad || (Date.now() - parseInt(lastPageLoad)) > 2000) {
+
+      if (!lastPageLoad || Date.now() - parseInt(lastPageLoad) > 2000) {
         return true;
       }
-      
+
       return false;
     } catch (error) {
       console.error('Error checking page refresh status:', error);
