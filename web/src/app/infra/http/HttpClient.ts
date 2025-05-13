@@ -56,6 +56,8 @@ class HttpClient {
   // private ssrInstance: AxiosInstance | null = null
   public systemInfo: ApiRespSystemInfo | null = null;
   private readonly SYSTEM_INFO_STORAGE_KEY = 'langbot_system_info';
+  private readonly LAST_FETCH_TIME_KEY = 'langbot_system_info_last_fetch';
+  private readonly PAGE_LOAD_KEY = 'langbot_page_load_timestamp';
 
   constructor(baseURL?: string, disableToken?: boolean) {
     this.instance = axios.create({
@@ -68,10 +70,16 @@ class HttpClient {
     this.disableToken = disableToken || false;
     this.initInterceptors();
 
-    this.loadSystemInfoFromCache();
-
-    if (this.systemInfo === null) {
+    const isPageRefresh = this.isPageRefresh();
+    
+    if (isPageRefresh) {
       this.fetchAndCacheSystemInfo();
+    } else {
+      this.loadSystemInfoFromCache();
+      
+      if (this.systemInfo === null) {
+        this.fetchAndCacheSystemInfo();
+      }
     }
   }
 
@@ -86,11 +94,30 @@ class HttpClient {
     }
   }
 
+  private isPageRefresh(): boolean {
+    try {
+      const lastPageLoad = localStorage.getItem(this.PAGE_LOAD_KEY);
+      const currentTime = Date.now().toString();
+      
+      localStorage.setItem(this.PAGE_LOAD_KEY, currentTime);
+      
+      if (!lastPageLoad || (Date.now() - parseInt(lastPageLoad)) > 2000) {
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Error checking page refresh status:', error);
+      return true; // Default to refresh on error to ensure fresh data
+    }
+  }
+
   private fetchAndCacheSystemInfo(): Promise<ApiRespSystemInfo> {
     return this.getSystemInfo().then((res) => {
       this.systemInfo = res;
       try {
         localStorage.setItem(this.SYSTEM_INFO_STORAGE_KEY, JSON.stringify(res));
+        localStorage.setItem(this.LAST_FETCH_TIME_KEY, Date.now().toString());
       } catch (error) {
         console.error('Failed to cache system info:', error);
       }
