@@ -138,12 +138,12 @@ export default function DynamicFormItemComponent({
           <SelectContent>
             <SelectGroup>
               {llmModels.map((model) => (
-                <HoverCard key={model.uuid}>
+                <HoverCard key={model.uuid} openDelay={0} closeDelay={0}>
                   <HoverCardTrigger asChild>
                     <SelectItem value={model.uuid}>{model.name}</SelectItem>
                   </HoverCardTrigger>
                   <HoverCardContent
-                    className="w-80"
+                    className="w-80 data-[state=open]:animate-none data-[state=closed]:animate-none"
                     align="end"
                     side="right"
                     sideOffset={10}
