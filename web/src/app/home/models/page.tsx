@@ -15,8 +15,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 export default function LLMConfigPage() {
+  const { t } = useTranslation();
   const [cardList, setCardList] = useState<LLMCardVO[]>([]);
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [isEditForm, setIsEditForm] = useState(false);
@@ -56,7 +58,7 @@ export default function LLMConfigPage() {
       })
       .catch((err) => {
         console.error('get LLM model list error', err);
-        toast.error('获取模型列表失败：' + err.message);
+        toast.error(t('models.getModelListError') + err.message);
       });
   }
 
@@ -77,7 +79,7 @@ export default function LLMConfigPage() {
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="w-[700px] p-6">
           <DialogHeader>
-            <DialogTitle>{isEditForm ? '预览模型' : '创建模型'}</DialogTitle>
+            <DialogTitle>{isEditForm ? t('models.previewModel') : t('models.createModel')}</DialogTitle>
           </DialogHeader>
           <LLMForm
             editMode={isEditForm}

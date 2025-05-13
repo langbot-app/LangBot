@@ -30,6 +30,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { useTranslation } from 'react-i18next';
 
 export default function PipelineFormComponent({
   initValues,
@@ -48,11 +49,12 @@ export default function PipelineFormComponent({
   onFinish: () => void;
   onNewPipelineCreated: (pipelineId: string) => void;
 }) {
+  const { t } = useTranslation();
   const formSchema = isEditMode
     ? z.object({
         basic: z.object({
-          name: z.string().min(1, { message: '名称不能为空' }),
-          description: z.string().min(1, { message: '描述不能为空' }),
+          name: z.string().min(1, { message: t('pipelines.nameRequired') }),
+          description: z.string().min(1, { message: t('pipelines.descriptionRequired') }),
         }),
         ai: z.record(z.string(), z.any()),
         trigger: z.record(z.string(), z.any()),
@@ -61,8 +63,8 @@ export default function PipelineFormComponent({
       })
     : z.object({
         basic: z.object({
-          name: z.string().min(1, { message: '名称不能为空' }),
-          description: z.string().min(1, { message: '描述不能为空' }),
+          name: z.string().min(1, { message: t('pipelines.nameRequired') }),
+          description: z.string().min(1, { message: t('pipelines.descriptionRequired') }),
         }),
         ai: z.record(z.string(), z.any()).optional(),
         trigger: z.record(z.string(), z.any()).optional(),
@@ -74,13 +76,13 @@ export default function PipelineFormComponent({
   // 这里不好，可以改成enum等
   const formLabelList: FormLabel[] = isEditMode
     ? [
-        { label: '基础信息', name: 'basic' },
-        { label: 'AI 能力', name: 'ai' },
-        { label: '触发条件', name: 'trigger' },
-        { label: '安全控制', name: 'safety' },
-        { label: '输出处理', name: 'output' },
+        { label: t('pipelines.basicInfo'), name: 'basic' },
+        { label: t('pipelines.aiCapabilities'), name: 'ai' },
+        { label: t('pipelines.triggerConditions'), name: 'trigger' },
+        { label: t('pipelines.safetyControls'), name: 'safety' },
+        { label: t('pipelines.outputProcessing'), name: 'output' },
       ]
-    : [{ label: '基础信息', name: 'basic' }];
+    : [{ label: t('pipelines.basicInfo'), name: 'basic' }];
 
   const [aiConfigTabSchema, setAIConfigTabSchema] =
     useState<PipelineConfigTab>();
@@ -156,10 +158,10 @@ export default function PipelineFormComponent({
       .then((resp) => {
         onFinish();
         onNewPipelineCreated(resp.uuid);
-        toast.success('创建成功 请编辑流水线详细参数');
+        toast.success(t('pipelines.createSuccess'));
       })
       .catch((err) => {
-        toast.error('创建失败：' + err.message);
+        toast.error(t('pipelines.createError') + err.message);
       });
   }
 
@@ -186,10 +188,10 @@ export default function PipelineFormComponent({
       .updatePipeline(pipelineId || '', pipeline)
       .then(() => {
         onFinish();
-        toast.success('保存成功');
+        toast.success(t('pipelines.saveSuccess'));
       })
       .catch((err) => {
-        toast.error('保存失败：' + err.message);
+        toast.error(t('pipelines.saveError') + err.message);
       });
   }
 
@@ -270,10 +272,10 @@ export default function PipelineFormComponent({
       .deletePipeline(pipelineId || '')
       .then(() => {
         onFinish();
-        toast.success('删除成功');
+        toast.success(t('common.deleteSuccess'));
       })
       .catch((err) => {
-        toast.error('删除失败：' + err.message);
+        toast.error(t('common.deleteError') + err.message);
       });
   }
 
@@ -285,17 +287,17 @@ export default function PipelineFormComponent({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>删除确认</DialogTitle>
+            <DialogTitle>{t('common.confirmDelete')}</DialogTitle>
           </DialogHeader>
           <DialogDescription>
-            你确定要删除这个流水线吗？已绑定此流水线的机器人将无法使用。
+            {t('pipelines.deleteConfirmation')}
           </DialogDescription>
           <DialogFooter>
             <Button
               variant="outline"
               onClick={() => setShowDeleteConfirmModal(false)}
             >
-              取消
+              {t('common.cancel')}
             </Button>
             <Button
               variant="destructive"
@@ -304,7 +306,7 @@ export default function PipelineFormComponent({
                 setShowDeleteConfirmModal(false);
               }}
             >
-              确认删除
+              {t('common.confirmDelete')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -337,7 +339,7 @@ export default function PipelineFormComponent({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>
-                            名称<span className="text-red-500">*</span>
+                            {t('common.name')}<span className="text-red-500">*</span>
                           </FormLabel>
                           <FormControl>
                             <Input {...field} />
@@ -353,7 +355,7 @@ export default function PipelineFormComponent({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>
-                            描述<span className="text-red-500">*</span>
+                            {t('common.description')}<span className="text-red-500">*</span>
                           </FormLabel>
                           <FormControl>
                             <Input {...field} />
@@ -408,7 +410,7 @@ export default function PipelineFormComponent({
             <div className="flex justify-end items-center gap-2">
               {isEditMode && isDefaultPipeline && (
                 <span className="text-gray-500 text-[0.7rem]">
-                  默认流水线不可删除
+                  {t('pipelines.defaultPipelineCannotDelete')}
                 </span>
               )}
 
@@ -421,12 +423,12 @@ export default function PipelineFormComponent({
                   }}
                   className="cursor-pointer"
                 >
-                  删除
+                  {t('common.delete')}
                 </Button>
               )}
 
               <Button type="submit" className="cursor-pointer">
-                {isEditMode ? '保存' : '提交'}
+                {isEditMode ? t('common.save') : t('common.submit')}
               </Button>
               <Button
                 type="button"
@@ -434,7 +436,7 @@ export default function PipelineFormComponent({
                 onClick={onFinish}
                 className="cursor-pointer"
               >
-                取消
+                {t('common.cancel')}
               </Button>
             </div>
           </div>

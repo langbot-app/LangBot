@@ -10,6 +10,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { sidebarConfigList } from '@/app/home/components/home-sidebar/sidbarConfigList';
 import langbotIcon from '@/app/assets/langbot-logo.webp';
 import { httpClient } from '@/app/infra/http/HttpClient';
+import { useTranslation } from 'react-i18next';
 
 // TODO 侧边导航栏要加动画
 export default function HomeSidebar({
@@ -27,14 +28,16 @@ export default function HomeSidebar({
 
   const [selectedChild, setSelectedChild] = useState<SidebarChildVO>();
 
+  const { t } = useTranslation();
+  
   useEffect(() => {
-    console.log('HomeSidebar挂载完成');
+    console.log(t('sidebar.mounted'));
     initSelect();
     if (!localStorage.getItem('token')) {
       localStorage.setItem('token', 'test-token');
       localStorage.setItem('userEmail', 'test@example.com');
     }
-    return () => console.log('HomeSidebar卸载');
+    return () => console.log(t('sidebar.unmounted'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -148,7 +151,7 @@ export default function HomeSidebar({
               <path d="M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22ZM12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20ZM11 15H13V17H11V15ZM13 13.3551V14H11V12.5C11 11.9477 11.4477 11.5 12 11.5C12.8284 11.5 13.5 10.8284 13.5 10C13.5 9.17157 12.8284 8.5 12 8.5C11.2723 8.5 10.6656 9.01823 10.5288 9.70577L8.56731 9.31346C8.88637 7.70919 10.302 6.5 12 6.5C13.933 6.5 15.5 8.067 15.5 10C15.5 11.5855 14.4457 12.9248 13 13.3551Z"></path>
             </svg>
           }
-          name="帮助文档"
+          name={t('common.helpDocs')}
         />
         <SidebarChild
           onClick={() => {
@@ -164,7 +167,7 @@ export default function HomeSidebar({
               <path d="M4 18H6V20H18V4H6V6H4V3C4 2.44772 4.44772 2 5 2H19C19.5523 2 20 2.44772 20 3V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V18ZM6 11H13V13H6V16L1 12L6 8V11Z"></path>
             </svg>
           }
-          name="退出登录"
+          name={t('common.logout')}
         />
       </div>
     </div>
