@@ -146,8 +146,12 @@ export default function PluginMarketComponent({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="stars,DESC">{t('plugins.mostStars')}</SelectItem>
-            <SelectItem value="created_at,DESC">{t('plugins.recentlyAdded')}</SelectItem>
-            <SelectItem value="pushed_at,DESC">{t('plugins.recentlyUpdated')}</SelectItem>
+            <SelectItem value="created_at,DESC">
+              {t('plugins.recentlyAdded')}
+            </SelectItem>
+            <SelectItem value="pushed_at,DESC">
+              {t('plugins.recentlyUpdated')}
+            </SelectItem>
           </SelectContent>
         </Select>
 

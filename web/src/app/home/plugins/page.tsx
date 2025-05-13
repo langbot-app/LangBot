@@ -169,7 +169,9 @@ export default function PluginConfigPage() {
                 <Button variant="outline" onClick={() => setModalOpen(false)}>
                   {t('common.cancel')}
                 </Button>
-                <Button onClick={handleModalConfirm}>{t('common.confirm')}</Button>
+                <Button onClick={handleModalConfirm}>
+                  {t('common.confirm')}
+                </Button>
               </>
             )}
             {pluginInstallStatus === PluginInstallStatus.ERROR && (
