@@ -86,7 +86,7 @@ export default function HomeSidebar({
       }
     }
   }
-  
+
   function handleLogout() {
     localStorage.removeItem('token');
     localStorage.removeItem('userEmail');
