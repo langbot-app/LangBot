@@ -94,10 +94,31 @@ class PipelineService:
             .values(**pipeline_data)
         )
 
-        await self.ap.pipeline_mgr.remove_pipeline(pipeline_uuid)
-
         pipeline = await self.get_pipeline(pipeline_uuid)
 
+        if 'name' in pipeline_data:
+            from ....entity.persistence import bot as persistence_bot
+            
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(persistence_bot.Bot).where(
+                    persistence_bot.Bot.use_pipeline_uuid == pipeline_uuid
+                )
+            )
+            
+            bots = result.all()
+            
+            for bot in bots:
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.update(persistence_bot.Bot)
+                    .where(persistence_bot.Bot.uuid == bot.uuid)
+                    .values(use_pipeline_name=pipeline_data['name'])
+                )
+                
+                bot_data = self.ap.persistence_mgr.serialize_model(persistence_bot.Bot, bot)
+                await self.ap.platform_mgr.remove_bot(bot.uuid)
+                await self.ap.platform_mgr.load_bot(bot_data)
+
+        await self.ap.pipeline_mgr.remove_pipeline(pipeline_uuid)
         await self.ap.pipeline_mgr.load_pipeline(pipeline)
 
     async def delete_pipeline(self, pipeline_uuid: str) -> None:
