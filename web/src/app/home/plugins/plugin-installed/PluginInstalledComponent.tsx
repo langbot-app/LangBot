@@ -85,8 +85,8 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
         ) : (
           <div className={`${styles.pluginListContainer}`}>
             <div className="flex justify-end mb-4 px-4">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="mr-2"
                 onClick={() => setSortModalOpen(true)}
               >

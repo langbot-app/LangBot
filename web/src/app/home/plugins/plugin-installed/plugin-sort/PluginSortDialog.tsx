@@ -40,9 +40,10 @@ interface PluginSortDialogProps {
 }
 
 function SortablePluginItem({ plugin }: { plugin: PluginCardVO }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
-    id: `${plugin.author}-${plugin.name}`,
-  });
+  const { attributes, listeners, setNodeRef, transform, transition } =
+    useSortable({
+      id: `${plugin.author}-${plugin.name}`,
+    });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -58,7 +59,9 @@ function SortablePluginItem({ plugin }: { plugin: PluginCardVO }) {
       className="bg-white dark:bg-gray-800 p-4 rounded-md shadow-sm border mb-2 cursor-move"
     >
       <div className="flex flex-col">
-        <div className="text-sm text-gray-600 dark:text-gray-400">{plugin.author}</div>
+        <div className="text-sm text-gray-600 dark:text-gray-400">
+          {plugin.author}
+        </div>
         <div className="text-lg font-medium">{plugin.name}</div>
         <div className="text-sm line-clamp-2 text-gray-500 dark:text-gray-400 mt-1">
           {plugin.description}
@@ -87,21 +90,21 @@ export default function PluginSortDialog({
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   );
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
-    
+
     if (over && active.id !== over.id) {
       setSortedPlugins((items) => {
         const oldIndex = items.findIndex(
-          (item) => `${item.author}-${item.name}` === active.id
+          (item) => `${item.author}-${item.name}` === active.id,
         );
         const newIndex = items.findIndex(
-          (item) => `${item.author}-${item.name}` === over.id
+          (item) => `${item.author}-${item.name}` === over.id,
         );
-        
+
         return arrayMove(items, oldIndex, newIndex);
       });
     }
@@ -109,13 +112,15 @@ export default function PluginSortDialog({
 
   function handleSave() {
     setIsLoading(true);
-    
-    const reorderElements: PluginReorderElement[] = sortedPlugins.map((plugin, index) => ({
-      author: plugin.author,
-      name: plugin.name,
-      priority: index,
-    }));
-    
+
+    const reorderElements: PluginReorderElement[] = sortedPlugins.map(
+      (plugin, index) => ({
+        author: plugin.author,
+        name: plugin.name,
+        priority: index,
+      }),
+    );
+
     httpClient
       .reorderPlugins(reorderElements)
       .then(() => {
@@ -147,7 +152,9 @@ export default function PluginSortDialog({
             onDragEnd={handleDragEnd}
           >
             <SortableContext
-              items={sortedPlugins.map(plugin => `${plugin.author}-${plugin.name}`)}
+              items={sortedPlugins.map(
+                (plugin) => `${plugin.author}-${plugin.name}`,
+              )}
               strategy={verticalListSortingStrategy}
             >
               {sortedPlugins.map((plugin) => (
