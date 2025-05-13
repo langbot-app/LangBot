@@ -43,7 +43,6 @@ const zhHans = {
     description: '配置和管理可在流水线中使用的模型',
     createModel: '创建模型',
     editModel: '编辑模型',
-    previewModel: '预览模型',
     getModelListError: '获取模型列表失败：',
     modelName: '模型名称',
     modelProvider: '模型提供商',

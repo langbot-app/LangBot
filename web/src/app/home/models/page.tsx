@@ -81,7 +81,7 @@ export default function LLMConfigPage() {
         <DialogContent className="w-[700px] p-6">
           <DialogHeader>
             <DialogTitle>
-              {isEditForm ? t('models.previewModel') : t('models.createModel')}
+              {isEditForm ? t('models.editModel') : t('models.createModel')}
             </DialogTitle>
           </DialogHeader>
           <LLMForm

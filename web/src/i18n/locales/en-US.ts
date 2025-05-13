@@ -43,7 +43,6 @@ const enUS = {
     description: 'Configure and manage models that can be used in pipelines',
     createModel: 'Create Model',
     editModel: 'Edit Model',
-    previewModel: 'Preview Model',
     getModelListError: 'Failed to get model list: ',
     modelName: 'Model Name',
     modelProvider: 'Model Provider',
