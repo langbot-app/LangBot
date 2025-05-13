@@ -32,6 +32,12 @@ export default function HomeSidebar({
   useEffect(() => {
     console.log('HomeSidebar挂载完成');
     initSelect();
+    
+    if (!localStorage.getItem('token')) {
+      localStorage.setItem('token', 'test-token');
+      localStorage.setItem('userEmail', 'test@example.com');
+    }
+    
     const email = localStorage.getItem('userEmail');
     if (email) {
       setUserEmail(email);
