@@ -32,6 +32,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useTranslation } from 'react-i18next';
+import { i18nObj } from '@/i18n/I18nProvider';
 
 interface PluginSortDialogProps {
   open: boolean;
@@ -86,7 +87,7 @@ export default function PluginSortDialog({
         value.plugins.map((plugin) => {
           return new PluginCardVO({
             author: plugin.author,
-            description: plugin.description.zh_CN,
+            description: i18nObj(plugin.description),
             enabled: plugin.enabled,
             name: plugin.name,
             version: plugin.version,

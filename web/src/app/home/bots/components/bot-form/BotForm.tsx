@@ -47,15 +47,19 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { i18nObj } from '@/i18n/I18nProvider';
 
-const getFormSchema = (t: (key: string) => string) => z.object({
-  name: z.string().min(1, { message: t('bots.botNameRequired') }),
-  description: z.string().min(1, { message: t('bots.botDescriptionRequired') }),
-  adapter: z.string().min(1, { message: t('bots.adapterRequired') }),
-  adapter_config: z.record(z.string(), z.any()),
-  enable: z.boolean().optional(),
-  use_pipeline_uuid: z.string().optional(),
-});
+const getFormSchema = (t: (key: string) => string) =>
+  z.object({
+    name: z.string().min(1, { message: t('bots.botNameRequired') }),
+    description: z
+      .string()
+      .min(1, { message: t('bots.botDescriptionRequired') }),
+    adapter: z.string().min(1, { message: t('bots.adapterRequired') }),
+    adapter_config: z.record(z.string(), z.any()),
+    enable: z.boolean().optional(),
+    use_pipeline_uuid: z.string().optional(),
+  });
 
 export default function BotForm({
   initBotId,
@@ -72,7 +76,7 @@ export default function BotForm({
 }) {
   const { t } = useTranslation();
   const formSchema = getFormSchema(t);
-  
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -160,7 +164,7 @@ export default function BotForm({
     setAdapterNameList(
       adaptersRes.adapters.map((item) => {
         return {
-          label: item.label.zh_CN,
+          label: i18nObj(item.label),
           value: item.name,
         };
       }),
@@ -181,7 +185,7 @@ export default function BotForm({
     setAdapterDescriptionList(
       adaptersRes.adapters.reduce(
         (acc, item) => {
-          acc[item.name] = item.description.zh_CN;
+          acc[item.name] = i18nObj(item.description);
           return acc;
         },
         {} as Record<string, string>,
@@ -392,7 +396,9 @@ export default function BotForm({
                       <FormControl>
                         <Select onValueChange={field.onChange} {...field}>
                           <SelectTrigger>
-                            <SelectValue placeholder={t('bots.selectPipeline')} />
+                            <SelectValue
+                              placeholder={t('bots.selectPipeline')}
+                            />
                           </SelectTrigger>
                           <SelectContent className="fixed z-[1000]">
                             <SelectGroup>
@@ -417,7 +423,8 @@ export default function BotForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {t('bots.botName')}<span className="text-red-500">*</span>
+                    {t('bots.botName')}
+                    <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
                     <Input {...field} />
@@ -432,7 +439,8 @@ export default function BotForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {t('bots.botDescription')}<span className="text-red-500">*</span>
+                    {t('bots.botDescription')}
+                    <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
                     <Input {...field} />
@@ -448,7 +456,8 @@ export default function BotForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {t('bots.platformAdapter')}<span className="text-red-500">*</span>
+                    {t('bots.platformAdapter')}
+                    <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
                     <div className="relative">
@@ -503,7 +512,9 @@ export default function BotForm({
 
             {showDynamicForm && dynamicFormConfigList.length > 0 && (
               <div className="space-y-4">
-                <div className="text-lg font-medium">{t('bots.adapterConfig')}</div>
+                <div className="text-lg font-medium">
+                  {t('bots.adapterConfig')}
+                </div>
                 <DynamicFormComponent
                   itemConfigList={dynamicFormConfigList}
                   initialValues={form.watch('adapter_config')}

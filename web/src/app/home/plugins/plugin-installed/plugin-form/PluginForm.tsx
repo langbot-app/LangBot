@@ -12,6 +12,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { i18nObj } from '@/i18n/I18nProvider';
 
 enum PluginRemoveStatus {
   WAIT_INPUT = 'WAIT_INPUT',
@@ -179,7 +180,7 @@ export default function PluginForm({
       <div className="space-y-2">
         <div className="text-lg font-medium">{pluginInfo.name}</div>
         <div className="text-sm text-gray-500 pb-2">
-          {pluginInfo.description.zh_CN}
+          {i18nObj(pluginInfo.description)}
         </div>
         {pluginInfo.config_schema.length > 0 && (
           <DynamicFormComponent

@@ -31,6 +31,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useTranslation } from 'react-i18next';
+import { i18nObj } from '@/i18n/I18nProvider';
 
 export default function PipelineFormComponent({
   initValues,
@@ -54,7 +55,9 @@ export default function PipelineFormComponent({
     ? z.object({
         basic: z.object({
           name: z.string().min(1, { message: t('pipelines.nameRequired') }),
-          description: z.string().min(1, { message: t('pipelines.descriptionRequired') }),
+          description: z
+            .string()
+            .min(1, { message: t('pipelines.descriptionRequired') }),
         }),
         ai: z.record(z.string(), z.any()),
         trigger: z.record(z.string(), z.any()),
@@ -64,7 +67,9 @@ export default function PipelineFormComponent({
     : z.object({
         basic: z.object({
           name: z.string().min(1, { message: t('pipelines.nameRequired') }),
-          description: z.string().min(1, { message: t('pipelines.descriptionRequired') }),
+          description: z
+            .string()
+            .min(1, { message: t('pipelines.descriptionRequired') }),
         }),
         ai: z.record(z.string(), z.any()).optional(),
         trigger: z.record(z.string(), z.any()).optional(),
@@ -208,10 +213,10 @@ export default function PipelineFormComponent({
       if (stage.name === 'runner') {
         return (
           <div key={stage.name} className="space-y-4 mb-6">
-            <div className="text-lg font-medium">{stage.label.zh_CN}</div>
+            <div className="text-lg font-medium">{i18nObj(stage.label)}</div>
             {stage.description && (
               <div className="text-sm text-gray-500">
-                {stage.description.zh_CN}
+                {i18nObj(stage.description)}
               </div>
             )}
             <DynamicFormComponent
@@ -243,9 +248,11 @@ export default function PipelineFormComponent({
 
     return (
       <div key={stage.name} className="space-y-4 mb-6">
-        <div className="text-lg font-medium">{stage.label.zh_CN}</div>
+        <div className="text-lg font-medium">{i18nObj(stage.label)}</div>
         {stage.description && (
-          <div className="text-sm text-gray-500">{stage.description.zh_CN}</div>
+          <div className="text-sm text-gray-500">
+            {i18nObj(stage.description)}
+          </div>
         )}
         <DynamicFormComponent
           itemConfigList={stage.config}
@@ -339,7 +346,8 @@ export default function PipelineFormComponent({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>
-                            {t('common.name')}<span className="text-red-500">*</span>
+                            {t('common.name')}
+                            <span className="text-red-500">*</span>
                           </FormLabel>
                           <FormControl>
                             <Input {...field} />
@@ -355,7 +363,8 @@ export default function PipelineFormComponent({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>
-                            {t('common.description')}<span className="text-red-500">*</span>
+                            {t('common.description')}
+                            <span className="text-red-500">*</span>
                           </FormLabel>
                           <FormControl>
                             <Input {...field} />

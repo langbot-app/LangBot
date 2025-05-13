@@ -39,41 +39,47 @@ import {
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-const getExtraArgSchema = (t: (key: string) => string) => z
-  .object({
-    key: z.string().min(1, { message: t('models.keyNameRequired') }),
-    type: z.enum(['string', 'number', 'boolean']),
-    value: z.string(),
-  })
-  .superRefine((data, ctx) => {
-    if (data.type === 'number' && isNaN(Number(data.value))) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: t('models.mustBeValidNumber'),
-        path: ['value'],
-      });
-    }
-    if (
-      data.type === 'boolean' &&
-      data.value !== 'true' &&
-      data.value !== 'false'
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: t('models.mustBeTrueOrFalse'),
-        path: ['value'],
-      });
-    }
-  });
+import { i18nObj } from '@/i18n/I18nProvider';
 
-const getFormSchema = (t: (key: string) => string) => z.object({
-  name: z.string().min(1, { message: t('models.modelNameRequired') }),
-  model_provider: z.string().min(1, { message: t('models.modelProviderRequired') }),
-  url: z.string().min(1, { message: t('models.requestURLRequired') }),
-  api_key: z.string().min(1, { message: t('models.apiKeyRequired') }),
-  abilities: z.array(z.string()),
-  extra_args: z.array(getExtraArgSchema(t)).optional(),
-});
+const getExtraArgSchema = (t: (key: string) => string) =>
+  z
+    .object({
+      key: z.string().min(1, { message: t('models.keyNameRequired') }),
+      type: z.enum(['string', 'number', 'boolean']),
+      value: z.string(),
+    })
+    .superRefine((data, ctx) => {
+      if (data.type === 'number' && isNaN(Number(data.value))) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: t('models.mustBeValidNumber'),
+          path: ['value'],
+        });
+      }
+      if (
+        data.type === 'boolean' &&
+        data.value !== 'true' &&
+        data.value !== 'false'
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: t('models.mustBeTrueOrFalse'),
+          path: ['value'],
+        });
+      }
+    });
+
+const getFormSchema = (t: (key: string) => string) =>
+  z.object({
+    name: z.string().min(1, { message: t('models.modelNameRequired') }),
+    model_provider: z
+      .string()
+      .min(1, { message: t('models.modelProviderRequired') }),
+    url: z.string().min(1, { message: t('models.requestURLRequired') }),
+    api_key: z.string().min(1, { message: t('models.apiKeyRequired') }),
+    abilities: z.array(z.string()),
+    extra_args: z.array(getExtraArgSchema(t)).optional(),
+  });
 
 export default function LLMForm({
   editMode,
@@ -90,7 +96,7 @@ export default function LLMForm({
 }) {
   const { t } = useTranslation();
   const formSchema = getFormSchema(t);
-  
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -189,7 +195,7 @@ export default function LLMForm({
     setRequesterNameList(
       requesterNameList.requesters.map((item) => {
         return {
-          label: item.label.zh_CN,
+          label: i18nObj(item.label),
           value: item.name,
         };
       }),
@@ -227,15 +233,17 @@ export default function LLMForm({
 
   function handleFormSubmit(value: z.infer<typeof formSchema>) {
     const extraArgsObj: Record<string, string | number | boolean> = {};
-    value.extra_args?.forEach((arg: { key: string; type: string; value: string }) => {
-      if (arg.type === 'number') {
-        extraArgsObj[arg.key] = Number(arg.value);
-      } else if (arg.type === 'boolean') {
-        extraArgsObj[arg.key] = arg.value === 'true';
-      } else {
-        extraArgsObj[arg.key] = arg.value;
-      }
-    });
+    value.extra_args?.forEach(
+      (arg: { key: string; type: string; value: string }) => {
+        if (arg.type === 'number') {
+          extraArgsObj[arg.key] = Number(arg.value);
+        } else if (arg.type === 'boolean') {
+          extraArgsObj[arg.key] = arg.value === 'true';
+        } else {
+          extraArgsObj[arg.key] = arg.value;
+        }
+      },
+    );
 
     const llmModel: LLMModel = {
       uuid: editMode ? initLLMId || '' : UUID.generate(),
@@ -306,7 +314,9 @@ export default function LLMForm({
           <DialogHeader>
             <DialogTitle>{t('common.confirmDelete')}</DialogTitle>
           </DialogHeader>
-          <DialogDescription>{t('models.deleteConfirmation')}</DialogDescription>
+          <DialogDescription>
+            {t('models.deleteConfirmation')}
+          </DialogDescription>
           <DialogFooter>
             <Button
               variant="outline"
@@ -339,7 +349,8 @@ export default function LLMForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {t('models.modelName')}<span className="text-red-500">*</span>
+                    {t('models.modelName')}
+                    <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
                     <Input {...field} />
@@ -358,7 +369,8 @@ export default function LLMForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {t('models.modelProvider')}<span className="text-red-500">*</span>
+                    {t('models.modelProvider')}
+                    <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
                     <Select
@@ -374,7 +386,9 @@ export default function LLMForm({
                       value={field.value}
                     >
                       <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder={t('models.selectModelProvider')} />
+                        <SelectValue
+                          placeholder={t('models.selectModelProvider')}
+                        />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
@@ -398,7 +412,8 @@ export default function LLMForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {t('models.requestURL')}<span className="text-red-500">*</span>
+                    {t('models.requestURL')}
+                    <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
                     <Input {...field} />
@@ -413,7 +428,8 @@ export default function LLMForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {t('models.apiKey')}<span className="text-red-500">*</span>
+                    {t('models.apiKey')}
+                    <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
                     <Input {...field} />
@@ -429,7 +445,9 @@ export default function LLMForm({
                 <FormItem>
                   <FormLabel>{t('models.abilities')}</FormLabel>
                   <div className="mb-0">
-                    <FormDescription>{t('models.selectModelAbilities')}</FormDescription>
+                    <FormDescription>
+                      {t('models.selectModelAbilities')}
+                    </FormDescription>
                   </div>
                   {abilityOptions.map((item) => (
                     <FormField
@@ -456,7 +474,8 @@ export default function LLMForm({
                                       ])
                                     : field.onChange(
                                         field.value?.filter(
-                                          (value: string) => value !== item.value,
+                                          (value: string) =>
+                                            value !== item.value,
                                         ),
                                       );
                                 }}
@@ -497,9 +516,15 @@ export default function LLMForm({
                         <SelectValue placeholder={t('models.type')} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="string">{t('models.string')}</SelectItem>
-                        <SelectItem value="number">{t('models.number')}</SelectItem>
-                        <SelectItem value="boolean">{t('models.boolean')}</SelectItem>
+                        <SelectItem value="string">
+                          {t('models.string')}
+                        </SelectItem>
+                        <SelectItem value="number">
+                          {t('models.number')}
+                        </SelectItem>
+                        <SelectItem value="boolean">
+                          {t('models.boolean')}
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                     <Input
@@ -546,7 +571,9 @@ export default function LLMForm({
               </Button>
             )}
 
-            <Button type="submit">{editMode ? t('common.save') : t('common.submit')}</Button>
+            <Button type="submit">
+              {editMode ? t('common.save') : t('common.submit')}
+            </Button>
 
             <Button
               type="button"

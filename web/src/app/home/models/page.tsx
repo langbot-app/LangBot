@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
+import { i18nObj } from '@/i18n/I18nProvider';
 
 export default function LLMConfigPage() {
   const { t } = useTranslation();
@@ -32,7 +33,7 @@ export default function LLMConfigPage() {
     const requesterNameListResp = await httpClient.getProviderRequesters();
     const requesterNameList = requesterNameListResp.requesters.map((item) => {
       return {
-        label: item.label.zh_CN,
+        label: i18nObj(item.label),
         value: item.name,
       };
     });
@@ -79,7 +80,9 @@ export default function LLMConfigPage() {
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="w-[700px] p-6">
           <DialogHeader>
-            <DialogTitle>{isEditForm ? t('models.previewModel') : t('models.createModel')}</DialogTitle>
+            <DialogTitle>
+              {isEditForm ? t('models.previewModel') : t('models.createModel')}
+            </DialogTitle>
           </DialogHeader>
           <LLMForm
             editMode={isEditForm}

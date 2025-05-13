@@ -16,6 +16,8 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
+import { i18nObj } from '@/i18n/I18nProvider';
+
 export default function BotConfigPage() {
   const { t } = useTranslation();
   const [modalOpen, setModalOpen] = useState<boolean>(false);
@@ -31,7 +33,7 @@ export default function BotConfigPage() {
     const adapterListResp = await httpClient.getAdapters();
     const adapterList = adapterListResp.adapters.map((adapter: Adapter) => {
       return {
-        label: adapter.label.zh_CN,
+        label: i18nObj(adapter.label),
         value: adapter.name,
       };
     });
