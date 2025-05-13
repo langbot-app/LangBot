@@ -55,6 +55,7 @@ class HttpClient {
   // 暂不需要SSR
   // private ssrInstance: AxiosInstance | null = null
   public systemInfo: ApiRespSystemInfo | null = null;
+  private readonly SYSTEM_INFO_STORAGE_KEY = 'langbot_system_info';
 
   constructor(baseURL?: string, disableToken?: boolean) {
     this.instance = axios.create({
@@ -67,11 +68,34 @@ class HttpClient {
     this.disableToken = disableToken || false;
     this.initInterceptors();
 
+    this.loadSystemInfoFromCache();
+    
     if (this.systemInfo === null) {
-      this.getSystemInfo().then((res) => {
-        this.systemInfo = res;
-      });
+      this.fetchAndCacheSystemInfo();
     }
+  }
+  
+  private loadSystemInfoFromCache(): void {
+    try {
+      const cachedInfo = localStorage.getItem(this.SYSTEM_INFO_STORAGE_KEY);
+      if (cachedInfo) {
+        this.systemInfo = JSON.parse(cachedInfo);
+      }
+    } catch (error) {
+      console.error('Failed to load system info from cache:', error);
+    }
+  }
+
+  private fetchAndCacheSystemInfo(): Promise<ApiRespSystemInfo> {
+    return this.getSystemInfo().then((res) => {
+      this.systemInfo = res;
+      try {
+        localStorage.setItem(this.SYSTEM_INFO_STORAGE_KEY, JSON.stringify(res));
+      } catch (error) {
+        console.error('Failed to cache system info:', error);
+      }
+      return res;
+    });
   }
 
   // 兜底URL，如果使用未配置会走到这里
@@ -416,6 +440,9 @@ class HttpClient {
   // ============ System API ============
   public getSystemInfo(): Promise<ApiRespSystemInfo> {
     return this.get('/api/v1/system/info');
+  }
+  public refreshSystemInfo(): Promise<ApiRespSystemInfo> {
+    return this.fetchAndCacheSystemInfo();
   }
 
   public getAsyncTasks(): Promise<ApiRespAsyncTasks> {
