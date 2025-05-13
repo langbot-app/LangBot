@@ -34,10 +34,6 @@ export default function HomeSidebar({
       localStorage.setItem('token', 'test-token');
       localStorage.setItem('userEmail', 'test@example.com');
     }
-    const email = localStorage.getItem('userEmail');
-    if (email) {
-      setUserEmail(email);
-    }
     return () => console.log('HomeSidebar卸载');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
