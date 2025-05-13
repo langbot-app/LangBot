@@ -12,8 +12,8 @@ from . import algos
 importutil.import_modules_in_pkg(algos)
 
 
-@stage.stage_class('RequireRateLimitOccupancy')
-@stage.stage_class('ReleaseRateLimitOccupancy')
+@stage.stage_class("RequireRateLimitOccupancy")
+@stage.stage_class("ReleaseRateLimitOccupancy")
 class RateLimit(stage.PipelineStage):
     """限速器控制阶段
 
@@ -23,7 +23,7 @@ class RateLimit(stage.PipelineStage):
     algo: algo.ReteLimitAlgo
 
     async def initialize(self, pipeline_config: dict):
-        algo_name = 'fixwin'
+        algo_name = "fixwin"
 
         algo_class = None
 
@@ -32,7 +32,7 @@ class RateLimit(stage.PipelineStage):
                 algo_class = algo_cls
                 break
         else:
-            raise ValueError(f'未知的限速算法: {algo_name}')
+            raise ValueError(f"未知的限速算法: {algo_name}")
 
         self.algo = algo_class(self.ap)
         await self.algo.initialize()
@@ -46,7 +46,7 @@ class RateLimit(stage.PipelineStage):
         typing.AsyncGenerator[entities.StageProcessResult, None],
     ]:
         """处理"""
-        if stage_inst_name == 'RequireRateLimitOccupancy':
+        if stage_inst_name == "RequireRateLimitOccupancy":
             if await self.algo.require_access(
                 query,
                 query.launcher_type.value,
@@ -60,10 +60,10 @@ class RateLimit(stage.PipelineStage):
                 return entities.StageProcessResult(
                     result_type=entities.ResultType.INTERRUPT,
                     new_query=query,
-                    console_notice=f'根据限速规则忽略 {query.launcher_type.value}:{query.launcher_id} 消息',
-                    user_notice='请求数超过限速器设定值，已丢弃本消息。',
+                    console_notice=f"根据限速规则忽略 {query.launcher_type.value}:{query.launcher_id} 消息",
+                    user_notice="请求数超过限速器设定值，已丢弃本消息。",
                 )
-        elif stage_inst_name == 'ReleaseRateLimitOccupancy':
+        elif stage_inst_name == "ReleaseRateLimitOccupancy":
             await self.algo.release_access(
                 query,
                 query.launcher_type.value,

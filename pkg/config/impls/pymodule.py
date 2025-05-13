@@ -34,7 +34,7 @@ class PythonModuleConfigFile(file_model.ConfigFile):
         allowed_types = (int, float, str, bool, list, dict)
 
         for key in dir(module):
-            if key.startswith('__'):
+            if key.startswith("__"):
                 continue
 
             if not isinstance(getattr(module, key), allowed_types):
@@ -48,7 +48,7 @@ class PythonModuleConfigFile(file_model.ConfigFile):
             module = importlib.import_module(module_name)
 
             for key in dir(module):
-                if key.startswith('__'):
+                if key.startswith("__"):
                     continue
 
                 if not isinstance(getattr(module, key), allowed_types):
@@ -60,7 +60,7 @@ class PythonModuleConfigFile(file_model.ConfigFile):
         return cfg
 
     async def save(self, data: dict):
-        logging.warning('Python模块配置文件不支持保存')
+        logging.warning("Python模块配置文件不支持保存")
 
     def save_sync(self, data: dict):
-        logging.warning('Python模块配置文件不支持保存')
+        logging.warning("Python模块配置文件不支持保存")

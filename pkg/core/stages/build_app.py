@@ -21,7 +21,7 @@ from ...utils import logcache
 from .. import taskmgr
 
 
-@stage.stage_class('BuildAppStage')
+@stage.stage_class("BuildAppStage")
 class BuildAppStage(stage.BootingStage):
     """构建应用阶段"""
 
@@ -30,7 +30,7 @@ class BuildAppStage(stage.BootingStage):
         ap.task_mgr = taskmgr.AsyncTaskManager(ap)
 
         discover = discover_engine.ComponentDiscoveryEngine(ap)
-        discover.discover_blueprint('components.yaml')
+        discover.discover_blueprint("components.yaml")
         ap.discover = discover
 
         proxy_mgr = proxy.ProxyManager(ap)

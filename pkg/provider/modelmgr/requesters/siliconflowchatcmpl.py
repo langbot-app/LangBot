@@ -12,6 +12,6 @@ class SiliconFlowChatCompletions(chatcmpl.OpenAIChatCompletions):
     client: openai.AsyncClient
 
     default_config: dict[str, typing.Any] = {
-        'base_url': 'https://api.siliconflow.cn/v1',
-        'timeout': 120,
+        "base_url": "https://api.siliconflow.cn/v1",
+        "timeout": 120,
     }

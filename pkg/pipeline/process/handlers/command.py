@@ -21,10 +21,10 @@ class CommandHandler(handler.MessageHandler):
 
         privilege = 1
 
-        if f'{query.launcher_type.value}_{query.launcher_id}' in self.ap.instance_config.data['admins']:
+        if f"{query.launcher_type.value}_{query.launcher_id}" in self.ap.instance_config.data["admins"]:
             privilege = 2
 
-        spt = command_text.split(' ')
+        spt = command_text.split(" ")
 
         event_class = (
             events.PersonCommandSent
@@ -65,12 +65,12 @@ class CommandHandler(handler.MessageHandler):
                 if ret.error is not None:
                     query.resp_messages.append(
                         llm_entities.Message(
-                            role='command',
+                            role="command",
                             content=str(ret.error),
                         )
                     )
 
-                    self.ap.logger.info(f'命令({query.query_id})报错: {self.cut_str(str(ret.error))}')
+                    self.ap.logger.info(f"命令({query.query_id})报错: {self.cut_str(str(ret.error))}")
 
                     yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
                 elif ret.text is not None or ret.image_url is not None:
@@ -84,12 +84,12 @@ class CommandHandler(handler.MessageHandler):
 
                     query.resp_messages.append(
                         llm_entities.Message(
-                            role='command',
+                            role="command",
                             content=content,
                         )
                     )
 
-                    self.ap.logger.info(f'命令返回: {self.cut_str(str(content[0]))}')
+                    self.ap.logger.info(f"命令返回: {self.cut_str(str(content[0]))}")
 
                     yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
                 else:

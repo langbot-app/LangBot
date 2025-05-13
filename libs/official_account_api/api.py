@@ -28,17 +28,17 @@ class OAClient:
         self.aes = EncodingAESKey
         self.appid = AppID
         self.appsecret = Appsecret
-        self.base_url = 'https://api.weixin.qq.com'
-        self.access_token = ''
+        self.base_url = "https://api.weixin.qq.com"
+        self.access_token = ""
         self.app = Quart(__name__)
         self.app.add_url_rule(
-            '/callback/command',
-            'handle_callback',
+            "/callback/command",
+            "handle_callback",
             self.handle_callback_request,
-            methods=['GET', 'POST'],
+            methods=["GET", "POST"],
         )
         self._message_handlers = {
-            'example': [],
+            "example": [],
         }
         self.access_token_expiry_time = None
         self.msg_id_map = {}
@@ -48,31 +48,31 @@ class OAClient:
         try:
             # 每隔100毫秒查询是否生成ai回答
             start_time = time.time()
-            signature = request.args.get('signature', '')
-            timestamp = request.args.get('timestamp', '')
-            nonce = request.args.get('nonce', '')
-            echostr = request.args.get('echostr', '')
-            msg_signature = request.args.get('msg_signature', '')
+            signature = request.args.get("signature", "")
+            timestamp = request.args.get("timestamp", "")
+            nonce = request.args.get("nonce", "")
+            echostr = request.args.get("echostr", "")
+            msg_signature = request.args.get("msg_signature", "")
             if msg_signature is None:
-                raise Exception('msg_signature不在请求体中')
+                raise Exception("msg_signature不在请求体中")
 
-            if request.method == 'GET':
+            if request.method == "GET":
                 # 校验签名
-                check_str = ''.join(sorted([self.token, timestamp, nonce]))
-                check_signature = hashlib.sha1(check_str.encode('utf-8')).hexdigest()
+                check_str = "".join(sorted([self.token, timestamp, nonce]))
+                check_signature = hashlib.sha1(check_str.encode("utf-8")).hexdigest()
 
                 if check_signature == signature:
                     return echostr  # 验证成功返回echostr
                 else:
-                    raise Exception('拒绝请求')
-            elif request.method == 'POST':
+                    raise Exception("拒绝请求")
+            elif request.method == "POST":
                 encryt_msg = await request.data
                 wxcpt = WXBizMsgCrypt(self.token, self.aes, self.appid)
                 ret, xml_msg = wxcpt.DecryptMsg(encryt_msg, msg_signature, timestamp, nonce)
-                xml_msg = xml_msg.decode('utf-8')
+                xml_msg = xml_msg.decode("utf-8")
 
                 if ret != 0:
-                    raise Exception('消息解密失败')
+                    raise Exception("消息解密失败")
 
                 message_data = await self.get_message(xml_msg)
                 if message_data:
@@ -81,13 +81,13 @@ class OAClient:
                         await self._handle_message(event)
 
                 root = ET.fromstring(xml_msg)
-                from_user = root.find('FromUserName').text  # 发送者
-                to_user = root.find('ToUserName').text  # 机器人
+                from_user = root.find("FromUserName").text  # 发送者
+                to_user = root.find("ToUserName").text  # 机器人
 
                 timeout = 4.80
                 interval = 0.1
                 while True:
-                    content = self.generated_content.pop(message_data['MsgId'], None)
+                    content = self.generated_content.pop(message_data["MsgId"], None)
                     if content:
                         response_xml = xml_template.format(
                             to_user=from_user,
@@ -103,15 +103,15 @@ class OAClient:
 
                     await asyncio.sleep(interval)
 
-                if self.msg_id_map.get(message_data['MsgId'], 1) == 3:
+                if self.msg_id_map.get(message_data["MsgId"], 1) == 3:
                     # response_xml = xml_template.format(
                     #     to_user=from_user,
                     #     from_user=to_user,
                     #     create_time=int(time.time()),
                     #     content = "请求失效：暂不支持公众号超过15秒的请求，如有需求，请联系 LangBot 团队。"
                     # )
-                    print('请求失效：暂不支持公众号超过15秒的请求，如有需求，请联系 LangBot 团队。')
-                    return ''
+                    print("请求失效：暂不支持公众号超过15秒的请求，如有需求，请联系 LangBot 团队。")
+                    return ""
 
         except Exception:
             traceback.print_exc()
@@ -120,12 +120,12 @@ class OAClient:
         root = ET.fromstring(xml_msg)
 
         message_data = {
-            'ToUserName': root.find('ToUserName').text,
-            'FromUserName': root.find('FromUserName').text,
-            'CreateTime': int(root.find('CreateTime').text),
-            'MsgType': root.find('MsgType').text,
-            'Content': root.find('Content').text if root.find('Content') is not None else None,
-            'MsgId': int(root.find('MsgId').text) if root.find('MsgId') is not None else None,
+            "ToUserName": root.find("ToUserName").text,
+            "FromUserName": root.find("FromUserName").text,
+            "CreateTime": int(root.find("CreateTime").text),
+            "MsgType": root.find("MsgType").text,
+            "Content": root.find("Content").text if root.find("Content") is not None else None,
+            "MsgId": int(root.find("MsgId").text) if root.find("MsgId") is not None else None,
         }
 
         return message_data
@@ -181,17 +181,17 @@ class OAClientForLongerResponse:
         self.aes = EncodingAESKey
         self.appid = AppID
         self.appsecret = Appsecret
-        self.base_url = 'https://api.weixin.qq.com'
-        self.access_token = ''
+        self.base_url = "https://api.weixin.qq.com"
+        self.access_token = ""
         self.app = Quart(__name__)
         self.app.add_url_rule(
-            '/callback/command',
-            'handle_callback',
+            "/callback/command",
+            "handle_callback",
             self.handle_callback_request,
-            methods=['GET', 'POST'],
+            methods=["GET", "POST"],
         )
         self._message_handlers = {
-            'example': [],
+            "example": [],
         }
         self.access_token_expiry_time = None
         self.loading_message = LoadingMessage
@@ -200,37 +200,37 @@ class OAClientForLongerResponse:
 
     async def handle_callback_request(self):
         try:
-            signature = request.args.get('signature', '')
-            timestamp = request.args.get('timestamp', '')
-            nonce = request.args.get('nonce', '')
-            echostr = request.args.get('echostr', '')
-            msg_signature = request.args.get('msg_signature', '')
+            signature = request.args.get("signature", "")
+            timestamp = request.args.get("timestamp", "")
+            nonce = request.args.get("nonce", "")
+            echostr = request.args.get("echostr", "")
+            msg_signature = request.args.get("msg_signature", "")
 
             if msg_signature is None:
-                raise Exception('msg_signature不在请求体中')
+                raise Exception("msg_signature不在请求体中")
 
-            if request.method == 'GET':
-                check_str = ''.join(sorted([self.token, timestamp, nonce]))
-                check_signature = hashlib.sha1(check_str.encode('utf-8')).hexdigest()
-                return echostr if check_signature == signature else '拒绝请求'
+            if request.method == "GET":
+                check_str = "".join(sorted([self.token, timestamp, nonce]))
+                check_signature = hashlib.sha1(check_str.encode("utf-8")).hexdigest()
+                return echostr if check_signature == signature else "拒绝请求"
 
-            elif request.method == 'POST':
+            elif request.method == "POST":
                 encryt_msg = await request.data
                 wxcpt = WXBizMsgCrypt(self.token, self.aes, self.appid)
                 ret, xml_msg = wxcpt.DecryptMsg(encryt_msg, msg_signature, timestamp, nonce)
-                xml_msg = xml_msg.decode('utf-8')
+                xml_msg = xml_msg.decode("utf-8")
 
                 if ret != 0:
-                    raise Exception('消息解密失败')
+                    raise Exception("消息解密失败")
 
                 # 解析 XML
                 root = ET.fromstring(xml_msg)
-                from_user = root.find('FromUserName').text
-                to_user = root.find('ToUserName').text
+                from_user = root.find("FromUserName").text
+                to_user = root.find("ToUserName").text
 
-                if self.msg_queue.get(from_user) and self.msg_queue[from_user][0]['content']:
+                if self.msg_queue.get(from_user) and self.msg_queue[from_user][0]["content"]:
                     queue_top = self.msg_queue[from_user].pop(0)
-                    queue_content = queue_top['content']
+                    queue_content = queue_top["content"]
 
                     # 弹出用户消息
                     if self.user_msg_queue.get(from_user) and self.user_msg_queue[from_user]:
@@ -252,7 +252,7 @@ class OAClientForLongerResponse:
                         content=self.loading_message,
                     )
 
-                    if self.user_msg_queue.get(from_user) and self.user_msg_queue[from_user][0]['content']:
+                    if self.user_msg_queue.get(from_user) and self.user_msg_queue[from_user][0]["content"]:
                         return response_xml
                     else:
                         message_data = await self.get_message(xml_msg)
@@ -262,7 +262,7 @@ class OAClientForLongerResponse:
                             if event:
                                 self.user_msg_queue.setdefault(from_user, []).append(
                                     {
-                                        'content': event.message,
+                                        "content": event.message,
                                     }
                                 )
                                 await self._handle_message(event)
@@ -276,12 +276,12 @@ class OAClientForLongerResponse:
         root = ET.fromstring(xml_msg)
 
         message_data = {
-            'ToUserName': root.find('ToUserName').text,
-            'FromUserName': root.find('FromUserName').text,
-            'CreateTime': int(root.find('CreateTime').text),
-            'MsgType': root.find('MsgType').text,
-            'Content': root.find('Content').text if root.find('Content') is not None else None,
-            'MsgId': int(root.find('MsgId').text) if root.find('MsgId') is not None else None,
+            "ToUserName": root.find("ToUserName").text,
+            "FromUserName": root.find("FromUserName").text,
+            "CreateTime": int(root.find("CreateTime").text),
+            "MsgType": root.find("MsgType").text,
+            "Content": root.find("Content").text if root.find("Content") is not None else None,
+            "MsgId": int(root.find("MsgId").text) if root.find("MsgId") is not None else None,
         }
 
         return message_data
@@ -321,7 +321,7 @@ class OAClientForLongerResponse:
 
         self.msg_queue[from_user].append(
             {
-                'msg_id': message_id,
-                'content': content,
+                "msg_id": message_id,
+                "content": content,
             }
         )

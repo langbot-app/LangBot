@@ -25,11 +25,11 @@ class I18nString(pydantic.BaseModel):
         """转换为字典"""
         dic = {}
         if self.en_US is not None:
-            dic['en_US'] = self.en_US
+            dic["en_US"] = self.en_US
         if self.zh_CN is not None:
-            dic['zh_CN'] = self.zh_CN
+            dic["zh_CN"] = self.zh_CN
         if self.ja_JP is not None:
-            dic['ja_JP'] = self.ja_JP
+            dic["ja_JP"] = self.ja_JP
         return dic
 
 
@@ -61,10 +61,10 @@ class Metadata(pydantic.BaseModel):
         super().__init__(**kwargs)
 
         if self.description is None:
-            self.description = I18nString(en_US='')
+            self.description = I18nString(en_US="")
 
         if self.icon is None:
-            self.icon = ''
+            self.icon = ""
 
 
 class PythonExecution(pydantic.BaseModel):
@@ -79,7 +79,7 @@ class PythonExecution(pydantic.BaseModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        if self.path.startswith('./'):
+        if self.path.startswith("./"):
             self.path = self.path[2:]
 
 
@@ -121,19 +121,19 @@ class Component(pydantic.BaseModel):
             rel_path=rel_path,
             rel_dir=os.path.dirname(rel_path),
         )
-        self._metadata = Metadata(**manifest['metadata'])
-        self._spec = manifest['spec']
-        self._execution = Execution(**manifest['execution']) if 'execution' in manifest else None
+        self._metadata = Metadata(**manifest["metadata"])
+        self._spec = manifest["spec"]
+        self._execution = Execution(**manifest["execution"]) if "execution" in manifest else None
 
     @classmethod
     def is_component_manifest(cls, manifest: typing.Dict[str, typing.Any]) -> bool:
         """判断是否为组件清单"""
-        return 'apiVersion' in manifest and 'kind' in manifest and 'metadata' in manifest and 'spec' in manifest
+        return "apiVersion" in manifest and "kind" in manifest and "metadata" in manifest and "spec" in manifest
 
     @property
     def kind(self) -> str:
         """组件类型"""
-        return self.manifest['kind']
+        return self.manifest["kind"]
 
     @property
     def metadata(self) -> Metadata:
@@ -155,27 +155,27 @@ class Component(pydantic.BaseModel):
         """图标相对路径"""
         return (
             os.path.join(self.rel_dir, self.metadata.icon)
-            if self.metadata.icon is not None and self.metadata.icon.strip() != ''
+            if self.metadata.icon is not None and self.metadata.icon.strip() != ""
             else None
         )
 
     def get_python_component_class(self) -> typing.Type[typing.Any]:
         """获取Python组件类"""
         module_path = os.path.join(self.rel_dir, self.execution.python.path)
-        if module_path.endswith('.py'):
+        if module_path.endswith(".py"):
             module_path = module_path[:-3]
-        module_path = module_path.replace('/', '.').replace('\\', '.')
+        module_path = module_path.replace("/", ".").replace("\\", ".")
         module = importlib.import_module(module_path)
         return getattr(module, self.execution.python.attr)
 
     def to_plain_dict(self) -> dict:
         """转换为平铺字典"""
         return {
-            'name': self.metadata.name,
-            'label': self.metadata.label.to_dict(),
-            'description': self.metadata.description.to_dict(),
-            'icon': self.metadata.icon,
-            'spec': self.spec,
+            "name": self.metadata.name,
+            "label": self.metadata.label.to_dict(),
+            "description": self.metadata.description.to_dict(),
+            "icon": self.metadata.icon,
+            "spec": self.spec,
         }
 
 
@@ -191,9 +191,9 @@ class ComponentDiscoveryEngine:
     def __init__(self, ap: app.Application):
         self.ap = ap
 
-    def load_component_manifest(self, path: str, owner: str = 'builtin', no_save: bool = False) -> Component | None:
+    def load_component_manifest(self, path: str, owner: str = "builtin", no_save: bool = False) -> Component | None:
         """加载组件清单"""
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, "r", encoding="utf-8") as f:
             manifest = yaml.safe_load(f)
             if not Component.is_component_manifest(manifest):
                 return None
@@ -207,7 +207,7 @@ class ComponentDiscoveryEngine:
     def load_component_manifests_in_dir(
         self,
         path: str,
-        owner: str = 'builtin',
+        owner: str = "builtin",
         no_save: bool = False,
         max_depth: int = 1,
     ) -> typing.List[Component]:
@@ -218,7 +218,7 @@ class ComponentDiscoveryEngine:
             if depth > max_depth:
                 return
             for file in os.listdir(path):
-                if (not os.path.isdir(os.path.join(path, file))) and (file.endswith('.yaml') or file.endswith('.yml')):
+                if (not os.path.isdir(os.path.join(path, file))) and (file.endswith(".yaml") or file.endswith(".yml")):
                     comp = self.load_component_manifest(os.path.join(path, file), owner, no_save)
                     if comp is not None:
                         components.append(comp)
@@ -229,42 +229,42 @@ class ComponentDiscoveryEngine:
         return components
 
     def load_blueprint_comp_group(
-        self, group: dict, owner: str = 'builtin', no_save: bool = False
+        self, group: dict, owner: str = "builtin", no_save: bool = False
     ) -> typing.List[Component]:
         """加载蓝图组件组"""
         components: typing.List[Component] = []
-        if 'fromFiles' in group:
-            for file in group['fromFiles']:
+        if "fromFiles" in group:
+            for file in group["fromFiles"]:
                 comp = self.load_component_manifest(file, owner, no_save)
                 if comp is not None:
                     components.append(comp)
-        if 'fromDirs' in group:
-            for dir in group['fromDirs']:
-                path = dir['path']
-                max_depth = dir['maxDepth'] if 'maxDepth' in dir else 1
+        if "fromDirs" in group:
+            for dir in group["fromDirs"]:
+                path = dir["path"]
+                max_depth = dir["maxDepth"] if "maxDepth" in dir else 1
                 components.extend(self.load_component_manifests_in_dir(path, owner, no_save, max_depth))
         return components
 
-    def discover_blueprint(self, blueprint_manifest_path: str, owner: str = 'builtin'):
+    def discover_blueprint(self, blueprint_manifest_path: str, owner: str = "builtin"):
         """发现蓝图"""
         blueprint_manifest = self.load_component_manifest(blueprint_manifest_path, owner, no_save=True)
         if blueprint_manifest is None:
-            raise ValueError(f'Invalid blueprint manifest: {blueprint_manifest_path}')
-        assert blueprint_manifest.kind == 'Blueprint', '`Kind` must be `Blueprint`'
+            raise ValueError(f"Invalid blueprint manifest: {blueprint_manifest_path}")
+        assert blueprint_manifest.kind == "Blueprint", "`Kind` must be `Blueprint`"
         components: typing.Dict[str, typing.List[Component]] = {}
 
         # load ComponentTemplate first
-        if 'ComponentTemplate' in blueprint_manifest.spec['components']:
-            components['ComponentTemplate'] = self.load_blueprint_comp_group(
-                blueprint_manifest.spec['components']['ComponentTemplate'], owner
+        if "ComponentTemplate" in blueprint_manifest.spec["components"]:
+            components["ComponentTemplate"] = self.load_blueprint_comp_group(
+                blueprint_manifest.spec["components"]["ComponentTemplate"], owner
             )
 
-        for name, component in blueprint_manifest.spec['components'].items():
-            if name == 'ComponentTemplate':
+        for name, component in blueprint_manifest.spec["components"].items():
+            if name == "ComponentTemplate":
                 continue
             components[name] = self.load_blueprint_comp_group(component, owner)
 
-        self.ap.logger.debug(f'Components: {components}')
+        self.ap.logger.debug(f"Components: {components}")
 
         return blueprint_manifest, components
 

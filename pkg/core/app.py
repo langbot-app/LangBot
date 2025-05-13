@@ -124,7 +124,7 @@ class Application:
 
             self.task_mgr.create_task(
                 self.platform_mgr.run(),
-                name='platform-manager',
+                name="platform-manager",
                 scopes=[
                     core_entities.LifecycleControlScope.APPLICATION,
                     core_entities.LifecycleControlScope.PLATFORM,
@@ -132,17 +132,17 @@ class Application:
             )
             self.task_mgr.create_task(
                 self.ctrl.run(),
-                name='query-controller',
+                name="query-controller",
                 scopes=[core_entities.LifecycleControlScope.APPLICATION],
             )
             self.task_mgr.create_task(
                 self.http_ctrl.run(),
-                name='http-api-controller',
+                name="http-api-controller",
                 scopes=[core_entities.LifecycleControlScope.APPLICATION],
             )
             self.task_mgr.create_task(
                 never_ending(),
-                name='never-ending-task',
+                name="never-ending-task",
                 scopes=[core_entities.LifecycleControlScope.APPLICATION],
             )
 
@@ -151,21 +151,21 @@ class Application:
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            self.logger.error(f'应用运行致命异常: {e}')
-            self.logger.debug(f'Traceback: {traceback.format_exc()}')
+            self.logger.error(f"应用运行致命异常: {e}")
+            self.logger.debug(f"Traceback: {traceback.format_exc()}")
 
     async def print_web_access_info(self):
         """打印访问 webui 的提示"""
 
-        if not os.path.exists(os.path.join('.', 'web/out')):
-            self.logger.warning('WebUI 文件缺失，请根据文档获取：https://docs.langbot.app/webui/intro.html')
+        if not os.path.exists(os.path.join(".", "web/out")):
+            self.logger.warning("WebUI 文件缺失，请根据文档获取：https://docs.langbot.app/webui/intro.html")
             return
 
-        host_ip = '127.0.0.1'
+        host_ip = "127.0.0.1"
 
         public_ip = await ip.get_myip()
 
-        port = self.instance_config.data['api']['port']
+        port = self.instance_config.data["api"]["port"]
 
         tips = f"""
 =======================================
@@ -182,7 +182,7 @@ class Application:
 🤯 WebUI 仍处于 Beta 测试阶段，如有问题或建议请反馈到 https://github.com/RockChinQ/LangBot/issues
 =======================================
 """.strip()
-        for line in tips.split('\n'):
+        for line in tips.split("\n"):
             self.logger.info(line)
 
     async def reload(
@@ -191,7 +191,7 @@ class Application:
     ):
         match scope:
             case core_entities.LifecycleControlScope.PLATFORM.value:
-                self.logger.info('执行热重载 scope=' + scope)
+                self.logger.info("执行热重载 scope=" + scope)
                 await self.platform_mgr.shutdown()
 
                 self.platform_mgr = im_mgr.PlatformManager(self)
@@ -200,19 +200,19 @@ class Application:
 
                 self.task_mgr.create_task(
                     self.platform_mgr.run(),
-                    name='platform-manager',
+                    name="platform-manager",
                     scopes=[
                         core_entities.LifecycleControlScope.APPLICATION,
                         core_entities.LifecycleControlScope.PLATFORM,
                     ],
                 )
             case core_entities.LifecycleControlScope.PLUGIN.value:
-                self.logger.info('执行热重载 scope=' + scope)
+                self.logger.info("执行热重载 scope=" + scope)
                 await self.plugin_mgr.destroy_plugins()
 
                 # 删除 sys.module 中所有的 plugins/* 下的模块
                 for mod in list(sys.modules.keys()):
-                    if mod.startswith('plugins.'):
+                    if mod.startswith("plugins."):
                         del sys.modules[mod]
 
                 self.plugin_mgr = plugin_mgr.PluginManager(self)
@@ -223,7 +223,7 @@ class Application:
                 await self.plugin_mgr.load_plugins()
                 await self.plugin_mgr.initialize_plugins()
             case core_entities.LifecycleControlScope.PROVIDER.value:
-                self.logger.info('执行热重载 scope=' + scope)
+                self.logger.info("执行热重载 scope=" + scope)
 
                 await self.tool_mgr.shutdown()
 

@@ -10,7 +10,7 @@ from . import truncators
 importutil.import_modules_in_pkg(truncators)
 
 
-@stage.stage_class('ConversationMessageTruncator')
+@stage.stage_class("ConversationMessageTruncator")
 class ConversationMessageTruncator(stage.PipelineStage):
     """会话消息截断器
 
@@ -20,14 +20,14 @@ class ConversationMessageTruncator(stage.PipelineStage):
     trun: truncator.Truncator
 
     async def initialize(self, pipeline_config: dict):
-        use_method = 'round'
+        use_method = "round"
 
         for trun in truncator.preregistered_truncators:
             if trun.name == use_method:
                 self.trun = trun(self.ap)
                 break
         else:
-            raise ValueError(f'未知的截断器: {use_method}')
+            raise ValueError(f"未知的截断器: {use_method}")
 
     async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:
         """处理"""

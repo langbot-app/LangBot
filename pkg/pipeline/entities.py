@@ -32,9 +32,9 @@ class StageProcessResult(pydantic.BaseModel):
     ] = []
     """只要设置了就会发送给用户"""
 
-    console_notice: typing.Optional[str] = ''
+    console_notice: typing.Optional[str] = ""
     """只要设置了就会输出到控制台"""
 
-    debug_notice: typing.Optional[str] = ''
+    debug_notice: typing.Optional[str] = ""
 
-    error_notice: typing.Optional[str] = ''
+    error_notice: typing.Optional[str] = ""

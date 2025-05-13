@@ -29,7 +29,7 @@ class NakuruProjectMessageConverter(adapter_model.MessageConverter):
         elif type(message_chain) is str:
             msg_list = [platform_message.Plain(message_chain)]
         else:
-            raise Exception('Unknown message type: ' + str(message_chain) + str(type(message_chain)))
+            raise Exception("Unknown message type: " + str(message_chain) + str(type(message_chain)))
 
         nakuru_msg_list = []
 
@@ -118,7 +118,7 @@ class NakuruProjectEventConverter(adapter_model.EventConverter):
         elif event is platform_events.FriendMessage:
             return nakuru.FriendMessage
         else:
-            raise Exception('未支持转换的事件类型: ' + str(event))
+            raise Exception("未支持转换的事件类型: " + str(event))
 
     @staticmethod
     def target2yiri(event: typing.Any) -> platform_events.Event:
@@ -134,12 +134,12 @@ class NakuruProjectEventConverter(adapter_model.EventConverter):
                 time=event.time,
             )
         elif type(event) is nakuru.GroupMessage:  # 群聊消息事件
-            permission = 'MEMBER'
+            permission = "MEMBER"
 
-            if event.sender.role == 'admin':
-                permission = 'ADMINISTRATOR'
-            elif event.sender.role == 'owner':
-                permission = 'OWNER'
+            if event.sender.role == "admin":
+                permission = "ADMINISTRATOR"
+            elif event.sender.role == "owner":
+                permission = "OWNER"
 
             return platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
@@ -160,7 +160,7 @@ class NakuruProjectEventConverter(adapter_model.EventConverter):
                 time=event.time,
             )
         else:
-            raise Exception('未支持转换的事件类型: ' + str(event))
+            raise Exception("未支持转换的事件类型: " + str(event))
 
 
 class NakuruAdapter(adapter_model.MessagePlatformAdapter):
@@ -180,8 +180,8 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
 
     def __init__(self, cfg: dict, ap):
         """初始化nakuru-project的对象"""
-        cfg['port'] = cfg['ws_port']
-        del cfg['ws_port']
+        cfg["port"] = cfg["ws_port"]
+        del cfg["ws_port"]
         self.cfg = cfg
         self.ap = ap
         self.listener_list = []
@@ -206,19 +206,19 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
                 converted_msg = msg
                 break
         if has_forward:
-            if target_type == 'group':
+            if target_type == "group":
                 task = self.bot.sendGroupForwardMessage(int(target_id), converted_msg)
-            elif target_type == 'person':
+            elif target_type == "person":
                 task = self.bot.sendPrivateForwardMessage(int(target_id), converted_msg)
             else:
-                raise Exception('Unknown target type: ' + target_type)
+                raise Exception("Unknown target type: " + target_type)
         else:
-            if target_type == 'group':
+            if target_type == "group":
                 task = self.bot.sendGroupMessage(int(target_id), converted_msg)
-            elif target_type == 'person':
+            elif target_type == "person":
                 task = self.bot.sendFriendMessage(int(target_id), converted_msg)
             else:
-                raise Exception('Unknown target type: ' + target_type)
+                raise Exception("Unknown target type: " + target_type)
 
         await task
 
@@ -238,11 +238,11 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
                 ),
             )
         if type(message_source) is platform_events.GroupMessage:
-            await self.send_message('group', message_source.sender.group.id, message, converted=True)
+            await self.send_message("group", message_source.sender.group.id, message, converted=True)
         elif type(message_source) is platform_events.FriendMessage:
-            await self.send_message('person', message_source.sender.id, message, converted=True)
+            await self.send_message("person", message_source.sender.id, message, converted=True)
         else:
-            raise Exception('Unknown message source type: ' + str(type(message_source)))
+            raise Exception("Unknown message source type: " + str(type(message_source)))
 
     def is_muted(self, group_id: int) -> bool:
         import time
@@ -266,9 +266,9 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
             # 将包装函数和原函数的对应关系存入列表
             self.listener_list.append(
                 {
-                    'event_type': event_type,
-                    'callable': callback,
-                    'wrapper': listener_wrapper,
+                    "event_type": event_type,
+                    "callable": callback,
+                    "wrapper": listener_wrapper,
                 }
             )
 
@@ -290,13 +290,13 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
         # 从本对象的监听器列表中查找并删除
         target_wrapper = None
         for listener in self.listener_list:
-            if listener['event_type'] == event_type and listener['callable'] == callback:
-                target_wrapper = listener['wrapper']
+            if listener["event_type"] == event_type and listener["callable"] == callback:
+                target_wrapper = listener["wrapper"]
                 self.listener_list.remove(listener)
                 break
 
         if target_wrapper is None:
-            raise Exception('未找到对应的监听器')
+            raise Exception("未找到对应的监听器")
 
         for func in self.bot.event[nakuru_event_name]:
             if func.callable != target_wrapper:
@@ -309,18 +309,18 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
             import requests
 
             resp = requests.get(
-                url='http://{}:{}/get_login_info'.format(self.cfg['host'], self.cfg['http_port']),
-                headers={'Authorization': 'Bearer ' + self.cfg['token'] if 'token' in self.cfg else ''},
+                url="http://{}:{}/get_login_info".format(self.cfg["host"], self.cfg["http_port"]),
+                headers={"Authorization": "Bearer " + self.cfg["token"] if "token" in self.cfg else ""},
                 timeout=5,
                 proxies=None,
             )
             if resp.status_code == 403:
-                raise Exception('go-cqhttp拒绝访问，请检查配置文件中nakuru适配器的配置')
-            self.bot_account_id = int(resp.json()['data']['user_id'])
+                raise Exception("go-cqhttp拒绝访问，请检查配置文件中nakuru适配器的配置")
+            self.bot_account_id = int(resp.json()["data"]["user_id"])
         except Exception:
-            raise Exception('获取go-cqhttp账号信息失败, 请检查是否已启动go-cqhttp并配置正确')
+            raise Exception("获取go-cqhttp账号信息失败, 请检查是否已启动go-cqhttp并配置正确")
         await self.bot._run()
-        self.ap.logger.info('运行 Nakuru 适配器')
+        self.ap.logger.info("运行 Nakuru 适配器")
         while True:
             await asyncio.sleep(1)
 

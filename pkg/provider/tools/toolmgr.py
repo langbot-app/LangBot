@@ -43,11 +43,11 @@ class ToolManager:
 
         for function in use_funcs:
             function_schema = {
-                'type': 'function',
-                'function': {
-                    'name': function.name,
-                    'description': function.description,
-                    'parameters': function.parameters,
+                "type": "function",
+                "function": {
+                    "name": function.name,
+                    "description": function.description,
+                    "parameters": function.parameters,
                 },
             }
             tools.append(function_schema)
@@ -81,9 +81,9 @@ class ToolManager:
 
         for function in use_funcs:
             function_schema = {
-                'name': function.name,
-                'description': function.description,
-                'input_schema': function.parameters,
+                "name": function.name,
+                "description": function.description,
+                "input_schema": function.parameters,
             }
             tools.append(function_schema)
 
@@ -96,7 +96,7 @@ class ToolManager:
             if await loader.has_tool(name):
                 return await loader.invoke_tool(query, name, parameters)
         else:
-            raise ValueError(f'未找到工具: {name}')
+            raise ValueError(f"未找到工具: {name}")
 
     async def shutdown(self):
         """关闭所有工具"""

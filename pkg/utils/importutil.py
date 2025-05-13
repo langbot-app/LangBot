@@ -20,23 +20,23 @@ def import_modules_in_pkgs(pkgs: typing.List) -> None:
 
 
 def import_dot_style_dir(dot_sep_path: str):
-    sec = dot_sep_path.split('.')
+    sec = dot_sep_path.split(".")
 
     return import_dir(os.path.join(*sec))
 
 
 def import_dir(path: str):
     for file in os.listdir(path):
-        if file.endswith('.py') and file != '__init__.py':
+        if file.endswith(".py") and file != "__init__.py":
             full_path = os.path.join(path, file)
-            rel_path = full_path.replace(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '')
+            rel_path = full_path.replace(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "")
             rel_path = rel_path[1:]
-            rel_path = rel_path.replace('/', '.')[:-3]
-            rel_path = rel_path.replace('\\', '.')
+            rel_path = rel_path.replace("/", ".")[:-3]
+            rel_path = rel_path.replace("\\", ".")
             importlib.import_module(rel_path)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from pkg.platform import types
 
     import_modules_in_pkg(types)

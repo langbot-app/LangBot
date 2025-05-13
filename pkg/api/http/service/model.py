@@ -21,11 +21,11 @@ class ModelsService:
         return [self.ap.persistence_mgr.serialize_model(persistence_model.LLMModel, model) for model in models]
 
     async def create_llm_model(self, model_data: dict) -> str:
-        model_data['uuid'] = str(uuid.uuid4())
+        model_data["uuid"] = str(uuid.uuid4())
 
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_model.LLMModel).values(**model_data))
 
-        llm_model = await self.get_llm_model(model_data['uuid'])
+        llm_model = await self.get_llm_model(model_data["uuid"])
 
         await self.ap.model_mgr.load_llm_model(llm_model)
 
@@ -36,13 +36,13 @@ class ModelsService:
             )
         )
         pipeline = result.first()
-        if pipeline is not None and pipeline.config['ai']['local-agent']['model'] == '':
+        if pipeline is not None and pipeline.config["ai"]["local-agent"]["model"] == "":
             pipeline_config = pipeline.config
-            pipeline_config['ai']['local-agent']['model'] = model_data['uuid']
-            pipeline_data = {'config': pipeline_config}
+            pipeline_config["ai"]["local-agent"]["model"] = model_data["uuid"]
+            pipeline_data = {"config": pipeline_config}
             await self.ap.pipeline_service.update_pipeline(pipeline.uuid, pipeline_data)
 
-        return model_data['uuid']
+        return model_data["uuid"]
 
     async def get_llm_model(self, model_uuid: str) -> dict | None:
         result = await self.ap.persistence_mgr.execute_async(
@@ -57,8 +57,8 @@ class ModelsService:
         return self.ap.persistence_mgr.serialize_model(persistence_model.LLMModel, model)
 
     async def update_llm_model(self, model_uuid: str, model_data: dict) -> None:
-        if 'uuid' in model_data:
-            del model_data['uuid']
+        if "uuid" in model_data:
+            del model_data["uuid"]
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_model.LLMModel)

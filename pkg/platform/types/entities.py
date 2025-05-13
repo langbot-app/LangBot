@@ -33,17 +33,17 @@ class Friend(Entity):
     """备注。"""
 
     def get_name(self) -> str:
-        return self.nickname or self.remark or ''
+        return self.nickname or self.remark or ""
 
 
 class Permission(str, Enum):
     """群成员身份权限。"""
 
-    Member = 'MEMBER'
+    Member = "MEMBER"
     """成员。"""
-    Administrator = 'ADMINISTRATOR'
+    Administrator = "ADMINISTRATOR"
     """管理员。"""
-    Owner = 'OWNER'
+    Owner = "OWNER"
     """群主。"""
 
     def __repr__(self) -> str:
@@ -75,7 +75,7 @@ class GroupMember(Entity):
     """在群中的权限。"""
     group: Group
     """群。"""
-    special_title: str = ''
+    special_title: str = ""
     """群头衔。"""
     join_timestamp: datetime = datetime.utcfromtimestamp(0)
     """加入群的时间。"""

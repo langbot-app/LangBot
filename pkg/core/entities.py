@@ -16,19 +16,19 @@ from ..platform.types import events as platform_events
 
 
 class LifecycleControlScope(enum.Enum):
-    APPLICATION = 'application'
-    PLATFORM = 'platform'
-    PLUGIN = 'plugin'
-    PROVIDER = 'provider'
+    APPLICATION = "application"
+    PLATFORM = "platform"
+    PLUGIN = "plugin"
+    PROVIDER = "provider"
 
 
 class LauncherTypes(enum.Enum):
     """一个请求的发起者类型"""
 
-    PERSON = 'person'
+    PERSON = "person"
     """私聊"""
 
-    GROUP = 'group'
+    GROUP = "group"
     """群聊"""
 
 
@@ -95,7 +95,7 @@ class Query(pydantic.BaseModel):
     """回复消息链，从resp_messages包装而得"""
 
     # ======= 内部保留 =======
-    current_stage: typing.Optional['pkg.pipeline.pipelinemgr.StageInstContainer'] = None
+    current_stage: typing.Optional["pkg.pipeline.pipelinemgr.StageInstContainer"] = None
     """当前所处阶段"""
 
     class Config:
@@ -153,7 +153,7 @@ class Session(pydantic.BaseModel):
 
     sender_id: typing.Optional[typing.Union[int, str]] = 0
 
-    use_prompt_name: typing.Optional[str] = 'default'
+    use_prompt_name: typing.Optional[str] = "default"
 
     using_conversation: typing.Optional[Conversation] = None
 

@@ -19,7 +19,7 @@ from ..entity.persistence import bot as persistence_bot
 # 处理 3.4 移除了 YiriMirai 之后，插件的兼容性问题
 from . import types as mirai
 
-sys.modules['mirai'] = mirai
+sys.modules["mirai"] = mirai
 
 
 class RuntimeBot:
@@ -84,23 +84,23 @@ class RuntimeBot:
     async def run(self):
         async def exception_wrapper():
             try:
-                self.task_context.set_current_action('Running...')
+                self.task_context.set_current_action("Running...")
                 await self.adapter.run_async()
-                self.task_context.set_current_action('Exited.')
+                self.task_context.set_current_action("Exited.")
             except Exception as e:
                 if isinstance(e, asyncio.CancelledError):
-                    self.task_context.set_current_action('Exited.')
+                    self.task_context.set_current_action("Exited.")
                     return
-                self.task_context.set_current_action('Exited with error.')
-                self.task_context.log(f'平台适配器运行出错: {e}')
-                self.task_context.log(f'Traceback: {traceback.format_exc()}')
-                self.ap.logger.error(f'平台适配器运行出错: {e}')
-                self.ap.logger.debug(f'Traceback: {traceback.format_exc()}')
+                self.task_context.set_current_action("Exited with error.")
+                self.task_context.log(f"平台适配器运行出错: {e}")
+                self.task_context.log(f"Traceback: {traceback.format_exc()}")
+                self.ap.logger.error(f"平台适配器运行出错: {e}")
+                self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
 
         self.task_wrapper = self.ap.task_mgr.create_task(
             exception_wrapper(),
-            kind='platform-adapter',
-            name=f'platform-adapter-{self.adapter.__class__.__name__}',
+            kind="platform-adapter",
+            name=f"platform-adapter-{self.adapter.__class__.__name__}",
             context=self.task_context,
             scopes=[
                 core_entities.LifecycleControlScope.APPLICATION,
@@ -132,7 +132,7 @@ class PlatformManager:
         self.adapter_dict = {}
 
     async def initialize(self):
-        self.adapter_components = self.ap.discover.get_components_by_kind('MessagePlatformAdapter')
+        self.adapter_components = self.ap.discover.get_components_by_kind("MessagePlatformAdapter")
         adapter_dict: dict[str, type[msadapter.MessagePlatformAdapter]] = {}
         for component in self.adapter_components:
             adapter_dict[component.metadata.name] = component.get_python_component_class()
@@ -144,7 +144,7 @@ class PlatformManager:
         return [bot.adapter for bot in self.bots if bot.enable]
 
     async def load_bots_from_db(self):
-        self.ap.logger.info('Loading bots from db...')
+        self.ap.logger.info("Loading bots from db...")
 
         self.bots = []
 

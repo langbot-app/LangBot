@@ -9,7 +9,7 @@ from ...plugin import events
 from ...platform.types import message as platform_message
 
 
-@stage.stage_class('PreProcessor')
+@stage.stage_class("PreProcessor")
 class PreProcessor(stage.PipelineStage):
     """请求预处理阶段
 
@@ -30,21 +30,21 @@ class PreProcessor(stage.PipelineStage):
         stage_inst_name: str,
     ) -> entities.StageProcessResult:
         """处理"""
-        selected_runner = query.pipeline_config['ai']['runner']['runner']
+        selected_runner = query.pipeline_config["ai"]["runner"]["runner"]
 
         session = await self.ap.sess_mgr.get_session(query)
 
         # 非 local-agent 时，llm_model 为 None
         llm_model = (
-            await self.ap.model_mgr.get_model_by_uuid(query.pipeline_config['ai']['local-agent']['model'])
-            if selected_runner == 'local-agent'
+            await self.ap.model_mgr.get_model_by_uuid(query.pipeline_config["ai"]["local-agent"]["model"])
+            if selected_runner == "local-agent"
             else None
         )
 
         conversation = await self.ap.sess_mgr.get_conversation(
             query,
             session,
-            query.pipeline_config['ai']['local-agent']['prompt'],
+            query.pipeline_config["ai"]["local-agent"]["prompt"],
         )
 
         conversation.use_llm_model = llm_model
@@ -56,51 +56,51 @@ class PreProcessor(stage.PipelineStage):
 
         query.use_llm_model = llm_model
 
-        if selected_runner == 'local-agent':
+        if selected_runner == "local-agent":
             query.use_funcs = (
-                conversation.use_funcs if query.use_llm_model.model_entity.abilities.__contains__('tool_call') else None
+                conversation.use_funcs if query.use_llm_model.model_entity.abilities.__contains__("tool_call") else None
             )
 
         query.variables = {
-            'session_id': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
-            'conversation_id': conversation.uuid,
-            'msg_create_time': (
+            "session_id": f"{query.session.launcher_type.value}_{query.session.launcher_id}",
+            "conversation_id": conversation.uuid,
+            "msg_create_time": (
                 int(query.message_event.time) if query.message_event.time else int(datetime.datetime.now().timestamp())
             ),
         }
 
         # Check if this model supports vision, if not, remove all images
         # TODO this checking should be performed in runner, and in this stage, the image should be reserved
-        if selected_runner == 'local-agent' and not query.use_llm_model.model_entity.abilities.__contains__('vision'):
+        if selected_runner == "local-agent" and not query.use_llm_model.model_entity.abilities.__contains__("vision"):
             for msg in query.messages:
                 if isinstance(msg.content, list):
                     for me in msg.content:
-                        if me.type == 'image_url':
+                        if me.type == "image_url":
                             msg.content.remove(me)
 
         content_list = []
 
-        plain_text = ''
+        plain_text = ""
 
         for me in query.message_chain:
             if isinstance(me, platform_message.Plain):
                 content_list.append(llm_entities.ContentElement.from_text(me.text))
                 plain_text += me.text
             elif isinstance(me, platform_message.Image):
-                if selected_runner != 'local-agent' or query.use_llm_model.model_entity.abilities.__contains__(
-                    'vision'
+                if selected_runner != "local-agent" or query.use_llm_model.model_entity.abilities.__contains__(
+                    "vision"
                 ):
                     if me.base64 is not None:
                         content_list.append(llm_entities.ContentElement.from_image_base64(me.base64))
 
-        query.variables['user_message_text'] = plain_text
+        query.variables["user_message_text"] = plain_text
 
-        query.user_message = llm_entities.Message(role='user', content=content_list)
+        query.user_message = llm_entities.Message(role="user", content=content_list)
         # =========== 触发事件 PromptPreProcessing
 
         event_ctx = await self.ap.plugin_mgr.emit_event(
             event=events.PromptPreProcessing(
-                session_name=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+                session_name=f"{query.session.launcher_type.value}_{query.session.launcher_id}",
                 default_prompt=query.prompt.messages,
                 prompt=query.messages,
                 query=query,

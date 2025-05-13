@@ -8,7 +8,7 @@ from ...core import entities as core_entities
 from .. import entities as llm_entities
 
 
-@runner.runner_class('local-agent')
+@runner.runner_class("local-agent")
 class LocalAgentRunner(runner.RequestRunner):
     """本地Agent请求运行器"""
 
@@ -44,7 +44,7 @@ class LocalAgentRunner(runner.RequestRunner):
                     func_ret = await self.ap.tool_mgr.execute_func_call(query, func.name, parameters)
 
                     msg = llm_entities.Message(
-                        role='tool',
+                        role="tool",
                         content=json.dumps(func_ret, ensure_ascii=False),
                         tool_call_id=tool_call.id,
                     )
@@ -54,7 +54,7 @@ class LocalAgentRunner(runner.RequestRunner):
                     req_messages.append(msg)
                 except Exception as e:
                     # 工具调用出错，添加一个报错信息到 req_messages
-                    err_msg = llm_entities.Message(role='tool', content=f'err: {e}', tool_call_id=tool_call.id)
+                    err_msg = llm_entities.Message(role="tool", content=f"err: {e}", tool_call_id=tool_call.id)
 
                     yield err_msg
 

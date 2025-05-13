@@ -24,7 +24,7 @@ class SlackMessageConverter(adapter.MessageConverter):
             if type(msg) is platform_message.Plain:
                 content_list.append(
                     {
-                        'content': msg.text,
+                        "content": msg.text,
                     }
                 )
 
@@ -54,17 +54,17 @@ class SlackEventConverter(adapter.EventConverter):
             message=event.text, message_id=event.message_id, pic_url=event.pic_url, bot=bot
         )
 
-        if event.type == 'channel':
-            yiri_chain.insert(0, platform_message.At(target='SlackBot'))
+        if event.type == "channel":
+            yiri_chain.insert(0, platform_message.At(target="SlackBot"))
 
             sender = platform_entities.GroupMember(
                 id=event.user_id,
                 member_name=str(event.sender_name),
-                permission='MEMBER',
+                permission="MEMBER",
                 group=platform_entities.Group(
-                    id=event.channel_id, name='MEMBER', permission=platform_entities.Permission.Member
+                    id=event.channel_id, name="MEMBER", permission=platform_entities.Permission.Member
                 ),
-                special_title='',
+                special_title="",
                 join_timestamp=0,
                 last_speak_timestamp=0,
                 mute_time_remaining=0,
@@ -74,9 +74,9 @@ class SlackEventConverter(adapter.EventConverter):
                 sender=sender, message_chain=yiri_chain, time=time, source_platform_object=event
             )
 
-        if event.type == 'im':
+        if event.type == "im":
             return platform_events.FriendMessage(
-                sender=platform_entities.Friend(id=event.user_id, nickname=event.sender_name, remark=''),
+                sender=platform_entities.Friend(id=event.user_id, nickname=event.sender_name, remark=""),
                 message_chain=yiri_chain,
                 time=float(datetime.datetime.now().timestamp()),
                 source_platform_object=event,
@@ -95,14 +95,14 @@ class SlackAdapter(adapter.MessagePlatformAdapter):
         self.config = config
         self.ap = ap
         required_keys = [
-            'bot_token',
-            'signing_secret',
+            "bot_token",
+            "signing_secret",
         ]
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
-            raise ParamNotEnoughError('Slack机器人缺少相关配置项，请查看文档或联系管理员')
+            raise ParamNotEnoughError("Slack机器人缺少相关配置项，请查看文档或联系管理员")
 
-        self.bot = SlackClient(bot_token=self.config['bot_token'], signing_secret=self.config['signing_secret'])
+        self.bot = SlackClient(bot_token=self.config["bot_token"], signing_secret=self.config["signing_secret"])
 
     async def reply_message(
         self,
@@ -115,18 +115,18 @@ class SlackAdapter(adapter.MessagePlatformAdapter):
         content_list = await SlackMessageConverter.yiri2target(message)
 
         for content in content_list:
-            if slack_event.type == 'channel':
-                await self.bot.send_message_to_channel(content['content'], slack_event.channel_id)
-            if slack_event.type == 'im':
-                await self.bot.send_message_to_one(content['content'], slack_event.user_id)
+            if slack_event.type == "channel":
+                await self.bot.send_message_to_channel(content["content"], slack_event.channel_id)
+            if slack_event.type == "im":
+                await self.bot.send_message_to_one(content["content"], slack_event.user_id)
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         content_list = await SlackMessageConverter.yiri2target(message)
         for content in content_list:
-            if target_type == 'person':
-                await self.bot.send_message_to_one(content['content'], target_id)
-            if target_type == 'group':
-                await self.bot.send_message_to_channel(content['content'], target_id)
+            if target_type == "person":
+                await self.bot.send_message_to_one(content["content"], target_id)
+            if target_type == "group":
+                await self.bot.send_message_to_channel(content["content"], target_id)
 
     def register_listener(
         self,
@@ -134,16 +134,16 @@ class SlackAdapter(adapter.MessagePlatformAdapter):
         callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
     ):
         async def on_message(event: SlackEvent):
-            self.bot_account_id = 'SlackBot'
+            self.bot_account_id = "SlackBot"
             try:
                 return await callback(await self.event_converter.target2yiri(event, self.bot), self)
             except:
                 traceback.print_exc()
 
         if event_type == platform_events.FriendMessage:
-            self.bot.on_message('im')(on_message)
+            self.bot.on_message("im")(on_message)
         elif event_type == platform_events.GroupMessage:
-            self.bot.on_message('channel')(on_message)
+            self.bot.on_message("channel")(on_message)
 
     async def run_async(self):
         async def shutdown_trigger_placeholder():
@@ -151,8 +151,8 @@ class SlackAdapter(adapter.MessagePlatformAdapter):
                 await asyncio.sleep(1)
 
         await self.bot.run_task(
-            host='0.0.0.0',
-            port=self.config['port'],
+            host="0.0.0.0",
+            port=self.config["port"],
             shutdown_trigger=shutdown_trigger_placeholder,
         )
 

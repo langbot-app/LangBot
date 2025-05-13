@@ -12,6 +12,6 @@ class ZhipuAIChatCompletions(chatcmpl.OpenAIChatCompletions):
     client: openai.AsyncClient
 
     default_config: dict[str, typing.Any] = {
-        'base_url': 'https://open.bigmodel.cn/api/paas/v4',
-        'timeout': 120,
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "timeout": 120,
     }

@@ -4,7 +4,7 @@ from ....core import entities as core_entities
 from ....platform.types import message as platform_message
 
 
-@rule_model.rule_class('prefix')
+@rule_model.rule_class("prefix")
 class PrefixRule(rule_model.GroupRespondRule):
     async def match(
         self,
@@ -13,7 +13,7 @@ class PrefixRule(rule_model.GroupRespondRule):
         rule_dict: dict,
         query: core_entities.Query,
     ) -> entities.RuleJudgeResult:
-        prefixes = rule_dict['prefix']
+        prefixes = rule_dict["prefix"]
 
         for prefix in prefixes:
             if message_text.startswith(prefix):

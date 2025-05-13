@@ -24,15 +24,15 @@ class WecomMessageConverter(adapter.MessageConverter):
             if type(msg) is platform_message.Plain:
                 content_list.append(
                     {
-                        'type': 'text',
-                        'content': msg.text,
+                        "type": "text",
+                        "content": msg.text,
                     }
                 )
             elif type(msg) is platform_message.Image:
                 content_list.append(
                     {
-                        'type': 'image',
-                        'media_id': await bot.get_media_id(msg),
+                        "type": "image",
+                        "media_id": await bot.get_media_id(msg),
                     }
                 )
             elif type(msg) is platform_message.Forward:
@@ -41,8 +41,8 @@ class WecomMessageConverter(adapter.MessageConverter):
             else:
                 content_list.append(
                     {
-                        'type': 'text',
-                        'content': str(msg),
+                        "type": "text",
+                        "content": str(msg),
                     }
                 )
 
@@ -91,22 +91,22 @@ class WecomEventConverter:
             platform_events.FriendMessage: 转换后的 FriendMessage 对象。
         """
         # 转换消息链
-        if event.type == 'text':
+        if event.type == "text":
             yiri_chain = await WecomMessageConverter.target2yiri(event.message, event.message_id)
             friend = platform_entities.Friend(
-                id=f'u{event.user_id}',
+                id=f"u{event.user_id}",
                 nickname=str(event.user_id),
-                remark='',
+                remark="",
             )
 
             return platform_events.FriendMessage(
                 sender=friend, message_chain=yiri_chain, time=event.timestamp, source_platform_object=event
             )
-        elif event.type == 'image':
+        elif event.type == "image":
             friend = platform_entities.Friend(
-                id=f'u{event.user_id}',
+                id=f"u{event.user_id}",
                 nickname=str(event.user_id),
-                remark='',
+                remark="",
             )
 
             yiri_chain = await WecomMessageConverter.target2yiri_image(picurl=event.picurl, message_id=event.message_id)
@@ -130,20 +130,20 @@ class WecomCSAdapter(adapter.MessagePlatformAdapter):
         self.ap = ap
 
         required_keys = [
-            'corpid',
-            'secret',
-            'token',
-            'EncodingAESKey',
+            "corpid",
+            "secret",
+            "token",
+            "EncodingAESKey",
         ]
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
-            raise ParamNotEnoughError('企业微信客服缺少相关配置项，请查看文档或联系管理员')
+            raise ParamNotEnoughError("企业微信客服缺少相关配置项，请查看文档或联系管理员")
 
         self.bot = WecomCSClient(
-            corpid=config['corpid'],
-            secret=config['secret'],
-            token=config['token'],
-            EncodingAESKey=config['EncodingAESKey'],
+            corpid=config["corpid"],
+            secret=config["secret"],
+            token=config["token"],
+            EncodingAESKey=config["EncodingAESKey"],
         )
 
     async def reply_message(
@@ -156,12 +156,12 @@ class WecomCSAdapter(adapter.MessagePlatformAdapter):
         content_list = await WecomMessageConverter.yiri2target(message, self.bot)
 
         for content in content_list:
-            if content['type'] == 'text':
+            if content["type"] == "text":
                 await self.bot.send_text_msg(
                     open_kfid=Wecom_event.receiver_id,
                     external_userid=Wecom_event.user_id,
                     msgid=Wecom_event.message_id,
-                    content=content['content'],
+                    content=content["content"],
                 )
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
@@ -180,8 +180,8 @@ class WecomCSAdapter(adapter.MessagePlatformAdapter):
                 traceback.print_exc()
 
         if event_type == platform_events.FriendMessage:
-            self.bot.on_message('text')(on_message)
-            self.bot.on_message('image')(on_message)
+            self.bot.on_message("text")(on_message)
+            self.bot.on_message("image")(on_message)
         elif event_type == platform_events.GroupMessage:
             pass
 
@@ -191,8 +191,8 @@ class WecomCSAdapter(adapter.MessagePlatformAdapter):
                 await asyncio.sleep(1)
 
         await self.bot.run_task(
-            host='0.0.0.0',
-            port=self.config['port'],
+            host="0.0.0.0",
+            port=self.config["port"],
             shutdown_trigger=shutdown_trigger_placeholder,
         )
 

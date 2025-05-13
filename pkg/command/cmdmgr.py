@@ -28,7 +28,7 @@ class CommandManager:
     async def initialize(self):
         # 设置各个类的路径
         def set_path(cls: operator.CommandOperator, ancestors: list[str]):
-            cls.path = '.'.join(ancestors + [cls.name])
+            cls.path = ".".join(ancestors + [cls.name])
             for op in operator.preregistered_operators:
                 if op.parent_class == cls:
                     set_path(op, ancestors + [cls.name])
@@ -39,8 +39,8 @@ class CommandManager:
 
         # 应用命令权限配置
         for cls in operator.preregistered_operators:
-            if cls.path in self.ap.instance_config.data['command']['privilege']:
-                cls.lowest_privilege = self.ap.instance_config.data['command']['privilege'][cls.path]
+            if cls.path in self.ap.instance_config.data["command"]["privilege"]:
+                cls.lowest_privilege = self.ap.instance_config.data["command"]["privilege"][cls.path]
 
         # 实例化所有类
         self.cmd_list = [cls(self.ap) for cls in operator.preregistered_operators]
@@ -96,17 +96,17 @@ class CommandManager:
 
         privilege = 1
 
-        if f'{query.launcher_type.value}_{query.launcher_id}' in self.ap.instance_config.data['admins']:
+        if f"{query.launcher_type.value}_{query.launcher_id}" in self.ap.instance_config.data["admins"]:
             privilege = 2
 
         ctx = entities.ExecuteContext(
             query=query,
             session=session,
             command_text=command_text,
-            command='',
-            crt_command='',
-            params=command_text.split(' '),
-            crt_params=command_text.split(' '),
+            command="",
+            crt_command="",
+            params=command_text.split(" "),
+            crt_params=command_text.split(" "),
             privilege=privilege,
         )
 

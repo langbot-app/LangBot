@@ -31,10 +31,10 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
                 msg_id = msg.id
                 msg_time = msg.time
             elif type(msg) is platform_message.Image:
-                arg = ''
+                arg = ""
                 if msg.base64:
                     arg = msg.base64
-                    msg_list.append(aiocqhttp.MessageSegment.image(f'base64://{arg}'))
+                    msg_list.append(aiocqhttp.MessageSegment.image(f"base64://{arg}"))
                 elif msg.url:
                     arg = msg.url
                     msg_list.append(aiocqhttp.MessageSegment.image(arg))
@@ -44,12 +44,12 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
             elif type(msg) is platform_message.At:
                 msg_list.append(aiocqhttp.MessageSegment.at(msg.target))
             elif type(msg) is platform_message.AtAll:
-                msg_list.append(aiocqhttp.MessageSegment.at('all'))
+                msg_list.append(aiocqhttp.MessageSegment.at("all"))
             elif type(msg) is platform_message.Voice:
-                arg = ''
+                arg = ""
                 if msg.base64:
                     arg = msg.base64
-                    msg_list.append(aiocqhttp.MessageSegment.record(f'base64://{arg}'))
+                    msg_list.append(aiocqhttp.MessageSegment.record(f"base64://{arg}"))
                 elif msg.url:
                     arg = msg.url
                     msg_list.append(aiocqhttp.MessageSegment.record(arg))
@@ -74,20 +74,20 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
         yiri_msg_list.append(platform_message.Source(id=message_id, time=datetime.datetime.now()))
 
         for msg in message:
-            if msg.type == 'at':
-                if msg.data['qq'] == 'all':
+            if msg.type == "at":
+                if msg.data["qq"] == "all":
                     yiri_msg_list.append(platform_message.AtAll())
                 else:
                     yiri_msg_list.append(
                         platform_message.At(
-                            target=msg.data['qq'],
+                            target=msg.data["qq"],
                         )
                     )
-            elif msg.type == 'text':
-                yiri_msg_list.append(platform_message.Plain(text=msg.data['text']))
-            elif msg.type == 'image':
-                image_base64, image_format = await image.qq_image_url_to_base64(msg.data['url'])
-                yiri_msg_list.append(platform_message.Image(base64=f'data:image/{image_format};base64,{image_base64}'))
+            elif msg.type == "text":
+                yiri_msg_list.append(platform_message.Plain(text=msg.data["text"]))
+            elif msg.type == "image":
+                image_base64, image_format = await image.qq_image_url_to_base64(msg.data["url"])
+                yiri_msg_list.append(platform_message.Image(base64=f"data:image/{image_format};base64,{image_base64}"))
 
         chain = platform_message.MessageChain(yiri_msg_list)
 
@@ -103,25 +103,25 @@ class AiocqhttpEventConverter(adapter.EventConverter):
     async def target2yiri(event: aiocqhttp.Event):
         yiri_chain = await AiocqhttpMessageConverter.target2yiri(event.message, event.message_id)
 
-        if event.message_type == 'group':
-            permission = 'MEMBER'
+        if event.message_type == "group":
+            permission = "MEMBER"
 
-            if 'role' in event.sender:
-                if event.sender['role'] == 'admin':
-                    permission = 'ADMINISTRATOR'
-                elif event.sender['role'] == 'owner':
-                    permission = 'OWNER'
+            if "role" in event.sender:
+                if event.sender["role"] == "admin":
+                    permission = "ADMINISTRATOR"
+                elif event.sender["role"] == "owner":
+                    permission = "OWNER"
             converted_event = platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
-                    id=event.sender['user_id'],  # message_seq 放哪？
-                    member_name=event.sender['nickname'],
+                    id=event.sender["user_id"],  # message_seq 放哪？
+                    member_name=event.sender["nickname"],
                     permission=permission,
                     group=platform_entities.Group(
                         id=event.group_id,
-                        name=event.sender['nickname'],
+                        name=event.sender["nickname"],
                         permission=platform_entities.Permission.Member,
                     ),
-                    special_title=event.sender['title'] if 'title' in event.sender else '',
+                    special_title=event.sender["title"] if "title" in event.sender else "",
                     join_timestamp=0,
                     last_speak_timestamp=0,
                     mute_time_remaining=0,
@@ -131,12 +131,12 @@ class AiocqhttpEventConverter(adapter.EventConverter):
                 source_platform_object=event,
             )
             return converted_event
-        elif event.message_type == 'private':
+        elif event.message_type == "private":
             return platform_events.FriendMessage(
                 sender=platform_entities.Friend(
-                    id=event.sender['user_id'],
-                    nickname=event.sender['nickname'],
-                    remark='',
+                    id=event.sender["user_id"],
+                    nickname=event.sender["nickname"],
+                    remark="",
                 ),
                 message_chain=yiri_chain,
                 time=event.time,
@@ -163,22 +163,22 @@ class AiocqhttpAdapter(adapter.MessagePlatformAdapter):
             while True:
                 await asyncio.sleep(1)
 
-        self.config['shutdown_trigger'] = shutdown_trigger_placeholder
+        self.config["shutdown_trigger"] = shutdown_trigger_placeholder
 
         self.ap = ap
 
-        if 'access-token' in config:
-            self.bot = aiocqhttp.CQHttp(access_token=config['access-token'])
-            del self.config['access-token']
+        if "access-token" in config:
+            self.bot = aiocqhttp.CQHttp(access_token=config["access-token"])
+            del self.config["access-token"]
         else:
             self.bot = aiocqhttp.CQHttp()
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         aiocq_msg = (await AiocqhttpMessageConverter.yiri2target(message))[0]
 
-        if target_type == 'group':
+        if target_type == "group":
             await self.bot.send_group_msg(group_id=int(target_id), message=aiocq_msg)
-        elif target_type == 'person':
+        elif target_type == "person":
             await self.bot.send_private_msg(user_id=int(target_id), message=aiocq_msg)
 
     async def reply_message(
@@ -210,9 +210,9 @@ class AiocqhttpAdapter(adapter.MessagePlatformAdapter):
                 traceback.print_exc()
 
         if event_type == platform_events.GroupMessage:
-            self.bot.on_message('group')(on_message)
+            self.bot.on_message("group")(on_message)
         elif event_type == platform_events.FriendMessage:
-            self.bot.on_message('private')(on_message)
+            self.bot.on_message("private")(on_message)
 
     def unregister_listener(
         self,

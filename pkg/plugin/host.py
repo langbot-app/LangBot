@@ -6,4 +6,4 @@ from .events import *
 
 
 def emit(*args, **kwargs):
-    print('插件调用了已弃用的函数 pkg.plugin.host.emit()')
+    print("插件调用了已弃用的函数 pkg.plugin.host.emit()")

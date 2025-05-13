@@ -29,8 +29,8 @@ def group_class(name: str, path: str) -> None:
 class AuthType(enum.Enum):
     """认证类型"""
 
-    NONE = 'none'
-    USER_TOKEN = 'user-token'
+    NONE = "none"
+    USER_TOKEN = "user-token"
 
 
 class RouterGroup(abc.ABC):
@@ -65,10 +65,10 @@ class RouterGroup(abc.ABC):
             async def handler_error(*args, **kwargs):
                 if auth_type == AuthType.USER_TOKEN:
                     # 从Authorization头中获取token
-                    token = quart.request.headers.get('Authorization', '').replace('Bearer ', '')
+                    token = quart.request.headers.get("Authorization", "").replace("Bearer ", "")
 
                     if not token:
-                        return self.http_status(401, -1, '未提供有效的用户令牌')
+                        return self.http_status(401, -1, "未提供有效的用户令牌")
 
                     try:
                         user_email = await self.ap.user_service.verify_jwt_token(token)
@@ -76,11 +76,11 @@ class RouterGroup(abc.ABC):
                         # check if this account exists
                         user = await self.ap.user_service.get_user_by_email(user_email)
                         if not user:
-                            return self.http_status(401, -1, '用户不存在')
+                            return self.http_status(401, -1, "用户不存在")
 
                         # 检查f是否接受user_email参数
-                        if 'user_email' in f.__code__.co_varnames:
-                            kwargs['user_email'] = user_email
+                        if "user_email" in f.__code__.co_varnames:
+                            kwargs["user_email"] = user_email
                     except Exception as e:
                         return self.http_status(401, -1, str(e))
 
@@ -89,10 +89,10 @@ class RouterGroup(abc.ABC):
                 except Exception:  # 自动 500
                     traceback.print_exc()
                     # return self.http_status(500, -2, str(e))
-                    return self.http_status(500, -2, 'internal server error')
+                    return self.http_status(500, -2, "internal server error")
 
             new_f = handler_error
-            new_f.__name__ = (self.name + rule).replace('/', '__')
+            new_f.__name__ = (self.name + rule).replace("/", "__")
             new_f.__doc__ = f.__doc__
 
             self.quart_app.route(rule, **options)(new_f)
@@ -104,9 +104,9 @@ class RouterGroup(abc.ABC):
         """返回一个 200 响应"""
         return quart.jsonify(
             {
-                'code': 0,
-                'msg': 'ok',
-                'data': data,
+                "code": 0,
+                "msg": "ok",
+                "data": data,
             }
         )
 
@@ -115,8 +115,8 @@ class RouterGroup(abc.ABC):
 
         return quart.jsonify(
             {
-                'code': code,
-                'msg': msg,
+                "code": code,
+                "msg": msg,
             }
         )
 

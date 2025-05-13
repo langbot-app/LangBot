@@ -32,13 +32,13 @@ class PersistenceHandler(logging.Handler, object):
             self.handleError(record)
 
 
-@stage.stage_class('SetupLoggerStage')
+@stage.stage_class("SetupLoggerStage")
 class SetupLoggerStage(stage.BootingStage):
     """设置日志器阶段"""
 
     async def run(self, ap: app.Application):
         """启动"""
-        persistence_handler = PersistenceHandler('LoggerHandler', ap)
+        persistence_handler = PersistenceHandler("LoggerHandler", ap)
 
         extra_handlers = []
         extra_handlers = [persistence_handler]

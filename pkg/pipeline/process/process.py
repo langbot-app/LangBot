@@ -7,7 +7,7 @@ from .. import entities
 from .. import stage
 
 
-@stage.stage_class('MessageProcessor')
+@stage.stage_class("MessageProcessor")
 class Processor(stage.PipelineStage):
     """请求实际处理阶段
 
@@ -37,11 +37,11 @@ class Processor(stage.PipelineStage):
         message_text = str(query.message_chain).strip()
 
         self.ap.logger.info(
-            f'处理 {query.launcher_type.value}_{query.launcher_id} 的请求({query.query_id}): {message_text}'
+            f"处理 {query.launcher_type.value}_{query.launcher_id} 的请求({query.query_id}): {message_text}"
         )
 
         async def generator():
-            cmd_prefix = self.ap.instance_config.data['command']['prefix']
+            cmd_prefix = self.ap.instance_config.data["command"]["prefix"]
 
             if any(message_text.startswith(prefix) for prefix in cmd_prefix):
                 async for result in self.cmd_handler.handle(query):

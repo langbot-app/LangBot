@@ -11,7 +11,7 @@ from ...discover import engine
 from . import token
 from ...entity.persistence import model as persistence_model
 
-FETCH_MODEL_LIST_URL = 'https://api.qchatgpt.rockchin.top/api/v2/fetch/model_list'
+FETCH_MODEL_LIST_URL = "https://api.qchatgpt.rockchin.top/api/v2/fetch/model_list"
 
 
 class ModelManager:
@@ -43,7 +43,7 @@ class ModelManager:
         self.requester_dict = {}
 
     async def initialize(self):
-        self.requester_components = self.ap.discover.get_components_by_kind('LLMAPIRequester')
+        self.requester_components = self.ap.discover.get_components_by_kind("LLMAPIRequester")
 
         # forge requester class dict
         requester_dict: dict[str, type[requester.LLMAPIRequester]] = {}
@@ -56,7 +56,7 @@ class ModelManager:
 
     async def load_models_from_db(self):
         """从数据库加载模型"""
-        self.ap.logger.info('Loading models from db...')
+        self.ap.logger.info("Loading models from db...")
 
         self.llm_models = []
 
@@ -99,14 +99,14 @@ class ModelManager:
         for model in self.model_list:
             if model.name == name:
                 return model
-        raise ValueError(f'无法确定模型 {name} 的信息')
+        raise ValueError(f"无法确定模型 {name} 的信息")
 
     async def get_model_by_uuid(self, uuid: str) -> entities.LLMModelInfo:
         """通过uuid获取模型"""
         for model in self.llm_models:
             if model.model_entity.uuid == uuid:
                 return model
-        raise ValueError(f'model {uuid} not found')
+        raise ValueError(f"model {uuid} not found")
 
     async def remove_llm_model(self, model_uuid: str):
         """移除模型"""
