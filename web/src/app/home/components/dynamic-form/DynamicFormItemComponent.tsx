@@ -18,6 +18,11 @@ import { useEffect, useState } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { LLMModel } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from '@/components/ui/hover-card';
 
 export default function DynamicFormItemComponent({
   config,
@@ -133,9 +138,42 @@ export default function DynamicFormItemComponent({
           <SelectContent>
             <SelectGroup>
               {llmModels.map((model) => (
-                <SelectItem key={model.uuid} value={model.uuid}>
-                  {model.name}
-                </SelectItem>
+                <HoverCard key={model.uuid}>
+                  <HoverCardTrigger asChild>
+                    <SelectItem value={model.uuid}>
+                      {model.name}
+                    </SelectItem>
+                  </HoverCardTrigger>
+                  <HoverCardContent className="w-80" align="end" side="right" sideOffset={10}>
+                    <div className="space-y-2">
+                      <h4 className="font-medium">{model.name}</h4>
+                      <p className="text-sm text-muted-foreground">{model.description}</p>
+                      {model.requester && (
+                        <div className="text-xs">
+                          <span className="font-semibold">请求器：</span> {model.requester}
+                        </div>
+                      )}
+                      {model.requester_config && (
+                        <div className="text-xs">
+                          <span className="font-semibold">配置：</span>
+                          <div className="pl-2">
+                            {model.requester_config.base_url && (
+                              <div><span className="font-semibold">Base URL：</span> {model.requester_config.base_url}</div>
+                            )}
+                            {model.requester_config.timeout && (
+                              <div><span className="font-semibold">超时：</span> {model.requester_config.timeout}秒</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {model.abilities && model.abilities.length > 0 && (
+                        <div className="text-xs">
+                          <span className="font-semibold">能力：</span> {model.abilities.join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  </HoverCardContent>
+                </HoverCard>
               ))}
             </SelectGroup>
           </SelectContent>
