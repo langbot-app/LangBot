@@ -17,10 +17,10 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { GithubIcon } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { toast } from 'sonner';
-import { PluginCardVO } from '@/app/home/plugins/plugin-installed/PluginCardVO';
+
 enum PluginInstallStatus {
   WAIT_INPUT = 'wait_input',
   INSTALLING = 'installing',
