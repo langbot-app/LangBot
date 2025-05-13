@@ -113,7 +113,7 @@ export default function HomeSidebar({
           </div>
         </div>
         {/* 菜单列表，后期可升级成配置驱动 */}
-        <div>
+        <div className={styles.sidebarItemsContainer}>
           {sidebarConfigList.map((config) => {
             return (
               <div
@@ -139,20 +139,6 @@ export default function HomeSidebar({
       </div>
 
       <div className={`${styles.sidebarBottomContainer}`}>
-        {userEmail && (
-          <SidebarChild
-            onClick={() => {}}
-            isSelected={false}
-            icon={<User className={`${styles.sidebarChildIcon}`} />}
-            name={userEmail}
-          />
-        )}
-        <SidebarChild
-          onClick={handleLogout}
-          isSelected={false}
-          icon={<LogOut className={`${styles.sidebarChildIcon}`} />}
-          name="退出登录"
-        />
         <SidebarChild
           onClick={() => {
             // open docs.langbot.app
@@ -169,6 +155,22 @@ export default function HomeSidebar({
             </svg>
           }
           name="帮助文档"
+        />
+        <SidebarChild
+          onClick={() => {
+            handleLogout();
+          }}
+          isSelected={false}
+          icon={
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
+              <path d="M4 18H6V20H18V4H6V6H4V3C4 2.44772 4.44772 2 5 2H19C19.5523 2 20 2.44772 20 3V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V18ZM6 11H13V13H6V16L1 12L6 8V11Z"></path>
+            </svg>
+          }
+          name="退出登录"
         />
       </div>
     </div>
