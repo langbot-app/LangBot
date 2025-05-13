@@ -1,6 +1,7 @@
 import './global.css';
 import type { Metadata } from 'next';
 import { Toaster } from '@/components/ui/sonner';
+import I18nProvider from '@/i18n/I18nProvider';
 
 export const metadata: Metadata = {
   title: 'LangBot',
@@ -13,10 +14,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html>
       <body className={``}>
-        {children}
-        <Toaster />
+        <I18nProvider>
+          {children}
+          <Toaster />
+        </I18nProvider>
       </body>
     </html>
   );
