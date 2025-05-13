@@ -108,15 +108,8 @@ class PipelineService:
             bots = result.all()
             
             for bot in bots:
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.update(persistence_bot.Bot)
-                    .where(persistence_bot.Bot.uuid == bot.uuid)
-                    .values(use_pipeline_name=pipeline_data['name'])
-                )
-                
-                bot_data = self.ap.persistence_mgr.serialize_model(persistence_bot.Bot, bot)
-                await self.ap.platform_mgr.remove_bot(bot.uuid)
-                await self.ap.platform_mgr.load_bot(bot_data)
+                bot_data = {'use_pipeline_name': pipeline_data['name']}
+                await self.ap.bot_service.update_bot(bot.uuid, bot_data)
 
         await self.ap.pipeline_mgr.remove_pipeline(pipeline_uuid)
         await self.ap.pipeline_mgr.load_pipeline(pipeline)
