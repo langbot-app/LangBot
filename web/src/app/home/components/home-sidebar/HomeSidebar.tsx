@@ -9,7 +9,7 @@ import {
 import { useRouter, usePathname } from 'next/navigation';
 import { sidebarConfigList } from '@/app/home/components/home-sidebar/sidbarConfigList';
 import langbotIcon from '@/app/assets/langbot-logo.webp';
-import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
+import { systemInfo } from '@/app/infra/http/HttpClient';
 import { useTranslation } from 'react-i18next';
 
 // TODO 侧边导航栏要加动画
