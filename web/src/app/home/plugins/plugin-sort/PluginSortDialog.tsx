@@ -161,12 +161,12 @@ export default function PluginSortDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[700px] max-h-[80vh] p-0 flex flex-col">
-        <DialogHeader className="px-6 pt-6 pb-2">
+        <DialogHeader className="px-6 pt-6 pb-0">
           <DialogTitle>插件排序</DialogTitle>
         </DialogHeader>
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="flex-1 overflow-y-auto px-6 py-0">
           <p className="text-sm text-gray-500 mb-4">
-            拖动插件卡片调整顺序，优先级由上到下依次降低
+            插件顺序会影响同一事件内的处理顺序，请拖动插件卡片排序
           </p>
           <DndContext
             sensors={sensors}
