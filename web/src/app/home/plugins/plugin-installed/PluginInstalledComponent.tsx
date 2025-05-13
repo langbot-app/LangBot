@@ -4,6 +4,8 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { PluginCardVO } from '@/app/home/plugins/plugin-installed/PluginCardVO';
 import PluginCardComponent from '@/app/home/plugins/plugin-installed/plugin-card/PluginCardComponent';
 import PluginForm from '@/app/home/plugins/plugin-installed/plugin-form/PluginForm';
+import PluginSortDialog from '@/app/home/plugins/plugin-installed/plugin-sort/PluginSortDialog';
+import { Button } from '@/components/ui/button';
 import styles from '@/app/home/plugins/plugins.module.css';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import {
@@ -22,6 +24,7 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
   (props, ref) => {
     const [pluginList, setPluginList] = useState<PluginCardVO[]>([]);
     const [modalOpen, setModalOpen] = useState<boolean>(false);
+    const [sortModalOpen, setSortModalOpen] = useState<boolean>(false);
     const [selectedPlugin, setSelectedPlugin] = useState<PluginCardVO | null>(
       null,
     );
@@ -81,6 +84,16 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
           </div>
         ) : (
           <div className={`${styles.pluginListContainer}`}>
+            <div className="flex justify-end mb-4 px-4">
+              <Button 
+                variant="outline" 
+                className="mr-2"
+                onClick={() => setSortModalOpen(true)}
+              >
+                编排
+              </Button>
+            </div>
+
             <Dialog open={modalOpen} onOpenChange={setModalOpen}>
               <DialogContent className="w-[700px] max-h-[80vh] p-0 flex flex-col">
                 <DialogHeader className="px-6 pt-6 pb-2">
@@ -103,6 +116,13 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
                 </div>
               </DialogContent>
             </Dialog>
+
+            <PluginSortDialog
+              open={sortModalOpen}
+              onOpenChange={setSortModalOpen}
+              plugins={pluginList}
+              onSortComplete={getPluginList}
+            />
 
             {pluginList.map((vo, index) => {
               return (
