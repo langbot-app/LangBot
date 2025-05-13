@@ -74,7 +74,7 @@ class HttpClient {
       this.fetchAndCacheSystemInfo();
     }
   }
-  
+
   private loadSystemInfoFromCache(): void {
     try {
       const cachedInfo = localStorage.getItem(this.SYSTEM_INFO_STORAGE_KEY);
