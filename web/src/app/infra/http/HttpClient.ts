@@ -375,7 +375,7 @@ class HttpClient {
   }
 
   public reorderPlugins(plugins: PluginReorderElement[]): Promise<object> {
-    return this.post('/api/v1/plugins/reorder', plugins);
+    return this.put('/api/v1/plugins/reorder', { plugins });
   }
 
   public updatePlugin(
