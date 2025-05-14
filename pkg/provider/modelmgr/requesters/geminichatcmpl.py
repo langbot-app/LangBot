@@ -25,7 +25,6 @@ class GeminiChatCompletions(requester.LLMAPIRequester):
             transport='rest',
             client_options={
                 'api_endpoint': self.requester_cfg['base_url'],
-                'timeout': self.requester_cfg['timeout'],
             },
         )
 
@@ -37,7 +36,13 @@ class GeminiChatCompletions(requester.LLMAPIRequester):
         funcs: typing.List[tools_entities.LLMFunction] = None,
         extra_args: dict[str, typing.Any] = {},
     ) -> llm_entities.Message:
-        genai.configure(api_key=model.token_mgr.get_token())
+        genai.configure(
+            api_key=model.token_mgr.get_token(),
+            transport='rest',
+            client_options={
+                'api_endpoint': self.requester_cfg['base_url'],
+            },
+        )
 
         generation_model = genai.GenerativeModel(model.model_entity.name)
 
@@ -71,16 +76,20 @@ class GeminiChatCompletions(requester.LLMAPIRequester):
             gemini_messages.append({'role': role, 'parts': [content]})
         
         try:
-            chat_params = extra_args.copy()
             if system_content:
-                chat_params['system_instruction'] = system_content
+                system_msg = {
+                    'role': 'user', 
+                    'parts': [f"System instruction: {system_content}\n\nPlease follow the above instruction for all future interactions."]
+                }
+                ack_msg = {
+                    'role': 'model',
+                    'parts': ["I'll follow those instructions."]
+                }
+                gemini_messages = [system_msg, ack_msg] + gemini_messages
             
             chat = generation_model.start_chat(history=gemini_messages)
             
-            response = await chat.send_message_async(
-                content="",  # Empty content to get response based on history
-                **chat_params
-            )
+            response = chat.send_message("")  # Empty content to get response based on history
             
             content = response.text
             
