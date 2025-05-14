@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import typing
-import json
 import google.generativeai as genai
-import httpx
 
 from .. import errors, requester
 from ....core import entities as core_entities
