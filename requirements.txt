@@ -37,6 +37,7 @@ mcp
 sqlmodel
 slack_sdk
 telegramify-markdown
+google-genai
 
 # indirect
 taskgroup==0.0.0a4
