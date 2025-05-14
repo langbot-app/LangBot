@@ -95,7 +95,7 @@ Directly use the released version to run, see the [Manual Deployment](https://do
 | QQ Official API | ✅ |  |
 | WeCom | ✅ |  |
 | WeComCS | ✅ |  |
-| Personal WeChat | ✅ | Use [Gewechat](https://github.com/Devo919/Gewechat) to access |
+| Personal WeChat | ✅ |  |
 | Lark | ✅ |  |
 | DingTalk | ✅ |  |
 | Discord | ✅ |  |

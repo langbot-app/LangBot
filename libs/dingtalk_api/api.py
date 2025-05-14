@@ -115,13 +115,20 @@ class DingTalkClient:
             if event:
                 await self._handle_message(event)
 
-    async def send_message(self, content: str, incoming_message):
+    async def send_message(self, content: str, incoming_message,at:bool):
         if self.markdown_card:
-            self.EchoTextHandler.reply_markdown(
-                title=self.robot_name + '的回答',
-                text=content,
-                incoming_message=incoming_message,
-            )
+            if at:
+                self.EchoTextHandler.reply_markdown(
+                    title='@'+incoming_message.sender_nick+' '+content,
+                    text='@'+incoming_message.sender_nick+' '+content,
+                    incoming_message=incoming_message,
+                )
+            else:
+                self.EchoTextHandler.reply_markdown(
+                    title=content,
+                    text=content,
+                    incoming_message=incoming_message,
+                )
         else:
             self.EchoTextHandler.reply_text(content, incoming_message)
 

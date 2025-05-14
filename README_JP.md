@@ -94,7 +94,7 @@ LangBotはBTPanelにリストされています。BTPanelをインストール�
 | QQ公式API | ✅ |  |
 | WeCom | ✅ |  |
 | WeComCS | ✅ |  |
-| 個人WeChat | ✅ | [Gewechat](https://github.com/Devo919/Gewechat)を使用して接続 |
+| 個人WeChat | ✅ | |
 | Lark | ✅ |  |
 | DingTalk | ✅ |  |
 | Discord | ✅ |  |

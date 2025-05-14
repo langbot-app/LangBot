@@ -14,9 +14,14 @@ import datetime
 class DingTalkMessageConverter(adapter.MessageConverter):
     @staticmethod
     async def yiri2target(message_chain: platform_message.MessageChain):
+        content = ''
+        at = False
         for msg in message_chain:
+            if type(msg) is platform_message.At:
+                at = True
             if type(msg) is platform_message.Plain:
-                return msg.text
+                content += msg.text
+        return content,at
 
     @staticmethod
     async def target2yiri(event: DingTalkEvent, bot_name: str):
@@ -128,8 +133,8 @@ class DingTalkAdapter(adapter.MessagePlatformAdapter):
         )
         incoming_message = event.incoming_message
 
-        content = await DingTalkMessageConverter.yiri2target(message)
-        await self.bot.send_message(content, incoming_message)
+        content,at = await DingTalkMessageConverter.yiri2target(message)
+        await self.bot.send_message(content, incoming_message,at)
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         content = await DingTalkMessageConverter.yiri2target(message)

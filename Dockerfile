@@ -6,7 +6,7 @@ COPY web ./web
 
 RUN cd web && npm install && npm run build
 
-FROM python:3.10.13-slim
+FROM python:3.12.7-slim
 
 WORKDIR /app
 
@@ -20,4 +20,4 @@ RUN apt update \
     && uv sync \
     && touch /.dockerenv
 
-CMD [ "python", "main.py" ]
+CMD [ "uv", "run", "main.py" ]

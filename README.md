@@ -97,7 +97,7 @@ docker compose up -d
 | QQ 官方机器人 | ✅ | QQ 官方机器人，支持频道、私聊、群聊 |
 | 企业微信 | ✅ |  |
 | 企微对外客服 | ✅ |  |
-| 个人微信 | ✅ | 使用 [Gewechat](https://github.com/Devo919/Gewechat) 接入 |
+| 个人微信 | ✅ |  |
 | 微信公众号 | ✅ |  |
 | 飞书 | ✅ |  |
 | 钉钉 | ✅ |  |
