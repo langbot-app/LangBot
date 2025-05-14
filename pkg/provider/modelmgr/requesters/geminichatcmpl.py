@@ -88,18 +88,12 @@ class GeminiChatCompletions(requester.LLMAPIRequester):
             
             chat = generation_model.start_chat(history=history)
             
-            try:
-                response = chat.send_message(
-                    "",
-                    timeout=self.requester_cfg.get('timeout', 120)
-                )
-                
-                return llm_entities.Message(
-                    role='assistant',
-                    content=response.text
-                )
-            except TimeoutError:
-                raise errors.RequesterError(f'请求超时，超时设置为 {self.requester_cfg.get("timeout", 120)} 秒')
+            response = chat.send_message("")
+            
+            return llm_entities.Message(
+                role='assistant',
+                content=response.text
+            )
                 
         except Exception as e:
             error_message = str(e).lower()
