@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import typing
-import google.generativeai as genai
+import google.genai
+from google.genai import types
 
 from .. import errors, requester
 from ....core import entities as core_entities
@@ -31,64 +32,47 @@ class GeminiChatCompletions(requester.LLMAPIRequester):
     ) -> llm_entities.Message:
         """调用 Gemini API 生成回复"""
         try:
-            genai.configure(
+            self.client = google.genai.Client(
                 api_key=model.token_mgr.get_token(),
-                transport='rest',
-                client_options={
-                    'api_endpoint': self.requester_cfg['base_url'],
-                }
+                http_options=types.HttpOptions(api_version='v1alpha'),
             )
-            
-            generation_model = genai.GenerativeModel(model.model_entity.name)
-            
-            history = []
+            contents = []
+
             system_content = None
-            
-            for msg in messages:
-                if msg.role == 'system':
-                    system_content = msg.content
-                    break
-            
-            for msg in messages:
-                if msg.role == 'system':
-                    continue  # 系统消息单独处理
-                
-                role = 'user' if msg.role == 'user' else 'model'
-                
-                content = msg.content
-                if isinstance(content, list):
-                    parts = []
-                    for part in content:
-                        if part.get('type') == 'text':
-                            parts.append(part.get('text', ''))
-                    content = '\n'.join(parts)
-                
-                history.append({
-                    'role': role,
-                    'parts': [content]
-                })
-            
-            if system_content:
-                system_msg = {
-                    'role': 'user',
-                    'parts': [f"System instruction: {system_content}\n\nPlease follow the above instruction for all future interactions."]
-                }
-                ack_msg = {
-                    'role': 'model',
-                    'parts': ["I'll follow those instructions."]
-                }
-                history = [system_msg, ack_msg] + history
-            
-            chat = generation_model.start_chat(history=history)
-            
-            message_content = query.content if query.content else "Please continue the conversation."
-            response = chat.send_message(message_content)
-            
+
+            for message in messages:
+                role = message.role
+                parts = []
+
+                if isinstance(message.content, str):
+                    parts.append(types.Part.from_text(text=message.content))
+                elif isinstance(message.content, list):
+                    for content in message.content:
+                        if content.type == 'text':
+                            parts.append(types.Part.from_text(text=content.text))
+                        # elif content.type == 'image_url':
+                        #     parts.append(types.Part.from_image_url(url=content.image_url))
+
+                if role == 'system':
+                    system_content = parts
+                else:
+                    content = types.Content(role=role, parts=parts)
+                    contents.append(content)
+
+            response = self.client.models.generate_content(
+                model=model.model_entity.name,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_content,
+                    **extra_args,
+                ),
+            )
+
             return llm_entities.Message(
                 role='assistant',
-                content=response.text
+                content=response.candidates[0].content.parts[0].text,
             )
-                
+
         except Exception as e:
             error_message = str(e).lower()
             if 'invalid api key' in error_message:
