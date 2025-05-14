@@ -56,7 +56,7 @@ class WeChatPadClient:
         return  self._message_api.post_app_msg(to_wxid, app_message, type)
 
     def send_emoji_message(self, to_wxid, emoji_md5, emoji_size):
-        """发送emiji消息"""
+        """发送emoji消息"""
         return  self._message_api.post_emoji(to_wxid,emoji_md5,emoji_size)
 
     def revoke_msg(self, to_wxid, msg_id, new_msg_id, create_time):

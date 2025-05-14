@@ -33,5 +33,5 @@ class UserApi:
         param = {
               "Base64": head_img_base64
             }
-        url = f'{self.base_url}/user/UploadHeadImge'
+        url = f'{self.base_url}/user/UploadHeadImage'
         return await async_request(base_url=url, token_key=self.token, json=param)

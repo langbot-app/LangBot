@@ -60,7 +60,7 @@ class MessageApi:
             "ToUserName": to_wxid,
             "VoiceData": voice_data,
             "VoiceFormat": voice_forma,
-            "VoiceSecond,": voice_duration
+            "VoiceSecond": voice_duration
         }
         url = self.base_url + "/message/SendVoice"
         return post_json(base_url=url, token=self.token, data=json_data)
