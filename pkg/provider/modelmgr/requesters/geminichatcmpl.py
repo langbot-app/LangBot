@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import typing
 import google.generativeai as genai
+from google.generativeai import GenerativeModel
 
 from .. import errors, requester
 from ....core import entities as core_entities
@@ -12,14 +13,13 @@ from ...tools import entities as tools_entities
 class GeminiChatCompletions(requester.LLMAPIRequester):
     """Google Gemini API 请求器"""
 
-    client: genai.GenerativeModel
-
     default_config: dict[str, typing.Any] = {
         'base_url': 'https://generativelanguage.googleapis.com',
         'timeout': 120,
     }
 
     async def initialize(self):
+        """初始化 Gemini API 客户端"""
         genai.configure(
             api_key='',
             transport='rest',
@@ -36,73 +36,80 @@ class GeminiChatCompletions(requester.LLMAPIRequester):
         funcs: typing.List[tools_entities.LLMFunction] = None,
         extra_args: dict[str, typing.Any] = {},
     ) -> llm_entities.Message:
-        genai.configure(
-            api_key=model.token_mgr.get_token(),
-            transport='rest',
-            client_options={
-                'api_endpoint': self.requester_cfg['base_url'],
-            },
-        )
-
-        generation_model = genai.GenerativeModel(model.model_entity.name)
-
-        gemini_messages = []
-        
-        system_content = None
-        for i, m in enumerate(messages):
-            if m.role == 'system':
-                system_content = m.content
-                break
-        
-        for m in messages:
-            if m.role == 'system':
-                continue  # Skip system message as it's handled separately
-            
-            if m.role == 'user':
-                role = 'user'
-            elif m.role == 'assistant':
-                role = 'model'
-            else:
-                continue  # Skip other roles for now
-            
-            content = m.content
-            if isinstance(content, list):
-                parts = []
-                for part in content:
-                    if part.get('type') == 'text':
-                        parts.append(part.get('text', ''))
-                content = '\n'.join(parts)
-            
-            gemini_messages.append({'role': role, 'parts': [content]})
-        
+        """调用 Gemini API 生成回复"""
         try:
+            genai.configure(
+                api_key=model.token_mgr.get_token(),
+                transport='rest',
+                client_options={
+                    'api_endpoint': self.requester_cfg['base_url'],
+                },
+            )
+
+            generation_model = GenerativeModel(model.model_entity.name)
+            
+            history = []
+            system_content = None
+            
+            for msg in messages:
+                if msg.role == 'system':
+                    system_content = msg.content
+                    break
+            
+            for msg in messages:
+                if msg.role == 'system':
+                    continue  # 系统消息单独处理
+                
+                role = 'user' if msg.role == 'user' else 'model'
+                
+                content = msg.content
+                if isinstance(content, list):
+                    parts = []
+                    for part in content:
+                        if part.get('type') == 'text':
+                            parts.append(part.get('text', ''))
+                    content = '\n'.join(parts)
+                
+                history.append({
+                    'role': role,
+                    'parts': [content]
+                })
+            
             if system_content:
                 system_msg = {
-                    'role': 'user', 
+                    'role': 'user',
                     'parts': [f"System instruction: {system_content}\n\nPlease follow the above instruction for all future interactions."]
                 }
                 ack_msg = {
                     'role': 'model',
                     'parts': ["I'll follow those instructions."]
                 }
-                gemini_messages = [system_msg, ack_msg] + gemini_messages
+                history = [system_msg, ack_msg] + history
             
-            chat = generation_model.start_chat(history=gemini_messages)
+            chat = generation_model.start_chat(history=history)
             
-            response = chat.send_message("")  # Empty content to get response based on history
-            
-            content = response.text
-            
-            return llm_entities.Message(
-                role='assistant',
-                content=content
-            )
+            try:
+                response = chat.send_message(
+                    "",
+                    timeout=self.requester_cfg.get('timeout', 120)
+                )
+                
+                return llm_entities.Message(
+                    role='assistant',
+                    content=response.text
+                )
+            except TimeoutError:
+                raise errors.RequesterError(f'请求超时，超时设置为 {self.requester_cfg.get("timeout", 120)} 秒')
+                
         except Exception as e:
-            if 'invalid api key' in str(e).lower():
-                raise errors.RequesterError(f'无效的 api-key: {str(e)}')
-            elif 'not found' in str(e).lower():
+            error_message = str(e).lower()
+            if 'invalid api key' in error_message:
+                raise errors.RequesterError(f'无效的 API 密钥: {str(e)}')
+            elif 'not found' in error_message:
                 raise errors.RequesterError(f'请求路径错误或模型无效: {str(e)}')
-            elif 'rate limit' in str(e).lower() or 'quota' in str(e).lower():
+            elif any(keyword in error_message for keyword in ['rate limit', 'quota', 'permission denied']):
                 raise errors.RequesterError(f'请求过于频繁或余额不足: {str(e)}')
+            elif 'timeout' in error_message:
+                raise errors.RequesterError(f'请求超时: {str(e)}')
             else:
-                raise errors.RequesterError(f'请求错误: {str(e)}')
+                raise errors.RequesterError(f'Gemini API 请求错误: {str(e)}')
