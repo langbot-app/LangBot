@@ -18,7 +18,7 @@ class DashscopeAPIError(Exception):
         super().__init__(self.message)
 
 
-@runner.runner_class("dashscope-app-api")
+@runner.runner_class('dashscope-app-api')
 class DashScopeAPIRunner(runner.RequestRunner):
     "阿里云百炼DashsscopeAPI对话请求器"
 
@@ -35,29 +35,29 @@ class DashScopeAPIRunner(runner.RequestRunner):
         self.ap = ap
         self.pipeline_config = pipeline_config
 
-        valid_app_types = ["agent", "workflow"]
-        self.app_type = self.pipeline_config["ai"]["dashscope-app-api"]["app-type"]
+        valid_app_types = ['agent', 'workflow']
+        self.app_type = self.pipeline_config['ai']['dashscope-app-api']['app-type']
         # 检查配置文件中使用的应用类型是否支持
         if self.app_type not in valid_app_types:
-            raise DashscopeAPIError(f"不支持的 Dashscope 应用类型: {self.app_type}")
+            raise DashscopeAPIError(f'不支持的 Dashscope 应用类型: {self.app_type}')
 
         # 初始化Dashscope 参数配置
-        self.app_id = self.pipeline_config["ai"]["dashscope-app-api"]["app-id"]
-        self.api_key = self.pipeline_config["ai"]["dashscope-app-api"]["api-key"]
-        self.references_quote = self.pipeline_config["ai"]["dashscope-app-api"]["references_quote"]
+        self.app_id = self.pipeline_config['ai']['dashscope-app-api']['app-id']
+        self.api_key = self.pipeline_config['ai']['dashscope-app-api']['api-key']
+        self.references_quote = self.pipeline_config['ai']['dashscope-app-api']['references_quote']
 
     def _replace_references(self, text, references_dict):
         """阿里云百炼平台的自定义应用支持资料引用，此函数可以将引用标签替换为参考资料"""
 
         # 匹配 <ref>[index_id]</ref> 形式的字符串
-        pattern = re.compile(r"<ref>\[(.*?)\]</ref>")
+        pattern = re.compile(r'<ref>\[(.*?)\]</ref>')
 
         def replacement(match):
             # 获取引用编号
             ref_key = match.group(1)
             if ref_key in references_dict:
                 # 如果有对应的参考资料按照provider.json中的reference_quote返回提示，来自哪个参考资料文件
-                return f"({self.references_quote} {references_dict[ref_key]})"
+                return f'({self.references_quote} {references_dict[ref_key]})'
             else:
                 # 如果没有对应的参考资料，保留原样
                 return match.group(0)
@@ -67,11 +67,11 @@ class DashScopeAPIRunner(runner.RequestRunner):
 
     async def _preprocess_user_message(self, query: core_entities.Query) -> tuple[str, list[str]]:
         """预处理用户消息，提取纯文本，阿里云提供的上传文件方法过于复杂，暂不支持上传文件（包括图片）"""
-        plain_text = ""
+        plain_text = ''
         image_ids = []
         if isinstance(query.user_message.content, list):
             for ce in query.user_message.content:
-                if ce.type == "text":
+                if ce.type == 'text':
                     plain_text += ce.text
                 # 暂时不支持上传图片，保留代码以便后续扩展
                 # elif ce.type == "image_base64":
@@ -94,9 +94,9 @@ class DashScopeAPIRunner(runner.RequestRunner):
 
         # 局部变量
         chunk = None  # 流式传输的块
-        pending_content = ""  # 待处理的Agent输出内容
+        pending_content = ''  # 待处理的Agent输出内容
         references_dict = {}  # 用于存储引用编号和对应的参考资料
-        plain_text = ""  # 用户输入的纯文本信息
+        plain_text = ''  # 用户输入的纯文本信息
         image_ids = []  # 用户输入的图片ID列表 （暂不支持）
 
         plain_text, image_ids = await self._preprocess_user_message(query)
@@ -115,35 +115,35 @@ class DashScopeAPIRunner(runner.RequestRunner):
         )
 
         for chunk in response:
-            if chunk.get("status_code") != 200:
+            if chunk.get('status_code') != 200:
                 raise DashscopeAPIError(
-                    f"Dashscope API 请求失败: status_code={chunk.get('status_code')} message={chunk.get('message')} request_id={chunk.get('request_id')} "
+                    f'Dashscope API 请求失败: status_code={chunk.get("status_code")} message={chunk.get("message")} request_id={chunk.get("request_id")} '
                 )
             if not chunk:
                 continue
 
             # 获取流式传输的output
-            stream_output = chunk.get("output", {})
-            if stream_output.get("text") is not None:
-                pending_content += stream_output.get("text")
+            stream_output = chunk.get('output', {})
+            if stream_output.get('text') is not None:
+                pending_content += stream_output.get('text')
 
         # 保存当前会话的session_id用于下次对话的语境
-        query.session.using_conversation.uuid = stream_output.get("session_id")
+        query.session.using_conversation.uuid = stream_output.get('session_id')
 
         # 获取模型传出的参考资料列表
-        references_dict_list = stream_output.get("doc_references", [])
+        references_dict_list = stream_output.get('doc_references', [])
 
         # 从模型传出的参考资料信息中提取用于替换的字典
         if references_dict_list is not None:
             for doc in references_dict_list:
-                if doc.get("index_id") is not None:
-                    references_dict[doc.get("index_id")] = doc.get("doc_name")
+                if doc.get('index_id') is not None:
+                    references_dict[doc.get('index_id')] = doc.get('doc_name')
 
             # 将参考资料替换到文本中
             pending_content = self._replace_references(pending_content, references_dict)
 
         yield llm_entities.Message(
-            role="assistant",
+            role='assistant',
             content=pending_content,
         )
 
@@ -152,9 +152,9 @@ class DashScopeAPIRunner(runner.RequestRunner):
 
         # 局部变量
         chunk = None  # 流式传输的块
-        pending_content = ""  # 待处理的Agent输出内容
+        pending_content = ''  # 待处理的Agent输出内容
         references_dict = {}  # 用于存储引用编号和对应的参考资料
-        plain_text = ""  # 用户输入的纯文本信息
+        plain_text = ''  # 用户输入的纯文本信息
         image_ids = []  # 用户输入的图片ID列表 （暂不支持）
 
         plain_text, image_ids = await self._preprocess_user_message(query)
@@ -178,45 +178,45 @@ class DashScopeAPIRunner(runner.RequestRunner):
 
         # 处理API返回的流式输出
         for chunk in response:
-            if chunk.get("status_code") != 200:
+            if chunk.get('status_code') != 200:
                 raise DashscopeAPIError(
-                    f"Dashscope API 请求失败: status_code={chunk.get('status_code')} message={chunk.get('message')} request_id={chunk.get('request_id')} "
+                    f'Dashscope API 请求失败: status_code={chunk.get("status_code")} message={chunk.get("message")} request_id={chunk.get("request_id")} '
                 )
             if not chunk:
                 continue
 
             # 获取流式传输的output
-            stream_output = chunk.get("output", {})
-            if stream_output.get("text") is not None:
-                pending_content += stream_output.get("text")
+            stream_output = chunk.get('output', {})
+            if stream_output.get('text') is not None:
+                pending_content += stream_output.get('text')
 
         # 保存当前会话的session_id用于下次对话的语境
-        query.session.using_conversation.uuid = stream_output.get("session_id")
+        query.session.using_conversation.uuid = stream_output.get('session_id')
 
         # 获取模型传出的参考资料列表
-        references_dict_list = stream_output.get("doc_references", [])
+        references_dict_list = stream_output.get('doc_references', [])
 
         # 从模型传出的参考资料信息中提取用于替换的字典
         if references_dict_list is not None:
             for doc in references_dict_list:
-                if doc.get("index_id") is not None:
-                    references_dict[doc.get("index_id")] = doc.get("doc_name")
+                if doc.get('index_id') is not None:
+                    references_dict[doc.get('index_id')] = doc.get('doc_name')
 
             # 将参考资料替换到文本中
             pending_content = self._replace_references(pending_content, references_dict)
 
         yield llm_entities.Message(
-            role="assistant",
+            role='assistant',
             content=pending_content,
         )
 
     async def run(self, query: core_entities.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
         """运行"""
-        if self.app_type == "agent":
+        if self.app_type == 'agent':
             async for msg in self._agent_messages(query):
                 yield msg
-        elif self.app_type == "workflow":
+        elif self.app_type == 'workflow':
             async for msg in self._workflow_messages(query):
                 yield msg
         else:
-            raise DashscopeAPIError(f"不支持的 Dashscope 应用类型: {self.app_type}")
+            raise DashscopeAPIError(f'不支持的 Dashscope 应用类型: {self.app_type}')

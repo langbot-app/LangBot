@@ -9,7 +9,7 @@ from .. import migrations
 importutil.import_modules_in_pkg(migrations)
 
 
-@stage.stage_class("MigrationStage")
+@stage.stage_class('MigrationStage')
 class MigrationStage(stage.BootingStage):
     """迁移阶段"""
 
@@ -37,4 +37,4 @@ class MigrationStage(stage.BootingStage):
 
             if await migration_instance.need_migrate():
                 await migration_instance.run()
-                print(f"已执行迁移 {migration_instance.name}")
+                print(f'已执行迁移 {migration_instance.name}')

@@ -50,7 +50,7 @@ class SHA1:
             sortlist = [token, timestamp, nonce, encrypt]
             sortlist.sort()
             sha = hashlib.sha1()
-            sha.update("".join(sortlist).encode())
+            sha.update(''.join(sortlist).encode())
             return ierror.WXBizMsgCrypt_OK, sha.hexdigest()
         except Exception as e:
             logger = logging.getLogger()
@@ -76,7 +76,7 @@ class XMLParse:
         """
         try:
             xml_tree = ET.fromstring(xmltext)
-            encrypt = xml_tree.find("Encrypt")
+            encrypt = xml_tree.find('Encrypt')
             return ierror.WXBizMsgCrypt_OK, encrypt.text
         except Exception as e:
             logger = logging.getLogger()
@@ -92,10 +92,10 @@ class XMLParse:
         @return: 生成的xml字符串
         """
         resp_dict = {
-            "msg_encrypt": encrypt,
-            "msg_signaturet": signature,
-            "timestamp": timestamp,
-            "nonce": nonce,
+            'msg_encrypt': encrypt,
+            'msg_signaturet': signature,
+            'timestamp': timestamp,
+            'nonce': nonce,
         }
         resp_xml = self.AES_TEXT_RESPONSE_TEMPLATE % resp_dict
         return resp_xml
@@ -147,7 +147,7 @@ class Prpcrypt(object):
         """
         # 16位随机字符串添加到明文开头
         text = text.encode()
-        text = self.get_random_str() + struct.pack("I", socket.htonl(len(text))) + text + receiveid.encode()
+        text = self.get_random_str() + struct.pack('I', socket.htonl(len(text))) + text + receiveid.encode()
 
         # 使用自定义的填充方式对明文进行补位填充
         pkcs7 = PKCS7Encoder()
@@ -183,7 +183,7 @@ class Prpcrypt(object):
             # plain_text = pkcs7.encode(plain_text)
             # 去除16位随机字符串
             content = plain_text[16:-pad]
-            xml_len = socket.ntohl(struct.unpack("I", content[:4])[0])
+            xml_len = socket.ntohl(struct.unpack('I', content[:4])[0])
             xml_content = content[4 : xml_len + 4]
             from_receiveid = content[xml_len + 4 :]
         except Exception as e:
@@ -191,7 +191,7 @@ class Prpcrypt(object):
             logger.error(e)
             return ierror.WXBizMsgCrypt_IllegalBuffer, None
 
-        if from_receiveid.decode("utf8") != receiveid:
+        if from_receiveid.decode('utf8') != receiveid:
             return ierror.WXBizMsgCrypt_ValidateCorpid_Error, None
         return 0, xml_content
 
@@ -206,10 +206,10 @@ class WXBizMsgCrypt(object):
     # 构造函数
     def __init__(self, sToken, sEncodingAESKey, sReceiveId):
         try:
-            self.key = base64.b64decode(sEncodingAESKey + "=")
+            self.key = base64.b64decode(sEncodingAESKey + '=')
             assert len(self.key) == 32
         except Exception:
-            throw_exception("[error]: EncodingAESKey unvalid !", FormatException)
+            throw_exception('[error]: EncodingAESKey unvalid !', FormatException)
             # return ierror.WXBizMsgCrypt_IllegalAesKey,None
         self.m_sToken = sToken
         self.m_sReceiveId = sReceiveId
@@ -242,7 +242,7 @@ class WXBizMsgCrypt(object):
         # return：成功0，sEncryptMsg,失败返回对应的错误码None
         pc = Prpcrypt(self.key)
         ret, encrypt = pc.encrypt(sReplyMsg, self.m_sReceiveId)
-        encrypt = encrypt.decode("utf8")
+        encrypt = encrypt.decode('utf8')
         if ret != 0:
             return ret, None
         if timestamp is None:

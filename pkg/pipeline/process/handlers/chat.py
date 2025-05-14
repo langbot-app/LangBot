@@ -61,16 +61,16 @@ class ChatMessageHandler(handler.MessageHandler):
 
             try:
                 for r in runner_module.preregistered_runners:
-                    if r.name == query.pipeline_config["ai"]["runner"]["runner"]:
+                    if r.name == query.pipeline_config['ai']['runner']['runner']:
                         runner = r(self.ap, query.pipeline_config)
                         break
                 else:
-                    raise ValueError(f"未找到请求运行器: {query.pipeline_config['ai']['runner']['runner']}")
+                    raise ValueError(f'未找到请求运行器: {query.pipeline_config["ai"]["runner"]["runner"]}')
 
                 async for result in runner.run(query):
                     query.resp_messages.append(result)
 
-                    self.ap.logger.info(f"对话({query.query_id})响应: {self.cut_str(result.readable_str())}")
+                    self.ap.logger.info(f'对话({query.query_id})响应: {self.cut_str(result.readable_str())}')
 
                     if result.content is not None:
                         text_length += len(result.content)
@@ -80,15 +80,15 @@ class ChatMessageHandler(handler.MessageHandler):
                 query.session.using_conversation.messages.append(query.user_message)
                 query.session.using_conversation.messages.extend(query.resp_messages)
             except Exception as e:
-                self.ap.logger.error(f"对话({query.query_id})请求失败: {type(e).__name__} {str(e)}")
+                self.ap.logger.error(f'对话({query.query_id})请求失败: {type(e).__name__} {str(e)}')
 
-                hide_exception_info = query.pipeline_config["output"]["misc"]["hide-exception"]
+                hide_exception_info = query.pipeline_config['output']['misc']['hide-exception']
 
                 yield entities.StageProcessResult(
                     result_type=entities.ResultType.INTERRUPT,
                     new_query=query,
-                    user_notice="请求失败" if hide_exception_info else f"{e}",
-                    error_notice=f"{e}",
+                    user_notice='请求失败' if hide_exception_info else f'{e}',
+                    error_notice=f'{e}',
                     debug_notice=traceback.format_exc(),
                 )
             finally:

@@ -89,7 +89,7 @@ class RuntimePipeline:
             elif isinstance(result.user_notice, list):
                 result.user_notice = platform_message.MessageChain(*result.user_notice)
 
-            if query.pipeline_config["output"]["misc"]["at-sender"] and isinstance(
+            if query.pipeline_config['output']['misc']['at-sender'] and isinstance(
                 query.message_event, platform_events.GroupMessage
             ):
                 result.user_notice.insert(0, platform_message.At(query.message_event.sender.id))
@@ -97,7 +97,7 @@ class RuntimePipeline:
             await query.adapter.reply_message(
                 message_source=query.message_event,
                 message=result.user_notice,
-                quote_origin=query.pipeline_config["output"]["misc"]["quote-origin"],
+                quote_origin=query.pipeline_config['output']['misc']['quote-origin'],
             )
         if result.debug_notice:
             self.ap.logger.debug(result.debug_notice)
@@ -144,23 +144,23 @@ class RuntimePipeline:
                 result = await result
 
             if isinstance(result, pipeline_entities.StageProcessResult):  # 直接返回结果
-                self.ap.logger.debug(f"Stage {stage_container.inst_name} processed query {query} res {result}")
+                self.ap.logger.debug(f'Stage {stage_container.inst_name} processed query {query} res {result}')
                 await self._check_output(query, result)
 
                 if result.result_type == pipeline_entities.ResultType.INTERRUPT:
-                    self.ap.logger.debug(f"Stage {stage_container.inst_name} interrupted query {query}")
+                    self.ap.logger.debug(f'Stage {stage_container.inst_name} interrupted query {query}')
                     break
                 elif result.result_type == pipeline_entities.ResultType.CONTINUE:
                     query = result.new_query
             elif isinstance(result, typing.AsyncGenerator):  # 生成器
-                self.ap.logger.debug(f"Stage {stage_container.inst_name} processed query {query} gen")
+                self.ap.logger.debug(f'Stage {stage_container.inst_name} processed query {query} gen')
 
                 async for sub_result in result:
-                    self.ap.logger.debug(f"Stage {stage_container.inst_name} processed query {query} res {sub_result}")
+                    self.ap.logger.debug(f'Stage {stage_container.inst_name} processed query {query} res {sub_result}')
                     await self._check_output(query, sub_result)
 
                     if sub_result.result_type == pipeline_entities.ResultType.INTERRUPT:
-                        self.ap.logger.debug(f"Stage {stage_container.inst_name} interrupted query {query}")
+                        self.ap.logger.debug(f'Stage {stage_container.inst_name} interrupted query {query}')
                         break
                     elif sub_result.result_type == pipeline_entities.ResultType.CONTINUE:
                         query = sub_result.new_query
@@ -192,15 +192,15 @@ class RuntimePipeline:
             if event_ctx.is_prevented_default():
                 return
 
-            self.ap.logger.debug(f"Processing query {query}")
+            self.ap.logger.debug(f'Processing query {query}')
 
             await self._execute_from_stage(0, query)
         except Exception as e:
-            inst_name = query.current_stage.inst_name if query.current_stage else "unknown"
-            self.ap.logger.error(f"处理请求时出错 query_id={query.query_id} stage={inst_name} : {e}")
-            self.ap.logger.error(f"Traceback: {traceback.format_exc()}")
+            inst_name = query.current_stage.inst_name if query.current_stage else 'unknown'
+            self.ap.logger.error(f'处理请求时出错 query_id={query.query_id} stage={inst_name} : {e}')
+            self.ap.logger.error(f'Traceback: {traceback.format_exc()}')
         finally:
-            self.ap.logger.debug(f"Query {query} processed")
+            self.ap.logger.debug(f'Query {query} processed')
 
 
 class PipelineManager:
@@ -224,7 +224,7 @@ class PipelineManager:
         await self.load_pipelines_from_db()
 
     async def load_pipelines_from_db(self):
-        self.ap.logger.info("Loading pipelines from db...")
+        self.ap.logger.info('Loading pipelines from db...')
 
         result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_pipeline.LegacyPipeline))
 

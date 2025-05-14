@@ -36,13 +36,13 @@ class OAMessageConverter(adapter.MessageConverter):
 class OAEventConverter(adapter.EventConverter):
     @staticmethod
     async def target2yiri(event: OAEvent):
-        if event.type == "text":
+        if event.type == 'text':
             yiri_chain = await OAMessageConverter.target2yiri(event.message, event.message_id)
 
             friend = platform_entities.Friend(
                 id=event.user_id,
                 nickname=str(event.user_id),
-                remark="",
+                remark='',
             )
 
             return platform_events.FriendMessage(
@@ -69,33 +69,33 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
         self.ap = ap
 
         required_keys = [
-            "token",
-            "EncodingAESKey",
-            "AppSecret",
-            "AppID",
-            "Mode",
+            'token',
+            'EncodingAESKey',
+            'AppSecret',
+            'AppID',
+            'Mode',
         ]
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
-            raise ParamNotEnoughError("微信公众号缺少相关配置项，请查看文档或联系管理员")
+            raise ParamNotEnoughError('微信公众号缺少相关配置项，请查看文档或联系管理员')
 
-        if self.config["Mode"] == "drop":
+        if self.config['Mode'] == 'drop':
             self.bot = OAClient(
-                token=config["token"],
-                EncodingAESKey=config["EncodingAESKey"],
-                Appsecret=config["AppSecret"],
-                AppID=config["AppID"],
+                token=config['token'],
+                EncodingAESKey=config['EncodingAESKey'],
+                Appsecret=config['AppSecret'],
+                AppID=config['AppID'],
             )
-        elif self.config["Mode"] == "passive":
+        elif self.config['Mode'] == 'passive':
             self.bot = OAClientForLongerResponse(
-                token=config["token"],
-                EncodingAESKey=config["EncodingAESKey"],
-                Appsecret=config["AppSecret"],
-                AppID=config["AppID"],
-                LoadingMessage=config["LoadingMessage"],
+                token=config['token'],
+                EncodingAESKey=config['EncodingAESKey'],
+                Appsecret=config['AppSecret'],
+                AppID=config['AppID'],
+                LoadingMessage=config['LoadingMessage'],
             )
         else:
-            raise KeyError("请设置微信公众号通信模式")
+            raise KeyError('请设置微信公众号通信模式')
 
     async def reply_message(
         self,
@@ -126,7 +126,7 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
                 traceback.print_exc()
 
         if event_type == platform_events.FriendMessage:
-            self.bot.on_message("text")(on_message)
+            self.bot.on_message('text')(on_message)
         elif event_type == platform_events.GroupMessage:
             pass
 
@@ -136,8 +136,8 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
                 await asyncio.sleep(1)
 
         await self.bot.run_task(
-            host=self.config["host"],
-            port=self.config["port"],
+            host=self.config['host'],
+            port=self.config['port'],
             shutdown_trigger=shutdown_trigger_placeholder,
         )
 

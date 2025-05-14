@@ -12,6 +12,6 @@ class XaiChatCompletions(chatcmpl.OpenAIChatCompletions):
     client: openai.AsyncClient
 
     default_config: dict[str, typing.Any] = {
-        "base_url": "https://api.x.ai/v1",
-        "timeout": 120,
+        'base_url': 'https://api.x.ai/v1',
+        'timeout': 120,
     }

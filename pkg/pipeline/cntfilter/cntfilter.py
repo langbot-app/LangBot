@@ -14,8 +14,8 @@ from . import filters
 importutil.import_modules_in_pkg(filters)
 
 
-@stage.stage_class("PostContentFilterStage")
-@stage.stage_class("PreContentFilterStage")
+@stage.stage_class('PostContentFilterStage')
+@stage.stage_class('PreContentFilterStage')
 class ContentFilterStage(stage.PipelineStage):
     """内容过滤阶段
 
@@ -38,11 +38,11 @@ class ContentFilterStage(stage.PipelineStage):
 
     async def initialize(self, pipeline_config: dict):
         filters_required = [
-            "content-ignore",
+            'content-ignore',
         ]
 
-        if pipeline_config["safety"]["content-filter"]["check-sensitive-words"]:
-            filters_required.append("ban-word-filter")
+        if pipeline_config['safety']['content-filter']['check-sensitive-words']:
+            filters_required.append('ban-word-filter')
 
         # TODO revert it
         # if self.ap.pipeline_cfg.data['baidu-cloud-examine']['enable']:
@@ -64,7 +64,7 @@ class ContentFilterStage(stage.PipelineStage):
         只要有一个不通过就不放行，只放行 PASS 的消息
         """
 
-        if query.pipeline_config["safety"]["content-filter"]["scope"] == "output-msg":
+        if query.pipeline_config['safety']['content-filter']['scope'] == 'output-msg':
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
         else:
             for filter in self.filter_chain:
@@ -96,7 +96,7 @@ class ContentFilterStage(stage.PipelineStage):
         """请求llm后处理响应
         只要是 PASS 或者 MASKED 的就通过此 filter，将其 replacement 设置为message，进入下一个 filter
         """
-        if query.pipeline_config["safety"]["content-filter"]["scope"] == "income-msg":
+        if query.pipeline_config['safety']['content-filter']['scope'] == 'income-msg':
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
         else:
             message = message.strip()
@@ -123,7 +123,7 @@ class ContentFilterStage(stage.PipelineStage):
 
     async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:
         """处理"""
-        if stage_inst_name == "PreContentFilterStage":
+        if stage_inst_name == 'PreContentFilterStage':
             contain_non_text = False
 
             text_components = [platform_message.Plain, platform_message.Source]
@@ -134,11 +134,11 @@ class ContentFilterStage(stage.PipelineStage):
                     break
 
             if contain_non_text:
-                self.ap.logger.debug("消息中包含非文本消息，跳过内容过滤器检查。")
+                self.ap.logger.debug('消息中包含非文本消息，跳过内容过滤器检查。')
                 return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
             return await self._pre_process(str(query.message_chain).strip(), query)
-        elif stage_inst_name == "PostContentFilterStage":
+        elif stage_inst_name == 'PostContentFilterStage':
             # 仅处理 query.resp_messages[-1].content 是 str 的情况
             if isinstance(query.resp_messages[-1], llm_entities.Message) and isinstance(
                 query.resp_messages[-1].content, str
@@ -146,8 +146,8 @@ class ContentFilterStage(stage.PipelineStage):
                 return await self._post_process(query.resp_messages[-1].content, query)
             else:
                 self.ap.logger.debug(
-                    "resp_messages[-1] 不是 Message 类型或 query.resp_messages[-1].content 不是 str 类型，跳过内容过滤器检查。"
+                    'resp_messages[-1] 不是 Message 类型或 query.resp_messages[-1].content 不是 str 类型，跳过内容过滤器检查。'
                 )
                 return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
         else:
-            raise ValueError(f"未知的 stage_inst_name: {stage_inst_name}")
+            raise ValueError(f'未知的 stage_inst_name: {stage_inst_name}')

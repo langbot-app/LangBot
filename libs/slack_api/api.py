@@ -13,10 +13,10 @@ class SlackClient:
         self.app = Quart(__name__)
         self.client = AsyncWebClient(self.bot_token)
         self.app.add_url_rule(
-            "/callback/command", "handle_callback", self.handle_callback_request, methods=["GET", "POST"]
+            '/callback/command', 'handle_callback', self.handle_callback_request, methods=['GET', 'POST']
         )
         self._message_handlers = {
-            "example": [],
+            'example': [],
         }
         self.bot_user_id = None  # 避免机器人回复自己的消息
 
@@ -24,29 +24,29 @@ class SlackClient:
         try:
             body = await request.get_data()
             data = json.loads(body)
-            if "type" in data:
-                if data["type"] == "url_verification":
-                    return data["challenge"]
+            if 'type' in data:
+                if data['type'] == 'url_verification':
+                    return data['challenge']
 
-            bot_user_id = data.get("event", {}).get("bot_id", "")
+            bot_user_id = data.get('event', {}).get('bot_id', '')
 
             if self.bot_user_id and bot_user_id == self.bot_user_id:
-                return jsonify({"status": "ok"})
+                return jsonify({'status': 'ok'})
 
             # 处理私信
-            if data and data.get("event", {}).get("channel_type") in ["im"]:
+            if data and data.get('event', {}).get('channel_type') in ['im']:
                 event = SlackEvent.from_payload(data)
                 await self._handle_message(event)
-                return jsonify({"status": "ok"})
+                return jsonify({'status': 'ok'})
 
             # 处理群聊
-            if data.get("event", {}).get("type") == "app_mention":
-                data.setdefault("event", {})["channel_type"] = "channel"
+            if data.get('event', {}).get('type') == 'app_mention':
+                data.setdefault('event', {})['channel_type'] = 'channel'
                 event = SlackEvent.from_payload(data)
                 await self._handle_message(event)
-                return jsonify({"status": "ok"})
+                return jsonify({'status': 'ok'})
 
-            return jsonify({"status": "ok"})
+            return jsonify({'status': 'ok'})
 
         except Exception as e:
             raise (e)
@@ -74,17 +74,17 @@ class SlackClient:
     async def send_message_to_channel(self, text: str, channel_id: str):
         try:
             response = await self.client.chat_postMessage(channel=channel_id, text=text)
-            if self.bot_user_id is None and response.get("ok"):
-                self.bot_user_id = response["message"]["bot_id"]
+            if self.bot_user_id is None and response.get('ok'):
+                self.bot_user_id = response['message']['bot_id']
             return
         except Exception as e:
             raise e
 
     async def send_message_to_one(self, text: str, user_id: str):
         try:
-            response = await self.client.chat_postMessage(channel="@" + user_id, text=text)
-            if self.bot_user_id is None and response.get("ok"):
-                self.bot_user_id = response["message"]["bot_id"]
+            response = await self.client.chat_postMessage(channel='@' + user_id, text=text)
+            if self.bot_user_id is None and response.get('ok'):
+                self.bot_user_id = response['message']['bot_id']
 
             return
         except Exception as e:

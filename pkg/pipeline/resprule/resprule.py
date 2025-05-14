@@ -12,7 +12,7 @@ from . import rules
 importutil.import_modules_in_pkg(rules)
 
 
-@stage.stage_class("GroupRespondRuleCheckStage")
+@stage.stage_class('GroupRespondRuleCheckStage')
 class GroupRespondRuleCheckStage(stage.PipelineStage):
     """群组响应规则检查器
 
@@ -33,10 +33,10 @@ class GroupRespondRuleCheckStage(stage.PipelineStage):
             self.rule_matchers.append(rule_inst)
 
     async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:
-        if query.launcher_type.value != "group":  # 只处理群消息
+        if query.launcher_type.value != 'group':  # 只处理群消息
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
-        rules = query.pipeline_config["trigger"]["group-respond-rules"]
+        rules = query.pipeline_config['trigger']['group-respond-rules']
 
         use_rule = rules
 

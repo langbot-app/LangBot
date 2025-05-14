@@ -16,7 +16,7 @@ class Controller:
 
     def __init__(self, ap: app.Application):
         self.ap = ap
-        self.semaphore = asyncio.Semaphore(self.ap.instance_config.data["concurrency"]["pipeline"])
+        self.semaphore = asyncio.Semaphore(self.ap.instance_config.data['concurrency']['pipeline'])
 
     async def consumer(self):
         """事件处理循环"""
@@ -30,7 +30,7 @@ class Controller:
 
                     for query in queries:
                         session = await self.ap.sess_mgr.get_session(query)
-                        self.ap.logger.debug(f"Checking query {query} session {session}")
+                        self.ap.logger.debug(f'Checking query {query} session {session}')
 
                         if not session.semaphore.locked():
                             selected_query = query
@@ -66,8 +66,8 @@ class Controller:
 
                     self.ap.task_mgr.create_task(
                         _process_query(selected_query),
-                        kind="query",
-                        name=f"query-{selected_query.query_id}",
+                        kind='query',
+                        name=f'query-{selected_query.query_id}',
                         scopes=[
                             entities.LifecycleControlScope.APPLICATION,
                             entities.LifecycleControlScope.PLATFORM,
@@ -76,8 +76,8 @@ class Controller:
 
         except Exception as e:
             # traceback.print_exc()
-            self.ap.logger.error(f"控制器循环出错: {e}")
-            self.ap.logger.error(f"Traceback: {traceback.format_exc()}")
+            self.ap.logger.error(f'控制器循环出错: {e}')
+            self.ap.logger.error(f'Traceback: {traceback.format_exc()}')
 
     async def run(self):
         """运行控制器"""

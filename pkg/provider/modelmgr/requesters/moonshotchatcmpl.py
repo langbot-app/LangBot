@@ -14,8 +14,8 @@ class MoonshotChatCompletions(chatcmpl.OpenAIChatCompletions):
     """Moonshot ChatCompletion API 请求器"""
 
     default_config: dict[str, typing.Any] = {
-        "base_url": "https://api.moonshot.cn/v1",
-        "timeout": 120,
+        'base_url': 'https://api.moonshot.cn/v1',
+        'timeout': 120,
     }
 
     async def _closure(
@@ -29,26 +29,26 @@ class MoonshotChatCompletions(chatcmpl.OpenAIChatCompletions):
         self.client.api_key = use_model.token_mgr.get_token()
 
         args = {}
-        args["model"] = use_model.model_entity.name
+        args['model'] = use_model.model_entity.name
 
         if use_funcs:
             tools = await self.ap.tool_mgr.generate_tools_for_openai(use_funcs)
 
             if tools:
-                args["tools"] = tools
+                args['tools'] = tools
 
         # 设置此次请求中的messages
         messages = req_messages
 
         # deepseek 不支持多模态，把content都转换成纯文字
         for m in messages:
-            if "content" in m and isinstance(m["content"], list):
-                m["content"] = " ".join([c["text"] for c in m["content"]])
+            if 'content' in m and isinstance(m['content'], list):
+                m['content'] = ' '.join([c['text'] for c in m['content']])
 
         # 删除空的，不知道干嘛的，直接删了。
         # messages = [m for m in messages if m["content"].strip() != "" and ('tool_calls' not in m or not m['tool_calls'])]
 
-        args["messages"] = messages
+        args['messages'] = messages
 
         # 发送请求
         resp = await self._req(args, extra_body=extra_args)

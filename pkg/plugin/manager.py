@@ -67,10 +67,10 @@ class PluginManager:
         await self.installer.initialize()
         await self.api_host.initialize()
 
-        setattr(models, "require_ver", self.api_host.require_ver)
+        setattr(models, 'require_ver', self.api_host.require_ver)
 
     async def load_plugins(self):
-        self.ap.logger.info("Loading all plugins...")
+        self.ap.logger.info('Loading all plugins...')
 
         for loader in self.loaders:
             await loader.load_plugins()
@@ -81,7 +81,7 @@ class PluginManager:
         # 按优先级倒序
         self.plugin_containers.sort(key=lambda x: x.priority, reverse=False)
 
-        self.ap.logger.debug(f"优先级排序后的插件列表 {self.plugin_containers}")
+        self.ap.logger.debug(f'优先级排序后的插件列表 {self.plugin_containers}')
 
     async def load_plugin_settings(self, plugin_containers: list[context.RuntimeContainer]):
         for plugin_container in plugin_containers:
@@ -95,11 +95,11 @@ class PluginManager:
 
             if setting is None:
                 new_setting_data = {
-                    "plugin_author": plugin_container.plugin_author,
-                    "plugin_name": plugin_container.plugin_name,
-                    "enabled": plugin_container.enabled,
-                    "priority": plugin_container.priority,
-                    "config": plugin_container.plugin_config,
+                    'plugin_author': plugin_container.plugin_author,
+                    'plugin_name': plugin_container.plugin_name,
+                    'enabled': plugin_container.enabled,
+                    'priority': plugin_container.priority,
+                    'config': plugin_container.plugin_config,
                 }
 
                 await self.ap.persistence_mgr.execute_async(
@@ -125,7 +125,7 @@ class PluginManager:
         )
 
     async def initialize_plugin(self, plugin: context.RuntimeContainer):
-        self.ap.logger.debug(f"初始化插件 {plugin.plugin_name}")
+        self.ap.logger.debug(f'初始化插件 {plugin.plugin_name}')
         plugin.plugin_inst = plugin.plugin_class(self.api_host)
         plugin.plugin_inst.config = plugin.plugin_config
         plugin.plugin_inst.ap = self.ap
@@ -136,12 +136,12 @@ class PluginManager:
     async def initialize_plugins(self):
         for plugin in self.plugins():
             if not plugin.enabled:
-                self.ap.logger.debug(f"插件 {plugin.plugin_name} 未启用，跳过初始化")
+                self.ap.logger.debug(f'插件 {plugin.plugin_name} 未启用，跳过初始化')
                 continue
             try:
                 await self.initialize_plugin(plugin)
             except Exception as e:
-                self.ap.logger.error(f"插件 {plugin.plugin_name} 初始化失败: {e}")
+                self.ap.logger.error(f'插件 {plugin.plugin_name} 初始化失败: {e}')
                 self.ap.logger.exception(e)
                 continue
 
@@ -149,7 +149,7 @@ class PluginManager:
         if plugin.status != context.RuntimeContainerStatus.INITIALIZED:
             return
 
-        self.ap.logger.debug(f"释放插件 {plugin.plugin_name}")
+        self.ap.logger.debug(f'释放插件 {plugin.plugin_name}')
         plugin.plugin_inst.__del__()
         await plugin.plugin_inst.destroy()
         plugin.plugin_inst = None
@@ -158,13 +158,13 @@ class PluginManager:
     async def destroy_plugins(self):
         for plugin in self.plugins():
             if plugin.status != context.RuntimeContainerStatus.INITIALIZED:
-                self.ap.logger.debug(f"插件 {plugin.plugin_name} 未初始化，跳过释放")
+                self.ap.logger.debug(f'插件 {plugin.plugin_name} 未初始化，跳过释放')
                 continue
 
             try:
                 await self.destroy_plugin(plugin)
             except Exception as e:
-                self.ap.logger.error(f"插件 {plugin.plugin_name} 释放失败: {e}")
+                self.ap.logger.error(f'插件 {plugin.plugin_name} 释放失败: {e}')
                 self.ap.logger.exception(e)
                 continue
 
@@ -178,8 +178,8 @@ class PluginManager:
 
         # TODO statistics
 
-        task_context.trace("重载插件..", "reload-plugin")
-        await self.ap.reload(scope="plugin")
+        task_context.trace('重载插件..', 'reload-plugin')
+        await self.ap.reload(scope='plugin')
 
     async def uninstall_plugin(
         self,
@@ -191,15 +191,15 @@ class PluginManager:
         plugin_container = self.get_plugin_by_name(plugin_name)
 
         if plugin_container is None:
-            raise ValueError(f"插件 {plugin_name} 不存在")
+            raise ValueError(f'插件 {plugin_name} 不存在')
 
         await self.destroy_plugin(plugin_container)
         await self.installer.uninstall_plugin(plugin_name, task_context)
 
         # TODO statistics
 
-        task_context.trace("重载插件..", "reload-plugin")
-        await self.ap.reload(scope="plugin")
+        task_context.trace('重载插件..', 'reload-plugin')
+        await self.ap.reload(scope='plugin')
 
     async def update_plugin(
         self,
@@ -212,8 +212,8 @@ class PluginManager:
 
         # TODO statistics
 
-        task_context.trace("重载插件..", "reload-plugin")
-        await self.ap.reload(scope="plugin")
+        task_context.trace('重载插件..', 'reload-plugin')
+        await self.ap.reload(scope='plugin')
 
     def get_plugin_by_name(self, plugin_name: str) -> context.RuntimeContainer:
         """通过插件名获取插件"""
@@ -231,7 +231,7 @@ class PluginManager:
 
         for plugin in self.plugins(enabled=True, status=context.RuntimeContainerStatus.INITIALIZED):
             if event.__class__ in plugin.event_handlers:
-                self.ap.logger.debug(f"插件 {plugin.plugin_name} 处理事件 {event.__class__.__name__}")
+                self.ap.logger.debug(f'插件 {plugin.plugin_name} 处理事件 {event.__class__.__name__}')
 
                 is_prevented_default_before_call = ctx.is_prevented_default()
 
@@ -239,24 +239,24 @@ class PluginManager:
                     await plugin.event_handlers[event.__class__](plugin.plugin_inst, ctx)
                 except Exception as e:
                     self.ap.logger.error(
-                        f"插件 {plugin.plugin_name} 处理事件 {event.__class__.__name__} 时发生错误: {e}"
+                        f'插件 {plugin.plugin_name} 处理事件 {event.__class__.__name__} 时发生错误: {e}'
                     )
-                    self.ap.logger.debug(f"Traceback: {traceback.format_exc()}")
+                    self.ap.logger.debug(f'Traceback: {traceback.format_exc()}')
 
                 emitted_plugins.append(plugin)
 
                 if not is_prevented_default_before_call and ctx.is_prevented_default():
-                    self.ap.logger.debug(f"插件 {plugin.plugin_name} 阻止了默认行为执行")
+                    self.ap.logger.debug(f'插件 {plugin.plugin_name} 阻止了默认行为执行')
 
                 if ctx.is_prevented_postorder():
-                    self.ap.logger.debug(f"插件 {plugin.plugin_name} 阻止了后序插件的执行")
+                    self.ap.logger.debug(f'插件 {plugin.plugin_name} 阻止了后序插件的执行')
                     break
 
         for key in ctx.__return_value__.keys():
             if hasattr(ctx.event, key):
                 setattr(ctx.event, key, ctx.__return_value__[key][0])
 
-        self.ap.logger.debug(f"事件 {event.__class__.__name__}({ctx.eid}) 处理完成，返回值 {ctx.__return_value__}")
+        self.ap.logger.debug(f'事件 {event.__class__.__name__}({ctx.eid}) 处理完成，返回值 {ctx.__return_value__}')
 
         # TODO statistics
 
@@ -287,8 +287,8 @@ class PluginManager:
 
     async def reorder_plugins(self, plugins: list[dict]):
         for plugin in plugins:
-            plugin_name = plugin.get("name")
-            plugin_priority = plugin.get("priority")
+            plugin_name = plugin.get('name')
+            plugin_priority = plugin.get('priority')
 
             for plugin in self.plugin_containers:
                 if plugin.plugin_name == plugin_name:

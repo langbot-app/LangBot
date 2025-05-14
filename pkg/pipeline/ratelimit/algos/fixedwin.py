@@ -18,7 +18,7 @@ class SessionContainer:
         self.records = {}
 
 
-@algo.algo_class("fixwin")
+@algo.algo_class('fixwin')
 class FixedWindowAlgo(algo.ReteLimitAlgo):
     containers_lock: asyncio.Lock
     """访问记录容器锁"""
@@ -39,7 +39,7 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
         # 加锁，找容器
         container: SessionContainer = None
 
-        session_name = f"{launcher_type}_{launcher_id}"
+        session_name = f'{launcher_type}_{launcher_id}'
 
         async with self.containers_lock:
             container = self.containers.get(session_name)
@@ -51,8 +51,8 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
         # 等待锁
         async with container.wait_lock:
             # 获取窗口大小和限制
-            window_size = query.pipeline_config["safety"]["rate-limit"]["window-length"]
-            limitation = query.pipeline_config["safety"]["rate-limit"]["limitation"]
+            window_size = query.pipeline_config['safety']['rate-limit']['window-length']
+            limitation = query.pipeline_config['safety']['rate-limit']['limitation']
 
             # TODO revert it
             # if session_name in self.ap.pipeline_cfg.data['rate-limit']['fixwin']:
@@ -70,9 +70,9 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
 
             # 如果访问次数超过了限制
             if count >= limitation:
-                if query.pipeline_config["safety"]["rate-limit"]["strategy"] == "drop":
+                if query.pipeline_config['safety']['rate-limit']['strategy'] == 'drop':
                     return False
-                elif query.pipeline_config["safety"]["rate-limit"]["strategy"] == "wait":
+                elif query.pipeline_config['safety']['rate-limit']['strategy'] == 'wait':
                     # 等待下一窗口
                     await asyncio.sleep(window_size - time.time() % window_size)
 

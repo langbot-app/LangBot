@@ -6,7 +6,7 @@ from .base import Base
 class Bot(Base):
     """机器人"""
 
-    __tablename__ = "bots"
+    __tablename__ = 'bots'
 
     uuid = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True, unique=True)
     name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)

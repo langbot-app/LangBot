@@ -11,7 +11,7 @@ from .. import stage, entities
 from ...core import entities as core_entities
 
 
-@stage.stage_class("SendResponseBackStage")
+@stage.stage_class('SendResponseBackStage')
 class SendResponseBackStage(stage.PipelineStage):
     """发送响应消息"""
 
@@ -19,22 +19,22 @@ class SendResponseBackStage(stage.PipelineStage):
         """处理"""
 
         random_range = (
-            query.pipeline_config["output"]["force-delay"]["min"],
-            query.pipeline_config["output"]["force-delay"]["max"],
+            query.pipeline_config['output']['force-delay']['min'],
+            query.pipeline_config['output']['force-delay']['max'],
         )
 
         random_delay = random.uniform(*random_range)
 
-        self.ap.logger.debug("根据规则强制延迟回复: %s s", random_delay)
+        self.ap.logger.debug('根据规则强制延迟回复: %s s', random_delay)
 
         await asyncio.sleep(random_delay)
 
-        if query.pipeline_config["output"]["misc"]["at-sender"] and isinstance(
+        if query.pipeline_config['output']['misc']['at-sender'] and isinstance(
             query.message_event, platform_events.GroupMessage
         ):
             query.resp_message_chain[-1].insert(0, platform_message.At(query.message_event.sender.id))
 
-        quote_origin = query.pipeline_config["output"]["misc"]["quote-origin"]
+        quote_origin = query.pipeline_config['output']['misc']['quote-origin']
 
         await query.adapter.reply_message(
             message_source=query.message_event,

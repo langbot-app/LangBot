@@ -25,8 +25,8 @@ class QQOfficialMessageConverter(adapter.MessageConverter):
             if type(msg) is platform_message.Plain:
                 content_list.append(
                     {
-                        "type": "text",
-                        "content": msg.text,
+                        'type': 'text',
+                        'content': msg.text,
                     }
                 )
 
@@ -62,67 +62,67 @@ class QQOfficialEventConverter(adapter.EventConverter):
             content_type=event.content_type,
         )
 
-        if event.t == "C2C_MESSAGE_CREATE":
+        if event.t == 'C2C_MESSAGE_CREATE':
             friend = platform_entities.Friend(
                 id=event.user_openid,
                 nickname=event.t,
-                remark="",
+                remark='',
             )
             return platform_events.FriendMessage(
                 sender=friend,
                 message_chain=yiri_chain,
-                time=int(datetime.datetime.strptime(event.timestamp, "%Y-%m-%dT%H:%M:%S%z").timestamp()),
+                time=int(datetime.datetime.strptime(event.timestamp, '%Y-%m-%dT%H:%M:%S%z').timestamp()),
                 source_platform_object=event,
             )
 
-        if event.t == "DIRECT_MESSAGE_CREATE":
+        if event.t == 'DIRECT_MESSAGE_CREATE':
             friend = platform_entities.Friend(
                 id=event.guild_id,
                 nickname=event.t,
-                remark="",
+                remark='',
             )
             return platform_events.FriendMessage(sender=friend, message_chain=yiri_chain, source_platform_object=event)
-        if event.t == "GROUP_AT_MESSAGE_CREATE":
-            yiri_chain.insert(0, platform_message.At(target="justbot"))
+        if event.t == 'GROUP_AT_MESSAGE_CREATE':
+            yiri_chain.insert(0, platform_message.At(target='justbot'))
 
             sender = platform_entities.GroupMember(
                 id=event.group_openid,
                 member_name=event.t,
-                permission="MEMBER",
+                permission='MEMBER',
                 group=platform_entities.Group(
                     id=event.group_openid,
-                    name="MEMBER",
+                    name='MEMBER',
                     permission=platform_entities.Permission.Member,
                 ),
-                special_title="",
+                special_title='',
                 join_timestamp=0,
                 last_speak_timestamp=0,
                 mute_time_remaining=0,
             )
-            time = int(datetime.datetime.strptime(event.timestamp, "%Y-%m-%dT%H:%M:%S%z").timestamp())
+            time = int(datetime.datetime.strptime(event.timestamp, '%Y-%m-%dT%H:%M:%S%z').timestamp())
             return platform_events.GroupMessage(
                 sender=sender,
                 message_chain=yiri_chain,
                 time=time,
                 source_platform_object=event,
             )
-        if event.t == "AT_MESSAGE_CREATE":
-            yiri_chain.insert(0, platform_message.At(target="justbot"))
+        if event.t == 'AT_MESSAGE_CREATE':
+            yiri_chain.insert(0, platform_message.At(target='justbot'))
             sender = platform_entities.GroupMember(
                 id=event.channel_id,
                 member_name=event.t,
-                permission="MEMBER",
+                permission='MEMBER',
                 group=platform_entities.Group(
                     id=event.channel_id,
-                    name="MEMBER",
+                    name='MEMBER',
                     permission=platform_entities.Permission.Member,
                 ),
-                special_title="",
+                special_title='',
                 join_timestamp=0,
                 last_speak_timestamp=0,
                 mute_time_remaining=0,
             )
-            time = int(datetime.datetime.strptime(event.timestamp, "%Y-%m-%dT%H:%M:%S%z").timestamp())
+            time = int(datetime.datetime.strptime(event.timestamp, '%Y-%m-%dT%H:%M:%S%z').timestamp())
             return platform_events.GroupMessage(
                 sender=sender,
                 message_chain=yiri_chain,
@@ -144,17 +144,17 @@ class QQOfficialAdapter(adapter.MessagePlatformAdapter):
         self.ap = ap
 
         required_keys = [
-            "appid",
-            "secret",
+            'appid',
+            'secret',
         ]
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
-            raise ParamNotEnoughError("QQ官方机器人缺少相关配置项，请查看文档或联系管理员")
+            raise ParamNotEnoughError('QQ官方机器人缺少相关配置项，请查看文档或联系管理员')
 
         self.bot = QQOfficialClient(
-            app_id=config["appid"],
-            secret=config["secret"],
-            token=config["token"],
+            app_id=config['appid'],
+            secret=config['secret'],
+            token=config['token'],
         )
 
     async def reply_message(
@@ -170,42 +170,42 @@ class QQOfficialAdapter(adapter.MessagePlatformAdapter):
         content_list = await QQOfficialMessageConverter.yiri2target(message)
 
         # 私聊消息
-        if qq_official_event.t == "C2C_MESSAGE_CREATE":
+        if qq_official_event.t == 'C2C_MESSAGE_CREATE':
             for content in content_list:
-                if content["type"] == "text":
+                if content['type'] == 'text':
                     await self.bot.send_private_text_msg(
                         qq_official_event.user_openid,
-                        content["content"],
+                        content['content'],
                         qq_official_event.d_id,
                     )
 
         # 群聊消息
-        if qq_official_event.t == "GROUP_AT_MESSAGE_CREATE":
+        if qq_official_event.t == 'GROUP_AT_MESSAGE_CREATE':
             for content in content_list:
-                if content["type"] == "text":
+                if content['type'] == 'text':
                     await self.bot.send_group_text_msg(
                         qq_official_event.group_openid,
-                        content["content"],
+                        content['content'],
                         qq_official_event.d_id,
                     )
 
         # 频道群聊
-        if qq_official_event.t == "AT_MESSAGE_CREATE":
+        if qq_official_event.t == 'AT_MESSAGE_CREATE':
             for content in content_list:
-                if content["type"] == "text":
+                if content['type'] == 'text':
                     await self.bot.send_channle_group_text_msg(
                         qq_official_event.channel_id,
-                        content["content"],
+                        content['content'],
                         qq_official_event.d_id,
                     )
 
         # 频道私聊
-        if qq_official_event.t == "DIRECT_MESSAGE_CREATE":
+        if qq_official_event.t == 'DIRECT_MESSAGE_CREATE':
             for content in content_list:
-                if content["type"] == "text":
+                if content['type'] == 'text':
                     await self.bot.send_channle_private_text_msg(
                         qq_official_event.guild_id,
-                        content["content"],
+                        content['content'],
                         qq_official_event.d_id,
                     )
 
@@ -218,18 +218,18 @@ class QQOfficialAdapter(adapter.MessagePlatformAdapter):
         callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
     ):
         async def on_message(event: QQOfficialEvent):
-            self.bot_account_id = "justbot"
+            self.bot_account_id = 'justbot'
             try:
                 return await callback(await self.event_converter.target2yiri(event), self)
             except Exception:
                 traceback.print_exc()
 
         if event_type == platform_events.FriendMessage:
-            self.bot.on_message("DIRECT_MESSAGE_CREATE")(on_message)
-            self.bot.on_message("C2C_MESSAGE_CREATE")(on_message)
+            self.bot.on_message('DIRECT_MESSAGE_CREATE')(on_message)
+            self.bot.on_message('C2C_MESSAGE_CREATE')(on_message)
         elif event_type == platform_events.GroupMessage:
-            self.bot.on_message("GROUP_AT_MESSAGE_CREATE")(on_message)
-            self.bot.on_message("AT_MESSAGE_CREATE")(on_message)
+            self.bot.on_message('GROUP_AT_MESSAGE_CREATE')(on_message)
+            self.bot.on_message('AT_MESSAGE_CREATE')(on_message)
 
     async def run_async(self):
         async def shutdown_trigger_placeholder():
@@ -237,8 +237,8 @@ class QQOfficialAdapter(adapter.MessagePlatformAdapter):
                 await asyncio.sleep(1)
 
         await self.bot.run_task(
-            host="0.0.0.0",
-            port=self.config["port"],
+            host='0.0.0.0',
+            port=self.config['port'],
             shutdown_trigger=shutdown_trigger_placeholder,
         )
 

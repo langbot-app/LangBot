@@ -13,9 +13,9 @@ class PluginSystemError(Exception):
 
 class PluginNotFoundError(PluginSystemError):
     def __init__(self, message: str):
-        super().__init__(f"未找到插件: {message}")
+        super().__init__(f'未找到插件: {message}')
 
 
 class PluginInstallerError(PluginSystemError):
     def __init__(self, message: str):
-        super().__init__(f"安装器操作错误: {message}")
+        super().__init__(f'安装器操作错误: {message}')

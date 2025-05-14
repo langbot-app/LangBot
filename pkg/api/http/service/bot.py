@@ -40,7 +40,7 @@ class BotService:
     async def create_bot(self, bot_data: dict) -> str:
         """创建机器人"""
         # TODO: 检查配置信息格式
-        bot_data["uuid"] = str(uuid.uuid4())
+        bot_data['uuid'] = str(uuid.uuid4())
 
         # checkout the default pipeline
         result = await self.ap.persistence_mgr.execute_async(
@@ -50,34 +50,34 @@ class BotService:
         )
         pipeline = result.first()
         if pipeline is not None:
-            bot_data["use_pipeline_uuid"] = pipeline.uuid
-            bot_data["use_pipeline_name"] = pipeline.name
+            bot_data['use_pipeline_uuid'] = pipeline.uuid
+            bot_data['use_pipeline_name'] = pipeline.name
 
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_bot.Bot).values(bot_data))
 
-        bot = await self.get_bot(bot_data["uuid"])
+        bot = await self.get_bot(bot_data['uuid'])
 
         await self.ap.platform_mgr.load_bot(bot)
 
-        return bot_data["uuid"]
+        return bot_data['uuid']
 
     async def update_bot(self, bot_uuid: str, bot_data: dict) -> None:
         """更新机器人"""
-        if "uuid" in bot_data:
-            del bot_data["uuid"]
+        if 'uuid' in bot_data:
+            del bot_data['uuid']
 
         # set use_pipeline_name
-        if "use_pipeline_uuid" in bot_data:
+        if 'use_pipeline_uuid' in bot_data:
             result = await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
-                    persistence_pipeline.LegacyPipeline.uuid == bot_data["use_pipeline_uuid"]
+                    persistence_pipeline.LegacyPipeline.uuid == bot_data['use_pipeline_uuid']
                 )
             )
             pipeline = result.first()
             if pipeline is not None:
-                bot_data["use_pipeline_name"] = pipeline.name
+                bot_data['use_pipeline_name'] = pipeline.name
             else:
-                raise Exception("Pipeline not found")
+                raise Exception('Pipeline not found')
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_bot.Bot).values(bot_data).where(persistence_bot.Bot.uuid == bot_uuid)

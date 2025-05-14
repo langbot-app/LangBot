@@ -151,7 +151,7 @@ class APIHost:
     def require_ver(
         self,
         ge: str,
-        le: str = "v999.999.999",
+        le: str = 'v999.999.999',
     ) -> bool:
         """插件版本要求装饰器
 
@@ -162,7 +162,7 @@ class APIHost:
         Returns:
             bool: 是否满足要求, False时为无法获取版本号，True时为满足要求，报错为不满足要求
         """
-        langbot_version = ""
+        langbot_version = ''
 
         try:
             langbot_version = self.ap.ver_mgr.get_current_version()  # 从updater模块获取版本号
@@ -173,7 +173,7 @@ class APIHost:
             self.ap.ver_mgr.compare_version_str(langbot_version, le) > 0
         ):
             raise Exception(
-                "LangBot 版本不满足要求，某些功能（可能是由插件提供的）无法正常使用。（要求版本：{}-{}，但当前版本：{}）".format(
+                'LangBot 版本不满足要求，某些功能（可能是由插件提供的）无法正常使用。（要求版本：{}-{}，但当前版本：{}）'.format(
                     ge, le, langbot_version
                 )
             )
@@ -288,10 +288,10 @@ class EventContext:
 class RuntimeContainerStatus(enum.Enum):
     """插件容器状态"""
 
-    MOUNTED = "mounted"
+    MOUNTED = 'mounted'
     """已加载进内存，所有位于运行时记录中的 RuntimeContainer 至少是这个状态"""
 
-    INITIALIZED = "initialized"
+    INITIALIZED = 'initialized'
     """已初始化"""
 
 
@@ -360,29 +360,29 @@ class RuntimeContainer(pydantic.BaseModel):
 
     def model_dump(self, *args, **kwargs):
         return {
-            "name": self.plugin_name,
-            "label": self.plugin_label.to_dict(),
-            "description": self.plugin_description.to_dict(),
-            "version": self.plugin_version,
-            "author": self.plugin_author,
-            "repository": self.plugin_repository,
-            "main_file": self.main_file,
-            "pkg_path": self.pkg_path,
-            "enabled": self.enabled,
-            "priority": self.priority,
-            "config_schema": self.config_schema,
-            "event_handlers": {
+            'name': self.plugin_name,
+            'label': self.plugin_label.to_dict(),
+            'description': self.plugin_description.to_dict(),
+            'version': self.plugin_version,
+            'author': self.plugin_author,
+            'repository': self.plugin_repository,
+            'main_file': self.main_file,
+            'pkg_path': self.pkg_path,
+            'enabled': self.enabled,
+            'priority': self.priority,
+            'config_schema': self.config_schema,
+            'event_handlers': {
                 event_name.__name__: handler.__name__ for event_name, handler in self.event_handlers.items()
             },
-            "tools": [
+            'tools': [
                 {
-                    "name": function.name,
-                    "human_desc": function.human_desc,
-                    "description": function.description,
-                    "parameters": function.parameters,
-                    "func": function.func.__name__,
+                    'name': function.name,
+                    'human_desc': function.human_desc,
+                    'description': function.description,
+                    'parameters': function.parameters,
+                    'func': function.func.__name__,
                 }
                 for function in self.tools
             ],
-            "status": self.status.value,
+            'status': self.status.value,
         }

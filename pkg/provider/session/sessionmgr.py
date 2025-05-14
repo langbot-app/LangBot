@@ -26,7 +26,7 @@ class SessionManager:
             if query.launcher_type == session.launcher_type and query.launcher_id == session.launcher_id:
                 return session
 
-        session_concurrency = self.ap.instance_config.data["concurrency"]["session"]
+        session_concurrency = self.ap.instance_config.data['concurrency']['session']
 
         session = core_entities.Session(
             launcher_type=query.launcher_type,
@@ -54,7 +54,7 @@ class SessionManager:
             prompt_messages.append(provider_entities.Message(**prompt_message))
 
         prompt = provider_entities.Prompt(
-            name="default",
+            name='default',
             messages=prompt_messages,
         )
 

@@ -38,9 +38,9 @@ class RuntimeMCPSession:
 
     async def _init_stdio_python_server(self):
         server_params = StdioServerParameters(
-            command=self.server_config["command"],
-            args=self.server_config["args"],
-            env=self.server_config["env"],
+            command=self.server_config['command'],
+            args=self.server_config['args'],
+            env=self.server_config['env'],
         )
 
         stdio_transport = await self.exit_stack.enter_async_context(stdio_client(server_params))
@@ -54,9 +54,9 @@ class RuntimeMCPSession:
     async def _init_sse_server(self):
         sse_transport = await self.exit_stack.enter_async_context(
             sse_client(
-                self.server_config["url"],
-                headers=self.server_config.get("headers", {}),
-                timeout=self.server_config.get("timeout", 10),
+                self.server_config['url'],
+                headers=self.server_config.get('headers', {}),
+                timeout=self.server_config.get('timeout', 10),
             )
         )
 
@@ -67,18 +67,18 @@ class RuntimeMCPSession:
         await self.session.initialize()
 
     async def initialize(self):
-        self.ap.logger.debug(f"初始化 MCP 会话: {self.server_name} {self.server_config}")
+        self.ap.logger.debug(f'初始化 MCP 会话: {self.server_name} {self.server_config}')
 
-        if self.server_config["mode"] == "stdio":
+        if self.server_config['mode'] == 'stdio':
             await self._init_stdio_python_server()
-        elif self.server_config["mode"] == "sse":
+        elif self.server_config['mode'] == 'sse':
             await self._init_sse_server()
         else:
-            raise ValueError(f"无法识别 MCP 服务器类型: {self.server_name}: {self.server_config}")
+            raise ValueError(f'无法识别 MCP 服务器类型: {self.server_name}: {self.server_config}')
 
         tools = await self.session.list_tools()
 
-        self.ap.logger.debug(f"获取 MCP 工具: {tools}")
+        self.ap.logger.debug(f'获取 MCP 工具: {tools}')
 
         for tool in tools.tools:
 
@@ -105,7 +105,7 @@ class RuntimeMCPSession:
         await self.session._exit_stack.aclose()
 
 
-@loader.loader_class("mcp")
+@loader.loader_class('mcp')
 class MCPLoader(loader.ToolLoader):
     """MCP 工具加载器。
 
@@ -122,13 +122,13 @@ class MCPLoader(loader.ToolLoader):
         self._last_listed_functions = []
 
     async def initialize(self):
-        for server_config in self.ap.instance_config.data.get("mcp", {}).get("servers", []):
-            if not server_config["enable"]:
+        for server_config in self.ap.instance_config.data.get('mcp', {}).get('servers', []):
+            if not server_config['enable']:
                 continue
-            session = RuntimeMCPSession(server_config["name"], server_config, self.ap)
+            session = RuntimeMCPSession(server_config['name'], server_config, self.ap)
             await session.initialize()
             # self.ap.event_loop.create_task(session.initialize())
-            self.sessions[server_config["name"]] = session
+            self.sessions[server_config['name']] = session
 
     async def get_tools(self, enabled: bool = True) -> list[tools_entities.LLMFunction]:
         all_functions = []
@@ -149,7 +149,7 @@ class MCPLoader(loader.ToolLoader):
                 if function.name == name:
                     return await function.func(query, **parameters)
 
-        raise ValueError(f"未找到工具: {name}")
+        raise ValueError(f'未找到工具: {name}')
 
     async def shutdown(self):
         """关闭工具"""

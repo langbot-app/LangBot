@@ -36,7 +36,7 @@ async def get_gewechat_image_base64(
         aiohttp.ClientTimeout: 请求超时（15秒）或连接超时（2秒）
         Exception: 其他错误
     """
-    headers = {"X-GEWE-TOKEN": token, "Content-Type": "application/json"}
+    headers = {'X-GEWE-TOKEN': token, 'Content-Type': 'application/json'}
 
     # 设置超时
     timeout = aiohttp.ClientTimeout(
@@ -51,51 +51,51 @@ async def get_gewechat_image_base64(
             # 获取图片下载链接
             try:
                 async with session.post(
-                    f"{gewechat_url}/v2/api/message/downloadImage",
+                    f'{gewechat_url}/v2/api/message/downloadImage',
                     headers=headers,
-                    json={"appId": app_id, "type": image_type, "xml": xml_content},
+                    json={'appId': app_id, 'type': image_type, 'xml': xml_content},
                 ) as response:
                     if response.status != 200:
                         # print(response)
-                        raise Exception(f"获取gewechat图片下载失败: {await response.text()}")
+                        raise Exception(f'获取gewechat图片下载失败: {await response.text()}')
 
                     resp_data = await response.json()
-                    if resp_data.get("ret") != 200:
-                        raise Exception(f"获取gewechat图片下载链接失败: {resp_data}")
+                    if resp_data.get('ret') != 200:
+                        raise Exception(f'获取gewechat图片下载链接失败: {resp_data}')
 
-                    file_url = resp_data["data"]["fileUrl"]
+                    file_url = resp_data['data']['fileUrl']
             except asyncio.TimeoutError:
-                raise Exception("获取图片下载链接超时")
+                raise Exception('获取图片下载链接超时')
             except aiohttp.ClientError as e:
-                raise Exception(f"获取图片下载链接网络错误: {str(e)}")
+                raise Exception(f'获取图片下载链接网络错误: {str(e)}')
 
             # 解析原始URL并替换端口
             base_url = gewechat_file_url
-            download_url = f"{base_url}/download/{file_url}"
+            download_url = f'{base_url}/download/{file_url}'
 
             # 下载图片
             try:
                 async with session.get(download_url) as img_response:
                     if img_response.status != 200:
-                        raise Exception(f"下载图片失败: {await img_response.text()}, URL: {download_url}")
+                        raise Exception(f'下载图片失败: {await img_response.text()}, URL: {download_url}')
 
                     image_data = await img_response.read()
 
-                    content_type = img_response.headers.get("Content-Type", "")
+                    content_type = img_response.headers.get('Content-Type', '')
                     if content_type:
-                        image_format = content_type.split("/")[-1]
+                        image_format = content_type.split('/')[-1]
                     else:
-                        image_format = file_url.split(".")[-1]
+                        image_format = file_url.split('.')[-1]
 
-                    base64_str = base64.b64encode(image_data).decode("utf-8")
+                    base64_str = base64.b64encode(image_data).decode('utf-8')
 
                     return base64_str, image_format
             except asyncio.TimeoutError:
-                raise Exception(f"下载图片超时, URL: {download_url}")
+                raise Exception(f'下载图片超时, URL: {download_url}')
             except aiohttp.ClientError as e:
-                raise Exception(f"下载图片网络错误: {str(e)}, URL: {download_url}")
+                raise Exception(f'下载图片网络错误: {str(e)}, URL: {download_url}')
     except Exception as e:
-        raise Exception(f"获取图片失败: {str(e)}") from e
+        raise Exception(f'获取图片失败: {str(e)}') from e
 
 
 async def get_wecom_image_base64(pic_url: str) -> tuple[str, str]:
@@ -107,19 +107,19 @@ async def get_wecom_image_base64(pic_url: str) -> tuple[str, str]:
     async with aiohttp.ClientSession() as session:
         async with session.get(pic_url) as response:
             if response.status != 200:
-                raise Exception(f"Failed to download image: {response.status}")
+                raise Exception(f'Failed to download image: {response.status}')
 
             # 读取图片数据
             image_data = await response.read()
 
             # 获取图片格式
-            content_type = response.headers.get("Content-Type", "")
-            image_format = content_type.split("/")[-1]  # 例如 'image/jpeg' -> 'jpeg'
+            content_type = response.headers.get('Content-Type', '')
+            image_format = content_type.split('/')[-1]  # 例如 'image/jpeg' -> 'jpeg'
 
             # 转换为 base64
             import base64
 
-            image_base64 = base64.b64encode(image_data).decode("utf-8")
+            image_base64 = base64.b64encode(image_data).decode('utf-8')
 
             return image_base64, image_format
 
@@ -133,16 +133,16 @@ async def get_qq_official_image_base64(pic_url: str, content_type: str) -> tuple
         response = await client.get(pic_url)
         response.raise_for_status()  # 确保请求成功
         image_data = response.content
-        base64_data = base64.b64encode(image_data).decode("utf-8")
+        base64_data = base64.b64encode(image_data).decode('utf-8')
 
-        return f"data:{content_type};base64,{base64_data}"
+        return f'data:{content_type};base64,{base64_data}'
 
 
 def get_qq_image_downloadable_url(image_url: str) -> tuple[str, dict]:
     """获取QQ图片的下载链接"""
     parsed = urlparse(image_url)
     query = parse_qs(parsed.query)
-    return f"http://{parsed.netloc}{parsed.path}", query
+    return f'http://{parsed.netloc}{parsed.path}', query
 
 
 async def get_qq_image_bytes(image_url: str, query: dict = {}) -> tuple[bytes, str]:
@@ -156,14 +156,14 @@ async def get_qq_image_bytes(image_url: str, query: dict = {}) -> tuple[bytes, s
         async with session.get(image_url, params=query, ssl=ssl_context) as resp:
             resp.raise_for_status()
             file_bytes = await resp.read()
-            content_type = resp.headers.get("Content-Type")
+            content_type = resp.headers.get('Content-Type')
             if not content_type:
-                image_format = "jpeg"
-            elif not content_type.startswith("image/"):
+                image_format = 'jpeg'
+            elif not content_type.startswith('image/'):
                 pil_img = PIL.Image.open(io.BytesIO(file_bytes))
                 image_format = pil_img.format.lower()
             else:
-                image_format = content_type.split("/")[-1]
+                image_format = content_type.split('/')[-1]
             return file_bytes, image_format
 
 
@@ -194,17 +194,17 @@ async def extract_b64_and_format(image_base64_data: str) -> typing.Tuple[str, st
     data:image/jpeg;base64,xxx
     提取出base64编码和图片格式
     """
-    base64_str = image_base64_data.split(",")[-1]
-    image_format = image_base64_data.split(":")[-1].split(";")[0].split("/")[-1]
+    base64_str = image_base64_data.split(',')[-1]
+    image_format = image_base64_data.split(':')[-1].split(';')[0].split('/')[-1]
     return base64_str, image_format
 
 
 async def get_slack_image_to_base64(pic_url: str, bot_token: str):
-    headers = {"Authorization": f"Bearer {bot_token}"}
+    headers = {'Authorization': f'Bearer {bot_token}'}
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(pic_url, headers=headers) as resp:
                 image_data = await resp.read()
-                return base64.b64encode(image_data).decode("utf-8")
+                return base64.b64encode(image_data).decode('utf-8')
     except Exception as e:
         raise (e)

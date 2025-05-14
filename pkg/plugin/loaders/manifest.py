@@ -21,7 +21,7 @@ class PluginManifestLoader(loader.PluginLoader):
 
     def handler(self, event: typing.Type[events.BaseEventModel]) -> typing.Callable[[typing.Callable], typing.Callable]:
         """注册事件处理器"""
-        self.ap.logger.debug(f"注册事件处理器 {event.__name__}")
+        self.ap.logger.debug(f'注册事件处理器 {event.__name__}')
 
         def wrapper(func: typing.Callable) -> typing.Callable:
             self._current_container.event_handlers[event] = func
@@ -35,17 +35,17 @@ class PluginManifestLoader(loader.PluginLoader):
         name: str = None,
     ) -> typing.Callable:
         """注册内容函数"""
-        self.ap.logger.debug(f"注册内容函数 {name}")
+        self.ap.logger.debug(f'注册内容函数 {name}')
 
         def wrapper(func: typing.Callable) -> typing.Callable:
             function_schema = funcschema.get_func_schema(func)
-            function_name = self._current_container.plugin_name + "-" + (func.__name__ if name is None else name)
+            function_name = self._current_container.plugin_name + '-' + (func.__name__ if name is None else name)
 
             llm_function = tools_entities.LLMFunction(
                 name=function_name,
-                human_desc="",
-                description=function_schema["description"],
-                parameters=function_schema["parameters"],
+                human_desc='',
+                description=function_schema['description'],
+                parameters=function_schema['parameters'],
                 func=func,
             )
 
@@ -57,14 +57,14 @@ class PluginManifestLoader(loader.PluginLoader):
 
     async def load_plugins(self):
         """加载插件"""
-        setattr(context, "handler", self.handler)
-        setattr(context, "llm_func", self.llm_func)
+        setattr(context, 'handler', self.handler)
+        setattr(context, 'llm_func', self.llm_func)
 
-        plugin_manifests = self.ap.discover.get_components_by_kind("Plugin")
+        plugin_manifests = self.ap.discover.get_components_by_kind('Plugin')
 
         for plugin_manifest in plugin_manifests:
             try:
-                config_schema = plugin_manifest.spec["config"] if "config" in plugin_manifest.spec else []
+                config_schema = plugin_manifest.spec['config'] if 'config' in plugin_manifest.spec else []
 
                 current_plugin_container = context.RuntimeContainer(
                     plugin_name=plugin_manifest.metadata.name,
@@ -92,5 +92,5 @@ class PluginManifestLoader(loader.PluginLoader):
 
                 self.plugins.append(current_plugin_container)
             except Exception:
-                self.ap.logger.error(f"加载插件 {plugin_manifest.metadata.name} 时发生错误")
+                self.ap.logger.error(f'加载插件 {plugin_manifest.metadata.name} 时发生错误')
                 traceback.print_exc()

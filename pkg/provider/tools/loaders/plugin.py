@@ -8,7 +8,7 @@ from ....core import entities as core_entities
 from ....plugin import context as plugin_context
 
 
-@loader.loader_class("plugin-tool-loader")
+@loader.loader_class('plugin-tool-loader')
 class PluginToolLoader(loader.ToolLoader):
     """插件工具加载器。
 
@@ -56,13 +56,13 @@ class PluginToolLoader(loader.ToolLoader):
 
             parameters = parameters.copy()
 
-            parameters = {"query": query, **parameters}
+            parameters = {'query': query, **parameters}
 
             return await function.func(plugin, **parameters)
         except Exception as e:
-            self.ap.logger.error(f"执行函数 {name} 时发生错误: {e}")
+            self.ap.logger.error(f'执行函数 {name} 时发生错误: {e}')
             traceback.print_exc()
-            return f"error occurred when executing function {name}: {e}"
+            return f'error occurred when executing function {name}: {e}'
         finally:
             plugin = None
 

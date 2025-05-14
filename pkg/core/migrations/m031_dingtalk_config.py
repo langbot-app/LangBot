@@ -3,7 +3,7 @@ from __future__ import annotations
 from .. import migration
 
 
-@migration.migration_class("dingtalk-config", 31)
+@migration.migration_class('dingtalk-config', 31)
 class DingTalkConfigMigration(migration.Migration):
     """迁移"""
 
@@ -19,14 +19,14 @@ class DingTalkConfigMigration(migration.Migration):
 
     async def run(self):
         """执行迁移"""
-        self.ap.platform_cfg.data["platform-adapters"].append(
+        self.ap.platform_cfg.data['platform-adapters'].append(
             {
-                "adapter": "dingtalk",
-                "enable": False,
-                "client_id": "",
-                "client_secret": "",
-                "robot_code": "",
-                "robot_name": "",
+                'adapter': 'dingtalk',
+                'enable': False,
+                'client_id': '',
+                'client_secret': '',
+                'robot_code': '',
+                'robot_name': '',
             }
         )
 

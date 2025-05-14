@@ -7,12 +7,12 @@ import logging
 from .. import note
 
 
-@note.note_class("SelectionModeOnWindows", 2)
+@note.note_class('SelectionModeOnWindows', 2)
 class SelectionModeOnWindows(note.LaunchNote):
     """Windows 上的选择模式提示信息"""
 
     async def need_show(self) -> bool:
-        return os.name == "nt"
+        return os.name == 'nt'
 
     async def yield_note(self) -> typing.AsyncGenerator[typing.Tuple[str, int], None]:
         yield (

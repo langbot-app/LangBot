@@ -13,7 +13,7 @@ preregistered_operators: list[typing.Type[CommandOperator]] = []
 
 def operator_class(
     name: str,
-    help: str = "",
+    help: str = '',
     usage: str = None,
     alias: list[str] = [],
     privilege: int = 1,  # 1为普通用户，2为管理员

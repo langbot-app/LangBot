@@ -10,7 +10,7 @@ from ...plugin import events
 from ...platform.types import message as platform_message
 
 
-@stage.stage_class("ResponseWrapper")
+@stage.stage_class('ResponseWrapper')
 class ResponseWrapper(stage.PipelineStage):
     """回复包装阶段
 
@@ -37,22 +37,22 @@ class ResponseWrapper(stage.PipelineStage):
             yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
         else:
-            if query.resp_messages[-1].role == "command":
+            if query.resp_messages[-1].role == 'command':
                 query.resp_message_chain.append(
-                    query.resp_messages[-1].get_content_platform_message_chain(prefix_text="[bot] ")
+                    query.resp_messages[-1].get_content_platform_message_chain(prefix_text='[bot] ')
                 )
 
                 yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
-            elif query.resp_messages[-1].role == "plugin":
+            elif query.resp_messages[-1].role == 'plugin':
                 query.resp_message_chain.append(query.resp_messages[-1].get_content_platform_message_chain())
 
                 yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
             else:
-                if query.resp_messages[-1].role == "assistant":
+                if query.resp_messages[-1].role == 'assistant':
                     result = query.resp_messages[-1]
                     session = await self.ap.sess_mgr.get_session(query)
 
-                    reply_text = ""
+                    reply_text = ''
 
                     if result.content:  # 有内容
                         reply_text = str(result.get_content_platform_message_chain())
@@ -64,9 +64,9 @@ class ResponseWrapper(stage.PipelineStage):
                                 launcher_id=query.launcher_id,
                                 sender_id=query.sender_id,
                                 session=session,
-                                prefix="",
+                                prefix='',
                                 response_text=reply_text,
-                                finish_reason="stop",
+                                finish_reason='stop',
                                 funcs_called=[fc.function.name for fc in result.tool_calls]
                                 if result.tool_calls is not None
                                 else [],
@@ -93,22 +93,22 @@ class ResponseWrapper(stage.PipelineStage):
                     if result.tool_calls is not None and len(result.tool_calls) > 0:  # 有函数调用
                         function_names = [tc.function.name for tc in result.tool_calls]
 
-                        reply_text = f"调用函数 {'.'.join(function_names)}..."
+                        reply_text = f'调用函数 {".".join(function_names)}...'
 
                         query.resp_message_chain.append(
                             platform_message.MessageChain([platform_message.Plain(reply_text)])
                         )
 
-                        if query.pipeline_config["output"]["misc"]["track-function-calls"]:
+                        if query.pipeline_config['output']['misc']['track-function-calls']:
                             event_ctx = await self.ap.plugin_mgr.emit_event(
                                 event=events.NormalMessageResponded(
                                     launcher_type=query.launcher_type.value,
                                     launcher_id=query.launcher_id,
                                     sender_id=query.sender_id,
                                     session=session,
-                                    prefix="",
+                                    prefix='',
                                     response_text=reply_text,
-                                    finish_reason="stop",
+                                    finish_reason='stop',
                                     funcs_called=[fc.function.name for fc in result.tool_calls]
                                     if result.tool_calls is not None
                                     else [],

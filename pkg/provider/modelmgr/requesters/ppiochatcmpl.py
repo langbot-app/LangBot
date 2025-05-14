@@ -12,6 +12,6 @@ class PPIOChatCompletions(chatcmpl.OpenAIChatCompletions):
     client: openai.AsyncClient
 
     default_config: dict[str, typing.Any] = {
-        "base_url": "https://api.ppinfra.com/v3/openai",
-        "timeout": 120,
+        'base_url': 'https://api.ppinfra.com/v3/openai',
+        'timeout': 120,
     }

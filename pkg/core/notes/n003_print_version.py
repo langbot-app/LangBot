@@ -6,7 +6,7 @@ import logging
 from .. import note
 
 
-@note.note_class("PrintVersion", 3)
+@note.note_class('PrintVersion', 3)
 class PrintVersion(note.LaunchNote):
     """Print Version Information"""
 
@@ -14,4 +14,4 @@ class PrintVersion(note.LaunchNote):
         return True
 
     async def yield_note(self) -> typing.AsyncGenerator[typing.Tuple[str, int], None]:
-        yield f"Current Version: {self.ap.ver_mgr.get_current_version()}", logging.INFO
+        yield f'Current Version: {self.ap.ver_mgr.get_current_version()}', logging.INFO

@@ -15,18 +15,18 @@ importutil.import_modules_in_pkg(stages)
 
 
 stage_order = [
-    "LoadConfigStage",
-    "MigrationStage",
-    "GenKeysStage",
-    "SetupLoggerStage",
-    "BuildAppStage",
-    "ShowNotesStage",
+    'LoadConfigStage',
+    'MigrationStage',
+    'GenKeysStage',
+    'SetupLoggerStage',
+    'BuildAppStage',
+    'ShowNotesStage',
 ]
 
 
 async def make_app(loop: asyncio.AbstractEventLoop) -> app.Application:
     # 确定是否为调试模式
-    if "DEBUG" in os.environ and os.environ["DEBUG"] in ["true", "1"]:
+    if 'DEBUG' in os.environ and os.environ['DEBUG'] in ['true', '1']:
         constants.debug_mode = True
 
     ap = app.Application()
@@ -51,7 +51,7 @@ async def main(loop: asyncio.AbstractEventLoop):
         import signal
 
         def signal_handler(sig, frame):
-            print("[Signal] 程序退出.")
+            print('[Signal] 程序退出.')
             # ap.shutdown()
             os._exit(0)
 

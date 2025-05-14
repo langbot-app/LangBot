@@ -30,7 +30,7 @@ class DingTalkMessageConverter(adapter.MessageConverter):
                 yiri_msg_list.append(platform_message.At(target=bot_name))
 
         if event.content:
-            text_content = event.content.replace("@" + bot_name, "")
+            text_content = event.content.replace('@' + bot_name, '')
             yiri_msg_list.append(platform_message.Plain(text=text_content))
         if event.picture:
             yiri_msg_list.append(platform_message.Image(base64=event.picture))
@@ -51,28 +51,28 @@ class DingTalkEventConverter(adapter.EventConverter):
     async def target2yiri(event: DingTalkEvent, bot_name: str):
         message_chain = await DingTalkMessageConverter.target2yiri(event, bot_name)
 
-        if event.conversation == "FriendMessage":
+        if event.conversation == 'FriendMessage':
             return platform_events.FriendMessage(
                 sender=platform_entities.Friend(
                     id=event.incoming_message.sender_id,
                     nickname=event.incoming_message.sender_nick,
-                    remark="",
+                    remark='',
                 ),
                 message_chain=message_chain,
                 time=event.incoming_message.create_at,
                 source_platform_object=event,
             )
-        elif event.conversation == "GroupMessage":
+        elif event.conversation == 'GroupMessage':
             sender = platform_entities.GroupMember(
                 id=event.incoming_message.sender_id,
                 member_name=event.incoming_message.sender_nick,
-                permission="MEMBER",
+                permission='MEMBER',
                 group=platform_entities.Group(
                     id=event.incoming_message.conversation_id,
                     name=event.incoming_message.conversation_title,
                     permission=platform_entities.Permission.Member,
                 ),
-                special_title="",
+                special_title='',
                 join_timestamp=0,
                 last_speak_timestamp=0,
                 mute_time_remaining=0,
@@ -98,23 +98,23 @@ class DingTalkAdapter(adapter.MessagePlatformAdapter):
         self.config = config
         self.ap = ap
         required_keys = [
-            "client_id",
-            "client_secret",
-            "robot_name",
-            "robot_code",
+            'client_id',
+            'client_secret',
+            'robot_name',
+            'robot_code',
         ]
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
-            raise Exception("钉钉缺少相关配置项，请查看文档或联系管理员")
+            raise Exception('钉钉缺少相关配置项，请查看文档或联系管理员')
 
-        self.bot_account_id = self.config["robot_name"]
+        self.bot_account_id = self.config['robot_name']
 
         self.bot = DingTalkClient(
-            client_id=config["client_id"],
-            client_secret=config["client_secret"],
-            robot_name=config["robot_name"],
-            robot_code=config["robot_code"],
-            markdown_card=config["markdown_card"],
+            client_id=config['client_id'],
+            client_secret=config['client_secret'],
+            robot_name=config['robot_name'],
+            robot_code=config['robot_code'],
+            markdown_card=config['markdown_card'],
         )
 
     async def reply_message(
@@ -133,9 +133,9 @@ class DingTalkAdapter(adapter.MessagePlatformAdapter):
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         content = await DingTalkMessageConverter.yiri2target(message)
-        if target_type == "person":
+        if target_type == 'person':
             await self.bot.send_proactive_message_to_one(target_id, content)
-        if target_type == "group":
+        if target_type == 'group':
             await self.bot.send_proactive_message_to_group(target_id, content)
 
     def register_listener(
@@ -146,16 +146,16 @@ class DingTalkAdapter(adapter.MessagePlatformAdapter):
         async def on_message(event: DingTalkEvent):
             try:
                 return await callback(
-                    await self.event_converter.target2yiri(event, self.config["robot_name"]),
+                    await self.event_converter.target2yiri(event, self.config['robot_name']),
                     self,
                 )
             except Exception:
                 traceback.print_exc()
 
         if event_type == platform_events.FriendMessage:
-            self.bot.on_message("FriendMessage")(on_message)
+            self.bot.on_message('FriendMessage')(on_message)
         elif event_type == platform_events.GroupMessage:
-            self.bot.on_message("GroupMessage")(on_message)
+            self.bot.on_message('GroupMessage')(on_message)
 
     async def run_async(self):
         await self.bot.start()

@@ -14,7 +14,7 @@ from .. import strategy as strategy_model
 from ....core import entities as core_entities
 
 
-@strategy_model.strategy_class("image")
+@strategy_model.strategy_class('image')
 class Text2ImageStrategy(strategy_model.LongTextStrategy):
     async def initialize(self):
         pass
@@ -22,21 +22,21 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
     @functools.lru_cache(maxsize=16)
     def get_font(self, query: core_entities.Query):
         return ImageFont.truetype(
-            query.pipeline_config["output"]["long-text-processing"]["font-path"],
+            query.pipeline_config['output']['long-text-processing']['font-path'],
             32,
-            encoding="utf-8",
+            encoding='utf-8',
         )
 
     async def process(self, message: str, query: core_entities.Query) -> list[platform_message.MessageComponent]:
         img_path = self.text_to_image(
             text_str=message,
-            save_as="temp/{}.png".format(int(time.time())),
+            save_as='temp/{}.png'.format(int(time.time())),
             query=query,
         )
 
-        compressed_path, size = self.compress_image(img_path, outfile="temp/{}_compressed.png".format(int(time.time())))
+        compressed_path, size = self.compress_image(img_path, outfile='temp/{}_compressed.png'.format(int(time.time())))
 
-        with open(compressed_path, "rb") as f:
+        with open(compressed_path, 'rb') as f:
             img = f.read()
 
         b64 = base64.b64encode(img)
@@ -49,11 +49,11 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
 
         return [
             platform_message.Image(
-                base64=b64.decode("utf-8"),
+                base64=b64.decode('utf-8'),
             )
         ]
 
-    def indexNumber(self, path=""):
+    def indexNumber(self, path=''):
         """
         查找字符串中数字所在串中的位置
         :param path:目标字符串
@@ -61,7 +61,7 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
         """
         kv = []
         nums = []
-        beforeDatas = re.findall("[\\d]+", path)
+        beforeDatas = re.findall('[\\d]+', path)
         for num in beforeDatas:
             indexV = []
             times = path.count(num)
@@ -101,10 +101,10 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
         if outfile:
             return outfile
         dir, suffix = os.path.splitext(infile)
-        outfile = "{}-out{}".format(dir, suffix)
+        outfile = '{}-out{}'.format(dir, suffix)
         return outfile
 
-    def compress_image(self, infile, outfile="", kb=100, step=20, quality=90):
+    def compress_image(self, infile, outfile='', kb=100, step=20, quality=90):
         """不改变图片尺寸压缩到指定大小
         :param infile: 压缩源文件
         :param outfile: 压缩文件保存地址
@@ -129,25 +129,25 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
     def text_to_image(
         self,
         text_str: str,
-        save_as="temp.png",
+        save_as='temp.png',
         width=800,
         query: core_entities.Query = None,
     ):
-        text_str = text_str.replace("\t", "    ")
+        text_str = text_str.replace('\t', '    ')
 
         # 分行
-        lines = text_str.split("\n")
+        lines = text_str.split('\n')
 
         # 计算并分割
         final_lines = []
 
         text_width = width - 80
 
-        self.ap.logger.debug("lines: {}, text_width: {}".format(lines, text_width))
+        self.ap.logger.debug('lines: {}, text_width: {}'.format(lines, text_width))
         for line in lines:
             # 如果长了就分割
             line_width = self.get_font(query).getlength(line)
-            self.ap.logger.debug("line_width: {}".format(line_width))
+            self.ap.logger.debug('line_width: {}'.format(line_width))
             if line_width < text_width:
                 final_lines.append(line)
                 continue
@@ -174,10 +174,10 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
                     else:
                         continue
         # 准备画布
-        img = Image.new("RGBA", (width, max(280, len(final_lines) * 35 + 65)), (255, 255, 255, 255))
-        draw = ImageDraw.Draw(img, mode="RGBA")
+        img = Image.new('RGBA', (width, max(280, len(final_lines) * 35 + 65)), (255, 255, 255, 255))
+        draw = ImageDraw.Draw(img, mode='RGBA')
 
-        self.ap.logger.debug("正在绘制图片...")
+        self.ap.logger.debug('正在绘制图片...')
         # 绘制正文
         line_number = 0
         offset_x = 20
@@ -201,7 +201,7 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
 
             line_number += 1
 
-        self.ap.logger.debug("正在保存图片...")
+        self.ap.logger.debug('正在保存图片...')
         img.save(save_as)
 
         return save_as

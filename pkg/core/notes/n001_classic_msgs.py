@@ -5,7 +5,7 @@ import typing
 from .. import note
 
 
-@note.note_class("ClassicNotes", 1)
+@note.note_class('ClassicNotes', 1)
 class ClassicNotes(note.LaunchNote):
     """经典启动信息"""
 

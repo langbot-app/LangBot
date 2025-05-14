@@ -26,7 +26,7 @@ class TelegramMessageConverter(adapter.MessageConverter):
 
         for component in message_chain:
             if isinstance(component, platform_message.Plain):
-                components.append({"type": "text", "text": component.text})
+                components.append({'type': 'text', 'text': component.text})
             elif isinstance(component, platform_message.Image):
                 photo_bytes = None
 
@@ -37,10 +37,10 @@ class TelegramMessageConverter(adapter.MessageConverter):
                         async with session.get(component.url) as response:
                             photo_bytes = await response.read()
                 elif component.path:
-                    with open(component.path, "rb") as f:
+                    with open(component.path, 'rb') as f:
                         photo_bytes = f.read()
 
-                components.append({"type": "photo", "photo": photo_bytes})
+                components.append({'type': 'photo', 'photo': photo_bytes})
             elif isinstance(component, platform_message.Forward):
                 for node in component.node_list:
                     components.extend(await TelegramMessageConverter.yiri2target(node.message_chain, bot))
@@ -54,9 +54,9 @@ class TelegramMessageConverter(adapter.MessageConverter):
         def parse_message_text(text: str) -> list[platform_message.MessageComponent]:
             msg_components = []
 
-            if f"@{bot_account_id}" in text:
+            if f'@{bot_account_id}' in text:
                 msg_components.append(platform_message.At(target=bot_account_id))
-                text = text.replace(f"@{bot_account_id}", "")
+                text = text.replace(f'@{bot_account_id}', '')
             msg_components.append(platform_message.Plain(text=text))
 
             return msg_components
@@ -72,16 +72,16 @@ class TelegramMessageConverter(adapter.MessageConverter):
             file = await message.photo[-1].get_file()
 
             file_bytes = None
-            file_format = ""
+            file_format = ''
 
             async with aiohttp.ClientSession(trust_env=True) as session:
                 async with session.get(file.file_path) as response:
                     file_bytes = await response.read()
-                    file_format = "image/jpeg"
+                    file_format = 'image/jpeg'
 
             message_components.append(
                 platform_message.Image(
-                    base64=f"data:{file_format};base64,{base64.b64encode(file_bytes).decode('utf-8')}"
+                    base64=f'data:{file_format};base64,{base64.b64encode(file_bytes).decode("utf-8")}'
                 )
             )
 
@@ -97,7 +97,7 @@ class TelegramEventConverter(adapter.EventConverter):
     async def target2yiri(event: Update, bot: telegram.Bot, bot_account_id: str):
         lb_message = await TelegramMessageConverter.target2yiri(event.message, bot, bot_account_id)
 
-        if event.effective_chat.type == "private":
+        if event.effective_chat.type == 'private':
             return platform_events.FriendMessage(
                 sender=platform_entities.Friend(
                     id=event.effective_chat.id,
@@ -108,7 +108,7 @@ class TelegramEventConverter(adapter.EventConverter):
                 time=event.message.date.timestamp(),
                 source_platform_object=event,
             )
-        elif event.effective_chat.type == "group" or "supergroup":
+        elif event.effective_chat.type == 'group' or 'supergroup':
             return platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
                     id=event.effective_chat.id,
@@ -119,7 +119,7 @@ class TelegramEventConverter(adapter.EventConverter):
                         name=event.effective_chat.title,
                         permission=platform_entities.Permission.Member,
                     ),
-                    special_title="",
+                    special_title='',
                     join_timestamp=0,
                     last_speak_timestamp=0,
                     mute_time_remaining=0,
@@ -161,7 +161,7 @@ class TelegramAdapter(adapter.MessagePlatformAdapter):
             except Exception:
                 print(traceback.format_exc())
 
-        self.application = ApplicationBuilder().token(self.config["token"]).build()
+        self.application = ApplicationBuilder().token(self.config['token']).build()
         self.bot = self.application.bot
         self.application.add_handler(
             MessageHandler(filters.TEXT | (filters.COMMAND) | filters.PHOTO, telegram_callback)
@@ -180,21 +180,21 @@ class TelegramAdapter(adapter.MessagePlatformAdapter):
         components = await TelegramMessageConverter.yiri2target(message, self.bot)
 
         for component in components:
-            if component["type"] == "text":
-                if self.config["markdown_card"] is True:
+            if component['type'] == 'text':
+                if self.config['markdown_card'] is True:
                     content = telegramify_markdown.markdownify(
-                        content=component["text"],
+                        content=component['text'],
                     )
                 else:
-                    content = component["text"]
+                    content = component['text']
                 args = {
-                    "chat_id": message_source.source_platform_object.effective_chat.id,
-                    "text": content,
+                    'chat_id': message_source.source_platform_object.effective_chat.id,
+                    'text': content,
                 }
-                if self.config["markdown_card"] is True:
-                    args["parse_mode"] = "MarkdownV2"
+                if self.config['markdown_card'] is True:
+                    args['parse_mode'] = 'MarkdownV2'
         if quote_origin:
-            args["reply_to_message_id"] = message_source.source_platform_object.message.id
+            args['reply_to_message_id'] = message_source.source_platform_object.message.id
 
         await self.bot.send_message(**args)
 

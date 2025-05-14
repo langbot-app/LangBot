@@ -47,7 +47,7 @@ class UserService:
         result_list = result.all()
 
         if result_list is None or len(result_list) == 0:
-            raise ValueError("用户不存在")
+            raise ValueError('用户不存在')
 
         user_obj = result_list[0]
 
@@ -58,18 +58,18 @@ class UserService:
         return await self.generate_jwt_token(user_email)
 
     async def generate_jwt_token(self, user_email: str) -> str:
-        jwt_secret = self.ap.instance_config.data["system"]["jwt"]["secret"]
-        jwt_expire = self.ap.instance_config.data["system"]["jwt"]["expire"]
+        jwt_secret = self.ap.instance_config.data['system']['jwt']['secret']
+        jwt_expire = self.ap.instance_config.data['system']['jwt']['expire']
 
         payload = {
-            "user": user_email,
-            "iss": "LangBot-" + constants.edition,
-            "exp": datetime.datetime.now() + datetime.timedelta(seconds=jwt_expire),
+            'user': user_email,
+            'iss': 'LangBot-' + constants.edition,
+            'exp': datetime.datetime.now() + datetime.timedelta(seconds=jwt_expire),
         }
 
-        return jwt.encode(payload, jwt_secret, algorithm="HS256")
+        return jwt.encode(payload, jwt_secret, algorithm='HS256')
 
     async def verify_jwt_token(self, token: str) -> str:
-        jwt_secret = self.ap.instance_config.data["system"]["jwt"]["secret"]
+        jwt_secret = self.ap.instance_config.data['system']['jwt']['secret']
 
-        return jwt.decode(token, jwt_secret, algorithms=["HS256"])["user"]
+        return jwt.decode(token, jwt_secret, algorithms=['HS256'])['user']

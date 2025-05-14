@@ -22,22 +22,22 @@ class WecomClient:
     ):
         self.corpid = corpid
         self.secret = secret
-        self.access_token_for_contacts = ""
+        self.access_token_for_contacts = ''
         self.token = token
         self.aes = EncodingAESKey
-        self.base_url = "https://qyapi.weixin.qq.com/cgi-bin"
-        self.access_token = ""
+        self.base_url = 'https://qyapi.weixin.qq.com/cgi-bin'
+        self.access_token = ''
         self.secret_for_contacts = contacts_secret
         self.app = Quart(__name__)
         self.wxcpt = WXBizMsgCrypt(self.token, self.aes, self.corpid)
         self.app.add_url_rule(
-            "/callback/command",
-            "handle_callback",
+            '/callback/command',
+            'handle_callback',
             self.handle_callback_request,
-            methods=["GET", "POST"],
+            methods=['GET', 'POST'],
         )
         self._message_handlers = {
-            "example": [],
+            'example': [],
         }
 
     # access——token操作
@@ -48,141 +48,141 @@ class WecomClient:
         return bool(self.access_token_for_contacts and self.access_token_for_contacts.strip())
 
     async def get_access_token(self, secret):
-        url = f"https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={self.corpid}&corpsecret={secret}"
+        url = f'https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={self.corpid}&corpsecret={secret}'
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
             data = response.json()
-            if "access_token" in data:
-                return data["access_token"]
+            if 'access_token' in data:
+                return data['access_token']
             else:
-                raise Exception(f"未获取access token: {data}")
+                raise Exception(f'未获取access token: {data}')
 
     async def get_users(self):
         if not self.check_access_token_for_contacts():
             self.access_token_for_contacts = await self.get_access_token(self.secret_for_contacts)
 
-        url = self.base_url + "/user/list_id?access_token=" + self.access_token_for_contacts
+        url = self.base_url + '/user/list_id?access_token=' + self.access_token_for_contacts
         async with httpx.AsyncClient() as client:
             params = {
-                "cursor": "",
-                "limit": 10000,
+                'cursor': '',
+                'limit': 10000,
             }
             response = await client.post(url, json=params)
             data = response.json()
-            if data["errcode"] == 0:
-                dept_users = data["dept_user"]
+            if data['errcode'] == 0:
+                dept_users = data['dept_user']
                 userid = []
                 for user in dept_users:
-                    userid.append(user["userid"])
+                    userid.append(user['userid'])
                 return userid
             else:
-                raise Exception("未获取用户")
+                raise Exception('未获取用户')
 
     async def send_to_all(self, content: str, agent_id: int):
         if not self.check_access_token_for_contacts():
             self.access_token_for_contacts = await self.get_access_token(self.secret_for_contacts)
 
-            url = self.base_url + "/message/send?access_token=" + self.access_token_for_contacts
+            url = self.base_url + '/message/send?access_token=' + self.access_token_for_contacts
             user_ids = await self.get_users()
-            user_ids_string = "|".join(user_ids)
+            user_ids_string = '|'.join(user_ids)
             async with httpx.AsyncClient() as client:
                 params = {
-                    "touser": user_ids_string,
-                    "msgtype": "text",
-                    "agentid": agent_id,
-                    "text": {
-                        "content": content,
+                    'touser': user_ids_string,
+                    'msgtype': 'text',
+                    'agentid': agent_id,
+                    'text': {
+                        'content': content,
                     },
-                    "safe": 0,
-                    "enable_id_trans": 0,
-                    "enable_duplicate_check": 0,
-                    "duplicate_check_interval": 1800,
+                    'safe': 0,
+                    'enable_id_trans': 0,
+                    'enable_duplicate_check': 0,
+                    'duplicate_check_interval': 1800,
                 }
                 response = await client.post(url, json=params)
                 data = response.json()
-                if data["errcode"] != 0:
-                    raise Exception("Failed to send message: " + str(data))
+                if data['errcode'] != 0:
+                    raise Exception('Failed to send message: ' + str(data))
 
     async def send_image(self, user_id: str, agent_id: int, media_id: str):
         if not await self.check_access_token():
             self.access_token = await self.get_access_token(self.secret)
-        url = self.base_url + "/media/upload?access_token=" + self.access_token
+        url = self.base_url + '/media/upload?access_token=' + self.access_token
         async with httpx.AsyncClient() as client:
             params = {
-                "touser": user_id,
-                "toparty": "",
-                "totag": "",
-                "agentid": agent_id,
-                "msgtype": "image",
-                "image": {
-                    "media_id": media_id,
+                'touser': user_id,
+                'toparty': '',
+                'totag': '',
+                'agentid': agent_id,
+                'msgtype': 'image',
+                'image': {
+                    'media_id': media_id,
                 },
-                "safe": 0,
-                "enable_id_trans": 0,
-                "enable_duplicate_check": 0,
-                "duplicate_check_interval": 1800,
+                'safe': 0,
+                'enable_id_trans': 0,
+                'enable_duplicate_check': 0,
+                'duplicate_check_interval': 1800,
             }
             try:
                 response = await client.post(url, json=params)
                 data = response.json()
             except Exception as e:
-                raise Exception("Failed to send image: " + str(e))
+                raise Exception('Failed to send image: ' + str(e))
 
             # 企业微信错误码40014和42001，代表accesstoken问题
-            if data["errcode"] == 40014 or data["errcode"] == 42001:
+            if data['errcode'] == 40014 or data['errcode'] == 42001:
                 self.access_token = await self.get_access_token(self.secret)
                 return await self.send_image(user_id, agent_id, media_id)
 
-            if data["errcode"] != 0:
-                raise Exception("Failed to send image: " + str(data))
+            if data['errcode'] != 0:
+                raise Exception('Failed to send image: ' + str(data))
 
     async def send_private_msg(self, user_id: str, agent_id: int, content: str):
         if not await self.check_access_token():
             self.access_token = await self.get_access_token(self.secret)
 
-        url = self.base_url + "/message/send?access_token=" + self.access_token
+        url = self.base_url + '/message/send?access_token=' + self.access_token
         async with httpx.AsyncClient() as client:
             params = {
-                "touser": user_id,
-                "msgtype": "text",
-                "agentid": agent_id,
-                "text": {
-                    "content": content,
+                'touser': user_id,
+                'msgtype': 'text',
+                'agentid': agent_id,
+                'text': {
+                    'content': content,
                 },
-                "safe": 0,
-                "enable_id_trans": 0,
-                "enable_duplicate_check": 0,
-                "duplicate_check_interval": 1800,
+                'safe': 0,
+                'enable_id_trans': 0,
+                'enable_duplicate_check': 0,
+                'duplicate_check_interval': 1800,
             }
             response = await client.post(url, json=params)
             data = response.json()
-            if data["errcode"] == 40014 or data["errcode"] == 42001:
+            if data['errcode'] == 40014 or data['errcode'] == 42001:
                 self.access_token = await self.get_access_token(self.secret)
                 return await self.send_private_msg(user_id, agent_id, content)
-            if data["errcode"] != 0:
-                raise Exception("Failed to send message: " + str(data))
+            if data['errcode'] != 0:
+                raise Exception('Failed to send message: ' + str(data))
 
     async def handle_callback_request(self):
         """
         处理回调请求，包括 GET 验证和 POST 消息接收。
         """
         try:
-            msg_signature = request.args.get("msg_signature")
-            timestamp = request.args.get("timestamp")
-            nonce = request.args.get("nonce")
+            msg_signature = request.args.get('msg_signature')
+            timestamp = request.args.get('timestamp')
+            nonce = request.args.get('nonce')
 
-            if request.method == "GET":
-                echostr = request.args.get("echostr")
+            if request.method == 'GET':
+                echostr = request.args.get('echostr')
                 ret, reply_echo_str = self.wxcpt.VerifyURL(msg_signature, timestamp, nonce, echostr)
                 if ret != 0:
-                    raise Exception(f"验证失败，错误码: {ret}")
+                    raise Exception(f'验证失败，错误码: {ret}')
                 return reply_echo_str
 
-            elif request.method == "POST":
+            elif request.method == 'POST':
                 encrypt_msg = await request.data
                 ret, xml_msg = self.wxcpt.DecryptMsg(encrypt_msg, msg_signature, timestamp, nonce)
                 if ret != 0:
-                    raise Exception(f"消息解密失败，错误码: {ret}")
+                    raise Exception(f'消息解密失败，错误码: {ret}')
 
                 # 解析消息并处理
                 message_data = await self.get_message(xml_msg)
@@ -191,9 +191,9 @@ class WecomClient:
                     if event:
                         await self._handle_message(event)
 
-                return "success"
+                return 'success'
         except Exception as e:
-            return f"Error processing request: {str(e)}", 400
+            return f'Error processing request: {str(e)}', 400
 
     async def run_task(self, host: str, port: int, *args, **kwargs):
         """
@@ -229,17 +229,17 @@ class WecomClient:
         """
         root = ET.fromstring(xml_msg)
         message_data = {
-            "ToUserName": root.find("ToUserName").text,
-            "FromUserName": root.find("FromUserName").text,
-            "CreateTime": int(root.find("CreateTime").text),
-            "MsgType": root.find("MsgType").text,
-            "Content": root.find("Content").text if root.find("Content") is not None else None,
-            "MsgId": int(root.find("MsgId").text) if root.find("MsgId") is not None else None,
-            "AgentID": int(root.find("AgentID").text) if root.find("AgentID") is not None else None,
+            'ToUserName': root.find('ToUserName').text,
+            'FromUserName': root.find('FromUserName').text,
+            'CreateTime': int(root.find('CreateTime').text),
+            'MsgType': root.find('MsgType').text,
+            'Content': root.find('Content').text if root.find('Content') is not None else None,
+            'MsgId': int(root.find('MsgId').text) if root.find('MsgId') is not None else None,
+            'AgentID': int(root.find('AgentID').text) if root.find('AgentID') is not None else None,
         }
-        if message_data["MsgType"] == "image":
-            message_data["MediaId"] = root.find("MediaId").text if root.find("MediaId") is not None else None
-            message_data["PicUrl"] = root.find("PicUrl").text if root.find("PicUrl") is not None else None
+        if message_data['MsgType'] == 'image':
+            message_data['MediaId'] = root.find('MediaId').text if root.find('MediaId') is not None else None
+            message_data['PicUrl'] = root.find('PicUrl').text if root.find('PicUrl') is not None else None
 
         return message_data
 
@@ -249,17 +249,17 @@ class WecomClient:
         通过图片的magic numbers判断图片类型
         """
         magic_numbers = {
-            b"\xff\xd8\xff": "jpg",
-            b"\x89\x50\x4e\x47": "png",
-            b"\x47\x49\x46": "gif",
-            b"\x42\x4d": "bmp",
-            b"\x00\x00\x01\x00": "ico",
+            b'\xff\xd8\xff': 'jpg',
+            b'\x89\x50\x4e\x47': 'png',
+            b'\x47\x49\x46': 'gif',
+            b'\x42\x4d': 'bmp',
+            b'\x00\x00\x01\x00': 'ico',
         }
 
         for magic, ext in magic_numbers.items():
             if image_bytes.startswith(magic):
                 return ext
-        return "jpg"  # 默认返回jpg
+        return 'jpg'  # 默认返回jpg
 
     async def upload_to_work(self, image: platform_message.Image):
         """
@@ -268,55 +268,55 @@ class WecomClient:
         if not await self.check_access_token():
             self.access_token = await self.get_access_token(self.secret)
 
-        url = self.base_url + "/media/upload?access_token=" + self.access_token + "&type=file"
+        url = self.base_url + '/media/upload?access_token=' + self.access_token + '&type=file'
         file_bytes = None
-        file_name = "uploaded_file.txt"
+        file_name = 'uploaded_file.txt'
 
         # 获取文件的二进制数据
         if image.path:
-            async with aiofiles.open(image.path, "rb") as f:
+            async with aiofiles.open(image.path, 'rb') as f:
                 file_bytes = await f.read()
-                file_name = image.path.split("/")[-1]
+                file_name = image.path.split('/')[-1]
         elif image.url:
             file_bytes = await self.download_image_to_bytes(image.url)
-            file_name = image.url.split("/")[-1]
+            file_name = image.url.split('/')[-1]
         elif image.base64:
             try:
                 base64_data = image.base64
-                if "," in base64_data:
-                    base64_data = base64_data.split(",", 1)[1]
+                if ',' in base64_data:
+                    base64_data = base64_data.split(',', 1)[1]
                 padding = 4 - (len(base64_data) % 4) if len(base64_data) % 4 else 0
-                padded_base64 = base64_data + "=" * padding
+                padded_base64 = base64_data + '=' * padding
                 file_bytes = base64.b64decode(padded_base64)
             except binascii.Error as e:
-                raise ValueError(f"Invalid base64 string: {str(e)}")
+                raise ValueError(f'Invalid base64 string: {str(e)}')
         else:
-            raise ValueError("image对象出错")
+            raise ValueError('image对象出错')
 
         # 设置 multipart/form-data 格式的文件
-        boundary = "-------------------------acebdf13572468"
-        headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+        boundary = '-------------------------acebdf13572468'
+        headers = {'Content-Type': f'multipart/form-data; boundary={boundary}'}
         body = (
             (
-                f"--{boundary}\r\n"
+                f'--{boundary}\r\n'
                 f'Content-Disposition: form-data; name="media"; filename="{file_name}"; filelength={len(file_bytes)}\r\n'
-                f"Content-Type: application/octet-stream\r\n\r\n"
-            ).encode("utf-8")
+                f'Content-Type: application/octet-stream\r\n\r\n'
+            ).encode('utf-8')
             + file_bytes
-            + f"\r\n--{boundary}--\r\n".encode("utf-8")
+            + f'\r\n--{boundary}--\r\n'.encode('utf-8')
         )
 
         # 上传文件
         async with httpx.AsyncClient() as client:
             response = await client.post(url, headers=headers, content=body)
             data = response.json()
-            if data["errcode"] == 40014 or data["errcode"] == 42001:
+            if data['errcode'] == 40014 or data['errcode'] == 42001:
                 self.access_token = await self.get_access_token(self.secret)
                 media_id = await self.upload_to_work(image)
-            if data.get("errcode", 0) != 0:
-                raise Exception("failed to upload file")
+            if data.get('errcode', 0) != 0:
+                raise Exception('failed to upload file')
 
-            media_id = data.get("media_id")
+            media_id = data.get('media_id')
             return media_id
 
     async def download_image_to_bytes(self, url: str) -> bytes:
