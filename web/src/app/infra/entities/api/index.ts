@@ -9,7 +9,7 @@ export interface ApiResponse<T> {
 
 export interface I18nText {
   en_US: string;
-  zh_CN: string;
+  zh_Hans: string;
 }
 
 export interface AsyncTaskCreatedResp {

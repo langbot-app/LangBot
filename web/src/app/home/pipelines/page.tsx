@@ -14,7 +14,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 export default function PluginConfigPage() {
+  const { t } = useTranslation();
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [isEditForm, setIsEditForm] = useState(false);
   const [pipelineList, setPipelineList] = useState<PipelineCardVO[]>([]);
@@ -53,7 +55,9 @@ export default function PluginConfigPage() {
           );
 
           const lastUpdatedTimeAgoText =
-            lastUpdatedTimeAgo > 0 ? ` ${lastUpdatedTimeAgo} 天前` : '今天';
+            lastUpdatedTimeAgo > 0
+              ? ` ${lastUpdatedTimeAgo} ${t('pipelines.daysAgo')}`
+              : t('pipelines.today');
 
           return new PipelineCardVO({
             lastUpdatedTimeAgo: lastUpdatedTimeAgoText,
@@ -67,7 +71,7 @@ export default function PluginConfigPage() {
       })
       .catch((error) => {
         console.log(error);
-        toast.error('获取流水线列表失败：' + error.message);
+        toast.error(t('pipelines.getPipelineListError') + error.message);
       });
   }
 
@@ -94,7 +98,9 @@ export default function PluginConfigPage() {
         <DialogContent className="w-[700px] max-h-[80vh] p-0 flex flex-col">
           <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle>
-              {isEditForm ? '编辑流水线' : '创建流水线'}
+              {isEditForm
+                ? t('pipelines.editPipeline')
+                : t('pipelines.createPipeline')}
             </DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto px-6">

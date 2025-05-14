@@ -4,40 +4,40 @@ metadata:
   name: aiocqhttp
   label:
     en_US: OneBot v11
-    zh_CN: OneBot v11
+    zh_Hans: OneBot v11
   description:
     en_US: OneBot v11 Adapter
-    zh_CN: OneBot v11 适配器，请查看文档了解使用方式
+    zh_Hans: OneBot v11 适配器，请查看文档了解使用方式
   icon: onebot.png
 spec:
   config:
     - name: host
       label:
         en_US: Host
-        zh_CN: 主机
+        zh_Hans: 主机
       description:
         en_US: The host that OneBot v11 listens on for reverse WebSocket connections. Unless you know what you're doing, use 0.0.0.0
-        zh_CN: OneBot v11 监听的反向 WS 主机，除非你知道自己在做什么，否则请写 0.0.0.0
+        zh_Hans: OneBot v11 监听的反向 WS 主机，除非你知道自己在做什么，否则请写 0.0.0.0
       type: string
       required: true
       default: 0.0.0.0
     - name: port
       label:
         en_US: Port
-        zh_CN: 端口
+        zh_Hans: 端口
       description:
         en_US: Port
-        zh_CN: 监听的端口
+        zh_Hans: 监听的端口
       type: integer
       required: true
       default: 2280
     - name: access-token
       label:
         en_US: Access Token
-        zh_CN: 访问令牌
+        zh_Hans: 访问令牌
       description:
         en_US: Custom connection token for the protocol endpoint. If the protocol endpoint is not set, don't fill it
-        zh_CN: 自定义的与协议端的连接令牌，若协议端未设置，则不填
+        zh_Hans: 自定义的与协议端的连接令牌，若协议端未设置，则不填
       type: string
       required: false
       default: ""

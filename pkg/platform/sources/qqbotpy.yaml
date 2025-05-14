@@ -4,31 +4,31 @@ metadata:
   name: qq-botpy
   label:
     en_US: QQBotPy
-    zh_CN: QQBotPy
+    zh_Hans: QQBotPy
   description:
     en_US: QQ Official API (WebSocket)
-    zh_CN: QQ 官方 API (WebSocket)，请查看文档了解使用方式
+    zh_Hans: QQ 官方 API (WebSocket)，请查看文档了解使用方式
   icon: qqbotpy.svg
 spec:
   config:
     - name: appid
       label:
         en_US: App ID
-        zh_CN: 应用ID
+        zh_Hans: 应用ID
       type: string
       required: true
       default: ""
     - name: secret
       label:
         en_US: Secret
-        zh_CN: 密钥
+        zh_Hans: 密钥
       type: string
       required: true
       default: ""
     - name: intents
       label:
         en_US: Intents
-        zh_CN: 权限
+        zh_Hans: 权限
       type: array
       required: true
       default: []

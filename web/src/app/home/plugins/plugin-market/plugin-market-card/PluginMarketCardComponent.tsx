@@ -1,5 +1,6 @@
 import { PluginMarketCardVO } from '@/app/home/plugins/plugin-market/plugin-market-card/PluginMarketCardVO';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from 'react-i18next';
 
 export default function PluginMarketCardComponent({
   cardVO,
@@ -8,6 +9,8 @@ export default function PluginMarketCardComponent({
   cardVO: PluginMarketCardVO;
   installPlugin: (pluginURL: string) => void;
 }) {
+  const { t } = useTranslation();
+
   function handleInstallClick(pluginURL: string) {
     installPlugin(pluginURL);
   }
@@ -51,7 +54,7 @@ export default function PluginMarketCardComponent({
                 <path d="M12.0006 18.26L4.94715 22.2082L6.52248 14.2799L0.587891 8.7918L8.61493 7.84006L12.0006 0.5L15.3862 7.84006L23.4132 8.7918L17.4787 14.2799L19.054 22.2082L12.0006 18.26Z"></path>
               </svg>
               <div className="text-base text-[#ffcd27] font-medium">
-                星标 {cardVO.starCount}
+                {t('plugins.starCount', { count: cardVO.starCount })}
               </div>
             </div>
 
@@ -73,7 +76,7 @@ export default function PluginMarketCardComponent({
                 }}
                 className="cursor-pointer"
               >
-                安装
+                {t('plugins.install')}
               </Button>
             </div>
           </div>

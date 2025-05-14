@@ -4,61 +4,61 @@ metadata:
   name: lark
   label:
     en_US: Lark
-    zh_CN: 飞书
+    zh_Hans: 飞书
   description:
     en_US: Lark Adapter
-    zh_CN: 飞书适配器，请查看文档了解使用方式
+    zh_Hans: 飞书适配器，请查看文档了解使用方式
   icon: lark.svg
 spec:
   config:
     - name: app_id
       label:
         en_US: App ID
-        zh_CN: 应用ID
+        zh_Hans: 应用ID
       type: string
       required: true
       default: ""
     - name: app_secret
       label:
         en_US: App Secret
-        zh_CN: 应用密钥
+        zh_Hans: 应用密钥
       type: string
       required: true
       default: ""
     - name: bot_name
       label:
         en_US: Bot Name
-        zh_CN: 机器人名称
+        zh_Hans: 机器人名称
       type: string
       required: true
       default: ""
     - name: enable-webhook
       label:
         en_US: Enable Webhook Mode
-        zh_CN: 启用Webhook模式
+        zh_Hans: 启用Webhook模式
       description:
         en_US: If enabled, the bot will use webhook mode to receive messages. Otherwise, it will use WS long connection mode
-        zh_CN: 如果启用，机器人将使用 Webhook 模式接收消息。否则，将使用 WS 长连接模式
+        zh_Hans: 如果启用，机器人将使用 Webhook 模式接收消息。否则，将使用 WS 长连接模式
       type: boolean
       required: true
       default: false
     - name: port
       label:
         en_US: Webhook Port
-        zh_CN: Webhook端口
+        zh_Hans: Webhook端口
       description:
         en_US: Only valid when webhook mode is enabled, please fill in the webhook port
-        zh_CN: 仅在启用 Webhook 模式时有效，请填写 Webhook 端口
+        zh_Hans: 仅在启用 Webhook 模式时有效，请填写 Webhook 端口
       type: integer
       required: true
       default: 2285
     - name: encrypt-key
       label:
         en_US: Encrypt Key
-        zh_CN: 加密密钥
+        zh_Hans: 加密密钥
       description:
         en_US: Only valid when webhook mode is enabled, please fill in the encrypt key
-        zh_CN: 仅在启用 Webhook 模式时有效，请填写加密密钥
+        zh_Hans: 仅在启用 Webhook 模式时有效，请填写加密密钥
       type: string
       required: true
       default: ""

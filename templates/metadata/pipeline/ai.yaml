@@ -1,87 +1,87 @@
 name: ai
 label:
   en_US: AI Feature
-  zh_CN: AI 能力
+  zh_Hans: AI 能力
 stages:
   - name: runner
     label:
       en_US: Runner
-      zh_CN: 运行方式
+      zh_Hans: 运行方式
     description:
       en_US: Strategy to call AI to process messages
-      zh_CN: 调用 AI 处理消息的方式
+      zh_Hans: 调用 AI 处理消息的方式
     config:
       - name: runner
         label:
           en_US: Runner
-          zh_CN: 运行器
+          zh_Hans: 运行器
         type: select
         required: true
         default: local-agent
         options:
           - name: local-agent
             label:
-              en_US: Embedded Agent
-              zh_CN: 内置 Agent
+              en_US: Local Agent
+              zh_Hans: 内置 Agent
           - name: dify-service-api
             label:
               en_US: Dify Service API
-              zh_CN: Dify 服务 API
+              zh_Hans: Dify 服务 API
           - name: dashscope-app-api
             label:
               en_US: Aliyun Dashscope App API
-              zh_CN: 阿里云百炼平台 API
+              zh_Hans: 阿里云百炼平台 API
   - name: local-agent
     label:
-      en_US: Embedded Agent
-      zh_CN: 内置 Agent
+      en_US: Local Agent
+      zh_Hans: 内置 Agent
     description:
       en_US: Configure the embedded agent of the pipeline
-      zh_CN: 配置内置 Agent
+      zh_Hans: 配置内置 Agent
     config:
       - name: model
         label:
           en_US: Model
-          zh_CN: 模型
+          zh_Hans: 模型
         type: llm-model-selector
         required: true
       - name: max-round
         label:
           en_US: Max Round
-          zh_CN: 最大回合数
+          zh_Hans: 最大回合数
         description:
           en_US: The maximum number of previous messages that the agent can remember
-          zh_CN: 最大前文消息回合数
+          zh_Hans: 最大前文消息回合数
         type: integer
         required: true
         default: 10
       - name: prompt
         label:
           en_US: Prompt
-          zh_CN: 提示词
+          zh_Hans: 提示词
         description:
           en_US: The prompt of the agent
-          zh_CN: 除非您了解消息结构，否则请只使用 system 单提示词
+          zh_Hans: 除非您了解消息结构，否则请只使用 system 单提示词
         type: prompt-editor
         required: true
   - name: dify-service-api
     label:
       en_US: Dify Service API
-      zh_CN: Dify 服务 API
+      zh_Hans: Dify 服务 API
     description:
       en_US: Configure the Dify service API of the pipeline
-      zh_CN: 配置 Dify 服务 API
+      zh_Hans: 配置 Dify 服务 API
     config:
       - name: base-url
         label:
           en_US: Base URL
-          zh_CN: 基础 URL
+          zh_Hans: 基础 URL
         type: string
         required: true
       - name: app-type
         label:
           en_US: App Type
-          zh_CN: 应用类型
+          zh_Hans: 应用类型
         type: select
         required: true
         default: chat
@@ -89,25 +89,25 @@ stages:
           - name: chat
             label:
               en_US: Chat
-              zh_CN: 聊天（包括Chatflow）
+              zh_Hans: 聊天（包括Chatflow）
           - name: agent
             label:
               en_US: Agent
-              zh_CN: Agent
+              zh_Hans: Agent
           - name: workflow
             label:
               en_US: Workflow
-              zh_CN: 工作流
+              zh_Hans: 工作流
       - name: api-key
         label:
           en_US: API Key
-          zh_CN: API 密钥
+          zh_Hans: API 密钥
         type: string
         required: true
       - name: thinking-convert
         label:
           en_US: CoT Convert
-          zh_CN: 思维链转换策略
+          zh_Hans: 思维链转换策略
         type: select
         required: true
         default: plain
@@ -115,27 +115,27 @@ stages:
           - name: plain
             label:
               en_US: Convert to <think>...</think>
-              zh_CN: 转换成 <think>...</think>
+              zh_Hans: 转换成 <think>...</think>
           - name: original
             label:
               en_US: Original
-              zh_CN: 原始
+              zh_Hans: 原始
           - name: remove
             label:
               en_US: Remove
-              zh_CN: 移除
+              zh_Hans: 移除
   - name: dashscope-app-api
     label:
       en_US: Aliyun Dashscope App API
-      zh_CN: 阿里云百炼平台 API
+      zh_Hans: 阿里云百炼平台 API
     description:
       en_US: Configure the Aliyun Dashscope App API of the pipeline
-      zh_CN: 配置阿里云百炼平台 API
+      zh_Hans: 配置阿里云百炼平台 API
     config:
       - name: app-type
         label:
           en_US: App Type
-          zh_CN: 应用类型
+          zh_Hans: 应用类型
         type: select
         required: true
         default: agent
@@ -143,30 +143,30 @@ stages:
           - name: agent
             label:
               en_US: Agent
-              zh_CN: Agent
+              zh_Hans: Agent
           - name: workflow
             label:
               en_US: Workflow
-              zh_CN: 工作流
+              zh_Hans: 工作流
       - name: api-key
         label:
           en_US: API Key
-          zh_CN: API 密钥
+          zh_Hans: API 密钥
         type: string
         required: true
       - name: app-id
         label:
           en_US: App ID
-          zh_CN: 应用 ID
+          zh_Hans: 应用 ID
         type: string
         required: true
       - name: references_quote
         label:
           en_US: References Quote
-          zh_CN: 引用文本
+          zh_Hans: 引用文本
         description:
           en_US: The text prompt when the references are included
-          zh_CN: 包含引用资料时的文本提示
+          zh_Hans: 包含引用资料时的文本提示
         type: string
         required: false
         default: '参考资料来自:'

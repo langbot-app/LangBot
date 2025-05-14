@@ -4,6 +4,7 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 export default function PluginCardComponent({
   cardVO,
@@ -12,6 +13,7 @@ export default function PluginCardComponent({
   cardVO: PluginCardVO;
   onCardClick: () => void;
 }) {
+  const { t } = useTranslation();
   const [enabled, setEnabled] = useState(cardVO.enabled);
   const [switchEnable, setSwitchEnable] = useState(true);
 
@@ -24,7 +26,7 @@ export default function PluginCardComponent({
         setEnabled(!enabled);
       })
       .catch((err) => {
-        toast.error('修改失败：' + err.message);
+        toast.error(t('plugins.modifyFailed') + err.message);
       })
       .finally(() => {
         setSwitchEnable(true);
@@ -75,7 +77,9 @@ export default function PluginCardComponent({
                 <path d="M24 12L18.3431 17.6569L16.9289 16.2426L21.1716 12L16.9289 7.75736L18.3431 6.34315L24 12ZM2.82843 12L7.07107 16.2426L5.65685 17.6569L0 12L5.65685 6.34315L7.07107 7.75736L2.82843 12ZM9.78845 21H7.66009L14.2116 3H16.3399L9.78845 21Z"></path>
               </svg>
               <div className="text-base text-black font-medium">
-                事件 {Object.keys(cardVO.event_handlers).length}
+                {t('plugins.eventCount', {
+                  count: Object.keys(cardVO.event_handlers).length,
+                })}
               </div>
             </div>
 
@@ -89,7 +93,7 @@ export default function PluginCardComponent({
                 <path d="M5.32943 3.27158C6.56252 2.8332 7.9923 3.10749 8.97927 4.09446C10.1002 5.21537 10.3019 6.90741 9.5843 8.23385L20.293 18.9437L18.8788 20.3579L8.16982 9.64875C6.84325 10.3669 5.15069 10.1654 4.02952 9.04421C3.04227 8.05696 2.7681 6.62665 3.20701 5.39332L5.44373 7.63C6.02952 8.21578 6.97927 8.21578 7.56505 7.63C8.15084 7.04421 8.15084 6.09446 7.56505 5.50868L5.32943 3.27158ZM15.6968 5.15512L18.8788 3.38736L20.293 4.80157L18.5252 7.98355L16.7574 8.3371L14.6361 10.4584L13.2219 9.04421L15.3432 6.92289L15.6968 5.15512ZM8.97927 13.2868L10.3935 14.7011L5.09018 20.0044C4.69966 20.3949 4.06649 20.3949 3.67597 20.0044C3.31334 19.6417 3.28744 19.0699 3.59826 18.6774L3.67597 18.5902L8.97927 13.2868Z"></path>
               </svg>
               <div className="text-base text-black font-medium">
-                工具 {cardVO.tools.length}
+                {t('plugins.toolCount', { count: cardVO.tools.length })}
               </div>
             </div>
           </div>

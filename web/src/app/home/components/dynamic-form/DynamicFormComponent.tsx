@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/form';
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
 import { useEffect } from 'react';
+import { i18nObj } from '@/i18n/I18nProvider';
 
 export default function DynamicFormComponent({
   itemConfigList,
@@ -141,7 +142,7 @@ export default function DynamicFormComponent({
             render={({ field }) => (
               <FormItem>
                 <FormLabel>
-                  {config.label.zh_CN}{' '}
+                  {i18nObj(config.label)}{' '}
                   {config.required && <span className="text-red-500">*</span>}
                 </FormLabel>
                 <FormControl>
@@ -149,7 +150,7 @@ export default function DynamicFormComponent({
                 </FormControl>
                 {config.description && (
                   <p className="text-sm text-muted-foreground">
-                    {config.description.zh_CN}
+                    {i18nObj(config.description)}
                   </p>
                 )}
                 <FormMessage />

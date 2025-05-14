@@ -1,0 +1,183 @@
+[project]
+name = "langbot"
+version = "4.0.1"
+description = "高稳定、支持扩展、多模态 - 大模型原生即时通信机器人平台"
+readme = "README.md"
+requires-python = ">=3.10.1"
+dependencies = [
+    "aiocqhttp>=1.4.4",
+    "aiofiles>=24.1.0",
+    "aiohttp>=3.11.18",
+    "aioshutil>=1.5",
+    "aiosqlite>=0.21.0",
+    "anthropic>=0.51.0",
+    "argon2-cffi>=23.1.0",
+    "async-lru>=2.0.5",
+    "certifi>=2025.4.26",
+    "colorlog~=6.6.0",
+    "cryptography>=44.0.3",
+    "dashscope>=1.23.2",
+    "dingtalk-stream>=0.24.0",
+    "discord-py>=2.5.2",
+    "gewechat-client>=0.1.5",
+    "lark-oapi>=1.4.15",
+    "mcp>=1.8.1",
+    "nakuru-project-idk>=0.0.2.1",
+    "ollama>=0.4.8",
+    "openai>1.0.0",
+    "pillow>=11.2.1",
+    "psutil>=7.0.0",
+    "pycryptodome>=3.22.0",
+    "pydantic>2.0",
+    "pyjwt>=2.10.1",
+    "python-telegram-bot>=22.0",
+    "pyyaml>=6.0.2",
+    "qq-botpy-rc>=1.2.1.6",
+    "quart>=0.20.0",
+    "quart-cors>=0.8.0",
+    "requests>=2.32.3",
+    "slack-sdk>=3.35.0",
+    "sqlalchemy[asyncio]>=2.0.40",
+    "sqlmodel>=0.0.24",
+    "telegramify-markdown>=0.5.1",
+    "tiktoken>=0.9.0",
+    "urllib3>=2.4.0",
+    "websockets>=15.0.1",
+    "python-socks>=2.7.1", # dingtalk missing dependency
+    "taskgroup==0.0.0a4", # graingert/taskgroup#20
+    "pip>=25.1.1", # pkg.core.bootutils.deps
+    "google-genai>=1.15.0",
+    "google-generativeai>=0.8.5",
+    "ruff>=0.11.9",
+    "pre-commit>=4.2.0",
+]
+keywords = [
+    "bot",
+    "agent",
+    "telegram",
+    "plugins",
+    "openai",
+    "instant-messaging",
+    "wechat",
+    "qq",
+    "dify",
+    "llm",
+    "chatgpt",
+    "deepseek",
+    "onebot",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: AsyncIO",
+    "Framework :: Robot Framework",
+    "Framework :: Robot Framework :: Library",
+    "License :: OSI Approved :: AGPL-3 License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Communications :: Chat",
+]
+
+[project.urls]
+Homepage = "https://langbot.app"
+Documentation = "https://docs.langbot.app"
+Repository = "https://github.com/RockChinQ/langbot"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.2.0",
+    "ruff>=0.11.9",
+]
+
+[tool.ruff]
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
+]
+
+line-length = 120
+indent-width = 4
+
+# Assume Python 3.12
+target-version = "py312"
+
+[tool.ruff.lint]
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
+select = ["E4", "E7", "E9", "F"]
+ignore = [
+    "E712", # Comparison to true should be 'if cond is true:' or 'if cond:' (E712)
+    "F402", # Import `loader` from line 8 shadowed by loop variable
+    "F403", # * used, unable to detect undefined names
+    "F405", # may be undefined, or defined from star imports
+    "E741", # Ambiguous variable name: `l`
+    "E722", # bare-except
+    "E721", # type-comparison
+    "F821", # undefined-all
+    "FURB113", # repeated-append
+    "FURB152", # math-constant
+    "UP007", # non-pep604-annotation
+    "UP032", # f-string
+    "UP045", # non-pep604-annotation-optional
+    "B005", # strip-with-multi-characters
+    "B006", # mutable-argument-default
+    "B007", # unused-loop-control-variable
+    "B026", # star-arg-unpacking-after-keyword-arg
+    "B903", # class-as-data-structure
+    "B904", # raise-without-from-inside-except
+    "B905", # zip-without-explicit-strict
+    "N806", # non-lowercase-variable-in-function
+    "N815", # mixed-case-variable-in-class-scope
+    "PT011", # pytest-raises-too-broad
+    "SIM102", # collapsible-if
+    "SIM103", # needless-bool
+    "SIM105", # suppressible-exception
+    "SIM107", # return-in-try-except-finally
+    "SIM108", # if-else-block-instead-of-if-exp
+    "SIM113", # enumerate-for-loop
+    "SIM117", # multiple-with-statements
+    "SIM210", # if-expr-with-true-false
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "single"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"

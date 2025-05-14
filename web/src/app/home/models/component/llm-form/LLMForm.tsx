@@ -8,6 +8,7 @@ import { UUID } from 'uuidjs';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
+import { useTranslation } from 'react-i18next';
 
 import {
   Dialog,
@@ -38,41 +39,47 @@ import {
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-const extraArgSchema = z
-  .object({
-    key: z.string().min(1, { message: '键名不能为空' }),
-    type: z.enum(['string', 'number', 'boolean']),
-    value: z.string(),
-  })
-  .superRefine((data, ctx) => {
-    if (data.type === 'number' && isNaN(Number(data.value))) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '必须是有效的数字',
-        path: ['value'],
-      });
-    }
-    if (
-      data.type === 'boolean' &&
-      data.value !== 'true' &&
-      data.value !== 'false'
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '必须是 true 或 false',
-        path: ['value'],
-      });
-    }
-  });
+import { i18nObj } from '@/i18n/I18nProvider';
 
-const formSchema = z.object({
-  name: z.string().min(1, { message: '模型名称不能为空' }),
-  model_provider: z.string().min(1, { message: '模型供应商不能为空' }),
-  url: z.string().min(1, { message: '请求URL不能为空' }),
-  api_key: z.string().min(1, { message: 'API Key不能为空' }),
-  abilities: z.array(z.string()),
-  extra_args: z.array(extraArgSchema).optional(),
-});
+const getExtraArgSchema = (t: (key: string) => string) =>
+  z
+    .object({
+      key: z.string().min(1, { message: t('models.keyNameRequired') }),
+      type: z.enum(['string', 'number', 'boolean']),
+      value: z.string(),
+    })
+    .superRefine((data, ctx) => {
+      if (data.type === 'number' && isNaN(Number(data.value))) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: t('models.mustBeValidNumber'),
+          path: ['value'],
+        });
+      }
+      if (
+        data.type === 'boolean' &&
+        data.value !== 'true' &&
+        data.value !== 'false'
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: t('models.mustBeTrueOrFalse'),
+          path: ['value'],
+        });
+      }
+    });
+
+const getFormSchema = (t: (key: string) => string) =>
+  z.object({
+    name: z.string().min(1, { message: t('models.modelNameRequired') }),
+    model_provider: z
+      .string()
+      .min(1, { message: t('models.modelProviderRequired') }),
+    url: z.string().min(1, { message: t('models.requestURLRequired') }),
+    api_key: z.string().min(1, { message: t('models.apiKeyRequired') }),
+    abilities: z.array(z.string()),
+    extra_args: z.array(getExtraArgSchema(t)).optional(),
+  });
 
 export default function LLMForm({
   editMode,
@@ -87,6 +94,9 @@ export default function LLMForm({
   onFormCancel: () => void;
   onLLMDeleted: () => void;
 }) {
+  const { t } = useTranslation();
+  const formSchema = getFormSchema(t);
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -106,11 +116,11 @@ export default function LLMForm({
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const abilityOptions: { label: string; value: string }[] = [
     {
-      label: '视觉能力',
+      label: t('models.visionAbility'),
       value: 'vision',
     },
     {
-      label: '函数调用',
+      label: t('models.functionCallAbility'),
       value: 'func_call',
     },
   ];
@@ -122,38 +132,42 @@ export default function LLMForm({
   >([]);
 
   useEffect(() => {
-    initLLMModelFormComponent();
-    if (editMode && initLLMId) {
-      getLLMConfig(initLLMId).then((val) => {
-        form.setValue('name', val.name);
-        form.setValue('model_provider', val.model_provider);
-        form.setValue('url', val.url);
-        form.setValue('api_key', val.api_key);
-        form.setValue('abilities', val.abilities as ('vision' | 'func_call')[]);
-        // 转换extra_args为新格式
-        if (val.extra_args) {
-          const args = val.extra_args.map((arg) => {
-            const [key, value] = arg.split(':');
-            let type: 'string' | 'number' | 'boolean' = 'string';
-            if (!isNaN(Number(value))) {
-              type = 'number';
-            } else if (value === 'true' || value === 'false') {
-              type = 'boolean';
-            }
-            return {
-              key,
-              type,
-              value,
-            };
-          });
-          setExtraArgs(args);
-          form.setValue('extra_args', args);
-        }
-      });
-    } else {
-      form.reset();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    initLLMModelFormComponent().then(() => {
+      if (editMode && initLLMId) {
+        getLLMConfig(initLLMId).then((val) => {
+          form.setValue('name', val.name);
+          form.setValue('model_provider', val.model_provider);
+          form.setValue('url', val.url);
+          form.setValue('api_key', val.api_key);
+          form.setValue(
+            'abilities',
+            val.abilities as ('vision' | 'func_call')[],
+          );
+          // 转换extra_args为新格式
+          if (val.extra_args) {
+            const args = val.extra_args.map((arg) => {
+              const [key, value] = arg.split(':');
+              let type: 'string' | 'number' | 'boolean' = 'string';
+              if (!isNaN(Number(value))) {
+                type = 'number';
+              } else if (value === 'true' || value === 'false') {
+                type = 'boolean';
+              }
+              return {
+                key,
+                type,
+                value,
+              };
+            });
+            setExtraArgs(args);
+            form.setValue('extra_args', args);
+          }
+        });
+      } else {
+        form.reset();
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    });
   }, []);
 
   const addExtraArg = () => {
@@ -185,7 +199,7 @@ export default function LLMForm({
     setRequesterNameList(
       requesterNameList.requesters.map((item) => {
         return {
-          label: item.label.zh_CN,
+          label: i18nObj(item.label),
           value: item.name,
         };
       }),
@@ -223,15 +237,17 @@ export default function LLMForm({
 
   function handleFormSubmit(value: z.infer<typeof formSchema>) {
     const extraArgsObj: Record<string, string | number | boolean> = {};
-    value.extra_args?.forEach((arg) => {
-      if (arg.type === 'number') {
-        extraArgsObj[arg.key] = Number(arg.value);
-      } else if (arg.type === 'boolean') {
-        extraArgsObj[arg.key] = arg.value === 'true';
-      } else {
-        extraArgsObj[arg.key] = arg.value;
-      }
-    });
+    value.extra_args?.forEach(
+      (arg: { key: string; type: string; value: string }) => {
+        if (arg.type === 'number') {
+          extraArgsObj[arg.key] = Number(arg.value);
+        } else if (arg.type === 'boolean') {
+          extraArgsObj[arg.key] = arg.value === 'true';
+        } else {
+          extraArgsObj[arg.key] = arg.value;
+        }
+      },
+    );
 
     const llmModel: LLMModel = {
       uuid: editMode ? initLLMId || '' : UUID.generate(),
@@ -262,9 +278,9 @@ export default function LLMForm({
     try {
       await httpClient.createProviderLLMModel(llmModel);
       onFormSubmit();
-      toast.success('创建成功');
+      toast.success(t('models.createSuccess'));
     } catch (err) {
-      toast.error('创建失败：' + (err as Error).message);
+      toast.error(t('models.createError') + (err as Error).message);
     }
   }
 
@@ -272,9 +288,9 @@ export default function LLMForm({
     try {
       await httpClient.updateProviderLLMModel(initLLMId || '', llmModel);
       onFormSubmit();
-      toast.success('保存成功');
+      toast.success(t('models.saveSuccess'));
     } catch (err) {
-      toast.error('保存失败：' + (err as Error).message);
+      toast.error(t('models.saveError') + (err as Error).message);
     }
   }
 
@@ -284,10 +300,10 @@ export default function LLMForm({
         .deleteProviderLLMModel(initLLMId)
         .then(() => {
           onLLMDeleted();
-          toast.success('删除成功');
+          toast.success(t('models.deleteSuccess'));
         })
         .catch((err) => {
-          toast.error('删除失败：' + err.message);
+          toast.error(t('models.deleteError') + err.message);
         });
     }
   }
@@ -300,15 +316,17 @@ export default function LLMForm({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>删除确认</DialogTitle>
+            <DialogTitle>{t('common.confirmDelete')}</DialogTitle>
           </DialogHeader>
-          <DialogDescription>你确定要删除这个模型吗？</DialogDescription>
+          <DialogDescription>
+            {t('models.deleteConfirmation')}
+          </DialogDescription>
           <DialogFooter>
             <Button
               variant="outline"
               onClick={() => setShowDeleteConfirmModal(false)}
             >
-              取消
+              {t('common.cancel')}
             </Button>
             <Button
               variant="destructive"
@@ -317,7 +335,7 @@ export default function LLMForm({
                 setShowDeleteConfirmModal(false);
               }}
             >
-              确认删除
+              {t('common.confirmDelete')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -335,14 +353,15 @@ export default function LLMForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    模型名称<span className="text-red-500">*</span>
+                    {t('models.modelName')}
+                    <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
                     <Input {...field} />
                   </FormControl>
                   <FormMessage />
                   <FormDescription>
-                    请填写供应商向您提供的模型名称
+                    {t('models.modelProviderDescription')}
                   </FormDescription>
                 </FormItem>
               )}
@@ -354,7 +373,8 @@ export default function LLMForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    模型供应商<span className="text-red-500">*</span>
+                    {t('models.modelProvider')}
+                    <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
                     <Select
@@ -370,7 +390,9 @@ export default function LLMForm({
                       value={field.value}
                     >
                       <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="选择模型供应商" />
+                        <SelectValue
+                          placeholder={t('models.selectModelProvider')}
+                        />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
@@ -394,7 +416,8 @@ export default function LLMForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    请求URL<span className="text-red-500">*</span>
+                    {t('models.requestURL')}
+                    <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
                     <Input {...field} />
@@ -409,7 +432,8 @@ export default function LLMForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    API Key<span className="text-red-500">*</span>
+                    {t('models.apiKey')}
+                    <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
                     <Input {...field} />
@@ -423,9 +447,11 @@ export default function LLMForm({
               name="abilities"
               render={() => (
                 <FormItem>
-                  <FormLabel>能力</FormLabel>
+                  <FormLabel>{t('models.abilities')}</FormLabel>
                   <div className="mb-0">
-                    <FormDescription>选择模型能力</FormDescription>
+                    <FormDescription>
+                      {t('models.selectModelAbilities')}
+                    </FormDescription>
                   </div>
                   {abilityOptions.map((item) => (
                     <FormField
@@ -452,7 +478,8 @@ export default function LLMForm({
                                       ])
                                     : field.onChange(
                                         field.value?.filter(
-                                          (value) => value !== item.value,
+                                          (value: string) =>
+                                            value !== item.value,
                                         ),
                                       );
                                 }}
@@ -472,12 +499,12 @@ export default function LLMForm({
             />
 
             <FormItem>
-              <FormLabel>额外参数</FormLabel>
+              <FormLabel>{t('models.extraParameters')}</FormLabel>
               <div className="space-y-2">
                 {extraArgs.map((arg, index) => (
                   <div key={index} className="flex gap-2">
                     <Input
-                      placeholder="键名"
+                      placeholder={t('models.keyName')}
                       value={arg.key}
                       onChange={(e) =>
                         updateExtraArg(index, 'key', e.target.value)
@@ -490,16 +517,22 @@ export default function LLMForm({
                       }
                     >
                       <SelectTrigger className="w-[120px]">
-                        <SelectValue placeholder="类型" />
+                        <SelectValue placeholder={t('models.type')} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="string">字符串</SelectItem>
-                        <SelectItem value="number">数字</SelectItem>
-                        <SelectItem value="boolean">布尔值</SelectItem>
+                        <SelectItem value="string">
+                          {t('models.string')}
+                        </SelectItem>
+                        <SelectItem value="number">
+                          {t('models.number')}
+                        </SelectItem>
+                        <SelectItem value="boolean">
+                          {t('models.boolean')}
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                     <Input
-                      placeholder="值"
+                      placeholder={t('models.value')}
                       value={arg.value}
                       onChange={(e) =>
                         updateExtraArg(index, 'value', e.target.value)
@@ -522,11 +555,11 @@ export default function LLMForm({
                   </div>
                 ))}
                 <Button type="button" variant="outline" onClick={addExtraArg}>
-                  添加参数
+                  {t('models.addParameter')}
                 </Button>
               </div>
               <FormDescription>
-                将在请求时附加到请求体中，如 max_tokens, temperature, top_p 等
+                {t('models.extraParametersDescription')}
               </FormDescription>
               <FormMessage />
             </FormItem>
@@ -538,18 +571,20 @@ export default function LLMForm({
                 variant="destructive"
                 onClick={() => setShowDeleteConfirmModal(true)}
               >
-                删除
+                {t('common.delete')}
               </Button>
             )}
 
-            <Button type="submit">{editMode ? '保存' : '提交'}</Button>
+            <Button type="submit">
+              {editMode ? t('common.save') : t('common.submit')}
+            </Button>
 
             <Button
               type="button"
               variant="outline"
               onClick={() => onFormCancel()}
             >
-              取消
+              {t('common.cancel')}
             </Button>
           </DialogFooter>
         </form>

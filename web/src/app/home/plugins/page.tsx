@@ -3,6 +3,7 @@ import PluginInstalledComponent, {
   PluginInstalledComponentRef,
 } from '@/app/home/plugins/plugin-installed/PluginInstalledComponent';
 import PluginMarketComponent from '@/app/home/plugins/plugin-market/PluginMarketComponent';
+import PluginSortDialog from '@/app/home/plugins/plugin-sort/PluginSortDialog';
 import styles from './plugins.module.css';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -19,6 +20,8 @@ import { GithubIcon } from 'lucide-react';
 import { useState, useRef } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+
 enum PluginInstallStatus {
   WAIT_INPUT = 'wait_input',
   INSTALLING = 'installing',
@@ -26,7 +29,9 @@ enum PluginInstallStatus {
 }
 
 export default function PluginConfigPage() {
+  const { t } = useTranslation();
   const [modalOpen, setModalOpen] = useState(false);
+  const [sortModalOpen, setSortModalOpen] = useState(false);
   const [pluginInstallStatus, setPluginInstallStatus] =
     useState<PluginInstallStatus>(PluginInstallStatus.WAIT_INPUT);
   const [installError, setInstallError] = useState<string | null>(null);
@@ -58,7 +63,7 @@ export default function PluginConfigPage() {
               } else {
                 // success
                 if (!alreadySuccess) {
-                  toast.success('插件安装成功');
+                  toast.success(t('plugins.installSuccess'));
                   alreadySuccess = true;
                 }
                 setGithubURL('');
@@ -82,14 +87,23 @@ export default function PluginConfigPage() {
         <div className="flex flex-row justify-between items-center px-[0.8rem]">
           <TabsList className="shadow-md py-5 bg-[#f0f0f0]">
             <TabsTrigger value="installed" className="px-6 py-4 cursor-pointer">
-              已安装
+              {t('plugins.installed')}
             </TabsTrigger>
             <TabsTrigger value="market" className="px-6 py-4 cursor-pointer">
-              插件市场
+              {t('plugins.marketplace')}
             </TabsTrigger>
           </TabsList>
 
           <div className="flex flex-row justify-end items-center">
+            <Button
+              variant="outline"
+              className="px-6 py-4 cursor-pointer mr-2"
+              onClick={() => {
+                setSortModalOpen(true);
+              }}
+            >
+              {t('plugins.arrange')}
+            </Button>
             <Button
               variant="default"
               className="px-6 py-4 cursor-pointer"
@@ -100,7 +114,7 @@ export default function PluginConfigPage() {
               }}
             >
               <PlusIcon className="w-4 h-4" />
-              安装
+              {t('plugins.install')}
             </Button>
           </div>
         </div>
@@ -124,14 +138,14 @@ export default function PluginConfigPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-4">
               <GithubIcon className="size-6" />
-              <span>从 GitHub 安装插件</span>
+              <span>{t('plugins.installFromGithub')}</span>
             </DialogTitle>
           </DialogHeader>
           {pluginInstallStatus === PluginInstallStatus.WAIT_INPUT && (
             <div className="mt-4">
-              <p className="mb-2">目前仅支持从 GitHub 安装</p>
+              <p className="mb-2">{t('plugins.onlySupportGithub')}</p>
               <Input
-                placeholder="请输入插件的Github链接"
+                placeholder={t('plugins.enterGithubLink')}
                 value={githubURL}
                 onChange={(e) => setGithubURL(e.target.value)}
                 className="mb-4"
@@ -140,12 +154,12 @@ export default function PluginConfigPage() {
           )}
           {pluginInstallStatus === PluginInstallStatus.INSTALLING && (
             <div className="mt-4">
-              <p className="mb-2">正在安装插件...</p>
+              <p className="mb-2">{t('plugins.installing')}</p>
             </div>
           )}
           {pluginInstallStatus === PluginInstallStatus.ERROR && (
             <div className="mt-4">
-              <p className="mb-2">插件安装失败：</p>
+              <p className="mb-2">{t('plugins.installFailed')}</p>
               <p className="mb-2 text-red-500">{installError}</p>
             </div>
           )}
@@ -153,19 +167,29 @@ export default function PluginConfigPage() {
             {pluginInstallStatus === PluginInstallStatus.WAIT_INPUT && (
               <>
                 <Button variant="outline" onClick={() => setModalOpen(false)}>
-                  取消
+                  {t('common.cancel')}
                 </Button>
-                <Button onClick={handleModalConfirm}>确认</Button>
+                <Button onClick={handleModalConfirm}>
+                  {t('common.confirm')}
+                </Button>
               </>
             )}
             {pluginInstallStatus === PluginInstallStatus.ERROR && (
               <Button variant="default" onClick={() => setModalOpen(false)}>
-                关闭
+                {t('common.close')}
               </Button>
             )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PluginSortDialog
+        open={sortModalOpen}
+        onOpenChange={setSortModalOpen}
+        onSortComplete={() => {
+          pluginInstalledRef.current?.refreshPluginList();
+        }}
+      />
     </div>
   );
 }

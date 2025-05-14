@@ -18,6 +18,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 import {
   Dialog,
@@ -46,15 +47,19 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { i18nObj } from '@/i18n/I18nProvider';
 
-const formSchema = z.object({
-  name: z.string().min(1, { message: '机器人名称不能为空' }),
-  description: z.string().min(1, { message: '机器人描述不能为空' }),
-  adapter: z.string().min(1, { message: '适配器不能为空' }),
-  adapter_config: z.record(z.string(), z.any()),
-  enable: z.boolean().optional(),
-  use_pipeline_uuid: z.string().optional(),
-});
+const getFormSchema = (t: (key: string) => string) =>
+  z.object({
+    name: z.string().min(1, { message: t('bots.botNameRequired') }),
+    description: z
+      .string()
+      .min(1, { message: t('bots.botDescriptionRequired') }),
+    adapter: z.string().min(1, { message: t('bots.adapterRequired') }),
+    adapter_config: z.record(z.string(), z.any()),
+    enable: z.boolean().optional(),
+    use_pipeline_uuid: z.string().optional(),
+  });
 
 export default function BotForm({
   initBotId,
@@ -64,16 +69,19 @@ export default function BotForm({
   onNewBotCreated,
 }: {
   initBotId?: string;
-  onFormSubmit: (value: z.infer<typeof formSchema>) => void;
+  onFormSubmit: (value: z.infer<ReturnType<typeof getFormSchema>>) => void;
   onFormCancel: () => void;
   onBotDeleted: () => void;
   onNewBotCreated: (botId: string) => void;
 }) {
+  const { t } = useTranslation();
+  const formSchema = getFormSchema(t);
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: '',
-      description: '一个机器人',
+      description: t('bots.defaultDescription'),
       adapter: '',
       adapter_config: {},
       enable: true,
@@ -129,7 +137,7 @@ export default function BotForm({
             // dynamicForm.setFieldsValue(val.adapter_config);
           })
           .catch((err) => {
-            toast.error('获取机器人配置失败：' + err.message);
+            toast.error(t('bots.getBotConfigError') + err.message);
           });
       } else {
         form.reset();
@@ -156,7 +164,7 @@ export default function BotForm({
     setAdapterNameList(
       adaptersRes.adapters.map((item) => {
         return {
-          label: item.label.zh_CN,
+          label: i18nObj(item.label),
           value: item.name,
         };
       }),
@@ -177,7 +185,7 @@ export default function BotForm({
     setAdapterDescriptionList(
       adaptersRes.adapters.reduce(
         (acc, item) => {
-          acc[item.name] = item.description.zh_CN;
+          acc[item.name] = i18nObj(item.description);
           return acc;
         },
         {} as Record<string, string>,
@@ -266,10 +274,10 @@ export default function BotForm({
         .then((res) => {
           console.log('update bot success', res);
           onFormSubmit(form.getValues());
-          toast.success('保存成功');
+          toast.success(t('bots.saveSuccess'));
         })
         .catch((err) => {
-          toast.error('保存失败：' + err.message);
+          toast.error(t('bots.saveError') + err.message);
         })
         .finally(() => {
           setIsLoading(false);
@@ -289,7 +297,7 @@ export default function BotForm({
         .createBot(newBot)
         .then((res) => {
           console.log('create bot success', res);
-          toast.success('创建成功 请启用或修改绑定流水线');
+          toast.success(t('bots.createSuccess'));
           initBotId = res.uuid;
 
           setBotFormValues();
@@ -297,7 +305,7 @@ export default function BotForm({
           onNewBotCreated(res.uuid);
         })
         .catch((err) => {
-          toast.error('创建失败：' + err.message);
+          toast.error(t('bots.createError') + err.message);
         })
         .finally(() => {
           setIsLoading(false);
@@ -315,10 +323,10 @@ export default function BotForm({
         .deleteBot(initBotId)
         .then(() => {
           onBotDeleted();
-          toast.success('删除成功');
+          toast.success(t('bots.deleteSuccess'));
         })
         .catch((err) => {
-          toast.error('删除失败：' + err.message);
+          toast.error(t('bots.deleteError') + err.message);
         });
     }
   }
@@ -331,9 +339,9 @@ export default function BotForm({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>删除确认</DialogTitle>
+            <DialogTitle>{t('common.confirmDelete')}</DialogTitle>
           </DialogHeader>
-          <DialogDescription>你确定要删除这个机器人吗？</DialogDescription>
+          <DialogDescription>{t('bots.deleteConfirmation')}</DialogDescription>
           <DialogFooter>
             <Button
               variant="outline"
@@ -348,7 +356,7 @@ export default function BotForm({
                 setShowDeleteConfirmModal(false);
               }}
             >
-              确认删除
+              {t('common.confirmDelete')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -368,7 +376,7 @@ export default function BotForm({
                   name="enable"
                   render={({ field }) => (
                     <FormItem className="flex flex-col justify-start gap-[0.8rem] h-[3.8rem]">
-                      <FormLabel>是否启用</FormLabel>
+                      <FormLabel>{t('common.enable')}</FormLabel>
                       <FormControl>
                         <Switch
                           checked={field.value}
@@ -384,11 +392,13 @@ export default function BotForm({
                   name="use_pipeline_uuid"
                   render={({ field }) => (
                     <FormItem className="flex flex-col justify-start gap-[0.8rem] h-[3.8rem]">
-                      <FormLabel>绑定流水线</FormLabel>
+                      <FormLabel>{t('bots.bindPipeline')}</FormLabel>
                       <FormControl>
                         <Select onValueChange={field.onChange} {...field}>
                           <SelectTrigger>
-                            <SelectValue placeholder="选择流水线" />
+                            <SelectValue
+                              placeholder={t('bots.selectPipeline')}
+                            />
                           </SelectTrigger>
                           <SelectContent className="fixed z-[1000]">
                             <SelectGroup>
@@ -413,7 +423,8 @@ export default function BotForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    机器人名称<span className="text-red-500">*</span>
+                    {t('bots.botName')}
+                    <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
                     <Input {...field} />
@@ -428,7 +439,8 @@ export default function BotForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    机器人描述<span className="text-red-500">*</span>
+                    {t('bots.botDescription')}
+                    <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
                     <Input {...field} />
@@ -444,7 +456,8 @@ export default function BotForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    平台/适配器选择<span className="text-red-500">*</span>
+                    {t('bots.platformAdapter')}
+                    <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
                     <div className="relative">
@@ -456,7 +469,7 @@ export default function BotForm({
                         value={field.value}
                       >
                         <SelectTrigger className="w-[180px]">
-                          <SelectValue placeholder="选择适配器" />
+                          <SelectValue placeholder={t('bots.selectAdapter')} />
                         </SelectTrigger>
                         <SelectContent className="fixed z-[1000]">
                           <SelectGroup>
@@ -499,7 +512,9 @@ export default function BotForm({
 
             {showDynamicForm && dynamicFormConfigList.length > 0 && (
               <div className="space-y-4">
-                <div className="text-lg font-medium">适配器配置</div>
+                <div className="text-lg font-medium">
+                  {t('bots.adapterConfig')}
+                </div>
                 <DynamicFormComponent
                   itemConfigList={dynamicFormConfigList}
                   initialValues={form.watch('adapter_config')}
@@ -518,7 +533,7 @@ export default function BotForm({
                   type="submit"
                   onClick={form.handleSubmit(onDynamicFormSubmit)}
                 >
-                  提交
+                  {t('common.submit')}
                 </Button>
               )}
               {initBotId && (
@@ -528,13 +543,13 @@ export default function BotForm({
                     variant="destructive"
                     onClick={() => setShowDeleteConfirmModal(true)}
                   >
-                    删除
+                    {t('common.delete')}
                   </Button>
                   <Button
                     type="button"
                     onClick={form.handleSubmit(onDynamicFormSubmit)}
                   >
-                    保存
+                    {t('common.save')}
                   </Button>
                 </>
               )}
@@ -543,7 +558,7 @@ export default function BotForm({
                 variant="outline"
                 onClick={() => onFormCancel()}
               >
-                取消
+                {t('common.cancel')}
               </Button>
             </div>
           </div>

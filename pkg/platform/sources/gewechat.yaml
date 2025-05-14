@@ -4,52 +4,52 @@ metadata:
   name: gewechat
   label:
     en_US: GeWeChat
-    zh_CN: GeWeChat（个人微信）
+    zh_Hans: GeWeChat（个人微信）
   description:
     en_US: GeWeChat Adapter
-    zh_CN: GeWeChat 适配器，请查看文档了解使用方式
+    zh_Hans: GeWeChat 适配器，请查看文档了解使用方式
   icon: gewechat.png
 spec:
   config:
     - name: gewechat_url
       label:
         en_US: GeWeChat URL
-        zh_CN: GeWeChat URL
+        zh_Hans: GeWeChat URL
       type: string
       required: true
       default: ""
     - name: gewechat_file_url
       label:
         en_US: GeWeChat file download URL
-        zh_CN: GeWeChat 文件下载URL
+        zh_Hans: GeWeChat 文件下载URL
       type: string
       required: true
       default: ""
     - name: port
       label:
         en_US: Port
-        zh_CN: 端口
+        zh_Hans: 端口
       type: integer
       required: true
       default: 2286
     - name: callback_url
       label:
         en_US: Callback URL
-        zh_CN: 回调URL
+        zh_Hans: 回调URL
       type: string
       required: true
       default: ""
     - name: app_id
       label:
         en_US: App ID
-        zh_CN: 应用ID
+        zh_Hans: 应用ID
       type: string
       required: true
       default: ""
     - name: token
       label:
         en_US: Token
-        zh_CN: 令牌
+        zh_Hans: 令牌
       type: string
       required: true
       default: ""

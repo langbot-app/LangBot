@@ -15,7 +15,7 @@ class I18nString(pydantic.BaseModel):
     en_US: str
     """英文"""
 
-    zh_CN: typing.Optional[str] = None
+    zh_Hans: typing.Optional[str] = None
     """中文"""
 
     ja_JP: typing.Optional[str] = None
@@ -26,8 +26,8 @@ class I18nString(pydantic.BaseModel):
         dic = {}
         if self.en_US is not None:
             dic['en_US'] = self.en_US
-        if self.zh_CN is not None:
-            dic['zh_CN'] = self.zh_CN
+        if self.zh_Hans is not None:
+            dic['zh_Hans'] = self.zh_Hans
         if self.ja_JP is not None:
             dic['ja_JP'] = self.ja_JP
         return dic

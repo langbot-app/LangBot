@@ -9,7 +9,7 @@ import openai.types.chat.chat_completion_message_tool_call as chat_completion_me
 import httpx
 
 from .. import entities, errors, requester
-from ....core import entities as core_entities, app
+from ....core import entities as core_entities
 from ... import entities as llm_entities
 from ...tools import entities as tools_entities
 
@@ -19,17 +19,15 @@ class ModelScopeChatCompletions(requester.LLMAPIRequester):
 
     client: openai.AsyncClient
 
-    requester_cfg: dict
-
-    def __init__(self, ap: app.Application):
-        self.ap = ap
-
-        self.requester_cfg = self.ap.provider_cfg.data['requester']['modelscope-chat-completions']
+    default_config: dict[str, typing.Any] = {
+        'base_url': 'https://api-inference.modelscope.cn/v1',
+        'timeout': 120,
+    }
 
     async def initialize(self):
         self.client = openai.AsyncClient(
             api_key='',
-            base_url=self.requester_cfg['base-url'],
+            base_url=self.requester_cfg['base_url'],
             timeout=self.requester_cfg['timeout'],
             http_client=httpx.AsyncClient(trust_env=True, timeout=self.requester_cfg['timeout']),
         )
@@ -37,6 +35,7 @@ class ModelScopeChatCompletions(requester.LLMAPIRequester):
     async def _req(
         self,
         args: dict,
+        extra_body: dict = {},
     ) -> chat_completion.ChatCompletion:
         args['stream'] = True
 
@@ -46,7 +45,7 @@ class ModelScopeChatCompletions(requester.LLMAPIRequester):
 
         tool_calls = []
 
-        resp_gen: openai.AsyncStream = await self.client.chat.completions.create(**args)
+        resp_gen: openai.AsyncStream = await self.client.chat.completions.create(**args, extra_body=extra_body)
 
         async for chunk in resp_gen:
             # print(chunk)
@@ -107,7 +106,6 @@ class ModelScopeChatCompletions(requester.LLMAPIRequester):
             if chunk
             else None
         )
-        return await self.client.chat.completions.create(**args)
 
     async def _make_msg(
         self,
@@ -127,13 +125,14 @@ class ModelScopeChatCompletions(requester.LLMAPIRequester):
         self,
         query: core_entities.Query,
         req_messages: list[dict],
-        use_model: entities.LLMModelInfo,
+        use_model: requester.RuntimeLLMModel,
         use_funcs: list[tools_entities.LLMFunction] = None,
+        extra_args: dict[str, typing.Any] = {},
     ) -> llm_entities.Message:
         self.client.api_key = use_model.token_mgr.get_token()
 
-        args = self.requester_cfg['args'].copy()
-        args['model'] = use_model.name if use_model.model_name is None else use_model.model_name
+        args = {}
+        args['model'] = use_model.model_entity.name
 
         if use_funcs:
             tools = await self.ap.tool_mgr.generate_tools_for_openai(use_funcs)
@@ -156,19 +155,20 @@ class ModelScopeChatCompletions(requester.LLMAPIRequester):
         args['messages'] = messages
 
         # 发送请求
-        resp = await self._req(args)
+        resp = await self._req(args, extra_body=extra_args)
 
         # 处理请求结果
         message = await self._make_msg(resp)
 
         return message
 
-    async def call(
+    async def invoke_llm(
         self,
         query: core_entities.Query,
         model: entities.LLMModelInfo,
         messages: typing.List[llm_entities.Message],
         funcs: typing.List[tools_entities.LLMFunction] = None,
+        extra_args: dict[str, typing.Any] = {},
     ) -> llm_entities.Message:
         req_messages = []  # req_messages 仅用于类内，外部同步由 query.messages 进行
         for m in messages:
@@ -182,7 +182,9 @@ class ModelScopeChatCompletions(requester.LLMAPIRequester):
             req_messages.append(msg_dict)
 
         try:
-            return await self._closure(query=query, req_messages=req_messages, use_model=model, use_funcs=funcs)
+            return await self._closure(
+                query=query, req_messages=req_messages, use_model=model, use_funcs=funcs, extra_args=extra_args
+            )
         except asyncio.TimeoutError:
             raise errors.RequesterError('请求超时')
         except openai.BadRequestError as e:

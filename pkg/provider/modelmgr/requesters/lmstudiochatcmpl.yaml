@@ -4,21 +4,21 @@ metadata:
   name: lmstudio-chat-completions
   label:
     en_US: LM Studio
-    zh_CN: LM Studio
+    zh_Hans: LM Studio
   icon: lmstudio.webp
 spec:
   config:
     - name: base_url
       label:
         en_US: Base URL
-        zh_CN: 基础 URL
+        zh_Hans: 基础 URL
       type: string
       required: true
       default: "http://127.0.0.1:1234/v1"
     - name: timeout
       label:
         en_US: Timeout
-        zh_CN: 超时时间
+        zh_Hans: 超时时间
       type: integer
       required: true
       default: 120

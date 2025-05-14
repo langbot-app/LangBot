@@ -4,21 +4,21 @@ metadata:
   name: deepseek-chat-completions
   label:
     en_US: DeepSeek
-    zh_CN: 深度求索
+    zh_Hans: 深度求索
   icon: deepseek.svg
 spec:
   config:
     - name: base_url
       label:
         en_US: Base URL
-        zh_CN: 基础 URL
+        zh_Hans: 基础 URL
       type: string
       required: true
       default: "https://api.deepseek.com"
     - name: timeout
       label:
         en_US: Timeout
-        zh_CN: 超时时间
+        zh_Hans: 超时时间
       type: integer
       required: true
       default: 120

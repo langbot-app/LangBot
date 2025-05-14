@@ -12,6 +12,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { i18nObj } from '@/i18n/I18nProvider';
+import { useTranslation } from 'react-i18next';
 
 enum PluginRemoveStatus {
   WAIT_INPUT = 'WAIT_INPUT',
@@ -30,6 +32,7 @@ export default function PluginForm({
   onFormSubmit: () => void;
   onFormCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const [pluginInfo, setPluginInfo] = useState<Plugin>();
   const [pluginConfig, setPluginConfig] = useState<ApiRespPluginConfig>();
   const [isSaving, setIsLoading] = useState(false);
@@ -116,20 +119,23 @@ export default function PluginForm({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>删除确认</DialogTitle>
+            <DialogTitle>{t('plugins.deleteConfirm')}</DialogTitle>
           </DialogHeader>
           <DialogDescription>
             {pluginRemoveStatus === PluginRemoveStatus.WAIT_INPUT && (
               <div>
-                你确定要删除插件（{pluginAuthor}/{pluginName}）吗？
+                {t('plugins.confirmDeletePlugin', {
+                  author: pluginAuthor,
+                  name: pluginName,
+                })}
               </div>
             )}
             {pluginRemoveStatus === PluginRemoveStatus.REMOVING && (
-              <div>删除中...</div>
+              <div>{t('plugins.deleting')}</div>
             )}
             {pluginRemoveStatus === PluginRemoveStatus.ERROR && (
               <div>
-                删除失败：
+                {t('plugins.deleteError')}
                 <div className="text-red-500">{pluginRemoveError}</div>
               </div>
             )}
@@ -143,7 +149,7 @@ export default function PluginForm({
                   setPluginRemoveStatus(PluginRemoveStatus.WAIT_INPUT);
                 }}
               >
-                取消
+                {t('plugins.cancel')}
               </Button>
             )}
             {pluginRemoveStatus === PluginRemoveStatus.WAIT_INPUT && (
@@ -153,12 +159,12 @@ export default function PluginForm({
                   deletePlugin();
                 }}
               >
-                确认删除
+                {t('plugins.confirmDelete')}
               </Button>
             )}
             {pluginRemoveStatus === PluginRemoveStatus.REMOVING && (
               <Button variant="destructive" disabled>
-                删除中...
+                {t('plugins.deleting')}
               </Button>
             )}
             {pluginRemoveStatus === PluginRemoveStatus.ERROR && (
@@ -169,7 +175,7 @@ export default function PluginForm({
                   // setPluginRemoveStatus(PluginRemoveStatus.WAIT_INPUT);
                 }}
               >
-                关闭
+                {t('plugins.close')}
               </Button>
             )}
           </DialogFooter>
@@ -179,7 +185,7 @@ export default function PluginForm({
       <div className="space-y-2">
         <div className="text-lg font-medium">{pluginInfo.name}</div>
         <div className="text-sm text-gray-500 pb-2">
-          {pluginInfo.description.zh_CN}
+          {i18nObj(pluginInfo.description)}
         </div>
         {pluginInfo.config_schema.length > 0 && (
           <DynamicFormComponent
@@ -198,7 +204,9 @@ export default function PluginForm({
           />
         )}
         {pluginInfo.config_schema.length === 0 && (
-          <div className="text-sm text-gray-500">该插件没有配置项。</div>
+          <div className="text-sm text-gray-500">
+            {t('plugins.pluginNoConfig')}
+          </div>
         )}
       </div>
 
@@ -213,8 +221,8 @@ export default function PluginForm({
             disabled={pluginRemoveStatus === PluginRemoveStatus.REMOVING}
           >
             {pluginRemoveStatus === PluginRemoveStatus.REMOVING
-              ? '删除中...'
-              : '删除插件'}
+              ? t('plugins.deleting')
+              : t('plugins.deletePlugin')}
           </Button>
 
           <Button
@@ -222,10 +230,10 @@ export default function PluginForm({
             onClick={() => handleSubmit(pluginConfig.config)}
             disabled={isSaving}
           >
-            {isSaving ? '保存中...' : '保存配置'}
+            {isSaving ? t('plugins.saving') : t('plugins.saveConfig')}
           </Button>
           <Button type="button" variant="outline" onClick={onFormCancel}>
-            取消
+            {t('plugins.cancel')}
           </Button>
         </div>
       </div>

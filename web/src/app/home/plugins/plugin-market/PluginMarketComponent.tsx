@@ -5,6 +5,7 @@ import styles from '@/app/home/plugins/plugins.module.css';
 import { PluginMarketCardVO } from '@/app/home/plugins/plugin-market/plugin-market-card/PluginMarketCardVO';
 import PluginMarketCardComponent from '@/app/home/plugins/plugin-market/plugin-market-card/PluginMarketCardComponent';
 import { spaceClient } from '@/app/infra/http/HttpClient';
+import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/input';
 import {
   Pagination,
@@ -27,6 +28,7 @@ export default function PluginMarketComponent({
 }: {
   askInstallPlugin: (githubURL: string) => void;
 }) {
+  const { t } = useTranslation();
   const [marketPluginList, setMarketPluginList] = useState<
     PluginMarketCardVO[]
   >([]);
@@ -105,7 +107,7 @@ export default function PluginMarketComponent({
         console.log('market plugins:', res);
       })
       .catch((error) => {
-        console.error('获取插件列表失败:', error);
+        console.error(t('plugins.getPluginListError'), error);
         setLoading(false);
       });
   }
@@ -131,7 +133,7 @@ export default function PluginMarketComponent({
             width: '300px',
           }}
           value={searchKeyword}
-          placeholder="搜索插件"
+          placeholder={t('plugins.searchPlugin')}
           onChange={(e) => onInputSearchKeyword(e.target.value)}
         />
 
@@ -140,12 +142,16 @@ export default function PluginMarketComponent({
           onValueChange={handleSortChange}
         >
           <SelectTrigger className="w-[180px] ml-2 cursor-pointer">
-            <SelectValue placeholder="排序方式" />
+            <SelectValue placeholder={t('plugins.sortBy')} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="stars,DESC">最多星标</SelectItem>
-            <SelectItem value="created_at,DESC">最近新增</SelectItem>
-            <SelectItem value="pushed_at,DESC">最近更新</SelectItem>
+            <SelectItem value="stars,DESC">{t('plugins.mostStars')}</SelectItem>
+            <SelectItem value="created_at,DESC">
+              {t('plugins.recentlyAdded')}
+            </SelectItem>
+            <SelectItem value="pushed_at,DESC">
+              {t('plugins.recentlyUpdated')}
+            </SelectItem>
           </SelectContent>
         </Select>
 
@@ -221,11 +227,11 @@ export default function PluginMarketComponent({
       <div className={`${styles.pluginListContainer}`}>
         {loading ? (
           <div style={{ textAlign: 'center', padding: '20px' }}>
-            {/* 加载中... */}
+            {t('plugins.loading')}
           </div>
         ) : marketPluginList.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '20px' }}>
-            {/* 没有找到匹配的插件 */}
+            {t('plugins.noMatchingPlugins')}
           </div>
         ) : (
           marketPluginList.map((vo, index) => (

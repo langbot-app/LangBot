@@ -8,6 +8,7 @@
   align-items: flex-start;
   justify-content: space-between;
   padding-block: 1rem;
+  padding-left: 0.4rem;
   user-select: none;
   /* box-shadow: 0 0 5px 0 rgba(0, 0, 0, 0.1); */
 }
@@ -54,13 +55,18 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.8rem;
+}
+
+.sidebarItemsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
 }
 
 .sidebarChildContainer {
   width: 9rem;
   height: 3rem;
-  margin: 0.8rem 0;
   padding-left: 1.6rem;
   font-size: 1rem;
   border-radius: 12px;
@@ -70,6 +76,7 @@
   justify-content: flex-start;
   cursor: pointer;
   gap: 0.5rem;
+  /* background-color: aqua; */
 }
 
 .sidebarSelected {
@@ -90,11 +97,12 @@
 
 .sidebarBottomContainer {
   width: 100%;
-  height: 100px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  margin-top: auto;
+  padding-bottom: 1rem;
 }
 
 .sidebarBottomChildContainer {

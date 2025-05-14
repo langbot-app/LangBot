@@ -1,30 +1,30 @@
 name: output
 label:
   en_US: Output Processing
-  zh_CN: 输出处理
+  zh_Hans: 输出处理
 stages:
   - name: long-text-processing
     label:
       en_US: Long Text Processing
-      zh_CN: 长文本处理
+      zh_Hans: 长文本处理
     config:
       - name: threshold
         label:
           en_US: Threshold
-          zh_CN: 阈值
+          zh_Hans: 阈值
         description:
           en_US: The threshold of the long text
-          zh_CN: 超过此长度的文本将被处理
+          zh_Hans: 超过此长度的文本将被处理
         type: integer
         required: true
         default: 1000
       - name: strategy
         label:
           en_US: Strategy
-          zh_CN: 策略
+          zh_Hans: 策略
         description:
           en_US: The strategy of the long text
-          zh_CN: 长文本的处理策略
+          zh_Hans: 长文本的处理策略
         type: select
         required: true
         default: forward
@@ -32,76 +32,76 @@ stages:
           - name: forward
             label:
               en_US: Forward Message Component
-              zh_CN: 转换为转发消息组件（部分平台不支持）
+              zh_Hans: 转换为转发消息组件（部分平台不支持）
           - name: image
             label:
               en_US: Convert to Image
-              zh_CN: 转换为图片
+              zh_Hans: 转换为图片
       - name: font-path
         label:
           en_US: Font Path
-          zh_CN: 字体路径
+          zh_Hans: 字体路径
         description:
           en_US: The path of the font to be used when converting to image
-          zh_CN: 选用转换为图片时，所使用的字体路径
+          zh_Hans: 选用转换为图片时，所使用的字体路径
         type: string
         required: false
         default: ''
   - name: force-delay
     label:
       en_US: Force Delay
-      zh_CN: 强制延迟
+      zh_Hans: 强制延迟
     description:
       en_US: Force the output to be delayed for a while
-      zh_CN: 强制延迟一段时间后再回复给用户
+      zh_Hans: 强制延迟一段时间后再回复给用户
     config:
       - name: min
         label:
           en_US: Min Seconds
-          zh_CN: 最小秒数
+          zh_Hans: 最小秒数
         type: integer
         required: true
         default: 0
       - name: max
         label:
           en_US: Max Seconds
-          zh_CN: 最大秒数
+          zh_Hans: 最大秒数
         type: integer
         required: true
         default: 0
   - name: misc
     label:
       en_US: Misc
-      zh_CN: 杂项
+      zh_Hans: 杂项
     config:
       - name: hide-exception
         label:
           en_US: Hide Exception
-          zh_CN: 不输出异常信息给用户
+          zh_Hans: 不输出异常信息给用户
         type: boolean
         required: true
         default: true
       - name: at-sender
         label:
           en_US: At Sender
-          zh_CN: 在群聊回复中@发送者
+          zh_Hans: 在群聊回复中@发送者
         type: boolean
         required: true
         default: true
       - name: quote-origin
         label:
           en_US: Quote Origin Message
-          zh_CN: 引用原消息
+          zh_Hans: 引用原消息
         type: boolean
         required: true
         default: false
       - name: track-function-calls
         label:
           en_US: Track Function Calls
-          zh_CN: 跟踪函数调用
+          zh_Hans: 跟踪函数调用
         description:
           en_US: If enabled, the function calls will be tracked and output to the user
-          zh_CN: 启用后，Agent 每次调用工具时都会输出一个提示给用户
+          zh_Hans: 启用后，Agent 每次调用工具时都会输出一个提示给用户
         type: boolean
         required: true
         default: false

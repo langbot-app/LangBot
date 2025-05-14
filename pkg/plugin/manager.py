@@ -79,7 +79,7 @@ class PluginManager:
         await self.load_plugin_settings(self.plugin_containers)
 
         # 按优先级倒序
-        self.plugin_containers.sort(key=lambda x: x.priority, reverse=True)
+        self.plugin_containers.sort(key=lambda x: x.priority, reverse=False)
 
         self.ap.logger.debug(f'优先级排序后的插件列表 {self.plugin_containers}')
 
@@ -295,7 +295,7 @@ class PluginManager:
                     plugin.priority = plugin_priority
                     break
 
-        self.plugin_containers.sort(key=lambda x: x.priority, reverse=True)
+        self.plugin_containers.sort(key=lambda x: x.priority, reverse=False)
 
         for plugin in self.plugin_containers:
             await self.dump_plugin_container_setting(plugin)

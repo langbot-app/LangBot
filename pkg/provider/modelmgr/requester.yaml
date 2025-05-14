@@ -4,7 +4,7 @@ metadata:
   name: LLMAPIRequester
   label:
     en_US: LLM API Requester
-    zh_CN: LLM API 请求器
+    zh_Hans: LLM API 请求器
 spec:
   type:
     - python

@@ -4,38 +4,38 @@ metadata:
   name: qqofficial
   label:
     en_US: QQ Official API
-    zh_CN: QQ 官方 API
+    zh_Hans: QQ 官方 API
   description:
     en_US: QQ Official API (Webhook)
-    zh_CN: QQ 官方 API (Webhook)，请查看文档了解使用方式
+    zh_Hans: QQ 官方 API (Webhook)，请查看文档了解使用方式
   icon: qqofficial.svg
 spec:
   config:
     - name: appid
       label:
         en_US: App ID
-        zh_CN: 应用ID
+        zh_Hans: 应用ID
       type: string
       required: true
       default: ""
     - name: secret
       label:
         en_US: Secret
-        zh_CN: 密钥
+        zh_Hans: 密钥
       type: string
       required: true
       default: ""
     - name: port
       label:
         en_US: Port
-        zh_CN: 监听端口
+        zh_Hans: 监听端口
       type: integer
       required: true
       default: 2284
     - name: token
       label:
         en_US: Token
-        zh_CN: 令牌
+        zh_Hans: 令牌
       type: string
       required: true
       default: ""

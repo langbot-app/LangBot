@@ -4,7 +4,7 @@ metadata:
   name: builtin-components
   label:
     en_US: Builtin Components
-    zh_CN: 内置组件
+    zh_Hans: 内置组件
 spec:
   components:
     ComponentTemplate:

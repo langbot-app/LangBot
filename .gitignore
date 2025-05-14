@@ -41,3 +41,5 @@ botpy.log*
 /venv
 test.py
 /web_ui
+.venv/
+uv.lock

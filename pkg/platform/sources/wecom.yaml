@@ -4,62 +4,62 @@ metadata:
   name: wecom
   label:
     en_US: WeCom
-    zh_CN: 企业微信
+    zh_Hans: 企业微信
   description:
     en_US: WeCom Adapter
-    zh_CN: 企业微信适配器，请查看文档了解使用方式
+    zh_Hans: 企业微信适配器，请查看文档了解使用方式
   icon: wecom.png
 spec:
   config:
     - name: host
       label:
         en_US: Host
-        zh_CN: 监听主机
+        zh_Hans: 监听主机
       description:
         en_US: Webhook host, unless you know what you're doing, please write 0.0.0.0
-        zh_CN: Webhook 监听主机，除非你知道自己在做什么，否则请写 0.0.0.0
+        zh_Hans: Webhook 监听主机，除非你知道自己在做什么，否则请写 0.0.0.0
       type: string
       required: true
       default: "0.0.0.0"
     - name: port
       label:
         en_US: Port
-        zh_CN: 监听端口
+        zh_Hans: 监听端口
       type: integer
       required: true
       default: 2290
     - name: corpid
       label:
         en_US: Corpid
-        zh_CN: 企业ID
+        zh_Hans: 企业ID
       type: string
       required: true
       default: ""
     - name: secret
       label:
         en_US: Secret
-        zh_CN: 密钥
+        zh_Hans: 密钥
       type: string
       required: true
       default: ""
     - name: token
       label:
         en_US: Token
-        zh_CN: 令牌
+        zh_Hans: 令牌
       type: string
       required: true
       default: ""
     - name: EncodingAESKey
       label:
         en_US: EncodingAESKey
-        zh_CN: 消息加解密密钥
+        zh_Hans: 消息加解密密钥
       type: string
       required: true
       default: ""
     - name: contacts_secret
       label:
         en_US: Contacts Secret
-        zh_CN: 通讯录密钥
+        zh_Hans: 通讯录密钥
       type: string
       required: true
       default: ""

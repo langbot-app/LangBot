@@ -19,15 +19,14 @@
 
 <br/>
 
-
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&labelColor=%20%235462eb&logoColor=%20%23f5f5f5&color=%20%235462eb)](https://discord.gg/wdNEHETs87)
 [![QQ Group](https://img.shields.io/badge/%E7%A4%BE%E5%8C%BAQQ%E7%BE%A4-966235608-blue)](https://qm.qq.com/q/JLi38whHum)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/RockChinQ/LangBot)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/RockChinQ/LangBot)](https://github.com/RockChinQ/LangBot/releases/latest)
- ![Dynamic JSON Badge](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.qchatgpt.rockchin.top%2Fapi%2Fv2%2Fview%2Frealtime%2Fcount_query%3Fminute%3D10080&query=%24.data.count&label=%E4%BD%BF%E7%94%A8%E9%87%8F%EF%BC%887%E6%97%A5%EF%BC%89)
 <img src="https://img.shields.io/badge/python-3.10 ~ 3.13 -blue.svg" alt="python">
 [![star](https://gitcode.com/RockChinQ/LangBot/star/badge.svg)](https://gitcode.com/RockChinQ/LangBot)
 
-[简体中文](README.md) / [English](README_EN.md) / [日本語](README_JP.md)
+[简体中文](README.md) / [English](README_EN.md) / [日本語](README_JP.md) / (PR for your language)
 
 </div>
 
@@ -36,19 +35,23 @@
 ## ✨ 特性
 
 - 💬 大模型对话、Agent：支持多种大模型，适配群聊和私聊；具有多轮对话、工具调用、多模态能力，并深度适配 [Dify](https://dify.ai)。目前支持 QQ、QQ频道、企业微信、个人微信、飞书、Discord、Telegram 等平台。
-- 🛠️ 高稳定性、功能完备：原生支持访问控制、限速、敏感词过滤等机制；配置简单，支持多种部署方式。
+- 🛠️ 高稳定性、功能完备：原生支持访问控制、限速、敏感词过滤等机制；配置简单，支持多种部署方式。支持多流水线配置，不同机器人用于不同应用场景。
 - 🧩 插件扩展、活跃社区：支持事件驱动、组件扩展等插件机制；适配 Anthropic [MCP 协议](https://modelcontextprotocol.io/)；目前已有数百个插件。
 - 😻 Web 管理面板：支持通过浏览器管理 LangBot 实例，不再需要手动编写配置文件。
 
 ## 📦 开始使用
 
-> [!IMPORTANT]
->
-> 在您开始任何方式部署之前，请务必阅读[新手指引](https://docs.langbot.app/zh/insight/guide.html)。
-
 #### Docker Compose 部署
 
-适合熟悉 Docker 的用户，查看文档[Docker 部署](https://docs.langbot.app/zh/deploy/langbot/docker.html)。
+```bash
+git clone https://github.com/RockChinQ/LangBot
+cd LangBot
+docker compose up -d
+```
+
+访问 http://localhost:5300 即可开始使用。
+
+详细文档[Docker 部署](https://docs.langbot.app/zh/deploy/langbot/docker.html)。
 
 #### 宝塔面板部署
 
@@ -69,6 +72,14 @@
 直接使用发行版运行，查看文档[手动部署](https://docs.langbot.app/zh/deploy/langbot/manual.html)。
 
 ## 📸 效果展示
+
+<img alt="bots" src="https://docs.langbot.app/webui/bot-page.png" width="450px"/>
+
+<img alt="bots" src="https://docs.langbot.app/webui/create-model.png" width="450px"/>
+
+<img alt="bots" src="https://docs.langbot.app/webui/edit-pipeline.png" width="450px"/>
+
+<img alt="bots" src="https://docs.langbot.app/webui/plugin-market.png" width="450px"/>
 
 <img alt="回复效果（带有联网插件）" src="https://docs.langbot.app/QChatGPT-0516.png" width="500px"/>
 
@@ -109,6 +120,7 @@
 | [xAI](https://x.ai/) | ✅ |  |
 | [智谱AI](https://open.bigmodel.cn/) | ✅ |  |
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | ✅ | 大模型和 GPU 资源平台 |
+| [Google Gemini](https://aistudio.google.com/prompts/new_chat) | ✅ | |
 | [Dify](https://dify.ai) | ✅ | LLMOps 平台 |
 | [Ollama](https://ollama.com/) | ✅ | 本地大模型运行平台 |
 | [LMStudio](https://lmstudio.ai/) | ✅ | 本地大模型运行平台 |

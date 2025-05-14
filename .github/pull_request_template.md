@@ -16,5 +16,5 @@
 
 - [ ] 相关 issues 链接了吗？
 - [ ] 配置项写好了吗？迁移写好了吗？生效了吗？
-- [ ] 依赖写到 requirements.txt 和 core/bootutils/deps.py 了吗
+- [ ] 依赖加到 pyproject.toml 和 core/bootutils/deps.py 了吗
 - [ ] 文档编写了吗？

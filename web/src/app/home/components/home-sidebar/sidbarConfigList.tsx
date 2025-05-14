@@ -1,10 +1,15 @@
 import { SidebarChildVO } from '@/app/home/components/home-sidebar/HomeSidebarChild';
 import styles from './HomeSidebar.module.css';
+import i18n from '@/i18n';
+
+const t = (key: string) => {
+  return i18n.t(key);
+};
 
 export const sidebarConfigList = [
   new SidebarChildVO({
     id: 'bots',
-    name: '机器人',
+    name: t('bots.title'),
     icon: (
       <svg
         className={`${styles.sidebarChildIcon}`}
@@ -16,12 +21,12 @@ export const sidebarConfigList = [
       </svg>
     ),
     route: '/home/bots',
-    description: '创建和管理机器人，这是 LangBot 与各个平台连接的入口',
+    description: t('bots.description'),
     helpLink: 'https://docs.langbot.app/zh/deploy/platforms/readme.html',
   }),
   new SidebarChildVO({
     id: 'models',
-    name: '模型配置',
+    name: t('models.title'),
     icon: (
       <svg
         className={`${styles.sidebarChildIcon}`}
@@ -33,12 +38,12 @@ export const sidebarConfigList = [
       </svg>
     ),
     route: '/home/models',
-    description: '配置和管理可在流水线中使用的模型',
+    description: t('models.description'),
     helpLink: 'https://docs.langbot.app/zh/deploy/models/readme.html',
   }),
   new SidebarChildVO({
     id: 'pipelines',
-    name: '流水线',
+    name: t('pipelines.title'),
     icon: (
       <svg
         className={`${styles.sidebarChildIcon}`}
@@ -50,12 +55,12 @@ export const sidebarConfigList = [
       </svg>
     ),
     route: '/home/pipelines',
-    description: '流水线定义了对消息事件的处理流程，用于绑定到机器人',
+    description: t('pipelines.description'),
     helpLink: 'https://docs.langbot.app/zh/deploy/pipelines/readme.html',
   }),
   new SidebarChildVO({
     id: 'plugins',
-    name: '插件管理',
+    name: t('plugins.title'),
     icon: (
       <svg
         className={`${styles.sidebarChildIcon}`}
@@ -67,7 +72,7 @@ export const sidebarConfigList = [
       </svg>
     ),
     route: '/home/plugins',
-    description: '安装和配置用于扩展 LangBot 功能的插件',
+    description: t('plugins.description'),
     helpLink: 'https://docs.langbot.app/zh/plugin/plugin-intro.html',
   }),
 ];

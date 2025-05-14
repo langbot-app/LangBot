@@ -49,12 +49,13 @@ export interface RequestConfig extends AxiosRequestConfig {
   retry?: number; // 重试次数
 }
 
+export let systemInfo: ApiRespSystemInfo | null = null;
+
 class HttpClient {
   private instance: AxiosInstance;
   private disableToken: boolean = false;
   // 暂不需要SSR
   // private ssrInstance: AxiosInstance | null = null
-  public systemInfo: ApiRespSystemInfo | null = null;
 
   constructor(baseURL?: string, disableToken?: boolean) {
     this.instance = axios.create({
@@ -67,9 +68,9 @@ class HttpClient {
     this.disableToken = disableToken || false;
     this.initInterceptors();
 
-    if (this.systemInfo === null) {
+    if (systemInfo === null && baseURL != 'https://space.langbot.app') {
       this.getSystemInfo().then((res) => {
-        this.systemInfo = res;
+        systemInfo = res;
       });
     }
   }
@@ -375,7 +376,7 @@ class HttpClient {
   }
 
   public reorderPlugins(plugins: PluginReorderElement[]): Promise<object> {
-    return this.post('/api/v1/plugins/reorder', plugins);
+    return this.put('/api/v1/plugins/reorder', { plugins });
   }
 
   public updatePlugin(
@@ -400,6 +401,7 @@ class HttpClient {
       sort_order,
     });
   }
+
   public installPluginFromGithub(
     source: string,
   ): Promise<AsyncTaskCreatedResp> {

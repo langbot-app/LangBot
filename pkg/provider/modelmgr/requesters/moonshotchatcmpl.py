@@ -28,7 +28,7 @@ class MoonshotChatCompletions(chatcmpl.OpenAIChatCompletions):
     ) -> llm_entities.Message:
         self.client.api_key = use_model.token_mgr.get_token()
 
-        args = extra_args.copy()
+        args = {}
         args['model'] = use_model.model_entity.name
 
         if use_funcs:
@@ -51,7 +51,7 @@ class MoonshotChatCompletions(chatcmpl.OpenAIChatCompletions):
         args['messages'] = messages
 
         # 发送请求
-        resp = await self._req(args, extra_body=self.requester_cfg['args'])
+        resp = await self._req(args, extra_body=extra_args)
 
         # 处理请求结果
         message = await self._make_msg(resp)

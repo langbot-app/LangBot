@@ -39,8 +39,8 @@ class PluginLoader(loader.PluginLoader):
         self.ap.logger.debug(f'注册插件 {name} {version} by {author}')
         container = context.RuntimeContainer(
             plugin_name=name,
-            plugin_label=discover_engine.I18nString(en_US=name, zh_CN=name),
-            plugin_description=discover_engine.I18nString(en_US=description, zh_CN=description),
+            plugin_label=discover_engine.I18nString(en_US=name, zh_Hans=name),
+            plugin_description=discover_engine.I18nString(en_US=description, zh_Hans=description),
             plugin_version=version,
             plugin_author=author,
             plugin_repository='',

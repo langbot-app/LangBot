@@ -4,45 +4,45 @@ metadata:
   name: wecomcs
   label:
     en_US: WeComCustomerService
-    zh_CN: 企业微信客服
+    zh_Hans: 企业微信客服
   description:
     en_US: WeComCSAdapter
-    zh_CN: 企业微信客服适配器
+    zh_Hans: 企业微信客服适配器
   icon: wecom.png
 spec:
   config:
     - name: port
       label:
         en_US: Port
-        zh_CN: 监听端口
+        zh_Hans: 监听端口
       type: int
       required: true
       default: 2289
     - name: corpid
       label:
         en_US: Corpid
-        zh_CN: 企业ID
+        zh_Hans: 企业ID
       type: string
       required: true
       default: ""
     - name: secret
       label:
         en_US: Secret
-        zh_CN: 密钥
+        zh_Hans: 密钥
       type: string
       required: true
       default: ""
     - name: token
       label:
         en_US: Token
-        zh_CN: 令牌
+        zh_Hans: 令牌
       type: string
       required: true
       default: ""
     - name: EncodingAESKey
       label:
         en_US: EncodingAESKey
-        zh_CN: 消息加解密密钥
+        zh_Hans: 消息加解密密钥
       type: string
       required: true
       default: ""

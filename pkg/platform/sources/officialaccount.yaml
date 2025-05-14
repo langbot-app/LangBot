@@ -4,66 +4,66 @@ metadata:
   name: officialaccount
   label:
     en_US: Official Account
-    zh_CN: 微信公众号
+    zh_Hans: 微信公众号
   description:
     en_US: Official Account Adapter
-    zh_CN: 微信公众号适配器，请查看文档了解使用方式
+    zh_Hans: 微信公众号适配器，请查看文档了解使用方式
   icon: officialaccount.png
 spec:
   config:
     - name: token
       label:
         en_US: Token
-        zh_CN: 令牌
+        zh_Hans: 令牌
       type: string
       required: true
       default: ""
     - name: EncodingAESKey
       label:
         en_US: EncodingAESKey
-        zh_CN: 消息加解密密钥
+        zh_Hans: 消息加解密密钥
       type: string
       required: true
       default: ""
     - name: AppID
       label:
         en_US: App ID
-        zh_CN: 应用ID
+        zh_Hans: 应用ID
       type: string
       required: true
       default: ""
     - name: AppSecret
       label:
         en_US: App Secret
-        zh_CN: 应用密钥
+        zh_Hans: 应用密钥
       type: string
       required: true
       default: ""
     - name: Mode
       label:
         en_US: Mode
-        zh_CN: 接入模式
+        zh_Hans: 接入模式
       type: string
       required: true
       default: "drop"
     - name: LoadingMessage
       label:
         en_US: Loading Message
-        zh_CN: 加载消息
+        zh_Hans: 加载消息
       type: string
       required: true
       default: "AI正在思考中，请发送任意内容获取回复。"
     - name: host
       label:
         en_US: Host
-        zh_CN: 监听主机
+        zh_Hans: 监听主机
       type: string
       required: true
       default: 0.0.0.0
     - name: port
       label:
         en_US: Port
-        zh_CN: 监听端口
+        zh_Hans: 监听端口
       type: integer
       required: true
       default: 2287

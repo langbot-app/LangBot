@@ -417,7 +417,7 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
         lark_message = await self.message_converter.yiri2target(message, self.api_client)
 
         final_content = {
-            'zh_cn': {
+            'zh_Hans': {
                 'title': '',
                 'content': lark_message,
             },

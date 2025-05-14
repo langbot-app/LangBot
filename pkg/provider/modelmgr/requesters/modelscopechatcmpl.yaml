@@ -4,27 +4,28 @@ metadata:
   name: modelscope-chat-completions
   label:
     en_US: ModelScope
-    zh_CN: 魔搭社区
+    zh_Hans: 魔搭社区
+  icon: modelscope.svg
 spec:
   config:
-    - name: base-url
+    - name: base_url
       label:
         en_US: Base URL
-        zh_CN: 基础 URL
+        zh_Hans: 基础 URL
       type: string
       required: true
       default: "https://api-inference.modelscope.cn/v1"
     - name: args
       label:
         en_US: Args
-        zh_CN: 附加参数
+        zh_Hans: 附加参数
       type: object
       required: true
       default: {}
     - name: timeout
       label:
         en_US: Timeout
-        zh_CN: 超时时间
+        zh_Hans: 超时时间
       type: int
       required: true
       default: 120

@@ -22,7 +22,6 @@ class WecomCSClient:
         self.base_url = 'https://qyapi.weixin.qq.com/cgi-bin'
         self.access_token = ''
         self.app = Quart(__name__)
-        self.wxcpt = WXBizMsgCrypt(self.token, self.aes, self.corpid)
         self.app.add_url_rule(
             '/callback/command', 'handle_callback', self.handle_callback_request, methods=['GET', 'POST']
         )
@@ -198,17 +197,21 @@ class WecomCSClient:
             msg_signature = request.args.get('msg_signature')
             timestamp = request.args.get('timestamp')
             nonce = request.args.get('nonce')
+            try:
+                wxcpt = WXBizMsgCrypt(self.token, self.aes, self.corpid)
+            except Exception as e:
+                raise Exception(f'初始化失败，错误码: {e}')
 
             if request.method == 'GET':
                 echostr = request.args.get('echostr')
-                ret, reply_echo_str = self.wxcpt.VerifyURL(msg_signature, timestamp, nonce, echostr)
+                ret, reply_echo_str = wxcpt.VerifyURL(msg_signature, timestamp, nonce, echostr)
                 if ret != 0:
                     raise Exception(f'验证失败，错误码: {ret}')
                 return reply_echo_str
 
             elif request.method == 'POST':
                 encrypt_msg = await request.data
-                ret, xml_msg = self.wxcpt.DecryptMsg(encrypt_msg, msg_signature, timestamp, nonce)
+                ret, xml_msg = wxcpt.DecryptMsg(encrypt_msg, msg_signature, timestamp, nonce)
                 if ret != 0:
                     raise Exception(f'消息解密失败，错误码: {ret}')
 

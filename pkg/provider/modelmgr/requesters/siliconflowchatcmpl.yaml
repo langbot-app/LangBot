@@ -4,21 +4,21 @@ metadata:
   name: siliconflow-chat-completions
   label:
     en_US: SiliconFlow
-    zh_CN: 硅基流动
+    zh_Hans: 硅基流动
   icon: siliconflow.svg
 spec:
   config:
     - name: base_url
       label:
         en_US: Base URL
-        zh_CN: 基础 URL
+        zh_Hans: 基础 URL
       type: string
       required: true
       default: "https://api.siliconflow.cn/v1"
     - name: timeout
       label:
         en_US: Timeout
-        zh_CN: 超时时间
+        zh_Hans: 超时时间
       type: integer
       required: true
       default: 120

@@ -4,21 +4,21 @@ metadata:
   name: bailian-chat-completions
   label:
     en_US: Aliyun Bailian
-    zh_CN: 阿里云百炼
+    zh_Hans: 阿里云百炼
   icon: bailian.png
 spec:
   config:
     - name: base_url
       label:
         en_US: Base URL
-        zh_CN: 基础 URL
+        zh_Hans: 基础 URL
       type: string
       required: true
       default: "https://dashscope.aliyuncs.com/compatible-mode/v1"
     - name: timeout
       label:
         en_US: Timeout
-        zh_CN: 超时时间
+        zh_Hans: 超时时间
       type: integer
       required: true
       default: 120

@@ -4,7 +4,7 @@ metadata:
   name: MessagePlatformAdapter
   label:
     en_US: Message Platform Adapter
-    zh_CN: 消息平台适配器模板类
+    zh_Hans: 消息平台适配器模板类
 spec:
   type:
     - python

@@ -15,7 +15,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { i18nObj } from '@/i18n/I18nProvider';
+
 export default function BotConfigPage() {
+  const { t } = useTranslation();
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [botList, setBotList] = useState<BotCardVO[]>([]);
   const [isEditForm, setIsEditForm] = useState(false);
@@ -29,7 +33,7 @@ export default function BotConfigPage() {
     const adapterListResp = await httpClient.getAdapters();
     const adapterList = adapterListResp.adapters.map((adapter: Adapter) => {
       return {
-        label: adapter.label.zh_CN,
+        label: i18nObj(adapter.label),
         value: adapter.name,
       };
     });
@@ -53,7 +57,7 @@ export default function BotConfigPage() {
       })
       .catch((err) => {
         console.error('get bot list error', err);
-        toast.error('获取机器人列表失败：' + err.message);
+        toast.error(t('bots.getBotListError') + err.message);
       })
       .finally(() => {
         // setIsLoading(false);
@@ -78,7 +82,7 @@ export default function BotConfigPage() {
         <DialogContent className="w-[700px] max-h-[80vh] p-0 flex flex-col">
           <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle>
-              {isEditForm ? '编辑机器人' : '创建机器人'}
+              {isEditForm ? t('bots.editBot') : t('bots.createBot')}
             </DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto px-6">

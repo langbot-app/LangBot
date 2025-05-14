@@ -9,7 +9,7 @@ export const testDynamicConfigList: IDynamicFormItemSchema[] = [
     default: '',
     id: '111',
     label: {
-      zh_CN: '测试字段string',
+      zh_Hans: '测试字段string',
       en_US: 'eng test',
     },
     name: 'string_test',
@@ -20,7 +20,7 @@ export const testDynamicConfigList: IDynamicFormItemSchema[] = [
     default: '',
     id: '222',
     label: {
-      zh_CN: '测试字段int',
+      zh_Hans: '测试字段int',
       en_US: 'int eng test',
     },
     name: 'int_test',
@@ -31,7 +31,7 @@ export const testDynamicConfigList: IDynamicFormItemSchema[] = [
     default: '',
     id: '333',
     label: {
-      zh_CN: '测试字段boolean',
+      zh_Hans: '测试字段boolean',
       en_US: 'boolean eng test',
     },
     name: 'boolean_test',
