@@ -17,7 +17,7 @@ COPY --from=node /app/web/out ./web/out
 RUN apt update \
     && apt install gcc -y \
     && python -m pip install --no-cache-dir uv \
-    && uv sync --locked \
+    && uv sync \
     && touch /.dockerenv
 
 CMD [ "python", "main.py" ]
