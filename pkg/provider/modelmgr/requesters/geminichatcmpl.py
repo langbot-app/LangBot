@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import typing
 import google.generativeai as genai
-from google.generativeai import GenerativeModel
 
 from .. import errors, requester
 from ....core import entities as core_entities
@@ -20,13 +19,7 @@ class GeminiChatCompletions(requester.LLMAPIRequester):
 
     async def initialize(self):
         """初始化 Gemini API 客户端"""
-        genai.configure(
-            api_key='',
-            transport='rest',
-            client_options={
-                'api_endpoint': self.requester_cfg['base_url'],
-            },
-        )
+        pass
 
     async def invoke_llm(
         self,
@@ -43,10 +36,10 @@ class GeminiChatCompletions(requester.LLMAPIRequester):
                 transport='rest',
                 client_options={
                     'api_endpoint': self.requester_cfg['base_url'],
-                },
+                }
             )
-
-            generation_model = GenerativeModel(model.model_entity.name)
+            
+            generation_model = genai.GenerativeModel(model.model_entity.name)
             
             history = []
             system_content = None
@@ -88,7 +81,8 @@ class GeminiChatCompletions(requester.LLMAPIRequester):
             
             chat = generation_model.start_chat(history=history)
             
-            response = chat.send_message("")
+            message_content = query.content if query.content else "Please continue the conversation."
+            response = chat.send_message(message_content)
             
             return llm_entities.Message(
                 role='assistant',
