@@ -42,7 +42,7 @@ class OllamaChatCompletions(requester.LLMAPIRequester):
         query: core_entities.Query,
         req_messages: list[dict],
         use_model: requester.RuntimeLLMModel,
-        user_funcs: list[tools_entities.LLMFunction] = None,
+        use_funcs: list[tools_entities.LLMFunction] = None,
         extra_args: dict[str, typing.Any] = {},
     ) -> llm_entities.Message:
         args = extra_args.copy()
@@ -67,8 +67,8 @@ class OllamaChatCompletions(requester.LLMAPIRequester):
         args['messages'] = messages
 
         args['tools'] = []
-        if user_funcs:
-            tools = await self.ap.tool_mgr.generate_tools_for_openai(user_funcs)
+        if use_funcs:
+            tools = await self.ap.tool_mgr.generate_tools_for_openai(use_funcs)
             if tools:
                 args['tools'] = tools
 
