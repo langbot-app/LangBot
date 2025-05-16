@@ -564,12 +564,10 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
 
         if not enable_webhook:
             try:
-                self.ap.logger.info(f'connecting to {self}')
                 await self.bot._connect()
             except lark_oapi.ws.exception.ClientException as e:
                 raise e
             except Exception as e:
-                self.ap.logger.error(f'connect error. {str(e)}')
                 await self.bot._disconnect()
                 if self.bot._auto_reconnect:
                     await self.bot._reconnect()
