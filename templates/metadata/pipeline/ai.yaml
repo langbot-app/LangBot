@@ -124,6 +124,21 @@ stages:
             label:
               en_US: Remove
               zh_Hans: 移除
+      - name: enable-streaming
+        label:
+          en_US: enable streaming mode
+          zh_Hans: 开启流式输出
+        type: boolean
+        required: true
+        default: false
+      - name: output-batch-size
+        label:
+          en_US: output batch size
+          zh_Hans: 输出批次大小(积累多少条消息后一起输出)
+        type: integer
+        required: true
+        default: 10
+
   - name: dashscope-app-api
     label:
       en_US: Aliyun Dashscope App API

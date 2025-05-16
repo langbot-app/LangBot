@@ -62,6 +62,23 @@ spec:
       type: string
       required: true
       default: ""
+    - name: enable-card-reply
+      label:
+        en_US: Enable Card Reply Mode
+        zh_Hans: 启用飞书卡片回复模式
+      description:
+        en_US: If enabled, the bot will use the card of lark reply mode
+        zh_Hans: 如果启用，将使用飞书卡片方式来回复内容
+      type: boolean
+      required: true
+      default: false
+    - name: card_template_id
+      label:
+        en_US: card template id
+        zh_Hans: 卡片模板ID
+      type: string
+      required: true
+      default: "填写你的卡片template_id"
 execution:
   python:
     path: ./lark.py

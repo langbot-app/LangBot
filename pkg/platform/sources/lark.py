@@ -388,6 +388,12 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
                 return {'code': 500, 'message': 'error'}
 
         async def on_message(event: lark_oapi.im.v1.P2ImMessageReceiveV1):
+            if self.config['enable-card-reply']:
+                self.ap.logger.debug('卡片回复模式开启')
+                # 开启卡片回复模式. 这里可以实现飞书一发消息，马上创建卡片进行回复"思考中..."
+                reply_message_id = await self.create_message_card(event.event.message.message_id)
+                # message到来后需要更新卡片，所以要把reply_message_id作为message_id
+                event.event.message.message_id = reply_message_id
             lb_event = await self.event_converter.target2yiri(event, self.api_client)
 
             await self.listeners[type(lb_event)](lb_event, self)
@@ -406,8 +412,98 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         pass
+    
+    async def create_message_card(self,message_id: str) -> str:
+        """
+        创建卡片消息。
+        使用卡片消息是因为普通消息更新次数有限制，而大模型流式返回结果可能很多而超过限制，而飞书卡片没有这个限制 
+        """      
+        
+        # TODO 目前只支持卡片模板方式，且卡片变量一定是content，未来这块要做成可配置
+        # 发消息马上就会回复显示初始化的content信息，即思考中
+        content = {
+            "type": "template",
+            "data": {
+                "template_id": self.config['card_template_id'],
+                "template_variable": {
+                    "content": "思考中"
+                }
+            }
+        }
+        request: ReplyMessageRequest = ReplyMessageRequest.builder() \
+            .message_id(message_id) \
+            .request_body(ReplyMessageRequestBody.builder()
+                .content(json.dumps(content))
+                .msg_type("interactive")
+                .build()) \
+            .build()
 
+        # 发起请求
+        response: ReplyMessageResponse = await self.api_client.im.v1.message.areply(
+            request
+        )
+
+        # 处理失败返回
+        if not response.success():
+            raise Exception(
+                f"client.im.v1.message.reply failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}")
+        return response.data.message_id
+    
     async def reply_message(
+        self,
+        message_source: platform_events.MessageEvent,
+        message: platform_message.MessageChain,
+        quote_origin: bool = False,
+    ):
+        if self.config['enable-card-reply']:
+            await self.reply_card_message(message_source, message, quote_origin)
+        else:
+            await self.reply_normal_message(message_source, message, quote_origin)
+            
+    async def reply_card_message(
+        self,
+        message_source: platform_events.MessageEvent,
+        message: platform_message.MessageChain,
+        quote_origin: bool = False,
+    ):
+        """
+        回复消息变成更新卡片消息
+        """
+        lark_message = await self.message_converter.yiri2target(
+            message, self.api_client
+        )
+        
+        try:
+            text_message = lark_message[0][0]['text']
+        except:
+            return
+        
+        content = {
+            "type": "template",
+            "data": {
+                "template_id": self.config['card_template_id'],
+                "template_variable": {
+                    "content": text_message
+                }
+            }
+        }
+    
+        request: PatchMessageRequest = PatchMessageRequest.builder() \
+            .message_id(message_source.message_chain.message_id) \
+            .request_body(PatchMessageRequestBody.builder()
+                .content(json.dumps(content))
+                .build()) \
+            .build()
+
+        # 发起请求
+        response: PatchMessageResponse = self.api_client.im.v1.message.patch(request)
+
+        # 处理失败返回
+        if not response.success():
+            raise Exception(
+                f"client.im.v1.message.patch failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}")
+            return
+    async def reply_normal_message(
         self,
         message_source: platform_events.MessageEvent,
         message: platform_message.MessageChain,
@@ -468,10 +564,12 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
 
         if not enable_webhook:
             try:
+                self.ap.logger.info(f'connecting to {self}')
                 await self.bot._connect()
             except lark_oapi.ws.exception.ClientException as e:
                 raise e
             except Exception as e:
+                self.ap.logger.error(f'connect error. {str(e)}')
                 await self.bot._disconnect()
                 if self.bot._auto_reconnect:
                     await self.bot._reconnect()
@@ -490,4 +588,9 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
             )
 
     async def kill(self) -> bool:
+        # 需要断开连接，不然旧的连接会继续运行，导致飞书消息来时会随机选择一个连接
+        # 断开时lark.ws.Client的_receive_message_loop会打印error日志: receive message loop exit。然后进行重连，
+        # 所以要设置_auto_reconnect=False,让其不重连。
+        self.bot._auto_reconnect = False
+        await self.bot._disconnect()
         return False
