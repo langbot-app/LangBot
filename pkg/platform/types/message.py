@@ -555,18 +555,27 @@ class Image(MessageComponent):
             image_id = image_id[1:]
         return image_id
 
-    async def get_bytes(self) -> bytes:
-        """获取图片的 bytes"""
+    async def get_bytes(self) -> typing.Tuple[bytes, str]:
+        """获取图片的 bytes 和 mime type"""
         if self.url:
             async with httpx.AsyncClient() as client:
                 response = await client.get(self.url)
                 response.raise_for_status()
-                return response.content
+                return response.content, response.headers.get('Content-Type')
         elif self.base64:
-            return base64.b64decode(self.base64)
+            mime_type = 'image/jpeg'
+
+            split_index = self.base64.find(';base64,')
+            if split_index == -1:
+                raise ValueError('Invalid base64 string')
+
+            mime_type = self.base64[5:split_index]
+            base64_data = self.base64[split_index + 8 :]
+
+            return base64.b64decode(base64_data), mime_type
         elif self.path:
             async with aiofiles.open(self.path, 'rb') as f:
-                return await f.read()
+                return await f.read(), 'image/jpeg'
         else:
             raise ValueError('Can not get bytes from image')
 

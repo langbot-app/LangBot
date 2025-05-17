@@ -98,3 +98,17 @@ class BotService:
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.delete(persistence_bot.Bot).where(persistence_bot.Bot.uuid == bot_uuid)
         )
+
+    async def list_event_logs(self, bot_uuid: str, index_id: int, direction: int, max_count: int) -> list[dict]:
+        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
+        if runtime_bot is None:
+            raise Exception('Bot not found')
+
+        logs, start_index, end_index, total_count = await runtime_bot.logger.get_logs(index_id, direction, max_count)
+
+        return {
+            'logs': [log.to_json() for log in logs],
+            'start_index_id': start_index,
+            'end_index_id': end_index,
+            'total_count': total_count,
+        }

@@ -7,11 +7,11 @@ from ..core import app, entities as core_entities
 from . import entities
 
 
-preregistered_stages: dict[str, PipelineStage] = {}
+preregistered_stages: dict[str, type[PipelineStage]] = {}
 
 
-def stage_class(name: str):
-    def decorator(cls):
+def stage_class(name: str) -> typing.Callable[[type[PipelineStage]], type[PipelineStage]]:
+    def decorator(cls: type[PipelineStage]) -> type[PipelineStage]:
         preregistered_stages[name] = cls
         return cls
 

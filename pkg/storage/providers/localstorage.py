@@ -11,7 +11,6 @@ from .. import provider
 LOCAL_STORAGE_PATH = os.path.join('data', 'storage')
 
 
-@provider.provider_class
 class LocalStorageProvider(provider.StorageProvider):
     def __init__(self, ap: app.Application):
         super().__init__(ap)

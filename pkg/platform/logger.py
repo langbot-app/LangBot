@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typing
+import mimetypes
 import time
 import enum
 import pydantic
@@ -39,6 +40,16 @@ class EventLog(pydantic.BaseModel):
     message_session_id: typing.Optional[str] = None
     """消息会话ID，仅收发消息事件有值"""
 
+    def to_json(self) -> dict:
+        return {
+            'seq_id': self.seq_id,
+            'timestamp': self.timestamp,
+            'level': self.level.value,
+            'text': self.text,
+            'images': self.images,
+            'message_session_id': self.message_session_id,
+        }
+
 
 class EventLogger:
     """used for logging bot events"""
@@ -46,6 +57,8 @@ class EventLogger:
     ap: app.Application
 
     seq_id_inc: int
+
+    logs: list[EventLog]
 
     def __init__(
         self,
@@ -57,6 +70,31 @@ class EventLogger:
         self.logs = []
         self.seq_id_inc = 0
 
+    async def get_logs(
+        self, index_id: int, direction: int, max_count: int
+    ) -> typing.Tuple[list[EventLog], int, int, int]:
+        """
+        获取日志
+
+        Args:
+            index_id: 索引ID，-1 表示末尾
+            direction: 方向，1 表示向前，-1 表示向后
+            max_count: 最大数量
+
+        Returns:
+            Tuple[list[EventLog], int, int, int]: 日志列表，起始索引，结束索引，总数量
+        """
+
+        if index_id < -1:
+            index_id = len(self.logs)
+
+        if direction == 1:
+            max_id = min(len(self.logs), index_id + max_count)
+            return self.logs[index_id:max_id], index_id, max_id, len(self.logs)
+        else:
+            min_id = max(0, index_id - max_count)
+            return self.logs[min_id:index_id], min_id, index_id, len(self.logs)
+
     async def _add_log(
         self,
         level: EventLogLevel,
@@ -66,20 +104,30 @@ class EventLogger:
         no_throw: bool = True,
     ):
         try:
-            img_bytes = []
-            for img in images:
-                img_bytes.append(await img.get_bytes())
-
             image_keys = []
-            for img_byte in img_bytes:
-                image_key = str(uuid.uuid4())
-                await self.ap.storage_mgr.storage_provider.save(image_key, img_byte)
+
+            if images is None:
+                images = []
+
+            if message_session_id is None:
+                message_session_id = ''
+
+            if not isinstance(message_session_id, str):
+                message_session_id = str(message_session_id)
+
+            for img in images:
+                img_bytes, mime_type = await img.get_bytes()
+                extension = mimetypes.guess_extension(mime_type)
+                if extension is None:
+                    extension = '.jpg'
+                image_key = f'{message_session_id}-{uuid.uuid4()}{extension}'
+                await self.ap.storage_mgr.storage_provider.save(image_key, img_bytes)
                 image_keys.append(image_key)
 
             self.logs.append(
                 EventLog(
                     seq_id=self.seq_id_inc,
-                    timestamp=time.time(),
+                    timestamp=int(time.time()),
                     level=level,
                     text=text,
                     images=image_keys,

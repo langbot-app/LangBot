@@ -10,7 +10,7 @@ import sqlalchemy
 from . import adapter as msadapter
 
 from ..core import app, entities as core_entities, taskmgr
-from .types import events as platform_events
+from .types import events as platform_events, message as platform_message
 
 from ..discover import engine
 
@@ -60,6 +60,16 @@ class RuntimeBot:
             event: platform_events.FriendMessage,
             adapter: msadapter.MessagePlatformAdapter,
         ):
+            image_components = [
+                component for component in event.message_chain if isinstance(component, platform_message.Image)
+            ]
+
+            await self.logger.info(
+                f'{event.message_chain}',
+                images=image_components,
+                message_session_id=f'person_{event.sender.id}',
+            )
+
             await self.ap.query_pool.add_query(
                 bot_uuid=self.bot_entity.uuid,
                 launcher_type=core_entities.LauncherTypes.PERSON,
@@ -74,6 +84,16 @@ class RuntimeBot:
             event: platform_events.GroupMessage,
             adapter: msadapter.MessagePlatformAdapter,
         ):
+            image_components = [
+                component for component in event.message_chain if isinstance(component, platform_message.Image)
+            ]
+
+            await self.logger.info(
+                f'{event.message_chain}',
+                images=image_components,
+                message_session_id=f'group_{event.group.id}',
+            )
+
             await self.ap.query_pool.add_query(
                 bot_uuid=self.bot_entity.uuid,
                 launcher_type=core_entities.LauncherTypes.GROUP,

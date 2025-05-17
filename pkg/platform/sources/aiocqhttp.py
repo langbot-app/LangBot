@@ -12,6 +12,7 @@ from ..types import message as platform_message
 from ..types import events as platform_events
 from ..types import entities as platform_entities
 from ...utils import image
+from ..logger import EventLogger
 
 
 class AiocqhttpMessageConverter(adapter.MessageConverter):
@@ -156,8 +157,9 @@ class AiocqhttpAdapter(adapter.MessagePlatformAdapter):
 
     ap: app.Application
 
-    def __init__(self, config: dict, ap: app.Application):
+    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
         self.config = config
+        self.logger = logger
 
         async def shutdown_trigger_placeholder():
             while True:
