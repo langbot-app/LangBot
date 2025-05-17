@@ -36,6 +36,14 @@ class BotsRouterGroup(group.RouterGroup):
             index_id = json_data.get('index_id', 0)
             direction = json_data.get('direction', 1)
             max_count = json_data.get('max_count', 10)
+            logs, start_index, end_index, total_count = await self.ap.bot_service.list_event_logs(
+                bot_uuid, index_id, direction, max_count
+            )
             return self.success(
-                data={'logs': await self.ap.bot_service.list_event_logs(bot_uuid, index_id, direction, max_count)}
+                data={
+                    'logs': logs,
+                    'start_index_id': start_index,
+                    'end_index_id': end_index,
+                    'total_count': total_count,
+                }
             )
