@@ -1,8 +1,9 @@
 import re
 import inspect
+import typing
 
 
-def get_func_schema(function: callable) -> dict:
+def get_func_schema(function: typing.Callable) -> dict:
     """
     Return the data schema of a function.
     {

@@ -16,6 +16,8 @@ from ..discover import engine
 
 from ..entity.persistence import bot as persistence_bot
 
+from .logger import EventLogger
+
 # 处理 3.4 移除了 YiriMirai 之后，插件的兼容性问题
 from . import types as mirai
 
@@ -37,17 +39,21 @@ class RuntimeBot:
 
     task_context: taskmgr.TaskContext
 
+    logger: EventLogger
+
     def __init__(
         self,
         ap: app.Application,
         bot_entity: persistence_bot.Bot,
         adapter: msadapter.MessagePlatformAdapter,
+        logger: EventLogger,
     ):
         self.ap = ap
         self.bot_entity = bot_entity
         self.enable = bot_entity.enable
         self.adapter = adapter
         self.task_context = taskmgr.TaskContext()
+        self.logger = logger
 
     async def initialize(self):
         async def on_friend_message(
@@ -92,10 +98,7 @@ class RuntimeBot:
                     self.task_context.set_current_action('Exited.')
                     return
                 self.task_context.set_current_action('Exited with error.')
-                self.task_context.log(f'平台适配器运行出错: {e}')
-                self.task_context.log(f'Traceback: {traceback.format_exc()}')
-                self.ap.logger.error(f'平台适配器运行出错: {e}')
-                self.ap.logger.debug(f'Traceback: {traceback.format_exc()}')
+                await self.logger.error(f'平台适配器运行出错:\n{e}\n{traceback.format_exc()}')
 
         self.task_wrapper = self.ap.task_mgr.create_task(
             exception_wrapper(),
@@ -166,9 +169,15 @@ class PlatformManager:
         elif isinstance(bot_entity, dict):
             bot_entity = persistence_bot.Bot(**bot_entity)
 
-        adapter_inst = self.adapter_dict[bot_entity.adapter](bot_entity.adapter_config, self.ap)
+        logger = EventLogger(name=f'platform-adapter-{bot_entity.name}', ap=self.ap)
 
-        runtime_bot = RuntimeBot(ap=self.ap, bot_entity=bot_entity, adapter=adapter_inst)
+        adapter_inst = self.adapter_dict[bot_entity.adapter](
+            bot_entity.adapter_config,
+            self.ap,
+            logger,
+        )
+
+        runtime_bot = RuntimeBot(ap=self.ap, bot_entity=bot_entity, adapter=adapter_inst, logger=logger)
 
         await runtime_bot.initialize()
 

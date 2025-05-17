@@ -23,6 +23,7 @@ from ..api.http.service import model as model_service
 from ..api.http.service import pipeline as pipeline_service
 from ..api.http.service import bot as bot_service
 from ..discover import engine as discover_engine
+from ..storage import mgr as storagemgr
 from ..utils import logcache, ip
 from . import taskmgr
 from . import entities as core_entities
@@ -95,6 +96,8 @@ class Application:
     http_ctrl: http_controller.HTTPController = None
 
     log_cache: logcache.LogCache = None
+
+    storage_mgr: storagemgr.StorageMgr = None
 
     # ========= HTTP Services =========
 
