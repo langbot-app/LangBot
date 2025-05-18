@@ -117,3 +117,18 @@ stages:
         type: array[string]
         required: true
         default: []
+  - name: misc
+    label:
+      en_US: Misc
+      zh_Hans: 杂项
+    config:
+      - name: combine-quote-message
+        label:
+          en_US: Combine Quote Message
+          zh_Hans: 合并引用消息
+        description:
+          en_US: If enabled, the bot will combine the quote message with the user's message
+          zh_Hans: 如果启用，将合并引用消息与用户发送的消息
+        type: boolean
+        required: true
+        default: true

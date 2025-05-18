@@ -15,6 +15,7 @@ from ...utils import image
 
 
 class AiocqhttpMessageConverter(adapter.MessageConverter):
+
     @staticmethod
     async def yiri2target(
         message_chain: platform_message.MessageChain,
@@ -66,14 +67,40 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
         return msg_list, msg_id, msg_time
 
     @staticmethod
-    async def target2yiri(message: str, message_id: int = -1):
+    async def target2yiri(message: str, message_id: int = -1,bot=None):
         message = aiocqhttp.Message(message)
+
+        async def process_message_data(msg_data, reply_list):
+            if msg_data["type"] == "image":
+                image_base64, image_format = await image.qq_image_url_to_base64(msg_data["data"]['url'])
+                reply_list.append(
+                    platform_message.Image(base64=f'data:image/{image_format};base64,{image_base64}'))
+
+            elif msg_data["type"] == "text":
+                reply_list.append(platform_message.Plain(text=msg_data["data"]["text"]))
+
+            elif msg_data["type"] == "forward":  # 这里来应该传入转发消息组，暂时传入qoute
+                for forward_msg_datas in msg_data["data"]["content"]:
+                    for forward_msg_data in forward_msg_datas["message"]:
+                        await process_message_data(forward_msg_data, reply_list)
+
+            elif msg_data["type"] == "at":
+                if msg_data["data"]['qq'] == 'all':
+                    reply_list.append(platform_message.AtAll())
+                else:
+                    reply_list.append(
+                        platform_message.At(
+                            target=msg_data["data"]['qq'],
+                        )
+                    )
+
 
         yiri_msg_list = []
 
         yiri_msg_list.append(platform_message.Source(id=message_id, time=datetime.datetime.now()))
 
         for msg in message:
+            reply_list = []
             if msg.type == 'at':
                 if msg.data['qq'] == 'all':
                     yiri_msg_list.append(platform_message.AtAll())
@@ -88,10 +115,35 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
             elif msg.type == 'image':
                 image_base64, image_format = await image.qq_image_url_to_base64(msg.data['url'])
                 yiri_msg_list.append(platform_message.Image(base64=f'data:image/{image_format};base64,{image_base64}'))
+            elif msg.type == 'forward':
+                # 暂时不太合理
+                # msg_datas = await bot.get_msg(message_id=message_id)
+                # print(msg_datas)
+                # for msg_data in msg_datas["message"]:
+                #     await process_message_data(msg_data, yiri_msg_list)
+                pass
+
+
+            elif msg.type == 'reply':  # 此处处理引用消息传入Qoute
+                msg_datas = await bot.get_msg(message_id=msg.data["id"])
+
+                for msg_data in msg_datas["message"]:
+                    await process_message_data(msg_data, reply_list)
+
+                reply_msg = platform_message.Quote(message_id=msg.data["id"],sender_id=msg_datas["user_id"],origin=reply_list)
+                yiri_msg_list.append(reply_msg)
+
+
+
+
+
+
 
         chain = platform_message.MessageChain(yiri_msg_list)
 
         return chain
+
+
 
 
 class AiocqhttpEventConverter(adapter.EventConverter):
@@ -100,8 +152,9 @@ class AiocqhttpEventConverter(adapter.EventConverter):
         return event.source_platform_object
 
     @staticmethod
-    async def target2yiri(event: aiocqhttp.Event):
-        yiri_chain = await AiocqhttpMessageConverter.target2yiri(event.message, event.message_id)
+    async def target2yiri(event: aiocqhttp.Event,bot=None):
+        yiri_chain = await AiocqhttpMessageConverter.target2yiri(event.message, event.message_id,bot)
+
 
         if event.message_type == 'group':
             permission = 'MEMBER'
@@ -205,7 +258,7 @@ class AiocqhttpAdapter(adapter.MessagePlatformAdapter):
         async def on_message(event: aiocqhttp.Event):
             self.bot_account_id = event.self_id
             try:
-                return await callback(await self.event_converter.target2yiri(event), self)
+                return await callback(await self.event_converter.target2yiri(event,self.bot), self)
             except Exception:
                 traceback.print_exc()
 
