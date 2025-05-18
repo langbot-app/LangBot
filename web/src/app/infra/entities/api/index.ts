@@ -95,6 +95,7 @@ export interface Adapter {
 export interface AdapterSpecConfig {
   default: string | number | boolean | Array<unknown>;
   label: I18nText;
+  description?: I18nText;
   name: string;
   required: boolean;
   type: string;
