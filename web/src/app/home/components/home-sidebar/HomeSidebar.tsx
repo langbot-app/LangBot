@@ -138,7 +138,18 @@ export default function HomeSidebar({
         <SidebarChild
           onClick={() => {
             // open docs.langbot.app
-            window.open('https://docs.langbot.app', '_blank');
+            const language = localStorage.getItem('langbot_language');
+            if (language === 'zh-Hans') {
+              window.open(
+                'https://docs.langbot.app/zh/insight/guide.html',
+                '_blank',
+              );
+            } else {
+              window.open(
+                'https://docs.langbot.app/en/insight/guide.html',
+                '_blank',
+              );
+            }
           }}
           isSelected={false}
           icon={

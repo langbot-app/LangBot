@@ -74,5 +74,5 @@ async def precheck_plugin_deps():
             if 'requirements.txt' in os.listdir(subdir):
                 pkgmgr.install_requirements(
                     os.path.join(subdir, 'requirements.txt'),
-                    extra_params=['-q', '-q', '-q'],
+                    extra_params=[],
                 )

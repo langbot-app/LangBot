@@ -1,4 +1,5 @@
 import styles from './HomeSidebar.module.css';
+import { I18nText } from '@/app/infra/entities/api';
 
 export interface ISidebarChildVO {
   id: string;
@@ -6,7 +7,7 @@ export interface ISidebarChildVO {
   name: string;
   route: string;
   description: string;
-  helpLink: string;
+  helpLink: I18nText;
 }
 
 export class SidebarChildVO {
@@ -15,7 +16,7 @@ export class SidebarChildVO {
   name: string;
   route: string;
   description: string;
-  helpLink: string;
+  helpLink: I18nText;
 
   constructor(props: ISidebarChildVO) {
     this.id = props.id;

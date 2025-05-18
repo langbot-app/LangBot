@@ -199,9 +199,9 @@ class VersionManager:
         try:
             if await self.ap.ver_mgr.is_new_version_available():
                 return (
-                    '有新版本可用，根据文档更新：https://docs.langbot.app/deploy/update.html',
+                    'New version available:\n有新版本可用，根据文档更新: \nhttps://docs.langbot.app/zh/deploy/update.html',
                     logging.INFO,
                 )
 
         except Exception as e:
-            return f'检查版本更新时出错: {e}', logging.WARNING
+            return f'Error checking version update: {e}', logging.WARNING

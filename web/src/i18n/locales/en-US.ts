@@ -38,6 +38,13 @@ const enUS = {
     deleteError: 'Delete failed: ',
     addRound: 'Add Round',
   },
+  notFound: {
+    title: 'Page not found',
+    description: 'The page you are looking for does not exist.',
+    back: 'Back',
+    home: 'Home',
+    help: 'Get Help',
+  },
   models: {
     title: 'Models',
     description: 'Configure and manage models that can be used in pipelines',

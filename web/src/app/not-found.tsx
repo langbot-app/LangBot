@@ -2,9 +2,11 @@
 
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from 'react-i18next';
 
 export default function NotFound() {
   const router = useRouter();
+  const { t } = useTranslation();
 
   return (
     <div className="min-h-screen bg-white flex items-center justify-center">
@@ -18,11 +20,10 @@ export default function NotFound() {
           {/* 错误文本 */}
           <div className="text-center mb-8">
             <h1 className="text-2xl font-normal text-gray-800 mb-2">
-              页面不存在
+              {t('notFound.title')}
             </h1>
             <p className="text-base text-gray-600 max-w-[450px] mx-auto mb-8">
-              您要查找的页面似乎不存在。请检查您输入的 URL
-              是否正确，或者返回首页。
+              {t('notFound.description')}
             </p>
           </div>
 
@@ -33,26 +34,25 @@ export default function NotFound() {
               onClick={() => router.back()}
               className="h-9 px-4 cursor-pointer"
             >
-              上一级
+              {t('notFound.back')}
             </Button>
             <Button
               variant="outline"
               onClick={() => router.push('/home')}
               className="h-9 px-4 cursor-pointer"
             >
-              返回主页
+              {t('notFound.home')}
             </Button>
           </div>
 
           {/* 帮助文档链接 */}
           <div className="text-center">
             <p className="text-sm text-gray-600">
-              查看
               <a
                 href="https://docs.langbot.app"
                 className="text-black no-underline hover:underline"
               >
-                帮助文档
+                {t('notFound.help')}
               </a>
             </p>
           </div>

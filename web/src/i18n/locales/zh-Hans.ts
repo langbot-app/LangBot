@@ -38,6 +38,14 @@ const zhHans = {
     deleteError: '删除失败：',
     addRound: '添加回合',
   },
+  notFound: {
+    title: '页面不存在',
+    description:
+      '您要查找的页面似乎不存在。请检查您输入的 URL 是否正确，或者返回首页。',
+    back: '上一级',
+    home: '返回主页',
+    help: '查看帮助文档',
+  },
   models: {
     title: '模型配置',
     description: '配置和管理可在流水线中使用的模型',

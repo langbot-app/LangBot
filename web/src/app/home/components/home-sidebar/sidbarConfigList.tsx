@@ -22,7 +22,10 @@ export const sidebarConfigList = [
     ),
     route: '/home/bots',
     description: t('bots.description'),
-    helpLink: 'https://docs.langbot.app/zh/deploy/platforms/readme.html',
+    helpLink: {
+      en_US: 'https://docs.langbot.app/en/deploy/platforms/readme.html',
+      zh_Hans: 'https://docs.langbot.app/zh/deploy/platforms/readme.html',
+    },
   }),
   new SidebarChildVO({
     id: 'models',
@@ -39,7 +42,10 @@ export const sidebarConfigList = [
     ),
     route: '/home/models',
     description: t('models.description'),
-    helpLink: 'https://docs.langbot.app/zh/deploy/models/readme.html',
+    helpLink: {
+      en_US: 'https://docs.langbot.app/en/deploy/models/readme.html',
+      zh_Hans: 'https://docs.langbot.app/zh/deploy/models/readme.html',
+    },
   }),
   new SidebarChildVO({
     id: 'pipelines',
@@ -56,7 +62,10 @@ export const sidebarConfigList = [
     ),
     route: '/home/pipelines',
     description: t('pipelines.description'),
-    helpLink: 'https://docs.langbot.app/zh/deploy/pipelines/readme.html',
+    helpLink: {
+      en_US: 'https://docs.langbot.app/en/deploy/pipelines/readme.html',
+      zh_Hans: 'https://docs.langbot.app/zh/deploy/pipelines/readme.html',
+    },
   }),
   new SidebarChildVO({
     id: 'plugins',
@@ -73,6 +82,9 @@ export const sidebarConfigList = [
     ),
     route: '/home/plugins',
     description: t('plugins.description'),
-    helpLink: 'https://docs.langbot.app/zh/plugin/plugin-intro.html',
+    helpLink: {
+      en_US: 'https://docs.langbot.app/en/plugin/plugin-intro.html',
+      zh_Hans: 'https://docs.langbot.app/zh/plugin/plugin-intro.html',
+    },
   }),
 ];

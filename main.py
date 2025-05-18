@@ -10,8 +10,8 @@ asciiart = r"""
 |____\__,_|_||_\__, |___/\___/\__|
                |___/              
 
-⭐️开源地址: https://github.com/RockChinQ/LangBot
-📖文档地址: https://docs.langbot.app
+⭐️ Open Source 开源地址: https://github.com/RockChinQ/LangBot
+📖 Documentation 文档地址: https://docs.langbot.app
 """
 
 
@@ -28,10 +28,14 @@ async def main_entry(loop: asyncio.AbstractEventLoop):
 
     if missing_deps:
         print('以下依赖包未安装，将自动安装，请完成后重启程序：')
+        print(
+            'These dependencies are missing, they will be installed automatically, please restart the program after completion:'
+        )
         for dep in missing_deps:
             print('-', dep)
         await deps.install_deps(missing_deps)
         print('已自动安装缺失的依赖包，请重启程序。')
+        print('The missing dependencies have been installed automatically, please restart the program.')
         sys.exit(0)
 
     # check plugin deps
@@ -53,6 +57,7 @@ async def main_entry(loop: asyncio.AbstractEventLoop):
 
     if generated_files:
         print('以下文件不存在，已自动生成：')
+        print('Following files do not exist and have been automatically generated:')
         for file in generated_files:
             print('-', file)
 
@@ -69,9 +74,10 @@ if __name__ == '__main__':
     if sys.version_info < (3, 10, 1):
         print('需要 Python 3.10.1 及以上版本，当前 Python 版本为：', sys.version)
         input('按任意键退出...')
+        print('Your Python version is not supported. Please exit the program by pressing any key.')
         exit(1)
 
-    # 检查本目录是否有main.py，且包含LangBot字符串
+    # Check if the current directory is the LangBot project root directory
     invalid_pwd = False
 
     if not os.path.exists('main.py'):
@@ -84,6 +90,8 @@ if __name__ == '__main__':
     if invalid_pwd:
         print('请在 LangBot 项目根目录下以命令形式运行此程序。')
         input('按任意键退出...')
+        print('Please run this program in the LangBot project root directory in command form.')
+        print('Press any key to exit...')
         exit(1)
 
     loop = asyncio.new_event_loop()
