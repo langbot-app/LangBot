@@ -130,6 +130,7 @@ export default function LLMForm({
   const [requesterDefaultURLList, setRequesterDefaultURLList] = useState<
     string[]
   >([]);
+  const [modelTesting, setModelTesting] = useState(false);
 
   useEffect(() => {
     initLLMModelFormComponent().then(() => {
@@ -306,6 +307,34 @@ export default function LLMForm({
           toast.error(t('models.deleteError') + err.message);
         });
     }
+  }
+
+  function testLLMModelInForm() {
+    setModelTesting(true);
+    httpClient
+      .testLLMModel('_', {
+        uuid: '',
+        name: form.getValues('name'),
+        description: '',
+        requester: form.getValues('model_provider'),
+        requester_config: {
+          base_url: form.getValues('url'),
+          timeout: 120,
+        },
+        api_keys: [form.getValues('api_key')],
+        abilities: form.getValues('abilities'),
+        extra_args: form.getValues('extra_args'),
+      })
+      .then((res) => {
+        console.log(res);
+        toast.success(t('models.testSuccess'));
+      })
+      .catch(() => {
+        toast.error(t('models.testError'));
+      })
+      .finally(() => {
+        setModelTesting(false);
+      });
   }
 
   return (
@@ -577,6 +606,15 @@ export default function LLMForm({
 
             <Button type="submit">
               {editMode ? t('common.save') : t('common.submit')}
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => testLLMModelInForm()}
+              disabled={modelTesting}
+            >
+              {t('common.test')}
             </Button>
 
             <Button
