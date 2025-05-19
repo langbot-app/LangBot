@@ -329,7 +329,7 @@ export default function LLMForm({
         console.log(res);
         toast.success(t('models.testSuccess'));
       })
-      .catch((err) => {
+      .catch(() => {
         toast.error(t('models.testError'));
       })
       .finally(() => {
