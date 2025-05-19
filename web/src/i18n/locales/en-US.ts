@@ -37,6 +37,7 @@ const enUS = {
     deleteSuccess: 'Deleted successfully',
     deleteError: 'Delete failed: ',
     addRound: 'Add Round',
+    test: 'Test',
   },
   notFound: {
     title: 'Page not found',
@@ -89,6 +90,8 @@ const enUS = {
     modelProviderDescription:
       'Please fill in the model name provided by the supplier',
     selectModel: 'Select Model',
+    testSuccess: 'Test successful',
+    testError: 'Test failed, please check your model configuration',
   },
   bots: {
     title: 'Bots',

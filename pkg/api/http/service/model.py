@@ -6,6 +6,8 @@ import sqlalchemy
 from ....core import app
 from ....entity.persistence import model as persistence_model
 from ....entity.persistence import pipeline as persistence_pipeline
+from ....provider.modelmgr import requester as model_requester
+from ....provider import entities as llm_entities
 
 
 class ModelsService:
@@ -78,3 +80,26 @@ class ModelsService:
         )
 
         await self.ap.model_mgr.remove_llm_model(model_uuid)
+
+    async def test_llm_model(self, model_uuid: str, model_data: dict) -> None:
+        runtime_llm_model: model_requester.RuntimeLLMModel | None = None
+
+        if model_uuid != '_':
+            for model in self.ap.model_mgr.llm_models:
+                if model.model_entity.uuid == model_uuid:
+                    runtime_llm_model = model
+                    break
+
+            if runtime_llm_model is None:
+                raise Exception('model not found')
+
+        else:
+            runtime_llm_model = await self.ap.model_mgr.init_runtime_llm_model(model_data)
+
+        await runtime_llm_model.requester.invoke_llm(
+            query=None,
+            model=runtime_llm_model,
+            messages=[llm_entities.Message(role='user', content='Hello, world!')],
+            funcs=[],
+            extra_args={},
+        )
