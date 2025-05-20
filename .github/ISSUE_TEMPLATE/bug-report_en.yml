@@ -1,5 +1,5 @@
 name: Bug report
-description: Report bugs or vulnerabilities using this template, issues that do not match will be closed directly. Due to improper operation or lack of understanding of the technology stack, network connection issues are not supported, please do not create issues. For container network connection issues, refer to the documentation https://docs.langbot.app/zh/workshop/network-details.html  
+description: Report bugs or vulnerabilities using this template. Due to improper operation or lack of understanding of the technology stack, network connection issues are not supported, please do not create issues. For container network connection issues, refer to the documentation https://docs.langbot.app/en/workshop/network-details.html  
 title: "[Bug]: "
 labels: ["bug?"]
 body:
