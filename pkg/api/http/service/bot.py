@@ -101,12 +101,12 @@ class BotService:
         )
 
     async def list_event_logs(
-        self, bot_uuid: str, index_id: int, direction: int, max_count: int
+        self, bot_uuid: str, from_index: int, max_count: int
     ) -> typing.Tuple[list[dict], int, int, int]:
         runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
         if runtime_bot is None:
             raise Exception('Bot not found')
 
-        logs, start_index, end_index, total_count = await runtime_bot.logger.get_logs(index_id, direction, max_count)
+        logs, total_count = await runtime_bot.logger.get_logs(from_index, max_count)
 
-        return [log.to_json() for log in logs], start_index, end_index, total_count
+        return [log.to_json() for log in logs], total_count

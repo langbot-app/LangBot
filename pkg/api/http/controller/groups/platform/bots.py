@@ -33,17 +33,12 @@ class BotsRouterGroup(group.RouterGroup):
         @self.route('/<bot_uuid>/logs', methods=['POST'])
         async def _(bot_uuid: str) -> str:
             json_data = await quart.request.json
-            index_id = json_data.get('index_id', 0)
-            direction = json_data.get('direction', 1)
+            from_index = json_data.get('from_index', -1)
             max_count = json_data.get('max_count', 10)
-            logs, start_index, end_index, total_count = await self.ap.bot_service.list_event_logs(
-                bot_uuid, index_id, direction, max_count
-            )
+            logs, total_count = await self.ap.bot_service.list_event_logs(bot_uuid, from_index, max_count)
             return self.success(
                 data={
                     'logs': logs,
-                    'start_index_id': start_index,
-                    'end_index_id': end_index,
                     'total_count': total_count,
                 }
             )

@@ -51,6 +51,10 @@ class EventLog(pydantic.BaseModel):
         }
 
 
+MAX_LOG_COUNT = 200
+DELETE_COUNT_PER_TIME = 50
+
+
 class EventLogger:
     """used for logging bot events"""
 
@@ -70,30 +74,28 @@ class EventLogger:
         self.logs = []
         self.seq_id_inc = 0
 
-    async def get_logs(
-        self, index_id: int, direction: int, max_count: int
-    ) -> typing.Tuple[list[EventLog], int, int, int]:
+    async def get_logs(self, from_index: int, max_count: int) -> typing.Tuple[list[EventLog], int]:
         """
-        获取日志
+        获取日志，往 from_index 获取 max_count 条历史日志
 
         Args:
-            index_id: 索引ID，-1 表示末尾
-            direction: 方向，1 表示向前，-1 表示向后
+            from_index: 起始索引，-1 表示末尾
             max_count: 最大数量
 
         Returns:
             Tuple[list[EventLog], int, int, int]: 日志列表，起始索引，结束索引，总数量
         """
 
-        if index_id < -1:
-            index_id = len(self.logs)
+        if from_index <= -1:
+            from_index = len(self.logs)
 
-        if direction == 1:
-            max_id = min(len(self.logs), index_id + max_count)
-            return self.logs[index_id:max_id], index_id, max_id, len(self.logs)
+        begin_index = max(0, from_index - max_count)
+        end_index = min(len(self.logs), from_index)
+
+        if max_count > 0:
+            return self.logs[begin_index:end_index], len(self.logs)
         else:
-            min_id = max(0, index_id - max_count)
-            return self.logs[min_id:index_id], min_id, index_id, len(self.logs)
+            return [], len(self.logs)
 
     async def _add_log(
         self,
@@ -135,6 +137,10 @@ class EventLogger:
                 )
             )
             self.seq_id_inc += 1
+
+            if len(self.logs) > MAX_LOG_COUNT:
+                self.logs = self.logs[DELETE_COUNT_PER_TIME:]
+
         except Exception as e:
             if not no_throw:
                 raise e
