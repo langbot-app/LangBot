@@ -122,6 +122,7 @@ class DingTalkAdapter(adapter.MessagePlatformAdapter):
             robot_name=config['robot_name'],
             robot_code=config['robot_code'],
             markdown_card=config['markdown_card'],
+            logger=self.logger,
         )
 
     async def reply_message(

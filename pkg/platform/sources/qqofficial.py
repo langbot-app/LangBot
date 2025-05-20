@@ -157,6 +157,7 @@ class QQOfficialAdapter(adapter.MessagePlatformAdapter):
             app_id=config['appid'],
             secret=config['secret'],
             token=config['token'],
+            logger=self.logger
         )
 
     async def reply_message(

@@ -3,6 +3,7 @@ from .WXBizMsgCrypt3 import WXBizMsgCrypt
 import base64
 import binascii
 import httpx
+import traceback
 from quart import Quart
 import xml.etree.ElementTree as ET
 from typing import Callable, Dict, Any
@@ -19,6 +20,7 @@ class WecomClient:
         token: str,
         EncodingAESKey: str,
         contacts_secret: str,
+        logger=None,
     ):
         self.corpid = corpid
         self.secret = secret
@@ -28,6 +30,7 @@ class WecomClient:
         self.base_url = 'https://qyapi.weixin.qq.com/cgi-bin'
         self.access_token = ''
         self.secret_for_contacts = contacts_secret
+        self.logger = logger
         self.app = Quart(__name__)
         self.app.add_url_rule(
             '/callback/command',
@@ -193,6 +196,8 @@ class WecomClient:
 
                 return 'success'
         except Exception as e:
+            if self.logger:
+                await self.logger.error(f"Error in handle_callback_request: {traceback.format_exc()}")
             return f'Error processing request: {str(e)}', 400
 
     async def run_task(self, host: str, port: int, *args, **kwargs):

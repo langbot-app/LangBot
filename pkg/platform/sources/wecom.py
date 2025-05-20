@@ -157,6 +157,7 @@ class WecomAdapter(adapter.MessagePlatformAdapter):
             token=config['token'],
             EncodingAESKey=config['EncodingAESKey'],
             contacts_secret=config['contacts_secret'],
+            logger=self.logger
         )
 
     async def reply_message(

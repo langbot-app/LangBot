@@ -104,7 +104,7 @@ class SlackAdapter(adapter.MessagePlatformAdapter):
         if missing_keys:
             raise ParamNotEnoughError('Slack机器人缺少相关配置项，请查看文档或联系管理员')
 
-        self.bot = SlackClient(bot_token=self.config['bot_token'], signing_secret=self.config['signing_secret'])
+        self.bot = SlackClient(bot_token=self.config['bot_token'], signing_secret=self.config['signing_secret'], logger=self.logger)
 
     async def reply_message(
         self,

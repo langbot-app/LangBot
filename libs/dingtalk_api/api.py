@@ -17,6 +17,7 @@ class DingTalkClient:
         robot_name: str,
         robot_code: str,
         markdown_card: bool,
+        logger=None,
     ):
         """初始化 WebSocket 连接并自动启动"""
         self.credential = dingtalk_stream.Credential(client_id, client_secret)
@@ -34,6 +35,7 @@ class DingTalkClient:
         self.robot_code = robot_code
         self.access_token_expiry_time = ''
         self.markdown_card = markdown_card
+        self.logger = logger
 
     async def get_access_token(self):
         url = 'https://api.dingtalk.com/v1.0/oauth2/accessToken'
@@ -190,8 +192,11 @@ class DingTalkClient:
             copy_message_data = message_data.copy()
             del copy_message_data['IncomingMessage']
             # print("message_data:", json.dumps(copy_message_data, indent=4, ensure_ascii=False))
-        except Exception:
-            traceback.print_exc()
+        except Exception as e:
+            if self.logger:
+                await self.logger.error(f"Error in get_message: {traceback.format_exc()}")
+            else:
+                traceback.print_exc()
 
         return message_data
 

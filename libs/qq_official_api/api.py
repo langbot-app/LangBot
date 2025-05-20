@@ -34,7 +34,7 @@ def handle_validation(body: dict, bot_secret: str):
 
 
 class QQOfficialClient:
-    def __init__(self, secret: str, token: str, app_id: str):
+    def __init__(self, secret: str, token: str, app_id: str, logger=None):
         self.app = Quart(__name__)
         self.app.add_url_rule(
             '/callback/command',
@@ -49,6 +49,7 @@ class QQOfficialClient:
         self.base_url = 'https://api.sgroup.qq.com'
         self.access_token = ''
         self.access_token_expiry_time = None
+        self.logger = logger
 
     async def check_access_token(self):
         """检查access_token是否存在"""
@@ -102,7 +103,10 @@ class QQOfficialClient:
             return {'code': 0, 'message': 'success'}
 
         except Exception as e:
-            traceback.print_exc()
+            if self.logger:
+                await self.logger.error(f"Error in handle_callback_request: {traceback.format_exc()}")
+            else:
+                traceback.print_exc()
             return {'error': str(e)}, 400
 
     async def run_task(self, host: str, port: int, *args, **kwargs):

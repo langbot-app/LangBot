@@ -696,7 +696,8 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
 
         self.bot = WeChatPadClient(
             self.config['wechatpad_url'],
-            self.config["token"]
+            self.config["token"],
+            logger=self.logger
         )
         self.ap.logger.info(self.config["token"])
         thread_1 = threading.Event()
