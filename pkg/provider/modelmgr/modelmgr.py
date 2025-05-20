@@ -4,9 +4,6 @@ import sqlalchemy
 
 from . import entities, requester
 from ...core import app
-from ...core import entities as core_entities
-from .. import entities as llm_entities
-from ..tools import entities as tools_entities
 from ...discover import engine
 from . import token
 from ...entity.persistence import model as persistence_model
@@ -69,12 +66,11 @@ class ModelManager:
         for llm_model in llm_models:
             await self.load_llm_model(llm_model)
 
-    async def load_llm_model(
+    async def init_runtime_llm_model(
         self,
         model_info: persistence_model.LLMModel | sqlalchemy.Row[persistence_model.LLMModel] | dict,
     ):
-        """加载模型"""
-
+        """初始化运行时模型"""
         if isinstance(model_info, sqlalchemy.Row):
             model_info = persistence_model.LLMModel(**model_info._mapping)
         elif isinstance(model_info, dict):
@@ -92,6 +88,15 @@ class ModelManager:
             ),
             requester=requester_inst,
         )
+
+        return runtime_llm_model
+
+    async def load_llm_model(
+        self,
+        model_info: persistence_model.LLMModel | sqlalchemy.Row[persistence_model.LLMModel] | dict,
+    ):
+        """加载模型"""
+        runtime_llm_model = await self.init_runtime_llm_model(model_info)
         self.llm_models.append(runtime_llm_model)
 
     async def get_model_by_name(self, name: str) -> entities.LLMModelInfo:  # deprecated
@@ -132,12 +137,3 @@ class ModelManager:
             if component.metadata.name == name:
                 return component
         return None
-
-    async def invoke_llm(
-        self,
-        query: core_entities.Query,
-        model_uuid: str,
-        messages: list[llm_entities.Message],
-        funcs: list[tools_entities.LLMFunction] = None,
-    ) -> llm_entities.Message:
-        pass

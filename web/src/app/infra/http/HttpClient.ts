@@ -271,6 +271,10 @@ class HttpClient {
     return this.put(`/api/v1/provider/models/llm/${uuid}`, model);
   }
 
+  public testLLMModel(uuid: string, model: LLMModel): Promise<object> {
+    return this.post(`/api/v1/provider/models/llm/${uuid}/test`, model);
+  }
+
   // ============ Pipeline API ============
   public getGeneralPipelineMetadata(): Promise<GetPipelineMetadataResponseData> {
     // as designed, this method will be deprecated, and only for developer to check the prefered config schema

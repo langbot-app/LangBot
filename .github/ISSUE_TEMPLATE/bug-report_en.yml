@@ -1,0 +1,30 @@
+name: Bug report
+description: Report bugs or vulnerabilities using this template. For container network connection issues, refer to the documentation https://docs.langbot.app/en/workshop/network-details.html
+title: "[Bug]: "
+labels: ["bug?"]
+body:
+  - type: input
+    attributes:
+      label: Runtime environment
+      description: LangBot version, operating system, system architecture, **Python version**, **host location**
+      placeholder: "For example: v3.3.0, CentOS x64 Python 3.10.3, Docker system directly write Docker"
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Exception
+      description: Describe the exception in detail, what happened and when it happened. **Please include log information.** 
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Reproduction steps
+      description: How to reproduce this problem, the more detailed the better; the more information you provide, the faster we will solve the problem.
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Enabled plugins
+      description: Some cases may be related to plugin functionality, so please provide the plugin enablement status.
+    validations:
+      required: false

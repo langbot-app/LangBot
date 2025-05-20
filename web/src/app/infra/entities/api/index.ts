@@ -1,15 +1,11 @@
 import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
 import { PipelineConfigTab } from '@/app/infra/entities/pipeline';
+import { I18nLabel } from '@/app/infra/entities/common';
 
 export interface ApiResponse<T> {
   code: number;
   data: T;
   msg: string;
-}
-
-export interface I18nText {
-  en_US: string;
-  zh_Hans: string;
 }
 
 export interface AsyncTaskCreatedResp {
@@ -26,8 +22,8 @@ export interface ApiRespProviderRequester {
 
 export interface Requester {
   name: string;
-  label: I18nText;
-  description: I18nText;
+  label: I18nLabel;
+  description: I18nLabel;
   icon?: string;
   spec: {
     config: IDynamicFormItemSchema[];
@@ -84,8 +80,8 @@ export interface ApiRespPlatformAdapter {
 
 export interface Adapter {
   name: string;
-  label: I18nText;
-  description: I18nText;
+  label: I18nLabel;
+  description: I18nLabel;
   icon?: string;
   spec: {
     config: AdapterSpecConfig[];
@@ -94,7 +90,7 @@ export interface Adapter {
 
 export interface AdapterSpecConfig {
   default: string | number | boolean | Array<unknown>;
-  label: I18nText;
+  label: I18nLabel;
   name: string;
   required: boolean;
   type: string;
@@ -133,8 +129,8 @@ export interface ApiRespPlugin {
 export interface Plugin {
   author: string;
   name: string;
-  description: I18nText;
-  label: I18nText;
+  description: I18nLabel;
+  label: I18nLabel;
   version: string;
   enabled: boolean;
   priority: number;

@@ -1,5 +1,5 @@
 name: 漏洞反馈
-description: 报错或漏洞请使用这个模板创建，不使用此模板创建的异常、漏洞相关issue将被直接关闭。由于自己操作不当/不甚了解所用技术栈引起的网络连接问题恕无法解决，请勿提 issue。容器间网络连接问题，参考文档 https://docs.langbot.app/zh/workshop/network-details.html  
+description: 【供中文用户】报错或漏洞请使用这个模板创建，不使用此模板创建的异常、漏洞相关issue将被直接关闭。由于自己操作不当/不甚了解所用技术栈引起的网络连接问题恕无法解决，请勿提 issue。容器间网络连接问题，参考文档 https://docs.langbot.app/zh/workshop/network-details.html  
 title: "[Bug]: "
 labels: ["bug?"]
 body:
@@ -19,12 +19,12 @@ body:
   - type: textarea
     attributes:
       label: 复现步骤
-      description: 如何重现这个问题，越详细越好；请贴上所有相关的配置文件和元数据文件（注意隐去敏感信息）
+      description: 如何重现这个问题，越详细越好；提供越多信息，我们会越快解决问题。
     validations:
-      required: true
+      required: false
   - type: textarea
     attributes:
       label: 启用的插件
-      description: 有些情况可能和插件功能有关，建议提供插件启用情况。可以使用`!plugin`命令查看已启用的插件
+      description: 有些情况可能和插件功能有关，建议提供插件启用情况。
     validations:
       required: false

@@ -36,3 +36,11 @@ class LLMModelsRouterGroup(group.RouterGroup):
                 await self.ap.model_service.delete_llm_model(model_uuid)
 
                 return self.success()
+
+        @self.route('/<model_uuid>/test', methods=['POST'])
+        async def _(model_uuid: str) -> str:
+            json_data = await quart.request.json
+
+            await self.ap.model_service.test_llm_model(model_uuid, json_data)
+
+            return self.success()
