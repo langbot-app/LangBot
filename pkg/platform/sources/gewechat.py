@@ -20,6 +20,7 @@ from ...utils import image
 import xml.etree.ElementTree as ET
 from typing import Optional, Tuple
 from functools import partial
+from ..logger import EventLogger
 
 
 class GewechatMessageConverter(adapter.MessageConverter):
@@ -371,7 +372,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
                     quote_id = appmsg_data.find('.//refermsg').findtext('.//chatusr')  # 引用消息的原发送者
                     ats_bot = ats_bot or (quote_id == tousername)
         except Exception as e:
-            print(f"Error in gewechat _ats_bot: {e}")
+            print(f'Error in gewechat _ats_bot: {e}')
         finally:
             return ats_bot
 
@@ -503,8 +504,8 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
             elif 'TypeName' in data and data['TypeName'] == 'AddMsg':
                 try:
                     event = await self.event_converter.target2yiri(data.copy(), self.bot_account_id)
-                except Exception as e:
-                    await self.logger.error(f"Error in gewechat callback: {traceback.format_exc()}")
+                except Exception:
+                    await self.logger.error(f'Error in gewechat callback: {traceback.format_exc()}')
 
                 if event.__class__ in self.listeners:
                     await self.listeners[event.__class__](event, self)
