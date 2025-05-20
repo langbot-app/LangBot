@@ -371,7 +371,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
                     quote_id = appmsg_data.find('.//refermsg').findtext('.//chatusr')  # 引用消息的原发送者
                     ats_bot = ats_bot or (quote_id == tousername)
         except Exception as e:
-            print(f'_ats_bot got except: {e}')
+            print(f"Error in gewechat _ats_bot: {e}")
         finally:
             return ats_bot
 
@@ -477,9 +477,10 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
         typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
     ] = {}
 
-    def __init__(self, config: dict, ap: app.Application):
+    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
         self.config = config
         self.ap = ap
+        self.logger = logger
         self.quart_app = quart.Quart(__name__)
 
         self.message_converter = GewechatMessageConverter(config)
@@ -502,8 +503,8 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
             elif 'TypeName' in data and data['TypeName'] == 'AddMsg':
                 try:
                     event = await self.event_converter.target2yiri(data.copy(), self.bot_account_id)
-                except Exception:
-                    traceback.print_exc()
+                except Exception as e:
+                    await self.logger.error(f"Error in gewechat callback: {traceback.format_exc()}")
 
                 if event.__class__ in self.listeners:
                     await self.listeners[event.__class__](event, self)

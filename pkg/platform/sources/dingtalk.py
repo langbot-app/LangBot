@@ -9,6 +9,7 @@ from ..types import events as platform_events
 from ..types import entities as platform_entities
 from libs.dingtalk_api.api import DingTalkClient
 import datetime
+from ..logger import EventLogger
 
 
 class DingTalkMessageConverter(adapter.MessageConverter):
@@ -99,9 +100,10 @@ class DingTalkAdapter(adapter.MessagePlatformAdapter):
     event_converter: DingTalkEventConverter = DingTalkEventConverter()
     config: dict
 
-    def __init__(self, config: dict, ap: app.Application):
+    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
         self.config = config
         self.ap = ap
+        self.logger = logger
         required_keys = [
             'client_id',
             'client_secret',
@@ -154,8 +156,8 @@ class DingTalkAdapter(adapter.MessagePlatformAdapter):
                     await self.event_converter.target2yiri(event, self.config['robot_name']),
                     self,
                 )
-            except Exception:
-                traceback.print_exc()
+            except Exception as e:
+                await self.logger.error(f"Error in dingtalk callback: {traceback.format_exc()}")
 
         if event_type == platform_events.FriendMessage:
             self.bot.on_message('FriendMessage')(on_message)

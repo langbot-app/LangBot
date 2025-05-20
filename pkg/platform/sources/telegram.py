@@ -17,6 +17,7 @@ from ...core import app
 from ..types import message as platform_message
 from ..types import events as platform_events
 from ..types import entities as platform_entities
+from ..logger import EventLogger
 
 
 class TelegramMessageConverter(adapter.MessageConverter):
@@ -147,9 +148,10 @@ class TelegramAdapter(adapter.MessagePlatformAdapter):
         typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
     ] = {}
 
-    def __init__(self, config: dict, ap: app.Application):
+    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
         self.config = config
         self.ap = ap
+        self.logger = logger
 
         async def telegram_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if update.message.from_user.is_bot:
@@ -158,8 +160,8 @@ class TelegramAdapter(adapter.MessagePlatformAdapter):
             try:
                 lb_event = await self.event_converter.target2yiri(update, self.bot, self.bot_account_id)
                 await self.listeners[type(lb_event)](lb_event, self)
-            except Exception:
-                print(traceback.format_exc())
+            except Exception as e:
+                await self.logger.error(f"Error in telegram callback: {traceback.format_exc()}")
 
         self.application = ApplicationBuilder().token(self.config['token']).build()
         self.bot = self.application.bot

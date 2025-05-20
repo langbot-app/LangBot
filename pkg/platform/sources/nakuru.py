@@ -14,6 +14,7 @@ from ...pipeline.longtext.strategies import forward
 from ...platform.types import message as platform_message
 from ...platform.types import entities as platform_entities
 from ...platform.types import events as platform_events
+from ..logger import EventLogger
 
 
 class NakuruProjectMessageConverter(adapter_model.MessageConverter):
@@ -71,9 +72,8 @@ class NakuruProjectMessageConverter(adapter_model.MessageConverter):
                             content=content_list,
                         )
                         nakuru_forward_node_list.append(nakuru_forward_node)
-                    except Exception:
+                    except Exception as e:
                         import traceback
-
                         traceback.print_exc()
 
                 nakuru_msg_list.append(nakuru_forward_node_list)
@@ -178,12 +178,13 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
 
     cfg: dict
 
-    def __init__(self, cfg: dict, ap):
+    def __init__(self, cfg: dict, ap, logger: EventLogger):
         """初始化nakuru-project的对象"""
         cfg['port'] = cfg['ws_port']
         del cfg['ws_port']
         self.cfg = cfg
         self.ap = ap
+        self.logger = logger
         self.listener_list = []
         self.bot = nakuru.CQHTTP(**self.cfg)
 
@@ -275,7 +276,7 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
             # 注册监听器
             self.bot.receiver(source_cls.__name__)(listener_wrapper)
         except Exception as e:
-            traceback.print_exc()
+            self.logger.error(f"Error in nakuru register_listener: {traceback.format_exc()}")
             raise e
 
     def unregister_listener(

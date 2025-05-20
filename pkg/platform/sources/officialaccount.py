@@ -13,6 +13,7 @@ from .. import adapter
 from ...core import app
 from ..types import entities as platform_entities
 from ...command.errors import ParamNotEnoughError
+from ..logger import EventLogger
 
 
 class OAMessageConverter(adapter.MessageConverter):
@@ -63,10 +64,10 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
     event_converter: OAEventConverter = OAEventConverter()
     config: dict
 
-    def __init__(self, config: dict, ap: app.Application):
+    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
         self.config = config
-
         self.ap = ap
+        self.logger = logger
 
         required_keys = [
             'token',
@@ -122,8 +123,8 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
             self.bot_account_id = event.receiver_id
             try:
                 return await callback(await self.event_converter.target2yiri(event), self)
-            except Exception:
-                traceback.print_exc()
+            except Exception as e:
+                await self.logger.error(f"Error in officialaccount callback: {traceback.format_exc()}")
 
         if event_type == platform_events.FriendMessage:
             self.bot.on_message('text')(on_message)

@@ -23,6 +23,7 @@ from ...core import app
 from ..types import message as platform_message
 from ..types import events as platform_events
 from ..types import entities as platform_entities
+from ..logger import EventLogger
 
 
 class AESCipher(object):
@@ -338,9 +339,10 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
     quart_app: quart.Quart
     ap: app.Application
 
-    def __init__(self, config: dict, ap: app.Application):
+    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
         self.config = config
         self.ap = ap
+        self.logger = logger
         self.quart_app = quart.Quart(__name__)
         self.listeners = {}
 
@@ -376,15 +378,15 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
                 if 'im.message.receive_v1' == type:
                     try:
                         event = await self.event_converter.target2yiri(p2v1, self.api_client)
-                    except Exception:
-                        traceback.print_exc()
+                    except Exception as e:
+                        await self.logger.error(f"Error in lark callback: {traceback.format_exc()}")
 
                     if event.__class__ in self.listeners:
                         await self.listeners[event.__class__](event, self)
 
                 return {'code': 200, 'message': 'ok'}
-            except Exception:
-                traceback.print_exc()
+            except Exception as e:
+                await self.logger.error(f"Error in lark callback: {traceback.format_exc()}")
                 return {'code': 500, 'message': 'error'}
 
         async def on_message(event: lark_oapi.im.v1.P2ImMessageReceiveV1):
