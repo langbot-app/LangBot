@@ -101,6 +101,8 @@ class Application:
     user_service: user_service.UserService = None
 
     model_service: model_service.ModelsService = None
+    
+    embeddings_models_service: model_service.EmbeddingsModelsService = None
 
     pipeline_service: pipeline_service.PipelineService = None
 

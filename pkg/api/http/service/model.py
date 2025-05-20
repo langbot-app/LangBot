@@ -103,3 +103,84 @@ class ModelsService:
             funcs=[],
             extra_args={},
         )
+
+
+class EmbeddingsModelsService:
+    ap: app.Application
+
+    def __init__(self, ap: app.Application) -> None:
+        self.ap = ap
+
+    async def get_embeddings_models(self) -> list[dict]:
+        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_model.EmbeddingsModel))
+
+        models = result.all()
+        return [self.ap.persistence_mgr.serialize_model(persistence_model.EmbeddingsModel, model) for model in models]
+
+    async def create_embeddings_model(self, model_data: dict) -> str:
+        model_data['uuid'] = str(uuid.uuid4())
+
+        await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_model.EmbeddingsModel).values(**model_data))
+
+        embeddings_model = await self.get_embeddings_model(model_data['uuid'])
+
+        await self.ap.model_mgr.load_embeddings_model(embeddings_model)
+
+        return model_data['uuid']
+
+    async def get_embeddings_model(self, model_uuid: str) -> dict | None:
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_model.EmbeddingsModel).where(persistence_model.EmbeddingsModel.uuid == model_uuid)
+        )
+
+        model = result.first()
+
+        if model is None:
+            return None
+
+        return self.ap.persistence_mgr.serialize_model(persistence_model.EmbeddingsModel, model)
+
+    async def update_embeddings_model(self, model_uuid: str, model_data: dict) -> None:
+        if 'uuid' in model_data:
+            del model_data['uuid']
+
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.update(persistence_model.EmbeddingsModel)
+            .where(persistence_model.EmbeddingsModel.uuid == model_uuid)
+            .values(**model_data)
+        )
+
+        await self.ap.model_mgr.remove_embeddings_model(model_uuid)
+
+        embeddings_model = await self.get_embeddings_model(model_uuid)
+
+        await self.ap.model_mgr.load_embeddings_model(embeddings_model)
+
+    async def delete_embeddings_model(self, model_uuid: str) -> None:
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.delete(persistence_model.EmbeddingsModel).where(persistence_model.EmbeddingsModel.uuid == model_uuid)
+        )
+
+        await self.ap.model_mgr.remove_embeddings_model(model_uuid)
+
+    async def test_embeddings_model(self, model_uuid: str, model_data: dict) -> None:
+        runtime_embeddings_model: model_requester.RuntimeEmbeddingsModel | None = None
+
+        if model_uuid != '_':
+            for model in self.ap.model_mgr.embeddings_models:
+                if model.model_entity.uuid == model_uuid:
+                    runtime_embeddings_model = model
+                    break
+
+            if runtime_embeddings_model is None:
+                raise Exception('model not found')
+
+        else:
+            runtime_embeddings_model = await self.ap.model_mgr.init_runtime_embeddings_model(model_data)
+
+        await runtime_embeddings_model.requester.invoke_embeddings(
+            query=None,
+            model=runtime_embeddings_model,
+            input_text="Hello, world!",
+            extra_args={},
+        )
