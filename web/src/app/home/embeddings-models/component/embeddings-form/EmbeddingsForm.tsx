@@ -1,0 +1,630 @@
+import { ICreateEmbeddingsField } from '@/app/home/embeddings-models/ICreateEmbeddingsField';
+import { useEffect, useState } from 'react';
+import { IChooseRequesterEntity } from '@/app/home/models/component/llm-form/ChooseRequesterEntity';
+import { httpClient } from '@/app/infra/http/HttpClient';
+import { EmbeddingsModel } from '@/app/infra/entities/api';
+import { UUID } from 'uuidjs';
+
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { useTranslation } from 'react-i18next';
+
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { toast } from 'sonner';
+import { i18nObj } from '@/i18n/I18nProvider';
+
+const getExtraArgSchema = (t: (key: string) => string) =>
+  z
+    .object({
+      key: z.string().min(1, { message: t('embeddings.keyNameRequired') }),
+      type: z.enum(['string', 'number', 'boolean']),
+      value: z.string(),
+    })
+    .superRefine((data, ctx) => {
+      if (data.type === 'number' && isNaN(Number(data.value))) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: t('embeddings.mustBeValidNumber'),
+          path: ['value'],
+        });
+      }
+      if (
+        data.type === 'boolean' &&
+        data.value !== 'true' &&
+        data.value !== 'false'
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: t('embeddings.mustBeTrueOrFalse'),
+          path: ['value'],
+        });
+      }
+    });
+
+const getFormSchema = (t: (key: string) => string) =>
+  z.object({
+    name: z.string().min(1, { message: t('embeddings.modelNameRequired') }),
+    model_provider: z
+      .string()
+      .min(1, { message: t('embeddings.modelProviderRequired') }),
+    url: z.string().min(1, { message: t('embeddings.requestURLRequired') }),
+    api_key: z.string().min(1, { message: t('embeddings.apiKeyRequired') }),
+    dimensions: z.string().optional(),
+    encoding_format: z.string().optional(),
+    extra_args: z.array(getExtraArgSchema(t)).optional(),
+  });
+
+export default function EmbeddingsForm({
+  editMode,
+  initEmbeddingsId,
+  onFormSubmit,
+  onFormCancel,
+  onEmbeddingsDeleted,
+}: {
+  editMode: boolean;
+  initEmbeddingsId?: string;
+  onFormSubmit: () => void;
+  onFormCancel: () => void;
+  onEmbeddingsDeleted: () => void;
+}) {
+  const { t } = useTranslation();
+  const formSchema = getFormSchema(t);
+
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      name: '',
+      model_provider: '',
+      url: '',
+      api_key: 'sk-xxxxx',
+      dimensions: '',
+      encoding_format: 'float',
+      extra_args: [],
+    },
+  });
+
+  const [extraArgs, setExtraArgs] = useState<
+    { key: string; type: 'string' | 'number' | 'boolean'; value: string }[]
+  >([]);
+
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [requesterNameList, setRequesterNameList] = useState<
+    IChooseRequesterEntity[]
+  >([]);
+  const [requesterDefaultURLList, setRequesterDefaultURLList] = useState<
+    string[]
+  >([]);
+  const [modelTesting, setModelTesting] = useState(false);
+  const [currentModelProvider, setCurrentModelProvider] = useState('');
+
+  useEffect(() => {
+    initEmbeddingsModelFormComponent().then(() => {
+      if (editMode && initEmbeddingsId) {
+        getEmbeddingsConfig(initEmbeddingsId).then((val) => {
+          form.setValue('name', val.name);
+          form.setValue('model_provider', val.model_provider);
+          setCurrentModelProvider(val.model_provider);
+          form.setValue('url', val.url);
+          form.setValue('api_key', val.api_key);
+          form.setValue('dimensions', val.dimensions?.toString() || '');
+          form.setValue('encoding_format', val.encoding_format || 'float');
+          if (val.extra_args) {
+            const args = val.extra_args.map((arg) => {
+              const [key, value] = arg.split(':');
+              let type: 'string' | 'number' | 'boolean' = 'string';
+              if (!isNaN(Number(value))) {
+                type = 'number';
+              } else if (value === 'true' || value === 'false') {
+                type = 'boolean';
+              }
+              return {
+                key,
+                type,
+                value,
+              };
+            });
+            setExtraArgs(args);
+            form.setValue('extra_args', args);
+          }
+        });
+      } else {
+        form.reset();
+      }
+    });
+  }, []);
+
+  const addExtraArg = () => {
+    setExtraArgs([...extraArgs, { key: '', type: 'string', value: '' }]);
+  };
+
+  const updateExtraArg = (
+    index: number,
+    field: 'key' | 'type' | 'value',
+    value: string,
+  ) => {
+    const newArgs = [...extraArgs];
+    newArgs[index] = {
+      ...newArgs[index],
+      [field]: value,
+    };
+    setExtraArgs(newArgs);
+    form.setValue('extra_args', newArgs);
+  };
+
+  const removeExtraArg = (index: number) => {
+    const newArgs = extraArgs.filter((_, i) => i !== index);
+    setExtraArgs(newArgs);
+    form.setValue('extra_args', newArgs);
+  };
+
+  async function initEmbeddingsModelFormComponent() {
+    const requesterNameList = await httpClient.getProviderRequesters();
+    setRequesterNameList(
+      requesterNameList.requesters
+        .filter((item) => item.name === 'OpenAIEmbeddings')
+        .map((item) => {
+          return {
+            label: i18nObj(item.label),
+            value: item.name,
+          };
+        }),
+    );
+    setRequesterDefaultURLList(
+      requesterNameList.requesters
+        .filter((item) => item.name === 'OpenAIEmbeddings')
+        .map((item) => {
+          const config = item.spec.config;
+          for (let i = 0; i < config.length; i++) {
+            if (config[i].name == 'base_url') {
+              return config[i].default?.toString() || '';
+            }
+          }
+          return '';
+        }),
+    );
+  }
+
+  async function getEmbeddingsConfig(
+    id: string,
+  ): Promise<ICreateEmbeddingsField> {
+    const embeddingsModel = await httpClient.getProviderEmbeddingsModel(id);
+
+    const fakeExtraArgs = [];
+    const extraArgs = embeddingsModel.model.extra_args as Record<
+      string,
+      string
+    >;
+    for (const key in extraArgs) {
+      fakeExtraArgs.push(`${key}:${extraArgs[key]}`);
+    }
+    return {
+      name: embeddingsModel.model.name,
+      model_provider: embeddingsModel.model.requester,
+      url: embeddingsModel.model.requester_config?.base_url,
+      api_key: embeddingsModel.model.api_keys[0],
+      dimensions: embeddingsModel.model.dimensions,
+      encoding_format: embeddingsModel.model.encoding_format,
+      extra_args: fakeExtraArgs,
+    };
+  }
+
+  function handleFormSubmit(value: z.infer<typeof formSchema>) {
+    const extraArgsObj: Record<string, string | number | boolean> = {};
+    value.extra_args?.forEach(
+      (arg: { key: string; type: string; value: string }) => {
+        if (arg.type === 'number') {
+          extraArgsObj[arg.key] = Number(arg.value);
+        } else if (arg.type === 'boolean') {
+          extraArgsObj[arg.key] = arg.value === 'true';
+        } else {
+          extraArgsObj[arg.key] = arg.value;
+        }
+      },
+    );
+
+    const embeddingsModel: EmbeddingsModel = {
+      uuid: editMode ? initEmbeddingsId || '' : UUID.generate(),
+      name: value.name,
+      description: '',
+      requester: value.model_provider,
+      requester_config: {
+        base_url: value.url,
+        timeout: 120,
+      },
+      extra_args: extraArgsObj,
+      api_keys: [value.api_key],
+      dimensions: value.dimensions ? parseInt(value.dimensions) : undefined,
+      encoding_format: value.encoding_format,
+    };
+
+    if (editMode) {
+      onSaveEdit(embeddingsModel).then(() => {
+        form.reset();
+      });
+    } else {
+      onCreateEmbeddings(embeddingsModel).then(() => {
+        form.reset();
+      });
+    }
+  }
+
+  async function onCreateEmbeddings(embeddingsModel: EmbeddingsModel) {
+    try {
+      await httpClient.createProviderEmbeddingsModel(embeddingsModel);
+      onFormSubmit();
+      toast.success(t('embeddings.createSuccess'));
+    } catch (err) {
+      toast.error(t('embeddings.createError') + (err as Error).message);
+    }
+  }
+
+  async function onSaveEdit(embeddingsModel: EmbeddingsModel) {
+    try {
+      await httpClient.updateProviderEmbeddingsModel(
+        initEmbeddingsId || '',
+        embeddingsModel,
+      );
+      onFormSubmit();
+      toast.success(t('embeddings.saveSuccess'));
+    } catch (err) {
+      toast.error(t('embeddings.saveError') + (err as Error).message);
+    }
+  }
+
+  function deleteModel() {
+    if (initEmbeddingsId) {
+      httpClient
+        .deleteProviderEmbeddingsModel(initEmbeddingsId)
+        .then(() => {
+          onEmbeddingsDeleted();
+          toast.success(t('embeddings.deleteSuccess'));
+        })
+        .catch((err) => {
+          toast.error(t('embeddings.deleteError') + err.message);
+        });
+    }
+  }
+
+  function testEmbeddingsModelInForm() {
+    setModelTesting(true);
+    httpClient
+      .testEmbeddingsModel('_', {
+        uuid: '',
+        name: form.getValues('name'),
+        description: '',
+        requester: form.getValues('model_provider'),
+        requester_config: {
+          base_url: form.getValues('url'),
+          timeout: 120,
+        },
+        api_keys: [form.getValues('api_key')],
+        dimensions: form.getValues('dimensions')
+          ? parseInt(form.getValues('dimensions'))
+          : undefined,
+        encoding_format: form.getValues('encoding_format'),
+      })
+      .then((res) => {
+        console.log(res);
+        toast.success(t('embeddings.testSuccess'));
+      })
+      .catch(() => {
+        toast.error(t('embeddings.testError'));
+      })
+      .finally(() => {
+        setModelTesting(false);
+      });
+  }
+
+  return (
+    <div>
+      <Dialog
+        open={showDeleteConfirmModal}
+        onOpenChange={setShowDeleteConfirmModal}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('common.confirmDelete')}</DialogTitle>
+          </DialogHeader>
+          <DialogDescription>
+            {t('embeddings.deleteConfirmation')}
+          </DialogDescription>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteConfirmModal(false)}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                deleteModel();
+                setShowDeleteConfirmModal(false);
+              }}
+            >
+              {t('common.confirmDelete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Form {...form}>
+        <form
+          onSubmit={form.handleSubmit(handleFormSubmit)}
+          className="space-y-8"
+        >
+          <div className="space-y-4">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {t('embeddings.modelName')}
+                    <span className="text-red-500">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                  <FormDescription>
+                    {t('embeddings.modelProviderDescription')}
+                  </FormDescription>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="model_provider"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {t('embeddings.modelProvider')}
+                    <span className="text-red-500">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Select
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        setCurrentModelProvider(value);
+                        const index = requesterNameList.findIndex(
+                          (item) => item.value === value,
+                        );
+                        if (index !== -1) {
+                          form.setValue('url', requesterDefaultURLList[index]);
+                        }
+                      }}
+                      value={field.value}
+                    >
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue
+                          placeholder={t('embeddings.selectModelProvider')}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {requesterNameList.map((item) => (
+                            <SelectItem key={item.value} value={item.value}>
+                              {item.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="url"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {t('embeddings.requestURL')}
+                    <span className="text-red-500">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="api_key"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {t('embeddings.apiKey')}
+                    <span className="text-red-500">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="dimensions"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('embeddings.dimensions')}</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="number" />
+                  </FormControl>
+                  <FormMessage />
+                  <FormDescription>
+                    {t('embeddings.dimensionsDescription')}
+                  </FormDescription>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="encoding_format"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('embeddings.encodingFormat')}</FormLabel>
+                  <FormControl>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue
+                          placeholder={t('embeddings.selectEncodingFormat')}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="float">float</SelectItem>
+                          <SelectItem value="base64">base64</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </FormControl>
+                  <FormMessage />
+                  <FormDescription>
+                    {t('embeddings.encodingFormatDescription')}
+                  </FormDescription>
+                </FormItem>
+              )}
+            />
+
+            <FormItem>
+              <FormLabel>{t('embeddings.extraParameters')}</FormLabel>
+              <div className="space-y-2">
+                {extraArgs.map((arg, index) => (
+                  <div key={index} className="flex gap-2">
+                    <Input
+                      placeholder={t('embeddings.keyName')}
+                      value={arg.key}
+                      onChange={(e) =>
+                        updateExtraArg(index, 'key', e.target.value)
+                      }
+                    />
+                    <Select
+                      value={arg.type}
+                      onValueChange={(value) =>
+                        updateExtraArg(index, 'type', value)
+                      }
+                    >
+                      <SelectTrigger className="w-[120px]">
+                        <SelectValue placeholder={t('embeddings.type')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="string">
+                          {t('embeddings.string')}
+                        </SelectItem>
+                        <SelectItem value="number">
+                          {t('embeddings.number')}
+                        </SelectItem>
+                        <SelectItem value="boolean">
+                          {t('embeddings.boolean')}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      placeholder={t('embeddings.value')}
+                      value={arg.value}
+                      onChange={(e) =>
+                        updateExtraArg(index, 'value', e.target.value)
+                      }
+                    />
+                    <button
+                      type="button"
+                      className="p-2 hover:bg-gray-100 rounded"
+                      onClick={() => removeExtraArg(index)}
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        className="w-5 h-5 text-red-500"
+                      >
+                        <path d="M7 4V2H17V4H22V6H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V6H2V4H7ZM6 6V20H18V6H6ZM9 9H11V17H9V9ZM13 9H15V17H13V9Z"></path>
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" onClick={addExtraArg}>
+                  {t('embeddings.addParameter')}
+                </Button>
+              </div>
+              <FormDescription>
+                {t('embeddings.extraParametersDescription')}
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          </div>
+          <DialogFooter>
+            {editMode && (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => setShowDeleteConfirmModal(true)}
+              >
+                {t('common.delete')}
+              </Button>
+            )}
+
+            <Button type="submit">
+              {editMode ? t('common.save') : t('common.submit')}
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => testEmbeddingsModelInForm()}
+              disabled={modelTesting}
+            >
+              {t('common.test')}
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onFormCancel()}
+            >
+              {t('common.cancel')}
+            </Button>
+          </DialogFooter>
+        </form>
+      </Form>
+    </div>
+  );
+}

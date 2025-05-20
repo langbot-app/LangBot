@@ -10,6 +10,9 @@ import {
   ApiRespProviderLLMModels,
   ApiRespProviderLLMModel,
   LLMModel,
+  ApiRespProviderEmbeddingsModels,
+  ApiRespProviderEmbeddingsModel,
+  EmbeddingsModel,
   ApiRespPipelines,
   Pipeline,
   ApiRespPlatformAdapters,
@@ -273,6 +276,41 @@ class HttpClient {
 
   public testLLMModel(uuid: string, model: LLMModel): Promise<object> {
     return this.post(`/api/v1/provider/models/llm/${uuid}/test`, model);
+  }
+
+  // ============ Provider Model Embeddings ============
+  public getProviderEmbeddingsModels(): Promise<ApiRespProviderEmbeddingsModels> {
+    return this.get('/api/v1/provider/models/embeddings');
+  }
+
+  public getProviderEmbeddingsModel(
+    uuid: string,
+  ): Promise<ApiRespProviderEmbeddingsModel> {
+    return this.get(`/api/v1/provider/models/embeddings/${uuid}`);
+  }
+
+  public createProviderEmbeddingsModel(
+    model: EmbeddingsModel,
+  ): Promise<object> {
+    return this.post('/api/v1/provider/models/embeddings', model);
+  }
+
+  public deleteProviderEmbeddingsModel(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/provider/models/embeddings/${uuid}`);
+  }
+
+  public updateProviderEmbeddingsModel(
+    uuid: string,
+    model: EmbeddingsModel,
+  ): Promise<object> {
+    return this.put(`/api/v1/provider/models/embeddings/${uuid}`, model);
+  }
+
+  public testEmbeddingsModel(
+    uuid: string,
+    model: EmbeddingsModel,
+  ): Promise<object> {
+    return this.post(`/api/v1/provider/models/embeddings/${uuid}/test`, model);
   }
 
   // ============ Pipeline API ============

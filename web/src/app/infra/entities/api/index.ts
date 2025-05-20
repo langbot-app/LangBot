@@ -54,6 +54,30 @@ export interface LLMModel {
   // updated_at: string;
 }
 
+export interface ApiRespProviderEmbeddingsModels {
+  models: EmbeddingsModel[];
+}
+
+export interface ApiRespProviderEmbeddingsModel {
+  model: EmbeddingsModel;
+}
+
+export interface EmbeddingsModel {
+  name: string;
+  description: string;
+  uuid: string;
+  requester: string;
+  requester_config: {
+    base_url: string;
+    timeout: number;
+  };
+  api_keys: string[];
+  dimensions?: number;
+  encoding_format?: string;
+  // created_at: string;
+  // updated_at: string;
+}
+
 export interface ApiRespPipelines {
   pipelines: Pipeline[];
 }
