@@ -50,7 +50,7 @@ class DingTalkClient:
                     expires_in = int(response_data.get('expireIn', 7200))
                     self.access_token_expiry_time = time.time() + expires_in - 60
             except Exception as e:
-                raise Exception(e)
+                await self.logger.error("failed to get access token in dingtalk")
 
     async def is_token_expired(self):
         """检查token是否过期"""
@@ -75,7 +75,7 @@ class DingTalkClient:
                 result = response.json()
                 download_url = result.get('downloadUrl')
             else:
-                raise Exception(f'Error: {response.status_code}, {response.text}')
+                await self.logger.error("failed to get download url")
 
         if download_url:
             return await self.download_url_to_base64(download_url)
@@ -89,7 +89,7 @@ class DingTalkClient:
                 base64_str = base64.b64encode(file_bytes).decode('utf-8')  # 返回字符串格式
                 return base64_str
             else:
-                raise Exception('获取文件失败')
+                await self.logger.error("failed to get files")
 
     async def get_audio_url(self, download_code: str):
         if not await self.check_access_token():
@@ -105,7 +105,7 @@ class DingTalkClient:
                 if download_url:
                     return await self.download_url_to_base64(download_url)
                 else:
-                    raise Exception('获取音频失败')
+                    await self.logger.error("failed to get audio")
             else:
                 raise Exception(f'Error: {response.status_code}, {response.text}')
 
@@ -221,7 +221,7 @@ class DingTalkClient:
             async with httpx.AsyncClient() as client:
                 await client.post(url, headers=headers, json=data)
         except Exception:
-            traceback.print_exc()
+            await self.logger.error("failed to send proactive massage to person")
 
     async def send_proactive_message_to_group(self, target_id: str, content: str):
         if not await self.check_access_token():
@@ -244,7 +244,7 @@ class DingTalkClient:
             async with httpx.AsyncClient() as client:
                 await client.post(url, headers=headers, json=data)
         except Exception:
-            traceback.print_exc()
+            await self.logger.error("failed to send proactive massage to group")
 
     async def start(self):
         """启动 WebSocket 连接，监听消息"""
