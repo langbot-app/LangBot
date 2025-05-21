@@ -92,6 +92,16 @@ const enUS = {
     selectModel: 'Select Model',
     testSuccess: 'Test successful',
     testError: 'Test failed, please check your model configuration',
+    llmModels: 'LLM Models',
+  },
+  embeddings: {
+    title: 'Embeddings Models',
+    description: 'Manage Embeddings models for text vectorization',
+    createModel: 'Create Embeddings Model',
+    editModel: 'Edit Embeddings Model',
+    getModelListError: 'Failed to get Embeddings model list: ',
+    onEmbeddingsDeleted: '',
+    embeddingsModels: 'Embeddings Models',
   },
   bots: {
     title: 'Bots',

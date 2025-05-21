@@ -47,26 +47,7 @@ export const sidebarConfigList = [
       zh_Hans: 'https://docs.langbot.app/zh/deploy/models/readme.html',
     },
   }),
-  new SidebarChildVO({
-    id: 'embeddings-models',
-    name: t('embeddings.title'),
-    icon: (
-      <svg
-        className={`${styles.sidebarChildIcon}`}
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="currentColor"
-      >
-        <path d="M20 2C21.6569 2 23 3.34315 23 5V19C23 20.6569 21.6569 22 20 22H4C2.34315 22 1 20.6569 1 19V5C1 3.34315 2.34315 2 4 2H20ZM20 4H4C3.44772 4 3 4.44772 3 5V19C3 19.5523 3.44772 20 4 20H20C20.5523 20 21 19.5523 21 19V5C21 4.44772 20.5523 4 20 4ZM5 8H19V10H5V8ZM5 12H19V14H5V12ZM5 16H14V18H5V16Z"></path>
-      </svg>
-    ),
-    route: '/home/embeddings-models',
-    description: t('embeddings.description'),
-    helpLink: {
-      en_US: 'https://docs.langbot.app/en/deploy/models/readme.html',
-      zh_Hans: 'https://docs.langbot.app/zh/deploy/models/readme.html',
-    },
-  }),
+
   new SidebarChildVO({
     id: 'pipelines',
     name: t('pipelines.title'),
