@@ -1,4 +1,4 @@
-import { ICreateEmbeddingsField } from '@/app/home/embeddings-models/ICreateEmbeddingsField';
+import { ICreateEmbeddingsField } from '@/app/home/models/ICreateEmbeddingsField';
 import { useEffect, useState } from 'react';
 import { IChooseRequesterEntity } from '@/app/home/models/component/llm-form/ChooseRequesterEntity';
 import { httpClient } from '@/app/infra/http/HttpClient';

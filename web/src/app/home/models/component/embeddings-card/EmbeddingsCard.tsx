@@ -1,5 +1,5 @@
 import styles from './EmbeddingsCard.module.css';
-import { EmbeddingsCardVO } from '@/app/home/embeddings-models/component/embeddings-card/EmbeddingsCardVO';
+import { EmbeddingsCardVO } from '@/app/home/models/component/embeddings-card/EmbeddingsCardVO';
 import { useTranslation } from 'react-i18next';
 
 export default function EmbeddingsCard({

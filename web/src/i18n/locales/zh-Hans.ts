@@ -92,7 +92,7 @@ const zhHans = {
     selectModel: '请选择模型',
     testSuccess: '测试成功',
     testError: '测试失败，请检查模型配置',
-    llmModels: 'LLM模型',
+    llmModels: '对话模型',
   },
   bots: {
     title: '机器人',
@@ -192,13 +192,13 @@ const zhHans = {
     defaultPipelineCannotDelete: '默认流水线不可删除',
   },
   embeddings: {
-    title: 'Embeddings模型',
-    description: '管理 Embeddings 模型，用于向量化文本',
-    createModel: '创建 Embeddings 模型',
-    editModel: '编辑 Embeddings 模型',
-    getModelListError: '获取 Embeddings 模型列表失败：',
+    title: '嵌入模型',
+    description: '管理嵌入模型，用于向量化文本',
+    createModel: '创建嵌入模型',
+    editModel: '编辑嵌入模型',
+    getModelListError: '获取嵌入模型列表失败：',
     onEmbeddingsDeleted: '',
-    embeddingsModels: 'Embeddings模型',
+    embeddingsModels: '嵌入模型',
   },
 };
 

@@ -18,9 +18,9 @@ import {
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { i18nObj } from '@/i18n/I18nProvider';
-import { EmbeddingsCardVO } from '@/app/home/embeddings-models/component/embeddings-card/EmbeddingsCardVO';
-import EmbeddingsCard from '@/app/home/embeddings-models/component/embeddings-card/EmbeddingsCard';
-import EmbeddingsForm from '@/app/home/embeddings-models/component/embeddings-form/EmbeddingsForm';
+import { EmbeddingsCardVO } from '@/app/home/models/component/embeddings-card/EmbeddingsCardVO';
+import EmbeddingsCard from '@/app/home/models/component/embeddings-card/EmbeddingsCard';
+import EmbeddingsForm from '@/app/home/models/component/embeddings-form/EmbeddingsForm';
 
 export default function LLMConfigPage() {
   const { t } = useTranslation();
