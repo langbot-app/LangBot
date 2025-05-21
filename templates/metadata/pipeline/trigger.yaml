@@ -46,8 +46,8 @@ stages:
           en_US: Random
           zh_Hans: 随机
         description:
-          en_US: The probability of the random response, range from 0.0 to 1.0
-          zh_Hans: 随机响应概率，范围为 0.0-1.0，对应 0% 到 100%
+          en_US: Auto-reply probability for any message (no @bot mention needed). Range: 0.0-1.0.
+          zh_Hans: 自动回复任意消息的概率（无需@机器人）。范围：0.0-1.0 (0%-100%)。
         type: float
         required: false
         default: 0
