@@ -1,6 +1,6 @@
-import { ICreateEmbeddingField } from '@/app/home/models/ICreateEmbeddingField';
+import { ICreateEmbeddingField } from '@/app/home/models/component/ICreateEmbeddingField';
 import { useEffect, useState } from 'react';
-import { IChooseRequesterEntity } from '@/app/home/models/component/llm-form/ChooseRequesterEntity';
+import { IChooseRequesterEntity } from '@/app/home/models/component/ChooseRequesterEntity';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { EmbeddingModel } from '@/app/infra/entities/api';
 import { UUID } from 'uuidjs';
@@ -43,7 +43,7 @@ import { i18nObj } from '@/i18n/I18nProvider';
 const getExtraArgSchema = (t: (key: string) => string) =>
   z
     .object({
-      key: z.string().min(1, { message: t('embedding.keyNameRequired') }),
+      key: z.string().min(1, { message: t('models.keyNameRequired') }),
       type: z.enum(['string', 'number', 'boolean']),
       value: z.string(),
     })
@@ -51,7 +51,7 @@ const getExtraArgSchema = (t: (key: string) => string) =>
       if (data.type === 'number' && isNaN(Number(data.value))) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: t('embedding.mustBeValidNumber'),
+          message: t('models.mustBeValidNumber'),
           path: ['value'],
         });
       }
@@ -62,7 +62,7 @@ const getExtraArgSchema = (t: (key: string) => string) =>
       ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: t('embedding.mustBeTrueOrFalse'),
+          message: t('models.mustBeTrueOrFalse'),
           path: ['value'],
         });
       }
@@ -70,12 +70,12 @@ const getExtraArgSchema = (t: (key: string) => string) =>
 
 const getFormSchema = (t: (key: string) => string) =>
   z.object({
-    name: z.string().min(1, { message: t('embedding.modelNameRequired') }),
+    name: z.string().min(1, { message: t('models.modelNameRequired') }),
     model_provider: z
       .string()
-      .min(1, { message: t('embedding.modelProviderRequired') }),
-    url: z.string().min(1, { message: t('embedding.requestURLRequired') }),
-    api_key: z.string().min(1, { message: t('embedding.apiKeyRequired') }),
+      .min(1, { message: t('models.modelProviderRequired') }),
+    url: z.string().min(1, { message: t('models.requestURLRequired') }),
+    api_key: z.string().min(1, { message: t('models.apiKeyRequired') }),
     extra_args: z.array(getExtraArgSchema(t)).optional(),
   });
 
@@ -263,9 +263,9 @@ export default function EmbeddingForm({
     try {
       await httpClient.createProviderEmbeddingModel(embeddingModel);
       onFormSubmit();
-      toast.success(t('embedding.createSuccess'));
+      toast.success(t('models.createSuccess'));
     } catch (err) {
-      toast.error(t('embedding.createError') + (err as Error).message);
+      toast.error(t('models.createError') + (err as Error).message);
     }
   }
 
@@ -276,9 +276,9 @@ export default function EmbeddingForm({
         embeddingModel,
       );
       onFormSubmit();
-      toast.success(t('embedding.saveSuccess'));
+      toast.success(t('models.saveSuccess'));
     } catch (err) {
-      toast.error(t('embedding.saveError') + (err as Error).message);
+      toast.error(t('models.saveError') + (err as Error).message);
     }
   }
 
@@ -288,10 +288,10 @@ export default function EmbeddingForm({
         .deleteProviderEmbeddingModel(initEmbeddingId)
         .then(() => {
           onEmbeddingDeleted();
-          toast.success(t('embedding.deleteSuccess'));
+          toast.success(t('models.deleteSuccess'));
         })
         .catch((err) => {
-          toast.error(t('embedding.deleteError') + err.message);
+          toast.error(t('models.deleteError') + err.message);
         });
     }
   }
@@ -312,10 +312,10 @@ export default function EmbeddingForm({
       })
       .then((res) => {
         console.log(res);
-        toast.success(t('embedding.testSuccess'));
+        toast.success(t('models.testSuccess'));
       })
       .catch(() => {
-        toast.error(t('embedding.testError'));
+        toast.error(t('models.testError'));
       })
       .finally(() => {
         setModelTesting(false);
@@ -333,7 +333,7 @@ export default function EmbeddingForm({
             <DialogTitle>{t('common.confirmDelete')}</DialogTitle>
           </DialogHeader>
           <DialogDescription>
-            {t('embedding.deleteConfirmation')}
+            {t('models.deleteConfirmation')}
           </DialogDescription>
           <DialogFooter>
             <Button
@@ -367,7 +367,7 @@ export default function EmbeddingForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {t('embedding.modelName')}
+                    {t('models.modelName')}
                     <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
@@ -375,7 +375,7 @@ export default function EmbeddingForm({
                   </FormControl>
                   <FormMessage />
                   <FormDescription>
-                    {t('embedding.modelProviderDescription')}
+                    {t('models.modelProviderDescription')}
                   </FormDescription>
                 </FormItem>
               )}
@@ -387,7 +387,7 @@ export default function EmbeddingForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {t('embedding.modelProvider')}
+                    {t('models.modelProvider')}
                     <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
@@ -406,7 +406,7 @@ export default function EmbeddingForm({
                     >
                       <SelectTrigger className="w-[180px]">
                         <SelectValue
-                          placeholder={t('embedding.selectModelProvider')}
+                          placeholder={t('models.selectModelProvider')}
                         />
                       </SelectTrigger>
                       <SelectContent>
@@ -431,7 +431,7 @@ export default function EmbeddingForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {t('embedding.requestURL')}
+                    {t('models.requestURL')}
                     <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
@@ -448,7 +448,7 @@ export default function EmbeddingForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {t('embedding.apiKey')}
+                    {t('models.apiKey')}
                     <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
@@ -460,12 +460,12 @@ export default function EmbeddingForm({
             />
 
             <FormItem>
-              <FormLabel>{t('embedding.extraParameters')}</FormLabel>
+              <FormLabel>{t('models.extraParameters')}</FormLabel>
               <div className="space-y-2">
                 {extraArgs.map((arg, index) => (
                   <div key={index} className="flex gap-2">
                     <Input
-                      placeholder={t('embedding.keyName')}
+                      placeholder={t('models.keyName')}
                       value={arg.key}
                       onChange={(e) =>
                         updateExtraArg(index, 'key', e.target.value)
@@ -478,22 +478,22 @@ export default function EmbeddingForm({
                       }
                     >
                       <SelectTrigger className="w-[120px]">
-                        <SelectValue placeholder={t('embedding.type')} />
+                        <SelectValue placeholder={t('models.type')} />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="string">
-                          {t('embedding.string')}
+                          {t('models.string')}
                         </SelectItem>
                         <SelectItem value="number">
-                          {t('embedding.number')}
+                          {t('models.number')}
                         </SelectItem>
                         <SelectItem value="boolean">
-                          {t('embedding.boolean')}
+                          {t('models.boolean')}
                         </SelectItem>
                       </SelectContent>
                     </Select>
                     <Input
-                      placeholder={t('embedding.value')}
+                      placeholder={t('models.value')}
                       value={arg.value}
                       onChange={(e) =>
                         updateExtraArg(index, 'value', e.target.value)
@@ -516,7 +516,7 @@ export default function EmbeddingForm({
                   </div>
                 ))}
                 <Button type="button" variant="outline" onClick={addExtraArg}>
-                  {t('embedding.addParameter')}
+                  {t('models.addParameter')}
                 </Button>
               </div>
               <FormDescription>

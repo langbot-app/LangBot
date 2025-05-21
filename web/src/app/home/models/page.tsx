@@ -188,16 +188,34 @@ export default function LLMConfigPage() {
           />
         </DialogContent>
       </Dialog>
+
       <Tabs defaultValue="llm" className="w-full">
-        <div className="flex flex-row justify-between items-center px-[0.8rem]">
-          <TabsList className="shadow-md py-5 bg-[#f0f0f0]">
-            <TabsTrigger value="llm" className="px-6 py-4 cursor-pointer">
-              {t('models.llmModels')}
-            </TabsTrigger>
-            <TabsTrigger value="embedding" className="px-6 py-4 cursor-pointer">
-              {t('embedding.embeddingModels')}
-            </TabsTrigger>
-          </TabsList>
+        <div className="flex flex-row gap-0 mb-4">
+          <div className="flex flex-row justify-between items-center px-[0.8rem]">
+            <TabsList className="shadow-md py-5 bg-[#f0f0f0]">
+              <TabsTrigger value="llm" className="px-6 py-4 cursor-pointer">
+                {t('llm.llmModels')}
+              </TabsTrigger>
+              <TabsTrigger
+                value="embedding"
+                className="px-6 py-4 cursor-pointer"
+              >
+                {t('embedding.embeddingModels')}
+              </TabsTrigger>
+            </TabsList>
+          </div>
+          <TabsContent value="llm">
+            <div className="flex flex-row justify-between items-center px-[0.4rem] h-full">
+              <p className="text-sm text-gray-500">{t('llm.description')}</p>
+            </div>
+          </TabsContent>
+          <TabsContent value="embedding">
+            <div className="flex flex-row justify-between items-center px-[0.4rem] h-full">
+              <p className="text-sm text-gray-500">
+                {t('embedding.description')}
+              </p>
+            </div>
+          </TabsContent>
         </div>
 
         <TabsContent value="llm">
