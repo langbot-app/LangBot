@@ -157,6 +157,9 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
             'input': input_text,
         }
 
+        if model.model_entity.extra_args:
+            args.update(model.model_entity.extra_args)
+
         args.update(extra_args)
 
         try:
