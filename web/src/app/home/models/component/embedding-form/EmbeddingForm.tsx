@@ -125,7 +125,7 @@ export default function EmbeddingForm({
         getEmbeddingConfig(initEmbeddingId).then((val) => {
           form.setValue('name', val.name);
           form.setValue('model_provider', val.model_provider);
-          setCurrentModelProvider(val.model_provider);
+          // setCurrentModelProvider(val.model_provider);
           form.setValue('url', val.url);
           form.setValue('api_key', val.api_key);
           if (val.extra_args) {
@@ -393,7 +393,7 @@ export default function EmbeddingForm({
                     <Select
                       onValueChange={(value) => {
                         field.onChange(value);
-                        setCurrentModelProvider(value);
+                        // setCurrentModelProvider(value);
                         const index = requesterNameList.findIndex(
                           (item) => item.value === value,
                         );
