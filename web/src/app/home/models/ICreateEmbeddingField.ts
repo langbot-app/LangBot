@@ -1,4 +1,4 @@
-export interface ICreateEmbeddingsField {
+export interface ICreateEmbeddingField {
   name: string;
   model_provider: string;
   url: string;

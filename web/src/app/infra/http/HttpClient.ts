@@ -10,9 +10,9 @@ import {
   ApiRespProviderLLMModels,
   ApiRespProviderLLMModel,
   LLMModel,
-  ApiRespProviderEmbeddingsModels,
-  ApiRespProviderEmbeddingsModel,
-  EmbeddingsModel,
+  ApiRespProviderEmbeddingModels,
+  ApiRespProviderEmbeddingModel,
+  EmbeddingModel,
   ApiRespPipelines,
   Pipeline,
   ApiRespPlatformAdapters,
@@ -278,39 +278,37 @@ class HttpClient {
     return this.post(`/api/v1/provider/models/llm/${uuid}/test`, model);
   }
 
-  // ============ Provider Model Embeddings ============
-  public getProviderEmbeddingsModels(): Promise<ApiRespProviderEmbeddingsModels> {
-    return this.get('/api/v1/provider/models/embeddings');
+  // ============ Provider Model Embedding ============
+  public getProviderEmbeddingModels(): Promise<ApiRespProviderEmbeddingModels> {
+    return this.get('/api/v1/provider/models/embedding');
   }
 
-  public getProviderEmbeddingsModel(
+  public getProviderEmbeddingModel(
     uuid: string,
-  ): Promise<ApiRespProviderEmbeddingsModel> {
-    return this.get(`/api/v1/provider/models/embeddings/${uuid}`);
+  ): Promise<ApiRespProviderEmbeddingModel> {
+    return this.get(`/api/v1/provider/models/embedding/${uuid}`);
   }
 
-  public createProviderEmbeddingsModel(
-    model: EmbeddingsModel,
-  ): Promise<object> {
-    return this.post('/api/v1/provider/models/embeddings', model);
+  public createProviderEmbeddingModel(model: EmbeddingModel): Promise<object> {
+    return this.post('/api/v1/provider/models/embedding', model);
   }
 
-  public deleteProviderEmbeddingsModel(uuid: string): Promise<object> {
-    return this.delete(`/api/v1/provider/models/embeddings/${uuid}`);
+  public deleteProviderEmbeddingModel(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/provider/models/embedding/${uuid}`);
   }
 
-  public updateProviderEmbeddingsModel(
+  public updateProviderEmbeddingModel(
     uuid: string,
-    model: EmbeddingsModel,
+    model: EmbeddingModel,
   ): Promise<object> {
-    return this.put(`/api/v1/provider/models/embeddings/${uuid}`, model);
+    return this.put(`/api/v1/provider/models/embedding/${uuid}`, model);
   }
 
-  public testEmbeddingsModel(
+  public testEmbeddingModel(
     uuid: string,
-    model: EmbeddingsModel,
+    model: EmbeddingModel,
   ): Promise<object> {
-    return this.post(`/api/v1/provider/models/embeddings/${uuid}/test`, model);
+    return this.post(`/api/v1/provider/models/embedding/${uuid}/test`, model);
   }
 
   // ============ Pipeline API ============
@@ -489,7 +487,7 @@ class HttpClient {
 }
 
 // export const httpClient = new HttpClient("https://version-4.langbot.dev");
-// export const httpClient = new HttpClient('/');
+// export const httpClient = new HttpClient('http://localhost:5300');
 export const httpClient = new HttpClient('/');
 
 // 临时写法，未来两种Client都继承自HttpClient父类，不允许共享方法

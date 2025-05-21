@@ -191,14 +191,14 @@ const zhHans = {
       '你确定要删除这个流水线吗？已绑定此流水线的机器人将无法使用。',
     defaultPipelineCannotDelete: '默认流水线不可删除',
   },
-  embeddings: {
+  embedding: {
     title: '嵌入模型',
     description: '管理嵌入模型，用于向量化文本',
     createModel: '创建嵌入模型',
     editModel: '编辑嵌入模型',
     getModelListError: '获取嵌入模型列表失败：',
-    onEmbeddingsDeleted: '',
-    embeddingsModels: '嵌入模型',
+    onEmbeddingDeleted: '',
+    embeddingModels: '嵌入模型',
   },
 };
 

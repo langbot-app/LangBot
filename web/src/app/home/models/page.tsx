@@ -18,9 +18,9 @@ import {
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { i18nObj } from '@/i18n/I18nProvider';
-import { EmbeddingsCardVO } from '@/app/home/models/component/embeddings-card/EmbeddingsCardVO';
-import EmbeddingsCard from '@/app/home/models/component/embeddings-card/EmbeddingsCard';
-import EmbeddingsForm from '@/app/home/models/component/embeddings-form/EmbeddingsForm';
+import { EmbeddingCardVO } from '@/app/home/models/component/embedding-card/EmbeddingCardVO';
+import EmbeddingCard from '@/app/home/models/component/embedding-card/EmbeddingCard';
+import EmbeddingForm from '@/app/home/models/component/embedding-form/EmbeddingForm';
 
 export default function LLMConfigPage() {
   const { t } = useTranslation();
@@ -28,18 +28,17 @@ export default function LLMConfigPage() {
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [isEditForm, setIsEditForm] = useState(false);
   const [nowSelectedLLM, setNowSelectedLLM] = useState<LLMCardVO | null>(null);
-  const [embeddingsCardList, setEmbeddingsCardList] = useState<
-    EmbeddingsCardVO[]
-  >([]);
-  const [embeddingsModalOpen, setEmbeddingsModalOpen] =
-    useState<boolean>(false);
-  const [isEditEmbeddingsForm, setIsEditEmbeddingsForm] = useState(false);
-  const [nowSelectedEmbeddings, setNowSelectedEmbeddings] =
-    useState<EmbeddingsCardVO | null>(null);
+  const [embeddingCardList, setEmbeddingCardList] = useState<EmbeddingCardVO[]>(
+    [],
+  );
+  const [embeddingModalOpen, setEmbeddingModalOpen] = useState<boolean>(false);
+  const [isEditEmbeddingForm, setIsEditEmbeddingForm] = useState(false);
+  const [nowSelectedEmbedding, setNowSelectedEmbedding] =
+    useState<EmbeddingCardVO | null>(null);
 
   useEffect(() => {
     getLLMModelList();
-    getEmbeddingsModelList();
+    getEmbeddingModelList();
   }, []);
 
   async function getLLMModelList() {
@@ -87,18 +86,18 @@ export default function LLMConfigPage() {
     setNowSelectedLLM(null);
     setModalOpen(true);
   }
-  function selectEmbeddings(cardVO: EmbeddingsCardVO) {
-    setIsEditEmbeddingsForm(true);
-    setNowSelectedEmbeddings(cardVO);
-    setEmbeddingsModalOpen(true);
+  function selectEmbedding(cardVO: EmbeddingCardVO) {
+    setIsEditEmbeddingForm(true);
+    setNowSelectedEmbedding(cardVO);
+    setEmbeddingModalOpen(true);
   }
 
-  function handleCreateEmbeddingsModelClick() {
-    setIsEditEmbeddingsForm(false);
-    setNowSelectedEmbeddings(null);
-    setEmbeddingsModalOpen(true);
+  function handleCreateEmbeddingModelClick() {
+    setIsEditEmbeddingForm(false);
+    setNowSelectedEmbedding(null);
+    setEmbeddingModalOpen(true);
   }
-  async function getEmbeddingsModelList() {
+  async function getEmbeddingModelList() {
     const requesterNameListResp = await httpClient.getProviderRequesters();
     const requesterNameList = requesterNameListResp.requesters.map((item) => {
       return {
@@ -108,9 +107,9 @@ export default function LLMConfigPage() {
     });
 
     httpClient
-      .getProviderEmbeddingsModels()
+      .getProviderEmbeddingModels()
       .then((resp) => {
-        const embeddingsModelList: EmbeddingsCardVO[] = resp.models.map(
+        const embeddingModelList: EmbeddingCardVO[] = resp.models.map(
           (model: {
             uuid: string;
             requester: string;
@@ -119,7 +118,7 @@ export default function LLMConfigPage() {
             dimensions?: number;
             encoding_format?: string;
           }) => {
-            return new EmbeddingsCardVO({
+            return new EmbeddingCardVO({
               id: model.uuid,
               iconURL: httpClient.getProviderRequesterIconURL(model.requester),
               name: model.name,
@@ -132,11 +131,11 @@ export default function LLMConfigPage() {
             });
           },
         );
-        setEmbeddingsCardList(embeddingsModelList);
+        setEmbeddingCardList(embeddingModelList);
       })
       .catch((err) => {
-        console.error('get Embeddings model list error', err);
-        toast.error(t('embeddings.getModelListError') + err.message);
+        console.error('get Embedding model list error', err);
+        toast.error(t('embedding.getModelListError') + err.message);
       });
   }
 
@@ -166,28 +165,28 @@ export default function LLMConfigPage() {
           />
         </DialogContent>
       </Dialog>
-      <Dialog open={embeddingsModalOpen} onOpenChange={setEmbeddingsModalOpen}>
+      <Dialog open={embeddingModalOpen} onOpenChange={setEmbeddingModalOpen}>
         <DialogContent className="w-[700px] p-6">
           <DialogHeader>
             <DialogTitle>
-              {isEditEmbeddingsForm
-                ? t('embeddings.editModel')
-                : t('embeddings.createModel')}
+              {isEditEmbeddingForm
+                ? t('embedding.editModel')
+                : t('embedding.createModel')}
             </DialogTitle>
           </DialogHeader>
-          <EmbeddingsForm
-            editMode={isEditEmbeddingsForm}
-            initEmbeddingsId={nowSelectedEmbeddings?.id}
+          <EmbeddingForm
+            editMode={isEditEmbeddingForm}
+            initEmbeddingId={nowSelectedEmbedding?.id}
             onFormSubmit={() => {
-              setEmbeddingsModalOpen(false);
-              getEmbeddingsModelList();
+              setEmbeddingModalOpen(false);
+              getEmbeddingModelList();
             }}
             onFormCancel={() => {
-              setEmbeddingsModalOpen(false);
+              setEmbeddingModalOpen(false);
             }}
-            onEmbeddingsDeleted={() => {
-              setEmbeddingsModalOpen(false);
-              getEmbeddingsModelList();
+            onEmbeddingDeleted={() => {
+              setEmbeddingModalOpen(false);
+              getEmbeddingModelList();
             }}
           />
         </DialogContent>
@@ -198,11 +197,8 @@ export default function LLMConfigPage() {
             <TabsTrigger value="llm" className="px-6 py-4 cursor-pointer">
               {t('models.llmModels')}
             </TabsTrigger>
-            <TabsTrigger
-              value="embeddings"
-              className="px-6 py-4 cursor-pointer"
-            >
-              {t('embeddings.embeddingsModels')}
+            <TabsTrigger value="embedding" className="px-6 py-4 cursor-pointer">
+              {t('embedding.embeddingModels')}
             </TabsTrigger>
           </TabsList>
         </div>
@@ -230,23 +226,23 @@ export default function LLMConfigPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="embeddings">
+        <TabsContent value="embedding">
           <div className={`${styles.modelListContainer}`}>
             <CreateCardComponent
               width={'100%'}
               height={'10rem'}
               plusSize={'90px'}
-              onClick={handleCreateEmbeddingsModelClick}
+              onClick={handleCreateEmbeddingModelClick}
             />
-            {embeddingsCardList.map((cardVO) => {
+            {embeddingCardList.map((cardVO) => {
               return (
                 <div
                   key={cardVO.id}
                   onClick={() => {
-                    selectEmbeddings(cardVO);
+                    selectEmbedding(cardVO);
                   }}
                 >
-                  <EmbeddingsCard cardVO={cardVO}></EmbeddingsCard>
+                  <EmbeddingCard cardVO={cardVO}></EmbeddingCard>
                 </div>
               );
             })}

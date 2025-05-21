@@ -16,7 +16,7 @@ class ModelManager:
 
     model_list: list[entities.LLMModelInfo]  # deprecated
 
-    requesters: dict[str, requester.LLMAPIRequester]  # deprecated
+    requesters: dict[str, requester.ProviderAPIRequester]  # deprecated
 
     token_mgrs: dict[str, token.TokenManager]  # deprecated
 
@@ -25,12 +25,12 @@ class ModelManager:
     ap: app.Application
 
     llm_models: list[requester.RuntimeLLMModel]
-    
-    embeddings_models: list[requester.RuntimeEmbeddingsModel]
+
+    embedding_models: list[requester.RuntimeEmbeddingModel]
 
     requester_components: list[engine.Component]
 
-    requester_dict: dict[str, type[requester.LLMAPIRequester]]  # cache
+    requester_dict: dict[str, type[requester.ProviderAPIRequester]]  # cache
 
     def __init__(self, ap: app.Application):
         self.ap = ap
@@ -38,7 +38,7 @@ class ModelManager:
         self.requesters = {}
         self.token_mgrs = {}
         self.llm_models = []
-        self.embeddings_models = []
+        self.embedding_models = []
         self.requester_components = []
         self.requester_dict = {}
 
@@ -46,7 +46,7 @@ class ModelManager:
         self.requester_components = self.ap.discover.get_components_by_kind('LLMAPIRequester')
 
         # forge requester class dict
-        requester_dict: dict[str, type[requester.LLMAPIRequester]] = {}
+        requester_dict: dict[str, type[requester.ProviderAPIRequester]] = {}
         for component in self.requester_components:
             requester_dict[component.metadata.name] = component.get_python_component_class()
 
@@ -59,19 +59,19 @@ class ModelManager:
         self.ap.logger.info('Loading models from db...')
 
         self.llm_models = []
-        self.embeddings_models = []
+        self.embedding_models = []
 
         # llm models
         result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_model.LLMModel))
         llm_models = result.all()
         for llm_model in llm_models:
             await self.load_llm_model(llm_model)
-            
-        # embeddings models
-        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_model.EmbeddingsModel))
-        embeddings_models = result.all()
-        for embeddings_model in embeddings_models:
-            await self.load_embeddings_model(embeddings_model)
+
+        # embedding models
+        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_model.EmbeddingModel))
+        embedding_models = result.all()
+        for embedding_model in embedding_models:
+            await self.load_embedding_model(embedding_model)
 
     async def init_runtime_llm_model(
         self,
@@ -98,21 +98,21 @@ class ModelManager:
 
         return runtime_llm_model
 
-    async def init_runtime_embeddings_model(
+    async def init_runtime_embedding_model(
         self,
-        model_info: persistence_model.EmbeddingsModel | sqlalchemy.Row[persistence_model.EmbeddingsModel] | dict,
+        model_info: persistence_model.EmbeddingModel | sqlalchemy.Row[persistence_model.EmbeddingModel] | dict,
     ):
-        """初始化运行时 Embeddings 模型"""
+        """初始化运行时 Embedding 模型"""
         if isinstance(model_info, sqlalchemy.Row):
-            model_info = persistence_model.EmbeddingsModel(**model_info._mapping)
+            model_info = persistence_model.EmbeddingModel(**model_info._mapping)
         elif isinstance(model_info, dict):
-            model_info = persistence_model.EmbeddingsModel(**model_info)
+            model_info = persistence_model.EmbeddingModel(**model_info)
 
         requester_inst = self.requester_dict[model_info.requester](ap=self.ap, config=model_info.requester_config)
 
         await requester_inst.initialize()
 
-        runtime_embeddings_model = requester.RuntimeEmbeddingsModel(
+        runtime_embedding_model = requester.RuntimeEmbeddingModel(
             model_entity=model_info,
             token_mgr=token.TokenManager(
                 name=model_info.uuid,
@@ -121,7 +121,7 @@ class ModelManager:
             requester=requester_inst,
         )
 
-        return runtime_embeddings_model
+        return runtime_embedding_model
 
     async def load_llm_model(
         self,
@@ -130,14 +130,14 @@ class ModelManager:
         """加载 LLM 模型"""
         runtime_llm_model = await self.init_runtime_llm_model(model_info)
         self.llm_models.append(runtime_llm_model)
-        
-    async def load_embeddings_model(
+
+    async def load_embedding_model(
         self,
-        model_info: persistence_model.EmbeddingsModel | sqlalchemy.Row[persistence_model.EmbeddingsModel] | dict,
+        model_info: persistence_model.EmbeddingModel | sqlalchemy.Row[persistence_model.EmbeddingModel] | dict,
     ):
-        """加载 Embeddings 模型"""
-        runtime_embeddings_model = await self.init_runtime_embeddings_model(model_info)
-        self.embeddings_models.append(runtime_embeddings_model)
+        """加载 Embedding 模型"""
+        runtime_embedding_model = await self.init_runtime_embedding_model(model_info)
+        self.embedding_models.append(runtime_embedding_model)
 
     async def get_model_by_name(self, name: str) -> entities.LLMModelInfo:  # deprecated
         """通过名称获取模型"""
@@ -152,13 +152,13 @@ class ModelManager:
             if model.model_entity.uuid == uuid:
                 return model
         raise ValueError(f'LLM model {uuid} not found')
-        
-    async def get_embeddings_model_by_uuid(self, uuid: str) -> requester.RuntimeEmbeddingsModel:
-        """通过uuid获取 Embeddings 模型"""
-        for model in self.embeddings_models:
+
+    async def get_embedding_model_by_uuid(self, uuid: str) -> requester.RuntimeEmbeddingModel:
+        """通过uuid获取 Embedding 模型"""
+        for model in self.embedding_models:
             if model.model_entity.uuid == uuid:
                 return model
-        raise ValueError(f'Embeddings model {uuid} not found')
+        raise ValueError(f'Embedding model {uuid} not found')
 
     async def remove_llm_model(self, model_uuid: str):
         """移除 LLM 模型"""
@@ -166,12 +166,12 @@ class ModelManager:
             if model.model_entity.uuid == model_uuid:
                 self.llm_models.remove(model)
                 return
-                
-    async def remove_embeddings_model(self, model_uuid: str):
-        """移除 Embeddings 模型"""
-        for model in self.embeddings_models:
+
+    async def remove_embedding_model(self, model_uuid: str):
+        """移除 Embedding 模型"""
+        for model in self.embedding_models:
             if model.model_entity.uuid == model_uuid:
-                self.embeddings_models.remove(model)
+                self.embedding_models.remove(model)
                 return
 
     def get_available_requesters_info(self) -> list[dict]:

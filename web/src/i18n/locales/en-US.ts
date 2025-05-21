@@ -94,14 +94,14 @@ const enUS = {
     testError: 'Test failed, please check your model configuration',
     llmModels: 'LLM Models',
   },
-  embeddings: {
-    title: 'Embeddings Models',
-    description: 'Manage Embeddings models for text vectorization',
-    createModel: 'Create Embeddings Model',
-    editModel: 'Edit Embeddings Model',
-    getModelListError: 'Failed to get Embeddings model list: ',
-    onEmbeddingsDeleted: '',
-    embeddingsModels: 'Embeddings Models',
+  embedding: {
+    title: 'Embedding Models',
+    description: 'Manage Embedding models for text vectorization',
+    createModel: 'Create Embedding Model',
+    editModel: 'Edit Embedding Model',
+    getModelListError: 'Failed to get Embedding model list: ',
+    onEmbeddingDeleted: '',
+    embeddingModels: 'Embedding Models',
   },
   bots: {
     title: 'Bots',

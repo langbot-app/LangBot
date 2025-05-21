@@ -25,10 +25,10 @@ class LLMModel(Base):
     )
 
 
-class EmbeddingsModel(Base):
-    """Embeddings 模型"""
+class EmbeddingModel(Base):
+    """Embedding 模型"""
 
-    __tablename__ = 'embeddings_models'
+    __tablename__ = 'embedding_models'
 
     uuid = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True, unique=True)
     name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
@@ -37,7 +37,7 @@ class EmbeddingsModel(Base):
     requester_config = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, default={})
     api_keys = sqlalchemy.Column(sqlalchemy.JSON, nullable=False)
     dimensions = sqlalchemy.Column(sqlalchemy.Integer, nullable=True)
-    encoding_format = sqlalchemy.Column(sqlalchemy.String(10), nullable=True, default="float")
+    encoding_format = sqlalchemy.Column(sqlalchemy.String(10), nullable=True, default='float')
     created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now())
     updated_at = sqlalchemy.Column(
         sqlalchemy.DateTime,

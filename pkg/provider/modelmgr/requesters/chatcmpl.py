@@ -13,7 +13,7 @@ from ... import entities as llm_entities
 from ...tools import entities as tools_entities
 
 
-class OpenAIChatCompletions(requester.LLMAPIRequester):
+class OpenAIChatCompletions(requester.ProviderAPIRequester):
     """OpenAI ChatCompletion API 请求器"""
 
     client: openai.AsyncClient
@@ -133,6 +133,45 @@ class OpenAIChatCompletions(requester.LLMAPIRequester):
                 raise errors.RequesterError(f'上文过长，请重置会话: {e.message}')
             else:
                 raise errors.RequesterError(f'请求参数错误: {e.message}')
+        except openai.AuthenticationError as e:
+            raise errors.RequesterError(f'无效的 api-key: {e.message}')
+        except openai.NotFoundError as e:
+            raise errors.RequesterError(f'请求路径错误: {e.message}')
+        except openai.RateLimitError as e:
+            raise errors.RequesterError(f'请求过于频繁或余额不足: {e.message}')
+        except openai.APIError as e:
+            raise errors.RequesterError(f'请求错误: {e.message}')
+
+    async def invoke_embedding(
+        self,
+        query: core_entities.Query,
+        model: requester.RuntimeEmbeddingModel,
+        input_text: str,
+        extra_args: dict[str, typing.Any] = {},
+    ) -> list[float]:
+        """调用 Embedding API"""
+        self.client.api_key = model.token_mgr.get_token()
+
+        args = {
+            'model': model.model_entity.name,
+            'input': input_text,
+        }
+
+        if model.model_entity.encoding_format:
+            args['encoding_format'] = model.model_entity.encoding_format
+
+        if model.model_entity.dimensions:
+            args['dimensions'] = model.model_entity.dimensions
+
+        args.update(extra_args)
+
+        try:
+            resp = await self.client.embeddings.create(**args)
+            return resp.data[0].embedding
+        except asyncio.TimeoutError:
+            raise errors.RequesterError('请求超时')
+        except openai.BadRequestError as e:
+            raise errors.RequesterError(f'请求参数错误: {e.message}')
         except openai.AuthenticationError as e:
             raise errors.RequesterError(f'无效的 api-key: {e.message}')
         except openai.NotFoundError as e:

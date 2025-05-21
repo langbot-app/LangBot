@@ -54,15 +54,15 @@ export interface LLMModel {
   // updated_at: string;
 }
 
-export interface ApiRespProviderEmbeddingsModels {
-  models: EmbeddingsModel[];
+export interface ApiRespProviderEmbeddingModels {
+  models: EmbeddingModel[];
 }
 
-export interface ApiRespProviderEmbeddingsModel {
-  model: EmbeddingsModel;
+export interface ApiRespProviderEmbeddingModel {
+  model: EmbeddingModel;
 }
 
-export interface EmbeddingsModel {
+export interface EmbeddingModel {
   name: string;
   description: string;
   uuid: string;

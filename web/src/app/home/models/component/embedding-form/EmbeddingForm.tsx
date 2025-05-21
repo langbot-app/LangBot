@@ -1,8 +1,8 @@
-import { ICreateEmbeddingsField } from '@/app/home/models/ICreateEmbeddingsField';
+import { ICreateEmbeddingField } from '@/app/home/models/ICreateEmbeddingField';
 import { useEffect, useState } from 'react';
 import { IChooseRequesterEntity } from '@/app/home/models/component/llm-form/ChooseRequesterEntity';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { EmbeddingsModel } from '@/app/infra/entities/api';
+import { EmbeddingModel } from '@/app/infra/entities/api';
 import { UUID } from 'uuidjs';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -43,7 +43,7 @@ import { i18nObj } from '@/i18n/I18nProvider';
 const getExtraArgSchema = (t: (key: string) => string) =>
   z
     .object({
-      key: z.string().min(1, { message: t('embeddings.keyNameRequired') }),
+      key: z.string().min(1, { message: t('embedding.keyNameRequired') }),
       type: z.enum(['string', 'number', 'boolean']),
       value: z.string(),
     })
@@ -51,7 +51,7 @@ const getExtraArgSchema = (t: (key: string) => string) =>
       if (data.type === 'number' && isNaN(Number(data.value))) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: t('embeddings.mustBeValidNumber'),
+          message: t('embedding.mustBeValidNumber'),
           path: ['value'],
         });
       }
@@ -62,7 +62,7 @@ const getExtraArgSchema = (t: (key: string) => string) =>
       ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: t('embeddings.mustBeTrueOrFalse'),
+          message: t('embedding.mustBeTrueOrFalse'),
           path: ['value'],
         });
       }
@@ -70,29 +70,29 @@ const getExtraArgSchema = (t: (key: string) => string) =>
 
 const getFormSchema = (t: (key: string) => string) =>
   z.object({
-    name: z.string().min(1, { message: t('embeddings.modelNameRequired') }),
+    name: z.string().min(1, { message: t('embedding.modelNameRequired') }),
     model_provider: z
       .string()
-      .min(1, { message: t('embeddings.modelProviderRequired') }),
-    url: z.string().min(1, { message: t('embeddings.requestURLRequired') }),
-    api_key: z.string().min(1, { message: t('embeddings.apiKeyRequired') }),
+      .min(1, { message: t('embedding.modelProviderRequired') }),
+    url: z.string().min(1, { message: t('embedding.requestURLRequired') }),
+    api_key: z.string().min(1, { message: t('embedding.apiKeyRequired') }),
     dimensions: z.string().optional(),
     encoding_format: z.string().optional(),
     extra_args: z.array(getExtraArgSchema(t)).optional(),
   });
 
-export default function EmbeddingsForm({
+export default function EmbeddingForm({
   editMode,
-  initEmbeddingsId,
+  initEmbeddingId,
   onFormSubmit,
   onFormCancel,
-  onEmbeddingsDeleted,
+  onEmbeddingDeleted,
 }: {
   editMode: boolean;
-  initEmbeddingsId?: string;
+  initEmbeddingId?: string;
   onFormSubmit: () => void;
   onFormCancel: () => void;
-  onEmbeddingsDeleted: () => void;
+  onEmbeddingDeleted: () => void;
 }) {
   const { t } = useTranslation();
   const formSchema = getFormSchema(t);
@@ -125,9 +125,9 @@ export default function EmbeddingsForm({
   const [currentModelProvider, setCurrentModelProvider] = useState('');
 
   useEffect(() => {
-    initEmbeddingsModelFormComponent().then(() => {
-      if (editMode && initEmbeddingsId) {
-        getEmbeddingsConfig(initEmbeddingsId).then((val) => {
+    initEmbeddingModelFormComponent().then(() => {
+      if (editMode && initEmbeddingId) {
+        getEmbeddingConfig(initEmbeddingId).then((val) => {
           form.setValue('name', val.name);
           form.setValue('model_provider', val.model_provider);
           setCurrentModelProvider(val.model_provider);
@@ -184,7 +184,7 @@ export default function EmbeddingsForm({
     form.setValue('extra_args', newArgs);
   };
 
-  async function initEmbeddingsModelFormComponent() {
+  async function initEmbeddingModelFormComponent() {
     const requesterNameList = await httpClient.getProviderRequesters();
     setRequesterNameList(
       requesterNameList.requesters
@@ -211,26 +211,23 @@ export default function EmbeddingsForm({
     );
   }
 
-  async function getEmbeddingsConfig(
+  async function getEmbeddingConfig(
     id: string,
-  ): Promise<ICreateEmbeddingsField> {
-    const embeddingsModel = await httpClient.getProviderEmbeddingsModel(id);
+  ): Promise<ICreateEmbeddingField> {
+    const embeddingModel = await httpClient.getProviderEmbeddingModel(id);
 
     const fakeExtraArgs = [];
-    const extraArgs = embeddingsModel.model.extra_args as Record<
-      string,
-      string
-    >;
+    const extraArgs = embeddingModel.model.extra_args as Record<string, string>;
     for (const key in extraArgs) {
       fakeExtraArgs.push(`${key}:${extraArgs[key]}`);
     }
     return {
-      name: embeddingsModel.model.name,
-      model_provider: embeddingsModel.model.requester,
-      url: embeddingsModel.model.requester_config?.base_url,
-      api_key: embeddingsModel.model.api_keys[0],
-      dimensions: embeddingsModel.model.dimensions,
-      encoding_format: embeddingsModel.model.encoding_format,
+      name: embeddingModel.model.name,
+      model_provider: embeddingModel.model.requester,
+      url: embeddingModel.model.requester_config?.base_url,
+      api_key: embeddingModel.model.api_keys[0],
+      dimensions: embeddingModel.model.dimensions,
+      encoding_format: embeddingModel.model.encoding_format,
       extra_args: fakeExtraArgs,
     };
   }
@@ -249,8 +246,8 @@ export default function EmbeddingsForm({
       },
     );
 
-    const embeddingsModel: EmbeddingsModel = {
-      uuid: editMode ? initEmbeddingsId || '' : UUID.generate(),
+    const embeddingModel: EmbeddingModel = {
+      uuid: editMode ? initEmbeddingId || '' : UUID.generate(),
       name: value.name,
       description: '',
       requester: value.model_provider,
@@ -265,57 +262,57 @@ export default function EmbeddingsForm({
     };
 
     if (editMode) {
-      onSaveEdit(embeddingsModel).then(() => {
+      onSaveEdit(embeddingModel).then(() => {
         form.reset();
       });
     } else {
-      onCreateEmbeddings(embeddingsModel).then(() => {
+      onCreateEmbedding(embeddingModel).then(() => {
         form.reset();
       });
     }
   }
 
-  async function onCreateEmbeddings(embeddingsModel: EmbeddingsModel) {
+  async function onCreateEmbedding(embeddingModel: EmbeddingModel) {
     try {
-      await httpClient.createProviderEmbeddingsModel(embeddingsModel);
+      await httpClient.createProviderEmbeddingModel(embeddingModel);
       onFormSubmit();
-      toast.success(t('embeddings.createSuccess'));
+      toast.success(t('embedding.createSuccess'));
     } catch (err) {
-      toast.error(t('embeddings.createError') + (err as Error).message);
+      toast.error(t('embedding.createError') + (err as Error).message);
     }
   }
 
-  async function onSaveEdit(embeddingsModel: EmbeddingsModel) {
+  async function onSaveEdit(embeddingModel: EmbeddingModel) {
     try {
-      await httpClient.updateProviderEmbeddingsModel(
-        initEmbeddingsId || '',
-        embeddingsModel,
+      await httpClient.updateProviderEmbeddingModel(
+        initEmbeddingId || '',
+        embeddingModel,
       );
       onFormSubmit();
-      toast.success(t('embeddings.saveSuccess'));
+      toast.success(t('embedding.saveSuccess'));
     } catch (err) {
-      toast.error(t('embeddings.saveError') + (err as Error).message);
+      toast.error(t('embedding.saveError') + (err as Error).message);
     }
   }
 
   function deleteModel() {
-    if (initEmbeddingsId) {
+    if (initEmbeddingId) {
       httpClient
-        .deleteProviderEmbeddingsModel(initEmbeddingsId)
+        .deleteProviderEmbeddingModel(initEmbeddingId)
         .then(() => {
-          onEmbeddingsDeleted();
-          toast.success(t('embeddings.deleteSuccess'));
+          onEmbeddingDeleted();
+          toast.success(t('embedding.deleteSuccess'));
         })
         .catch((err) => {
-          toast.error(t('embeddings.deleteError') + err.message);
+          toast.error(t('embedding.deleteError') + err.message);
         });
     }
   }
 
-  function testEmbeddingsModelInForm() {
+  function testEmbeddingModelInForm() {
     setModelTesting(true);
     httpClient
-      .testEmbeddingsModel('_', {
+      .testEmbeddingModel('_', {
         uuid: '',
         name: form.getValues('name'),
         description: '',
@@ -332,10 +329,10 @@ export default function EmbeddingsForm({
       })
       .then((res) => {
         console.log(res);
-        toast.success(t('embeddings.testSuccess'));
+        toast.success(t('embedding.testSuccess'));
       })
       .catch(() => {
-        toast.error(t('embeddings.testError'));
+        toast.error(t('embedding.testError'));
       })
       .finally(() => {
         setModelTesting(false);
@@ -353,7 +350,7 @@ export default function EmbeddingsForm({
             <DialogTitle>{t('common.confirmDelete')}</DialogTitle>
           </DialogHeader>
           <DialogDescription>
-            {t('embeddings.deleteConfirmation')}
+            {t('embedding.deleteConfirmation')}
           </DialogDescription>
           <DialogFooter>
             <Button
@@ -387,7 +384,7 @@ export default function EmbeddingsForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {t('embeddings.modelName')}
+                    {t('embedding.modelName')}
                     <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
@@ -395,7 +392,7 @@ export default function EmbeddingsForm({
                   </FormControl>
                   <FormMessage />
                   <FormDescription>
-                    {t('embeddings.modelProviderDescription')}
+                    {t('embedding.modelProviderDescription')}
                   </FormDescription>
                 </FormItem>
               )}
@@ -407,7 +404,7 @@ export default function EmbeddingsForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {t('embeddings.modelProvider')}
+                    {t('embedding.modelProvider')}
                     <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
@@ -426,7 +423,7 @@ export default function EmbeddingsForm({
                     >
                       <SelectTrigger className="w-[180px]">
                         <SelectValue
-                          placeholder={t('embeddings.selectModelProvider')}
+                          placeholder={t('embedding.selectModelProvider')}
                         />
                       </SelectTrigger>
                       <SelectContent>
@@ -451,7 +448,7 @@ export default function EmbeddingsForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {t('embeddings.requestURL')}
+                    {t('embedding.requestURL')}
                     <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
@@ -468,7 +465,7 @@ export default function EmbeddingsForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {t('embeddings.apiKey')}
+                    {t('embedding.apiKey')}
                     <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
@@ -484,13 +481,13 @@ export default function EmbeddingsForm({
               name="dimensions"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('embeddings.dimensions')}</FormLabel>
+                  <FormLabel>{t('embedding.dimensions')}</FormLabel>
                   <FormControl>
                     <Input {...field} type="number" />
                   </FormControl>
                   <FormMessage />
                   <FormDescription>
-                    {t('embeddings.dimensionsDescription')}
+                    {t('embedding.dimensionsDescription')}
                   </FormDescription>
                 </FormItem>
               )}
@@ -501,12 +498,12 @@ export default function EmbeddingsForm({
               name="encoding_format"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('embeddings.encodingFormat')}</FormLabel>
+                  <FormLabel>{t('embedding.encodingFormat')}</FormLabel>
                   <FormControl>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <SelectTrigger className="w-[180px]">
                         <SelectValue
-                          placeholder={t('embeddings.selectEncodingFormat')}
+                          placeholder={t('embedding.selectEncodingFormat')}
                         />
                       </SelectTrigger>
                       <SelectContent>
@@ -519,19 +516,19 @@ export default function EmbeddingsForm({
                   </FormControl>
                   <FormMessage />
                   <FormDescription>
-                    {t('embeddings.encodingFormatDescription')}
+                    {t('embedding.encodingFormatDescription')}
                   </FormDescription>
                 </FormItem>
               )}
             />
 
             <FormItem>
-              <FormLabel>{t('embeddings.extraParameters')}</FormLabel>
+              <FormLabel>{t('embedding.extraParameters')}</FormLabel>
               <div className="space-y-2">
                 {extraArgs.map((arg, index) => (
                   <div key={index} className="flex gap-2">
                     <Input
-                      placeholder={t('embeddings.keyName')}
+                      placeholder={t('embedding.keyName')}
                       value={arg.key}
                       onChange={(e) =>
                         updateExtraArg(index, 'key', e.target.value)
@@ -544,22 +541,22 @@ export default function EmbeddingsForm({
                       }
                     >
                       <SelectTrigger className="w-[120px]">
-                        <SelectValue placeholder={t('embeddings.type')} />
+                        <SelectValue placeholder={t('embedding.type')} />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="string">
-                          {t('embeddings.string')}
+                          {t('embedding.string')}
                         </SelectItem>
                         <SelectItem value="number">
-                          {t('embeddings.number')}
+                          {t('embedding.number')}
                         </SelectItem>
                         <SelectItem value="boolean">
-                          {t('embeddings.boolean')}
+                          {t('embedding.boolean')}
                         </SelectItem>
                       </SelectContent>
                     </Select>
                     <Input
-                      placeholder={t('embeddings.value')}
+                      placeholder={t('embedding.value')}
                       value={arg.value}
                       onChange={(e) =>
                         updateExtraArg(index, 'value', e.target.value)
@@ -582,11 +579,11 @@ export default function EmbeddingsForm({
                   </div>
                 ))}
                 <Button type="button" variant="outline" onClick={addExtraArg}>
-                  {t('embeddings.addParameter')}
+                  {t('embedding.addParameter')}
                 </Button>
               </div>
               <FormDescription>
-                {t('embeddings.extraParametersDescription')}
+                {t('embedding.extraParametersDescription')}
               </FormDescription>
               <FormMessage />
             </FormItem>
@@ -609,7 +606,7 @@ export default function EmbeddingsForm({
             <Button
               type="button"
               variant="outline"
-              onClick={() => testEmbeddingsModelInForm()}
+              onClick={() => testEmbeddingModelInForm()}
               disabled={modelTesting}
             >
               {t('common.test')}

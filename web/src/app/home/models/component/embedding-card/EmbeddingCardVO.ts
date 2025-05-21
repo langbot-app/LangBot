@@ -1,4 +1,4 @@
-export interface IEmbeddingsCardVO {
+export interface IEmbeddingCardVO {
   id: string;
   iconURL: string;
   name: string;
@@ -8,7 +8,7 @@ export interface IEmbeddingsCardVO {
   encoding_format?: string;
 }
 
-export class EmbeddingsCardVO implements IEmbeddingsCardVO {
+export class EmbeddingCardVO implements IEmbeddingCardVO {
   id: string;
   iconURL: string;
   providerLabel: string;
@@ -17,7 +17,7 @@ export class EmbeddingsCardVO implements IEmbeddingsCardVO {
   dimensions?: number;
   encoding_format?: string;
 
-  constructor(props: IEmbeddingsCardVO) {
+  constructor(props: IEmbeddingCardVO) {
     this.id = props.id;
     this.iconURL = props.iconURL;
     this.providerLabel = props.providerLabel;
