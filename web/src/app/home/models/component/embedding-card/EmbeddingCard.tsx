@@ -1,6 +1,5 @@
 import styles from './EmbeddingCard.module.css';
 import { EmbeddingCardVO } from '@/app/home/models/component/embedding-card/EmbeddingCardVO';
-import { useTranslation } from 'react-i18next';
 
 export default function EmbeddingCard({ cardVO }: { cardVO: EmbeddingCardVO }) {
   return (
