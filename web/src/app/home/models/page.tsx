@@ -42,7 +42,7 @@ export default function LLMConfigPage() {
   }, []);
 
   async function getLLMModelList() {
-    const requesterNameListResp = await httpClient.getProviderRequesters();
+    const requesterNameListResp = await httpClient.getProviderRequesters('llm');
     const requesterNameList = requesterNameListResp.requesters.map((item) => {
       return {
         label: i18nObj(item.label),
@@ -98,7 +98,8 @@ export default function LLMConfigPage() {
     setEmbeddingModalOpen(true);
   }
   async function getEmbeddingModelList() {
-    const requesterNameListResp = await httpClient.getProviderRequesters();
+    const requesterNameListResp =
+      await httpClient.getProviderRequesters('text-embedding');
     const requesterNameList = requesterNameListResp.requesters.map((item) => {
       return {
         label: i18nObj(item.label),
@@ -115,8 +116,6 @@ export default function LLMConfigPage() {
             requester: string;
             name: string;
             requester_config?: { base_url?: string };
-            dimensions?: number;
-            encoding_format?: string;
           }) => {
             return new EmbeddingCardVO({
               id: model.uuid,
@@ -126,8 +125,6 @@ export default function LLMConfigPage() {
                 requesterNameList.find((item) => item.value === model.requester)
                   ?.label || model.requester.substring(0, 10),
               baseURL: model.requester_config?.base_url || '',
-              dimensions: model.dimensions,
-              encoding_format: model.encoding_format,
             });
           },
         );

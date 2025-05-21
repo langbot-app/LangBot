@@ -49,42 +49,6 @@ export default function EmbeddingCard({ cardVO }: { cardVO: EmbeddingCardVO }) {
             </svg>
             <span className={`${styles.baseURLText}`}>{cardVO.baseURL}</span>
           </div>
-          {/* Dimensions */}
-          {cardVO.dimensions && (
-            <div className={`${styles.dimensionsContainer}`}>
-              <svg
-                className={`${styles.dimensionsIcon}`}
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                width="36"
-                height="36"
-                fill="rgba(98,98,98,1)"
-              >
-                <path d="M4 2H20C20.5523 2 21 2.44772 21 3V21C21 21.5523 20.5523 22 20 22H4C3.44772 22 3 21.5523 3 21V3C3 2.44772 3.44772 2 4 2ZM5 4V20H19V4H5ZM7 6H17V10H7V6ZM7 12H9V16H7V12ZM11 12H13V16H11V12ZM15 12H17V16H15V12Z"></path>
-              </svg>
-              <span className={`${styles.dimensionsText}`}>
-                {t('embedding.dimensions')}: {cardVO.dimensions}
-              </span>
-            </div>
-          )}
-          {/* Encoding Format */}
-          {cardVO.encoding_format && (
-            <div className={`${styles.encodingContainer}`}>
-              <svg
-                className={`${styles.encodingIcon}`}
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                width="36"
-                height="36"
-                fill="rgba(98,98,98,1)"
-              >
-                <path d="M3 3H21C21.5523 3 22 3.44772 22 4V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V4C2 3.44772 2.44772 3 3 3ZM4 5V19H20V5H4ZM8 7H16V9H8V7ZM8 11H16V13H8V11ZM8 15H13V17H8V15Z"></path>
-              </svg>
-              <span className={`${styles.encodingText}`}>
-                {t('embedding.encoding')}: {cardVO.encoding_format}
-              </span>
-            </div>
-          )}
         </div>
       </div>
     </div>

@@ -72,8 +72,6 @@ export interface EmbeddingModel {
     timeout: number;
   };
   api_keys: string[];
-  dimensions?: number;
-  encoding_format?: string;
   // created_at: string;
   // updated_at: string;
 }

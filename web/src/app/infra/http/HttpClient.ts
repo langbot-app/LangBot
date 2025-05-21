@@ -229,8 +229,10 @@ class HttpClient {
 
   // real api request implementation
   // ============ Provider API ============
-  public getProviderRequesters(): Promise<ApiRespProviderRequesters> {
-    return this.get('/api/v1/provider/requesters');
+  public getProviderRequesters(
+    model_type: string,
+  ): Promise<ApiRespProviderRequesters> {
+    return this.get('/api/v1/provider/requesters', { type: model_type });
   }
 
   public getProviderRequester(name: string): Promise<ApiRespProviderRequester> {

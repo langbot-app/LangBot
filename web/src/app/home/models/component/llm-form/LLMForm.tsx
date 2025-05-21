@@ -198,7 +198,7 @@ export default function LLMForm({
   };
 
   async function initLLMModelFormComponent() {
-    const requesterNameList = await httpClient.getProviderRequesters();
+    const requesterNameList = await httpClient.getProviderRequesters('llm');
     setRequesterNameList(
       requesterNameList.requesters.map((item) => {
         return {

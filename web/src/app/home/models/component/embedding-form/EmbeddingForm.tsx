@@ -76,8 +76,6 @@ const getFormSchema = (t: (key: string) => string) =>
       .min(1, { message: t('embedding.modelProviderRequired') }),
     url: z.string().min(1, { message: t('embedding.requestURLRequired') }),
     api_key: z.string().min(1, { message: t('embedding.apiKeyRequired') }),
-    dimensions: z.string().optional(),
-    encoding_format: z.string().optional(),
     extra_args: z.array(getExtraArgSchema(t)).optional(),
   });
 
@@ -104,8 +102,6 @@ export default function EmbeddingForm({
       model_provider: '',
       url: '',
       api_key: 'sk-xxxxx',
-      dimensions: '',
-      encoding_format: 'float',
       extra_args: [],
     },
   });
@@ -133,8 +129,6 @@ export default function EmbeddingForm({
           setCurrentModelProvider(val.model_provider);
           form.setValue('url', val.url);
           form.setValue('api_key', val.api_key);
-          form.setValue('dimensions', val.dimensions?.toString() || '');
-          form.setValue('encoding_format', val.encoding_format || 'float');
           if (val.extra_args) {
             const args = val.extra_args.map((arg) => {
               const [key, value] = arg.split(':');
@@ -185,29 +179,26 @@ export default function EmbeddingForm({
   };
 
   async function initEmbeddingModelFormComponent() {
-    const requesterNameList = await httpClient.getProviderRequesters();
+    const requesterNameList =
+      await httpClient.getProviderRequesters('text-embedding');
     setRequesterNameList(
-      requesterNameList.requesters
-        .filter((item) => item.name === 'OpenAIEmbeddings')
-        .map((item) => {
-          return {
-            label: i18nObj(item.label),
-            value: item.name,
-          };
-        }),
+      requesterNameList.requesters.map((item) => {
+        return {
+          label: i18nObj(item.label),
+          value: item.name,
+        };
+      }),
     );
     setRequesterDefaultURLList(
-      requesterNameList.requesters
-        .filter((item) => item.name === 'OpenAIEmbeddings')
-        .map((item) => {
-          const config = item.spec.config;
-          for (let i = 0; i < config.length; i++) {
-            if (config[i].name == 'base_url') {
-              return config[i].default?.toString() || '';
-            }
+      requesterNameList.requesters.map((item) => {
+        const config = item.spec.config;
+        for (let i = 0; i < config.length; i++) {
+          if (config[i].name == 'base_url') {
+            return config[i].default?.toString() || '';
           }
-          return '';
-        }),
+        }
+        return '';
+      }),
     );
   }
 
@@ -226,8 +217,6 @@ export default function EmbeddingForm({
       model_provider: embeddingModel.model.requester,
       url: embeddingModel.model.requester_config?.base_url,
       api_key: embeddingModel.model.api_keys[0],
-      dimensions: embeddingModel.model.dimensions,
-      encoding_format: embeddingModel.model.encoding_format,
       extra_args: fakeExtraArgs,
     };
   }
@@ -257,8 +246,6 @@ export default function EmbeddingForm({
       },
       extra_args: extraArgsObj,
       api_keys: [value.api_key],
-      dimensions: value.dimensions ? parseInt(value.dimensions) : undefined,
-      encoding_format: value.encoding_format,
     };
 
     if (editMode) {
@@ -322,10 +309,6 @@ export default function EmbeddingForm({
           timeout: 120,
         },
         api_keys: [form.getValues('api_key')],
-        dimensions: form.getValues('dimensions')
-          ? parseInt(form.getValues('dimensions'))
-          : undefined,
-        encoding_format: form.getValues('encoding_format'),
       })
       .then((res) => {
         console.log(res);
@@ -472,52 +455,6 @@ export default function EmbeddingForm({
                     <Input {...field} />
                   </FormControl>
                   <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="dimensions"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('embedding.dimensions')}</FormLabel>
-                  <FormControl>
-                    <Input {...field} type="number" />
-                  </FormControl>
-                  <FormMessage />
-                  <FormDescription>
-                    {t('embedding.dimensionsDescription')}
-                  </FormDescription>
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="encoding_format"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('embedding.encodingFormat')}</FormLabel>
-                  <FormControl>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue
-                          placeholder={t('embedding.selectEncodingFormat')}
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectItem value="float">float</SelectItem>
-                          <SelectItem value="base64">base64</SelectItem>
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </FormControl>
-                  <FormMessage />
-                  <FormDescription>
-                    {t('embedding.encodingFormatDescription')}
-                  </FormDescription>
                 </FormItem>
               )}
             />

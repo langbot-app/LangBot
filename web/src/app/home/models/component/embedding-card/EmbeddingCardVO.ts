@@ -4,8 +4,6 @@ export interface IEmbeddingCardVO {
   name: string;
   providerLabel: string;
   baseURL: string;
-  dimensions?: number;
-  encoding_format?: string;
 }
 
 export class EmbeddingCardVO implements IEmbeddingCardVO {
@@ -14,8 +12,6 @@ export class EmbeddingCardVO implements IEmbeddingCardVO {
   providerLabel: string;
   name: string;
   baseURL: string;
-  dimensions?: number;
-  encoding_format?: string;
 
   constructor(props: IEmbeddingCardVO) {
     this.id = props.id;
@@ -23,7 +19,5 @@ export class EmbeddingCardVO implements IEmbeddingCardVO {
     this.providerLabel = props.providerLabel;
     this.name = props.name;
     this.baseURL = props.baseURL;
-    this.dimensions = props.dimensions;
-    this.encoding_format = props.encoding_format;
   }
 }
