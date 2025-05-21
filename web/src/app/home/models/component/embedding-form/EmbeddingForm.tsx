@@ -118,7 +118,6 @@ export default function EmbeddingForm({
     string[]
   >([]);
   const [modelTesting, setModelTesting] = useState(false);
-  const [currentModelProvider, setCurrentModelProvider] = useState('');
 
   useEffect(() => {
     initEmbeddingModelFormComponent().then(() => {

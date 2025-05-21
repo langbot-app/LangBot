@@ -3,8 +3,6 @@ import { EmbeddingCardVO } from '@/app/home/models/component/embedding-card/Embe
 import { useTranslation } from 'react-i18next';
 
 export default function EmbeddingCard({ cardVO }: { cardVO: EmbeddingCardVO }) {
-  const { t } = useTranslation();
-
   return (
     <div className={`${styles.cardContainer}`}>
       <div className={`${styles.iconBasicInfoContainer}`}>
