@@ -157,12 +157,6 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
             'input': input_text,
         }
 
-        if model.model_entity.encoding_format:
-            args['encoding_format'] = model.model_entity.encoding_format
-
-        if model.model_entity.dimensions:
-            args['dimensions'] = model.model_entity.dimensions
-
         args.update(extra_args)
 
         try:

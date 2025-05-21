@@ -28,6 +28,8 @@ spec:
       type: int
       required: true
       default: 120
+  support_type:
+    - llm
 execution:
   python:
     path: ./ppiochatcmpl.py
