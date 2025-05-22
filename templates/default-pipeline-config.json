@@ -16,6 +16,9 @@
         "ignore-rules": {
             "prefix": [],
             "regexp": []
+        },
+        "misc": {
+            "combine-quote-message": true
         }
     },
     "safety": {

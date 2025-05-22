@@ -34,6 +34,7 @@ class PreProcessor(stage.PipelineStage):
 
         session = await self.ap.sess_mgr.get_session(query)
 
+
         # 非 local-agent 时，llm_model 为 None
         llm_model = (
             await self.ap.model_mgr.get_model_by_uuid(query.pipeline_config['ai']['local-agent']['model'])
@@ -81,6 +82,7 @@ class PreProcessor(stage.PipelineStage):
         content_list = []
 
         plain_text = ''
+        qoute_msg = query.pipeline_config["trigger"].get("misc",'').get("combine-quote-message")
 
         for me in query.message_chain:
             if isinstance(me, platform_message.Plain):
@@ -92,6 +94,18 @@ class PreProcessor(stage.PipelineStage):
                 ):
                     if me.base64 is not None:
                         content_list.append(llm_entities.ContentElement.from_image_base64(me.base64))
+            elif isinstance(me, platform_message.Quote) and qoute_msg:
+                for msg in me.origin:
+                    if isinstance(msg, platform_message.Plain):
+                        content_list.append(llm_entities.ContentElement.from_text(msg.text))
+                    elif isinstance(msg, platform_message.Image):
+                        if selected_runner != 'local-agent' or query.use_llm_model.model_entity.abilities.__contains__(
+                                'vision'
+                        ):
+                            if msg.base64 is not None:
+                                content_list.append(llm_entities.ContentElement.from_image_base64(msg.base64))
+
+
 
         query.variables['user_message_text'] = plain_text
 

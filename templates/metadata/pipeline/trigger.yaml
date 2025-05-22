@@ -46,8 +46,8 @@ stages:
           en_US: Random
           zh_Hans: 随机
         description:
-          en_US: The probability of the random response, range from 0.0 to 1.0
-          zh_Hans: 随机响应概率，范围为 0.0-1.0，对应 0% 到 100%
+          en_US: 'Probability of automatically responding to messages that are not matched by other rules. Range: 0.0-1.0 (0%-100%).'
+          zh_Hans: '自动响应其他规则未匹配的消息的概率。范围：0.0-1.0 (0%-100%)。'
         type: float
         required: false
         default: 0
@@ -117,3 +117,18 @@ stages:
         type: array[string]
         required: true
         default: []
+  - name: misc
+    label:
+      en_US: Misc
+      zh_Hans: 杂项
+    config:
+      - name: combine-quote-message
+        label:
+          en_US: Combine Quote Message
+          zh_Hans: 合并引用消息
+        description:
+          en_US: If enabled, the bot will combine the quote message with the user's message
+          zh_Hans: 如果启用，将合并引用消息与用户发送的消息
+        type: boolean
+        required: true
+        default: true

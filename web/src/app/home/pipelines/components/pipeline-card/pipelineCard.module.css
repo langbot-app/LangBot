@@ -23,6 +23,7 @@
   flex-direction: column;
   justify-content: space-between;
   gap: 0.4rem;
+  min-width: 0;
 }
 
 .basicInfoNameContainer {
@@ -87,4 +88,13 @@
   font-size: 1rem;
   font-weight: 400;
   color: #ffcd27;
+}
+
+.bigText {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 1.4rem;
+  font-weight: bold;
+  max-width: 100%;
 }
