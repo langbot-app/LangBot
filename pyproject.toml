@@ -1,3 +1,6 @@
+[tool.uv]
+index-url = "https://mirrors.aliyun.com/pypi/simple/"
+
 [project]
 name = "langbot"
 version = "4.0.3"
@@ -181,3 +184,4 @@ skip-magic-trailing-comma = false
 
 # Like Black, automatically detect the appropriate line ending.
 line-ending = "auto"
+

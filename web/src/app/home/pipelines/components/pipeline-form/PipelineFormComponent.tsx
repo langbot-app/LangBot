@@ -8,6 +8,7 @@ import {
 } from '@/app/infra/entities/pipeline';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
+import N8nAuthFormComponent from '@/app/home/components/dynamic-form/N8nAuthFormComponent';
 import { Button } from '@/components/ui/button';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -243,6 +244,37 @@ export default function PipelineFormComponent({
       // 如果不是当前选择的 runner 对应的配置项，则不渲染
       if (stage.name !== currentRunner) {
         return null;
+      }
+
+      // 对于n8n-service-api配置，使用N8nAuthFormComponent处理表单联动
+      if (stage.name === 'n8n-service-api') {
+        return (
+          <div key={stage.name} className="space-y-4 mb-6">
+            <div className="text-lg font-medium">{i18nObj(stage.label)}</div>
+            {stage.description && (
+              <div className="text-sm text-gray-500">
+                {i18nObj(stage.description)}
+              </div>
+            )}
+            <N8nAuthFormComponent
+              itemConfigList={stage.config}
+              initialValues={
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (form.watch(formName) as Record<string, any>)?.[stage.name] ||
+                {}
+              }
+              onSubmit={(values) => {
+                const currentValues =
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (form.getValues(formName) as Record<string, any>) || {};
+                form.setValue(formName, {
+                  ...currentValues,
+                  [stage.name]: values,
+                });
+              }}
+            />
+          </div>
+        );
       }
     }
 

@@ -31,6 +31,10 @@ stages:
             label:
               en_US: Aliyun Dashscope App API
               zh_Hans: 阿里云百炼平台 API
+          - name: n8n-service-api
+            label:
+              en_US: n8n Workflow API
+              zh_Hans: n8n 工作流 API
   - name: local-agent
     label:
       en_US: Local Agent
@@ -170,3 +174,127 @@ stages:
         type: string
         required: false
         default: '参考资料来自:'
+  - name: n8n-service-api
+    label:
+      en_US: n8n Workflow API
+      zh_Hans: n8n 工作流 API
+    description:
+      en_US: Configure the n8n workflow API of the pipeline
+      zh_Hans: 配置 n8n 工作流 API
+    config:
+      - name: webhook-url
+        label:
+          en_US: Webhook URL
+          zh_Hans: Webhook URL
+        description:
+          en_US: The webhook URL of the n8n workflow
+          zh_Hans: n8n 工作流的 webhook URL
+        type: string
+        required: true
+      - name: auth-type
+        label:
+          en_US: Authentication Type
+          zh_Hans: 认证类型
+        description:
+          en_US: The authentication type for the webhook call
+          zh_Hans: webhook 调用的认证类型
+        type: select
+        required: true
+        default: 'none'
+        options:
+          - name: 'none'
+            label:
+              en_US: None
+              zh_Hans: 无认证
+          - name: 'basic'
+            label:
+              en_US: Basic Auth
+              zh_Hans: 基本认证
+          - name: 'jwt'
+            label:
+              en_US: JWT
+              zh_Hans: JWT认证
+          - name: 'header'
+            label:
+              en_US: Header Auth
+              zh_Hans: 请求头认证
+      - name: basic-username
+        label:
+          en_US: Username
+          zh_Hans: 用户名
+        description:
+          en_US: The username for Basic Auth
+          zh_Hans: 基本认证的用户名
+        type: string
+        required: false
+        default: ''
+      - name: basic-password
+        label:
+          en_US: Password
+          zh_Hans: 密码
+        description:
+          en_US: The password for Basic Auth
+          zh_Hans: 基本认证的密码
+        type: string
+        required: false
+        default: ''
+      - name: jwt-secret
+        label:
+          en_US: Secret
+          zh_Hans: 密钥
+        description:
+          en_US: The secret for JWT authentication
+          zh_Hans: JWT认证的密钥
+        type: string
+        required: false
+        default: ''
+      - name: jwt-algorithm
+        label:
+          en_US: Algorithm
+          zh_Hans: 算法
+        description:
+          en_US: The algorithm for JWT authentication
+          zh_Hans: JWT认证的算法
+        type: string
+        required: false
+        default: 'HS256'
+      - name: header-name
+        label:
+          en_US: Header Name
+          zh_Hans: 请求头名称
+        description:
+          en_US: The header name for Header Auth
+          zh_Hans: 请求头认证的名称
+        type: string
+        required: false
+        default: ''
+      - name: header-value
+        label:
+          en_US: Header Value
+          zh_Hans: 请求头值
+        description:
+          en_US: The header value for Header Auth
+          zh_Hans: 请求头认证的值
+        type: string
+        required: false
+        default: ''
+      - name: timeout
+        label:
+          en_US: Timeout
+          zh_Hans: 超时时间
+        description:
+          en_US: The timeout in seconds for the webhook call
+          zh_Hans: webhook 调用的超时时间（秒）
+        type: integer
+        required: false
+        default: 120
+      - name: output-key
+        label:
+          en_US: Output Key
+          zh_Hans: 输出键名
+        description:
+          en_US: The key name of the output in the webhook response
+          zh_Hans: webhook 响应中输出内容的键名
+        type: string
+        required: false
+        default: 'response'

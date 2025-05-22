@@ -237,8 +237,20 @@ interface GetPipelineConfig {
         role: string;
       }>;
     };
+    'n8n-service-api': {
+      'webhook-url': string;
+      'auth-type': 'none' | 'basic' | 'jwt' | 'header';
+      'basic-username'?: string;
+      'basic-password'?: string;
+      'jwt-secret'?: string;
+      'jwt-algorithm'?: string;
+      'header-name'?: string;
+      'header-value'?: string;
+      'timeout'?: number;
+      'output-key'?: string;
+    };
     runner: {
-      runner: 'local-agent' | 'dify-service-api' | 'dashscope-app-api';
+      runner: 'local-agent' | 'dify-service-api' | 'dashscope-app-api' | 'n8n-service-api';
     };
   };
   output: {
