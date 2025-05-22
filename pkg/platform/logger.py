@@ -74,26 +74,45 @@ class EventLogger:
         self.logs = []
         self.seq_id_inc = 0
 
-    async def get_logs(self, from_index: int, max_count: int) -> typing.Tuple[list[EventLog], int]:
+    async def get_logs(self, from_seq_id: int, max_count: int) -> typing.Tuple[list[EventLog], int]:
         """
-        获取日志，往 from_index 获取 max_count 条历史日志
+        获取日志，从 from_seq_id 开始获取 max_count 条历史日志
 
         Args:
-            from_index: 起始索引，-1 表示末尾
+            from_seq_id: 起始序号，-1 表示末尾
             max_count: 最大数量
 
         Returns:
-            Tuple[list[EventLog], int, int, int]: 日志列表，起始索引，结束索引，总数量
+            Tuple[list[EventLog], int]: 日志列表，日志总数
         """
+        if len(self.logs) == 0:
+            return [], 0
 
-        if from_index <= -1:
-            from_index = len(self.logs)
+        if from_seq_id <= -1:
+            from_seq_id = self.logs[-1].seq_id
 
-        begin_index = max(0, from_index - max_count)
-        end_index = min(len(self.logs), from_index)
+        min_seq_id_in_logs = self.logs[0].seq_id
+        max_seq_id_in_logs = self.logs[-1].seq_id
+
+        if from_seq_id < min_seq_id_in_logs:  # 需要的整个范围都已经被删除
+            return [], len(self.logs)
+
+        if (
+            from_seq_id > max_seq_id_in_logs and from_seq_id - max_count > max_seq_id_in_logs
+        ):  # 需要的整个范围都还没生成
+            return [], len(self.logs)
+
+        end_index = 1
+
+        for i, log in enumerate(self.logs):
+            if log.seq_id >= from_seq_id:
+                end_index = i + 1
+                break
+
+        start_index = max(0, end_index - max_count)
 
         if max_count > 0:
-            return self.logs[begin_index:end_index], len(self.logs)
+            return self.logs[start_index:end_index], len(self.logs)
         else:
             return [], len(self.logs)
 
