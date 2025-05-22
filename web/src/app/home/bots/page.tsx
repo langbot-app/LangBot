@@ -17,13 +17,18 @@ import {
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { i18nObj } from '@/i18n/I18nProvider';
+import { BotLogListComponent } from '@/app/home/bots/bot-log/view/BotLogListComponent'
 
 export default function BotConfigPage() {
   const { t } = useTranslation();
+  // 编辑机器人的modal
   const [modalOpen, setModalOpen] = useState<boolean>(false);
+  // 机器人日志的modal
+  const [logModalOpen, setLogModalOpen] = useState<boolean>(false);
   const [botList, setBotList] = useState<BotCardVO[]>([]);
   const [isEditForm, setIsEditForm] = useState(false);
   const [nowSelectedBotUUID, setNowSelectedBotUUID] = useState<string>();
+  const [nowSelectedBotLog, setNowSelectedBotLog] = useState<string>();
 
   useEffect(() => {
     getBotList();
@@ -76,6 +81,11 @@ export default function BotConfigPage() {
     setModalOpen(true);
   }
 
+  function onClickLogIcon(botId: string) {
+    setNowSelectedBotLog(botId);
+    setLogModalOpen(true);
+  }
+
   return (
     <div className={styles.configPageContainer}>
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
@@ -107,6 +117,17 @@ export default function BotConfigPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={logModalOpen} onOpenChange={setLogModalOpen}>
+        <DialogContent className="w-[700px] max-h-[80vh] p-0 flex flex-col">
+          <DialogHeader className="px-6 pt-6 pb-4">
+            <DialogTitle>{t('bots.botLogTitle')}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto px-6">
+            <BotLogListComponent/>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* 注意：其余的返回内容需要保持在Spin组件外部 */}
       <div className={`${styles.botListContainer}`}>
         <CreateCardComponent
@@ -123,7 +144,9 @@ export default function BotConfigPage() {
                 selectBot(cardVO.id);
               }}
             >
-              <BotCard botCardVO={cardVO} />
+              <BotCard botCardVO={cardVO} clickLogIconCallback={(id) => {
+                onClickLogIcon(id);
+              }} />
             </div>
           );
         })}

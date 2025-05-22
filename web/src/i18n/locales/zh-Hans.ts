@@ -115,6 +115,7 @@ const zhHans = {
     adapterConfig: '适配器配置',
     bindPipeline: '绑定流水线',
     selectPipeline: '选择流水线',
+    botLogTitle: '机器人日志',
   },
   plugins: {
     title: '插件管理',
