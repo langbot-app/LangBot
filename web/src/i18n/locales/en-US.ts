@@ -120,6 +120,7 @@ const enUS = {
     adapterConfig: 'Adapter Configuration',
     bindPipeline: 'Bind Pipeline',
     selectPipeline: 'Select Pipeline',
+    botLogTitle: 'Bot Log',
   },
   plugins: {
     title: 'Plugins',

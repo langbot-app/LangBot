@@ -30,6 +30,8 @@ import {
   GetPipelineMetadataResponseData,
   AsyncTask,
 } from '@/app/infra/entities/api';
+import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest'
+import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse'
 
 type JSONValue = string | number | boolean | JSONObject | JSONArray | null;
 interface JSONObject {
@@ -345,6 +347,13 @@ class HttpClient {
     return this.delete(`/api/v1/platform/bots/${uuid}`);
   }
 
+  public getBotLogs(
+    botId: string,
+    request: GetBotLogsRequest,
+  ): Promise<GetBotLogsResponse> {
+    return this.post(`/api/v1/platform/bots/${botId}/logs`, request);
+  }
+
   // ============ Plugins API ============
   public getPlugins(): Promise<ApiRespPlugins> {
     return this.get('/api/v1/plugins');
@@ -450,9 +459,9 @@ class HttpClient {
   }
 }
 
-// export const httpClient = new HttpClient("https://version-4.langbot.dev");
+export const httpClient = new HttpClient("https://version-4.langbot.dev");
 // export const httpClient = new HttpClient('http://localhost:5300');
-export const httpClient = new HttpClient('/');
+// export const httpClient = new HttpClient('/');
 
 // 临时写法，未来两种Client都继承自HttpClient父类，不允许共享方法
 export const spaceClient = new HttpClient('https://space.langbot.app');

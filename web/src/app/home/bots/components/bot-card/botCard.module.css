@@ -30,6 +30,7 @@
 }
 
 .basicInfoContainer {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
@@ -82,6 +83,15 @@
   display: flex;
   flex-direction: row;
   gap: 0.4rem;
+}
+
+.botLogsIcon {
+  width: 1.2rem;
+  height: 1.2rem;
+  color: #626262;
+  position: absolute;
+  right: 0.6rem;
+  bottom: 0.6rem;
 }
 
 .basicInfoPipelineIcon {
