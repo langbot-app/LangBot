@@ -7,7 +7,7 @@ body:
     attributes:
       label: Runtime environment
       description: LangBot version, operating system, system architecture, **Python version**, **host location**
-      placeholder: "For example: v3.3.0, CentOS x64 Python 3.10.3, Docker system directly write Docker"
+      placeholder: "For example: v3.3.0, CentOS x64 Python 3.10.3, Docker"
     validations:
       required: true
   - type: textarea
