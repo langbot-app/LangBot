@@ -17,7 +17,7 @@ import {
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { i18nObj } from '@/i18n/I18nProvider';
-import { BotLogListComponent } from '@/app/home/bots/bot-log/view/BotLogListComponent'
+import { BotLogListComponent } from '@/app/home/bots/bot-log/view/BotLogListComponent';
 
 export default function BotConfigPage() {
   const { t } = useTranslation();
@@ -122,9 +122,7 @@ export default function BotConfigPage() {
           <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle>{t('bots.botLogTitle')}</DialogTitle>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto px-6">
-            <BotLogListComponent/>
-          </div>
+          <BotLogListComponent botId={nowSelectedBotLog || ''} />
         </DialogContent>
       </Dialog>
 
@@ -144,9 +142,12 @@ export default function BotConfigPage() {
                 selectBot(cardVO.id);
               }}
             >
-              <BotCard botCardVO={cardVO} clickLogIconCallback={(id) => {
-                onClickLogIcon(id);
-              }} />
+              <BotCard
+                botCardVO={cardVO}
+                clickLogIconCallback={(id) => {
+                  onClickLogIcon(id);
+                }}
+              />
             </div>
           );
         })}
