@@ -1,4 +1,5 @@
 import './global.css';
+import 'react-photo-view/dist/react-photo-view.css';
 import type { Metadata } from 'next';
 import { Toaster } from '@/components/ui/sonner';
 import I18nProvider from '@/i18n/I18nProvider';
