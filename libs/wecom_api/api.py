@@ -57,6 +57,7 @@ class WecomClient:
             if 'access_token' in data:
                 return data['access_token']
             else:
+                await self.logger.error(f"获取accesstoken失败:{response.json()}")
                 raise Exception(f'未获取access token: {data}')
 
     async def get_users(self):
@@ -128,6 +129,7 @@ class WecomClient:
                 response = await client.post(url, json=params)
                 data = response.json()
             except Exception as e:
+                await self.logger.error(f"发送图片失败:{data}")
                 raise Exception('Failed to send image: ' + str(e))
 
             # 企业微信错误码40014和42001，代表accesstoken问题
@@ -162,6 +164,7 @@ class WecomClient:
                 self.access_token = await self.get_access_token(self.secret)
                 return await self.send_private_msg(user_id, agent_id, content)
             if data['errcode'] != 0:
+                await self.logger.error(f"发送消息失败:{data}")
                 raise Exception('Failed to send message: ' + str(data))
 
     async def handle_callback_request(self):
@@ -178,6 +181,7 @@ class WecomClient:
                 echostr = request.args.get('echostr')
                 ret, reply_echo_str = wxcpt.VerifyURL(msg_signature, timestamp, nonce, echostr)
                 if ret != 0:
+                    await self.logger.error("验证失败")
                     raise Exception(f'验证失败，错误码: {ret}')
                 return reply_echo_str
 
@@ -185,7 +189,9 @@ class WecomClient:
                 encrypt_msg = await request.data
                 ret, xml_msg = wxcpt.DecryptMsg(encrypt_msg, msg_signature, timestamp, nonce)
                 if ret != 0:
+                    await self.logger.error("消息解密失败")
                     raise Exception(f'消息解密失败，错误码: {ret}')
+                
 
                 # 解析消息并处理
                 message_data = await self.get_message(xml_msg)
@@ -196,8 +202,7 @@ class WecomClient:
 
                 return 'success'
         except Exception as e:
-            if self.logger:
-                await self.logger.error(f"Error in handle_callback_request: {traceback.format_exc()}")
+            await self.logger.error(f"Error in handle_callback_request: {traceback.format_exc()}")
             return f'Error processing request: {str(e)}', 400
 
     async def run_task(self, host: str, port: int, *args, **kwargs):
@@ -296,6 +301,7 @@ class WecomClient:
             except binascii.Error as e:
                 raise ValueError(f'Invalid base64 string: {str(e)}')
         else:
+            await self.logger.error("Image对象出错")
             raise ValueError('image对象出错')
 
         # 设置 multipart/form-data 格式的文件
@@ -319,6 +325,7 @@ class WecomClient:
                 self.access_token = await self.get_access_token(self.secret)
                 media_id = await self.upload_to_work(image)
             if data.get('errcode', 0) != 0:
+                await self.logger.error(f"上传图片失败:{data}")
                 raise Exception('failed to upload file')
 
             media_id = data.get('media_id')
