@@ -86,6 +86,7 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
                 EncodingAESKey=config['EncodingAESKey'],
                 Appsecret=config['AppSecret'],
                 AppID=config['AppID'],
+                logger=self.logger,
             )
         elif self.config['Mode'] == 'passive':
             self.bot = OAClientForLongerResponse(
@@ -94,6 +95,7 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
                 Appsecret=config['AppSecret'],
                 AppID=config['AppID'],
                 LoadingMessage=config['LoadingMessage'],
+                logger=self.logger,
             )
         else:
             raise KeyError('请设置微信公众号通信模式')

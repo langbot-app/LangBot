@@ -17,7 +17,7 @@ class DingTalkClient:
         robot_name: str,
         robot_code: str,
         markdown_card: bool,
-        logger=None,
+        logger: None,
     ):
         """初始化 WebSocket 连接并自动启动"""
         self.credential = dingtalk_stream.Credential(client_id, client_secret)
@@ -75,7 +75,7 @@ class DingTalkClient:
                 result = response.json()
                 download_url = result.get('downloadUrl')
             else:
-                await self.logger.error("failed to get download url")
+                await self.logger.error(f"failed to get download url: {response.json()}")
 
         if download_url:
             return await self.download_url_to_base64(download_url)
@@ -89,7 +89,7 @@ class DingTalkClient:
                 base64_str = base64.b64encode(file_bytes).decode('utf-8')  # 返回字符串格式
                 return base64_str
             else:
-                await self.logger.error("failed to get files")
+                await self.logger.error(f"failed to get files: {response.json()}")
 
     async def get_audio_url(self, download_code: str):
         if not await self.check_access_token():
@@ -105,7 +105,7 @@ class DingTalkClient:
                 if download_url:
                     return await self.download_url_to_base64(download_url)
                 else:
-                    await self.logger.error("failed to get audio")
+                    await self.logger.error(f"failed to get audio: {response.json()}")
             else:
                 raise Exception(f'Error: {response.status_code}, {response.text}')
 
@@ -117,7 +117,7 @@ class DingTalkClient:
             if event:
                 await self._handle_message(event)
 
-    async def send_message(self, content: str, incoming_message,at:bool):
+    async def send_message(self, content: str, incoming_message,at:bool):      
         if self.markdown_card:
             if at:
                 self.EchoTextHandler.reply_markdown(
@@ -219,9 +219,12 @@ class DingTalkClient:
         }
         try:
             async with httpx.AsyncClient() as client:
-                await client.post(url, headers=headers, json=data)
+                response = await client.post(url, headers=headers, json=data)
+                if response.status_code == 200:
+                    return
         except Exception:
-            await self.logger.error("failed to send proactive massage to person")
+            await self.logger.error(f"failed to send proactive massage to person: {traceback.format_exc()}")
+            raise Exception(f"failed to send proactive massage to person: {traceback.format_exc()}")
 
     async def send_proactive_message_to_group(self, target_id: str, content: str):
         if not await self.check_access_token():
@@ -242,9 +245,12 @@ class DingTalkClient:
         }
         try:
             async with httpx.AsyncClient() as client:
-                await client.post(url, headers=headers, json=data)
+                response = await client.post(url, headers=headers, json=data)
+                if response.status_code == 200:
+                    return
         except Exception:
-            await self.logger.error("failed to send proactive massage to group")
+            await self.logger.error(f"failed to send proactive massage to group: {traceback.format_exc()}")
+            raise Exception(f"failed to send proactive massage to group: {traceback.format_exc()}")
 
     async def start(self):
         """启动 WebSocket 连接，监听消息"""
