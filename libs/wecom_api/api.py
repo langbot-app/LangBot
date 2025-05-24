@@ -20,7 +20,7 @@ class WecomClient:
         token: str,
         EncodingAESKey: str,
         contacts_secret: str,
-        logger=None,
+        logger: None,
     ):
         self.corpid = corpid
         self.secret = secret
