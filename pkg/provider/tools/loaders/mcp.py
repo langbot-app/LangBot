@@ -82,7 +82,7 @@ class RuntimeMCPSession:
 
         for tool in tools.tools:
 
-            async def func(query: core_entities.Query, **kwargs):
+            async def func(query: core_entities.Query, *, _tool=tool, **kwargs):
                 result = await self.session.call_tool(tool.name, kwargs)
                 if result.isError:
                     raise Exception(result.content[0].text)
