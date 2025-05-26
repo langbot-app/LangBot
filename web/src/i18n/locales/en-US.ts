@@ -118,6 +118,11 @@ const enUS = {
     bindPipeline: 'Bind Pipeline',
     selectPipeline: 'Select Pipeline',
     botLogTitle: 'Bot Log',
+    enableAutoRefresh: 'Enable Auto Refresh',
+    session: 'Session',
+    yesterday: 'Yesterday',
+    earlier: 'Earlier',
+    dateFormat: '{{month}}/{{day}}',
   },
   plugins: {
     title: 'Plugins',

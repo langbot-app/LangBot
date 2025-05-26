@@ -4,8 +4,10 @@ import { BotLog } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
 import styles from './botLog.module.css';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
+import { useTranslation } from 'react-i18next';
 
 export function BotLogCard({ botLog }: { botLog: BotLog }) {
+  const { t } = useTranslation();
   const baseURL = httpClient.getBaseUrl();
 
   function formatTime(timestamp: number) {
@@ -29,11 +31,11 @@ export function BotLogCard({ botLog }: { botLog: BotLog }) {
     if (isToday) {
       return `${hours}:${minutes}`; // 今天的消息：小时:分钟
     } else if (isYesterday) {
-      return `昨天 ${hours}:${minutes}`; // 昨天的消息：昨天 小时:分钟
+      return `${t('bots.yesterday')} ${hours}:${minutes}`; // 昨天的消息：昨天 小时:分钟
     } else if (isThisYear) {
-      return `${month}月${day}日`; // 本年消息：x月x日
+      return t('bots.dateFormat', { month, day }); // 本年消息：x月x日
     } else {
-      return '更久之前'; // 更早的消息：更久之前
+      return t('bots.earlier'); // 更早的消息：更久之前
     }
   }
 
@@ -48,7 +50,7 @@ export function BotLogCard({ botLog }: { botLog: BotLog }) {
         <div className={`flex flex-row gap-4`}>
           <div className={`${styles.tag}`}>{botLog.level}</div>
           <div className={`${styles.tag} ${styles.chatTag}`}>
-            会话-{getSubChatId(botLog.message_session_id)}
+            {t('bots.session')}-{getSubChatId(botLog.message_session_id)}
           </div>
         </div>
         <div>{formatTime(botLog.timestamp)}</div>

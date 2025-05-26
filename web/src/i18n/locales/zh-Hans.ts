@@ -116,6 +116,11 @@ const zhHans = {
     bindPipeline: '绑定流水线',
     selectPipeline: '选择流水线',
     botLogTitle: '机器人日志',
+    enableAutoRefresh: '开启自动刷新',
+    session: '会话',
+    yesterday: '昨天',
+    earlier: '更久之前',
+    dateFormat: '{{month}}月{{day}}日',
   },
   plugins: {
     title: '插件管理',

@@ -7,8 +7,10 @@ import { BotLogCard } from '@/app/home/bots/bot-log/view/BotLogCard';
 import styles from './botLog.module.css';
 import { Switch } from '@/components/ui/switch';
 import { debounce } from 'lodash';
+import { useTranslation } from 'react-i18next';
 
 export function BotLogListComponent({ botId }: { botId: string }) {
+  const { t } = useTranslation();
   const manager = useRef(new BotLogManager(botId)).current;
   const [botLogList, setBotLogList] = useState<BotLog[]>([]);
   const [autoFlush, setAutoFlush] = useState(true);
@@ -115,7 +117,7 @@ export function BotLogListComponent({ botId }: { botId: string }) {
       ref={listContainerRef}
     >
       <div className={`${styles.listHeader}`}>
-        <div className={'mr-2'}>开启自动刷新</div>
+        <div className={'mr-2'}>{t('bots.enableAutoRefresh')}</div>
         <Switch checked={autoFlush} onCheckedChange={(e) => setAutoFlush(e)} />
       </div>
 
