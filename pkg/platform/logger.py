@@ -116,6 +116,13 @@ class EventLogger:
         else:
             return [], len(self.logs)
 
+    async def _truncate_logs(self):
+        if len(self.logs) > MAX_LOG_COUNT:
+            for i in range(DELETE_COUNT_PER_TIME):
+                for image_key in self.logs[i].images:
+                    await self.ap.storage_mgr.storage_provider.delete(image_key)
+            self.logs = self.logs[DELETE_COUNT_PER_TIME:]
+
     async def _add_log(
         self,
         level: EventLogLevel,
@@ -157,8 +164,7 @@ class EventLogger:
             )
             self.seq_id_inc += 1
 
-            if len(self.logs) > MAX_LOG_COUNT:
-                self.logs = self.logs[DELETE_COUNT_PER_TIME:]
+            await self._truncate_logs()
 
         except Exception as e:
             if not no_throw:

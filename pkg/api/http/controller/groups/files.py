@@ -9,7 +9,7 @@ from .. import group
 @group.group_class('files', '/api/v1/files')
 class FilesRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
-        @self.route('/image/<image_key>', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        @self.route('/image/<image_key>', methods=['GET'], auth_type=group.AuthType.NONE)
         async def _(image_key: str) -> quart.Response:
             if not await self.ap.storage_mgr.storage_provider.exists(image_key):
                 return quart.Response(status=404)
