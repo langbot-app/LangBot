@@ -119,7 +119,7 @@ export default function BotConfigPage() {
 
       <Dialog open={logModalOpen} onOpenChange={setLogModalOpen}>
         <DialogContent className="w-[700px] max-h-[80vh] p-0 flex flex-col">
-          <DialogHeader className="px-6 pt-6 pb-4">
+          <DialogHeader className="px-6 pt-6 pb-0">
             <DialogTitle>{t('bots.botLogTitle')}</DialogTitle>
           </DialogHeader>
           <BotLogListComponent botId={nowSelectedBotLog || ''} />
