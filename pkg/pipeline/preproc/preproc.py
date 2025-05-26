@@ -59,7 +59,7 @@ class PreProcessor(stage.PipelineStage):
 
         if selected_runner == 'local-agent':
             query.use_funcs = (
-                conversation.use_funcs if query.use_llm_model.model_entity.abilities.__contains__('tool_call') else None
+                conversation.use_funcs if any(ability in query.use_llm_model.model_entity.abilities for ability in ['tool_call', 'func_call']) else None
             )
 
         query.variables = {
