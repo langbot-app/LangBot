@@ -30,6 +30,8 @@ import {
   GetPipelineMetadataResponseData,
   AsyncTask,
 } from '@/app/infra/entities/api';
+import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
+import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
 
 type JSONValue = string | number | boolean | JSONObject | JSONArray | null;
 interface JSONObject {
@@ -54,12 +56,14 @@ export let systemInfo: ApiRespSystemInfo | null = null;
 class HttpClient {
   private instance: AxiosInstance;
   private disableToken: boolean = false;
+  private baseURL: string;
   // 暂不需要SSR
   // private ssrInstance: AxiosInstance | null = null
 
-  constructor(baseURL?: string, disableToken?: boolean) {
+  constructor(baseURL: string, disableToken?: boolean) {
+    this.baseURL = baseURL;
     this.instance = axios.create({
-      baseURL: baseURL || this.getBaseUrl(),
+      baseURL: baseURL,
       timeout: 15000,
       headers: {
         'Content-Type': 'application/json',
@@ -75,15 +79,9 @@ class HttpClient {
     }
   }
 
-  // 兜底URL，如果使用未配置会走到这里
-  private getBaseUrl(): string {
-    // NOT IMPLEMENT
-    if (typeof window === 'undefined') {
-      // 服务端环境
-      return '';
-    }
-    // 客户端环境
-    return '';
+  // 外部获取baseURL的方法
+  getBaseUrl(): string {
+    return this.baseURL;
   }
 
   // 获取Session
@@ -341,6 +339,13 @@ class HttpClient {
     return this.delete(`/api/v1/platform/bots/${uuid}`);
   }
 
+  public getBotLogs(
+    botId: string,
+    request: GetBotLogsRequest,
+  ): Promise<GetBotLogsResponse> {
+    return this.post(`/api/v1/platform/bots/${botId}/logs`, request);
+  }
+
   // ============ Plugins API ============
   public getPlugins(): Promise<ApiRespPlugins> {
     return this.get('/api/v1/plugins');
@@ -446,9 +451,9 @@ class HttpClient {
   }
 }
 
-// export const httpClient = new HttpClient("https://version-4.langbot.dev");
+export const httpClient = new HttpClient('https://event-log.langbot.dev');
 // export const httpClient = new HttpClient('http://localhost:5300');
-export const httpClient = new HttpClient('/');
+// export const httpClient = new HttpClient('/');
 
 // 临时写法，未来两种Client都继承自HttpClient父类，不允许共享方法
 export const spaceClient = new HttpClient('https://space.langbot.app');
