@@ -52,10 +52,13 @@ export default function BotConfigPage() {
             iconURL: httpClient.getAdapterIconURL(bot.adapter),
             name: bot.name,
             description: bot.description,
+            adapter: bot.adapter,
+            adapterConfig: bot.adapter_config,
             adapterLabel:
               adapterList.find((item) => item.value === bot.adapter)?.label ||
               bot.adapter.substring(0, 10),
             usePipelineName: bot.use_pipeline_name || '',
+            enable: bot.enable || false,
           });
         });
         setBotList(botList);
@@ -146,6 +149,16 @@ export default function BotConfigPage() {
                 botCardVO={cardVO}
                 clickLogIconCallback={(id) => {
                   onClickLogIcon(id);
+                }}
+                setBotEnableCallback={(id, enable) => {
+                  setBotList(
+                    botList.map((bot) => {
+                      if (bot.id === id) {
+                        return { ...bot, enable: enable };
+                      }
+                      return bot;
+                    }),
+                  );
                 }}
               />
             </div>

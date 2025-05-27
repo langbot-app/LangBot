@@ -124,6 +124,7 @@ const enUS = {
     yesterday: 'Yesterday',
     earlier: 'Earlier',
     dateFormat: '{{month}}/{{day}}',
+    setBotEnableError: 'Failed to set bot enable status',
   },
   plugins: {
     title: 'Plugins',
