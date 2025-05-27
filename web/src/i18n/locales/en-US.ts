@@ -37,6 +37,7 @@ const enUS = {
     deleteSuccess: 'Deleted successfully',
     deleteError: 'Delete failed: ',
     addRound: 'Add Round',
+    copySuccess: 'Copy Successfully',
   },
   notFound: {
     title: 'Page not found',

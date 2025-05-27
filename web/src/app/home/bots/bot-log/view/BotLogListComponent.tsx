@@ -121,9 +121,11 @@ export function BotLogListComponent({ botId }: { botId: string }) {
         <Switch checked={autoFlush} onCheckedChange={(e) => setAutoFlush(e)} />
       </div>
 
-      {botLogList.map((botLog) => {
-        return <BotLogCard botLog={botLog} key={botLog.seq_id} />;
-      })}
+      {botLogList
+        .filter((botLog) => botLog.message_session_id !== '')
+        .map((botLog) => {
+          return <BotLogCard botLog={botLog} key={botLog.seq_id} />;
+        })}
     </div>
   );
 }

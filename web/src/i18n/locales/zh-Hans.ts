@@ -37,6 +37,7 @@ const zhHans = {
     deleteSuccess: '删除成功',
     deleteError: '删除失败：',
     addRound: '添加回合',
+    copySuccess: '复制成功',
   },
   notFound: {
     title: '页面不存在',
