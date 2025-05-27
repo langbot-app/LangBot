@@ -1,6 +1,6 @@
 import { i18nObj } from '@/i18n/I18nProvider';
 import styles from './HomeTittleBar.module.css';
-import { I18nText } from '@/app/infra/entities/api';
+import { I18nLabel } from '@/app/infra/entities/common';
 
 export default function HomeTitleBar({
   title,
@@ -9,7 +9,7 @@ export default function HomeTitleBar({
 }: {
   title: string;
   subtitle: string;
-  helpLink: I18nText;
+  helpLink: I18nLabel;
 }) {
   return (
     <div className={`${styles.titleBarContainer}`}>

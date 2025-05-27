@@ -38,6 +38,7 @@ const zhHans = {
     deleteError: '删除失败：',
     addRound: '添加回合',
     copySuccess: '复制成功',
+    test: '测试',
   },
   notFound: {
     title: '页面不存在',
@@ -90,6 +91,8 @@ const zhHans = {
     selectModelProvider: '选择模型供应商',
     modelProviderDescription: '请填写供应商向您提供的模型名称',
     selectModel: '请选择模型',
+    testSuccess: '测试成功',
+    testError: '测试失败，请检查模型配置',
   },
   bots: {
     title: '机器人',

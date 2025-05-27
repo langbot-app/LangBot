@@ -44,12 +44,18 @@
 .basicInfoName {
   font-size: 1.4rem;
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .basicInfoDescription {
   font-size: 1rem;
   font-weight: 300;
   color: #b1b1b1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .basicInfoAdapterContainer {

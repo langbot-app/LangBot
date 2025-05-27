@@ -202,6 +202,7 @@ export default function BotForm({
               default: item.default,
               id: UUID.generate(),
               label: item.label,
+              description: item.description,
               name: item.name,
               required: item.required,
               type: parseDynamicFormItemType(item.type),
