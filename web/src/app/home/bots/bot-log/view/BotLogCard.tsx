@@ -89,7 +89,9 @@ export function BotLogCard({ botLog }: { botLog: BotLog }) {
               </svg>
               {/* 会话ID */}
 
-              <span>{getSubChatId(botLog.message_session_id)}</span>
+              <span className={`${styles.chatId}`}>
+                {getSubChatId(botLog.message_session_id)}
+              </span>
             </div>
           )}
         </div>
@@ -99,14 +101,9 @@ export function BotLogCard({ botLog }: { botLog: BotLog }) {
         {botLog.text}
       </div>
       <PhotoProvider className={``}>
-        <div className={`w-24`}>
+        <div className={`w-50 mt-2`}>
           {botLog.images.map((item, index) => (
-            <PhotoView
-              key={index}
-              src={`${baseURL}/api/v1/files/image/${item}`}
-            >
-              <img src={`${baseURL}/api/v1/files/image/${item}`} alt="" />
-            </PhotoView>
+            <img src={`${baseURL}/api/v1/files/image/${item}`} alt="" />
           ))}
         </div>
       </PhotoProvider>
