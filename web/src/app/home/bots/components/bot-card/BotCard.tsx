@@ -80,7 +80,7 @@ export default function BotCard({
             checked={botCardVO.enable}
             onCheckedChange={(e) => {
               setBotEnable(e)
-                .then((res) => {
+                .then(() => {
                   setBotEnableCallback(botCardVO.id, e);
                 })
                 .catch((err) => {

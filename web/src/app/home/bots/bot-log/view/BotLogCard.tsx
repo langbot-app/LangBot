@@ -3,7 +3,7 @@
 import { BotLog } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
 import styles from './botLog.module.css';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { PhotoProvider, PhotoView } from 'react-photo-view';
+import { PhotoProvider } from 'react-photo-view';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -102,8 +102,12 @@ export function BotLogCard({ botLog }: { botLog: BotLog }) {
       </div>
       <PhotoProvider className={``}>
         <div className={`w-50 mt-2`}>
-          {botLog.images.map((item, index) => (
-            <img src={`${baseURL}/api/v1/files/image/${item}`} alt="" />
+          {botLog.images.map((item) => (
+            <img
+              key={item}
+              src={`${baseURL}/api/v1/files/image/${item}`}
+              alt=""
+            />
           ))}
         </div>
       </PhotoProvider>
