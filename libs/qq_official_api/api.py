@@ -34,7 +34,7 @@ def handle_validation(body: dict, bot_secret: str):
 
 
 class QQOfficialClient:
-    def __init__(self, secret: str, token: str, app_id: str):
+    def __init__(self, secret: str, token: str, app_id: str, logger: None):
         self.app = Quart(__name__)
         self.app.add_url_rule(
             '/callback/command',
@@ -49,6 +49,7 @@ class QQOfficialClient:
         self.base_url = 'https://api.sgroup.qq.com'
         self.access_token = ''
         self.access_token_expiry_time = None
+        self.logger = logger
 
     async def check_access_token(self):
         """检查access_token是否存在"""
@@ -77,6 +78,7 @@ class QQOfficialClient:
                 if access_token:
                     self.access_token = access_token
             except Exception as e:
+                await self.logger.error(f'获取access_token失败: {response_data}')
                 raise Exception(f'获取access_token失败: {e}')
 
     async def handle_callback_request(self):
@@ -102,7 +104,7 @@ class QQOfficialClient:
             return {'code': 0, 'message': 'success'}
 
         except Exception as e:
-            traceback.print_exc()
+            await self.logger.error(f"Error in handle_callback_request: {traceback.format_exc()}")
             return {'error': str(e)}, 400
 
     async def run_task(self, host: str, port: int, *args, **kwargs):
@@ -166,6 +168,7 @@ class QQOfficialClient:
         if not await self.check_access_token():
             await self.get_access_token()
 
+
         url = self.base_url + '/v2/users/' + user_openid + '/messages'
         async with httpx.AsyncClient() as client:
             headers = {
@@ -178,15 +181,18 @@ class QQOfficialClient:
                 'msg_id': msg_id,
             }
             response = await client.post(url, headers=headers, json=data)
+            response_data = response.json()
             if response.status_code == 200:
                 return
             else:
+                await self.logger.error(f'发送私聊消息失败: {response_data}')
                 raise ValueError(response)
 
     async def send_group_text_msg(self, group_openid: str, content: str, msg_id: str):
         """发送群聊消息"""
         if not await self.check_access_token():
             await self.get_access_token()
+
 
         url = self.base_url + '/v2/groups/' + group_openid + '/messages'
         async with httpx.AsyncClient() as client:
@@ -203,12 +209,14 @@ class QQOfficialClient:
             if response.status_code == 200:
                 return
             else:
+                await self.logger.error(f"发送群聊消息失败:{response.json()}")
                 raise Exception(response.read().decode())
 
     async def send_channle_group_text_msg(self, channel_id: str, content: str, msg_id: str):
         """发送频道群聊消息"""
         if not await self.check_access_token():
             await self.get_access_token()
+
 
         url = self.base_url + '/channels/' + channel_id + '/messages'
         async with httpx.AsyncClient() as client:
@@ -225,12 +233,14 @@ class QQOfficialClient:
             if response.status_code == 200:
                 return True
             else:
+                await self.logger.error(f'发送频道群聊消息失败: {response.json()}')
                 raise Exception(response)
 
     async def send_channle_private_text_msg(self, guild_id: str, content: str, msg_id: str):
         """发送频道私聊消息"""
         if not await self.check_access_token():
             await self.get_access_token()
+        
 
         url = self.base_url + '/dms/' + guild_id + '/messages'
         async with httpx.AsyncClient() as client:
@@ -247,6 +257,7 @@ class QQOfficialClient:
             if response.status_code == 200:
                 return True
             else:
+                await self.logger.error(f'发送频道私聊消息失败: {response.json()}')
                 raise Exception(response)
 
     async def is_token_expired(self):

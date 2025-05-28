@@ -84,16 +84,8 @@ export interface Adapter {
   description: I18nLabel;
   icon?: string;
   spec: {
-    config: AdapterSpecConfig[];
+    config: IDynamicFormItemSchema[];
   };
-}
-
-export interface AdapterSpecConfig {
-  default: string | number | boolean | Array<unknown>;
-  label: I18nLabel;
-  name: string;
-  required: boolean;
-  type: string;
 }
 
 export interface ApiRespPlatformBots {

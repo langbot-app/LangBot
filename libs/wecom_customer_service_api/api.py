@@ -13,7 +13,7 @@ import aiofiles
 
 
 class WecomCSClient:
-    def __init__(self, corpid: str, secret: str, token: str, EncodingAESKey: str):
+    def __init__(self, corpid: str, secret: str, token: str, EncodingAESKey: str, logger: None):
         self.corpid = corpid
         self.secret = secret
         self.access_token_for_contacts = ''
@@ -21,6 +21,7 @@ class WecomCSClient:
         self.aes = EncodingAESKey
         self.base_url = 'https://qyapi.weixin.qq.com/cgi-bin'
         self.access_token = ''
+        self.logger = logger
         self.app = Quart(__name__)
         self.app.add_url_rule(
             '/callback/command', 'handle_callback', self.handle_callback_request, methods=['GET', 'POST']
@@ -186,6 +187,7 @@ class WecomCSClient:
                 self.access_token = await self.get_access_token(self.secret)
                 return await self.send_text_msg(open_kfid, external_userid, msgid, content)
             if data['errcode'] != 0:
+                await self.logger.error(f"发送消息失败：{data}")
                 raise Exception('Failed to send message')
             return data
 
@@ -224,7 +226,10 @@ class WecomCSClient:
 
                 return 'success'
         except Exception as e:
-            traceback.print_exc()
+            if self.logger:
+                await self.logger.error(f"Error in handle_callback_request: {traceback.format_exc()}")
+            else:
+                traceback.print_exc()
             return f'Error processing request: {str(e)}', 400
 
     async def run_task(self, host: str, port: int, *args, **kwargs):

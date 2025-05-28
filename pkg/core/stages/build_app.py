@@ -17,6 +17,7 @@ from ...api.http.service import model as model_service
 from ...api.http.service import pipeline as pipeline_service
 from ...api.http.service import bot as bot_service
 from ...discover import engine as discover_engine
+from ...storage import mgr as storagemgr
 from ...utils import logcache
 from .. import taskmgr
 
@@ -49,6 +50,10 @@ class BuildAppStage(stage.BootingStage):
 
         log_cache = logcache.LogCache()
         ap.log_cache = log_cache
+
+        storage_mgr_inst = storagemgr.StorageMgr(ap)
+        await storage_mgr_inst.initialize()
+        ap.storage_mgr = storage_mgr_inst
 
         persistence_mgr_inst = persistencemgr.PersistenceManager(ap)
         ap.persistence_mgr = persistence_mgr_inst

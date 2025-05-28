@@ -1,0 +1,68 @@
+.botLogListContainer {
+  width: 100%;
+  min-height: 10rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  overflow-y: scroll;
+}
+
+.botLogCardContainer {
+  width: 100%;
+  background-color: #fff;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  padding: 1.2rem;
+  margin-bottom: 1rem;
+  cursor: pointer;
+}
+
+.listHeader {
+  width: 100%;
+  height: 2.5rem;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.tag {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.2rem;
+  height: 1.5rem;
+  padding: 0.5rem;
+  border-radius: 0.4rem;
+  background-color: #a5d8ff;
+  color: #ffffff;
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chatTag {
+  color: #626262;
+  background-color: #d1d1d1;
+}
+
+.chatId {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardTitleContainer {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cardText {
+  margin-top: 0.4rem;
+  color: #64748b;
+}

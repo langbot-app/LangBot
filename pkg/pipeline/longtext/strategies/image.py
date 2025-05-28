@@ -20,9 +20,9 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
         pass
 
     @functools.lru_cache(maxsize=16)
-    def get_font(self, query: core_entities.Query):
+    def get_font(self, font_path: str):
         return ImageFont.truetype(
-            query.pipeline_config['output']['long-text-processing']['font-path'],
+            font_path,
             32,
             encoding='utf-8',
         )
@@ -146,7 +146,9 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
         self.ap.logger.debug('lines: {}, text_width: {}'.format(lines, text_width))
         for line in lines:
             # 如果长了就分割
-            line_width = self.get_font(query).getlength(line)
+            line_width = self.get_font(query.pipeline_config['output']['long-text-processing']['font-path']).getlength(
+                line
+            )
             self.ap.logger.debug('line_width: {}'.format(line_width))
             if line_width < text_width:
                 final_lines.append(line)
@@ -167,7 +169,9 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
 
                     final_lines.append(rest_text[:point])
                     rest_text = rest_text[point:]
-                    line_width = self.text_render_font.getlength(rest_text)
+                    line_width = self.get_font(
+                        query.pipeline_config['output']['long-text-processing']['font-path']
+                    ).getlength(rest_text)
                     if line_width < text_width:
                         final_lines.append(rest_text)
                         break
@@ -187,7 +191,7 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
                 (offset_x, offset_y + 35 * line_number),
                 final_line,
                 fill=(0, 0, 0),
-                font=self.text_render_font,
+                font=self.get_font(query.pipeline_config['output']['long-text-processing']['font-path']),
             )
             # 遍历此行,检查是否有emoji
             idx_in_line = 0

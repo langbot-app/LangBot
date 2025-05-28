@@ -57,6 +57,9 @@ spec:
       label:
         en_US: Host
         zh_Hans: 监听主机
+      description:
+        en_US: The host that Official Account listens on for Webhook connections.
+        zh_Hans: 微信公众号监听的主机，除非你知道自己在做什么，否则请写 0.0.0.0
       type: string
       required: true
       default: 0.0.0.0

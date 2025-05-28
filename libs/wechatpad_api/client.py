@@ -11,13 +11,14 @@ from libs.wechatpad_api.api.chatroom import ChatRoomApi
 
 
 class WeChatPadClient:
-    def __init__(self,base_url, token):
+    def __init__(self, base_url, token, logger=None):
         self._login_api = LoginApi(base_url, token)
         self._friend_api = FriendApi(base_url, token)
         self._message_api = MessageApi(base_url, token)
         self._user_api = UserApi(base_url, token)
         self._download_api = DownloadApi(base_url, token)
         self._chatroom_api = ChatRoomApi(base_url, token)
+        self.logger = logger
 
     def get_token(self,admin_key, day: int):
         '''获取token'''

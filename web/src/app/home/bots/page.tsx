@@ -17,13 +17,18 @@ import {
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { i18nObj } from '@/i18n/I18nProvider';
+import { BotLogListComponent } from '@/app/home/bots/bot-log/view/BotLogListComponent';
 
 export default function BotConfigPage() {
   const { t } = useTranslation();
+  // 编辑机器人的modal
   const [modalOpen, setModalOpen] = useState<boolean>(false);
+  // 机器人日志的modal
+  const [logModalOpen, setLogModalOpen] = useState<boolean>(false);
   const [botList, setBotList] = useState<BotCardVO[]>([]);
   const [isEditForm, setIsEditForm] = useState(false);
   const [nowSelectedBotUUID, setNowSelectedBotUUID] = useState<string>();
+  const [nowSelectedBotLog, setNowSelectedBotLog] = useState<string>();
 
   useEffect(() => {
     getBotList();
@@ -47,10 +52,13 @@ export default function BotConfigPage() {
             iconURL: httpClient.getAdapterIconURL(bot.adapter),
             name: bot.name,
             description: bot.description,
+            adapter: bot.adapter,
+            adapterConfig: bot.adapter_config,
             adapterLabel:
               adapterList.find((item) => item.value === bot.adapter)?.label ||
               bot.adapter.substring(0, 10),
             usePipelineName: bot.use_pipeline_name || '',
+            enable: bot.enable || false,
           });
         });
         setBotList(botList);
@@ -74,6 +82,11 @@ export default function BotConfigPage() {
     setNowSelectedBotUUID(botUUID);
     setIsEditForm(true);
     setModalOpen(true);
+  }
+
+  function onClickLogIcon(botId: string) {
+    setNowSelectedBotLog(botId);
+    setLogModalOpen(true);
   }
 
   return (
@@ -107,6 +120,15 @@ export default function BotConfigPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={logModalOpen} onOpenChange={setLogModalOpen}>
+        <DialogContent className="w-[700px] max-h-[80vh] p-0 flex flex-col">
+          <DialogHeader className="px-6 pt-6 pb-0">
+            <DialogTitle>{t('bots.botLogTitle')}</DialogTitle>
+          </DialogHeader>
+          <BotLogListComponent botId={nowSelectedBotLog || ''} />
+        </DialogContent>
+      </Dialog>
+
       {/* 注意：其余的返回内容需要保持在Spin组件外部 */}
       <div className={`${styles.botListContainer}`}>
         <CreateCardComponent
@@ -123,7 +145,22 @@ export default function BotConfigPage() {
                 selectBot(cardVO.id);
               }}
             >
-              <BotCard botCardVO={cardVO} />
+              <BotCard
+                botCardVO={cardVO}
+                clickLogIconCallback={(id) => {
+                  onClickLogIcon(id);
+                }}
+                setBotEnableCallback={(id, enable) => {
+                  setBotList(
+                    botList.map((bot) => {
+                      if (bot.id === id) {
+                        return { ...bot, enable: enable };
+                      }
+                      return bot;
+                    }),
+                  );
+                }}
+              />
             </div>
           );
         })}

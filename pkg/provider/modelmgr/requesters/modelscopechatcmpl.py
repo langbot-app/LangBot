@@ -57,6 +57,8 @@ class ModelScopeChatCompletions(requester.LLMAPIRequester):
 
             if chunk.choices[0].delta.tool_calls is not None:
                 for tool_call in chunk.choices[0].delta.tool_calls:
+                    if tool_call.function.arguments is None:
+                        continue
                     for tc in tool_calls:
                         if tc.index == tool_call.index:
                             tc.function.arguments += tool_call.function.arguments

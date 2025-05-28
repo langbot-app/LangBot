@@ -37,6 +37,7 @@ const zhHans = {
     deleteSuccess: '删除成功',
     deleteError: '删除失败：',
     addRound: '添加回合',
+    copySuccess: '复制成功',
     test: '测试',
   },
   notFound: {
@@ -118,6 +119,13 @@ const zhHans = {
     adapterConfig: '适配器配置',
     bindPipeline: '绑定流水线',
     selectPipeline: '选择流水线',
+    botLogTitle: '机器人日志',
+    enableAutoRefresh: '开启自动刷新',
+    session: '会话',
+    yesterday: '昨天',
+    earlier: '更久之前',
+    dateFormat: '{{month}}月{{day}}日',
+    setBotEnableError: '设置机器人启用状态失败',
   },
   plugins: {
     title: '插件管理',

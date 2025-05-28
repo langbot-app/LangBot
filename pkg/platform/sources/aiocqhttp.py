@@ -12,6 +12,7 @@ from ..types import message as platform_message
 from ..types import events as platform_events
 from ..types import entities as platform_entities
 from ...utils import image
+from ..logger import EventLogger
 
 
 class AiocqhttpMessageConverter(adapter.MessageConverter):
@@ -209,8 +210,11 @@ class AiocqhttpAdapter(adapter.MessagePlatformAdapter):
 
     ap: app.Application
 
-    def __init__(self, config: dict, ap: app.Application):
+    on_websocket_connection_event_cache: typing.List[typing.Callable[[aiocqhttp.Event], None]] = []
+
+    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
         self.config = config
+        self.logger = logger
 
         async def shutdown_trigger_placeholder():
             while True:
@@ -219,6 +223,7 @@ class AiocqhttpAdapter(adapter.MessagePlatformAdapter):
         self.config['shutdown_trigger'] = shutdown_trigger_placeholder
 
         self.ap = ap
+        self.on_websocket_connection_event_cache = []
 
         if 'access-token' in config:
             self.bot = aiocqhttp.CQHttp(access_token=config['access-token'])
@@ -260,12 +265,23 @@ class AiocqhttpAdapter(adapter.MessagePlatformAdapter):
             try:
                 return await callback(await self.event_converter.target2yiri(event,self.bot), self)
             except Exception:
+                await self.logger.error(f'Error in on_message: {traceback.format_exc()}')
                 traceback.print_exc()
 
         if event_type == platform_events.GroupMessage:
             self.bot.on_message('group')(on_message)
         elif event_type == platform_events.FriendMessage:
             self.bot.on_message('private')(on_message)
+
+        async def on_websocket_connection(event: aiocqhttp.Event):
+            for event in self.on_websocket_connection_event_cache:
+                if event.self_id == event.self_id and event.time == event.time:
+                    return
+
+            self.on_websocket_connection_event_cache.append(event)
+            await self.logger.info(f'WebSocket connection established, bot id: {event.self_id}')
+
+        self.bot.on_websocket_connection(on_websocket_connection)
 
     def unregister_listener(
         self,

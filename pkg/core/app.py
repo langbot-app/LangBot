@@ -23,7 +23,8 @@ from ..api.http.service import model as model_service
 from ..api.http.service import pipeline as pipeline_service
 from ..api.http.service import bot as bot_service
 from ..discover import engine as discover_engine
-from ..utils import logcache, ip
+from ..storage import mgr as storagemgr
+from ..utils import logcache
 from . import taskmgr
 from . import entities as core_entities
 
@@ -96,6 +97,8 @@ class Application:
 
     log_cache: logcache.LogCache = None
 
+    storage_mgr: storagemgr.StorageMgr = None
+
     # ========= HTTP Services =========
 
     user_service: user_service.UserService = None
@@ -166,23 +169,16 @@ class Application:
 
         host_ip = '127.0.0.1'
 
-        public_ip = await ip.get_myip()
-
         port = self.instance_config.data['api']['port']
 
         tips = f"""
 =======================================
-✨ 您可通过以下方式访问管理面板
+✨ Access WebUI / 访问管理面板
 
-🏠 本地地址：http://{host_ip}:{port}/
-🌐 公网地址：http://{public_ip}:{port}/
+🏠 Local Address: http://{host_ip}:{port}/
+🌐 Public Address: http://<Your Public IP>:{port}/
 
-📌 如果您在容器中运行此程序，请确保容器的 {port} 端口已对外暴露
-🔗 若要使用公网地址访问，请阅读以下须知
-   1. 公网地址仅供参考，请以您的主机公网 IP 为准；
-   2. 要使用公网地址访问，请确保您的主机具有公网 IP，并且系统防火墙已放行 {port} 端口；
-
-🤯 WebUI 仍处于 Beta 测试阶段，如有问题或建议请反馈到 https://github.com/RockChinQ/LangBot/issues
+📌 Running this program in a container? Please ensure that the {port} port is exposed
 =======================================
 """.strip()
         for line in tips.split('\n'):

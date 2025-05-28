@@ -29,3 +29,16 @@ class BotsRouterGroup(group.RouterGroup):
             elif quart.request.method == 'DELETE':
                 await self.ap.bot_service.delete_bot(bot_uuid)
                 return self.success()
+
+        @self.route('/<bot_uuid>/logs', methods=['POST'])
+        async def _(bot_uuid: str) -> str:
+            json_data = await quart.request.json
+            from_index = json_data.get('from_index', -1)
+            max_count = json_data.get('max_count', 10)
+            logs, total_count = await self.ap.bot_service.list_event_logs(bot_uuid, from_index, max_count)
+            return self.success(
+                data={
+                    'logs': logs,
+                    'total_count': total_count,
+                }
+            )

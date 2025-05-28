@@ -23,7 +23,7 @@ xml_template = """
 
 
 class OAClient:
-    def __init__(self, token: str, EncodingAESKey: str, AppID: str, Appsecret: str):
+    def __init__(self, token: str, EncodingAESKey: str, AppID: str, Appsecret: str, logger: None):
         self.token = token
         self.aes = EncodingAESKey
         self.appid = AppID
@@ -43,6 +43,7 @@ class OAClient:
         self.access_token_expiry_time = None
         self.msg_id_map = {}
         self.generated_content = {}
+        self.logger = logger
 
     async def handle_callback_request(self):
         try:
@@ -54,6 +55,7 @@ class OAClient:
             echostr = request.args.get('echostr', '')
             msg_signature = request.args.get('msg_signature', '')
             if msg_signature is None:
+                await self.logger.error(f'msg_signature不在请求体中')
                 raise Exception('msg_signature不在请求体中')
 
             if request.method == 'GET':
@@ -64,6 +66,7 @@ class OAClient:
                 if check_signature == signature:
                     return echostr  # 验证成功返回echostr
                 else:
+                    await self.logger.error(f'拒绝请求')
                     raise Exception('拒绝请求')
             elif request.method == 'POST':
                 encryt_msg = await request.data
@@ -72,8 +75,9 @@ class OAClient:
                 xml_msg = xml_msg.decode('utf-8')
 
                 if ret != 0:
+                    await self.logger.error(f'消息解密失败')
                     raise Exception('消息解密失败')
-
+                
                 message_data = await self.get_message(xml_msg)
                 if message_data:
                     event = OAEvent.from_payload(message_data)
@@ -114,6 +118,7 @@ class OAClient:
                     return ''
 
         except Exception:
+            await self.logger.error(f'handle_callback_request失败: {traceback.format_exc()}')
             traceback.print_exc()
 
     async def get_message(self, xml_msg: str):
@@ -176,6 +181,7 @@ class OAClientForLongerResponse:
         AppID: str,
         Appsecret: str,
         LoadingMessage: str,
+        logger: None,
     ):
         self.token = token
         self.aes = EncodingAESKey
@@ -197,6 +203,7 @@ class OAClientForLongerResponse:
         self.loading_message = LoadingMessage
         self.msg_queue = {}
         self.user_msg_queue = {}
+        self.logger = logger
 
     async def handle_callback_request(self):
         try:
@@ -207,6 +214,7 @@ class OAClientForLongerResponse:
             msg_signature = request.args.get('msg_signature', '')
 
             if msg_signature is None:
+                await self.logger.error(f'msg_signature不在请求体中')
                 raise Exception('msg_signature不在请求体中')
 
             if request.method == 'GET':
@@ -221,7 +229,9 @@ class OAClientForLongerResponse:
                 xml_msg = xml_msg.decode('utf-8')
 
                 if ret != 0:
+                    await self.logger.error(f'消息解密失败')
                     raise Exception('消息解密失败')
+                
 
                 # 解析 XML
                 root = ET.fromstring(xml_msg)
@@ -270,6 +280,7 @@ class OAClientForLongerResponse:
                         return response_xml
 
         except Exception:
+            await self.logger.error(f'handle_callback_request失败: {traceback.format_exc()}')
             traceback.print_exc()
 
     async def get_message(self, xml_msg: str):

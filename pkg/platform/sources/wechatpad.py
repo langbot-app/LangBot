@@ -30,6 +30,7 @@ from ..types import message as platform_message
 from ..types import events as platform_events
 from ..types import entities as platform_entities
 from ...utils import image
+from ..logger import EventLogger
 import xml.etree.ElementTree as ET
 from typing import Optional, List, Tuple
 from functools import partial
@@ -533,9 +534,10 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
         typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
     ] = {}
 
-    def __init__(self, config: dict, ap: app.Application):
+    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
         self.config = config
         self.ap = ap
+        self.logger = logger
         self.quart_app = quart.Quart(__name__)
 
         self.message_converter = WeChatPadMessageConverter(config)
@@ -550,7 +552,7 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
         try:
             event = await self.event_converter.target2yiri(data.copy(), self.bot_account_id)
         except Exception as e:
-            traceback.print_exc()
+            await self.logger.error(f"Error in wechatpad callback: {traceback.format_exc()}")
 
         if event.__class__ in self.listeners:
             await self.listeners[event.__class__](event, self)
@@ -694,7 +696,8 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
 
         self.bot = WeChatPadClient(
             self.config['wechatpad_url'],
-            self.config["token"]
+            self.config["token"],
+            logger=self.logger
         )
         self.ap.logger.info(self.config["token"])
         thread_1 = threading.Event()

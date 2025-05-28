@@ -17,6 +17,7 @@ from ...config import manager as cfg_mgr
 from ...platform.types import entities as platform_entities
 from ...platform.types import events as platform_events
 from ...platform.types import message as platform_message
+from ..logger import EventLogger
 
 
 class OfficialGroupMessage(platform_events.GroupMessage):
@@ -357,10 +358,11 @@ class OfficialAdapter(adapter_model.MessagePlatformAdapter):
     group_msg_seq = None
     c2c_msg_seq = None
 
-    def __init__(self, cfg: dict, ap: app.Application):
+    def __init__(self, cfg: dict, ap: app.Application, logger: EventLogger):
         """初始化适配器"""
         self.cfg = cfg
         self.ap = ap
+        self.logger = logger
 
         self.group_msg_seq = 1
         self.c2c_msg_seq = 1
@@ -499,7 +501,7 @@ class OfficialAdapter(adapter_model.MessagePlatformAdapter):
             for event_handler in event_handler_mapping[event_type]:
                 setattr(self.bot, event_handler, wrapper)
         except Exception as e:
-            traceback.print_exc()
+            self.logger.error(f"Error in qqbotpy callback: {traceback.format_exc()}")
             raise e
 
     def unregister_listener(

@@ -14,6 +14,7 @@ from ...command.errors import ParamNotEnoughError
 from libs.qq_official_api.api import QQOfficialClient
 from libs.qq_official_api.qqofficialevent import QQOfficialEvent
 from ...utils import image
+from ..logger import EventLogger
 
 
 class QQOfficialMessageConverter(adapter.MessageConverter):
@@ -139,9 +140,10 @@ class QQOfficialAdapter(adapter.MessagePlatformAdapter):
     message_converter: QQOfficialMessageConverter = QQOfficialMessageConverter()
     event_converter: QQOfficialEventConverter = QQOfficialEventConverter()
 
-    def __init__(self, config: dict, ap: app.Application):
+    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
         self.config = config
         self.ap = ap
+        self.logger = logger
 
         required_keys = [
             'appid',
@@ -155,6 +157,7 @@ class QQOfficialAdapter(adapter.MessagePlatformAdapter):
             app_id=config['appid'],
             secret=config['secret'],
             token=config['token'],
+            logger=self.logger
         )
 
     async def reply_message(
@@ -221,8 +224,8 @@ class QQOfficialAdapter(adapter.MessagePlatformAdapter):
             self.bot_account_id = 'justbot'
             try:
                 return await callback(await self.event_converter.target2yiri(event), self)
-            except Exception:
-                traceback.print_exc()
+            except Exception as e:
+                await self.logger.error(f"Error in qqofficial callback: {traceback.format_exc()}")
 
         if event_type == platform_events.FriendMessage:
             self.bot.on_message('DIRECT_MESSAGE_CREATE')(on_message)

@@ -37,6 +37,7 @@ const enUS = {
     deleteSuccess: 'Deleted successfully',
     deleteError: 'Delete failed: ',
     addRound: 'Add Round',
+    copySuccess: 'Copy Successfully',
     test: 'Test',
   },
   notFound: {
@@ -120,6 +121,13 @@ const enUS = {
     adapterConfig: 'Adapter Configuration',
     bindPipeline: 'Bind Pipeline',
     selectPipeline: 'Select Pipeline',
+    botLogTitle: 'Bot Log',
+    enableAutoRefresh: 'Enable Auto Refresh',
+    session: 'Session',
+    yesterday: 'Yesterday',
+    earlier: 'Earlier',
+    dateFormat: '{{month}}/{{day}}',
+    setBotEnableError: 'Failed to set bot enable status',
   },
   plugins: {
     title: 'Plugins',

@@ -8,6 +8,7 @@ import abc
 from ..core import app
 from .types import message as platform_message
 from .types import events as platform_events
+from .logger import EventLogger
 
 
 class MessagePlatformAdapter(metaclass=abc.ABCMeta):
@@ -22,7 +23,9 @@ class MessagePlatformAdapter(metaclass=abc.ABCMeta):
 
     ap: app.Application
 
-    def __init__(self, config: dict, ap: app.Application):
+    logger: EventLogger
+
+    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
         """初始化适配器
 
         Args:
@@ -31,6 +34,7 @@ class MessagePlatformAdapter(metaclass=abc.ABCMeta):
         """
         self.config = config
         self.ap = ap
+        self.logger = logger
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         """主动发送消息

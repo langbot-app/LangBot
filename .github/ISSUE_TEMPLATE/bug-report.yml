@@ -7,7 +7,7 @@ body:
     attributes:
       label: 运行环境
       description: LangBot 版本、操作系统、系统架构、**Python版本**、**主机地理位置**
-      placeholder: 例如：v3.3.0、CentOS x64 Python 3.10.3、Docker 的系统直接写 Docker 就行
+      placeholder: 例如：v3.3.0、CentOS x64 Python 3.10.3、Docker
     validations:
       required: true
   - type: textarea

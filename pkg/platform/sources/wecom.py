@@ -14,6 +14,7 @@ from ...core import app
 from ..types import entities as platform_entities
 from ...command.errors import ParamNotEnoughError
 from ...utils import image
+from ..logger import EventLogger
 
 
 class WecomMessageConverter(adapter.MessageConverter):
@@ -134,10 +135,10 @@ class WecomAdapter(adapter.MessagePlatformAdapter):
     event_converter: WecomEventConverter = WecomEventConverter()
     config: dict
 
-    def __init__(self, config: dict, ap: app.Application):
+    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
         self.config = config
-
         self.ap = ap
+        self.logger = logger
 
         required_keys = [
             'corpid',
@@ -156,6 +157,7 @@ class WecomAdapter(adapter.MessagePlatformAdapter):
             token=config['token'],
             EncodingAESKey=config['EncodingAESKey'],
             contacts_secret=config['contacts_secret'],
+            logger=self.logger
         )
 
     async def reply_message(
@@ -199,8 +201,8 @@ class WecomAdapter(adapter.MessagePlatformAdapter):
             self.bot_account_id = event.receiver_id
             try:
                 return await callback(await self.event_converter.target2yiri(event), self)
-            except Exception:
-                traceback.print_exc()
+            except Exception as e:
+                await self.logger.error(f"Error in wecom callback: {traceback.format_exc()}")
 
         if event_type == platform_events.FriendMessage:
             self.bot.on_message('text')(on_message)
