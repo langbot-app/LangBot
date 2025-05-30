@@ -80,6 +80,7 @@ class N8nServiceAPIRunner(runner.RequestRunner):
         payload = {
             # 基本消息内容
             'message': plain_text,
+            'user_message_text': plain_text,
             'conversation_id': query.session.using_conversation.uuid,
             'session_id': query.variables.get('session_id', ''),
             'user_id': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
