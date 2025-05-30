@@ -1,6 +1,3 @@
-[tool.uv]
-index-url = "https://mirrors.aliyun.com/pypi/simple/"
-
 [project]
 name = "langbot"
 version = "4.0.3"
