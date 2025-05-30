@@ -211,89 +211,10 @@ export interface MarketPluginResponse {
 }
 
 interface GetPipelineConfig {
-  ai: {
-    'dashscope-app-api': {
-      'api-key': string;
-      'app-id': string;
-      'app-type': 'agent' | 'workflow';
-      'references-quote'?: string;
-    };
-    'dify-service-api': {
-      'api-key': string;
-      'app-type': 'chat' | 'agent' | 'workflow';
-      'base-url': string;
-      'thinking-convert': 'plain' | 'original' | 'remove';
-      timeout?: number;
-    };
-    'local-agent': {
-      'max-round': number;
-      model: string;
-      prompt: Array<{
-        content: string;
-        role: string;
-      }>;
-    };
-    'n8n-service-api': {
-      'webhook-url': string;
-      'auth-type': 'none' | 'basic' | 'jwt' | 'header';
-      'basic-username'?: string;
-      'basic-password'?: string;
-      'jwt-secret'?: string;
-      'jwt-algorithm'?: string;
-      'header-name'?: string;
-      'header-value'?: string;
-      'timeout'?: number;
-      'output-key'?: string;
-    };
-    runner: {
-      runner: 'local-agent' | 'dify-service-api' | 'dashscope-app-api' | 'n8n-service-api';
-    };
-  };
-  output: {
-    'force-delay': {
-      max: number;
-      min: number;
-    };
-    'long-text-processing': {
-      'font-path': string;
-      strategy: 'forward' | 'image';
-      threshold: number;
-    };
-    misc: {
-      'at-sender': boolean;
-      'hide-exception': boolean;
-      'quote-origin': boolean;
-      'track-function-calls': boolean;
-    };
-  };
-  safety: {
-    'content-filter': {
-      'check-sensitive-words': boolean;
-      scope: 'all' | 'income-msg' | 'output-msg';
-    };
-    'rate-limit': {
-      limitation: number;
-      strategy: 'drop' | 'wait';
-      'window-length': number;
-    };
-  };
-  trigger: {
-    'access-control': {
-      blacklist: string[];
-      mode: 'blacklist' | 'whitelist';
-      whitelist: string[];
-    };
-    'group-respond-rules': {
-      at: boolean;
-      prefix: string[];
-      random: number;
-      regexp: string[];
-    };
-    'ignore-rules': {
-      prefix: string[];
-      regexp: string[];
-    };
-  };
+  ai: {};
+  output: {};
+  safety: {};
+  trigger: {};
 }
 
 interface GetPipeline {
