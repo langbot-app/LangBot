@@ -80,16 +80,19 @@ class DingTalkClient:
         if download_url:
             return await self.download_url_to_base64(download_url)
 
+
     async def download_url_to_base64(self, download_url):
         async with httpx.AsyncClient() as client:
             response = await client.get(download_url)
 
             if response.status_code == 200:
                 file_bytes = response.content
-                base64_str = base64.b64encode(file_bytes).decode('utf-8')  # 返回字符串格式
-                return base64_str
+                mime_type = response.headers.get("Content-Type", "application/octet-stream")
+                base64_str = base64.b64encode(file_bytes).decode("utf-8")
+                return f"data:{mime_type};base64,{base64_str}"
             else:
                 await self.logger.error(f"failed to get files: {response.json()}")
+
 
     async def get_audio_url(self, download_code: str):
         if not await self.check_access_token():
