@@ -1,6 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { httpClient } from '@/app/infra/http/HttpClient';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
 
 interface DebugDialogProps {
   open: boolean;
@@ -113,144 +130,129 @@ export default function DebugDialog({
     }
   };
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl h-[80vh] flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b">
-          <div className="flex items-center gap-4">
-            <h2 className="text-lg font-semibold">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl h-[80vh] p-0 flex flex-col">
+        <DialogHeader className="px-6 pt-6 pb-4">
+          <div className="flex items-center justify-between">
+            <DialogTitle className="flex items-center gap-4">
               {t('pipelines.debugDialog.title')}
-            </h2>
-            <select
-              value={selectedPipelineId}
-              onChange={(e) => setSelectedPipelineId(e.target.value)}
-              className="px-3 py-1 border rounded-md text-sm"
-            >
-              {pipelines.map((pipeline) => (
-                <option key={pipeline.id} value={pipeline.id}>
-                  {pipeline.name}
-                </option>
-              ))}
-            </select>
+              <Select
+                value={selectedPipelineId}
+                onValueChange={setSelectedPipelineId}
+              >
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {pipelines.map((pipeline) => (
+                    <SelectItem key={pipeline.id} value={pipeline.id}>
+                      {pipeline.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </DialogTitle>
           </div>
-          <button
-            onClick={() => onOpenChange(false)}
-            className="text-gray-500 hover:text-gray-700"
-          >
-            <svg
-              className="w-6 h-6"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
+        </DialogHeader>
 
         <div className="flex flex-1 overflow-hidden">
-          <div className="w-48 border-r bg-gray-50 p-4">
+          <div className="w-48 border-r bg-muted p-4">
             <h3 className="font-medium mb-3">
               {t('pipelines.debugDialog.sessionType')}
             </h3>
             <div className="space-y-2">
-              <button
+              <Button
+                variant={sessionType === 'person' ? 'default' : 'outline'}
+                className="w-full justify-start"
                 onClick={() => setSessionType('person')}
-                className={`w-full text-left px-3 py-2 rounded-md text-sm ${
-                  sessionType === 'person'
-                    ? 'bg-blue-100 text-blue-700 border border-blue-300'
-                    : 'bg-white border border-gray-200 hover:bg-gray-50'
-                }`}
               >
                 {t('pipelines.debugDialog.privateChat')}
-              </button>
-              <button
+              </Button>
+              <Button
+                variant={sessionType === 'group' ? 'default' : 'outline'}
+                className="w-full justify-start"
                 onClick={() => setSessionType('group')}
-                className={`w-full text-left px-3 py-2 rounded-md text-sm ${
-                  sessionType === 'group'
-                    ? 'bg-blue-100 text-blue-700 border border-blue-300'
-                    : 'bg-white border border-gray-200 hover:bg-gray-50'
-                }`}
               >
                 {t('pipelines.debugDialog.groupChat')}
-              </button>
+              </Button>
             </div>
-            <button
+            <Button
+              variant="destructive"
+              className="w-full mt-4"
               onClick={resetSession}
-              className="w-full mt-4 px-3 py-2 bg-red-100 text-red-700 border border-red-300 rounded-md text-sm hover:bg-red-200"
             >
               {t('pipelines.debugDialog.reset')}
-            </button>
+            </Button>
           </div>
 
           <div className="flex-1 flex flex-col">
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {messages.length === 0 ? (
-                <div className="text-center text-gray-500 py-8">
-                  {t('pipelines.debugDialog.noMessages')}
-                </div>
-              ) : (
-                messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
+            <ScrollArea className="flex-1 p-4">
+              <div className="space-y-4">
+                {messages.length === 0 ? (
+                  <div className="text-center text-muted-foreground py-8">
+                    {t('pipelines.debugDialog.noMessages')}
+                  </div>
+                ) : (
+                  messages.map((message) => (
                     <div
-                      className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                      key={message.id}
+                      className={cn(
+                        'flex',
                         message.type === 'user'
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-gray-200 text-gray-800'
-                      }`}
+                          ? 'justify-end'
+                          : 'justify-start',
+                      )}
                     >
-                      <div className="text-sm">{message.content}</div>
                       <div
-                        className={`text-xs mt-1 ${
+                        className={cn(
+                          'max-w-xs lg:max-w-md px-4 py-2 rounded-lg',
                           message.type === 'user'
-                            ? 'text-blue-100'
-                            : 'text-gray-500'
-                        }`}
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted',
+                        )}
                       >
-                        {message.type === 'user'
-                          ? t('pipelines.debugDialog.userMessage')
-                          : t('pipelines.debugDialog.botMessage')}
+                        <div className="text-sm">{message.content}</div>
+                        <div
+                          className={cn(
+                            'text-xs mt-1',
+                            message.type === 'user'
+                              ? 'text-primary-foreground/70'
+                              : 'text-muted-foreground',
+                          )}
+                        >
+                          {message.type === 'user'
+                            ? t('pipelines.debugDialog.userMessage')
+                            : t('pipelines.debugDialog.botMessage')}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
-              )}
-              <div ref={messagesEndRef} />
-            </div>
+                  ))
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+            </ScrollArea>
 
             <div className="border-t p-4">
               <div className="flex gap-2">
-                <input
-                  type="text"
+                <Input
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder={t('pipelines.debugDialog.inputPlaceholder')}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={loading}
                 />
-                <button
+                <Button
                   onClick={sendMessage}
                   disabled={!inputValue.trim() || loading}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? '...' : t('pipelines.debugDialog.send')}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

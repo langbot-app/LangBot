@@ -1,12 +1,21 @@
 import styles from './pipelineCard.module.css';
 import { PipelineCardVO } from '@/app/home/pipelines/components/pipeline-card/PipelineCardVO';
 import { useTranslation } from 'react-i18next';
-import { useState } from 'react';
-import DebugDialog from './DebugDialog';
 
-export default function PipelineCard({ cardVO }: { cardVO: PipelineCardVO }) {
+export default function PipelineCard({
+  cardVO,
+  onDebug,
+}: {
+  cardVO: PipelineCardVO;
+  onDebug: (pipelineId: string) => void;
+}) {
   const { t } = useTranslation();
-  const [debugDialogOpen, setDebugDialogOpen] = useState(false);
+
+  const handleDebugClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDebug(cardVO.id);
+  };
+
   return (
     <div className={`${styles.cardContainer}`}>
       <div className={`${styles.basicInfoContainer}`}>
@@ -53,7 +62,7 @@ export default function PipelineCard({ cardVO }: { cardVO: PipelineCardVO }) {
         )}
         <button
           className={styles.debugButton}
-          onClick={() => setDebugDialogOpen(true)}
+          onClick={handleDebugClick}
           title={t('pipelines.debug')}
         >
           <svg
@@ -67,12 +76,6 @@ export default function PipelineCard({ cardVO }: { cardVO: PipelineCardVO }) {
           {t('pipelines.debug')}
         </button>
       </div>
-
-      <DebugDialog
-        open={debugDialogOpen}
-        onOpenChange={setDebugDialogOpen}
-        pipelineId={cardVO.id}
-      />
     </div>
   );
 }
