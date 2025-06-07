@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import quart
 
-from .. import group
+from ... import group
 
 
 @group.group_class('pipelines', '/api/v1/pipelines')
