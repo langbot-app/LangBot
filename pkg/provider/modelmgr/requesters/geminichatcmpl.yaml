@@ -14,7 +14,7 @@ spec:
         zh_Hans: 基础 URL
       type: string
       required: true
-      default: "https://generativelanguage.googleapis.com"
+      default: "https://generativelanguage.googleapis.com/v1beta/openai"
     - name: timeout
       label:
         en_US: Timeout

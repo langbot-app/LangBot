@@ -5,9 +5,9 @@ import sqlalchemy
 from ...entity.persistence import pipeline as persistence_pipeline
 
 
-@migration.migration_class(2)
-class DBMigrateCombineQuoteMsgConfig(migration.DBMigration):
-    """引用消息合并配置"""
+@migration.migration_class(3)
+class DBMigrateN8nConfig(migration.DBMigration):
+    """N8n配置"""
 
     async def upgrade(self):
         """升级"""
@@ -19,11 +19,19 @@ class DBMigrateCombineQuoteMsgConfig(migration.DBMigration):
 
             config = serialized_pipeline['config']
 
-            if 'misc' not in config['trigger']:
-                config['trigger']['misc'] = {}
-
-            if 'combine-quote-message' not in config['trigger']['misc']:
-                config['trigger']['misc']['combine-quote-message'] = False
+            if 'n8n-service-api' not in config['ai']:
+                config['ai']['n8n-service-api'] = {
+                    'webhook-url': 'http://your-n8n-webhook-url',
+                    'auth-type': 'none',
+                    'basic-username': '',
+                    'basic-password': '',
+                    'jwt-secret': '',
+                    'jwt-algorithm': 'HS256',
+                    'header-name': '',
+                    'header-value': '',
+                    'timeout': 120,
+                    'output-key': 'response',
+                }
 
             await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.update(persistence_pipeline.LegacyPipeline)

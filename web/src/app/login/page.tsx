@@ -61,19 +61,32 @@ export default function Login() {
   }, []);
 
   const judgeLanguage = () => {
-    // here's for user have never set the language
-    // judge the language by the browser
-    const language = navigator.language;
-    if (language) {
-      let lang = 'zh-Hans';
-      if (language === 'zh-CN') {
-        lang = 'zh-Hans';
-      } else {
-        lang = 'en-US';
-      }
+    if (i18n.language === 'zh-CN' || i18n.language === 'zh-Hans') {
+      setCurrentLanguage('zh-Hans');
+      localStorage.setItem('langbot_language', 'zh-Hans');
+    } else {
+      setCurrentLanguage('en-US');
+      localStorage.setItem('langbot_language', 'en-US');
+    }
+    // check if the language is already set
+    const lang = localStorage.getItem('langbot_language');
+    if (lang) {
       i18n.changeLanguage(lang);
       setCurrentLanguage(lang);
-      localStorage.setItem('langbot_language', lang);
+      return;
+    } else {
+      const language = navigator.language;
+      if (language) {
+        let lang = 'zh-Hans';
+        if (language === 'zh-CN') {
+          lang = 'zh-Hans';
+        } else {
+          lang = 'en-US';
+        }
+        i18n.changeLanguage(lang);
+        setCurrentLanguage(lang);
+        localStorage.setItem('langbot_language', lang);
+      }
     }
   };
 

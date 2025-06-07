@@ -45,11 +45,10 @@ dependencies = [
     "websockets>=15.0.1",
     "python-socks>=2.7.1", # dingtalk missing dependency
     "taskgroup==0.0.0a4", # graingert/taskgroup#20
-    "pip>=25.1.1", # pkg.core.bootutils.deps
-    "google-genai>=1.15.0",
-    "google-generativeai>=0.8.5",
+    "pip>=25.1.1",
     "ruff>=0.11.9",
     "pre-commit>=4.2.0",
+    "uv>=0.7.11",
 ]
 keywords = [
     "bot",
@@ -181,3 +180,4 @@ skip-magic-trailing-comma = false
 
 # Like Black, automatically detect the appropriate line ending.
 line-ending = "auto"
+

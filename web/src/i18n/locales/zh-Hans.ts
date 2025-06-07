@@ -198,6 +198,14 @@ const zhHans = {
       '你确定要删除这个流水线吗？已绑定此流水线的机器人将无法使用。',
     defaultPipelineCannotDelete: '默认流水线不可删除',
   },
+  register: {
+    title: '初始化 LangBot 👋',
+    description: '这是您首次启动 LangBot',
+    adminAccountNote: '您填写的邮箱和密码将作为初始管理员账号',
+    register: '注册',
+    initSuccess: '初始化成功 请登录',
+    initFailed: '初始化失败：',
+  },
 };
 
 export default zhHans;

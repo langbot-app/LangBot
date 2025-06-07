@@ -72,7 +72,7 @@ export default function PluginForm({
   };
 
   if (!pluginInfo || !pluginConfig) {
-    return <div>加载中...</div>;
+    return <div>{t('plugins.loading')}</div>;
   }
 
   function deletePlugin() {

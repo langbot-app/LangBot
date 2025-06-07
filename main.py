@@ -1,4 +1,5 @@
 import asyncio
+import argparse
 # LangBot 终端启动入口
 # 在此层级解决依赖项检查。
 # LangBot/main.py
@@ -16,6 +17,10 @@ asciiart = r"""
 
 
 async def main_entry(loop: asyncio.AbstractEventLoop):
+    parser = argparse.ArgumentParser(description='LangBot')
+    parser.add_argument('--skip-plugin-deps-check', action='store_true', help='跳过插件依赖项检查', default=False)
+    args = parser.parse_args()
+
     print(asciiart)
 
     import sys
@@ -39,7 +44,8 @@ async def main_entry(loop: asyncio.AbstractEventLoop):
         sys.exit(0)
 
     # check plugin deps
-    await deps.precheck_plugin_deps()
+    if not args.skip_plugin_deps_check:
+        await deps.precheck_plugin_deps()
 
     # 检查pydantic版本，如果没有 pydantic.v1，则把 pydantic 映射为 v1
     import pydantic.version

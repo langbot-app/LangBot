@@ -5,6 +5,7 @@ metadata:
   label:
     en_US: ppio 
     zh_Hans: 派欧云
+  icon: ppio.svg
 spec:
   config:
     - name: base_url

@@ -203,6 +203,15 @@ const enUS = {
       'Are you sure you want to delete this pipeline? Bots bound to this pipeline will not work.',
     defaultPipelineCannotDelete: 'Default pipeline cannot be deleted',
   },
+  register: {
+    title: 'Initialize LangBot 👋',
+    description: 'This is your first time starting LangBot',
+    adminAccountNote:
+      'The email and password you fill in will be used as the initial administrator account',
+    register: 'Register',
+    initSuccess: 'Initialization successful, please login',
+    initFailed: 'Initialization failed: ',
+  },
 };
 
 export default enUS;
