@@ -22,6 +22,8 @@ class WebChatAdapter(msadapter.MessagePlatformAdapter):
         typing.Callable[[platform_events.Event, msadapter.MessagePlatformAdapter], None],
     ] = {}
 
+    resp_waiters: dict[str, asyncio.Future[dict]] = {}
+
     def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
         self.ap = ap
         self.logger = logger
@@ -59,23 +61,28 @@ class WebChatAdapter(msadapter.MessagePlatformAdapter):
 
         await self.logger.info(f'Send message to {session_key}: {message}')
 
-        return {'success': True, 'message_id': message_data['id']}
+        return message_data
 
     async def reply_message(
         self,
-        message_source: platform_message.MessageChain,
+        message_source: platform_events.MessageEvent,
         message: platform_message.MessageChain,
         quote_origin: bool = False,
     ) -> dict:
         """回复消息"""
-        source_components = [comp for comp in message_source if isinstance(comp, platform_message.Source)]
-        if source_components:
-            source = source_components[0]
-            session_key = getattr(source, 'session_id', 'webchatperson')
-        else:
-            session_key = 'webchatperson'
+        session_key = message_source.sender.id
 
-        return await self.send_message('person', session_key, message)
+        message_data = await self.send_message(
+            'person' if isinstance(message_source, platform_events.FriendMessage) else 'group',
+            session_key,
+            message,
+        )
+
+        # notify waiter
+        if message_source.message_chain.message_id in self.resp_waiters:
+            self.resp_waiters[message_source.message_chain.message_id].set_result(message_data)
+
+        return message_data
 
     def register_listener(
         self,
@@ -110,7 +117,7 @@ class WebChatAdapter(msadapter.MessagePlatformAdapter):
 
     async def send_debug_message(
         self, pipeline_uuid: str, session_type: str, message_chain_obj: typing.List[dict]
-    ) -> None:
+    ) -> dict:
         """发送调试消息到流水线"""
         session_key = f'webchat{session_type}'
 
@@ -119,8 +126,12 @@ class WebChatAdapter(msadapter.MessagePlatformAdapter):
 
         message_chain = platform_message.MessageChain.parse_obj(message_chain_obj)
 
+        message_id = len(self.debug_messages[session_key]) + 1
+
+        message_chain.insert(0, platform_message.Source(id=message_id, time=datetime.now().timestamp()))
+
         user_message = {
-            'id': len(self.debug_messages[session_key]) + 1,
+            'id': message_id,
             'type': 'user',
             'content': str(message_chain),
             'timestamp': datetime.now().isoformat(),
@@ -146,7 +157,10 @@ class WebChatAdapter(msadapter.MessagePlatformAdapter):
         if event.__class__ in self.listeners:
             await self.listeners[event.__class__](event, self)
 
-        return None
+        # set waiter
+        self.resp_waiters[message_id] = asyncio.Future()
+        self.resp_waiters[message_id].add_done_callback(lambda future: self.resp_waiters.pop(message_id))
+        return await self.resp_waiters[message_id]
 
     def get_debug_messages(self, session_type: str) -> list[dict]:
         """获取调试消息历史"""

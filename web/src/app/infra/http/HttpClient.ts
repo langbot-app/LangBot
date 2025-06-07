@@ -301,6 +301,54 @@ class HttpClient {
     return this.delete(`/api/v1/pipelines/${uuid}`);
   }
 
+  // ============ Debug WebChat API ============
+  public sendWebChatMessage(
+    sessionType: string,
+    content: string,
+    pipelineId: string,
+  ): Promise<{
+    content: string;
+    id: number;
+    type: 'user' | 'bot';
+    message_chain: Array<object>;
+    timestamp: string;
+  }> {
+    return this.post(`/api/v1/pipelines/${pipelineId}/chat/send`, {
+      session_type: sessionType,
+      message: [
+        {
+          type: 'Plain',
+          text: content,
+        },
+      ],
+    });
+  }
+
+  public getWebChatHistoryMessages(
+    pipelineId: string,
+    sessionType: string,
+  ): Promise<{
+    messages: Array<{
+      id: number;
+      type: 'user' | 'bot';
+      content: string;
+      timestamp: string;
+    }>;
+  }> {
+    return this.get(
+      `/api/v1/pipelines/${pipelineId}/chat/messages/${sessionType}`,
+    );
+  }
+
+  public resetWebChatSession(
+    pipelineId: string,
+    sessionType: string,
+  ): Promise<{ message: string }> {
+    return this.post(
+      `/api/v1/pipelines/${pipelineId}/chat/reset/${sessionType}`,
+    );
+  }
+
   // ============ Platform API ============
   public getAdapters(): Promise<ApiRespPlatformAdapters> {
     return this.get('/api/v1/platform/adapters');
@@ -453,50 +501,11 @@ class HttpClient {
   public checkUserToken(): Promise<ApiRespUserToken> {
     return this.get('/api/v1/user/check-token');
   }
-
-  // ============ Debug WebChat API ============
-  public sendDebugMessage(
-    sessionType: string,
-    content: string,
-    pipelineId?: string,
-  ): Promise<{ success: boolean; message_id: number }> {
-    return this.post('/api/v1/debug/webchat/send', {
-      session_type: sessionType,
-      content,
-      pipeline_id: pipelineId,
-    });
-  }
-
-  public getDebugMessages(sessionType: string): Promise<{
-    messages: Array<{
-      id: number;
-      type: 'user' | 'bot';
-      content: string;
-      timestamp: string;
-    }>;
-  }> {
-    return this.get(`/api/v1/debug/webchat/messages/${sessionType}`);
-  }
-
-  public resetDebugSession(sessionType: string): Promise<{ message: string }> {
-    return this.post(`/api/v1/debug/webchat/reset/${sessionType}`);
-  }
-
-  public getDebugPipelines(): Promise<{
-    pipelines: Array<{
-      id: string;
-      name: string;
-      description: string;
-      is_default: boolean;
-    }>;
-  }> {
-    return this.get('/api/v1/debug/webchat/pipelines');
-  }
 }
 
 // export const httpClient = new HttpClient('https://event-log.langbot.dev');
-// export const httpClient = new HttpClient('http://localhost:5300');
-export const httpClient = new HttpClient('/');
+export const httpClient = new HttpClient('http://localhost:5300');
+// export const httpClient = new HttpClient('/');
 
 // 临时写法，未来两种Client都继承自HttpClient父类，不允许共享方法
 export const spaceClient = new HttpClient('https://space.langbot.app');

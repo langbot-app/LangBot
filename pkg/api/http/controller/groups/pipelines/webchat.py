@@ -77,25 +77,3 @@ class WebChatDebugRouterGroup(group.RouterGroup):
 
             except Exception as e:
                 return self.http_status(500, -1, f'Internal server error: {str(e)}')
-
-        @self.route('/pipelines', methods=['GET'])
-        async def get_pipelines() -> str:
-            """获取可用的流水线列表"""
-            try:
-                pipelines = await self.ap.pipeline_mgr.get_pipelines()
-
-                pipeline_list = []
-                for pipeline in pipelines:
-                    pipeline_list.append(
-                        {
-                            'id': pipeline.uuid,
-                            'name': pipeline.name,
-                            'description': pipeline.description,
-                            'is_default': pipeline.is_default,
-                        }
-                    )
-
-                return self.success(data={'pipelines': pipeline_list})
-
-            except Exception as e:
-                return self.http_status(500, -1, f'Internal server error: {str(e)}')

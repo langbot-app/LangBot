@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { Pipeline } from '@/app/infra/entities/api';
 
 interface DebugDialogProps {
   open: boolean;
@@ -30,13 +31,6 @@ interface Message {
   type: 'user' | 'bot';
   content: string;
   timestamp: string;
-}
-
-interface Pipeline {
-  id: string;
-  name: string;
-  description: string;
-  is_default: boolean;
 }
 
 export default function DebugDialog({
@@ -77,7 +71,7 @@ export default function DebugDialog({
 
   const loadPipelines = async () => {
     try {
-      const response = await httpClient.getDebugPipelines();
+      const response = await httpClient.getPipelines();
       setPipelines(response.pipelines);
     } catch (error) {
       console.error('Failed to load pipelines:', error);
@@ -86,7 +80,10 @@ export default function DebugDialog({
 
   const loadMessages = async () => {
     try {
-      const response = await httpClient.getDebugMessages(sessionType);
+      const response = await httpClient.getWebChatHistoryMessages(
+        selectedPipelineId,
+        sessionType,
+      );
       setMessages(response.messages);
     } catch (error) {
       console.error('Failed to load messages:', error);
@@ -98,11 +95,21 @@ export default function DebugDialog({
 
     setLoading(true);
     try {
-      await httpClient.sendDebugMessage(
+      const userMessage = {
+        id: 0,
+        type: 'user',
+        content: inputValue.trim(),
+        timestamp: new Date().toISOString(),
+      };
+
+      setMessages([...messages, userMessage as Message]);
+
+      const response = await httpClient.sendWebChatMessage(
         sessionType,
         inputValue.trim(),
         selectedPipelineId,
       );
+      setMessages([...messages, response]);
       setInputValue('');
       setTimeout(() => {
         loadMessages();
@@ -116,7 +123,7 @@ export default function DebugDialog({
 
   const resetSession = async () => {
     try {
-      await httpClient.resetDebugSession(sessionType);
+      await httpClient.resetWebChatSession(selectedPipelineId, sessionType);
       setMessages([]);
     } catch (error) {
       console.error('Failed to reset session:', error);
@@ -132,7 +139,7 @@ export default function DebugDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl h-[80vh] p-0 flex flex-col">
+      <DialogContent className="!max-w-[60vw] max-w-6xl h-[60vh] p-0 flex flex-col">
         <DialogHeader className="px-6 pt-6 pb-4">
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-4">
@@ -146,7 +153,7 @@ export default function DebugDialog({
                 </SelectTrigger>
                 <SelectContent>
                   {pipelines.map((pipeline) => (
-                    <SelectItem key={pipeline.id} value={pipeline.id}>
+                    <SelectItem key={pipeline.uuid} value={pipeline.uuid || ''}>
                       {pipeline.name}
                     </SelectItem>
                   ))}
@@ -186,7 +193,7 @@ export default function DebugDialog({
             </Button>
           </div>
 
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col w-[10rem]">
             <ScrollArea className="flex-1 p-4">
               <div className="space-y-4">
                 {messages.length === 0 ? (
