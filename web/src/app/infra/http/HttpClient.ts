@@ -453,6 +453,45 @@ class HttpClient {
   public checkUserToken(): Promise<ApiRespUserToken> {
     return this.get('/api/v1/user/check-token');
   }
+
+  // ============ Debug WebChat API ============
+  public sendDebugMessage(
+    sessionType: string,
+    content: string,
+    pipelineId?: string,
+  ): Promise<{ success: boolean; message_id: number }> {
+    return this.post('/api/v1/debug/webchat/send', {
+      session_type: sessionType,
+      content,
+      pipeline_id: pipelineId,
+    });
+  }
+
+  public getDebugMessages(sessionType: string): Promise<{
+    messages: Array<{
+      id: number;
+      type: 'user' | 'bot';
+      content: string;
+      timestamp: string;
+    }>;
+  }> {
+    return this.get(`/api/v1/debug/webchat/messages/${sessionType}`);
+  }
+
+  public resetDebugSession(sessionType: string): Promise<{ message: string }> {
+    return this.post(`/api/v1/debug/webchat/reset/${sessionType}`);
+  }
+
+  public getDebugPipelines(): Promise<{
+    pipelines: Array<{
+      id: string;
+      name: string;
+      description: string;
+      is_default: boolean;
+    }>;
+  }> {
+    return this.get('/api/v1/debug/webchat/pipelines');
+  }
 }
 
 // export const httpClient = new HttpClient('https://event-log.langbot.dev');

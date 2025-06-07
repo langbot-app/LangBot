@@ -66,13 +66,15 @@ class PersistenceManager:
 
         # write default pipeline
         result = await self.execute_async(sqlalchemy.select(pipeline.LegacyPipeline))
+        default_pipeline_uuid = None
         if result.first() is None:
             self.ap.logger.info('Creating default pipeline...')
 
             pipeline_config = json.load(open('templates/default-pipeline-config.json', 'r', encoding='utf-8'))
 
+            default_pipeline_uuid = str(uuid.uuid4())
             pipeline_data = {
-                'uuid': str(uuid.uuid4()),
+                'uuid': default_pipeline_uuid,
                 'for_version': self.ap.ver_mgr.get_current_version(),
                 'stages': pipeline_service.default_stage_order,
                 'is_default': True,
@@ -82,6 +84,33 @@ class PersistenceManager:
             }
 
             await self.execute_async(sqlalchemy.insert(pipeline.LegacyPipeline).values(pipeline_data))
+        else:
+            default_pipeline_result = await self.execute_async(
+                sqlalchemy.select(pipeline.LegacyPipeline).where(pipeline.LegacyPipeline.is_default == True)
+            )
+            default_pipeline_row = default_pipeline_result.first()
+            if default_pipeline_row:
+                default_pipeline_uuid = default_pipeline_row[0]
+
+        # write default webchat bot
+        from ..entity.persistence import bot as persistence_bot
+        result = await self.execute_async(
+            sqlalchemy.select(persistence_bot.Bot).where(persistence_bot.Bot.adapter == 'webchat')
+        )
+        if result.first() is None:
+            self.ap.logger.info('Creating default webchat bot...')
+
+            bot_data = {
+                'uuid': str(uuid.uuid4()),
+                'name': 'WebChat调试机器人',
+                'description': '用于流水线调试的WebChat适配器机器人',
+                'adapter': 'webchat',
+                'adapter_config': {},
+                'enable': True,
+                'use_pipeline_uuid': default_pipeline_uuid,
+            }
+
+            await self.execute_async(sqlalchemy.insert(persistence_bot.Bot).values(bot_data))
         # =================================
 
         # run migrations

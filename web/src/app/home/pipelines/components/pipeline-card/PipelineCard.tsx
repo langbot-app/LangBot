@@ -1,9 +1,12 @@
 import styles from './pipelineCard.module.css';
 import { PipelineCardVO } from '@/app/home/pipelines/components/pipeline-card/PipelineCardVO';
 import { useTranslation } from 'react-i18next';
+import { useState } from 'react';
+import DebugDialog from './DebugDialog';
 
 export default function PipelineCard({ cardVO }: { cardVO: PipelineCardVO }) {
   const { t } = useTranslation();
+  const [debugDialogOpen, setDebugDialogOpen] = useState(false);
   return (
     <div className={`${styles.cardContainer}`}>
       <div className={`${styles.basicInfoContainer}`}>
@@ -48,7 +51,28 @@ export default function PipelineCard({ cardVO }: { cardVO: PipelineCardVO }) {
             </div>
           </div>
         )}
+        <button
+          className={styles.debugButton}
+          onClick={() => setDebugDialogOpen(true)}
+          title={t('pipelines.debug')}
+        >
+          <svg
+            className={styles.debugButtonIcon}
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+          >
+            <path d="M12 2C13.1046 2 14 2.89543 14 4V5H20V7H19V8C19 9.10457 18.1046 10 17 10H16V11H20V13H16V14H17C18.1046 14 19 14.8954 19 16V17H20V19H14V20C14 21.1046 13.1046 22 12 22C10.8954 22 10 21.1046 10 20V19H4V17H5V16C5 14.8954 5.89543 14 7 14H8V13H4V11H8V10H7C5.89543 10 5 9.10457 5 8V7H4V5H10V4C10 2.89543 10.8954 2 12 2ZM12 4V6H10V8H14V6H12V4ZM8 16V18H16V16H8Z" />
+          </svg>
+          {t('pipelines.debug')}
+        </button>
       </div>
+
+      <DebugDialog
+        open={debugDialogOpen}
+        onOpenChange={setDebugDialogOpen}
+        pipelineId={cardVO.id}
+      />
     </div>
   );
 }
