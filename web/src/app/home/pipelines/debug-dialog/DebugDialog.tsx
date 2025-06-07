@@ -111,9 +111,6 @@ export default function DebugDialog({
       );
       setMessages([...messages, response]);
       setInputValue('');
-      setTimeout(() => {
-        loadMessages();
-      }, 500);
     } catch (error) {
       console.error('Failed to send message:', error);
     } finally {

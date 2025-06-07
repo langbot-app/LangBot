@@ -68,6 +68,8 @@
 .operationContainer {
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
   gap: 0.5rem;
   width: 8rem;
 }
@@ -99,27 +101,7 @@
   max-width: 100%;
 }
 
-.debugButton {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 12px;
-  background-color: #f3f4f6;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  color: #374151;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-.debugButton:hover {
-  background-color: #e5e7eb;
-  border-color: #9ca3af;
-}
-
 .debugButtonIcon {
-  width: 14px;
-  height: 14px;
+  width: 1.2rem;
+  height: 1.2rem;
 }

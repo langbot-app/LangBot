@@ -1,6 +1,7 @@
 import styles from './pipelineCard.module.css';
 import { PipelineCardVO } from '@/app/home/pipelines/components/pipeline-card/PipelineCardVO';
 import { useTranslation } from 'react-i18next';
+import { Button } from '@/components/ui/button';
 
 export default function PipelineCard({
   cardVO,
@@ -60,21 +61,22 @@ export default function PipelineCard({
             </div>
           </div>
         )}
-        <button
-          className={styles.debugButton}
+        <Button
+          variant="outline"
           onClick={handleDebugClick}
           title={t('pipelines.debug')}
+          className="mt-auto"
         >
           <svg
-            className={styles.debugButtonIcon}
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
             fill="currentColor"
+            className={styles.debugButtonIcon}
           >
-            <path d="M12 2C13.1046 2 14 2.89543 14 4V5H20V7H19V8C19 9.10457 18.1046 10 17 10H16V11H20V13H16V14H17C18.1046 14 19 14.8954 19 16V17H20V19H14V20C14 21.1046 13.1046 22 12 22C10.8954 22 10 21.1046 10 20V19H4V17H5V16C5 14.8954 5.89543 14 7 14H8V13H4V11H8V10H7C5.89543 10 5 9.10457 5 8V7H4V5H10V4C10 2.89543 10.8954 2 12 2ZM12 4V6H10V8H14V6H12V4ZM8 16V18H16V16H8Z" />
+            <path d="M13 19.9C15.2822 19.4367 17 17.419 17 15V12C17 11.299 16.8564 10.6219 16.5846 10H7.41538C7.14358 10.6219 7 11.299 7 12V15C7 17.419 8.71776 19.4367 11 19.9V14H13V19.9ZM5.5358 17.6907C5.19061 16.8623 5 15.9534 5 15H2V13H5V12C5 11.3573 5.08661 10.7348 5.2488 10.1436L3.0359 8.86602L4.0359 7.13397L6.05636 8.30049C6.11995 8.19854 6.18609 8.09835 6.25469 8H17.7453C17.8139 8.09835 17.88 8.19854 17.9436 8.30049L19.9641 7.13397L20.9641 8.86602L18.7512 10.1436C18.9134 10.7348 19 11.3573 19 12V13H22V15H19C19 15.9534 18.8094 16.8623 18.4642 17.6907L20.9641 19.134L19.9641 20.866L17.4383 19.4077C16.1549 20.9893 14.1955 22 12 22C9.80453 22 7.84512 20.9893 6.56171 19.4077L4.0359 20.866L3.0359 19.134L5.5358 17.6907ZM8 6C8 3.79086 9.79086 2 12 2C14.2091 2 16 3.79086 16 6H8Z"></path>
           </svg>
           {t('pipelines.debug')}
-        </button>
+        </Button>
       </div>
     </div>
   );
