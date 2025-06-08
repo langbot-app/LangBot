@@ -118,9 +118,11 @@ export default function DebugDialog({
       );
 
       setMessages((prevMessages) => [...prevMessages, response.message]);
-    } catch (error) {
-      toast.error(t('pipelines.debugDialog.sendFailed'));
+    } catch (error: any) {
       console.error('Failed to send message:', error);
+      if (!error.message.includes('timeout') && sessionType === 'person') {
+        toast.error(t('pipelines.debugDialog.sendFailed'));
+      }
     } finally {
       inputRef.current?.focus();
     }
