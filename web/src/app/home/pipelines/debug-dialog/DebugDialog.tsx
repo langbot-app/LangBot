@@ -141,10 +141,10 @@ export default function DebugDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-[60vw] max-w-6xl h-[60vh] p-0 flex flex-col">
-        <DialogHeader className="px-6 pt-6 pb-4">
+      <DialogContent className="!max-w-[60vw] max-w-6xl h-[60vh] p-0 flex flex-col rounded-2xl shadow-2xl bg-white">
+        <DialogHeader className="px-8 pt-8 pb-4">
           <div className="flex items-center justify-between">
-            <DialogTitle className="flex items-center gap-4">
+            <DialogTitle className="flex items-center gap-4 text-2xl font-bold">
               {t('pipelines.debugDialog.title')}
               <Select
                 value={selectedPipelineId}
@@ -153,12 +153,16 @@ export default function DebugDialog({
                   loadMessages();
                 }}
               >
-                <SelectTrigger className="w-[200px]">
+                <SelectTrigger className="bg-white">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="rounded-xl shadow-lg">
                   {pipelines.map((pipeline) => (
-                    <SelectItem key={pipeline.uuid} value={pipeline.uuid || ''}>
+                    <SelectItem
+                      key={pipeline.uuid}
+                      value={pipeline.uuid || ''}
+                      className="rounded-lg"
+                    >
                       {pipeline.name}
                     </SelectItem>
                   ))}
@@ -169,40 +173,39 @@ export default function DebugDialog({
         </DialogHeader>
 
         <div className="flex flex-1 h-full min-h-0">
-          <div className="w-48 border-r bg-muted p-4 h-full flex-shrink-0">
-            <h3 className="font-medium mb-3">
-              {t('pipelines.debugDialog.sessionType')}
-            </h3>
-            <div className="space-y-2">
+          <div className="w-56 bg-white border-r p-6 rounded-l-2xl shadow-md flex-shrink-0 flex flex-col justify-start gap-4">
+            <div className="flex flex-col gap-2">
               <Button
-                variant={sessionType === 'person' ? 'default' : 'outline'}
-                className="w-full justify-start"
+                variant="ghost"
+                className={`w-full justify-center rounded-md px-4 py-2 text-base text-sm font-medium transition-none ${
+                  sessionType === 'person'
+                    ? 'bg-blue-600 text-white hover:bg-blue-600 hover:text-white'
+                    : 'bg-white text-gray-800 hover:bg-gray-100'
+                } border-0 shadow-none`}
                 onClick={() => setSessionType('person')}
               >
                 {t('pipelines.debugDialog.privateChat')}
               </Button>
               <Button
-                variant={sessionType === 'group' ? 'default' : 'outline'}
-                className="w-full justify-start"
+                variant="ghost"
+                className={`w-full justify-center rounded-md px-4 py-2 text-base text-sm font-medium transition-none ${
+                  sessionType === 'group'
+                    ? 'bg-blue-600 text-white hover:bg-blue-600 hover:text-white'
+                    : 'bg-white text-gray-800 hover:bg-gray-100'
+                } border-0 shadow-none`}
                 onClick={() => setSessionType('group')}
               >
                 {t('pipelines.debugDialog.groupChat')}
               </Button>
             </div>
-            <Button
-              variant="destructive"
-              className="w-full mt-4"
-              onClick={resetSession}
-            >
-              {t('pipelines.debugDialog.reset')}
-            </Button>
+            <div className="flex-1" />
           </div>
 
           <div className="flex-1 flex flex-col w-[10rem] h-full min-h-0">
-            <ScrollArea className="flex-1 p-4 overflow-y-auto min-h-0">
-              <div className="space-y-4">
+            <ScrollArea className="flex-1 p-6 overflow-y-auto min-h-0 bg-white rounded-r-2xl">
+              <div className="space-y-6">
                 {messages.length === 0 ? (
-                  <div className="text-center text-muted-foreground py-8">
+                  <div className="text-center text-muted-foreground py-12 text-lg">
                     {t('pipelines.debugDialog.noMessages')}
                   </div>
                 ) : (
@@ -218,21 +221,21 @@ export default function DebugDialog({
                     >
                       <div
                         className={cn(
-                          'max-w-xs lg:max-w-md px-4 py-2 rounded-lg',
+                          'max-w-md px-5 py-3 rounded-2xl',
                           message.role === 'user'
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted',
+                            ? 'bg-blue-600 text-white rounded-br-none'
+                            : 'bg-gray-100 text-gray-900 rounded-bl-none',
                         )}
                       >
-                        <div className="text-sm whitespace-pre-wrap">
+                        <div className="text-base whitespace-pre-wrap leading-relaxed">
                           {message.content}
                         </div>
                         <div
                           className={cn(
-                            'text-xs mt-1',
+                            'text-xs mt-2',
                             message.role === 'user'
-                              ? 'text-primary-foreground/70'
-                              : 'text-muted-foreground',
+                              ? 'text-white/70'
+                              : 'text-gray-500',
                           )}
                         >
                           {message.role === 'user'
@@ -247,22 +250,40 @@ export default function DebugDialog({
               </div>
             </ScrollArea>
 
-            <div className="border-t p-4">
-              <div className="flex gap-2">
-                <Input
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder={t('pipelines.debugDialog.inputPlaceholder')}
-                  disabled={loading}
-                />
-                <Button
-                  onClick={sendMessage}
-                  disabled={!inputValue.trim() || loading}
-                >
-                  {loading ? '...' : t('pipelines.debugDialog.send')}
-                </Button>
-              </div>
+            <div className="border-t p-6 bg-white flex gap-2 rounded-b-2xl">
+              <Input
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder={t('pipelines.debugDialog.inputPlaceholder')}
+                disabled={loading}
+                className="flex-1 rounded-md px-3 py-2 border border-gray-300 focus:border-blue-600 transition-none text-base"
+              />
+              <Button
+                onClick={sendMessage}
+                disabled={!inputValue.trim() || loading}
+                className="rounded-md bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 text-base font-medium transition-none flex items-center gap-2 shadow-none"
+              >
+                {loading ? (
+                  <span>...</span>
+                ) : (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={1.5}
+                    stroke="currentColor"
+                    className="w-5 h-5 mr-1"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M3 12l18-6m0 0l-6 18m6-18L9.75 15.75"
+                    />
+                  </svg>
+                )}
+                {t('pipelines.debugDialog.send')}
+              </Button>
             </div>
           </div>
         </div>
