@@ -53,13 +53,13 @@ export default function DebugDialog({
     if (open) {
       setSelectedPipelineId(pipelineId);
       loadPipelines();
-      loadMessages();
+      loadMessages(pipelineId);
     }
   }, [open, pipelineId]);
 
   useEffect(() => {
     if (open) {
-      loadMessages();
+      loadMessages(selectedPipelineId);
     }
   }, [sessionType, selectedPipelineId]);
 
@@ -72,10 +72,10 @@ export default function DebugDialog({
     }
   };
 
-  const loadMessages = async () => {
+  const loadMessages = async (pipelineId: string) => {
     try {
       const response = await httpClient.getWebChatHistoryMessages(
-        selectedPipelineId,
+        pipelineId,
         sessionType,
       );
       setMessages(response.messages);
@@ -141,16 +141,16 @@ export default function DebugDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-[60vw] max-w-6xl h-[60vh] p-0 flex flex-col rounded-2xl shadow-2xl bg-white">
-        <DialogHeader className="px-8 pt-8 pb-4">
+      <DialogContent className="!max-w-[70vw] max-w-6xl h-[70vh] p-6 flex flex-col rounded-2xl shadow-2xl bg-white">
+        <DialogHeader className="pl-2">
           <div className="flex items-center justify-between">
-            <DialogTitle className="flex items-center gap-4 text-2xl font-bold">
+            <DialogTitle className="flex items-center gap-4 font-bold">
               {t('pipelines.debugDialog.title')}
               <Select
                 value={selectedPipelineId}
                 onValueChange={(value) => {
                   setSelectedPipelineId(value);
-                  loadMessages();
+                  loadMessages(value);
                 }}
               >
                 <SelectTrigger className="bg-white">
@@ -171,15 +171,14 @@ export default function DebugDialog({
             </DialogTitle>
           </div>
         </DialogHeader>
-
-        <div className="flex flex-1 h-full min-h-0">
-          <div className="w-56 bg-white border-r p-6 rounded-l-2xl shadow-md flex-shrink-0 flex flex-col justify-start gap-4">
+        <div className="flex flex-1 h-full min-h-0 border-t">
+          <div className="w-56 bg-white border-r p-6 rounded-l-2xl flex-shrink-0 flex flex-col justify-start gap-4">
             <div className="flex flex-col gap-2">
               <Button
                 variant="ghost"
-                className={`w-full justify-center rounded-md px-4 py-2 text-base text-sm font-medium transition-none ${
+                className={`w-full justify-center rounded-md px-4 py-6 text-base font-medium transition-none ${
                   sessionType === 'person'
-                    ? 'bg-blue-600 text-white hover:bg-blue-600 hover:text-white'
+                    ? 'bg-[#2288ee] text-white hover:bg-[#2288ee] hover:text-white'
                     : 'bg-white text-gray-800 hover:bg-gray-100'
                 } border-0 shadow-none`}
                 onClick={() => setSessionType('person')}
@@ -188,9 +187,9 @@ export default function DebugDialog({
               </Button>
               <Button
                 variant="ghost"
-                className={`w-full justify-center rounded-md px-4 py-2 text-base text-sm font-medium transition-none ${
+                className={`w-full justify-center rounded-md px-4 py-6 text-base font-medium transition-none ${
                   sessionType === 'group'
-                    ? 'bg-blue-600 text-white hover:bg-blue-600 hover:text-white'
+                    ? 'bg-[#2288ee] text-white hover:bg-[#2288ee] hover:text-white'
                     : 'bg-white text-gray-800 hover:bg-gray-100'
                 } border-0 shadow-none`}
                 onClick={() => setSessionType('group')}
@@ -211,7 +210,7 @@ export default function DebugDialog({
                 ) : (
                   messages.map((message) => (
                     <div
-                      key={message.id}
+                      key={message.id + message.timestamp}
                       className={cn(
                         'flex',
                         message.role === 'user'
@@ -223,7 +222,7 @@ export default function DebugDialog({
                         className={cn(
                           'max-w-md px-5 py-3 rounded-2xl',
                           message.role === 'user'
-                            ? 'bg-blue-600 text-white rounded-br-none'
+                            ? 'bg-[#2288ee] text-white rounded-br-none'
                             : 'bg-gray-100 text-gray-900 rounded-bl-none',
                         )}
                       >
@@ -250,19 +249,19 @@ export default function DebugDialog({
               </div>
             </ScrollArea>
 
-            <div className="border-t p-6 bg-white flex gap-2 rounded-b-2xl">
+            <div className="border-t p-4 pb-0 bg-white flex gap-2 ">
               <Input
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder={t('pipelines.debugDialog.inputPlaceholder')}
                 disabled={loading}
-                className="flex-1 rounded-md px-3 py-2 border border-gray-300 focus:border-blue-600 transition-none text-base"
+                className="flex-1 rounded-md px-3 py-2 border border-gray-300 focus:border-[#2288ee] transition-none text-base"
               />
               <Button
                 onClick={sendMessage}
                 disabled={!inputValue.trim() || loading}
-                className="rounded-md bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 text-base font-medium transition-none flex items-center gap-2 shadow-none"
+                className="rounded-md bg-[#2288ee] hover:bg-[#2288ee] text-white px-6 py-2 text-base font-medium transition-none flex items-center gap-2 shadow-none"
               >
                 {loading ? (
                   <span>...</span>
