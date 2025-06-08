@@ -1,6 +1,5 @@
 import { Badge } from '@/components/ui/badge';
 import { X } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
 
 interface AtBadgeProps {
   targetName: string;
@@ -13,7 +12,6 @@ export default function AtBadge({
   readonly = false,
   onRemove,
 }: AtBadgeProps) {
-  const { t } = useTranslation();
   return (
     <Badge
       variant="secondary"

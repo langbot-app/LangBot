@@ -22,11 +22,6 @@ import { Pipeline } from '@/app/infra/entities/api';
 import { Message } from '@/app/infra/entities/message';
 import { toast } from 'sonner';
 import AtBadge from './AtBadge';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
 
 interface MessageComponent {
   type: 'At' | 'Plain';
@@ -206,8 +201,13 @@ export default function DebugDialog({
       );
 
       setMessages((prevMessages) => [...prevMessages, response.message]);
-    } catch (error: any) {
+    } catch (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      error: any
+    ) {
+      console.log(error, 'type of error', typeof error);
       console.error('Failed to send message:', error);
+
       if (!error.message.includes('timeout') && sessionType === 'person') {
         toast.error(t('pipelines.debugDialog.sendFailed'));
       }
@@ -216,14 +216,14 @@ export default function DebugDialog({
     }
   };
 
-  const resetSession = async () => {
-    try {
-      await httpClient.resetWebChatSession(selectedPipelineId, sessionType);
-      setMessages([]);
-    } catch (error) {
-      console.error('Failed to reset session:', error);
-    }
-  };
+  // const resetSession = async () => {
+  //   try {
+  //     await httpClient.resetWebChatSession(selectedPipelineId, sessionType);
+  //     setMessages([]);
+  //   } catch (error) {
+  //     console.error('Failed to reset session:', error);
+  //   }
+  // };
 
   const renderMessageContent = (message: Message) => {
     return (
