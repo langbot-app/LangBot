@@ -21,6 +21,12 @@ import { cn } from '@/lib/utils';
 import { Pipeline } from '@/app/infra/entities/api';
 import { Message } from '@/app/infra/entities/message';
 import { toast } from 'sonner';
+import AtBadge from './AtBadge';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 
 interface DebugDialogProps {
   open: boolean;
@@ -39,8 +45,11 @@ export default function DebugDialog({
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [showAtPopover, setShowAtPopover] = useState(false);
+  const [hasAt, setHasAt] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -64,6 +73,23 @@ export default function DebugDialog({
     }
   }, [sessionType, selectedPipelineId]);
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        popoverRef.current &&
+        !popoverRef.current.contains(event.target as Node) &&
+        !inputRef.current?.contains(event.target as Node)
+      ) {
+        setShowAtPopover(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   const loadPipelines = async () => {
     try {
       const response = await httpClient.getPipelines();
@@ -85,34 +111,64 @@ export default function DebugDialog({
     }
   };
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (sessionType === 'group' && value.endsWith('@')) {
+      setShowAtPopover(true);
+    }
+    setInputValue(value);
+  };
+
+  const handleAtSelect = () => {
+    setHasAt(true);
+    setShowAtPopover(false);
+    setInputValue(inputValue.slice(0, -1));
+  };
+
+  const handleAtRemove = () => {
+    setHasAt(false);
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    } else if (e.key === 'Backspace' && hasAt && inputValue === '') {
+      handleAtRemove();
+    }
+  };
+
   const sendMessage = async () => {
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() && !hasAt) return;
 
     try {
+      const messageChain = [];
+      if (hasAt) {
+        messageChain.push({
+          type: 'At',
+          target: 'webchatbot',
+        });
+      }
+      messageChain.push({
+        type: 'Plain',
+        text: inputValue.trim(),
+      });
+
       const userMessage: Message = {
         id: -1,
         role: 'user',
         content: inputValue.trim(),
         timestamp: new Date().toISOString(),
-        message_chain: [
-          {
-            type: 'Plain',
-            text: inputValue.trim(),
-          },
-        ],
+        message_chain: messageChain,
       };
 
       setMessages((prevMessages) => [...prevMessages, userMessage]);
       setInputValue('');
+      setHasAt(false);
 
       const response = await httpClient.sendWebChatMessage(
         sessionType,
-        [
-          {
-            type: 'Plain',
-            text: inputValue.trim(),
-          },
-        ],
+        messageChain,
         selectedPipelineId,
         120000,
       );
@@ -134,13 +190,6 @@ export default function DebugDialog({
       setMessages([]);
     } catch (error) {
       console.error('Failed to reset session:', error);
-    }
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
     }
   };
 
@@ -268,18 +317,36 @@ export default function DebugDialog({
               </div>
             </ScrollArea>
 
-            <div className="border-t p-4 pb-0 bg-white flex gap-2 ">
-              <Input
-                ref={inputRef}
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder={t('pipelines.debugDialog.inputPlaceholder')}
-                className="flex-1 rounded-md px-3 py-2 border border-gray-300 focus:border-[#2288ee] transition-none text-base"
-              />
+            <div className="border-t p-4 pb-0 bg-white flex gap-2">
+              <div className="flex-1 flex items-center gap-2">
+                {hasAt && <AtBadge onRemove={handleAtRemove} />}
+                <div className="relative flex-1">
+                  <Input
+                    ref={inputRef}
+                    value={inputValue}
+                    onChange={handleInputChange}
+                    onKeyPress={handleKeyPress}
+                    placeholder={t('pipelines.debugDialog.inputPlaceholder')}
+                    className="flex-1 rounded-md px-3 py-2 border border-gray-300 focus:border-[#2288ee] transition-none text-base"
+                  />
+                  {showAtPopover && (
+                    <div
+                      ref={popoverRef}
+                      className="absolute bottom-full left-0 mb-2 w-48 rounded-md border bg-white shadow-lg"
+                    >
+                      <div
+                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-100 cursor-pointer"
+                        onClick={handleAtSelect}
+                      >
+                        <span>@WebChatBot</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
               <Button
                 onClick={sendMessage}
-                disabled={!inputValue.trim()}
+                disabled={!inputValue.trim() && !hasAt}
                 className="rounded-md bg-[#2288ee] hover:bg-[#2288ee] w-20 text-white px-6 py-2 text-base font-medium transition-none flex items-center gap-2 shadow-none"
               >
                 <>{t('pipelines.debugDialog.send')}</>
