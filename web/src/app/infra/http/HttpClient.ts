@@ -494,9 +494,15 @@ class HttpClient {
   }
 }
 
-// export const httpClient = new HttpClient('https://event-log.langbot.dev');
-// export const httpClient = new HttpClient('http://localhost:5300');
-export const httpClient = new HttpClient('/');
+const getBaseURL = (): string => {
+  if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_BASE_URL) {
+    return process.env.NEXT_PUBLIC_API_BASE_URL;
+  }
+
+  return '/';
+};
+
+export const httpClient = new HttpClient(getBaseURL());
 
 // 临时写法，未来两种Client都继承自HttpClient父类，不允许共享方法
 export const spaceClient = new HttpClient('https://space.langbot.app');
