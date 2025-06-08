@@ -19,18 +19,12 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { Pipeline } from '@/app/infra/entities/api';
+import { Message } from '@/app/infra/entities/message';
 
 interface DebugDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   pipelineId: string;
-}
-
-interface Message {
-  id: number;
-  type: 'user' | 'bot';
-  content: string;
-  timestamp: string;
 }
 
 export default function DebugDialog({
@@ -59,13 +53,13 @@ export default function DebugDialog({
     if (open) {
       setSelectedPipelineId(pipelineId);
       loadPipelines();
-      loadMessages();
+      // loadMessages();
     }
   }, [open, pipelineId]);
 
   useEffect(() => {
     if (open) {
-      loadMessages();
+      // loadMessages();
     }
   }, [sessionType]);
 
@@ -78,17 +72,17 @@ export default function DebugDialog({
     }
   };
 
-  const loadMessages = async () => {
-    try {
-      const response = await httpClient.getWebChatHistoryMessages(
-        selectedPipelineId,
-        sessionType,
-      );
-      setMessages(response.messages);
-    } catch (error) {
-      console.error('Failed to load messages:', error);
-    }
-  };
+  // const loadMessages = async () => {
+  //   try {
+  //     const response = await httpClient.getWebChatHistoryMessages(
+  //       selectedPipelineId,
+  //       sessionType,
+  //     );
+  //     setMessages(response);
+  //   } catch (error) {
+  //     console.error('Failed to load messages:', error);
+  //   }
+  // };
 
   const sendMessage = async () => {
     if (!inputValue.trim() || loading) return;
@@ -97,7 +91,7 @@ export default function DebugDialog({
     try {
       const userMessage = {
         id: 0,
-        type: 'user',
+        role: 'user',
         content: inputValue.trim(),
         timestamp: new Date().toISOString(),
       };
@@ -109,7 +103,7 @@ export default function DebugDialog({
         inputValue.trim(),
         selectedPipelineId,
       );
-      setMessages([...messages, response]);
+      setMessages([...messages, response.message]);
       setInputValue('');
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -203,7 +197,7 @@ export default function DebugDialog({
                       key={message.id}
                       className={cn(
                         'flex',
-                        message.type === 'user'
+                        message.role === 'user'
                           ? 'justify-end'
                           : 'justify-start',
                       )}
@@ -211,7 +205,7 @@ export default function DebugDialog({
                       <div
                         className={cn(
                           'max-w-xs lg:max-w-md px-4 py-2 rounded-lg',
-                          message.type === 'user'
+                          message.role === 'user'
                             ? 'bg-primary text-primary-foreground'
                             : 'bg-muted',
                         )}
@@ -220,12 +214,12 @@ export default function DebugDialog({
                         <div
                           className={cn(
                             'text-xs mt-1',
-                            message.type === 'user'
+                            message.role === 'user'
                               ? 'text-primary-foreground/70'
                               : 'text-muted-foreground',
                           )}
                         >
-                          {message.type === 'user'
+                          {message.role === 'user'
                             ? t('pipelines.debugDialog.userMessage')
                             : t('pipelines.debugDialog.botMessage')}
                         </div>

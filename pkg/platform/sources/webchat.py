@@ -3,6 +3,8 @@ import logging
 import typing
 from datetime import datetime
 
+from pydantic import BaseModel
+
 from .. import adapter as msadapter
 from ..types import events as platform_events, message as platform_message, entities as platform_entities
 from ...core import app
@@ -11,31 +13,49 @@ from ..logger import EventLogger
 logger = logging.getLogger(__name__)
 
 
+class WebChatMessage(BaseModel):
+    id: int
+    role: str
+    content: str
+    message_chain: list[dict]
+    timestamp: str
+
+
+class WebChatSession:
+    id: str
+    message_lists: dict[str, list[WebChatMessage]] = {}
+    resp_waiters: dict[int, asyncio.Future[WebChatMessage]]
+
+    def __init__(self, id: str):
+        self.id = id
+        self.message_lists = {}
+        self.resp_waiters = {}
+
+    def get_message_list(self, pipeline_uuid: str) -> list[WebChatMessage]:
+        if pipeline_uuid not in self.message_lists:
+            self.message_lists[pipeline_uuid] = []
+
+        return self.message_lists[pipeline_uuid]
+
+
 class WebChatAdapter(msadapter.MessagePlatformAdapter):
     """WebChat调试适配器，用于流水线调试"""
 
-    debug_messages: dict[str, list[dict]]
-    debug_sessions: dict[str, dict]
+    webchat_person_session: WebChatSession
+    webchat_group_session: WebChatSession
 
     listeners: typing.Dict[
         typing.Type[platform_events.Event],
         typing.Callable[[platform_events.Event, msadapter.MessagePlatformAdapter], None],
     ] = {}
 
-    resp_waiters: dict[str, asyncio.Future[dict]] = {}
-
     def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
         self.ap = ap
         self.logger = logger
         self.config = config
-        self.debug_messages = {}
-        self.debug_sessions = {}
 
-        self.debug_sessions['webchatperson'] = {'type': 'person', 'id': 'webchatperson', 'name': '调试私聊'}
-        self.debug_sessions['webchatgroup'] = {'type': 'group', 'id': 'webchatgroup', 'name': '调试群聊'}
-
-        self.debug_messages['webchatperson'] = []
-        self.debug_messages['webchatgroup'] = []
+        self.webchat_person_session = WebChatSession(id='webchatperson')
+        self.webchat_group_session = WebChatSession(id='webchatgroup')
 
     async def send_message(
         self,
@@ -70,19 +90,21 @@ class WebChatAdapter(msadapter.MessagePlatformAdapter):
         quote_origin: bool = False,
     ) -> dict:
         """回复消息"""
-        session_key = message_source.sender.id
-
-        message_data = await self.send_message(
-            'person' if isinstance(message_source, platform_events.FriendMessage) else 'group',
-            session_key,
-            message,
+        message_data = WebChatMessage(
+            id=message_source.message_chain.message_id,
+            role='assistant',
+            content=str(message),
+            message_chain=[component.__dict__ for component in message],
+            timestamp=datetime.now().isoformat(),
         )
 
         # notify waiter
-        if message_source.message_chain.message_id in self.resp_waiters:
-            self.resp_waiters[message_source.message_chain.message_id].set_result(message_data)
+        if isinstance(message_source, platform_events.FriendMessage):
+            self.webchat_person_session.resp_waiters[message_source.message_chain.message_id].set_result(message_data)
+        elif isinstance(message_source, platform_events.GroupMessage):
+            self.webchat_group_session.resp_waiters[message_source.message_chain.message_id].set_result(message_data)
 
-        return message_data
+        return message_data.model_dump()
 
     def register_listener(
         self,
@@ -115,30 +137,30 @@ class WebChatAdapter(msadapter.MessagePlatformAdapter):
         """停止适配器"""
         await self.logger.info('WebChat调试适配器正在停止')
 
-    async def send_debug_message(
+    async def send_webchat_message(
         self, pipeline_uuid: str, session_type: str, message_chain_obj: typing.List[dict]
     ) -> dict:
         """发送调试消息到流水线"""
-        session_key = f'webchat{session_type}'
-
-        if session_key not in self.debug_messages:
-            self.debug_messages[session_key] = []
+        if session_type == 'person':
+            use_session = self.webchat_person_session
+        else:
+            use_session = self.webchat_group_session
 
         message_chain = platform_message.MessageChain.parse_obj(message_chain_obj)
 
-        message_id = len(self.debug_messages[session_key]) + 1
+        message_id = len(use_session.get_message_list(pipeline_uuid)) + 1
+
+        use_session.get_message_list(pipeline_uuid).append(
+            WebChatMessage(
+                id=message_id,
+                role='user',
+                content=str(message_chain),
+                message_chain=message_chain_obj,
+                timestamp=datetime.now().isoformat(),
+            )
+        )
 
         message_chain.insert(0, platform_message.Source(id=message_id, time=datetime.now().timestamp()))
-
-        user_message = {
-            'id': message_id,
-            'type': 'user',
-            'content': str(message_chain),
-            'timestamp': datetime.now().isoformat(),
-            'message_chain_obj': message_chain_obj,
-        }
-
-        self.debug_messages[session_key].append(user_message)
 
         if session_type == 'person':
             sender = platform_entities.Friend(id='webchatperson', nickname='User')
@@ -158,16 +180,19 @@ class WebChatAdapter(msadapter.MessagePlatformAdapter):
             await self.listeners[event.__class__](event, self)
 
         # set waiter
-        self.resp_waiters[message_id] = asyncio.Future()
-        self.resp_waiters[message_id].add_done_callback(lambda future: self.resp_waiters.pop(message_id))
-        return await self.resp_waiters[message_id]
+        waiter = asyncio.Future[WebChatMessage]()
+        use_session.resp_waiters[message_id] = waiter
+        waiter.add_done_callback(lambda future: use_session.resp_waiters.pop(message_id))
 
-    def get_debug_messages(self, session_type: str) -> list[dict]:
+        resp_message = await waiter
+
+        use_session.get_message_list(pipeline_uuid).append(resp_message)
+
+        return resp_message.model_dump()
+
+    def get_webchat_messages(self, pipeline_uuid: str, session_type: str) -> list[dict]:
         """获取调试消息历史"""
-        session_key = f'webchat{session_type}'
-        return self.debug_messages.get(session_key, [])
-
-    def reset_debug_session(self, session_type: str):
-        """重置调试会话"""
-        session_key = f'webchat{session_type}'
-        self.debug_messages[session_key] = []
+        if session_type == 'person':
+            return [message.model_dump() for message in self.webchat_person_session.get_message_list(pipeline_uuid)]
+        else:
+            return [message.model_dump() for message in self.webchat_group_session.get_message_list(pipeline_uuid)]

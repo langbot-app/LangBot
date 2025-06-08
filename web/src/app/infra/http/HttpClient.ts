@@ -29,6 +29,7 @@ import {
   GetPipelineResponseData,
   GetPipelineMetadataResponseData,
   AsyncTask,
+  ApiRespWebChatMessage,
 } from '@/app/infra/entities/api';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
@@ -306,13 +307,7 @@ class HttpClient {
     sessionType: string,
     content: string,
     pipelineId: string,
-  ): Promise<{
-    content: string;
-    id: number;
-    type: 'user' | 'bot';
-    message_chain: Array<object>;
-    timestamp: string;
-  }> {
+  ): Promise<ApiRespWebChatMessage> {
     return this.post(`/api/v1/pipelines/${pipelineId}/chat/send`, {
       session_type: sessionType,
       message: [
@@ -327,14 +322,7 @@ class HttpClient {
   public getWebChatHistoryMessages(
     pipelineId: string,
     sessionType: string,
-  ): Promise<{
-    messages: Array<{
-      id: number;
-      type: 'user' | 'bot';
-      content: string;
-      timestamp: string;
-    }>;
-  }> {
+  ): Promise<ApiRespWebChatMessage[]> {
     return this.get(
       `/api/v1/pipelines/${pipelineId}/chat/messages/${sessionType}`,
     );

@@ -25,30 +25,30 @@ class WebChatDebugRouterGroup(group.RouterGroup):
                 if not webchat_adapter:
                     return self.http_status(404, -1, 'WebChat adapter not found')
 
-                result = await webchat_adapter.send_debug_message(pipeline_uuid, session_type, message_chain_obj)
+                result = await webchat_adapter.send_webchat_message(pipeline_uuid, session_type, message_chain_obj)
 
-                return self.success(data=result)
+                return self.success(
+                    data={
+                        'message': result,
+                    }
+                )
 
             except Exception as e:
                 return self.http_status(500, -1, f'Internal server error: {str(e)}')
 
         @self.route('/messages/<session_type>', methods=['GET'])
-        async def get_messages(session_type: str) -> str:
+        async def get_messages(pipeline_uuid: str, session_type: str) -> str:
             """获取调试消息历史"""
             try:
                 if session_type not in ['person', 'group']:
                     return self.http_status(400, -1, 'session_type must be person or group')
 
-                webchat_adapter = None
-                for bot in self.ap.platform_mgr.bots:
-                    if hasattr(bot.adapter, '__class__') and bot.adapter.__class__.__name__ == 'WebChatAdapter':
-                        webchat_adapter = bot.adapter
-                        break
+                webchat_adapter = self.ap.platform_mgr.webchat_proxy_bot.adapter
 
                 if not webchat_adapter:
                     return self.http_status(404, -1, 'WebChat adapter not found')
 
-                messages = webchat_adapter.get_debug_messages(session_type)
+                messages = webchat_adapter.get_webchat_messages(pipeline_uuid, session_type)
 
                 return self.success(data={'messages': messages})
 
