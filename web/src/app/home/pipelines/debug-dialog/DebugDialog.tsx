@@ -53,15 +53,15 @@ export default function DebugDialog({
     if (open) {
       setSelectedPipelineId(pipelineId);
       loadPipelines();
-      // loadMessages();
+      loadMessages();
     }
   }, [open, pipelineId]);
 
   useEffect(() => {
     if (open) {
-      // loadMessages();
+      loadMessages();
     }
-  }, [sessionType]);
+  }, [sessionType, selectedPipelineId]);
 
   const loadPipelines = async () => {
     try {
@@ -72,39 +72,49 @@ export default function DebugDialog({
     }
   };
 
-  // const loadMessages = async () => {
-  //   try {
-  //     const response = await httpClient.getWebChatHistoryMessages(
-  //       selectedPipelineId,
-  //       sessionType,
-  //     );
-  //     setMessages(response);
-  //   } catch (error) {
-  //     console.error('Failed to load messages:', error);
-  //   }
-  // };
+  const loadMessages = async () => {
+    try {
+      const response = await httpClient.getWebChatHistoryMessages(
+        selectedPipelineId,
+        sessionType,
+      );
+      setMessages(response.messages);
+    } catch (error) {
+      console.error('Failed to load messages:', error);
+    }
+  };
 
   const sendMessage = async () => {
     if (!inputValue.trim() || loading) return;
 
     setLoading(true);
     try {
-      const userMessage = {
-        id: 0,
+      const userMessage: Message = {
+        id: -1,
         role: 'user',
         content: inputValue.trim(),
         timestamp: new Date().toISOString(),
+        message_chain: [
+          {
+            type: 'Plain',
+            text: inputValue.trim(),
+          },
+        ],
       };
 
-      setMessages([...messages, userMessage as Message]);
+      setMessages([...messages, userMessage]);
+
+      console.log(messages);
+
+      setInputValue('');
 
       const response = await httpClient.sendWebChatMessage(
         sessionType,
         inputValue.trim(),
         selectedPipelineId,
       );
-      setMessages([...messages, response.message]);
-      setInputValue('');
+      console.log(messages);
+      setMessages([...messages, userMessage, response.message]);
     } catch (error) {
       console.error('Failed to send message:', error);
     } finally {
@@ -137,7 +147,10 @@ export default function DebugDialog({
               {t('pipelines.debugDialog.title')}
               <Select
                 value={selectedPipelineId}
-                onValueChange={setSelectedPipelineId}
+                onValueChange={(value) => {
+                  setSelectedPipelineId(value);
+                  loadMessages();
+                }}
               >
                 <SelectTrigger className="w-[200px]">
                   <SelectValue />

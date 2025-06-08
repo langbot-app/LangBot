@@ -91,7 +91,7 @@ class WebChatAdapter(msadapter.MessagePlatformAdapter):
     ) -> dict:
         """回复消息"""
         message_data = WebChatMessage(
-            id=message_source.message_chain.message_id,
+            id=-1,
             role='assistant',
             content=str(message),
             message_chain=[component.__dict__ for component in message],
@@ -185,6 +185,8 @@ class WebChatAdapter(msadapter.MessagePlatformAdapter):
         waiter.add_done_callback(lambda future: use_session.resp_waiters.pop(message_id))
 
         resp_message = await waiter
+
+        resp_message.id = len(use_session.get_message_list(pipeline_uuid)) + 1
 
         use_session.get_message_list(pipeline_uuid).append(resp_message)
 

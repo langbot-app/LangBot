@@ -233,3 +233,7 @@ export interface GetPipelineMetadataResponseData {
 export interface ApiRespWebChatMessage {
   message: Message;
 }
+
+export interface ApiRespWebChatMessages {
+  messages: Message[];
+}

@@ -30,6 +30,7 @@ import {
   GetPipelineMetadataResponseData,
   AsyncTask,
   ApiRespWebChatMessage,
+  ApiRespWebChatMessages,
 } from '@/app/infra/entities/api';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
@@ -322,7 +323,7 @@ class HttpClient {
   public getWebChatHistoryMessages(
     pipelineId: string,
     sessionType: string,
-  ): Promise<ApiRespWebChatMessage[]> {
+  ): Promise<ApiRespWebChatMessages> {
     return this.get(
       `/api/v1/pipelines/${pipelineId}/chat/messages/${sessionType}`,
     );
