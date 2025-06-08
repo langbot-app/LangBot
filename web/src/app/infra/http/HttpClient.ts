@@ -306,7 +306,7 @@ class HttpClient {
   // ============ Debug WebChat API ============
   public sendWebChatMessage(
     sessionType: string,
-    content: string,
+    messageChain: object[],
     pipelineId: string,
     timeout: number = 15000,
   ): Promise<ApiRespWebChatMessage> {
@@ -314,12 +314,7 @@ class HttpClient {
       `/api/v1/pipelines/${pipelineId}/chat/send`,
       {
         session_type: sessionType,
-        message: [
-          {
-            type: 'Plain',
-            text: content,
-          },
-        ],
+        message: messageChain,
       },
       {
         timeout,

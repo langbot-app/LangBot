@@ -20,6 +20,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { Pipeline } from '@/app/infra/entities/api';
 import { Message } from '@/app/infra/entities/message';
+import { toast } from 'sonner';
 
 interface DebugDialogProps {
   open: boolean;
@@ -111,13 +112,19 @@ export default function DebugDialog({
 
       const response = await httpClient.sendWebChatMessage(
         sessionType,
-        inputValue.trim(),
+        [
+          {
+            type: 'Plain',
+            text: inputValue.trim(),
+          },
+        ],
         selectedPipelineId,
         120000,
       );
       console.log(messages);
       setMessages([...messages, userMessage, response.message]);
     } catch (error) {
+      toast.error(t('pipelines.debugDialog.sendFailed'));
       console.error('Failed to send message:', error);
     } finally {
       setLoading(false);
