@@ -47,6 +47,7 @@ export default function DebugDialog({
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [showAtPopover, setShowAtPopover] = useState(false);
   const [hasAt, setHasAt] = useState(false);
+  const [isHovering, setIsHovering] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -90,6 +91,12 @@ export default function DebugDialog({
     };
   }, []);
 
+  useEffect(() => {
+    if (showAtPopover) {
+      setIsHovering(true);
+    }
+  }, [showAtPopover]);
+
   const loadPipelines = async () => {
     try {
       const response = await httpClient.getPipelines();
@@ -113,8 +120,12 @@ export default function DebugDialog({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    if (sessionType === 'group' && value.endsWith('@')) {
-      setShowAtPopover(true);
+    if (sessionType === 'group') {
+      if (value.endsWith('@')) {
+        setShowAtPopover(true);
+      } else if (showAtPopover && (!value.includes('@') || value.length > 1)) {
+        setShowAtPopover(false);
+      }
     }
     setInputValue(value);
   };
@@ -132,7 +143,11 @@ export default function DebugDialog({
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      if (showAtPopover) {
+        handleAtSelect();
+      } else {
+        sendMessage();
+      }
     } else if (e.key === 'Backspace' && hasAt && inputValue === '') {
       handleAtRemove();
     }
@@ -143,6 +158,12 @@ export default function DebugDialog({
 
     try {
       const messageChain = [];
+
+      let text_content = inputValue.trim();
+      if (hasAt) {
+        text_content = ' ' + text_content;
+      }
+
       if (hasAt) {
         messageChain.push({
           type: 'At',
@@ -151,13 +172,18 @@ export default function DebugDialog({
       }
       messageChain.push({
         type: 'Plain',
-        text: inputValue.trim(),
+        text: text_content,
       });
+
+      if (hasAt) {
+        // for showing
+        text_content = '@webchatbot' + text_content;
+      }
 
       const userMessage: Message = {
         id: -1,
         role: 'user',
-        content: inputValue.trim(),
+        content: text_content,
         timestamp: new Date().toISOString(),
         message_chain: messageChain,
       };
@@ -332,13 +358,20 @@ export default function DebugDialog({
                   {showAtPopover && (
                     <div
                       ref={popoverRef}
-                      className="absolute bottom-full left-0 mb-2 w-48 rounded-md border bg-white shadow-lg"
+                      className="absolute bottom-full left-0 mb-2 w-auto rounded-md border bg-white shadow-lg"
                     >
                       <div
-                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-100 cursor-pointer"
+                        className={cn(
+                          'flex items-center gap-2 px-4 py-1.5 rounded cursor-pointer',
+                          isHovering ? 'bg-gray-100' : 'bg-white',
+                        )}
                         onClick={handleAtSelect}
+                        onMouseEnter={() => setIsHovering(true)}
+                        onMouseLeave={() => setIsHovering(false)}
                       >
-                        <span>@WebChatBot</span>
+                        <span>
+                          @webchatbot - {t('pipelines.debugDialog.atTips')}
+                        </span>
                       </div>
                     </div>
                   )}

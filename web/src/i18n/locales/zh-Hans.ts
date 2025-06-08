@@ -215,6 +215,7 @@ const zhHans = {
       resetFailed: '重置失败',
       loadMessagesFailed: '加载消息失败',
       loadPipelinesFailed: '加载流水线失败',
+      atTips: '提及机器人',
     },
   },
   register: {
