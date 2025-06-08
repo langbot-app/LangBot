@@ -28,6 +28,12 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 
+interface MessageComponent {
+  type: 'At' | 'Plain';
+  target?: string;
+  text?: string;
+}
+
 interface DebugDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -219,6 +225,29 @@ export default function DebugDialog({
     }
   };
 
+  const renderMessageContent = (message: Message) => {
+    return (
+      <span className="text-base leading-relaxed align-middle">
+        {(message.message_chain as MessageComponent[]).map(
+          (component, index) => {
+            if (component.type === 'At') {
+              return (
+                <AtBadge
+                  key={index}
+                  targetName={component.target || ''}
+                  readonly={true}
+                />
+              );
+            } else if (component.type === 'Plain') {
+              return <span key={index}>{component.text}</span>;
+            }
+            return null;
+          },
+        )}
+      </span>
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!max-w-[70vw] max-w-6xl h-[70vh] p-6 flex flex-col rounded-2xl shadow-2xl bg-white">
@@ -320,9 +349,7 @@ export default function DebugDialog({
                             : 'bg-gray-100 text-gray-900 rounded-bl-none',
                         )}
                       >
-                        <div className="text-base whitespace-pre-wrap leading-relaxed">
-                          {message.content}
-                        </div>
+                        {renderMessageContent(message)}
                         <div
                           className={cn(
                             'text-xs mt-2',
@@ -345,7 +372,9 @@ export default function DebugDialog({
 
             <div className="border-t p-4 pb-0 bg-white flex gap-2">
               <div className="flex-1 flex items-center gap-2">
-                {hasAt && <AtBadge onRemove={handleAtRemove} />}
+                {hasAt && (
+                  <AtBadge targetName="webchatbot" onRemove={handleAtRemove} />
+                )}
                 <div className="relative flex-1">
                   <Input
                     ref={inputRef}
