@@ -308,16 +308,23 @@ class HttpClient {
     sessionType: string,
     content: string,
     pipelineId: string,
+    timeout: number = 15000,
   ): Promise<ApiRespWebChatMessage> {
-    return this.post(`/api/v1/pipelines/${pipelineId}/chat/send`, {
-      session_type: sessionType,
-      message: [
-        {
-          type: 'Plain',
-          text: content,
-        },
-      ],
-    });
+    return this.post(
+      `/api/v1/pipelines/${pipelineId}/chat/send`,
+      {
+        session_type: sessionType,
+        message: [
+          {
+            type: 'Plain',
+            text: content,
+          },
+        ],
+      },
+      {
+        timeout,
+      },
+    );
   }
 
   public getWebChatHistoryMessages(

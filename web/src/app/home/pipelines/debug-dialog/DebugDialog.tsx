@@ -112,6 +112,7 @@ export default function DebugDialog({
         sessionType,
         inputValue.trim(),
         selectedPipelineId,
+        120000,
       );
       console.log(messages);
       setMessages([...messages, userMessage, response.message]);
@@ -167,8 +168,8 @@ export default function DebugDialog({
           </div>
         </DialogHeader>
 
-        <div className="flex flex-1 overflow-hidden">
-          <div className="w-48 border-r bg-muted p-4">
+        <div className="flex flex-1 h-full min-h-0">
+          <div className="w-48 border-r bg-muted p-4 h-full flex-shrink-0">
             <h3 className="font-medium mb-3">
               {t('pipelines.debugDialog.sessionType')}
             </h3>
@@ -197,8 +198,8 @@ export default function DebugDialog({
             </Button>
           </div>
 
-          <div className="flex-1 flex flex-col w-[10rem]">
-            <ScrollArea className="flex-1 p-4">
+          <div className="flex-1 flex flex-col w-[10rem] h-full min-h-0">
+            <ScrollArea className="flex-1 p-4 overflow-y-auto min-h-0">
               <div className="space-y-4">
                 {messages.length === 0 ? (
                   <div className="text-center text-muted-foreground py-8">
@@ -223,7 +224,9 @@ export default function DebugDialog({
                             : 'bg-muted',
                         )}
                       >
-                        <div className="text-sm">{message.content}</div>
+                        <div className="text-sm whitespace-pre-wrap">
+                          {message.content}
+                        </div>
                         <div
                           className={cn(
                             'text-xs mt-1',

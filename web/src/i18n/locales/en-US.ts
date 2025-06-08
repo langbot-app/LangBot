@@ -183,7 +183,7 @@ const enUS = {
       'Pipelines define the processing flow for message events, used to bind to bots',
     createPipeline: 'Create Pipeline',
     editPipeline: 'Edit Pipeline',
-    debug: 'Debug',
+    chat: 'Chat',
     getPipelineListError: 'Failed to get pipeline list: ',
     daysAgo: 'days ago',
     today: 'Today',
@@ -204,7 +204,7 @@ const enUS = {
       'Are you sure you want to delete this pipeline? Bots bound to this pipeline will not work.',
     defaultPipelineCannotDelete: 'Default pipeline cannot be deleted',
     debugDialog: {
-      title: 'Debug Pipeline',
+      title: 'Pipeline Chat',
       selectPipeline: 'Select Pipeline',
       sessionType: 'Session Type',
       privateChat: 'Private Chat',

@@ -178,7 +178,7 @@ const zhHans = {
     description: '流水线定义了对消息事件的处理流程，用于绑定到机器人',
     createPipeline: '创建流水线',
     editPipeline: '编辑流水线',
-    debug: '调试',
+    chat: '对话',
     getPipelineListError: '获取流水线列表失败：',
     daysAgo: '天前',
     today: '今天',
@@ -199,7 +199,7 @@ const zhHans = {
       '你确定要删除这个流水线吗？已绑定此流水线的机器人将无法使用。',
     defaultPipelineCannotDelete: '默认流水线不可删除',
     debugDialog: {
-      title: '调试流水线',
+      title: '流水线对话',
       selectPipeline: '选择流水线',
       sessionType: '会话类型',
       privateChat: '私聊',
