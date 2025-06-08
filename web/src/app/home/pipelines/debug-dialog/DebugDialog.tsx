@@ -39,7 +39,6 @@ export default function DebugDialog({
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -87,9 +86,8 @@ export default function DebugDialog({
   };
 
   const sendMessage = async () => {
-    if (!inputValue.trim() || loading) return;
+    if (!inputValue.trim()) return;
 
-    setLoading(true);
     try {
       const userMessage: Message = {
         id: -1,
@@ -104,10 +102,7 @@ export default function DebugDialog({
         ],
       };
 
-      setMessages([...messages, userMessage]);
-
-      console.log(messages);
-
+      setMessages((prevMessages) => [...prevMessages, userMessage]);
       setInputValue('');
 
       const response = await httpClient.sendWebChatMessage(
@@ -121,13 +116,12 @@ export default function DebugDialog({
         selectedPipelineId,
         120000,
       );
-      console.log(messages);
-      setMessages([...messages, userMessage, response.message]);
+
+      setMessages((prevMessages) => [...prevMessages, response.message]);
     } catch (error) {
       toast.error(t('pipelines.debugDialog.sendFailed'));
       console.error('Failed to send message:', error);
     } finally {
-      setLoading(false);
       inputRef.current?.focus();
     }
   };
@@ -283,14 +277,10 @@ export default function DebugDialog({
               />
               <Button
                 onClick={sendMessage}
-                disabled={!inputValue.trim() || loading}
+                disabled={!inputValue.trim()}
                 className="rounded-md bg-[#2288ee] hover:bg-[#2288ee] w-20 text-white px-6 py-2 text-base font-medium transition-none flex items-center gap-2 shadow-none"
               >
-                {loading ? (
-                  <span>...</span>
-                ) : (
-                  <>{t('pipelines.debugDialog.send')}</>
-                )}
+                <>{t('pipelines.debugDialog.send')}</>
               </Button>
             </div>
           </div>
