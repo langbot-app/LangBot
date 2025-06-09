@@ -29,6 +29,8 @@ import {
   GetPipelineResponseData,
   GetPipelineMetadataResponseData,
   AsyncTask,
+  ApiRespWebChatMessage,
+  ApiRespWebChatMessages,
 } from '@/app/infra/entities/api';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
@@ -301,6 +303,43 @@ class HttpClient {
     return this.delete(`/api/v1/pipelines/${uuid}`);
   }
 
+  // ============ Debug WebChat API ============
+  public sendWebChatMessage(
+    sessionType: string,
+    messageChain: object[],
+    pipelineId: string,
+    timeout: number = 15000,
+  ): Promise<ApiRespWebChatMessage> {
+    return this.post(
+      `/api/v1/pipelines/${pipelineId}/chat/send`,
+      {
+        session_type: sessionType,
+        message: messageChain,
+      },
+      {
+        timeout,
+      },
+    );
+  }
+
+  public getWebChatHistoryMessages(
+    pipelineId: string,
+    sessionType: string,
+  ): Promise<ApiRespWebChatMessages> {
+    return this.get(
+      `/api/v1/pipelines/${pipelineId}/chat/messages/${sessionType}`,
+    );
+  }
+
+  public resetWebChatSession(
+    pipelineId: string,
+    sessionType: string,
+  ): Promise<{ message: string }> {
+    return this.post(
+      `/api/v1/pipelines/${pipelineId}/chat/reset/${sessionType}`,
+    );
+  }
+
   // ============ Platform API ============
   public getAdapters(): Promise<ApiRespPlatformAdapters> {
     return this.get('/api/v1/platform/adapters');
@@ -455,9 +494,15 @@ class HttpClient {
   }
 }
 
-// export const httpClient = new HttpClient('https://event-log.langbot.dev');
-// export const httpClient = new HttpClient('http://localhost:5300');
-export const httpClient = new HttpClient('/');
+const getBaseURL = (): string => {
+  if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_BASE_URL) {
+    return process.env.NEXT_PUBLIC_API_BASE_URL;
+  }
+
+  return '/';
+};
+
+export const httpClient = new HttpClient(getBaseURL());
 
 // 临时写法，未来两种Client都继承自HttpClient父类，不允许共享方法
 export const spaceClient = new HttpClient('https://space.langbot.app');

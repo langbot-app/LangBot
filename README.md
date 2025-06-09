@@ -154,3 +154,9 @@ docker compose up -d
 <a href="https://github.com/RockChinQ/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=RockChinQ/LangBot" />
 </a>
+
+## 😎 保持更新
+
+点击仓库右上角 Star 和 Watch 按钮，获取最新动态。
+
+![star gif](https://docs.langbot.app/star.gif)

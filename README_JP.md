@@ -134,3 +134,9 @@ LangBot への貢献に対して、以下の [コード貢献者](https://github
 <a href="https://github.com/RockChinQ/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=RockChinQ/LangBot" />
 </a>
+
+## 😎 最新情報を入手
+
+リポジトリの右上にある Star と Watch ボタンをクリックして、最新の更新を取得してください。
+
+![star gif](https://docs.langbot.app/star.gif)

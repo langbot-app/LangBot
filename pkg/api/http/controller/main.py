@@ -13,10 +13,12 @@ from . import groups
 from . import group
 from .groups import provider as groups_provider
 from .groups import platform as groups_platform
+from .groups import pipelines as groups_pipelines
 
 importutil.import_modules_in_pkg(groups)
 importutil.import_modules_in_pkg(groups_provider)
 importutil.import_modules_in_pkg(groups_platform)
+importutil.import_modules_in_pkg(groups_pipelines)
 
 
 class HTTPController:

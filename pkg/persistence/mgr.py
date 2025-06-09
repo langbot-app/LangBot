@@ -66,13 +66,15 @@ class PersistenceManager:
 
         # write default pipeline
         result = await self.execute_async(sqlalchemy.select(pipeline.LegacyPipeline))
+        default_pipeline_uuid = None
         if result.first() is None:
             self.ap.logger.info('Creating default pipeline...')
 
             pipeline_config = json.load(open('templates/default-pipeline-config.json', 'r', encoding='utf-8'))
 
+            default_pipeline_uuid = str(uuid.uuid4())
             pipeline_data = {
-                'uuid': str(uuid.uuid4()),
+                'uuid': default_pipeline_uuid,
                 'for_version': self.ap.ver_mgr.get_current_version(),
                 'stages': pipeline_service.default_stage_order,
                 'is_default': True,
@@ -82,6 +84,7 @@ class PersistenceManager:
             }
 
             await self.execute_async(sqlalchemy.insert(pipeline.LegacyPipeline).values(pipeline_data))
+
         # =================================
 
         # run migrations

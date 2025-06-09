@@ -15,6 +15,8 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
+import DebugDialog from './debug-dialog/DebugDialog';
+
 export default function PluginConfigPage() {
   const { t } = useTranslation();
   const [modalOpen, setModalOpen] = useState<boolean>(false);
@@ -32,6 +34,8 @@ export default function PluginConfigPage() {
   const [disableForm, setDisableForm] = useState(false);
   const [selectedPipelineIsDefault, setSelectedPipelineIsDefault] =
     useState(false);
+  const [debugDialogOpen, setDebugDialogOpen] = useState(false);
+  const [debugPipelineId, setDebugPipelineId] = useState('');
 
   useEffect(() => {
     getPipelines();
@@ -92,6 +96,11 @@ export default function PluginConfigPage() {
     });
   }
 
+  const handleDebug = (pipelineId: string) => {
+    setDebugPipelineId(pipelineId);
+    setDebugDialogOpen(true);
+  };
+
   return (
     <div className={styles.configPageContainer}>
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
@@ -149,11 +158,17 @@ export default function PluginConfigPage() {
                 getSelectedPipelineForm(pipeline.id);
               }}
             >
-              <PipelineCard cardVO={pipeline} />
+              <PipelineCard cardVO={pipeline} onDebug={handleDebug} />
             </div>
           );
         })}
       </div>
+
+      <DebugDialog
+        open={debugDialogOpen}
+        onOpenChange={setDebugDialogOpen}
+        pipelineId={debugPipelineId}
+      />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 from typing import Dict, Any, Optional
-import dingtalk_stream
+import dingtalk_stream  # type: ignore
 
 
 class DingTalkEvent(dict):

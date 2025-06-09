@@ -1,6 +1,7 @@
 import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
 import { PipelineConfigTab } from '@/app/infra/entities/pipeline';
 import { I18nLabel } from '@/app/infra/entities/common';
+import { Message } from '@/app/infra/entities/message';
 
 export interface ApiResponse<T> {
   code: number;
@@ -227,4 +228,12 @@ export interface GetPipelineResponseData {
 
 export interface GetPipelineMetadataResponseData {
   configs: PipelineConfigTab[];
+}
+
+export interface ApiRespWebChatMessage {
+  message: Message;
+}
+
+export interface ApiRespWebChatMessages {
+  messages: Message[];
 }

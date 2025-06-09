@@ -67,9 +67,11 @@
 
 .operationContainer {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
   gap: 0.5rem;
-  width: 5rem;
+  width: 8rem;
 }
 
 .operationDefaultBadge {
@@ -97,4 +99,9 @@
   font-size: 1.4rem;
   font-weight: bold;
   max-width: 100%;
+}
+
+.debugButtonIcon {
+  width: 1.2rem;
+  height: 1.2rem;
 }

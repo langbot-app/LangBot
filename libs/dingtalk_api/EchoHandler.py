@@ -1,5 +1,5 @@
 import asyncio
-import dingtalk_stream
+import dingtalk_stream  # type: ignore
 from dingtalk_stream import AckMessage
 
 
@@ -27,9 +27,3 @@ class EchoTextHandler(dingtalk_stream.ChatbotHandler):
             await asyncio.sleep(0.1)  # 异步等待，避免阻塞
 
         return self.incoming_message
-
-
-async def get_dingtalk_client(client_id, client_secret):
-    from api import DingTalkClient  # 延迟导入，避免循环导入
-
-    return DingTalkClient(client_id, client_secret)

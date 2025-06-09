@@ -5,7 +5,6 @@ import asyncio
 import traceback
 import sqlalchemy
 
-
 #     FriendMessage, Image, MessageChain, Plain
 from . import adapter as msadapter
 
@@ -78,6 +77,7 @@ class RuntimeBot:
                 message_event=event,
                 message_chain=event.message_chain,
                 adapter=adapter,
+                pipeline_uuid=self.bot_entity.use_pipeline_uuid,
             )
 
         async def on_group_message(
@@ -102,6 +102,7 @@ class RuntimeBot:
                 message_event=event,
                 message_chain=event.message_chain,
                 adapter=adapter,
+                pipeline_uuid=self.bot_entity.use_pipeline_uuid,
             )
 
         self.adapter.register_listener(platform_events.FriendMessage, on_friend_message)
@@ -144,6 +145,8 @@ class PlatformManager:
 
     bots: list[RuntimeBot]
 
+    webchat_proxy_bot: RuntimeBot
+
     adapter_components: list[engine.Component]
 
     adapter_dict: dict[str, type[msadapter.MessagePlatformAdapter]]
@@ -160,6 +163,31 @@ class PlatformManager:
         for component in self.adapter_components:
             adapter_dict[component.metadata.name] = component.get_python_component_class()
         self.adapter_dict = adapter_dict
+
+        webchat_adapter_class = self.adapter_dict['webchat']
+
+        # initialize webchat adapter
+        webchat_logger = EventLogger(name='webchat-adapter', ap=self.ap)
+        webchat_adapter_inst = webchat_adapter_class(
+            {},
+            self.ap,
+            webchat_logger,
+        )
+
+        self.webchat_proxy_bot = RuntimeBot(
+            ap=self.ap,
+            bot_entity=persistence_bot.Bot(
+                uuid='webchat-proxy-bot',
+                name='WebChat',
+                description='',
+                adapter='webchat',
+                adapter_config={},
+                enable=True,
+            ),
+            adapter=webchat_adapter_inst,
+            logger=webchat_logger,
+        )
+        await self.webchat_proxy_bot.initialize()
 
         await self.load_bots_from_db()
 
@@ -220,7 +248,9 @@ class PlatformManager:
                 return
 
     def get_available_adapters_info(self) -> list[dict]:
-        return [component.to_plain_dict() for component in self.adapter_components]
+        return [
+            component.to_plain_dict() for component in self.adapter_components if component.metadata.name != 'webchat'
+        ]
 
     def get_available_adapter_info_by_name(self, name: str) -> dict | None:
         for component in self.adapter_components:
@@ -273,6 +303,8 @@ class PlatformManager:
 
     async def run(self):
         # This method will only be called when the application launching
+        await self.webchat_proxy_bot.run()
+
         for bot in self.bots:
             if bot.enable:
                 await bot.run()

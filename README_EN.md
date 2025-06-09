@@ -135,3 +135,9 @@ Thank you for the following [code contributors](https://github.com/RockChinQ/Lan
 <a href="https://github.com/RockChinQ/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=RockChinQ/LangBot" />
 </a>
+
+## 😎 Stay Ahead
+
+Click the Star and Watch button in the upper right corner of the repository to get the latest updates.
+
+![star gif](https://docs.langbot.app/star.gif)

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: webchat
+  label:
+    en_US: "WebChat Debug"
+    zh_Hans: "网页聊天调试"
+  description:
+    en_US: "WebChat adapter for pipeline debugging"
+    zh_Hans: "用于流水线调试的网页聊天适配器"
+  icon: ""
+spec: {}
+execution:
+  python:
+    path: "webchat.py"
+    attr: "WebChatAdapter"
