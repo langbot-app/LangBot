@@ -93,6 +93,11 @@ class BotService:
         if runtime_bot.enable:
             await runtime_bot.run()
 
+        # update all conversation that use this bot
+        for session in self.ap.sess_mgr.session_list:
+            if session.using_conversation is not None and session.using_conversation.bot_uuid == bot_uuid:
+                session.using_conversation = None
+
     async def delete_bot(self, bot_uuid: str) -> None:
         """删除机器人"""
         await self.ap.platform_mgr.remove_bot(bot_uuid)
