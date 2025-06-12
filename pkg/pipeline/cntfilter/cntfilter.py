@@ -66,6 +66,8 @@ class ContentFilterStage(stage.PipelineStage):
 
         if query.pipeline_config['safety']['content-filter']['scope'] == 'output-msg':
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
+        if not message.strip():
+            return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)    
         else:
             for filter in self.filter_chain:
                 if filter_entities.EnableStage.PRE in filter.enable_stages:
