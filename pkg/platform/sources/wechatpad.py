@@ -290,15 +290,12 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
                 else:
                     # 引用消息展开
                     quote_data_xml = ET.fromstring(quote_data)
-                    type_value = quote_data_xml.find(".//type").text #  处理引用文件
                     if quote_data_xml.find("img"):
                         quote_data_message_list.extend(await self._handler_image(None, quote_data))
                     elif quote_data_xml.find("voicemsg"):
                         quote_data_message_list.extend(await self._handler_voice(None, quote_data))
                     elif quote_data_xml.find("videomsg"):
                         quote_data_message_list.extend(await self._handler_default(None, quote_data))  # 先不处理
-                    elif type_value == '6':
-                        quote_data_message_list.extend(await self._handler_compound_file(None, quote_data))
                     else:
                         # appmsg
                         quote_data_message_list.extend(await self._handler_compound(None, quote_data))
