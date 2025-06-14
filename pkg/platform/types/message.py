@@ -800,12 +800,14 @@ class File(MessageComponent):
 
     type: str = 'File'
     """消息组件类型。"""
-    id: str
+    id: str = ''
     """文件识别 ID。"""
     name: str
     """文件名称。"""
-    size: int
+    size: int = ''
     """文件大小。"""
+    url: str
+    """文件路径"""
 
     def __str__(self):
         return f'[文件]{self.name}'
