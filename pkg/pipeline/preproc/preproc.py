@@ -45,6 +45,8 @@ class PreProcessor(stage.PipelineStage):
             query,
             session,
             query.pipeline_config['ai']['local-agent']['prompt'],
+            query.pipeline_uuid,
+            query.bot_uuid,
         )
 
         conversation.use_llm_model = llm_model

@@ -112,6 +112,11 @@ class PipelineService:
         await self.ap.pipeline_mgr.remove_pipeline(pipeline_uuid)
         await self.ap.pipeline_mgr.load_pipeline(pipeline)
 
+        # update all conversation that use this pipeline
+        for session in self.ap.sess_mgr.session_list:
+            if session.using_conversation is not None and session.using_conversation.pipeline_uuid == pipeline_uuid:
+                session.using_conversation = None
+
     async def delete_pipeline(self, pipeline_uuid: str) -> None:
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.delete(persistence_pipeline.LegacyPipeline).where(

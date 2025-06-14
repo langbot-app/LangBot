@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.0.3"
+version = "4.0.6"
 description = "高稳定、支持扩展、多模态 - 大模型原生即时通信机器人平台"
 readme = "README.md"
 requires-python = ">=3.10.1"

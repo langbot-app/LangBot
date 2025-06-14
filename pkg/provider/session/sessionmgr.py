@@ -41,6 +41,8 @@ class SessionManager:
         query: core_entities.Query,
         session: core_entities.Session,
         prompt_config: list[dict],
+        pipeline_uuid: str,
+        bot_uuid: str,
     ) -> core_entities.Conversation:
         """获取对话或创建对话"""
 
@@ -58,13 +60,15 @@ class SessionManager:
             messages=prompt_messages,
         )
 
-        if session.using_conversation is None:
+        if session.using_conversation is None or session.using_conversation.pipeline_uuid != pipeline_uuid:
             conversation = core_entities.Conversation(
                 prompt=prompt,
                 messages=[],
                 use_funcs=await self.ap.tool_mgr.get_all_functions(
                     plugin_enabled=True,
                 ),
+                pipeline_uuid=pipeline_uuid,
+                bot_uuid=bot_uuid,
             )
             session.conversations.append(conversation)
             session.using_conversation = conversation
