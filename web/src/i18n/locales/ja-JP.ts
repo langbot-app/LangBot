@@ -4,11 +4,11 @@ const jaJP = {
     logout: 'ログアウト',
     email: 'メールアドレス',
     password: 'パスワード',
-    welcome: 'LangBot へようこそ 👋',
-    continueToLogin: 'ログインして続行',
+    welcome: 'LangBot へおかえりなさい 👋',
+    continueToLogin: 'ログインしてください',
     loginSuccess: 'ログインに成功しました',
     loginFailed:
-      'ログインに失敗しました。メールアドレスとパスワードを確認してください',
+      'ログインに失敗しました。メールアドレスまたはパスワードをご確認ください',
     enterEmail: 'メールアドレスを入力',
     enterPassword: 'パスワードを入力',
     invalidEmail: '有効なメールアドレスを入力してください',
@@ -88,10 +88,9 @@ const jaJP = {
     number: '数値',
     boolean: 'ブール値',
     extraParametersDescription:
-      'リクエスト時にリクエストボディに追加されます（max_tokens、temperature、top_p など）',
+      'リクエストボディに追加されるパラメータ（max_tokens、temperature、top_p など）',
     selectModelProvider: 'モデルプロバイダーを選択',
-    modelProviderDescription:
-      'プロバイダーから提供されたモデル名を入力してください',
+    modelProviderDescription: 'プロバイダーが提供するモデル名をご入力ください',
     selectModel: 'モデルを選択してください',
     testSuccess: 'テストに成功しました',
     testError: 'テストに失敗しました。モデル設定を確認してください',
@@ -99,7 +98,7 @@ const jaJP = {
   bots: {
     title: 'ボット',
     description:
-      'ボットを作成・管理します。これはLangBotが各プラットフォームと接続するエントリーポイントです',
+      'ボットの作成と管理を行います。LangBotと各プラットフォームを接続するためのエントリーポイントです',
     createBot: 'ボットを作成',
     editBot: 'ボットを編集',
     getBotListError: 'ボットリストの取得に失敗しました：',
@@ -113,7 +112,7 @@ const jaJP = {
     saveSuccess: '保存に成功しました',
     saveError: '保存に失敗しました：',
     createSuccess:
-      '作成に成功しました。有効化またはバインドパイプラインを変更してください',
+      '作成が完了しました。有効化するか、パイプラインの設定を行ってください',
     createError: '作成に失敗しました：',
     deleteSuccess: '削除に成功しました',
     deleteError: '削除に失敗しました：',
@@ -121,7 +120,7 @@ const jaJP = {
     platformAdapter: 'プラットフォーム/アダプター選択',
     selectAdapter: 'アダプターを選択',
     adapterConfig: 'アダプター設定',
-    bindPipeline: 'パイプラインをバインド',
+    bindPipeline: 'パイプラインを紐付け',
     selectPipeline: 'パイプラインを選択',
     botLogTitle: 'ボットログ',
     enableAutoRefresh: '自動更新を有効にする',
@@ -133,7 +132,7 @@ const jaJP = {
     log: 'ログ',
   },
   plugins: {
-    title: 'プラグイン管理',
+    title: 'プラグイン',
     description: 'LangBotの機能を拡張するプラグインをインストール・設定',
     createPlugin: 'プラグインを作成',
     editPlugin: 'プラグインを編集',
@@ -159,7 +158,7 @@ const jaJP = {
     pluginConfig: 'プラグイン設定',
     pluginSort: 'プラグインの並び替え',
     pluginSortDescription:
-      'プラグインの順序は同一イベント内の処理順序に影響します。プラグインカードをドラッグして並び替えてください',
+      'プラグインの順序は、同一イベント内での処理順序に影響します。カードをドラッグして並び替えが可能です',
     pluginSortSuccess: 'プラグインの並び替えに成功しました',
     pluginSortError: 'プラグインの並び替えに失敗しました：',
     pluginNoConfig: 'プラグインに設定項目がありません。',
@@ -169,7 +168,7 @@ const jaJP = {
     saveConfig: '設定を保存',
     saving: '保存中...',
     confirmDeletePlugin:
-      'プラグイン（{{author}}/{{name}}）を削除してもよろしいですか？',
+      'プラグイン「{{author}}/{{name}}」を削除してもよろしいですか？',
     confirmDelete: '削除を確認',
     deleteError: '削除に失敗しました：',
     close: '閉じる',
@@ -182,7 +181,7 @@ const jaJP = {
   pipelines: {
     title: 'パイプライン',
     description:
-      'パイプラインはメッセージイベントの処理フローを定義し、ボットにバインドして使用します',
+      'メッセージイベントの処理フローを定義し、ボットに紐付けて使用するパイプラインです',
     createPipeline: 'パイプラインを作成',
     editPipeline: 'パイプラインを編集',
     chat: 'チャット',
@@ -199,15 +198,15 @@ const jaJP = {
     nameRequired: '名前は必須です',
     descriptionRequired: '説明は必須です',
     createSuccess:
-      '作成に成功しました。パイプラインの詳細パラメータを編集してください',
+      '作成が完了しました。パイプラインの詳細パラメータを設定してください',
     createError: '作成に失敗しました：',
     saveSuccess: '保存に成功しました',
     saveError: '保存に失敗しました：',
     deleteConfirmation:
-      '本当にこのパイプラインを削除しますか？このパイプラインにバインドされたボットは動作しなくなります。',
+      '本当にこのパイプラインを削除しますか？このパイプラインに紐付けられたボットは動作しなくなります。',
     defaultPipelineCannotDelete: 'デフォルトパイプラインは削除できません',
     debugDialog: {
-      title: 'パイプラインチャット',
+      title: 'パイプラインのチャット',
       selectPipeline: 'パイプラインを選択',
       sessionType: 'セッションタイプ',
       privateChat: 'プライベートチャット',
