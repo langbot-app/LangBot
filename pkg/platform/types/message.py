@@ -813,7 +813,11 @@ class File(MessageComponent):
         return f'[文件]{self.name}'
 
 class Face(MessageComponent):
-    """系统表情"""
+    """系统表情
+    此处将超级表情骰子/划拳，一同归类于face
+    当face_type为rps(划拳)时 face_id 对应的是手势
+    当face_type为dice(骰子)时 face_id 对应的是点数
+    """
     type: str = 'Face'
     """表情类型"""
     face_type: str = 'face'
