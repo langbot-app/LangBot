@@ -202,13 +202,13 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
                 face_name = msg.data['raw']['faceText']
                 if not face_name:
                     face_name = get_face_name(face_id)
-                yiri_msg_list.append(platform_message.Face(face_id=face_id,face_name=face_name.replace('/','')))
+                yiri_msg_list.append(platform_message.Face(face_id=int(face_id),face_name=face_name.replace('/','')))
             elif msg.type == 'rps':
                 face_id = msg.data['result']
-                yiri_msg_list.append(platform_message.Face(face_type="rps",face_id=face_id,face_name='猜拳'))
+                yiri_msg_list.append(platform_message.Face(face_type="rps",face_id=int(face_id),face_name='猜拳'))
             elif msg.type == 'dice':
                 face_id = msg.data['result']
-                yiri_msg_list.append(platform_message.Face(face_type='dice',face_id=face_id,face_name='骰子'))
+                yiri_msg_list.append(platform_message.Face(face_type='dice',face_id=int(face_id),face_name='骰子'))
 
 
 
