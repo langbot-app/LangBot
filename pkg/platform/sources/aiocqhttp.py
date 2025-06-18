@@ -63,6 +63,13 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
                     msg_list.extend((await AiocqhttpMessageConverter.yiri2target(node.message_chain))[0])
             elif isinstance(msg, platform_message.File):
                 msg_list.append({"type":"file", "data":{'file': msg.url, "name": msg.name}})
+            elif isinstance(msg, platform_message.Face):
+                if msg.face_type=='face':
+                    msg_list.append(aiocqhttp.MessageSegment.face(msg.face_id))
+                elif msg.face_type=='rps':
+                    msg_list.append(aiocqhttp.MessageSegment.rps())
+                elif msg.face_type=='dice':
+                    msg_list.append(aiocqhttp.MessageSegment.dice())
 
 
             else:
@@ -72,7 +79,6 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
 
     @staticmethod
     async def target2yiri(message: str, message_id: int = -1,bot=None):
-        # print(message)
         message = aiocqhttp.Message(message)
 
         async def process_message_data(msg_data, reply_list):
@@ -147,6 +153,18 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
                 file_url = file_data.get('file_url')
                 file_size = file_data.get('file_size')
                 yiri_msg_list.append(platform_message.File(id=file_id, name=file_name,url=file_url,size=file_size))
+            elif msg.type == 'face':
+                face_id = msg.data['id']
+                face_name = msg.data['raw']['faceText']
+                if not face_name:
+                    face_name = ''
+                yiri_msg_list.append(platform_message.Face(face_id=face_id,face_name=face_name.replace('/','')))
+            elif msg.type == 'rps':
+                face_id = msg.data['result']
+                yiri_msg_list.append(platform_message.Face(face_type="rps",face_id=face_id,face_name='猜拳'))
+            elif msg.type == 'dice':
+                face_id = msg.data['result']
+                yiri_msg_list.append(platform_message.Face(face_type='dice',face_id=face_id,face_name='骰子'))
 
 
 
@@ -170,7 +188,6 @@ class AiocqhttpEventConverter(adapter.EventConverter):
 
     @staticmethod
     async def target2yiri(event: aiocqhttp.Event,bot=None):
-
         yiri_chain = await AiocqhttpMessageConverter.target2yiri(event.message, event.message_id,bot)
 
 
@@ -289,8 +306,11 @@ class AiocqhttpAdapter(adapter.MessagePlatformAdapter):
 
         if event_type == platform_events.GroupMessage:
             self.bot.on_message('group')(on_message)
+            # self.bot.on_notice()(on_message)
         elif event_type == platform_events.FriendMessage:
             self.bot.on_message('private')(on_message)
+            # self.bot.on_notice()(on_message)
+        # print(event_type)
 
         async def on_websocket_connection(event: aiocqhttp.Event):
             for event in self.on_websocket_connection_event_cache:

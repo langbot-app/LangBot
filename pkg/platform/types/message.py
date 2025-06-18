@@ -804,7 +804,7 @@ class File(MessageComponent):
     """文件识别 ID。"""
     name: str
     """文件名称。"""
-    size: int = ''
+    size: int = 0
     """文件大小。"""
     url: str
     """文件路径"""
@@ -812,6 +812,32 @@ class File(MessageComponent):
     def __str__(self):
         return f'[文件]{self.name}'
 
+class Face(MessageComponent):
+    """系统表情"""
+    type: str = 'Face'
+    """表情类型"""
+    face_type: str = 'face'
+    """表情id"""
+    face_id: int = 0
+    """表情名"""
+    face_name: str = ''
+
+    def __str__(self):
+        if self.face_type == 'face':
+            return f'[表情]{self.face_name}'
+        elif self.face_type == 'dice':
+            return f'[表情]{self.face_id}点的{self.face_name}'
+        elif self.face_type == 'rps':
+            return f'[表情]{self.face_name}({self.rps_data(self.face_id)})'
+
+
+    def rps_data(self,face_id):
+        rps_dict ={
+            1 : "布",
+            2 : "剪刀",
+            3 : "石头",
+        }
+        return rps_dict[face_id]
 
 # ================ 个人微信专用组件 ================
 
@@ -935,7 +961,7 @@ class WeChatFile(MessageComponent):
     """文件识别 ID。"""
     file_name: str = ''
     """文件名称。"""
-    file_size: int = ''
+    file_size: int = 0
     """文件大小。"""
     file_path: str = ''
     """文件地址"""
