@@ -19,4 +19,8 @@ RUN apt update \
     && python -m pip install -r requirements.txt \
     && touch /.dockerenv
 
+# Create non-root user for security
+RUN adduser --system --no-create-home --shell /bin/false langbot
+USER langbot
+
 CMD [ "python", "main.py" ]
