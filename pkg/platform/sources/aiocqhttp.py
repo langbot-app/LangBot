@@ -79,6 +79,7 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
 
     @staticmethod
     async def target2yiri(message: str, message_id: int = -1,bot=None):
+        print(message)
         message = aiocqhttp.Message(message)
 
         def get_face_name(face_id):
@@ -160,8 +161,15 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
             elif msg.type == 'text':
                 yiri_msg_list.append(platform_message.Plain(text=msg.data['text']))
             elif msg.type == 'image':
-                image_base64, image_format = await image.qq_image_url_to_base64(msg.data['url'])
-                yiri_msg_list.append(platform_message.Image(base64=f'data:image/{image_format};base64,{image_base64}'))
+                emoji_id = msg.data.get("emoji_package_id", None)
+                if emoji_id:
+                    face_id = emoji_id
+                    face_name = msg.data.get("summary", '')
+                    image_msg = platform_message.Face(face_id=face_id, face_name=face_name)
+                else:
+                    image_base64, image_format = await image.qq_image_url_to_base64(msg.data['url'])
+                    image_msg = platform_message.Image(base64=f'data:image/{image_format};base64,{image_base64}')
+                yiri_msg_list.append(image_msg)
             elif msg.type == 'forward':
                 # 暂时不太合理
                 # msg_datas = await bot.get_msg(message_id=message_id)
