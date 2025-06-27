@@ -8,6 +8,7 @@ metadata:
   description:
     en_US: WeChatPad Adapter
     zh_CN: WeChatPad 适配器
+  icon: wechatpad.png
 spec:
   config:
     - name: wechatpad_url
