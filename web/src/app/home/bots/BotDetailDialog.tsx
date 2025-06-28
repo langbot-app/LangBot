@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -23,6 +23,7 @@ import BotForm from '@/app/home/bots/components/bot-form/BotForm';
 import { BotLogListComponent } from '@/app/home/bots/components/bot-log/view/BotLogListComponent';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
+import { httpClient } from '@/app/infra/http/HttpClient';
 
 interface BotDetailDialogProps {
   open: boolean;
@@ -37,15 +38,21 @@ interface BotDetailDialogProps {
 export default function BotDetailDialog({
   open,
   onOpenChange,
-  botId,
+  botId: propBotId,
   onFormSubmit,
   onFormCancel,
   onBotDeleted,
   onNewBotCreated,
 }: BotDetailDialogProps) {
   const { t } = useTranslation();
+  const [botId, setBotId] = useState<string | undefined>(propBotId);
   const [activeMenu, setActiveMenu] = useState('config');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  useEffect(() => {
+    setBotId(propBotId);
+    setActiveMenu('config');
+  }, [propBotId, open]);
 
   const menu = [
     {
@@ -85,11 +92,15 @@ export default function BotDetailDialog({
   };
 
   const handleBotDeleted = () => {
-    onBotDeleted();
+    httpClient.deleteBot(botId ?? '').then(() => {
+      onBotDeleted();
+    });
   };
 
-  const handleNewBotCreated = (botId: string) => {
-    onNewBotCreated(botId);
+  const handleNewBotCreated = (newBotId: string) => {
+    setBotId(newBotId);
+    setActiveMenu('config');
+    onNewBotCreated(newBotId);
   };
 
   const handleDelete = () => {
@@ -101,14 +112,54 @@ export default function BotDetailDialog({
     setShowDeleteConfirm(false);
   };
 
+  if (!botId) {
+    return (
+      <>
+        <Dialog open={open} onOpenChange={onOpenChange}>
+          <DialogContent className="overflow-hidden p-0 w-[1300px] max-h-[80vh] flex">
+            <main className="flex flex-1 flex-col h-[80vh]">
+              <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
+                <DialogTitle>{t('bots.createBot')}</DialogTitle>
+              </DialogHeader>
+              <div className="flex-1 overflow-y-auto px-6 pb-6">
+                <BotForm
+                  initBotId={undefined}
+                  onFormSubmit={handleFormSubmit}
+                  onFormCancel={handleFormCancel}
+                  onBotDeleted={handleBotDeleted}
+                  onNewBotCreated={handleNewBotCreated}
+                  hideButtons={true}
+                />
+              </div>
+              <DialogFooter className="px-6 py-4 border-t shrink-0">
+                <div className="flex justify-end gap-2">
+                  <Button type="submit" form="bot-form">
+                    {t('common.submit')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleFormCancel}
+                  >
+                    {t('common.cancel')}
+                  </Button>
+                </div>
+              </DialogFooter>
+            </main>
+          </DialogContent>
+        </Dialog>
+      </>
+    );
+  }
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="overflow-hidden p-0 !max-w-[50vw] max-h-[80vh] flex">
+        <DialogContent className="overflow-hidden p-0 w-[1300px] max-h-[80vh] flex">
           <SidebarProvider className="items-start w-full flex">
             <Sidebar
               collapsible="none"
-              className="hidden md:flex h-[80vh] w-40 min-w-[120px] max-w-[180px] border-r bg-white"
+              className="hidden md:flex h-[80vh] w-40 min-w-[120px] border-r bg-white"
             >
               <SidebarContent>
                 <SidebarGroup>
@@ -137,9 +188,7 @@ export default function BotDetailDialog({
               <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
                 <DialogTitle>
                   {activeMenu === 'config'
-                    ? botId
-                      ? t('bots.editBot')
-                      : t('bots.createBot')
+                    ? t('bots.editBot')
                     : t('bots.botLogTitle')}
                 </DialogTitle>
               </DialogHeader>
@@ -161,25 +210,16 @@ export default function BotDetailDialog({
               {activeMenu === 'config' && (
                 <DialogFooter className="px-6 py-4 border-t shrink-0">
                   <div className="flex justify-end gap-2">
-                    {!botId && (
-                      <Button type="submit" form="bot-form">
-                        {t('common.submit')}
-                      </Button>
-                    )}
-                    {botId && (
-                      <>
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          onClick={handleDelete}
-                        >
-                          {t('common.delete')}
-                        </Button>
-                        <Button type="submit" form="bot-form">
-                          {t('common.save')}
-                        </Button>
-                      </>
-                    )}
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={handleDelete}
+                    >
+                      {t('common.delete')}
+                    </Button>
+                    <Button type="submit" form="bot-form">
+                      {t('common.save')}
+                    </Button>
                     <Button
                       type="button"
                       variant="outline"
