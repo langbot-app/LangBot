@@ -217,7 +217,7 @@ const jaJP = {
       groupChat: 'グループチャット',
       send: '送信',
       reset: '会話をリセット',
-      inputPlaceholder: 'メッセージを入力...',
+      inputPlaceholder: '{{type}}メッセージを送信...',
       noMessages: 'メッセージがありません',
       userMessage: 'ユーザー',
       botMessage: 'ボット',

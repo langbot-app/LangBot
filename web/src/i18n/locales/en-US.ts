@@ -216,7 +216,7 @@ const enUS = {
       groupChat: 'Group Chat',
       send: 'Send',
       reset: 'Reset Conversation',
-      inputPlaceholder: 'Enter message...',
+      inputPlaceholder: 'Send {{type}} message...',
       noMessages: 'No messages',
       userMessage: 'User',
       botMessage: 'Bot',

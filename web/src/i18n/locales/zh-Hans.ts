@@ -211,7 +211,7 @@ const zhHans = {
       groupChat: '群聊',
       send: '发送',
       reset: '重置对话',
-      inputPlaceholder: '输入消息...',
+      inputPlaceholder: '发送 {{type}} 消息...',
       noMessages: '暂无消息',
       userMessage: '用户',
       botMessage: '机器人',

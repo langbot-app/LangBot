@@ -341,7 +341,12 @@ export default function DebugDialog({
                 value={inputValue}
                 onChange={handleInputChange}
                 onKeyPress={handleKeyPress}
-                placeholder={t('pipelines.debugDialog.inputPlaceholder')}
+                placeholder={t('pipelines.debugDialog.inputPlaceholder', {
+                  type:
+                    sessionType === 'person'
+                      ? t('pipelines.debugDialog.privateChat')
+                      : t('pipelines.debugDialog.groupChat'),
+                })}
                 className="flex-1 rounded-md px-3 py-2 border border-gray-300 focus:border-[#2288ee] transition-none text-base"
               />
               {showAtPopover && (
