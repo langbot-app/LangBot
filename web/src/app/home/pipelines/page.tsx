@@ -118,7 +118,7 @@ export default function PluginConfigPage() {
       <PipelineDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        pipelineId={selectedPipelineId}
+        pipelineId={selectedPipelineId || undefined}
         isEditMode={isEditForm}
         isDefaultPipeline={selectedPipelineIsDefault}
         initValues={selectedPipelineFormValue}
@@ -127,8 +127,10 @@ export default function PluginConfigPage() {
           setDialogOpen(false);
         }}
         onNewPipelineCreated={(pipelineId) => {
+          getPipelines();
           setSelectedPipelineId(pipelineId);
           setIsEditForm(true);
+          setDialogOpen(true);
           getSelectedPipelineForm(pipelineId);
         }}
       />
@@ -147,7 +149,7 @@ export default function PluginConfigPage() {
               key={pipeline.id}
               onClick={() => handlePipelineClick(pipeline.id)}
             >
-              <PipelineCard cardVO={pipeline} onDebug={handleDebug} />
+              <PipelineCard cardVO={pipeline} />
             </div>
           );
         })}

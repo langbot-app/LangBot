@@ -1,21 +1,9 @@
 import styles from './pipelineCard.module.css';
 import { PipelineCardVO } from '@/app/home/pipelines/components/pipeline-card/PipelineCardVO';
 import { useTranslation } from 'react-i18next';
-import { Button } from '@/components/ui/button';
 
-export default function PipelineCard({
-  cardVO,
-  onDebug,
-}: {
-  cardVO: PipelineCardVO;
-  onDebug: (pipelineId: string) => void;
-}) {
+export default function PipelineCard({ cardVO }: { cardVO: PipelineCardVO }) {
   const { t } = useTranslation();
-
-  const handleDebugClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onDebug(cardVO.id);
-  };
 
   return (
     <div className={`${styles.cardContainer}`}>

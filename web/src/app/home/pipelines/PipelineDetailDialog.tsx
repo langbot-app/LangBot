@@ -38,7 +38,7 @@ type DialogMode = 'config' | 'debug';
 export default function PipelineDialog({
   open,
   onOpenChange,
-  pipelineId,
+  pipelineId: propPipelineId,
   isEditMode = false,
   isDefaultPipeline = false,
   initValues,
@@ -46,23 +46,15 @@ export default function PipelineDialog({
   onNewPipelineCreated,
 }: PipelineDialogProps) {
   const { t } = useTranslation();
+  const [pipelineId, setPipelineId] = useState<string | undefined>(
+    propPipelineId,
+  );
   const [currentMode, setCurrentMode] = useState<DialogMode>('config');
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
 
   useEffect(() => {
-    if (open) {
-      loadPipelines();
-    }
-  }, [open]);
-
-  const loadPipelines = async () => {
-    try {
-      const response = await httpClient.getPipelines();
-      setPipelines(response.pipelines);
-    } catch (error) {
-      console.error('Failed to load pipelines:', error);
-    }
-  };
+    setPipelineId(propPipelineId);
+    setCurrentMode('config');
+  }, [propPipelineId, open]);
 
   const handleFinish = () => {
     onFinish();
@@ -70,11 +62,11 @@ export default function PipelineDialog({
   };
 
   const handleNewPipelineCreated = (newPipelineId: string) => {
+    setPipelineId(newPipelineId);
+    setCurrentMode('config');
     if (onNewPipelineCreated) {
       onNewPipelineCreated(newPipelineId);
     }
-    // 切换到调试模式
-    setCurrentMode('debug');
   };
 
   const menu = [
