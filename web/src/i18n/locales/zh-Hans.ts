@@ -26,7 +26,7 @@ const zhHans = {
     save: '保存',
     saving: '保存中...',
     confirm: '确认',
-    confirmDelete: '删除确认',
+    confirmDelete: '确认删除',
     deleteConfirmation: '你确定要删除这个吗？',
     selectOption: '选择一个选项',
     required: '必填',

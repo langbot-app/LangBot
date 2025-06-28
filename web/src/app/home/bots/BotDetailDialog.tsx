@@ -116,8 +116,8 @@ export default function BotDetailDialog({
     return (
       <>
         <Dialog open={open} onOpenChange={onOpenChange}>
-          <DialogContent className="overflow-hidden p-0 w-[1300px] max-h-[80vh] flex">
-            <main className="flex flex-1 flex-col h-[80vh]">
+          <DialogContent className="overflow-hidden p-0 !max-w-[40vw] max-h-[70vh] flex">
+            <main className="flex flex-1 flex-col h-[70vh]">
               <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
                 <DialogTitle>{t('bots.createBot')}</DialogTitle>
               </DialogHeader>
@@ -155,7 +155,7 @@ export default function BotDetailDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="overflow-hidden p-0 w-[1300px] max-h-[80vh] flex">
+        <DialogContent className="overflow-hidden p-0 !max-w-[50vw] max-h-[75vh] flex">
           <SidebarProvider className="items-start w-full flex">
             <Sidebar
               collapsible="none"
@@ -184,7 +184,7 @@ export default function BotDetailDialog({
                 </SidebarGroup>
               </SidebarContent>
             </Sidebar>
-            <main className="flex flex-1 flex-col h-[80vh]">
+            <main className="flex flex-1 flex-col h-[75vh]">
               <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
                 <DialogTitle>
                   {activeMenu === 'config'
