@@ -1,24 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { Pipeline } from '@/app/infra/entities/api';
 import { Message } from '@/app/infra/entities/message';
 import { toast } from 'sonner';
 import AtBadge from './AtBadge';
@@ -31,14 +19,12 @@ interface MessageComponent {
 
 interface DebugDialogProps {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
   pipelineId: string;
   isEmbedded?: boolean;
 }
 
 export default function DebugDialog({
   open,
-  onOpenChange,
   pipelineId,
   isEmbedded = false,
 }: DebugDialogProps) {
@@ -47,7 +33,6 @@ export default function DebugDialog({
   const [sessionType, setSessionType] = useState<'person' | 'group'>('person');
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [showAtPopover, setShowAtPopover] = useState(false);
   const [hasAt, setHasAt] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
@@ -66,7 +51,6 @@ export default function DebugDialog({
   useEffect(() => {
     if (open) {
       setSelectedPipelineId(pipelineId);
-      loadPipelines();
       loadMessages(pipelineId);
     }
   }, [open, pipelineId]);
@@ -99,15 +83,6 @@ export default function DebugDialog({
       setIsHovering(true);
     }
   }, [showAtPopover]);
-
-  const loadPipelines = async () => {
-    try {
-      const response = await httpClient.getPipelines();
-      setPipelines(response.pipelines);
-    } catch (error) {
-      console.error('Failed to load pipelines:', error);
-    }
-  };
 
   const loadMessages = async (pipelineId: string) => {
     try {

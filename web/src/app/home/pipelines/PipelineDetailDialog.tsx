@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { httpClient } from '@/app/infra/http/HttpClient';
 import {
   Dialog,
   DialogContent,
@@ -19,7 +18,6 @@ import {
 } from '@/components/ui/sidebar';
 import PipelineFormComponent from './components/pipeline-form/PipelineFormComponent';
 import DebugDialog from './components/debug-dialog/DebugDialog';
-import { Pipeline } from '@/app/infra/entities/api';
 import { PipelineFormEntity } from '@/app/infra/entities/pipeline';
 
 interface PipelineDialogProps {
@@ -203,7 +201,6 @@ export default function PipelineDialog({
               {currentMode === 'debug' && pipelineId && (
                 <DebugDialog
                   open={true}
-                  onOpenChange={() => {}}
                   pipelineId={pipelineId}
                   isEmbedded={true}
                 />

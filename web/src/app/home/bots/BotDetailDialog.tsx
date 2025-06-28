@@ -29,6 +29,7 @@ interface BotDetailDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   botId?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onFormSubmit: (value: z.infer<any>) => void;
   onFormCancel: () => void;
   onBotDeleted: () => void;
@@ -83,6 +84,7 @@ export default function BotDetailDialog({
     },
   ];
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleFormSubmit = (value: any) => {
     onFormSubmit(value);
   };
