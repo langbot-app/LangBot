@@ -203,6 +203,8 @@ const zhHans = {
     deleteConfirmation:
       '你确定要删除这个流水线吗？已绑定此流水线的机器人将无法使用。',
     defaultPipelineCannotDelete: '默认流水线不可删除',
+    deleteSuccess: '删除成功',
+    deleteError: '删除失败：',
     debugDialog: {
       title: '流水线对话',
       selectPipeline: '选择流水线',

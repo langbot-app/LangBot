@@ -209,6 +209,8 @@ const jaJP = {
     deleteConfirmation:
       '本当にこのパイプラインを削除しますか？このパイプラインに紐付けられたボットは動作しなくなります。',
     defaultPipelineCannotDelete: 'デフォルトパイプラインは削除できません',
+    deleteSuccess: '削除に成功しました',
+    deleteError: '削除に失敗しました：',
     debugDialog: {
       title: 'パイプラインのチャット',
       selectPipeline: 'パイプラインを選択',

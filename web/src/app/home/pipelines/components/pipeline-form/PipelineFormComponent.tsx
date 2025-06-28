@@ -41,6 +41,8 @@ export default function PipelineFormComponent({
   isEditMode,
   pipelineId,
   showButtons = true,
+  onDeletePipeline,
+  onCancel,
 }: {
   pipelineId?: string;
   isDefaultPipeline: boolean;
@@ -51,6 +53,8 @@ export default function PipelineFormComponent({
   initValues?: PipelineFormEntity;
   onFinish: () => void;
   onNewPipelineCreated: (pipelineId: string) => void;
+  onDeletePipeline: () => void;
+  onCancel: () => void;
 }) {
   const { t } = useTranslation();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -317,7 +321,7 @@ export default function PipelineFormComponent({
       httpClient
         .deletePipeline(pipelineId)
         .then(() => {
-          onFinish();
+          onDeletePipeline();
           setShowDeleteConfirm(false);
           toast.success(t('pipelines.deleteSuccess'));
         })
@@ -462,7 +466,7 @@ export default function PipelineFormComponent({
               <Button type="submit" form="pipeline-form">
                 {isEditMode ? t('common.save') : t('common.submit')}
               </Button>
-              <Button type="button" variant="outline" onClick={onFinish}>
+              <Button type="button" variant="outline" onClick={onCancel}>
                 {t('common.cancel')}
               </Button>
             </div>

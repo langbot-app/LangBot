@@ -208,6 +208,8 @@ const enUS = {
     deleteConfirmation:
       'Are you sure you want to delete this pipeline? Bots bound to this pipeline will not work.',
     defaultPipelineCannotDelete: 'Default pipeline cannot be deleted',
+    deleteSuccess: 'Deleted successfully',
+    deleteError: 'Delete failed: ',
     debugDialog: {
       title: 'Pipeline Chat',
       selectPipeline: 'Select Pipeline',

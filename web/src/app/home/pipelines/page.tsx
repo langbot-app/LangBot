@@ -85,13 +85,6 @@ export default function PluginConfigPage() {
     });
   }
 
-  const handleDebug = (pipelineId: string) => {
-    setSelectedPipelineId(pipelineId);
-    setIsEditForm(true);
-    setDialogOpen(true);
-    getSelectedPipelineForm(pipelineId);
-  };
-
   const handlePipelineClick = (pipelineId: string) => {
     setSelectedPipelineId(pipelineId);
     setIsEditForm(true);
@@ -124,7 +117,6 @@ export default function PluginConfigPage() {
         initValues={selectedPipelineFormValue}
         onFinish={() => {
           getPipelines();
-          setDialogOpen(false);
         }}
         onNewPipelineCreated={(pipelineId) => {
           getPipelines();
@@ -132,6 +124,13 @@ export default function PluginConfigPage() {
           setIsEditForm(true);
           setDialogOpen(true);
           getSelectedPipelineForm(pipelineId);
+        }}
+        onDeletePipeline={() => {
+          getPipelines();
+          setDialogOpen(false);
+        }}
+        onCancel={() => {
+          setDialogOpen(false);
         }}
       />
 

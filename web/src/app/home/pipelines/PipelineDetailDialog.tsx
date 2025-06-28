@@ -31,6 +31,8 @@ interface PipelineDialogProps {
   initValues?: PipelineFormEntity;
   onFinish: () => void;
   onNewPipelineCreated?: (pipelineId: string) => void;
+  onDeletePipeline: () => void;
+  onCancel: () => void;
 }
 
 type DialogMode = 'config' | 'debug';
@@ -44,6 +46,8 @@ export default function PipelineDialog({
   initValues,
   onFinish,
   onNewPipelineCreated,
+  onDeletePipeline,
+  onCancel,
 }: PipelineDialogProps) {
   const { t } = useTranslation();
   const [pipelineId, setPipelineId] = useState<string | undefined>(
@@ -58,7 +62,6 @@ export default function PipelineDialog({
 
   const handleFinish = () => {
     onFinish();
-    onOpenChange(false);
   };
 
   const handleNewPipelineCreated = (newPipelineId: string) => {
@@ -126,6 +129,10 @@ export default function PipelineDialog({
                 pipelineId={pipelineId}
                 disableForm={false}
                 showButtons={true}
+                onDeletePipeline={onDeletePipeline}
+                onCancel={() => {
+                  onCancel();
+                }}
               />
             </div>
           </main>
@@ -187,6 +194,10 @@ export default function PipelineDialog({
                   pipelineId={pipelineId}
                   disableForm={false}
                   showButtons={true}
+                  onDeletePipeline={onDeletePipeline}
+                  onCancel={() => {
+                    onCancel();
+                  }}
                 />
               )}
               {currentMode === 'debug' && pipelineId && (

@@ -284,7 +284,7 @@ export default function BotForm({
         })
         .finally(() => {
           setIsLoading(false);
-          form.reset();
+          // form.reset();
           // dynamicForm.resetFields();
         });
     } else {
@@ -316,8 +316,6 @@ export default function BotForm({
           // dynamicForm.resetFields();
         });
     }
-    setShowDynamicForm(false);
-    console.log('set loading', false);
   }
 
   function deleteBot() {

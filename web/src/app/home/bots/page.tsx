@@ -73,7 +73,7 @@ export default function BotConfigPage() {
 
   function handleFormSubmit() {
     getBotList();
-    setDetailDialogOpen(false);
+    // setDetailDialogOpen(false);
   }
 
   function handleFormCancel() {
