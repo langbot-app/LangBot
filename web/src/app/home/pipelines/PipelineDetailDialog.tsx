@@ -6,7 +6,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Sidebar,
@@ -18,7 +17,6 @@ import {
   SidebarMenuItem,
   SidebarProvider,
 } from '@/components/ui/sidebar';
-import { Button } from '@/components/ui/button';
 import PipelineFormComponent from './components/pipeline-form/PipelineFormComponent';
 import DebugDialog from './components/debug-dialog/DebugDialog';
 import { Pipeline } from '@/app/infra/entities/api';
@@ -50,7 +48,6 @@ export default function PipelineDialog({
   const { t } = useTranslation();
   const [currentMode, setCurrentMode] = useState<DialogMode>('config');
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -78,19 +75,6 @@ export default function PipelineDialog({
     }
     // 切换到调试模式
     setCurrentMode('debug');
-  };
-
-  const handleDelete = () => {
-    setShowDeleteConfirm(true);
-  };
-
-  const confirmDelete = () => {
-    if (pipelineId) {
-      httpClient.deletePipeline(pipelineId).then(() => {
-        onFinish();
-        setShowDeleteConfirm(false);
-      });
-    }
   };
 
   const menu = [
@@ -149,18 +133,9 @@ export default function PipelineDialog({
                 isEditMode={isEditMode}
                 pipelineId={pipelineId}
                 disableForm={false}
+                showButtons={true}
               />
             </div>
-            <DialogFooter className="px-6 py-4 border-t shrink-0">
-              <div className="flex justify-end gap-2">
-                <Button type="submit" form="pipeline-form">
-                  {t('common.submit')}
-                </Button>
-                <Button type="button" variant="outline" onClick={handleFinish}>
-                  {t('common.cancel')}
-                </Button>
-              </div>
-            </DialogFooter>
           </main>
         </DialogContent>
       </Dialog>
@@ -169,114 +144,65 @@ export default function PipelineDialog({
 
   // 编辑流水线时的对话框
   return (
-    <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="overflow-hidden p-0 !max-w-[50vw] max-h-[75vh] h-[75vh] flex">
-          <SidebarProvider className="items-start w-full flex h-full min-h-0">
-            <Sidebar
-              collapsible="none"
-              className="hidden md:flex h-full min-h-0 w-40 min-w-[120px] border-r bg-white"
-            >
-              <SidebarContent>
-                <SidebarGroup>
-                  <SidebarGroupContent>
-                    <SidebarMenu>
-                      {menu.map((item) => (
-                        <SidebarMenuItem key={item.key}>
-                          <SidebarMenuButton
-                            asChild
-                            isActive={currentMode === item.key}
-                            onClick={() =>
-                              setCurrentMode(item.key as DialogMode)
-                            }
-                          >
-                            <a href="#">
-                              {item.icon}
-                              <span>{item.label}</span>
-                            </a>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      ))}
-                    </SidebarMenu>
-                  </SidebarGroupContent>
-                </SidebarGroup>
-              </SidebarContent>
-            </Sidebar>
-            <main className="flex flex-1 flex-col h-full min-h-0">
-              <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
-                <DialogTitle>{getDialogTitle()}</DialogTitle>
-              </DialogHeader>
-              <div className="flex-1 h-0 min-h-0 auto px-6 pb-6">
-                {currentMode === 'config' && (
-                  <PipelineFormComponent
-                    initValues={initValues}
-                    isDefaultPipeline={isDefaultPipeline}
-                    onFinish={handleFinish}
-                    onNewPipelineCreated={handleNewPipelineCreated}
-                    isEditMode={isEditMode}
-                    pipelineId={pipelineId}
-                    disableForm={false}
-                  />
-                )}
-                {currentMode === 'debug' && pipelineId && (
-                  <DebugDialog
-                    open={true}
-                    onOpenChange={() => {}}
-                    pipelineId={pipelineId}
-                    isEmbedded={true}
-                  />
-                )}
-              </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="overflow-hidden p-0 !max-w-[50rem] h-[75vh] flex">
+        <SidebarProvider className="items-start w-full flex h-full min-h-0">
+          <Sidebar
+            collapsible="none"
+            className="hidden md:flex h-full min-h-0 w-40 border-r bg-white"
+          >
+            <SidebarContent>
+              <SidebarGroup>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {menu.map((item) => (
+                      <SidebarMenuItem key={item.key}>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={currentMode === item.key}
+                          onClick={() => setCurrentMode(item.key as DialogMode)}
+                        >
+                          <a href="#">
+                            {item.icon}
+                            <span>{item.label}</span>
+                          </a>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            </SidebarContent>
+          </Sidebar>
+          <main className="flex flex-1 flex-col h-full min-h-0">
+            <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
+              <DialogTitle>{getDialogTitle()}</DialogTitle>
+            </DialogHeader>
+            <div className="flex-1 auto px-6 pb-6 w-full h-full">
               {currentMode === 'config' && (
-                <DialogFooter className="px-6 py-4 border-t shrink-0">
-                  <div className="flex justify-end gap-2">
-                    {!isDefaultPipeline && (
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        onClick={handleDelete}
-                      >
-                        {t('common.delete')}
-                      </Button>
-                    )}
-                    <Button type="submit" form="pipeline-form">
-                      {t('common.save')}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleFinish}
-                    >
-                      {t('common.cancel')}
-                    </Button>
-                  </div>
-                </DialogFooter>
+                <PipelineFormComponent
+                  initValues={initValues}
+                  isDefaultPipeline={isDefaultPipeline}
+                  onFinish={handleFinish}
+                  onNewPipelineCreated={handleNewPipelineCreated}
+                  isEditMode={isEditMode}
+                  pipelineId={pipelineId}
+                  disableForm={false}
+                  showButtons={true}
+                />
               )}
-            </main>
-          </SidebarProvider>
-        </DialogContent>
-      </Dialog>
-
-      {/* 删除确认对话框 */}
-      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('common.confirmDelete')}</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">{t('pipelines.deleteConfirmation')}</div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowDeleteConfirm(false)}
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button variant="destructive" onClick={confirmDelete}>
-              {t('common.confirmDelete')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+              {currentMode === 'debug' && pipelineId && (
+                <DebugDialog
+                  open={true}
+                  onOpenChange={() => {}}
+                  pipelineId={pipelineId}
+                  isEmbedded={true}
+                />
+              )}
+            </div>
+          </main>
+        </SidebarProvider>
+      </DialogContent>
+    </Dialog>
   );
 }

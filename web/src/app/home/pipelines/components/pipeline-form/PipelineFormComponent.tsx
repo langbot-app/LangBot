@@ -22,6 +22,13 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { i18nObj } from '@/i18n/I18nProvider';
@@ -33,17 +40,21 @@ export default function PipelineFormComponent({
   onNewPipelineCreated,
   isEditMode,
   pipelineId,
+  showButtons = true,
 }: {
   pipelineId?: string;
   isDefaultPipeline: boolean;
   isEditMode: boolean;
   disableForm: boolean;
+  showButtons?: boolean;
   // 这里的写法很不安全不规范，未来流水线需要重新整理
   initValues?: PipelineFormEntity;
   onFinish: () => void;
   onNewPipelineCreated: (pipelineId: string) => void;
 }) {
   const { t } = useTranslation();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
   const formSchema = isEditMode
     ? z.object({
         basic: z.object({
@@ -297,104 +308,181 @@ export default function PipelineFormComponent({
     );
   }
 
+  const handleDelete = () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = () => {
+    if (pipelineId) {
+      httpClient
+        .deletePipeline(pipelineId)
+        .then(() => {
+          onFinish();
+          setShowDeleteConfirm(false);
+          toast.success(t('pipelines.deleteSuccess'));
+        })
+        .catch((err) => {
+          toast.error(t('pipelines.deleteError') + err.message);
+        });
+    }
+  };
+
   return (
-    <div style={{ maxHeight: '70vh' }}>
-      <Form {...form}>
-        <form id="pipeline-form" onSubmit={form.handleSubmit(handleFormSubmit)}>
-          <Tabs defaultValue={formLabelList[0].name}>
-            <TabsList>
-              {formLabelList.map((formLabel) => (
-                <TabsTrigger key={formLabel.name} value={formLabel.name}>
-                  {formLabel.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+    <>
+      <div className="h-full flex flex-col">
+        <Form {...form}>
+          <form
+            id="pipeline-form"
+            onSubmit={form.handleSubmit(handleFormSubmit)}
+            className="h-full flex flex-col"
+          >
+            <Tabs
+              defaultValue={formLabelList[0].name}
+              className="h-full flex flex-col"
+            >
+              <TabsList>
+                {formLabelList.map((formLabel) => (
+                  <TabsTrigger key={formLabel.name} value={formLabel.name}>
+                    {formLabel.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
 
-            {formLabelList.map((formLabel) => (
-              <TabsContent
-                key={formLabel.name}
-                value={formLabel.name}
-                className="pr-6"
+              <div
+                id="pipeline-form-content"
+                className="flex-1 overflow-y-auto"
               >
-                {formLabel.name === 'basic' && (
-                  <div className="space-y-6">
-                    <FormField
-                      control={form.control}
-                      name="basic.name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>
-                            {t('common.name')}
-                            <span className="text-red-500">*</span>
-                          </FormLabel>
-                          <FormControl>
-                            <Input {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                {formLabelList.map((formLabel) => (
+                  <TabsContent
+                    key={formLabel.name}
+                    value={formLabel.name}
+                    className="overflow-y-auto max-h-full"
+                  >
+                    {formLabel.name === 'basic' && (
+                      <div className="space-y-6">
+                        <FormField
+                          control={form.control}
+                          name="basic.name"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>
+                                {t('common.name')}
+                                <span className="text-red-500">*</span>
+                              </FormLabel>
+                              <FormControl>
+                                <Input {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
 
-                    <FormField
-                      control={form.control}
-                      name="basic.description"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>
-                            {t('common.description')}
-                            <span className="text-red-500">*</span>
-                          </FormLabel>
-                          <FormControl>
-                            <Input {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                        <FormField
+                          control={form.control}
+                          name="basic.description"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>
+                                {t('common.description')}
+                                <span className="text-red-500">*</span>
+                              </FormLabel>
+                              <FormControl>
+                                <Input {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    )}
+
+                    {isEditMode && (
+                      <>
+                        {formLabel.name === 'ai' && aiConfigTabSchema && (
+                          <div className="space-y-6">
+                            {aiConfigTabSchema.stages.map((stage) =>
+                              renderDynamicForms(stage, 'ai'),
+                            )}
+                          </div>
+                        )}
+
+                        {formLabel.name === 'trigger' &&
+                          triggerConfigTabSchema && (
+                            <div className="space-y-6">
+                              {triggerConfigTabSchema.stages.map((stage) =>
+                                renderDynamicForms(stage, 'trigger'),
+                              )}
+                            </div>
+                          )}
+
+                        {formLabel.name === 'safety' &&
+                          safetyConfigTabSchema && (
+                            <div className="space-y-6">
+                              {safetyConfigTabSchema.stages.map((stage) =>
+                                renderDynamicForms(stage, 'safety'),
+                              )}
+                            </div>
+                          )}
+
+                        {formLabel.name === 'output' &&
+                          outputConfigTabSchema && (
+                            <div className="space-y-6">
+                              {outputConfigTabSchema.stages.map((stage) =>
+                                renderDynamicForms(stage, 'output'),
+                              )}
+                            </div>
+                          )}
+                      </>
+                    )}
+                  </TabsContent>
+                ))}
+              </div>
+            </Tabs>
+
+            {showButtons && (
+              <div className="flex justify-end gap-2 pt-4 border-t mb-0">
+                {isEditMode && !isDefaultPipeline && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={handleDelete}
+                  >
+                    {t('common.delete')}
+                  </Button>
                 )}
+                <Button type="submit" form="pipeline-form">
+                  {isEditMode ? t('common.save') : t('common.submit')}
+                </Button>
+                <Button type="button" variant="outline" onClick={onFinish}>
+                  {t('common.cancel')}
+                </Button>
+              </div>
+            )}
+          </form>
+        </Form>
+      </div>
 
-                {isEditMode && (
-                  <>
-                    {formLabel.name === 'ai' && aiConfigTabSchema && (
-                      <div className="space-y-6">
-                        {aiConfigTabSchema.stages.map((stage) =>
-                          renderDynamicForms(stage, 'ai'),
-                        )}
-                      </div>
-                    )}
-
-                    {formLabel.name === 'trigger' && triggerConfigTabSchema && (
-                      <div className="space-y-6">
-                        {triggerConfigTabSchema.stages.map((stage) =>
-                          renderDynamicForms(stage, 'trigger'),
-                        )}
-                      </div>
-                    )}
-
-                    {formLabel.name === 'safety' && safetyConfigTabSchema && (
-                      <div className="space-y-6">
-                        {safetyConfigTabSchema.stages.map((stage) =>
-                          renderDynamicForms(stage, 'safety'),
-                        )}
-                      </div>
-                    )}
-
-                    {formLabel.name === 'output' && outputConfigTabSchema && (
-                      <div className="space-y-6">
-                        {outputConfigTabSchema.stages.map((stage) =>
-                          renderDynamicForms(stage, 'output'),
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
-              </TabsContent>
-            ))}
-          </Tabs>
-        </form>
-      </Form>
-    </div>
+      {/* 删除确认对话框 */}
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('common.confirmDelete')}</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">{t('pipelines.deleteConfirmation')}</div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteConfirm(false)}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete}>
+              {t('common.confirmDelete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 interface FormLabel {

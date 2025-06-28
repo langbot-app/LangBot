@@ -155,7 +155,7 @@ export default function BotDetailDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="overflow-hidden p-0 !max-w-[50vw] max-h-[75vh] flex">
+        <DialogContent className="overflow-hidden p-0 !max-w-[50rem] max-h-[75vh] flex">
           <SidebarProvider className="items-start w-full flex">
             <Sidebar
               collapsible="none"
