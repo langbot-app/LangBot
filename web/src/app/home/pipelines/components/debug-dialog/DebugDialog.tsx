@@ -218,15 +218,6 @@ export default function DebugDialog({
     }
   };
 
-  // const resetSession = async () => {
-  //   try {
-  //     await httpClient.resetWebChatSession(selectedPipelineId, sessionType);
-  //     setMessages([]);
-  //   } catch (error) {
-  //     console.error('Failed to reset session:', error);
-  //   }
-  // };
-
   const renderMessageContent = (message: Message) => {
     return (
       <span className="text-base leading-relaxed align-middle whitespace-pre-wrap">
@@ -398,39 +389,8 @@ export default function DebugDialog({
 
   // 原有的Dialog包装
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-[70vw] max-w-6xl h-[70vh] p-6 flex flex-col rounded-2xl shadow-2xl bg-white">
-        <DialogHeader className="pl-2">
-          <div className="flex items-center justify-between">
-            <DialogTitle className="flex items-center gap-4 font-bold">
-              {t('pipelines.debugDialog.title')}
-              <Select
-                value={selectedPipelineId}
-                onValueChange={(value) => {
-                  setSelectedPipelineId(value);
-                  loadMessages(value);
-                }}
-              >
-                <SelectTrigger className="bg-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl shadow-lg">
-                  {pipelines.map((pipeline) => (
-                    <SelectItem
-                      key={pipeline.uuid}
-                      value={pipeline.uuid || ''}
-                      className="rounded-lg"
-                    >
-                      {pipeline.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </DialogTitle>
-          </div>
-        </DialogHeader>
-        {renderContent()}
-      </DialogContent>
-    </Dialog>
+    <DialogContent className="!max-w-[70vw] max-w-6xl h-[70vh] p-6 flex flex-col rounded-2xl shadow-2xl bg-white">
+      {renderContent()}
+    </DialogContent>
   );
 }

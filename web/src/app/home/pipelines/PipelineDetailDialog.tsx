@@ -175,10 +175,16 @@ export default function PipelineDialog({
             </SidebarContent>
           </Sidebar>
           <main className="flex flex-1 flex-col h-full min-h-0">
-            <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
+            <DialogHeader
+              className="px-6 pt-6 pb-4 shrink-0"
+              style={{ height: '4rem' }}
+            >
               <DialogTitle>{getDialogTitle()}</DialogTitle>
             </DialogHeader>
-            <div className="flex-1 auto px-6 pb-6 w-full h-full">
+            <div
+              className="flex-1 auto px-6 pb-4 w-full"
+              style={{ height: 'calc(100% - 4rem)' }}
+            >
               {currentMode === 'config' && (
                 <PipelineFormComponent
                   initValues={initValues}
