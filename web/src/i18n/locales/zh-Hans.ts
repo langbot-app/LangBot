@@ -182,6 +182,8 @@ const zhHans = {
     createPipeline: '创建流水线',
     editPipeline: '编辑流水线',
     chat: '对话',
+    configuration: '配置',
+    debugChat: '对话调试',
     getPipelineListError: '获取流水线列表失败：',
     daysAgo: '天前',
     today: '今天',

@@ -187,6 +187,8 @@ const jaJP = {
     createPipeline: 'パイプラインを作成',
     editPipeline: 'パイプラインを編集',
     chat: 'チャット',
+    configuration: '設定',
+    debugChat: 'チャットデバッグ',
     getPipelineListError: 'パイプラインリストの取得に失敗しました：',
     daysAgo: '日前',
     today: '今日',

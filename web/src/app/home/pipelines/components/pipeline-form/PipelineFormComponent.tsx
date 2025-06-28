@@ -23,14 +23,6 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { toast } from 'sonner';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
 import { useTranslation } from 'react-i18next';
 import { i18nObj } from '@/i18n/I18nProvider';
 
@@ -98,7 +90,6 @@ export default function PipelineFormComponent({
     useState<PipelineConfigTab>();
   const [outputConfigTabSchema, setOutputConfigTabSchema] =
     useState<PipelineConfigTab>();
-  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -306,53 +297,10 @@ export default function PipelineFormComponent({
     );
   }
 
-  function deletePipeline() {
-    httpClient
-      .deletePipeline(pipelineId || '')
-      .then(() => {
-        onFinish();
-        toast.success(t('common.deleteSuccess'));
-      })
-      .catch((err) => {
-        toast.error(t('common.deleteError') + err.message);
-      });
-  }
-
   return (
     <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
-      <Dialog
-        open={showDeleteConfirmModal}
-        onOpenChange={setShowDeleteConfirmModal}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('common.confirmDelete')}</DialogTitle>
-          </DialogHeader>
-          <DialogDescription>
-            {t('pipelines.deleteConfirmation')}
-          </DialogDescription>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowDeleteConfirmModal(false)}
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                deletePipeline();
-                setShowDeleteConfirmModal(false);
-              }}
-            >
-              {t('common.confirmDelete')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(handleFormSubmit)}>
+        <form id="pipeline-form" onSubmit={form.handleSubmit(handleFormSubmit)}>
           <Tabs defaultValue={formLabelList[0].name}>
             <TabsList>
               {formLabelList.map((formLabel) => (
@@ -446,41 +394,6 @@ export default function PipelineFormComponent({
               </TabsContent>
             ))}
           </Tabs>
-
-          <div className="sticky bottom-0 left-0 right-0 bg-background border-t p-4 mt-4">
-            <div className="flex justify-end items-center gap-2">
-              {isEditMode && isDefaultPipeline && (
-                <span className="text-gray-500 text-[0.7rem]">
-                  {t('pipelines.defaultPipelineCannotDelete')}
-                </span>
-              )}
-
-              {isEditMode && !isDefaultPipeline && (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={() => {
-                    setShowDeleteConfirmModal(true);
-                  }}
-                  className="cursor-pointer"
-                >
-                  {t('common.delete')}
-                </Button>
-              )}
-
-              <Button type="submit" className="cursor-pointer">
-                {isEditMode ? t('common.save') : t('common.submit')}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onFinish}
-                className="cursor-pointer"
-              >
-                {t('common.cancel')}
-              </Button>
-            </div>
-          </div>
         </form>
       </Form>
     </div>

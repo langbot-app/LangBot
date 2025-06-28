@@ -1,25 +1,18 @@
 'use client';
 import { useState, useEffect } from 'react';
 import CreateCardComponent from '@/app/infra/basic-component/create-card-component/CreateCardComponent';
-import PipelineFormComponent from './components/pipeline-form/PipelineFormComponent';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { PipelineCardVO } from '@/app/home/pipelines/components/pipeline-card/PipelineCardVO';
 import PipelineCard from '@/app/home/pipelines/components/pipeline-card/PipelineCard';
 import { PipelineFormEntity } from '@/app/infra/entities/pipeline';
 import styles from './pipelineConfig.module.css';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import DebugDialog from './debug-dialog/DebugDialog';
+import PipelineDialog from './PipelineDetailDialog';
 
 export default function PluginConfigPage() {
   const { t } = useTranslation();
-  const [modalOpen, setModalOpen] = useState<boolean>(false);
+  const [dialogOpen, setDialogOpen] = useState<boolean>(false);
   const [isEditForm, setIsEditForm] = useState(false);
   const [pipelineList, setPipelineList] = useState<PipelineCardVO[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState('');
@@ -31,11 +24,8 @@ export default function PluginConfigPage() {
       safety: {},
       output: {},
     });
-  const [disableForm, setDisableForm] = useState(false);
   const [selectedPipelineIsDefault, setSelectedPipelineIsDefault] =
     useState(false);
-  const [debugDialogOpen, setDebugDialogOpen] = useState(false);
-  const [debugPipelineId, setDebugPipelineId] = useState('');
 
   useEffect(() => {
     getPipelines();
@@ -92,83 +82,76 @@ export default function PluginConfigPage() {
         trigger: value.pipeline.config.trigger,
       });
       setSelectedPipelineIsDefault(value.pipeline.is_default ?? false);
-      setDisableForm(false);
     });
   }
 
   const handleDebug = (pipelineId: string) => {
-    setDebugPipelineId(pipelineId);
-    setDebugDialogOpen(true);
+    setSelectedPipelineId(pipelineId);
+    setIsEditForm(true);
+    setDialogOpen(true);
+    getSelectedPipelineForm(pipelineId);
+  };
+
+  const handlePipelineClick = (pipelineId: string) => {
+    setSelectedPipelineId(pipelineId);
+    setIsEditForm(true);
+    setDialogOpen(true);
+    getSelectedPipelineForm(pipelineId);
+  };
+
+  const handleCreateNew = () => {
+    setIsEditForm(false);
+    setSelectedPipelineId('');
+    setSelectedPipelineFormValue({
+      basic: {},
+      ai: {},
+      trigger: {},
+      safety: {},
+      output: {},
+    });
+    setSelectedPipelineIsDefault(false);
+    setDialogOpen(true);
   };
 
   return (
     <div className={styles.configPageContainer}>
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="w-[700px] max-h-[80vh] p-0 flex flex-col">
-          <DialogHeader className="px-6 pt-6 pb-4">
-            <DialogTitle>
-              {isEditForm
-                ? t('pipelines.editPipeline')
-                : t('pipelines.createPipeline')}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto px-6">
-            <PipelineFormComponent
-              onNewPipelineCreated={(pipelineId) => {
-                setDisableForm(true);
-                setIsEditForm(true);
-                setModalOpen(true);
-                setSelectedPipelineId(pipelineId);
-                getSelectedPipelineForm(pipelineId);
-              }}
-              onFinish={() => {
-                getPipelines();
-                setModalOpen(false);
-              }}
-              isEditMode={isEditForm}
-              pipelineId={selectedPipelineId}
-              disableForm={disableForm}
-              initValues={selectedPipelineFormValue}
-              isDefaultPipeline={selectedPipelineIsDefault}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
+      <PipelineDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        pipelineId={selectedPipelineId}
+        isEditMode={isEditForm}
+        isDefaultPipeline={selectedPipelineIsDefault}
+        initValues={selectedPipelineFormValue}
+        onFinish={() => {
+          getPipelines();
+          setDialogOpen(false);
+        }}
+        onNewPipelineCreated={(pipelineId) => {
+          setSelectedPipelineId(pipelineId);
+          setIsEditForm(true);
+          getSelectedPipelineForm(pipelineId);
+        }}
+      />
 
       <div className={styles.pipelineListContainer}>
         <CreateCardComponent
           width={'100%'}
           height={'10rem'}
           plusSize={'90px'}
-          onClick={() => {
-            setIsEditForm(false);
-            setModalOpen(true);
-          }}
+          onClick={handleCreateNew}
         />
 
         {pipelineList.map((pipeline) => {
           return (
             <div
               key={pipeline.id}
-              onClick={() => {
-                setDisableForm(true);
-                setIsEditForm(true);
-                setModalOpen(true);
-                setSelectedPipelineId(pipeline.id);
-                getSelectedPipelineForm(pipeline.id);
-              }}
+              onClick={() => handlePipelineClick(pipeline.id)}
             >
               <PipelineCard cardVO={pipeline} onDebug={handleDebug} />
             </div>
           );
         })}
       </div>
-
-      <DebugDialog
-        open={debugDialogOpen}
-        onOpenChange={setDebugDialogOpen}
-        pipelineId={debugPipelineId}
-      />
     </div>
   );
 }

@@ -187,6 +187,8 @@ const enUS = {
     createPipeline: 'Create Pipeline',
     editPipeline: 'Edit Pipeline',
     chat: 'Chat',
+    configuration: 'Configuration',
+    debugChat: 'Debug Chat',
     getPipelineListError: 'Failed to get pipeline list: ',
     daysAgo: 'days ago',
     today: 'Today',
