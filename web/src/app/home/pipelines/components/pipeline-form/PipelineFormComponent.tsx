@@ -298,7 +298,7 @@ export default function PipelineFormComponent({
   }
 
   return (
-    <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+    <div style={{ maxHeight: '70vh' }}>
       <Form {...form}>
         <form id="pipeline-form" onSubmit={form.handleSubmit(handleFormSubmit)}>
           <Tabs defaultValue={formLabelList[0].name}>
@@ -316,8 +316,6 @@ export default function PipelineFormComponent({
                 value={formLabel.name}
                 className="pr-6"
               >
-                <h1 className="text-xl font-bold mb-4">{formLabel.label}</h1>
-
                 {formLabel.name === 'basic' && (
                   <div className="space-y-6">
                     <FormField
@@ -399,7 +397,6 @@ export default function PipelineFormComponent({
     </div>
   );
 }
-
 interface FormLabel {
   label: string;
   name: string;

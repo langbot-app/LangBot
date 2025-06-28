@@ -206,7 +206,7 @@ export default function PipelineDialog({
               <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
                 <DialogTitle>{getDialogTitle()}</DialogTitle>
               </DialogHeader>
-              <div className="flex-1 h-0 min-h-0 overflow-y-auto px-6 pb-6">
+              <div className="flex-1 h-0 min-h-0 auto px-6 pb-6">
                 {currentMode === 'config' && (
                   <PipelineFormComponent
                     initValues={initValues}
