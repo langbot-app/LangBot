@@ -1,9 +1,9 @@
 'use client';
 
-import { BotLogManager } from '@/app/home/bots/bot-log/BotLogManager';
+import { BotLogManager } from '@/app/home/bots/components/bot-log/BotLogManager';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BotLog } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
-import { BotLogCard } from '@/app/home/bots/bot-log/view/BotLogCard';
+import { BotLogCard } from '@/app/home/bots/components/bot-log/view/BotLogCard';
 import styles from './botLog.module.css';
 import { Switch } from '@/components/ui/switch';
 import { debounce } from 'lodash';
@@ -112,10 +112,7 @@ export function BotLogListComponent({ botId }: { botId: string }) {
   );
 
   return (
-    <div
-      className={`${styles.botLogListContainer} px-6`}
-      ref={listContainerRef}
-    >
+    <div className={`${styles.botLogListContainer}`} ref={listContainerRef}>
       <div className={`${styles.listHeader}`}>
         <div className={'mr-2'}>{t('bots.enableAutoRefresh')}</div>
         <Switch checked={autoFlush} onCheckedChange={(e) => setAutoFlush(e)} />

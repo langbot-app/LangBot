@@ -3,32 +3,21 @@
 import { useEffect, useState } from 'react';
 import styles from './botConfig.module.css';
 import { BotCardVO } from '@/app/home/bots/components/bot-card/BotCardVO';
-import BotForm from '@/app/home/bots/components/bot-form/BotForm';
 import BotCard from '@/app/home/bots/components/bot-card/BotCard';
 import CreateCardComponent from '@/app/infra/basic-component/create-card-component/CreateCardComponent';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Bot, Adapter } from '@/app/infra/entities/api';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { i18nObj } from '@/i18n/I18nProvider';
-import { BotLogListComponent } from '@/app/home/bots/bot-log/view/BotLogListComponent';
+import BotDetailDialog from '@/app/home/bots/BotDetailDialog';
 
 export default function BotConfigPage() {
   const { t } = useTranslation();
-  // 编辑机器人的modal
-  const [modalOpen, setModalOpen] = useState<boolean>(false);
-  // 机器人日志的modal
-  const [logModalOpen, setLogModalOpen] = useState<boolean>(false);
+  // 机器人详情dialog
+  const [detailDialogOpen, setDetailDialogOpen] = useState<boolean>(false);
   const [botList, setBotList] = useState<BotCardVO[]>([]);
-  const [isEditForm, setIsEditForm] = useState(false);
-  const [nowSelectedBotUUID, setNowSelectedBotUUID] = useState<string>();
-  const [nowSelectedBotLog, setNowSelectedBotLog] = useState<string>();
+  const [selectedBotId, setSelectedBotId] = useState<string>('');
 
   useEffect(() => {
     getBotList();
@@ -73,61 +62,46 @@ export default function BotConfigPage() {
   }
 
   function handleCreateBotClick() {
-    setIsEditForm(false);
-    setNowSelectedBotUUID('');
-    setModalOpen(true);
+    setSelectedBotId('');
+    setDetailDialogOpen(true);
   }
 
   function selectBot(botUUID: string) {
-    setNowSelectedBotUUID(botUUID);
-    setIsEditForm(true);
-    setModalOpen(true);
+    setSelectedBotId(botUUID);
+    setDetailDialogOpen(true);
   }
 
-  function onClickLogIcon(botId: string) {
-    setNowSelectedBotLog(botId);
-    setLogModalOpen(true);
+  function handleFormSubmit() {
+    getBotList();
+    setDetailDialogOpen(false);
+  }
+
+  function handleFormCancel() {
+    setDetailDialogOpen(false);
+  }
+
+  function handleBotDeleted() {
+    getBotList();
+    setDetailDialogOpen(false);
+  }
+
+  function handleNewBotCreated(botId: string) {
+    console.log('new bot created', botId);
+    getBotList();
+    setSelectedBotId(botId);
   }
 
   return (
     <div className={styles.configPageContainer}>
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="w-[700px] max-h-[80vh] p-0 flex flex-col">
-          <DialogHeader className="px-6 pt-6 pb-4">
-            <DialogTitle>
-              {isEditForm ? t('bots.editBot') : t('bots.createBot')}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto px-6">
-            <BotForm
-              initBotId={nowSelectedBotUUID}
-              onFormSubmit={() => {
-                getBotList();
-                setModalOpen(false);
-              }}
-              onFormCancel={() => setModalOpen(false)}
-              onBotDeleted={() => {
-                getBotList();
-                setModalOpen(false);
-              }}
-              onNewBotCreated={(botId) => {
-                console.log('new bot created', botId);
-                getBotList();
-                selectBot(botId);
-              }}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={logModalOpen} onOpenChange={setLogModalOpen}>
-        <DialogContent className="w-[700px] max-h-[80vh] p-0 flex flex-col">
-          <DialogHeader className="px-6 pt-6 pb-0">
-            <DialogTitle>{t('bots.botLogTitle')}</DialogTitle>
-          </DialogHeader>
-          <BotLogListComponent botId={nowSelectedBotLog || ''} />
-        </DialogContent>
-      </Dialog>
+      <BotDetailDialog
+        open={detailDialogOpen}
+        onOpenChange={setDetailDialogOpen}
+        botId={selectedBotId || undefined}
+        onFormSubmit={handleFormSubmit}
+        onFormCancel={handleFormCancel}
+        onBotDeleted={handleBotDeleted}
+        onNewBotCreated={handleNewBotCreated}
+      />
 
       {/* 注意：其余的返回内容需要保持在Spin组件外部 */}
       <div className={`${styles.botListContainer}`}>
@@ -147,9 +121,6 @@ export default function BotConfigPage() {
             >
               <BotCard
                 botCardVO={cardVO}
-                clickLogIconCallback={(id) => {
-                  onClickLogIcon(id);
-                }}
                 setBotEnableCallback={(id, enable) => {
                   setBotList(
                     botList.map((bot) => {

@@ -129,6 +129,8 @@ const enUS = {
     dateFormat: '{{month}}/{{day}}',
     setBotEnableError: 'Failed to set bot enable status',
     log: 'Log',
+    configuration: 'Configuration',
+    logs: 'Logs',
   },
   plugins: {
     title: 'Plugins',

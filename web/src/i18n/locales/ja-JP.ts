@@ -130,6 +130,8 @@ const jaJP = {
     dateFormat: '{{month}}月{{day}}日',
     setBotEnableError: 'ボットの有効状態の設定に失敗しました',
     log: 'ログ',
+    configuration: '設定',
+    logs: 'ログ',
   },
   plugins: {
     title: 'プラグイン',

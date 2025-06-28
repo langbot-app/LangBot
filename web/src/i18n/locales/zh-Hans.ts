@@ -127,6 +127,8 @@ const zhHans = {
     dateFormat: '{{month}}月{{day}}日',
     setBotEnableError: '设置机器人启用状态失败',
     log: '日志',
+    configuration: '配置',
+    logs: '日志',
   },
   plugins: {
     title: '插件管理',

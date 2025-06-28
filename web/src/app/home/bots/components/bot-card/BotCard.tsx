@@ -4,21 +4,15 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 import { Switch } from '@/components/ui/switch';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
 
 export default function BotCard({
   botCardVO,
-  clickLogIconCallback,
   setBotEnableCallback,
 }: {
   botCardVO: BotCardVO;
-  clickLogIconCallback: (id: string) => void;
   setBotEnableCallback: (id: string, enable: boolean) => void;
 }) {
   const { t } = useTranslation();
-  function onClickLogIcon() {
-    clickLogIconCallback(botCardVO.id);
-  }
 
   function setBotEnable(enable: boolean) {
     return httpClient.updateBot(botCardVO.id, {
@@ -93,25 +87,6 @@ export default function BotCard({
               e.stopPropagation();
             }}
           />
-          <Button
-            variant="outline"
-            className="w-auto h-[40px]"
-            onClick={(e) => {
-              onClickLogIcon();
-              e.stopPropagation();
-            }}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              width="48"
-              height="48"
-              fill="currentColor"
-            >
-              <path d="M21 8V20.9932C21 21.5501 20.5552 22 20.0066 22H3.9934C3.44495 22 3 21.556 3 21.0082V2.9918C3 2.45531 3.4487 2 4.00221 2H14.9968L21 8ZM19 9H14V4H5V20H19V9ZM8 7H11V9H8V7ZM8 11H16V13H8V11ZM8 15H16V17H8V15Z"></path>
-            </svg>
-            {t('bots.log')}
-          </Button>
         </div>
       </div>
     </div>
