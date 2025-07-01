@@ -8,6 +8,7 @@ import base64
 import uuid
 import os
 import datetime
+import io
 
 import aiohttp
 
@@ -35,28 +36,88 @@ class DiscordMessageConverter(adapter.MessageConverter):
         for ele in message_chain:
             if isinstance(ele, platform_message.Image):
                 image_bytes = None
+                filename = f'{uuid.uuid4()}.png'  # 默认文件名
 
                 if ele.base64:
-                    image_bytes = base64.b64decode(ele.base64)
+                    # 处理base64编码的图片
+                    if ele.base64.startswith('data:'):
+                        # 从data URL中提取文件类型
+                        data_header = ele.base64.split(',')[0]
+                        if 'jpeg' in data_header or 'jpg' in data_header:
+                            filename = f'{uuid.uuid4()}.jpg'
+                        elif 'gif' in data_header:
+                            filename = f'{uuid.uuid4()}.gif'
+                        elif 'webp' in data_header:
+                            filename = f'{uuid.uuid4()}.webp'
+                        # 去掉data:image/xxx;base64,前缀
+                        base64_data = ele.base64.split(',')[1]
+                    else:
+                        base64_data = ele.base64
+                    image_bytes = base64.b64decode(base64_data)
                 elif ele.url:
+                    # 从URL下载图片
                     async with aiohttp.ClientSession() as session:
                         async with session.get(ele.url) as response:
                             image_bytes = await response.read()
+                            # 从URL或Content-Type推断文件类型
+                            content_type = response.headers.get('Content-Type', '')
+                            if 'jpeg' in content_type or 'jpg' in content_type:
+                                filename = f'{uuid.uuid4()}.jpg'
+                            elif 'gif' in content_type:
+                                filename = f'{uuid.uuid4()}.gif'
+                            elif 'webp' in content_type:
+                                filename = f'{uuid.uuid4()}.webp'
+                            elif ele.url.lower().endswith(('.jpg', '.jpeg')):
+                                filename = f'{uuid.uuid4()}.jpg'
+                            elif ele.url.lower().endswith('.gif'):
+                                filename = f'{uuid.uuid4()}.gif'
+                            elif ele.url.lower().endswith('.webp'):
+                                filename = f'{uuid.uuid4()}.webp'
                 elif ele.path:
-                    with open(ele.path, 'rb') as f:
-                        image_bytes = f.read()
+                    # 从文件路径读取图片
+                    # 确保路径没有空字节
+                    clean_path = ele.path.replace('\x00', '')
+                    clean_path = os.path.abspath(clean_path)
+                    
+                    if not os.path.exists(clean_path):
+                        continue  # 跳过不存在的文件
+                    
+                    try:
+                        with open(clean_path, 'rb') as f:
+                            image_bytes = f.read()
+                        # 从文件路径获取文件名，保持原始扩展名
+                        original_filename = os.path.basename(clean_path)
+                        if original_filename and '.' in original_filename:
+                            # 保持原始文件名的扩展名
+                            ext = original_filename.split('.')[-1].lower()
+                            filename = f'{uuid.uuid4()}.{ext}'
+                        else:
+                            # 如果没有扩展名，尝试从文件内容检测
+                            if image_bytes.startswith(b'\xff\xd8\xff'):
+                                filename = f'{uuid.uuid4()}.jpg'
+                            elif image_bytes.startswith(b'GIF'):
+                                filename = f'{uuid.uuid4()}.gif'
+                            elif image_bytes.startswith(b'RIFF') and b'WEBP' in image_bytes[:20]:
+                                filename = f'{uuid.uuid4()}.webp'
+                            # 默认保持PNG
+                    except Exception as e:
+                        print(f"Error reading image file {clean_path}: {e}")
+                        continue  # 跳过读取失败的文件
 
-                image_files.append(discord.File(fp=image_bytes, filename=f'{uuid.uuid4()}.png'))
+                if image_bytes:
+                    # 使用BytesIO创建文件对象，避免路径问题
+                    import io
+                    image_files.append(discord.File(fp=io.BytesIO(image_bytes), filename=filename))
             elif isinstance(ele, platform_message.Plain):
                 text_string += ele.text
             elif isinstance(ele, platform_message.Forward):
                 for node in ele.node_list:
                     (
-                        text_string,
-                        image_files,
+                        node_text,
+                        node_images,
                     ) = await DiscordMessageConverter.yiri2target(node.message_chain)
-                    text_string += text_string
-                    image_files.extend(image_files)
+                    text_string += node_text
+                    image_files.extend(node_images)
 
         return text_string, image_files
 
@@ -199,7 +260,27 @@ class DiscordAdapter(adapter.MessagePlatformAdapter):
         self.bot = MyClient(intents=intents, **args)
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
-        pass
+        msg_to_send, image_files = await self.message_converter.yiri2target(message)
+        
+        try:
+            # 获取频道对象
+            channel = self.bot.get_channel(int(target_id))
+            if channel is None:
+                # 如果本地缓存中没有，尝试从API获取
+                channel = await self.bot.fetch_channel(int(target_id))
+            
+            args = {
+                'content': msg_to_send,
+            }
+            
+            if len(image_files) > 0:
+                args['files'] = image_files
+            
+            await channel.send(**args)
+            
+        except Exception as e:
+            await self.logger.error(f"Discord send_message failed: {e}")
+            raise e
 
     async def reply_message(
         self,
