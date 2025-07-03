@@ -119,6 +119,7 @@ docker compose up -d
 | [Anthropic](https://www.anthropic.com/) | ✅ |  |
 | [xAI](https://x.ai/) | ✅ |  |
 | [智谱AI](https://open.bigmodel.cn/) | ✅ |  |
+| [优云智算](https://www.compshare.cn/) | ✅ | 大模型和 GPU 资源平台 |
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | ✅ | 大模型和 GPU 资源平台 |
 | [302 AI](https://share.302.ai/SuTG99) | ✅ | 大模型聚合平台 |
 | [Google Gemini](https://aistudio.google.com/prompts/new_chat) | ✅ | |

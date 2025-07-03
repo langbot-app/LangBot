@@ -116,6 +116,7 @@ Directly use the released version to run, see the [Manual Deployment](https://do
 | [Anthropic](https://www.anthropic.com/) | ✅ |  |
 | [xAI](https://x.ai/) | ✅ |  |
 | [Zhipu AI](https://open.bigmodel.cn/) | ✅ |  |
+| [CompShare](https://www.compshare.cn/) | ✅ | LLM and GPU resource platform |
 | [Dify](https://dify.ai) | ✅ | LLMOps platform |
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | ✅ | LLM and GPU resource platform |
 | [302 AI](https://share.302.ai/SuTG99) | ✅ | LLM gateway(MaaS) |
