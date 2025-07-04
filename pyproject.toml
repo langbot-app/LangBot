@@ -19,6 +19,7 @@ dependencies = [
     "dashscope>=1.23.2",
     "dingtalk-stream>=0.24.0",
     "discord-py>=2.5.2",
+    "pynacl>=1.5.0",  # Required for Discord voice support
     "gewechat-client>=0.1.5",
     "lark-oapi>=1.4.15",
     "mcp>=1.8.1",
@@ -84,6 +85,8 @@ Repository = "https://github.com/RockChinQ/langbot"
 [dependency-groups]
 dev = [
     "pre-commit>=4.2.0",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.0.0",
     "ruff>=0.11.9",
 ]
 
