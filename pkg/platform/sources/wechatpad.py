@@ -90,7 +90,8 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
     async def target2yiri(
             self,
             message: dict,
-            bot_account_id: str
+            bot_account_id: str,
+            bot_wxid: str
     ) -> platform_message.MessageChain:
         """外部消息转平台消息"""
         # 数据预处理
@@ -101,10 +102,18 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
         is_group_message = self._is_group_message(message)
         if is_group_message:
             ats_bot = self._ats_bot(message, bot_account_id)
+            self.logger.info(f"ats_bot: {ats_bot}; bot_account_id: {bot_account_id}; bot_wxid: {bot_wxid}")
             if "@所有人" in content:
                 message_list.append(platform_message.AtAll())
             elif ats_bot:
                 message_list.append(platform_message.At(target=bot_account_id))
+            
+            # 解析@信息并生成At组件
+            at_targets = self._extract_at_targets(message)
+            for target_id in at_targets:
+                if target_id != bot_wxid:  # 避免重复添加机器人的At
+                    message_list.append(platform_message.At(target=target_id))
+            
             content_no_preifx, _ = self._extract_content_and_sender(content)
 
         msg_type = message["msg_type"]
@@ -458,6 +467,23 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
         finally:
             return ats_bot
 
+    # 提取一下at的wxid列表
+    def _extract_at_targets(self, message: dict) -> list[str]:
+        """从消息中提取被@用户的ID列表"""
+        at_targets = []
+        try:
+            # 从msg_source中解析atuserlist
+            msg_source = message.get('msg_source', '') or ''
+            if len(msg_source) > 0:
+                msg_source_data = ET.fromstring(msg_source)
+                at_user_list = msg_source_data.findtext("atuserlist") or ""
+                if at_user_list:
+                    # atuserlist格式通常是逗号分隔的用户ID列表
+                    at_targets = [user_id.strip() for user_id in at_user_list.split(',') if user_id.strip()]
+        except Exception as e:
+            self.logger.error(f"_extract_at_targets got except: {e}")
+        return at_targets
+    
     # 提取一下content前面的sender_id, 和去掉前缀的内容
     def _extract_content_and_sender(self, raw_content: str) -> Tuple[str, Optional[str]]:
         try:
@@ -496,7 +522,8 @@ class WeChatPadEventConverter(adapter.EventConverter):
     async def target2yiri(
             self,
             event: dict,
-            bot_account_id: str
+            bot_account_id: str,
+            bot_wxid: str
     ) -> platform_events.MessageEvent:
 
         # 排除公众号以及微信团队消息
@@ -505,7 +532,7 @@ class WeChatPadEventConverter(adapter.EventConverter):
                 or event['from_user_name']['str'] == "newsapp"\
                 or event['from_user_name']['str'] == self.config["wxid"]:
             return None
-        message_chain = await self.message_converter.target2yiri(copy.deepcopy(event), bot_account_id)
+        message_chain = await self.message_converter.target2yiri(copy.deepcopy(event), bot_account_id, bot_wxid)
 
         if not message_chain:
             return None
@@ -582,7 +609,7 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
 
 
         try:
-            event = await self.event_converter.target2yiri(data.copy(), self.bot_account_id)
+            event = await self.event_converter.target2yiri(data.copy(), self.bot_account_id, self.config["wxid"])
         except Exception as e:
             await self.logger.error(f"Error in wechatpad callback: {traceback.format_exc()}")
 
