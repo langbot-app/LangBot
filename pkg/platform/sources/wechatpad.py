@@ -38,10 +38,10 @@ import logging
 
 class WeChatPadMessageConverter(adapter.MessageConverter):
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, logger: logging.Logger):
         self.config = config
         self.bot = WeChatPadClient(self.config["wechatpad_url"],self.config["token"])
-        self.logger = logging.getLogger("WeChatPadMessageConverter")
+        self.logger = logger
 
     @staticmethod
     async def yiri2target(
@@ -482,10 +482,10 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
 
 class WeChatPadEventConverter(adapter.EventConverter):
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, logger: logging.Logger):
         self.config = config
-        self.message_converter = WeChatPadMessageConverter(config)
-        self.logger = logging.getLogger("WeChatPadEventConverter")
+        self.message_converter = WeChatPadMessageConverter(config, logger)
+        self.logger = logger
         
     @staticmethod
     async def yiri2target(
@@ -572,8 +572,8 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
         self.logger = logger
         self.quart_app = quart.Quart(__name__)
 
-        self.message_converter = WeChatPadMessageConverter(config)
-        self.event_converter = WeChatPadEventConverter(config)
+        self.message_converter = WeChatPadMessageConverter(config, ap.logger)
+        self.event_converter = WeChatPadEventConverter(config, ap.logger)
 
     async def ws_message(self, data):
         """处理接收到的消息"""
