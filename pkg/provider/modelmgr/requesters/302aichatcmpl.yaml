@@ -3,8 +3,8 @@ kind: LLMAPIRequester
 metadata:
   name: 302-ai-chat-completions
   label:
-    en_US: 302 AI
-    zh_Hans: 302 AI
+    en_US: 302.AI
+    zh_Hans: 302.AI
   icon: 302ai.png
 spec:
   config:
