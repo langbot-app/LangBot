@@ -39,6 +39,7 @@ const zhHans = {
     addRound: '添加回合',
     copySuccess: '复制成功',
     test: '测试',
+    forgotPassword: '忘记密码？',
   },
   notFound: {
     title: '页面不存在',
@@ -232,6 +233,23 @@ const zhHans = {
     register: '注册',
     initSuccess: '初始化成功 请登录',
     initFailed: '初始化失败：',
+  },
+  resetPassword: {
+    title: '重置密码 🔐',
+    description: '输入恢复密钥和新的密码来重置您的账户密码',
+    recoveryKey: '恢复密钥',
+    recoveryKeyDescription:
+      '存储在配置文件`data/config.yaml`的`system.recovery_key`中',
+    newPassword: '新密码',
+    enterRecoveryKey: '输入恢复密钥',
+    enterNewPassword: '输入新密码',
+    recoveryKeyRequired: '恢复密钥不能为空',
+    newPasswordRequired: '新密码不能为空',
+    resetPassword: '重置密码',
+    resetting: '重置中...',
+    resetSuccess: '密码重置成功，请登录',
+    resetFailed: '密码重置失败，请检查邮箱和恢复密钥是否正确',
+    backToLogin: '返回登录',
   },
 };
 

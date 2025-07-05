@@ -24,6 +24,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from '@/components/ui/form';
 import { useState } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
@@ -32,6 +33,8 @@ import { Mail, Lock, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
+
+const REGEXP_ONLY_DIGITS_AND_CHARS = /^[0-9a-zA-Z]+$/;
 
 const formSchema = (t: (key: string) => string) =>
   z.object({
@@ -73,7 +76,7 @@ export default function ResetPassword() {
       })
       .catch((err) => {
         console.log('reset password error: ', err);
-        toast.error(t('resetPassword.resetFailed') + err.message);
+        toast.error(t('resetPassword.resetFailed'));
       })
       .finally(() => {
         setIsResetting(false);
@@ -130,11 +133,19 @@ export default function ResetPassword() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>{t('resetPassword.recoveryKey')}</FormLabel>
+                    <FormDescription>
+                      {t('resetPassword.recoveryKeyDescription')}
+                    </FormDescription>
                     <FormControl>
                       <InputOTP
                         maxLength={6}
                         value={field.value}
-                        onChange={field.onChange}
+                        pattern={REGEXP_ONLY_DIGITS_AND_CHARS.source}
+                        onChange={(value) => {
+                          // 将输入的值转换为大写
+                          const upperValue = value.toUpperCase();
+                          field.onChange(upperValue);
+                        }}
                       >
                         <InputOTPGroup>
                           <InputOTPSlot index={0} />

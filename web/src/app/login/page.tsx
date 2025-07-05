@@ -212,7 +212,10 @@ export default function Login() {
                   <FormItem>
                     <div className="flex justify-between">
                       <FormLabel>{t('common.password')}</FormLabel>
-                      <Link href="/reset-password">
+                      <Link
+                        href="/reset-password"
+                        className="text-sm text-blue-500"
+                      >
                         {t('common.forgotPassword')}
                       </Link>
                     </div>

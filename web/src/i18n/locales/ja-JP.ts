@@ -40,6 +40,7 @@ const jaJP = {
     addRound: 'ラウンドを追加',
     copySuccess: 'コピーに成功しました',
     test: 'テスト',
+    forgotPassword: 'パスワードを忘れた？',
   },
   notFound: {
     title: 'ページが見つかりません',
@@ -239,6 +240,25 @@ const jaJP = {
     register: '登録',
     initSuccess: '初期化に成功しました。ログインしてください',
     initFailed: '初期化に失敗しました：',
+  },
+  resetPassword: {
+    title: 'パスワードをリセット 🔐',
+    description:
+      '復旧キーと新しいパスワードを入力して、アカウントのパスワードをリセットします',
+    recoveryKey: '復旧キー',
+    recoveryKeyDescription:
+      '設定ファイル `data/config.yaml` の `system.recovery_key` に保存されています',
+    newPassword: '新しいパスワード',
+    enterRecoveryKey: '復旧キーを入力',
+    enterNewPassword: '新しいパスワードを入力',
+    recoveryKeyRequired: '復旧キーは必須です',
+    newPasswordRequired: '新しいパスワードは必須です',
+    resetPassword: 'パスワードをリセット',
+    resetting: 'リセット中...',
+    resetSuccess: 'パスワードのリセットに成功しました。ログインしてください',
+    resetFailed:
+      'パスワードのリセットに失敗しました。メールアドレスと復旧キーを確認してください',
+    backToLogin: 'ログインに戻る',
   },
 };
 

@@ -245,6 +245,8 @@ const enUS = {
     description:
       'Enter your recovery key and new password to reset your account password',
     recoveryKey: 'Recovery Key',
+    recoveryKeyDescription:
+      'Stored in `system.recovery_key` of config file `data/config.yaml`',
     newPassword: 'New Password',
     enterRecoveryKey: 'Enter recovery key',
     enterNewPassword: 'Enter new password',
@@ -253,7 +255,8 @@ const enUS = {
     resetPassword: 'Reset Password',
     resetting: 'Resetting...',
     resetSuccess: 'Password reset successfully, please login',
-    resetFailed: 'Password reset failed: ',
+    resetFailed:
+      'Password reset failed, please check your email and recovery key',
     backToLogin: 'Back to Login',
   },
 };
