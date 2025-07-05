@@ -492,6 +492,18 @@ class HttpClient {
   public checkUserToken(): Promise<ApiRespUserToken> {
     return this.get('/api/v1/user/check-token');
   }
+
+  public resetPassword(
+    user: string,
+    recoveryKey: string,
+    newPassword: string,
+  ): Promise<{ user: string }> {
+    return this.post('/api/v1/user/reset-password', {
+      user,
+      recovery_key: recoveryKey,
+      new_password: newPassword,
+    });
+  }
 }
 
 const getBaseURL = (): string => {

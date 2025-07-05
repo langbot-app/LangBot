@@ -15,6 +15,7 @@ proxy:
     http: ''
     https: ''
 system:
+    recovery_key: ''
     jwt:
         expire: 604800
         secret: ''

@@ -73,3 +73,12 @@ class UserService:
         jwt_secret = self.ap.instance_config.data['system']['jwt']['secret']
 
         return jwt.decode(token, jwt_secret, algorithms=['HS256'])['user']
+
+    async def reset_password(self, user_email: str, new_password: str) -> None:
+        ph = argon2.PasswordHasher()
+
+        hashed_password = ph.hash(new_password)
+
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.update(user.User).where(user.User.user == user_email).values(password=hashed_password)
+        )

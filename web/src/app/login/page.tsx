@@ -34,6 +34,7 @@ import langbotIcon from '@/app/assets/langbot-logo.webp';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
+import Link from 'next/link';
 
 const formSchema = (t: (key: string) => string) =>
   z.object({
@@ -209,7 +210,13 @@ export default function Login() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('common.password')}</FormLabel>
+                    <div className="flex justify-between">
+                      <FormLabel>{t('common.password')}</FormLabel>
+                      <Link href="/reset-password">
+                        {t('common.forgotPassword')}
+                      </Link>
+                    </div>
+
                     <FormControl>
                       <div className="relative">
                         <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
