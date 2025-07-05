@@ -44,6 +44,38 @@ class PersistenceManager:
 
         await self.create_tables()
 
+        # run migrations
+        database_version = await self.execute_async(
+            sqlalchemy.select(metadata.Metadata).where(metadata.Metadata.key == 'database_version')
+        )
+
+        database_version = int(database_version.fetchone()[1])
+        required_database_version = constants.required_database_version
+
+        if database_version < required_database_version:
+            migrations = migration.preregistered_db_migrations
+            migrations.sort(key=lambda x: x.number)
+
+            last_migration_number = database_version
+
+            for migration_cls in migrations:
+                migration_instance = migration_cls(self.ap)
+
+                if (
+                    migration_instance.number > database_version
+                    and migration_instance.number <= required_database_version
+                ):
+                    await migration_instance.upgrade()
+                    await self.execute_async(
+                        sqlalchemy.update(metadata.Metadata)
+                        .where(metadata.Metadata.key == 'database_version')
+                        .values({'value': str(migration_instance.number)})
+                    )
+                    last_migration_number = migration_instance.number
+                    self.ap.logger.info(f'Migration {migration_instance.number} completed.')
+
+            self.ap.logger.info(f'Successfully upgraded database to version {last_migration_number}.')
+
     async def create_tables(self):
         # create tables
         async with self.get_db_engine().connect() as conn:
@@ -86,38 +118,6 @@ class PersistenceManager:
             await self.execute_async(sqlalchemy.insert(pipeline.LegacyPipeline).values(pipeline_data))
 
         # =================================
-
-        # run migrations
-        database_version = await self.execute_async(
-            sqlalchemy.select(metadata.Metadata).where(metadata.Metadata.key == 'database_version')
-        )
-
-        database_version = int(database_version.fetchone()[1])
-        required_database_version = constants.required_database_version
-
-        if database_version < required_database_version:
-            migrations = migration.preregistered_db_migrations
-            migrations.sort(key=lambda x: x.number)
-
-            last_migration_number = database_version
-
-            for migration_cls in migrations:
-                migration_instance = migration_cls(self.ap)
-
-                if (
-                    migration_instance.number > database_version
-                    and migration_instance.number <= required_database_version
-                ):
-                    await migration_instance.upgrade()
-                    await self.execute_async(
-                        sqlalchemy.update(metadata.Metadata)
-                        .where(metadata.Metadata.key == 'database_version')
-                        .values({'value': str(migration_instance.number)})
-                    )
-                    last_migration_number = migration_instance.number
-                    self.ap.logger.info(f'Migration {migration_instance.number} completed.')
-
-            self.ap.logger.info(f'Successfully upgraded database to version {last_migration_number}.')
 
     async def execute_async(self, *args, **kwargs) -> sqlalchemy.engine.cursor.CursorResult:
         async with self.get_db_engine().connect() as conn:

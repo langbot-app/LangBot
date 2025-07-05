@@ -19,3 +19,5 @@ system:
     jwt:
         expire: 604800
         secret: ''
+plugin:
+    runtime_ws_url: 'ws://plugin-runtime:5400/control/ws'

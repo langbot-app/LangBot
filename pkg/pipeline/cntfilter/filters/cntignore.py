@@ -3,7 +3,7 @@ import re
 
 from .. import entities
 from .. import filter as filter_model
-from ....core import entities as core_entities
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 @filter_model.filter_class('content-ignore')
@@ -16,7 +16,7 @@ class ContentIgnore(filter_model.ContentFilter):
             entities.EnableStage.PRE,
         ]
 
-    async def process(self, query: core_entities.Query, message: str) -> entities.FilterResult:
+    async def process(self, query: pipeline_query.Query, message: str) -> entities.FilterResult:
         if 'prefix' in query.pipeline_config['trigger']['ignore-rules']:
             for rule in query.pipeline_config['trigger']['ignore-rules']['prefix']:
                 if message.startswith(rule):

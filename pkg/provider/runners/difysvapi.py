@@ -8,10 +8,10 @@ import base64
 
 
 from .. import runner
-from ...core import app, entities as core_entities
+from ...core import app
 from .. import entities as llm_entities
 from ...utils import image
-
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 from libs.dify_service_api.v1 import client, errors
 
 
@@ -62,7 +62,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             content_text = re.sub(pattern, '', resp_text, flags=re.DOTALL)
             return f'<think>{thinking_text.group(1)}</think>\n{content_text}'
 
-    async def _preprocess_user_message(self, query: core_entities.Query) -> tuple[str, list[str]]:
+    async def _preprocess_user_message(self, query: pipeline_query.Query) -> tuple[str, list[str]]:
         """预处理用户消息，提取纯文本，并将图片上传到 Dify 服务
 
         Returns:
@@ -90,7 +90,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         return plain_text, image_ids
 
-    async def _chat_messages(self, query: core_entities.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
+    async def _chat_messages(self, query: pipeline_query.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
         """调用聊天助手"""
         cov_id = query.session.using_conversation.uuid or ''
         query.variables['conversation_id'] = cov_id
@@ -152,7 +152,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         query.session.using_conversation.uuid = chunk['conversation_id']
 
     async def _agent_chat_messages(
-        self, query: core_entities.Query
+        self, query: pipeline_query.Query
     ) -> typing.AsyncGenerator[llm_entities.Message, None]:
         """调用聊天助手"""
         cov_id = query.session.using_conversation.uuid or ''
@@ -244,7 +244,9 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         query.session.using_conversation.uuid = chunk['conversation_id']
 
-    async def _workflow_messages(self, query: core_entities.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
+    async def _workflow_messages(
+        self, query: pipeline_query.Query
+    ) -> typing.AsyncGenerator[llm_entities.Message, None]:
         """调用工作流"""
 
         if not query.session.using_conversation.uuid:
@@ -316,7 +318,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
                 yield msg
 
-    async def run(self, query: core_entities.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
+    async def run(self, query: pipeline_query.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
         """运行请求"""
         if self.pipeline_config['ai']['dify-service-api']['app-type'] == 'chat':
             async for msg in self._chat_messages(query):

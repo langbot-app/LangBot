@@ -4,8 +4,9 @@ from __future__ import annotations
 from . import rule
 
 from .. import stage, entities
-from ...core import entities as core_entities
 from ...utils import importutil
+
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 from . import rules
 
@@ -32,7 +33,7 @@ class GroupRespondRuleCheckStage(stage.PipelineStage):
             await rule_inst.initialize()
             self.rule_matchers.append(rule_inst)
 
-    async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:
+    async def process(self, query: pipeline_query.Query, stage_inst_name: str) -> entities.StageProcessResult:
         if query.launcher_type.value != 'group':  # 只处理群消息
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 

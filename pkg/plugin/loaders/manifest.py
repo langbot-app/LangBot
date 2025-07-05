@@ -5,10 +5,11 @@ import os
 import traceback
 
 from ...core import app
-from .. import context, events
+from .. import context
 from .. import loader
 from ...utils import funcschema
-from ...provider.tools import entities as tools_entities
+import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
+import langbot_plugin.api.entities.events as events
 
 
 class PluginManifestLoader(loader.PluginLoader):
@@ -41,7 +42,7 @@ class PluginManifestLoader(loader.PluginLoader):
             function_schema = funcschema.get_func_schema(func)
             function_name = self._current_container.plugin_name + '-' + (func.__name__ if name is None else name)
 
-            llm_function = tools_entities.LLMFunction(
+            llm_function = resource_tool.LLMTool(
                 name=function_name,
                 human_desc='',
                 description=function_schema['description'],

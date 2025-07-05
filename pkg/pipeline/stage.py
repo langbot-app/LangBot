@@ -3,8 +3,9 @@ from __future__ import annotations
 import abc
 import typing
 
-from ..core import app, entities as core_entities
+from ..core import app
 from . import entities
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 preregistered_stages: dict[str, type[PipelineStage]] = {}
@@ -33,7 +34,7 @@ class PipelineStage(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     async def process(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         stage_inst_name: str,
     ) -> typing.Union[
         entities.StageProcessResult,

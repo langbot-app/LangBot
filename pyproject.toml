@@ -49,6 +49,8 @@ dependencies = [
     "ruff>=0.11.9",
     "pre-commit>=4.2.0",
     "uv>=0.7.11",
+    "mypy>=1.16.0",
+    "langbot-plugin==0.1.0a6",
 ]
 keywords = [
     "bot",

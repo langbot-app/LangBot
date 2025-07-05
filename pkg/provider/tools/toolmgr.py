@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import typing
 
-from ...core import app, entities as core_entities
-from . import entities, loader as tools_loader
+from ...core import app
+from . import loader as tools_loader
 from ...utils import importutil
 from . import loaders
+import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 importutil.import_modules_in_pkg(loaders)
 
@@ -28,16 +30,16 @@ class ToolManager:
             await loader_inst.initialize()
             self.loaders.append(loader_inst)
 
-    async def get_all_functions(self, plugin_enabled: bool = None) -> list[entities.LLMFunction]:
+    async def get_all_functions(self, plugin_enabled: bool = None) -> list[resource_tool.LLMTool]:
         """获取所有函数"""
-        all_functions: list[entities.LLMFunction] = []
+        all_functions: list[resource_tool.LLMTool] = []
 
         for loader in self.loaders:
             all_functions.extend(await loader.get_tools(plugin_enabled))
 
         return all_functions
 
-    async def generate_tools_for_openai(self, use_funcs: list[entities.LLMFunction]) -> list:
+    async def generate_tools_for_openai(self, use_funcs: list[resource_tool.LLMTool]) -> list:
         """生成函数列表"""
         tools = []
 
@@ -54,7 +56,7 @@ class ToolManager:
 
         return tools
 
-    async def generate_tools_for_anthropic(self, use_funcs: list[entities.LLMFunction]) -> list:
+    async def generate_tools_for_anthropic(self, use_funcs: list[resource_tool.LLMTool]) -> list:
         """为anthropic生成函数列表
 
         e.g.
@@ -89,7 +91,7 @@ class ToolManager:
 
         return tools
 
-    async def execute_func_call(self, query: core_entities.Query, name: str, parameters: dict) -> typing.Any:
+    async def execute_func_call(self, query: pipeline_query.Query, name: str, parameters: dict) -> typing.Any:
         """执行函数调用"""
 
         for loader in self.loaders:

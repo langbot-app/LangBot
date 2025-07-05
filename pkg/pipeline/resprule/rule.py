@@ -2,10 +2,11 @@ from __future__ import annotations
 import abc
 import typing
 
-from ...core import app, entities as core_entities
+from ...core import app
 from . import entities
 
-from ...platform.types import message as platform_message
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 preregisetered_rules: list[typing.Type[GroupRespondRule]] = []
@@ -39,7 +40,7 @@ class GroupRespondRule(metaclass=abc.ABCMeta):
         message_text: str,
         message_chain: platform_message.MessageChain,
         rule_dict: dict,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
     ) -> entities.RuleJudgeResult:
         """判断消息是否匹配规则"""
         raise NotImplementedError

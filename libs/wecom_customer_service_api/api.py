@@ -8,7 +8,7 @@ from quart import Quart
 import xml.etree.ElementTree as ET
 from typing import Callable
 from .wecomcsevent import WecomCSEvent
-from pkg.platform.types import message as platform_message
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import aiofiles
 
 
@@ -187,7 +187,7 @@ class WecomCSClient:
                 self.access_token = await self.get_access_token(self.secret)
                 return await self.send_text_msg(open_kfid, external_userid, msgid, content)
             if data['errcode'] != 0:
-                await self.logger.error(f"发送消息失败：{data}")
+                await self.logger.error(f'发送消息失败：{data}')
                 raise Exception('Failed to send message')
             return data
 
@@ -227,7 +227,7 @@ class WecomCSClient:
                 return 'success'
         except Exception as e:
             if self.logger:
-                await self.logger.error(f"Error in handle_callback_request: {traceback.format_exc()}")
+                await self.logger.error(f'Error in handle_callback_request: {traceback.format_exc()}')
             else:
                 traceback.print_exc()
             return f'Error processing request: {str(e)}', 400

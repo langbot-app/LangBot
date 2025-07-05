@@ -1,10 +1,9 @@
 import requests
+import aiohttp
+
 
 def post_json(base_url, token, data=None):
-    headers = {
-        'Content-Type': 'application/json'
-    }
-
+    headers = {'Content-Type': 'application/json'}
 
     url = base_url + f'?key={token}'
 
@@ -18,14 +17,12 @@ def post_json(base_url, token, data=None):
         else:
             raise RuntimeError(response.text)
     except Exception as e:
-        print(f"http请求失败, url={url}, exception={e}")
+        print(f'http请求失败, url={url}, exception={e}')
         raise RuntimeError(str(e))
 
-def get_json(base_url, token):
-    headers = {
-        'Content-Type': 'application/json'
-    }
 
+def get_json(base_url, token):
+    headers = {'Content-Type': 'application/json'}
 
     url = base_url + f'?key={token}'
 
@@ -39,21 +36,18 @@ def get_json(base_url, token):
         else:
             raise RuntimeError(response.text)
     except Exception as e:
-        print(f"http请求失败, url={url}, exception={e}")
+        print(f'http请求失败, url={url}, exception={e}')
         raise RuntimeError(str(e))
-
-import aiohttp
-import asyncio
 
 
 async def async_request(
-        base_url: str,
-        token_key: str,
-        method: str = 'POST',
-        params: dict = None,
-        # headers: dict = None,
-        data: dict = None,
-        json: dict = None
+    base_url: str,
+    token_key: str,
+    method: str = 'POST',
+    params: dict = None,
+    # headers: dict = None,
+    data: dict = None,
+    json: dict = None,
 ):
     """
     通用异步请求函数
@@ -67,18 +61,11 @@ async def async_request(
     :param json: JSON数据
     :return: 响应文本
     """
-    headers = {
-        'Content-Type': 'application/json'
-    }
-    url = f"{base_url}?key={token_key}"
+    headers = {'Content-Type': 'application/json'}
+    url = f'{base_url}?key={token_key}'
     async with aiohttp.ClientSession() as session:
         async with session.request(
-                method=method,
-                url=url,
-                params=params,
-                headers=headers,
-                data=data,
-                json=json
+            method=method, url=url, params=params, headers=headers, data=data, json=json
         ) as response:
             response.raise_for_status()  # 如果状态码不是200，抛出异常
             result = await response.json()
@@ -89,4 +76,3 @@ async def async_request(
             #     return await result
             # else:
             #     raise RuntimeError("请求失败",response.text)
-

@@ -4,27 +4,29 @@ import json
 import typing
 
 from .. import runner
-from ...core import entities as core_entities
 from .. import entities as llm_entities
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 @runner.runner_class('local-agent')
 class LocalAgentRunner(runner.RequestRunner):
     """本地Agent请求运行器"""
 
-    async def run(self, query: core_entities.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
+    async def run(self, query: pipeline_query.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
         """运行请求"""
         pending_tool_calls = []
 
         req_messages = query.prompt.messages.copy() + query.messages.copy() + [query.user_message]
 
+        use_llm_model = await self.ap.model_mgr.get_model_by_uuid(query.use_llm_model_uuid)
+
         # 首次请求
-        msg = await query.use_llm_model.requester.invoke_llm(
+        msg = await use_llm_model.requester.invoke_llm(
             query,
-            query.use_llm_model,
+            use_llm_model,
             req_messages,
             query.use_funcs,
-            extra_args=query.use_llm_model.model_entity.extra_args,
+            extra_args=use_llm_model.model_entity.extra_args,
         )
 
         yield msg
@@ -61,12 +63,12 @@ class LocalAgentRunner(runner.RequestRunner):
                     req_messages.append(err_msg)
 
             # 处理完所有调用，再次请求
-            msg = await query.use_llm_model.requester.invoke_llm(
+            msg = await use_llm_model.requester.invoke_llm(
                 query,
-                query.use_llm_model,
+                use_llm_model,
                 req_messages,
                 query.use_funcs,
-                extra_args=query.use_llm_model.model_entity.extra_args,
+                extra_args=use_llm_model.model_entity.extra_args,
             )
 
             yield msg

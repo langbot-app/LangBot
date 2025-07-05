@@ -1,6 +1,7 @@
-from libs.wechatpad_api.util.http_util import async_request, post_json
+from libs.wechatpad_api.util.http_util import post_json
 import httpx
 import base64
+
 
 class DownloadApi:
     def __init__(self, base_url, token):
@@ -8,24 +9,14 @@ class DownloadApi:
         self.token = token
 
     def send_download(self, aeskey, file_type, file_url):
-        json_data = {
-                  "AesKey": aeskey,
-                  "FileType": file_type,
-                  "FileURL": file_url
-                }
-        url = self.base_url + "/message/SendCdnDownload"
+        json_data = {'AesKey': aeskey, 'FileType': file_type, 'FileURL': file_url}
+        url = self.base_url + '/message/SendCdnDownload'
         return post_json(url, token=self.token, data=json_data)
 
-    def get_msg_voice(self,buf_id, length, new_msgid):
-        json_data = {
-            "Bufid": buf_id,
-            "Length": length,
-            "NewMsgId": new_msgid,
-            "ToUserName": ""
-        }
-        url = self.base_url + "/message/GetMsgVoice"
+    def get_msg_voice(self, buf_id, length, new_msgid):
+        json_data = {'Bufid': buf_id, 'Length': length, 'NewMsgId': new_msgid, 'ToUserName': ''}
+        url = self.base_url + '/message/GetMsgVoice'
         return post_json(url, token=self.token, data=json_data)
-
 
     async def download_url_to_base64(self, download_url):
         async with httpx.AsyncClient() as client:

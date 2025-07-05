@@ -12,12 +12,9 @@ class UserApi:
 
         return get_json(base_url=url, token=self.token)
 
-    def get_qr_code(self, recover:bool=True, style:int=8):
+    def get_qr_code(self, recover: bool = True, style: int = 8):
         """获取自己的二维码"""
-        param = {
-              "Recover": recover,
-              "Style": style
-            }
+        param = {'Recover': recover, 'Style': style}
         url = f'{self.base_url}/user/GetMyQRCode'
         return post_json(base_url=url, token=self.token, data=param)
 
@@ -26,12 +23,8 @@ class UserApi:
         url = f'{self.base_url}/equipment/GetSafetyInfo'
         return post_json(base_url=url, token=self.token)
 
-
-
-    async def update_head_img(self,  head_img_base64):
+    async def update_head_img(self, head_img_base64):
         """修改头像"""
-        param = {
-              "Base64": head_img_base64
-            }
+        param = {'Base64': head_img_base64}
         url = f'{self.base_url}/user/UploadHeadImage'
         return await async_request(base_url=url, token_key=self.token, json=param)

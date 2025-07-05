@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import typing
 
-from ..core import app, entities as core_entities
+from ..core import app
 from . import entities, operator, errors
 from ..utils import importutil
+import langbot_plugin.api.entities.builtin.provider.session as provider_session
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 # 引入所有算子以便注册
 from . import operators
@@ -89,8 +91,8 @@ class CommandManager:
     async def execute(
         self,
         command_text: str,
-        query: core_entities.Query,
-        session: core_entities.Session,
+        query: pipeline_query.Query,
+        session: provider_session.Session,
     ) -> typing.AsyncGenerator[entities.CommandReturn, None]:
         """执行命令"""
 

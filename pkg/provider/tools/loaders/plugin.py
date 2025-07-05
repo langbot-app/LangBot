@@ -3,9 +3,10 @@ from __future__ import annotations
 import typing
 import traceback
 
-from .. import loader, entities as tools_entities
-from ....core import entities as core_entities
+from .. import loader
 from ....plugin import context as plugin_context
+import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 @loader.loader_class('plugin-tool-loader')
@@ -15,9 +16,9 @@ class PluginToolLoader(loader.ToolLoader):
     本加载器中不存储工具信息，仅负责从插件系统中获取工具信息。
     """
 
-    async def get_tools(self, enabled: bool = True) -> list[tools_entities.LLMFunction]:
+    async def get_tools(self, enabled: bool = True) -> list[resource_tool.LLMTool]:
         # 从插件系统获取工具（内容函数）
-        all_functions: list[tools_entities.LLMFunction] = []
+        all_functions: list[resource_tool.LLMTool] = []
 
         for plugin in self.ap.plugin_mgr.plugins(
             enabled=enabled, status=plugin_context.RuntimeContainerStatus.INITIALIZED
@@ -38,7 +39,7 @@ class PluginToolLoader(loader.ToolLoader):
 
     async def _get_function_and_plugin(
         self, name: str
-    ) -> typing.Tuple[tools_entities.LLMFunction, plugin_context.BasePlugin]:
+    ) -> typing.Tuple[resource_tool.LLMTool, plugin_context.BasePlugin]:
         """获取函数和插件实例"""
         for plugin in self.ap.plugin_mgr.plugins(
             enabled=True, status=plugin_context.RuntimeContainerStatus.INITIALIZED
@@ -48,7 +49,7 @@ class PluginToolLoader(loader.ToolLoader):
                     return function, plugin.plugin_inst
         return None, None
 
-    async def invoke_tool(self, query: core_entities.Query, name: str, parameters: dict) -> typing.Any:
+    async def invoke_tool(self, query: pipeline_query.Query, name: str, parameters: dict) -> typing.Any:
         try:
             function, plugin = await self._get_function_and_plugin(name)
             if function is None:

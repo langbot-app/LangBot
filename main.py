@@ -47,13 +47,13 @@ async def main_entry(loop: asyncio.AbstractEventLoop):
     if not args.skip_plugin_deps_check:
         await deps.precheck_plugin_deps()
 
-    # 检查pydantic版本，如果没有 pydantic.v1，则把 pydantic 映射为 v1
-    import pydantic.version
+    # # 检查pydantic版本，如果没有 pydantic.v1，则把 pydantic 映射为 v1
+    # import pydantic.version
 
-    if pydantic.version.VERSION < '2.0':
-        import pydantic
+    # if pydantic.version.VERSION < '2.0':
+    #     import pydantic
 
-        sys.modules['pydantic.v1'] = pydantic
+    #     sys.modules['pydantic.v1'] = pydantic
 
     # 检查配置文件
 

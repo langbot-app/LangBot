@@ -11,16 +11,16 @@ import datetime
 import io
 
 import aiohttp
+import pydantic
 
-from .. import adapter
-from ...core import app
-from ..types import message as platform_message
-from ..types import events as platform_events
-from ..types import entities as platform_entities
-from ..logger import EventLogger
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
+import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 
 
-class DiscordMessageConverter(adapter.MessageConverter):
+class DiscordMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
     async def yiri2target(
         message_chain: platform_message.MessageChain,
@@ -173,7 +173,7 @@ class DiscordMessageConverter(adapter.MessageConverter):
         return platform_message.MessageChain(element_list)
 
 
-class DiscordEventConverter(adapter.EventConverter):
+class DiscordEventConverter(abstract_platform_adapter.AbstractEventConverter):
     @staticmethod
     async def yiri2target(event: platform_events.Event) -> discord.Message:
         pass
@@ -215,29 +215,21 @@ class DiscordEventConverter(adapter.EventConverter):
             )
 
 
-class DiscordAdapter(adapter.MessagePlatformAdapter):
-    bot: discord.Client
-
-    bot_account_id: str  # 用于在流水线中识别at是否是本bot，直接以bot_name作为标识
-
-    config: dict
-
-    ap: app.Application
+class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
+    bot: discord.Client = pydantic.Field(exclude=True)
 
     message_converter: DiscordMessageConverter = DiscordMessageConverter()
     event_converter: DiscordEventConverter = DiscordEventConverter()
 
     listeners: typing.Dict[
         typing.Type[platform_events.Event],
-        typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        typing.Callable[[platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None],
     ] = {}
 
-    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
-        self.config = config
-        self.ap = ap
-        self.logger = logger
+    def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger):
+        bot_account_id = config['client_id']
 
-        self.bot_account_id = self.config['client_id']
+        listeners = {}
 
         adapter_self = self
 
@@ -257,7 +249,15 @@ class DiscordAdapter(adapter.MessagePlatformAdapter):
         if os.getenv('http_proxy'):
             args['proxy'] = os.getenv('http_proxy')
 
-        self.bot = MyClient(intents=intents, **args)
+        bot = MyClient(intents=intents, **args)
+
+        super().__init__(
+            config=config,
+            logger=logger,
+            bot_account_id=bot_account_id,
+            listeners=listeners,
+            bot=bot,
+        )
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         msg_to_send, image_files = await self.message_converter.yiri2target(message)
@@ -312,14 +312,18 @@ class DiscordAdapter(adapter.MessagePlatformAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         self.listeners[event_type] = callback
 
     def unregister_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         self.listeners.pop(event_type)
 

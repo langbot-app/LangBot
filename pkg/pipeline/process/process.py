@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from ...core import entities as core_entities
 from . import handler
 from .handlers import chat, command
 from .. import entities
 from .. import stage
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 @stage.stage_class('MessageProcessor')
@@ -30,7 +30,7 @@ class Processor(stage.PipelineStage):
 
     async def process(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         stage_inst_name: str,
     ) -> entities.StageProcessResult:
         """处理"""

@@ -7,8 +7,10 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.sse import sse_client
 
-from .. import loader, entities as tools_entities
-from ....core import app, entities as core_entities
+from .. import loader
+from ....core import app
+import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 class RuntimeMCPSession:
@@ -24,7 +26,7 @@ class RuntimeMCPSession:
 
     exit_stack: AsyncExitStack
 
-    functions: list[tools_entities.LLMFunction] = []
+    functions: list[resource_tool.LLMTool] = []
 
     def __init__(self, server_name: str, server_config: dict, ap: app.Application):
         self.server_name = server_name
@@ -82,7 +84,7 @@ class RuntimeMCPSession:
 
         for tool in tools.tools:
 
-            async def func(query: core_entities.Query, *, _tool=tool, **kwargs):
+            async def func(query: pipeline_query.Query, *, _tool=tool, **kwargs):
                 result = await self.session.call_tool(_tool.name, kwargs)
                 if result.isError:
                     raise Exception(result.content[0].text)
@@ -91,7 +93,7 @@ class RuntimeMCPSession:
             func.__name__ = tool.name
 
             self.functions.append(
-                tools_entities.LLMFunction(
+                resource_tool.LLMTool(
                     name=tool.name,
                     human_desc=tool.description,
                     description=tool.description,
@@ -114,7 +116,7 @@ class MCPLoader(loader.ToolLoader):
 
     sessions: dict[str, RuntimeMCPSession] = {}
 
-    _last_listed_functions: list[tools_entities.LLMFunction] = []
+    _last_listed_functions: list[resource_tool.LLMTool] = []
 
     def __init__(self, ap: app.Application):
         super().__init__(ap)
@@ -130,7 +132,7 @@ class MCPLoader(loader.ToolLoader):
             # self.ap.event_loop.create_task(session.initialize())
             self.sessions[server_config['name']] = session
 
-    async def get_tools(self, enabled: bool = True) -> list[tools_entities.LLMFunction]:
+    async def get_tools(self, enabled: bool = True) -> list[resource_tool.LLMTool]:
         all_functions = []
 
         for session in self.sessions.values():
@@ -143,7 +145,7 @@ class MCPLoader(loader.ToolLoader):
     async def has_tool(self, name: str) -> bool:
         return name in [f.name for f in self._last_listed_functions]
 
-    async def invoke_tool(self, query: core_entities.Query, name: str, parameters: dict) -> typing.Any:
+    async def invoke_tool(self, query: pipeline_query.Query, name: str, parameters: dict) -> typing.Any:
         for server_name, session in self.sessions.items():
             for function in session.functions:
                 if function.name == name:

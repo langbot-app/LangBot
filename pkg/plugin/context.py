@@ -2,15 +2,11 @@ from __future__ import annotations
 
 import typing
 import abc
-import pydantic.v1 as pydantic
-import enum
 
-from . import events
-from ..provider.tools import entities as tools_entities
 from ..core import app
-from ..discover import engine as discover_engine
-from ..platform.types import message as platform_message
-from ..platform import adapter as platform_adapter
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
+import langbot_plugin.api.entities.events as events
 
 
 def register(
@@ -119,7 +115,7 @@ class APIHost:
 
     # ========== 插件可调用的 API（主程序API） ==========
 
-    def get_platform_adapters(self) -> list[platform_adapter.MessagePlatformAdapter]:
+    def get_platform_adapters(self) -> list[abstract_platform_adapter.AbstractMessagePlatformAdapter]:
         """获取已启用的消息平台适配器列表
 
         Returns:
@@ -129,7 +125,7 @@ class APIHost:
 
     async def send_active_message(
         self,
-        adapter: platform_adapter.MessagePlatformAdapter,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         target_type: str,
         target_id: str,
         message: platform_message.MessageChain,
@@ -283,106 +279,3 @@ class EventContext:
         self.__prevent_postorder__ = False
         self.__return_value__ = {}
         EventContext.eid += 1
-
-
-class RuntimeContainerStatus(enum.Enum):
-    """插件容器状态"""
-
-    MOUNTED = 'mounted'
-    """已加载进内存，所有位于运行时记录中的 RuntimeContainer 至少是这个状态"""
-
-    INITIALIZED = 'initialized'
-    """已初始化"""
-
-
-class RuntimeContainer(pydantic.BaseModel):
-    """运行时的插件容器
-
-    运行期间存储单个插件的信息
-    """
-
-    plugin_name: str
-    """插件名称"""
-
-    plugin_label: discover_engine.I18nString
-    """插件标签"""
-
-    plugin_description: discover_engine.I18nString
-    """插件描述"""
-
-    plugin_version: str
-    """插件版本"""
-
-    plugin_author: str
-    """插件作者"""
-
-    plugin_repository: str
-    """插件源码地址"""
-
-    main_file: str
-    """插件主文件路径"""
-
-    pkg_path: str
-    """插件包路径"""
-
-    plugin_class: typing.Type[BasePlugin] = None
-    """插件类"""
-
-    enabled: typing.Optional[bool] = True
-    """是否启用"""
-
-    priority: typing.Optional[int] = 0
-    """优先级"""
-
-    config_schema: typing.Optional[list[dict]] = []
-    """插件配置模板"""
-
-    plugin_config: typing.Optional[dict] = {}
-    """插件配置"""
-
-    plugin_inst: typing.Optional[BasePlugin] = None
-    """插件实例"""
-
-    event_handlers: dict[
-        typing.Type[events.BaseEventModel],
-        typing.Callable[[BasePlugin, EventContext], typing.Awaitable[None]],
-    ] = {}
-    """事件处理器"""
-
-    tools: list[tools_entities.LLMFunction] = []
-    """内容函数"""
-
-    status: RuntimeContainerStatus = RuntimeContainerStatus.MOUNTED
-    """插件状态"""
-
-    class Config:
-        arbitrary_types_allowed = True
-
-    def model_dump(self, *args, **kwargs):
-        return {
-            'name': self.plugin_name,
-            'label': self.plugin_label.to_dict(),
-            'description': self.plugin_description.to_dict(),
-            'version': self.plugin_version,
-            'author': self.plugin_author,
-            'repository': self.plugin_repository,
-            'main_file': self.main_file,
-            'pkg_path': self.pkg_path,
-            'enabled': self.enabled,
-            'priority': self.priority,
-            'config_schema': self.config_schema,
-            'event_handlers': {
-                event_name.__name__: handler.__name__ for event_name, handler in self.event_handlers.items()
-            },
-            'tools': [
-                {
-                    'name': function.name,
-                    'human_desc': function.human_desc,
-                    'description': function.description,
-                    'parameters': function.parameters,
-                    'func': function.func.__name__,
-                }
-                for function in self.tools
-            ],
-            'status': self.status.value,
-        }

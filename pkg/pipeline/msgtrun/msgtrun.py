@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from .. import stage, entities
-from ...core import entities as core_entities
 from . import truncator
 from ...utils import importutil
-
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 from . import truncators
 
 importutil.import_modules_in_pkg(truncators)
@@ -29,7 +28,7 @@ class ConversationMessageTruncator(stage.PipelineStage):
         else:
             raise ValueError(f'未知的截断器: {use_method}')
 
-    async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:
+    async def process(self, query: pipeline_query.Query, stage_inst_name: str) -> entities.StageProcessResult:
         """处理"""
         query = await self.trun.truncate(query)
 

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import typing
-import pydantic.v1 as pydantic
+import pydantic
 
 from pkg.provider import entities
 
 
-from ..platform.types import message as platform_message
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
 
 class FunctionCall(pydantic.BaseModel):
@@ -96,7 +96,7 @@ class Message(pydantic.BaseModel):
         if self.content is None:
             return None
         elif isinstance(self.content, str):
-            return platform_message.MessageChain([platform_message.Plain(prefix_text + self.content)])
+            return platform_message.MessageChain([platform_message.Plain(text=(prefix_text + self.content))])
         elif isinstance(self.content, list):
             mc = []
             for ce in self.content:

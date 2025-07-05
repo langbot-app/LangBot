@@ -8,6 +8,7 @@ import typing
 
 from .context import BasePlugin as Plugin
 from .events import *
+import langbot_plugin.api.entities.events as events
 
 
 def register(
@@ -17,7 +18,7 @@ def register(
 
 
 def on(
-    event: typing.Type[BaseEventModel],
+    event: typing.Type[events.BaseEventModel],
 ) -> typing.Callable[[typing.Callable], typing.Callable]:
     pass
 

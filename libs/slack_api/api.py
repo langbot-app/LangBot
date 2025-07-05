@@ -4,7 +4,7 @@ from quart import Quart, jsonify, request
 from slack_sdk.web.async_client import AsyncWebClient
 from .slackevent import SlackEvent
 from typing import Callable
-from pkg.platform.types import events as platform_events
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
 
 
 class SlackClient:
@@ -34,7 +34,6 @@ class SlackClient:
 
             if self.bot_user_id and bot_user_id == self.bot_user_id:
                 return jsonify({'status': 'ok'})
-            
 
             # 处理私信
             if data and data.get('event', {}).get('channel_type') in ['im']:
@@ -52,7 +51,7 @@ class SlackClient:
             return jsonify({'status': 'ok'})
 
         except Exception as e:
-            await self.logger.error(f"Error in handle_callback_request: {traceback.format_exc()}")
+            await self.logger.error(f'Error in handle_callback_request: {traceback.format_exc()}')
             raise (e)
 
     async def _handle_message(self, event: SlackEvent):
@@ -82,7 +81,7 @@ class SlackClient:
                 self.bot_user_id = response['message']['bot_id']
             return
         except Exception as e:
-            await self.logger.error(f"Error in send_message: {e}")
+            await self.logger.error(f'Error in send_message: {e}')
             raise e
 
     async def send_message_to_one(self, text: str, user_id: str):
@@ -93,7 +92,7 @@ class SlackClient:
 
             return
         except Exception as e:
-            await self.logger.error(f"Error in send_message: {traceback.format_exc()}")
+            await self.logger.error(f'Error in send_message: {traceback.format_exc()}')
             raise e
 
     async def run_task(self, host: str, port: int, *args, **kwargs):

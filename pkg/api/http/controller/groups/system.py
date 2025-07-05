@@ -35,15 +35,6 @@ class SystemRouterGroup(group.RouterGroup):
 
             return self.success(data=task.to_dict())
 
-        @self.route('/reload', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
-        async def _() -> str:
-            json_data = await quart.request.json
-
-            scope = json_data.get('scope')
-
-            await self.ap.reload(scope=scope)
-            return self.success()
-
         @self.route('/_debug/exec', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
             if not constants.debug_mode:

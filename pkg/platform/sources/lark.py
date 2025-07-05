@@ -17,13 +17,13 @@ import aiohttp
 import lark_oapi.ws.exception
 import quart
 from lark_oapi.api.im.v1 import *
+import pydantic
 
-from .. import adapter
-from ...core import app
-from ..types import message as platform_message
-from ..types import events as platform_events
-from ..types import entities as platform_entities
-from ..logger import EventLogger
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
+import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 
 
 class AESCipher(object):
@@ -52,7 +52,7 @@ class AESCipher(object):
         return self.decrypt(enc).decode('utf8')
 
 
-class LarkMessageConverter(adapter.MessageConverter):
+class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
     async def yiri2target(
         message_chain: platform_message.MessageChain, api_client: lark_oapi.Client
@@ -276,7 +276,7 @@ class LarkMessageConverter(adapter.MessageConverter):
         return platform_message.MessageChain(lb_msg_list)
 
 
-class LarkEventConverter(adapter.EventConverter):
+class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
     @staticmethod
     async def yiri2target(
         event: platform_events.MessageEvent,
@@ -320,38 +320,27 @@ class LarkEventConverter(adapter.EventConverter):
             )
 
 
-class LarkAdapter(adapter.MessagePlatformAdapter):
-    bot: lark_oapi.ws.Client
-    api_client: lark_oapi.Client
-
-    bot_account_id: str  # 用于在流水线中识别at是否是本bot，直接以bot_name作为标识
-    lark_tenant_key: str  # 飞书企业key
+class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
+    bot: lark_oapi.ws.Client = pydantic.Field(exclude=True)
+    api_client: lark_oapi.Client = pydantic.Field(exclude=True)
 
     message_converter: LarkMessageConverter = LarkMessageConverter()
     event_converter: LarkEventConverter = LarkEventConverter()
 
     listeners: typing.Dict[
         typing.Type[platform_events.Event],
-        typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        typing.Callable[[platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None],
     ]
 
-    config: dict
-    quart_app: quart.Quart
-    ap: app.Application
+    quart_app: quart.Quart = pydantic.Field(exclude=True)
 
-    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
-        self.config = config
-        self.ap = ap
-        self.logger = logger
-        self.quart_app = quart.Quart(__name__)
-        self.listeners = {}
+    def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger):
+        quart_app = quart.Quart(__name__)
 
-        @self.quart_app.route('/lark/callback', methods=['POST'])
+        @quart_app.route('/lark/callback', methods=['POST'])
         async def lark_callback():
             try:
                 data = await quart.request.json
-
-                self.ap.logger.debug(f'Lark callback event: {data}')
 
                 if 'encrypt' in data:
                     cipher = AESCipher(self.config['encrypt-key'])
@@ -378,15 +367,15 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
                 if 'im.message.receive_v1' == type:
                     try:
                         event = await self.event_converter.target2yiri(p2v1, self.api_client)
-                    except Exception as e:
-                        await self.logger.error(f"Error in lark callback: {traceback.format_exc()}")
+                    except Exception:
+                        await self.logger.error(f'Error in lark callback: {traceback.format_exc()}')
 
                     if event.__class__ in self.listeners:
                         await self.listeners[event.__class__](event, self)
 
                 return {'code': 200, 'message': 'ok'}
-            except Exception as e:
-                await self.logger.error(f"Error in lark callback: {traceback.format_exc()}")
+            except Exception:
+                await self.logger.error(f'Error in lark callback: {traceback.format_exc()}')
                 return {'code': 500, 'message': 'error'}
 
         async def on_message(event: lark_oapi.im.v1.P2ImMessageReceiveV1):
@@ -401,10 +390,20 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
             lark_oapi.EventDispatcherHandler.builder('', '').register_p2_im_message_receive_v1(sync_on_message).build()
         )
 
-        self.bot_account_id = config['bot_name']
+        bot_account_id = config['bot_name']
 
-        self.bot = lark_oapi.ws.Client(config['app_id'], config['app_secret'], event_handler=event_handler)
-        self.api_client = lark_oapi.Client.builder().app_id(config['app_id']).app_secret(config['app_secret']).build()
+        bot = lark_oapi.ws.Client(config['app_id'], config['app_secret'], event_handler=event_handler)
+        api_client = lark_oapi.Client.builder().app_id(config['app_id']).app_secret(config['app_secret']).build()
+
+        super().__init__(
+            config=config,
+            logger=logger,
+            listeners={},
+            quart_app=quart_app,
+            bot=bot,
+            api_client=api_client,
+            bot_account_id=bot_account_id,
+        )
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         pass
@@ -453,14 +452,18 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         self.listeners[event_type] = callback
 
     def unregister_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         self.listeners.pop(event_type)
 

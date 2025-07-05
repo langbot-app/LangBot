@@ -1,6 +1,6 @@
 import enum
 
-import pydantic.v1 as pydantic
+import pydantic
 
 
 class ResultLevel(enum.Enum):

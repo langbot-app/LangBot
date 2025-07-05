@@ -3,7 +3,7 @@ import re
 
 from .. import filter as filter_model
 from .. import entities
-from ....core import entities as core_entities
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 @filter_model.filter_class('ban-word-filter')
@@ -13,7 +13,7 @@ class BanWordFilter(filter_model.ContentFilter):
     async def initialize(self):
         pass
 
-    async def process(self, query: core_entities.Query, message: str) -> entities.FilterResult:
+    async def process(self, query: pipeline_query.Query, message: str) -> entities.FilterResult:
         found = False
 
         for word in self.ap.sensitive_meta.data['words']:

@@ -3,7 +3,7 @@ import asyncio
 import time
 import typing
 from .. import algo
-from ....core import entities as core_entities
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 # 固定窗口算法
@@ -32,7 +32,7 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
 
     async def require_access(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         launcher_type: str,
         launcher_id: typing.Union[int, str],
     ) -> bool:
@@ -91,7 +91,7 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
 
     async def release_access(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         launcher_type: str,
         launcher_id: typing.Union[int, str],
     ):

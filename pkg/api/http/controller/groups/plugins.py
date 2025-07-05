@@ -12,11 +12,9 @@ class PluginsRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
-            plugins = self.ap.plugin_mgr.plugins()
+            plugins = await self.ap.plugin_connector.handler.list_plugins()
 
-            plugins_data = [plugin.model_dump() for plugin in plugins]
-
-            return self.success(data={'plugins': plugins_data})
+            return self.success(data={'plugins': plugins})
 
         @self.route(
             '/<author>/<plugin_name>/toggle',

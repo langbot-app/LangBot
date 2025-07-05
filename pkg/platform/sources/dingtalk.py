@@ -1,18 +1,16 @@
 import traceback
 import typing
 from libs.dingtalk_api.dingtalkevent import DingTalkEvent
-from pkg.platform.types import message as platform_message
-from pkg.platform.adapter import MessagePlatformAdapter
-from .. import adapter
-from ...core import app
-from ..types import events as platform_events
-from ..types import entities as platform_entities
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 from libs.dingtalk_api.api import DingTalkClient
 import datetime
 from ..logger import EventLogger
 
 
-class DingTalkMessageConverter(adapter.MessageConverter):
+class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
     async def yiri2target(message_chain: platform_message.MessageChain):
         content = ''
@@ -48,7 +46,7 @@ class DingTalkMessageConverter(adapter.MessageConverter):
         return chain
 
 
-class DingTalkEventConverter(adapter.EventConverter):
+class DingTalkEventConverter(abstract_platform_adapter.AbstractEventConverter):
     @staticmethod
     async def yiri2target(event: platform_events.MessageEvent):
         return event.source_platform_object
@@ -92,17 +90,15 @@ class DingTalkEventConverter(adapter.EventConverter):
             )
 
 
-class DingTalkAdapter(adapter.MessagePlatformAdapter):
+class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot: DingTalkClient
-    ap: app.Application
     bot_account_id: str
     message_converter: DingTalkMessageConverter = DingTalkMessageConverter()
     event_converter: DingTalkEventConverter = DingTalkEventConverter()
     config: dict
 
-    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
+    def __init__(self, config: dict, logger: EventLogger):
         self.config = config
-        self.ap = ap
         self.logger = logger
         required_keys = [
             'client_id',
@@ -140,7 +136,9 @@ class DingTalkAdapter(adapter.MessagePlatformAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         async def on_message(event: DingTalkEvent):
             try:
@@ -174,6 +172,8 @@ class DingTalkAdapter(adapter.MessagePlatformAdapter):
     async def unregister_listener(
         self,
         event_type: type,
-        callback: typing.Callable[[platform_events.Event, MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         return super().unregister_listener(event_type, callback)

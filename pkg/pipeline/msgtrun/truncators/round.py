@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from .. import truncator
-from ....core import entities as core_entities
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 @truncator.truncator_class('round')
 class RoundTruncator(truncator.Truncator):
     """前文回合数阶段器"""
 
-    async def truncate(self, query: core_entities.Query) -> core_entities.Query:
+    async def truncate(self, query: pipeline_query.Query) -> pipeline_query.Query:
         """截断"""
         max_round = query.pipeline_config['ai']['local-agent']['max-round']
 

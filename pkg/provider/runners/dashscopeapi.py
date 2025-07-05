@@ -6,8 +6,9 @@ import re
 import dashscope
 
 from .. import runner
-from ...core import app, entities as core_entities
+from ...core import app
 from .. import entities as llm_entities
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 class DashscopeAPIError(Exception):
@@ -65,7 +66,7 @@ class DashScopeAPIRunner(runner.RequestRunner):
         # 使用 re.sub() 进行替换
         return pattern.sub(replacement, text)
 
-    async def _preprocess_user_message(self, query: core_entities.Query) -> tuple[str, list[str]]:
+    async def _preprocess_user_message(self, query: pipeline_query.Query) -> tuple[str, list[str]]:
         """预处理用户消息，提取纯文本，阿里云提供的上传文件方法过于复杂，暂不支持上传文件（包括图片）"""
         plain_text = ''
         image_ids = []
@@ -89,7 +90,7 @@ class DashScopeAPIRunner(runner.RequestRunner):
 
         return plain_text, image_ids
 
-    async def _agent_messages(self, query: core_entities.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
+    async def _agent_messages(self, query: pipeline_query.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
         """Dashscope 智能体对话请求"""
 
         # 局部变量
@@ -147,7 +148,9 @@ class DashScopeAPIRunner(runner.RequestRunner):
             content=pending_content,
         )
 
-    async def _workflow_messages(self, query: core_entities.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
+    async def _workflow_messages(
+        self, query: pipeline_query.Query
+    ) -> typing.AsyncGenerator[llm_entities.Message, None]:
         """Dashscope 工作流对话请求"""
 
         # 局部变量
@@ -210,7 +213,7 @@ class DashScopeAPIRunner(runner.RequestRunner):
             content=pending_content,
         )
 
-    async def run(self, query: core_entities.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
+    async def run(self, query: pipeline_query.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
         """运行"""
         if self.app_type == 'agent':
             async for msg in self._agent_messages(query):

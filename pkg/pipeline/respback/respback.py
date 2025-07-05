@@ -4,18 +4,18 @@ import random
 import asyncio
 
 
-from ...platform.types import events as platform_events
-from ...platform.types import message as platform_message
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
 from .. import stage, entities
-from ...core import entities as core_entities
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 @stage.stage_class('SendResponseBackStage')
 class SendResponseBackStage(stage.PipelineStage):
     """发送响应消息"""
 
-    async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:
+    async def process(self, query: pipeline_query.Query, stage_inst_name: str) -> entities.StageProcessResult:
         """处理"""
 
         random_range = (

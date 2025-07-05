@@ -3,7 +3,10 @@ from __future__ import annotations
 import asyncio
 import traceback
 
-from ..core import app, entities
+from ..core import app
+from ..core import entities as core_entities
+
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 class Controller:
@@ -22,19 +25,19 @@ class Controller:
         """事件处理循环"""
         try:
             while True:
-                selected_query: entities.Query = None
+                selected_query: pipeline_query.Query = None
 
                 # 取请求
                 async with self.ap.query_pool:
-                    queries: list[entities.Query] = self.ap.query_pool.queries
+                    queries: list[pipeline_query.Query] = self.ap.query_pool.queries
 
                     for query in queries:
                         session = await self.ap.sess_mgr.get_session(query)
                         self.ap.logger.debug(f'Checking query {query} session {session}')
 
-                        if not session.semaphore.locked():
+                        if not session._semaphore.locked():
                             selected_query = query
-                            await session.semaphore.acquire()
+                            await session._semaphore.acquire()
 
                             break
 
@@ -46,7 +49,7 @@ class Controller:
 
                 if selected_query:
 
-                    async def _process_query(selected_query: entities.Query):
+                    async def _process_query(selected_query: pipeline_query.Query):
                         async with self.semaphore:  # 总并发上限
                             # find pipeline
                             # Here firstly find the bot, then find the pipeline, in case the bot adapter's config is not the latest one.
@@ -59,7 +62,7 @@ class Controller:
                                     await pipeline.run(selected_query)
 
                         async with self.ap.query_pool:
-                            (await self.ap.sess_mgr.get_session(selected_query)).semaphore.release()
+                            (await self.ap.sess_mgr.get_session(selected_query))._semaphore.release()
                             # 通知其他协程，有新的请求可以处理了
                             self.ap.query_pool.condition.notify_all()
 
@@ -68,8 +71,8 @@ class Controller:
                         kind='query',
                         name=f'query-{selected_query.query_id}',
                         scopes=[
-                            entities.LifecycleControlScope.APPLICATION,
-                            entities.LifecycleControlScope.PLATFORM,
+                            core_entities.LifecycleControlScope.APPLICATION,
+                            core_entities.LifecycleControlScope.PLATFORM,
                         ],
                     )
 

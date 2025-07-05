@@ -4,8 +4,9 @@ import typing
 
 from .. import entities, stage
 from . import algo
-from ...core import entities as core_entities
 from ...utils import importutil
+
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 from . import algos
 
@@ -39,7 +40,7 @@ class RateLimit(stage.PipelineStage):
 
     async def process(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         stage_inst_name: str,
     ) -> typing.Union[
         entities.StageProcessResult,

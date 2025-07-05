@@ -7,7 +7,7 @@ from ....core import app
 from ....entity.persistence import model as persistence_model
 from ....entity.persistence import pipeline as persistence_pipeline
 from ....provider.modelmgr import requester as model_requester
-from ....provider import entities as llm_entities
+from langbot_plugin.api.entities.builtin.provider import message as provider_message
 
 
 class ModelsService:
@@ -99,7 +99,7 @@ class ModelsService:
         await runtime_llm_model.requester.invoke_llm(
             query=None,
             model=runtime_llm_model,
-            messages=[llm_entities.Message(role='user', content='Hello, world!')],
+            messages=[provider_message.Message(role='user', content='Hello, world!')],
             funcs=[],
             extra_args={},
         )

@@ -3,8 +3,9 @@ from __future__ import annotations
 import abc
 import typing
 
-from ..core import app, entities as core_entities
+from ..core import app
 from . import entities as llm_entities
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 preregistered_runners: list[typing.Type[RequestRunner]] = []
@@ -35,6 +36,6 @@ class RequestRunner(abc.ABC):
         self.pipeline_config = pipeline_config
 
     @abc.abstractmethod
-    async def run(self, query: core_entities.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
+    async def run(self, query: pipeline_query.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
         """运行请求"""
         pass

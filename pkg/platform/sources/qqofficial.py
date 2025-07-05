@@ -5,11 +5,10 @@ import traceback
 
 import datetime
 
-from pkg.platform.adapter import MessagePlatformAdapter
-from pkg.platform.types import events as platform_events, message as platform_message
-from .. import adapter
-from ...core import app
-from ..types import entities as platform_entities
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 from ...command.errors import ParamNotEnoughError
 from libs.qq_official_api.api import QQOfficialClient
 from libs.qq_official_api.qqofficialevent import QQOfficialEvent
@@ -17,7 +16,7 @@ from ...utils import image
 from ..logger import EventLogger
 
 
-class QQOfficialMessageConverter(adapter.MessageConverter):
+class QQOfficialMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
     async def yiri2target(message_chain: platform_message.MessageChain):
         content_list = []
@@ -46,7 +45,7 @@ class QQOfficialMessageConverter(adapter.MessageConverter):
         return chain
 
 
-class QQOfficialEventConverter(adapter.EventConverter):
+class QQOfficialEventConverter(abstract_platform_adapter.AbstractEventConverter):
     @staticmethod
     async def yiri2target(event: platform_events.MessageEvent) -> QQOfficialEvent:
         return event.source_platform_object
@@ -132,17 +131,15 @@ class QQOfficialEventConverter(adapter.EventConverter):
             )
 
 
-class QQOfficialAdapter(adapter.MessagePlatformAdapter):
+class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot: QQOfficialClient
-    ap: app.Application
     config: dict
     bot_account_id: str
     message_converter: QQOfficialMessageConverter = QQOfficialMessageConverter()
     event_converter: QQOfficialEventConverter = QQOfficialEventConverter()
 
-    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
+    def __init__(self, config: dict, logger: EventLogger):
         self.config = config
-        self.ap = ap
         self.logger = logger
 
         required_keys = [
@@ -154,10 +151,7 @@ class QQOfficialAdapter(adapter.MessagePlatformAdapter):
             raise ParamNotEnoughError('QQ官方机器人缺少相关配置项，请查看文档或联系管理员')
 
         self.bot = QQOfficialClient(
-            app_id=config['appid'],
-            secret=config['secret'],
-            token=config['token'],
-            logger=self.logger
+            app_id=config['appid'], secret=config['secret'], token=config['token'], logger=self.logger
         )
 
     async def reply_message(
@@ -218,14 +212,16 @@ class QQOfficialAdapter(adapter.MessagePlatformAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         async def on_message(event: QQOfficialEvent):
             self.bot_account_id = 'justbot'
             try:
                 return await callback(await self.event_converter.target2yiri(event), self)
-            except Exception as e:
-                await self.logger.error(f"Error in qqofficial callback: {traceback.format_exc()}")
+            except Exception:
+                await self.logger.error(f'Error in qqofficial callback: {traceback.format_exc()}')
 
         if event_type == platform_events.FriendMessage:
             self.bot.on_message('DIRECT_MESSAGE_CREATE')(on_message)
@@ -251,6 +247,8 @@ class QQOfficialAdapter(adapter.MessagePlatformAdapter):
     def unregister_listener(
         self,
         event_type: type,
-        callback: typing.Callable[[platform_events.Event, MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         return super().unregister_listener(event_type, callback)

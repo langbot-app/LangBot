@@ -3,7 +3,7 @@ from quart import request
 import httpx
 from quart import Quart
 from typing import Callable, Dict, Any
-from pkg.platform.types import events as platform_events
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
 from .qqofficialevent import QQOfficialEvent
 import json
 import traceback
@@ -104,7 +104,7 @@ class QQOfficialClient:
             return {'code': 0, 'message': 'success'}
 
         except Exception as e:
-            await self.logger.error(f"Error in handle_callback_request: {traceback.format_exc()}")
+            await self.logger.error(f'Error in handle_callback_request: {traceback.format_exc()}')
             return {'error': str(e)}, 400
 
     async def run_task(self, host: str, port: int, *args, **kwargs):
@@ -168,7 +168,6 @@ class QQOfficialClient:
         if not await self.check_access_token():
             await self.get_access_token()
 
-
         url = self.base_url + '/v2/users/' + user_openid + '/messages'
         async with httpx.AsyncClient() as client:
             headers = {
@@ -193,7 +192,6 @@ class QQOfficialClient:
         if not await self.check_access_token():
             await self.get_access_token()
 
-
         url = self.base_url + '/v2/groups/' + group_openid + '/messages'
         async with httpx.AsyncClient() as client:
             headers = {
@@ -209,14 +207,13 @@ class QQOfficialClient:
             if response.status_code == 200:
                 return
             else:
-                await self.logger.error(f"发送群聊消息失败:{response.json()}")
+                await self.logger.error(f'发送群聊消息失败:{response.json()}')
                 raise Exception(response.read().decode())
 
     async def send_channle_group_text_msg(self, channel_id: str, content: str, msg_id: str):
         """发送频道群聊消息"""
         if not await self.check_access_token():
             await self.get_access_token()
-
 
         url = self.base_url + '/channels/' + channel_id + '/messages'
         async with httpx.AsyncClient() as client:
@@ -240,7 +237,6 @@ class QQOfficialClient:
         """发送频道私聊消息"""
         if not await self.check_access_token():
             await self.get_access_token()
-        
 
         url = self.base_url + '/dms/' + guild_id + '/messages'
         async with httpx.AsyncClient() as client:

@@ -9,7 +9,8 @@ import traceback
 import uuid
 
 from ..core import app
-from .types import message as platform_message
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_event_logger
 
 
 class EventLogLevel(enum.Enum):
@@ -55,7 +56,7 @@ MAX_LOG_COUNT = 200
 DELETE_COUNT_PER_TIME = 50
 
 
-class EventLogger:
+class EventLogger(abstract_platform_event_logger.AbstractEventLogger):
     """used for logging bot events"""
 
     ap: app.Application
