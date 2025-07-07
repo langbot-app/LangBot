@@ -91,11 +91,11 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
             self,
             message: dict,
             bot_account_id: str,
-            bot_wxid: str
     ) -> platform_message.MessageChain:
         """外部消息转平台消息"""
         # 数据预处理
         message_list = []
+        bot_wxid = self.config['wxid']
         ats_bot = False  # 是否被@
         content = message["content"]["str"]
         content_no_preifx = content  # 群消息则去掉前缀
@@ -523,7 +523,6 @@ class WeChatPadEventConverter(adapter.EventConverter):
             self,
             event: dict,
             bot_account_id: str,
-            bot_wxid: str
     ) -> platform_events.MessageEvent:
 
         # 排除公众号以及微信团队消息
@@ -532,7 +531,7 @@ class WeChatPadEventConverter(adapter.EventConverter):
                 or event['from_user_name']['str'] == "newsapp"\
                 or event['from_user_name']['str'] == self.config["wxid"]:
             return None
-        message_chain = await self.message_converter.target2yiri(copy.deepcopy(event), bot_account_id, bot_wxid)
+        message_chain = await self.message_converter.target2yiri(copy.deepcopy(event), bot_account_id)
 
         if not message_chain:
             return None
@@ -609,7 +608,7 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
 
 
         try:
-            event = await self.event_converter.target2yiri(data.copy(), self.bot_account_id, self.config["wxid"])
+            event = await self.event_converter.target2yiri(data.copy(), self.bot_account_id)
         except Exception as e:
             await self.logger.error(f"Error in wechatpad callback: {traceback.format_exc()}")
 
