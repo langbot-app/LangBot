@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "dev:local": "NEXT_PUBLIC_API_BASE_URL=http://localhost:5300 next dev --turbopack",
-    "dev:local:win": "set NEXT_PUBLIC_API_BASE_URL=http://localhost:5300 && next dev --turbopack",
+    "dev:local:win": "set NEXT_PUBLIC_API_BASE_URL=http://localhost:5300&&next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
