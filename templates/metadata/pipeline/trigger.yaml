@@ -132,3 +132,10 @@ stages:
         type: boolean
         required: true
         default: true
+      - name: remove_think
+        label:
+          en_US: remove think
+          zh_Hans: 删除深度思考消息
+        type: boolean
+        required: true
+        default: true

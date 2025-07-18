@@ -71,6 +71,29 @@ class LLMAPIRequester(metaclass=abc.ABCMeta):
             extra_args (dict[str, typing.Any], optional): 额外的参数. Defaults to {}.
 
         Returns:
-            llm_entities.Message: 返回消息对象
+            llm_entities.Message | typing.AsyncGenerator[llm_entities.MessageChunk]: 返回消息对象
+        """
+        pass
+
+    @abc.abstractmethod
+    async def invoke_llm_stream(
+            self,
+            query: core_entities.Query,
+            model: RuntimeLLMModel,
+            messages: typing.List[llm_entities.Message],
+            funcs: typing.List[tools_entities.LLMFunction] = None,
+            stream: bool = False,
+            extra_args: dict[str, typing.Any] = {},
+    ) -> llm_entities.MessageChunk:
+        """调用API
+
+        Args:
+            model (RuntimeLLMModel): 使用的模型信息
+            messages (typing.List[llm_entities.Message]): 消息对象列表
+            funcs (typing.List[tools_entities.LLMFunction], optional): 使用的工具函数列表. Defaults to None.
+            extra_args (dict[str, typing.Any], optional): 额外的参数. Defaults to {}.
+
+        Returns:
+            llm_entities.Message | typing.AsyncGenerator[llm_entities.MessageChunk]: 返回消息对象
         """
         pass
