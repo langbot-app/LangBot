@@ -105,7 +105,7 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
             self.logger.info(f"ats_bot: {ats_bot}; bot_account_id: {bot_account_id}; bot_wxid: {bot_wxid}")
             if "@所有人" in content:
                 message_list.append(platform_message.AtAll())
-            elif ats_bot:
+            if ats_bot:
                 message_list.append(platform_message.At(target=bot_account_id))
             
             # 解析@信息并生成At组件
