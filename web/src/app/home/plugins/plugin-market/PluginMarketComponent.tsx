@@ -39,7 +39,7 @@ export default function PluginMarketComponent({
   const [sortByValue, setSortByValue] = useState<string>('pushed_at');
   const [sortOrderValue, setSortOrderValue] = useState<string>('DESC');
   const searchTimeout = useRef<NodeJS.Timeout | null>(null);
-  const pageSize = 10;
+  const pageSize = 12;
 
   useEffect(() => {
     initData();
