@@ -13,7 +13,7 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/langbot-app/LangBot)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/langbot-app/LangBot)](https://github.com/langbot-app/LangBot/releases/latest)
 <img src="https://img.shields.io/badge/python-3.10 ~ 3.13 -blue.svg" alt="python">
-[![star](https://gitcode.com/langbot-app/LangBot/star/badge.svg)](https://gitcode.com/langbot-app/LangBot)
+[![star](https://gitcode.com/RockChinQ/LangBot/star/badge.svg)](https://gitcode.com/RockChinQ/LangBot)
 
 <a href="https://langbot.app">项目主页</a> ｜
 <a href="https://docs.langbot.app/zh/insight/guide.html">部署文档</a> ｜
