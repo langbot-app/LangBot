@@ -282,6 +282,16 @@ const enUS = {
     },
     deleteKnowledgeBaseConfirmation:
       'Are you sure you want to delete this knowledge base? All documents in this knowledge base will be deleted.',
+    retrieve: 'Retrieve Test',
+    retrieveTest: 'Retrieve Test',
+    query: 'Query',
+    queryPlaceholder: 'Enter query text...',
+    retrieveResults: 'Retrieve Results',
+    distance: 'Distance',
+    content: 'Content',
+    fileName: 'File Name',
+    noResults: 'No results',
+    retrieveError: 'Retrieve failed',
   },
   register: {
     title: 'Initialize LangBot 👋',

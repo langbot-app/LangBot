@@ -296,3 +296,18 @@ export interface ApiRespWebChatMessage {
 export interface ApiRespWebChatMessages {
   messages: Message[];
 }
+
+export interface RetrieveResult {
+  id: string;
+  metadata: {
+    file_id: string;
+    text: string;
+    uuid: string;
+    [key: string]: unknown;
+  };
+  distance: number;
+}
+
+export interface ApiRespKnowledgeBaseRetrieve {
+  results: RetrieveResult[];
+}

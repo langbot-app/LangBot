@@ -274,6 +274,16 @@ const zhHans = {
     },
     deleteKnowledgeBaseConfirmation:
       '你确定要删除这个知识库吗？此知识库下的所有文档将被删除。',
+    retrieve: '检索测试',
+    retrieveTest: '检索测试',
+    query: '查询',
+    queryPlaceholder: '输入查询内容...',
+    retrieveResults: '检索结果',
+    distance: '距离',
+    content: '内容',
+    fileName: '文件名',
+    noResults: '暂无结果',
+    retrieveError: '检索失败',
   },
   register: {
     title: '初始化 LangBot 👋',

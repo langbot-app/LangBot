@@ -24,6 +24,7 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 // import { KnowledgeBase } from '@/app/infra/entities/api';
 import KBForm from '@/app/home/knowledge/components/kb-form/KBForm';
 import KBDoc from '@/app/home/knowledge/components/kb-docs/KBDoc';
+import KBRetrieve from '@/app/home/knowledge/components/kb-retrieve/KBRetrieve';
 
 interface KBDetailDialogProps {
   open: boolean;
@@ -78,6 +79,19 @@ export default function KBDetailDialog({
           fill="currentColor"
         >
           <path d="M21 8V20.9932C21 21.5501 20.5552 22 20.0066 22H3.9934C3.44495 22 3 21.556 3 21.0082V2.9918C3 2.45531 3.4487 2 4.00221 2H14.9968L21 8ZM19 9H14V4H5V20H19V9ZM8 7H11V9H8V7ZM8 11H16V13H8V11ZM8 15H16V17H8V15Z"></path>
+        </svg>
+      ),
+    },
+    {
+      key: 'retrieve',
+      label: t('knowledge.retrieve'),
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+        >
+          <path d="M18.031 16.617l4.283 4.282-1.415 1.415-4.282-4.283A8.96 8.96 0 0 1 11 20c-4.968 0-9-4.032-9-9s4.032-9 9-9 9 4.032 9 9a8.96 8.96 0 0 1-1.969 5.617zm-2.006-.742A6.977 6.977 0 0 0 18 11c0-3.868-3.133-7-7-7-3.868 0-7 3.132-7 7 0 3.867 3.132 7 7 7a6.977 6.977 0 0 0 4.875-1.975l.15-.15z"></path>
         </svg>
       ),
     },
@@ -168,7 +182,9 @@ export default function KBDetailDialog({
                 <DialogTitle>
                   {activeMenu === 'metadata'
                     ? t('knowledge.editKnowledgeBase')
-                    : t('knowledge.editDocument')}
+                    : activeMenu === 'documents'
+                      ? t('knowledge.editDocument')
+                      : t('knowledge.retrieveTest')}
                 </DialogTitle>
               </DialogHeader>
               <div className="flex-1 overflow-y-auto px-6 pb-6">
@@ -180,6 +196,7 @@ export default function KBDetailDialog({
                   />
                 )}
                 {activeMenu === 'documents' && <KBDoc kbId={kbId} />}
+                {activeMenu === 'retrieve' && <KBRetrieve kbId={kbId} />}
               </div>
               {activeMenu === 'metadata' && (
                 <DialogFooter className="px-6 py-4 border-t shrink-0">

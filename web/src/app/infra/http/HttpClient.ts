@@ -38,6 +38,7 @@ import {
   ApiRespKnowledgeBase,
   KnowledgeBase,
   ApiRespKnowledgeBaseFiles,
+  ApiRespKnowledgeBaseRetrieve,
 } from '@/app/infra/entities/api';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
@@ -497,6 +498,13 @@ class HttpClient {
 
   public deleteKnowledgeBase(uuid: string): Promise<object> {
     return this.delete(`/api/v1/knowledge/bases/${uuid}`);
+  }
+
+  public retrieveKnowledgeBase(
+    uuid: string,
+    query: string,
+  ): Promise<ApiRespKnowledgeBaseRetrieve> {
+    return this.post(`/api/v1/knowledge/bases/${uuid}/retrieve`, { query });
   }
 
   // ============ Plugins API ============
