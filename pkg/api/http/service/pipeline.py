@@ -38,9 +38,21 @@ class PipelineService:
             self.ap.pipeline_config_meta_output.data,
         ]
 
-    async def get_pipelines(self) -> list[dict]:
-        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_pipeline.LegacyPipeline))
-
+    async def get_pipelines(self, sort_by: str = 'created_at', sort_order: str = 'DESC') -> list[dict]:
+        query = sqlalchemy.select(persistence_pipeline.LegacyPipeline)
+        
+        if sort_by == 'created_at':
+            if sort_order == 'DESC':
+                query = query.order_by(persistence_pipeline.LegacyPipeline.created_at.desc())
+            else:
+                query = query.order_by(persistence_pipeline.LegacyPipeline.created_at.asc())
+        elif sort_by == 'updated_at':
+            if sort_order == 'DESC':
+                query = query.order_by(persistence_pipeline.LegacyPipeline.updated_at.desc())
+            else:
+                query = query.order_by(persistence_pipeline.LegacyPipeline.updated_at.asc())
+        
+        result = await self.ap.persistence_mgr.execute_async(query)
         pipelines = result.all()
         return [
             self.ap.persistence_mgr.serialize_model(persistence_pipeline.LegacyPipeline, pipeline)

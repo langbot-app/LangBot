@@ -11,7 +11,9 @@ class PipelinesRouterGroup(group.RouterGroup):
         @self.route('', methods=['GET', 'POST'])
         async def _() -> str:
             if quart.request.method == 'GET':
-                return self.success(data={'pipelines': await self.ap.pipeline_service.get_pipelines()})
+                sort_by = quart.request.args.get('sort_by', 'created_at')
+                sort_order = quart.request.args.get('sort_order', 'DESC')
+                return self.success(data={'pipelines': await self.ap.pipeline_service.get_pipelines(sort_by, sort_order)})
             elif quart.request.method == 'POST':
                 json_data = await quart.request.json
 

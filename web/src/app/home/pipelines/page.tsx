@@ -9,6 +9,13 @@ import styles from './pipelineConfig.module.css';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import PipelineDialog from './PipelineDetailDialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 export default function PluginConfigPage() {
   const { t } = useTranslation();
@@ -26,14 +33,19 @@ export default function PluginConfigPage() {
     });
   const [selectedPipelineIsDefault, setSelectedPipelineIsDefault] =
     useState(false);
+  const [sortByValue, setSortByValue] = useState<string>('created_at');
+  const [sortOrderValue, setSortOrderValue] = useState<string>('DESC');
 
   useEffect(() => {
     getPipelines();
   }, []);
 
-  function getPipelines() {
+  function getPipelines(
+    sortBy: string = sortByValue,
+    sortOrder: string = sortOrderValue,
+  ) {
     httpClient
-      .getPipelines()
+      .getPipelines(sortBy, sortOrder)
       .then((value) => {
         const currentTime = new Date();
         const pipelineList = value.pipelines.map((pipeline) => {
@@ -106,6 +118,13 @@ export default function PluginConfigPage() {
     setDialogOpen(true);
   };
 
+  function handleSortChange(value: string) {
+    const [newSortBy, newSortOrder] = value.split(',').map((s) => s.trim());
+    setSortByValue(newSortBy);
+    setSortOrderValue(newSortOrder);
+    getPipelines(newSortBy, newSortOrder);
+  }
+
   return (
     <div className={styles.configPageContainer}>
       <PipelineDialog
@@ -135,6 +154,29 @@ export default function PluginConfigPage() {
       />
 
       <div className={styles.pipelineListContainer}>
+        <div className="flex flex-row justify-between items-center mb-4">
+          <div></div>
+          <Select
+            value={`${sortByValue},${sortOrderValue}`}
+            onValueChange={handleSortChange}
+          >
+            <SelectTrigger className="w-[180px] cursor-pointer">
+              <SelectValue placeholder={t('pipelines.sortBy')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="created_at,DESC">
+                {t('pipelines.newestCreated')}
+              </SelectItem>
+              <SelectItem value="updated_at,DESC">
+                {t('pipelines.recentlyEdited')}
+              </SelectItem>
+              <SelectItem value="updated_at,ASC">
+                {t('pipelines.earliestEdited')}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <CreateCardComponent
           width={'100%'}
           height={'10rem'}
