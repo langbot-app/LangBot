@@ -153,30 +153,28 @@ export default function PluginConfigPage() {
         }}
       />
 
+      <div className="flex flex-row justify-between items-center mb-4 px-[0.8rem]">
+        <Select
+          value={`${sortByValue},${sortOrderValue}`}
+          onValueChange={handleSortChange}
+        >
+          <SelectTrigger className="w-[180px] cursor-pointer bg-white dark:bg-gray-800">
+            <SelectValue placeholder={t('pipelines.sortBy')} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="created_at,DESC">
+              {t('pipelines.newestCreated')}
+            </SelectItem>
+            <SelectItem value="updated_at,DESC">
+              {t('pipelines.recentlyEdited')}
+            </SelectItem>
+            <SelectItem value="updated_at,ASC">
+              {t('pipelines.earliestEdited')}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       <div className={styles.pipelineListContainer}>
-        <div className="flex flex-row justify-between items-center mb-4">
-          <div></div>
-          <Select
-            value={`${sortByValue},${sortOrderValue}`}
-            onValueChange={handleSortChange}
-          >
-            <SelectTrigger className="w-[180px] cursor-pointer">
-              <SelectValue placeholder={t('pipelines.sortBy')} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="created_at,DESC">
-                {t('pipelines.newestCreated')}
-              </SelectItem>
-              <SelectItem value="updated_at,DESC">
-                {t('pipelines.recentlyEdited')}
-              </SelectItem>
-              <SelectItem value="updated_at,ASC">
-                {t('pipelines.earliestEdited')}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
         <CreateCardComponent
           width={'100%'}
           height={'10rem'}
