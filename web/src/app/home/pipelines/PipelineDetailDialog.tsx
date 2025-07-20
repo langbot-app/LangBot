@@ -52,11 +52,24 @@ export default function PipelineDialog({
     propPipelineId,
   );
   const [currentMode, setCurrentMode] = useState<DialogMode>('config');
+  const [formValues, setFormValues] = useState<PipelineFormEntity>(
+    () =>
+      initValues || {
+        basic: {},
+        ai: {},
+        trigger: {},
+        safety: {},
+        output: {},
+      },
+  );
 
   useEffect(() => {
     setPipelineId(propPipelineId);
     setCurrentMode('config');
-  }, [propPipelineId, open]);
+    if (initValues) {
+      setFormValues(initValues);
+    }
+  }, [propPipelineId, open, initValues]);
 
   const handleFinish = () => {
     onFinish();
@@ -119,7 +132,7 @@ export default function PipelineDialog({
             </DialogHeader>
             <div className="flex-1 overflow-y-auto px-6 pb-6">
               <PipelineFormComponent
-                initValues={initValues}
+                initValues={formValues}
                 isDefaultPipeline={isDefaultPipeline}
                 onFinish={handleFinish}
                 onNewPipelineCreated={handleNewPipelineCreated}
@@ -128,6 +141,7 @@ export default function PipelineDialog({
                 disableForm={false}
                 showButtons={true}
                 onDeletePipeline={onDeletePipeline}
+                onFormValuesChange={setFormValues}
                 onCancel={() => {
                   onCancel();
                 }}
@@ -184,7 +198,7 @@ export default function PipelineDialog({
             >
               {currentMode === 'config' && (
                 <PipelineFormComponent
-                  initValues={initValues}
+                  initValues={formValues}
                   isDefaultPipeline={isDefaultPipeline}
                   onFinish={handleFinish}
                   onNewPipelineCreated={handleNewPipelineCreated}
@@ -193,6 +207,7 @@ export default function PipelineDialog({
                   disableForm={false}
                   showButtons={true}
                   onDeletePipeline={onDeletePipeline}
+                  onFormValuesChange={setFormValues}
                   onCancel={() => {
                     onCancel();
                   }}
