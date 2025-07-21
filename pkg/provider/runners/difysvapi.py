@@ -95,6 +95,11 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         cov_id = query.session.using_conversation.uuid or ''
         query.variables['conversation_id'] = cov_id
 
+        try:
+            is_stream = await query.adapter.is_stream_output_supported()
+        except AttributeError:
+            is_stream = False
+
         plain_text, image_ids = await self._preprocess_user_message(query)
 
         files = [
@@ -110,9 +115,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         stream_output_pending_chunk = ''
 
-        batch_pending_max_size = self.pipeline_config['ai']['dify-service-api'].get(
-            'output-batch-size', 0
-        )  # 积累一定量的消息更新消息一次
+        batch_pending_max_size = 64  # 积累一定量的消息更新消息一次
 
         batch_pending_index = 0
 
@@ -144,40 +147,54 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
             if mode == 'workflow':
                 if chunk['event'] == 'node_finished':
-                    if chunk['data']['node_type'] == 'answer':
-                        yield llm_entities.Message(
-                            role='assistant',
-                            content=self._try_convert_thinking(chunk['data']['outputs']['answer']),
-                        )
+                    if not is_stream:
+
+                        if chunk['data']['node_type'] == 'answer':
+                            yield llm_entities.Message(
+                                role='assistant',
+                                content=self._try_convert_thinking(chunk['data']['outputs']['answer']),
+                            )
+                    else:
+                        if chunk['data']['node_type'] == 'answer':
+                            yield llm_entities.MessageChunk(
+                                role='assistant',
+                                content=self._try_convert_thinking(chunk['data']['outputs']['answer']),
+                                is_final=True,
+                            )
                 elif chunk['event'] == 'message':
                     stream_output_pending_chunk += chunk['answer']
-                    if self.pipeline_config['ai']['dify-service-api'].get('enable-streaming', False):
+                    if is_stream:
                         # 消息数超过量就输出，从而达到streaming的效果
                         batch_pending_index += 1
                         if batch_pending_index >= batch_pending_max_size:
-                            yield llm_entities.Message(
+                            yield llm_entities.MessageChunk(
                                 role='assistant',
                                 content=self._try_convert_thinking(stream_output_pending_chunk),
                             )
                             batch_pending_index = 0
             elif mode == 'basic':
-                if chunk['event'] == 'message':
-                    stream_output_pending_chunk += chunk['answer']
-                    if self.pipeline_config['ai']['dify-service-api'].get('enable-streaming', False):
-                        # 消息数超过量就输出，从而达到streaming的效果
-                        batch_pending_index += 1
-                        if batch_pending_index >= batch_pending_max_size:
+                if chunk['event'] == 'message' or chunk['event'] == 'message_end':
+                    if chunk['event'] == 'message_end':
+                        is_final = True
+                        if is_stream and batch_pending_index % batch_pending_max_size == 0:
+                            # 消息数超过量就输出，从而达到streaming的效果
+                            batch_pending_index += 1
+                            # if batch_pending_index >= batch_pending_max_size:
+                            yield llm_entities.MessageChunk(
+                                role='assistant',
+                                content=self._try_convert_thinking(stream_output_pending_chunk),
+                                is_final=is_final,
+                            )
+                            # batch_pending_index = 0
+                        elif not is_stream:
                             yield llm_entities.Message(
                                 role='assistant',
                                 content=self._try_convert_thinking(stream_output_pending_chunk),
                             )
-                            batch_pending_index = 0
-                elif chunk['event'] == 'message_end':
-                    yield llm_entities.Message(
-                        role='assistant',
-                        content=self._try_convert_thinking(stream_output_pending_chunk),
-                    )
-                    stream_output_pending_chunk = ''
+                            stream_output_pending_chunk = ''
+                    else:
+                        stream_output_pending_chunk += chunk['answer']
+                        is_final = False
 
         if chunk is None:
             raise errors.DifyAPIError('Dify API 没有返回任何响应，请检查网络连接和API配置')
@@ -190,6 +207,13 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         """调用聊天助手"""
         cov_id = query.session.using_conversation.uuid or ''
         query.variables['conversation_id'] = cov_id
+
+        try:
+            is_stream = await query.adapter.is_stream_output_supported()
+        except AttributeError:
+            is_stream = False
+
+        batch_pending_index = 0
 
         plain_text, image_ids = await self._preprocess_user_message(query)
 
@@ -225,38 +249,67 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
             if chunk['event'] in ignored_events:
                 continue
+            batch_pending_index += 1
 
-            if chunk['event'] == 'agent_message':
-                pending_agent_message += chunk['answer']
+            if chunk['event'] == 'agent_message' or chunk['event'] == 'message_end':
+                if chunk['event'] == 'message_end':
+                    # break
+                    is_final = True
+                else:
+                    is_final = False
+                    pending_agent_message += chunk['answer']
+                if is_stream:
+                    if batch_pending_index % 64 == 0 or is_final:
+                        yield llm_entities.MessageChunk(
+                            role='assistant',
+                            content=self._try_convert_thinking(pending_agent_message),
+                            is_final=is_final,
+                        )
+
             else:
-                if pending_agent_message.strip() != '':
+                if pending_agent_message.strip() != '' and not is_stream:
                     pending_agent_message = pending_agent_message.replace('</details>Action:', '</details>')
                     yield llm_entities.Message(
                         role='assistant',
                         content=self._try_convert_thinking(pending_agent_message),
                     )
-                pending_agent_message = ''
+
 
                 if chunk['event'] == 'agent_thought':
                     if chunk['tool'] != '' and chunk['observation'] != '':  # 工具调用结果，跳过
                         continue
 
                     if chunk['tool']:
-                        msg = llm_entities.Message(
-                            role='assistant',
-                            tool_calls=[
-                                llm_entities.ToolCall(
-                                    id=chunk['id'],
-                                    type='function',
-                                    function=llm_entities.FunctionCall(
-                                        name=chunk['tool'],
-                                        arguments=json.dumps({}),
-                                    ),
-                                )
-                            ],
-                        )
+                        if is_stream:
+                            msg = llm_entities.MessageChunk(
+                                role='assistant',
+                                tool_calls=[
+                                    llm_entities.ToolCall(
+                                        id=chunk['id'],
+                                        type='function',
+                                        function=llm_entities.FunctionCall(
+                                            name=chunk['tool'],
+                                            arguments=json.dumps({}),
+                                        ),
+                                    )
+                                ],
+                            )
+                        else:
+                            msg = llm_entities.Message(
+                                role='assistant',
+                                tool_calls=[
+                                    llm_entities.ToolCall(
+                                        id=chunk['id'],
+                                        type='function',
+                                        function=llm_entities.FunctionCall(
+                                            name=chunk['tool'],
+                                            arguments=json.dumps({}),
+                                        ),
+                                    )
+                                ],
+                            )
                         yield msg
-                if chunk['event'] == 'message_file':
+                elif chunk['event'] == 'message_file':
                     if chunk['type'] == 'image' and chunk['belongs_to'] == 'assistant':
                         base_url = self.dify_client.base_url
 
@@ -264,13 +317,20 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                             base_url = base_url[:-3]
 
                         image_url = base_url + chunk['url']
-
-                        yield llm_entities.Message(
-                            role='assistant',
-                            content=[llm_entities.ContentElement.from_image_url(image_url)],
-                        )
-                if chunk['event'] == 'error':
+                        if is_stream:
+                            yield llm_entities.MessageChunk(
+                                role='assistant',
+                                content=[llm_entities.ContentElement.from_image_url(image_url)],
+                            )
+                        else:
+                            yield llm_entities.Message(
+                                role='assistant',
+                                content=[llm_entities.ContentElement.from_image_url(image_url)],
+                            )
+                elif chunk['event'] == 'error':
                     raise errors.DifyAPIError('dify 服务错误: ' + chunk['message'])
+                else:
+                    pending_agent_message = ''
 
         if chunk is None:
             raise errors.DifyAPIError('Dify API 没有返回任何响应，请检查网络连接和API配置')
@@ -284,6 +344,13 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             query.session.using_conversation.uuid = str(uuid.uuid4())
 
         query.variables['conversation_id'] = query.session.using_conversation.uuid
+
+        try:
+            is_stream = await query.adapter.is_stream_output_supported()
+        except AttributeError:
+            is_stream = False
+
+        batch_pending_index = 0
 
         plain_text, image_ids = await self._preprocess_user_message(query)
 

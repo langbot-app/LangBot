@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import telegram
 import telegram.ext
 from telegram import Update
@@ -143,6 +145,8 @@ class TelegramAdapter(adapter.MessagePlatformAdapter):
     config: dict
     ap: app.Application
 
+    msg_stream_id: dict
+
     listeners: typing.Dict[
         typing.Type[platform_events.Event],
         typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
@@ -152,6 +156,7 @@ class TelegramAdapter(adapter.MessagePlatformAdapter):
         self.config = config
         self.ap = ap
         self.logger = logger
+        self.msg_stream_id = {}
 
         async def telegram_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if update.message.from_user.is_bot:
@@ -160,6 +165,7 @@ class TelegramAdapter(adapter.MessagePlatformAdapter):
             try:
                 lb_event = await self.event_converter.target2yiri(update, self.bot, self.bot_account_id)
                 await self.listeners[type(lb_event)](lb_event, self)
+                await self.is_stream_output_supported()
             except Exception as e:
                 await self.logger.error(f"Error in telegram callback: {traceback.format_exc()}")
 
@@ -199,6 +205,74 @@ class TelegramAdapter(adapter.MessagePlatformAdapter):
             args['reply_to_message_id'] = message_source.source_platform_object.message.id
 
         await self.bot.send_message(**args)
+
+
+    async def reply_message_chunk(
+        self,
+        message_source: platform_events.MessageEvent,
+        message_id: int,
+        message: platform_message.MessageChain,
+        quote_origin: bool = False,
+        is_final: bool = False,
+        ):
+
+        assert isinstance(message_source.source_platform_object, Update)
+        components = await TelegramMessageConverter.yiri2target(message, self.bot)
+        args = {}
+        message_id = message_source.source_platform_object.message.id
+        if quote_origin:
+            args['reply_to_message_id'] = message_source.source_platform_object.message.id
+
+        component = components[0]
+        if message_id not in self.msg_stream_id:
+            # time.sleep(0.6)
+            if component['type'] == 'text':
+                if self.config['markdown_card'] is True:
+                    content = telegramify_markdown.markdownify(
+                        content=component['text'],
+                    )
+                else:
+                    content = component['text']
+                args = {
+                    'chat_id': message_source.source_platform_object.effective_chat.id,
+                    'text': content,
+                }
+                if self.config['markdown_card'] is True:
+                    args['parse_mode'] = 'MarkdownV2'
+
+
+            send_msg = await self.bot.send_message(**args)
+            send_msg_id = send_msg.message_id
+            self.msg_stream_id[message_id] = send_msg_id
+        else:
+            if component['type'] == 'text':
+                if self.config['markdown_card'] is True:
+                    content = telegramify_markdown.markdownify(
+                        content=component['text'],
+                    )
+                else:
+                    content = component['text']
+                args = {
+                    'message_id': self.msg_stream_id[message_id],
+                    'chat_id': message_source.source_platform_object.effective_chat.id,
+                    'text': content,
+                }
+                if self.config['markdown_card'] is True:
+                    args['parse_mode'] = 'MarkdownV2'
+
+            await self.bot.edit_message_text(**args)
+        if is_final:
+            self.msg_stream_id.pop(message_id)
+
+
+    async def is_stream_output_supported(self) -> bool:
+        is_stream = False
+        if self.config.get("enable-stream-reply", None):
+            is_stream = True
+        self.is_stream = is_stream
+
+        return is_stream
+
 
     async def is_muted(self, group_id: int) -> bool:
         return False

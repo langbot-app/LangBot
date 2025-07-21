@@ -25,6 +25,8 @@ class MessagePlatformAdapter(metaclass=abc.ABCMeta):
 
     logger: EventLogger
 
+    is_stream: bool
+
     def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
         """初始化适配器
 
@@ -60,6 +62,27 @@ class MessagePlatformAdapter(metaclass=abc.ABCMeta):
             quote_origin (bool, optional): 是否引用原消息. Defaults to False.
         """
         raise NotImplementedError
+    
+    async def reply_message_chunk(
+        self,
+        message_source: platform_events.MessageEvent, 
+        message_id: int,
+        message: platform_message.MessageChain,
+        quote_origin: bool = False,
+        is_final: bool = False,
+        ):
+        """回复消息（流式输出）
+        Args:
+            message_source (platform.types.MessageEvent): 消息源事件
+            message_id (int): 消息ID
+            message (platform.types.MessageChain): 消息链
+            quote_origin (bool, optional): 是否引用原消息. Defaults to False.
+        """
+        raise NotImplementedError
+
+    async def create_message_card(self,message_id,event):
+        '''创建卡片消息'''
+        return False
 
     async def is_muted(self, group_id: int) -> bool:
         """获取账号是否在指定群被禁言"""
@@ -94,6 +117,12 @@ class MessagePlatformAdapter(metaclass=abc.ABCMeta):
     async def run_async(self):
         """异步运行"""
         raise NotImplementedError
+    
+
+    async def is_stream_output_supported(self) -> bool:
+        """是否支持流式输出"""
+        self.is_stream = False
+        return False
 
     async def kill(self) -> bool:
         """关闭适配器
