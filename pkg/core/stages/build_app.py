@@ -9,6 +9,7 @@ from ...command import cmdmgr
 from ...provider.session import sessionmgr as llm_session_mgr
 from ...provider.modelmgr import modelmgr as llm_model_mgr
 from ...provider.tools import toolmgr as llm_tool_mgr
+from ...rag.knowledge import kbmgr as rag_mgr
 from ...platform import botmgr as im_mgr
 from ...persistence import mgr as persistencemgr
 from ...api.http.controller import main as http_controller
@@ -16,9 +17,11 @@ from ...api.http.service import user as user_service
 from ...api.http.service import model as model_service
 from ...api.http.service import pipeline as pipeline_service
 from ...api.http.service import bot as bot_service
+from ...api.http.service import knowledge as knowledge_service
 from ...discover import engine as discover_engine
 from ...storage import mgr as storagemgr
 from ...utils import logcache
+from ...vector import mgr as vectordb_mgr
 from .. import taskmgr
 
 
@@ -88,6 +91,15 @@ class BuildAppStage(stage.BootingStage):
         await pipeline_mgr.initialize()
         ap.pipeline_mgr = pipeline_mgr
 
+        rag_mgr_inst = rag_mgr.RAGManager(ap)
+        await rag_mgr_inst.initialize()
+        ap.rag_mgr = rag_mgr_inst
+
+        # 初始化向量数据库管理器
+        vectordb_mgr_inst = vectordb_mgr.VectorDBManager(ap)
+        await vectordb_mgr_inst.initialize()
+        ap.vector_db_mgr = vectordb_mgr_inst
+
         http_ctrl = http_controller.HTTPController(ap)
         await http_ctrl.initialize()
         ap.http_ctrl = http_ctrl
@@ -95,14 +107,20 @@ class BuildAppStage(stage.BootingStage):
         user_service_inst = user_service.UserService(ap)
         ap.user_service = user_service_inst
 
-        model_service_inst = model_service.ModelsService(ap)
-        ap.model_service = model_service_inst
+        llm_model_service_inst = model_service.LLMModelsService(ap)
+        ap.llm_model_service = llm_model_service_inst
+
+        embedding_models_service_inst = model_service.EmbeddingModelsService(ap)
+        ap.embedding_models_service = embedding_models_service_inst
 
         pipeline_service_inst = pipeline_service.PipelineService(ap)
         ap.pipeline_service = pipeline_service_inst
 
         bot_service_inst = bot_service.BotService(ap)
         ap.bot_service = bot_service_inst
+
+        knowledge_service_inst = knowledge_service.KnowledgeService(ap)
+        ap.knowledge_service = knowledge_service_inst
 
         ctrl = controller.Controller(ap)
         ap.ctrl = ctrl

@@ -19,7 +19,7 @@ class LifecycleControlScope(enum.Enum):
     APPLICATION = 'application'
     PLATFORM = 'platform'
     PLUGIN = 'plugin'
-    PROVIDER = 'provider'
+    PROVIDER = 'provider'  
 
 
 class LauncherTypes(enum.Enum):

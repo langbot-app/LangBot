@@ -44,7 +44,8 @@
                     "role": "system",
                     "content": "You are a helpful assistant."
                 }
-            ]
+            ],
+            "knowledge-base": ""
         },
         "dify-service-api": {
             "base-url": "https://api.dify.ai/v1",

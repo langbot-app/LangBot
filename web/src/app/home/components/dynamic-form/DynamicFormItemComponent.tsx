@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { LLMModel } from '@/app/infra/entities/api';
+import { KnowledgeBase } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
 import {
   HoverCard,
@@ -35,6 +36,7 @@ export default function DynamicFormItemComponent({
   field: ControllerRenderProps<any, any>;
 }) {
   const [llmModels, setLlmModels] = useState<LLMModel[]>([]);
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const { t } = useTranslation();
 
   useEffect(() => {
@@ -46,6 +48,19 @@ export default function DynamicFormItemComponent({
         })
         .catch((err) => {
           toast.error('获取 LLM 模型列表失败：' + err.message);
+        });
+    }
+  }, [config.type]);
+
+  useEffect(() => {
+    if (config.type === DynamicFormItemType.KNOWLEDGE_BASE_SELECTOR) {
+      httpClient
+        .getKnowledgeBases()
+        .then((resp) => {
+          setKnowledgeBases(resp.bases);
+        })
+        .catch((err) => {
+          toast.error('获取知识库列表失败：' + err.message);
         });
     }
   }, [config.type]);
@@ -243,6 +258,25 @@ export default function DynamicFormItemComponent({
                     </div>
                   </HoverCardContent>
                 </HoverCard>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      );
+
+    case DynamicFormItemType.KNOWLEDGE_BASE_SELECTOR:
+      return (
+        <Select value={field.value} onValueChange={field.onChange}>
+          <SelectTrigger>
+            <SelectValue placeholder={t('knowledge.selectKnowledgeBase')} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectItem value="__none__">{t('knowledge.empty')}</SelectItem>
+              {knowledgeBases.map((base) => (
+                <SelectItem key={base.uuid} value={base.uuid ?? ''}>
+                  {base.name}
+                </SelectItem>
               ))}
             </SelectGroup>
           </SelectContent>

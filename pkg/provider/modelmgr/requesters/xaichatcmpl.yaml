@@ -22,6 +22,8 @@ spec:
       type: integer
       required: true
       default: 120
+  support_type:
+    - llm
 execution:
   python:
     path: ./xaichatcmpl.py

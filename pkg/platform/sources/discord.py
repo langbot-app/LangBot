@@ -654,10 +654,10 @@ class DiscordMessageConverter(adapter.MessageConverter):
                     # 确保路径没有空字节
                     clean_path = ele.path.replace('\x00', '')
                     clean_path = os.path.abspath(clean_path)
-                    
+
                     if not os.path.exists(clean_path):
                         continue  # 跳过不存在的文件
-                    
+
                     try:
                         with open(clean_path, 'rb') as f:
                             image_bytes = f.read()
@@ -677,12 +677,13 @@ class DiscordMessageConverter(adapter.MessageConverter):
                                 filename = f'{uuid.uuid4()}.webp'
                             # 默认保持PNG
                     except Exception as e:
-                        print(f"Error reading image file {clean_path}: {e}")
+                        print(f'Error reading image file {clean_path}: {e}')
                         continue  # 跳过读取失败的文件
 
                 if image_bytes:
                     # 使用BytesIO创建文件对象，避免路径问题
                     import io
+
                     image_files.append(discord.File(fp=io.BytesIO(image_bytes), filename=filename))
             elif isinstance(ele, platform_message.Plain):
                 text_string += ele.text
@@ -1003,25 +1004,25 @@ class DiscordAdapter(adapter.MessagePlatformAdapter):
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         msg_to_send, image_files = await self.message_converter.yiri2target(message)
-        
+
         try:
             # 获取频道对象
             channel = self.bot.get_channel(int(target_id))
             if channel is None:
                 # 如果本地缓存中没有，尝试从API获取
                 channel = await self.bot.fetch_channel(int(target_id))
-            
+
             args = {
                 'content': msg_to_send,
             }
-            
+
             if len(image_files) > 0:
                 args['files'] = image_files
-            
+
             await channel.send(**args)
-            
+
         except Exception as e:
-            await self.logger.error(f"Discord send_message failed: {e}")
+            await self.logger.error(f'Discord send_message failed: {e}')
             raise e
 
     async def reply_message(

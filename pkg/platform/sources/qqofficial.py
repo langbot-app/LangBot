@@ -154,10 +154,7 @@ class QQOfficialAdapter(adapter.MessagePlatformAdapter):
             raise ParamNotEnoughError('QQ官方机器人缺少相关配置项，请查看文档或联系管理员')
 
         self.bot = QQOfficialClient(
-            app_id=config['appid'],
-            secret=config['secret'],
-            token=config['token'],
-            logger=self.logger
+            app_id=config['appid'], secret=config['secret'], token=config['token'], logger=self.logger
         )
 
     async def reply_message(
@@ -224,8 +221,8 @@ class QQOfficialAdapter(adapter.MessagePlatformAdapter):
             self.bot_account_id = 'justbot'
             try:
                 return await callback(await self.event_converter.target2yiri(event), self)
-            except Exception as e:
-                await self.logger.error(f"Error in qqofficial callback: {traceback.format_exc()}")
+            except Exception:
+                await self.logger.error(f'Error in qqofficial callback: {traceback.format_exc()}')
 
         if event_type == platform_events.FriendMessage:
             self.bot.on_message('DIRECT_MESSAGE_CREATE')(on_message)

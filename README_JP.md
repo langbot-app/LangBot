@@ -21,12 +21,7 @@
 
 </p>
 
-## ✨ 機能
-
-- 💬 LLM / エージェントとのチャット: 複数のLLMをサポートし、グループチャットとプライベートチャットに対応。マルチラウンドの会話、ツールの呼び出し、マルチモーダル機能をサポート。 [Dify](https://dify.ai) と深く統合。現在、QQ、QQ チャンネル、WeChat、個人 WeChat、Lark、DingTalk、Discord、Telegram など、複数のプラットフォームをサポートしています。
-- 🛠️ 高い安定性、豊富な機能: ネイティブのアクセス制御、レート制限、敏感な単語のフィルタリングなどのメカニズムをサポート。使いやすく、複数のデプロイ方法をサポート。複数のパイプライン設定をサポートし、異なるボットを異なる用途に使用できます。
-- 🧩 プラグイン拡張、活発なコミュニティ: イベント駆動、コンポーネント拡張などのプラグインメカニズムをサポート。適配 Anthropic [MCP プロトコル](https://modelcontextprotocol.io/)；豊富なエコシステム、現在数百のプラグインが存在。
-- 😻 Web UI: ブラウザを通じてLangBotインスタンスを管理することをサポート。
+LangBot は、エージェント、RAG、MCP などの LLM アプリケーション機能を備えた、オープンソースの LLM ネイティブのインスタントメッセージングロボット開発プラットフォームです。世界中のインスタントメッセージングプラットフォームに適応し、豊富な API インターフェースを提供し、カスタム開発をサポートします。
 
 ## 📦 始め方
 
@@ -42,7 +37,7 @@ http://localhost:5300 にアクセスして使用を開始します。
 
 詳細なドキュメントは[Dockerデプロイ](https://docs.langbot.app/en/deploy/langbot/docker.html)を参照してください。
 
-#### BTPanelでのワンクリックデプロイ
+#### Panelでのワンクリックデプロイ
 
 LangBotはBTPanelにリストされています。BTPanelをインストールしている場合は、[ドキュメント](https://docs.langbot.app/en/deploy/langbot/one-click/bt.html)を使用して使用できます。
 
@@ -60,23 +55,25 @@ LangBotはBTPanelにリストされています。BTPanelをインストール�
 
 リリースバージョンを直接使用して実行します。[手動デプロイ](https://docs.langbot.app/en/deploy/langbot/manual.html)のドキュメントを参照してください。
 
-## 📸 デモ
+## 😎 最新情報を入手
 
-<img alt="bots" src="https://docs.langbot.app/webui/bot-page.png" width="400px"/>
+リポジトリの右上にある Star と Watch ボタンをクリックして、最新の更新を取得してください。
 
-<img alt="bots" src="https://docs.langbot.app/webui/create-model.png" width="400px"/>
+![star gif](https://docs.langbot.app/star.gif)
 
-<img alt="bots" src="https://docs.langbot.app/webui/edit-pipeline.png" width="400px"/>
+## ✨ 機能
 
-<img alt="bots" src="https://docs.langbot.app/webui/plugin-market.png" width="400px"/>
+- 💬 LLM / エージェントとのチャット: 複数のLLMをサポートし、グループチャットとプライベートチャットに対応。マルチラウンドの会話、ツールの呼び出し、マルチモーダル機能をサポート、RAG（知識ベース）を組み込み、[Dify](https://dify.ai) と深く統合。
+- 🤖 多プラットフォーム対応: 現在、QQ、QQ チャンネル、WeChat、個人 WeChat、Lark、DingTalk、Discord、Telegram など、複数のプラットフォームをサポートしています。
+- 🛠️ 高い安定性、豊富な機能: ネイティブのアクセス制御、レート制限、敏感な単語のフィルタリングなどのメカニズムをサポート。使いやすく、複数のデプロイ方法をサポート。複数のパイプライン設定をサポートし、異なるボットを異なる用途に使用できます。
+- 🧩 プラグイン拡張、活発なコミュニティ: イベント駆動、コンポーネント拡張などのプラグインメカニズムをサポート。適配 Anthropic [MCP プロトコル](https://modelcontextprotocol.io/)；豊富なエコシステム、現在数百のプラグインが存在。
+- 😻 Web UI: ブラウザを通じてLangBotインスタンスを管理することをサポート。
 
-<img alt="返信効果（インターネットプラグイン付き）" src="https://docs.langbot.app/QChatGPT-0516.png" width="500px"/>
+詳細な仕様については、[ドキュメント](https://docs.langbot.app/en/insight/features.html)を参照してください。
 
-- WebUIデモ: https://demo.langbot.dev/
-    - ログイン情報: メール: `demo@langbot.app` パスワード: `langbot123456`
-    - 注意: WebUIの効果のみを示しています。公開環境では、機密情報を入力しないでください。
-
-## 🔌 コンポーネントの互換性
+または、デモ環境にアクセスしてください: https://demo.langbot.dev/
+  - ログイン情報: メール: `demo@langbot.app` パスワード: `langbot123456`
+  - 注意: WebUI のデモンストレーションのみの場合、公開環境では機密情報を入力しないでください。
 
 ### メッセージプラットフォーム
 
@@ -92,10 +89,6 @@ LangBotはBTPanelにリストされています。BTPanelをインストール�
 | Discord | ✅ |  |
 | Telegram | ✅ |  |
 | Slack | ✅ |  |
-| LINE | 🚧 |  |
-| WhatsApp | 🚧 |  |
-
-🚧: 開発中
 
 ### LLMs
 
@@ -128,9 +121,3 @@ LangBot への貢献に対して、以下の [コード貢献者](https://github
 <a href="https://github.com/langbot-app/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=langbot-app/LangBot" />
 </a>
-
-## 😎 最新情報を入手
-
-リポジトリの右上にある Star と Watch ボタンをクリックして、最新の更新を取得してください。
-
-![star gif](https://docs.langbot.app/star.gif)

@@ -72,8 +72,9 @@ class NakuruProjectMessageConverter(adapter_model.MessageConverter):
                             content=content_list,
                         )
                         nakuru_forward_node_list.append(nakuru_forward_node)
-                    except Exception as e:
+                    except Exception:
                         import traceback
+
                         traceback.print_exc()
 
                 nakuru_msg_list.append(nakuru_forward_node_list)
@@ -276,7 +277,7 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
             # 注册监听器
             self.bot.receiver(source_cls.__name__)(listener_wrapper)
         except Exception as e:
-            self.logger.error(f"Error in nakuru register_listener: {traceback.format_exc()}")
+            self.logger.error(f'Error in nakuru register_listener: {traceback.format_exc()}')
             raise e
 
     def unregister_listener(

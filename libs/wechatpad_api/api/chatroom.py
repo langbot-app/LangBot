@@ -1,4 +1,4 @@
-from libs.wechatpad_api.util.http_util import async_request, post_json
+from libs.wechatpad_api.util.http_util import post_json
 
 
 class ChatRoomApi:
@@ -7,8 +7,6 @@ class ChatRoomApi:
         self.token = token
 
     def get_chatroom_member_detail(self, chatroom_name):
-        params = {
-            "ChatRoomName": chatroom_name
-        }
+        params = {'ChatRoomName': chatroom_name}
         url = self.base_url + '/group/GetChatroomMemberDetail'
         return post_json(url, token=self.token, data=params)

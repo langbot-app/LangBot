@@ -1,6 +1,6 @@
-import { ICreateLLMField } from '@/app/home/models/ICreateLLMField';
+import { ICreateLLMField } from '@/app/home/models/component/ICreateLLMField';
 import { useEffect, useState } from 'react';
-import { IChooseRequesterEntity } from '@/app/home/models/component/llm-form/ChooseRequesterEntity';
+import { IChooseRequesterEntity } from '@/app/home/models/component/ChooseRequesterEntity';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { LLMModel } from '@/app/infra/entities/api';
 import { UUID } from 'uuidjs';
@@ -197,7 +197,7 @@ export default function LLMForm({
   };
 
   async function initLLMModelFormComponent() {
-    const requesterNameList = await httpClient.getProviderRequesters();
+    const requesterNameList = await httpClient.getProviderRequesters('llm');
     setRequesterNameList(
       requesterNameList.requesters.map((item) => {
         return {
@@ -596,7 +596,7 @@ export default function LLMForm({
                 </Button>
               </div>
               <FormDescription>
-                {t('models.extraParametersDescription')}
+                {t('llm.extraParametersDescription')}
               </FormDescription>
               <FormMessage />
             </FormItem>

@@ -157,7 +157,7 @@ class WecomAdapter(adapter.MessagePlatformAdapter):
             token=config['token'],
             EncodingAESKey=config['EncodingAESKey'],
             contacts_secret=config['contacts_secret'],
-            logger=self.logger
+            logger=self.logger,
         )
 
     async def reply_message(
@@ -201,8 +201,8 @@ class WecomAdapter(adapter.MessagePlatformAdapter):
             self.bot_account_id = event.receiver_id
             try:
                 return await callback(await self.event_converter.target2yiri(event), self)
-            except Exception as e:
-                await self.logger.error(f"Error in wecom callback: {traceback.format_exc()}")
+            except Exception:
+                await self.logger.error(f'Error in wecom callback: {traceback.format_exc()}')
 
         if event_type == platform_events.FriendMessage:
             self.bot.on_message('text')(on_message)

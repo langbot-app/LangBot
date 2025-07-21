@@ -1,0 +1,107 @@
+.cardContainer {
+  width: 100%;
+  height: 10rem;
+  background-color: #fff;
+  border-radius: 10px;
+  box-shadow: 0px 2px 2px 0 rgba(0, 0, 0, 0.2);
+  padding: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.cardContainer:hover {
+  box-shadow: 0px 2px 8px 0 rgba(0, 0, 0, 0.1);
+}
+
+.basicInfoContainer {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.basicInfoNameContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.basicInfoNameText {
+  font-size: 1.4rem;
+  font-weight: 500;
+}
+
+.basicInfoDescriptionText {
+  font-size: 0.9rem;
+  font-weight: 400;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #b1b1b1;
+}
+
+.basicInfoLastUpdatedTimeContainer {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.basicInfoUpdateTimeIcon {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.basicInfoUpdateTimeText {
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.operationContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 8rem;
+}
+
+.operationDefaultBadge {
+  display: flex;
+  flex-direction: row;
+  gap: 0.5rem;
+}
+
+.operationDefaultBadgeIcon {
+  width: 1.2rem;
+  height: 1.2rem;
+  color: #ffcd27;
+}
+
+.operationDefaultBadgeText {
+  font-size: 1rem;
+  font-weight: 400;
+  color: #ffcd27;
+}
+
+.bigText {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 1.4rem;
+  font-weight: bold;
+  max-width: 100%;
+}
+
+.debugButtonIcon {
+  width: 1.2rem;
+  height: 1.2rem;
+}

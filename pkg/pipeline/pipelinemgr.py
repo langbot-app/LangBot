@@ -144,23 +144,27 @@ class RuntimePipeline:
                 result = await result
 
             if isinstance(result, pipeline_entities.StageProcessResult):  # 直接返回结果
-                self.ap.logger.debug(f'Stage {stage_container.inst_name} processed query {query} res {result}')
+                self.ap.logger.debug(
+                    f'Stage {stage_container.inst_name} processed query {query.query_id} res {result.result_type}'
+                )
                 await self._check_output(query, result)
 
                 if result.result_type == pipeline_entities.ResultType.INTERRUPT:
-                    self.ap.logger.debug(f'Stage {stage_container.inst_name} interrupted query {query}')
+                    self.ap.logger.debug(f'Stage {stage_container.inst_name} interrupted query {query.query_id}')
                     break
                 elif result.result_type == pipeline_entities.ResultType.CONTINUE:
                     query = result.new_query
             elif isinstance(result, typing.AsyncGenerator):  # 生成器
-                self.ap.logger.debug(f'Stage {stage_container.inst_name} processed query {query} gen')
+                self.ap.logger.debug(f'Stage {stage_container.inst_name} processed query {query.query_id} gen')
 
                 async for sub_result in result:
-                    self.ap.logger.debug(f'Stage {stage_container.inst_name} processed query {query} res {sub_result}')
+                    self.ap.logger.debug(
+                        f'Stage {stage_container.inst_name} processed query {query.query_id} res {sub_result.result_type}'
+                    )
                     await self._check_output(query, sub_result)
 
                     if sub_result.result_type == pipeline_entities.ResultType.INTERRUPT:
-                        self.ap.logger.debug(f'Stage {stage_container.inst_name} interrupted query {query}')
+                        self.ap.logger.debug(f'Stage {stage_container.inst_name} interrupted query {query.query_id}')
                         break
                     elif sub_result.result_type == pipeline_entities.ResultType.CONTINUE:
                         query = sub_result.new_query
@@ -192,7 +196,7 @@ class RuntimePipeline:
             if event_ctx.is_prevented_default():
                 return
 
-            self.ap.logger.debug(f'Processing query {query}')
+            self.ap.logger.debug(f'Processing query {query.query_id}')
 
             await self._execute_from_stage(0, query)
         except Exception as e:
@@ -200,7 +204,7 @@ class RuntimePipeline:
             self.ap.logger.error(f'处理请求时出错 query_id={query.query_id} stage={inst_name} : {e}')
             self.ap.logger.error(f'Traceback: {traceback.format_exc()}')
         finally:
-            self.ap.logger.debug(f'Query {query} processed')
+            self.ap.logger.debug(f'Query {query.query_id} processed')
 
 
 class PipelineManager:

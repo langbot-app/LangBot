@@ -20,7 +20,6 @@ class LegacyPipeline(Base):
     )
     for_version = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     is_default = sqlalchemy.Column(sqlalchemy.Boolean, nullable=False, default=False)
-
     stages = sqlalchemy.Column(sqlalchemy.JSON, nullable=False)
     config = sqlalchemy.Column(sqlalchemy.JSON, nullable=False)
 
@@ -43,3 +42,4 @@ class PipelineRunRecord(Base):
     started_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False)
     finished_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False)
     result = sqlalchemy.Column(sqlalchemy.JSON, nullable=False)
+    knowledge_base_uuid = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)

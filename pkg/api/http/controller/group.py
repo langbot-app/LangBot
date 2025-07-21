@@ -14,8 +14,8 @@ preregistered_groups: list[type[RouterGroup]] = []
 """Pre-registered list of RouterGroup"""
 
 
-def group_class(name: str, path: str) -> None:
-    """Register a RouterGroup"""
+def group_class(name: str, path: str) -> typing.Callable[[typing.Type[RouterGroup]], typing.Type[RouterGroup]]:
+    """注册一个 RouterGroup"""
 
     def decorator(cls: typing.Type[RouterGroup]) -> typing.Type[RouterGroup]:
         cls.name = name
@@ -86,10 +86,11 @@ class RouterGroup(abc.ABC):
 
                 try:
                     return await f(*args, **kwargs)
-                except Exception:  # auto 500
+
+                except Exception as e:  # 自动 500
                     traceback.print_exc()
                     # return self.http_status(500, -2, str(e))
-                    return self.http_status(500, -2, 'internal server error')
+                    return self.http_status(500, -2, str(e))
 
             new_f = handler_error
             new_f.__name__ = (self.name + rule).replace('/', '__')
@@ -120,6 +121,6 @@ class RouterGroup(abc.ABC):
             }
         )
 
-    def http_status(self, status: int, code: int, msg: str) -> quart.Response:
-        """Return a response with a specified status code"""
-        return self.fail(code, msg), status
+    def http_status(self, status: int, code: int, msg: str) -> typing.Tuple[quart.Response, int]:
+        """返回一个指定状态码的响应"""
+        return (self.fail(code, msg), status)

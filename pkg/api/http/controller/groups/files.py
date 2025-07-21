@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import quart
 import mimetypes
+import uuid
+import asyncio
+
+import quart.datastructures
 
 from .. import group
 
@@ -20,3 +24,23 @@ class FilesRouterGroup(group.RouterGroup):
                 mime_type = 'image/jpeg'
 
             return quart.Response(image_bytes, mimetype=mime_type)
+
+        @self.route('/documents', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
+        async def _() -> quart.Response:
+            request = quart.request
+            # get file bytes from 'file'
+            file = (await request.files)['file']
+            assert isinstance(file, quart.datastructures.FileStorage)
+
+            file_bytes = await asyncio.to_thread(file.stream.read)
+            extension = file.filename.split('.')[-1]
+            file_name = file.filename.split('.')[0]
+
+            file_key = file_name + '_' + str(uuid.uuid4())[:8] + '.' + extension
+            # save file to storage
+            await self.ap.storage_mgr.storage_provider.save(file_key, file_bytes)
+            return self.success(
+                data={
+                    'file_id': file_key,
+                }
+            )

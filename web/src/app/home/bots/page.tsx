@@ -92,7 +92,7 @@ export default function BotConfigPage() {
   }
 
   return (
-    <div className={styles.configPageContainer}>
+    <div>
       <BotDetailDialog
         open={detailDialogOpen}
         onOpenChange={setDetailDialogOpen}

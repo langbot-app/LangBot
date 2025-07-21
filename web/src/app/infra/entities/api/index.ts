@@ -55,6 +55,38 @@ export interface LLMModel {
   // updated_at: string;
 }
 
+export interface KnowledgeBase {
+  uuid?: string;
+  name: string;
+  description: string;
+  embedding_model_uuid: string;
+  created_at?: string;
+  top_k?: number;
+}
+
+export interface ApiRespProviderEmbeddingModels {
+  models: EmbeddingModel[];
+}
+
+export interface ApiRespProviderEmbeddingModel {
+  model: EmbeddingModel;
+}
+
+export interface EmbeddingModel {
+  name: string;
+  description: string;
+  uuid: string;
+  requester: string;
+  requester_config: {
+    base_url: string;
+    timeout: number;
+  };
+  extra_args?: object;
+  api_keys: string[];
+  // created_at: string;
+  // updated_at: string;
+}
+
 export interface ApiRespPipelines {
   pipelines: Pipeline[];
 }
@@ -108,6 +140,33 @@ export interface Bot {
   use_pipeline_uuid?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface ApiRespKnowledgeBases {
+  bases: KnowledgeBase[];
+}
+
+export interface ApiRespKnowledgeBase {
+  base: KnowledgeBase;
+}
+
+export interface KnowledgeBase {
+  uuid?: string;
+  name: string;
+  description: string;
+  embedding_model_uuid: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ApiRespKnowledgeBaseFiles {
+  files: KnowledgeBaseFile[];
+}
+
+export interface KnowledgeBaseFile {
+  uuid: string;
+  file_name: string;
+  status: string;
 }
 
 // plugins
@@ -236,4 +295,19 @@ export interface ApiRespWebChatMessage {
 
 export interface ApiRespWebChatMessages {
   messages: Message[];
+}
+
+export interface RetrieveResult {
+  id: string;
+  metadata: {
+    file_id: string;
+    text: string;
+    uuid: string;
+    [key: string]: unknown;
+  };
+  distance: number;
+}
+
+export interface ApiRespKnowledgeBaseRetrieve {
+  results: RetrieveResult[];
 }

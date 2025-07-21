@@ -21,12 +21,7 @@
 
 </p>
 
-## ✨ Features
-
-- 💬 Chat with LLM / Agent: Supports multiple LLMs, adapt to group chats and private chats; Supports multi-round conversations, tool calls, and multi-modal capabilities. Deeply integrates with [Dify](https://dify.ai). Currently supports QQ, QQ Channel, WeCom, personal WeChat, Lark, DingTalk, Discord, Telegram, etc.
-- 🛠️ High Stability, Feature-rich: Native access control, rate limiting, sensitive word filtering, etc. mechanisms; Easy to use, supports multiple deployment methods. Supports multiple pipeline configurations, different bots can be used for different scenarios.
-- 🧩 Plugin Extension, Active Community: Support event-driven, component extension, etc. plugin mechanisms; Integrate Anthropic [MCP protocol](https://modelcontextprotocol.io/); Currently has hundreds of plugins.
-- 😻 [New] Web UI: Support management LangBot instance through the browser. No need to manually write configuration files.
+LangBot is an open-source LLM native instant messaging robot development platform, aiming to provide out-of-the-box IM robot development experience, with Agent, RAG, MCP and other LLM application functions, adapting to global instant messaging platforms, and providing rich API interfaces, supporting custom development.
 
 ## 📦 Getting Started
 
@@ -60,23 +55,25 @@ Community contributed Zeabur template.
 
 Directly use the released version to run, see the [Manual Deployment](https://docs.langbot.app/en/deploy/langbot/manual.html) documentation.
 
-## 📸 Demo
+## 😎 Stay Ahead
 
-<img alt="bots" src="https://docs.langbot.app/webui/bot-page.png" width="400px"/>
+Click the Star and Watch button in the upper right corner of the repository to get the latest updates.
 
-<img alt="bots" src="https://docs.langbot.app/webui/create-model.png" width="400px"/>
+![star gif](https://docs.langbot.app/star.gif)
 
-<img alt="bots" src="https://docs.langbot.app/webui/edit-pipeline.png" width="400px"/>
+## ✨ Features
 
-<img alt="bots" src="https://docs.langbot.app/webui/plugin-market.png" width="400px"/>
+- 💬 Chat with LLM / Agent: Supports multiple LLMs, adapt to group chats and private chats; Supports multi-round conversations, tool calls, and multi-modal capabilities. Built-in RAG (knowledge base) implementation, and deeply integrates with [Dify](https://dify.ai).
+- 🤖 Multi-platform Support: Currently supports QQ, QQ Channel, WeCom, personal WeChat, Lark, DingTalk, Discord, Telegram, etc.
+- 🛠️ High Stability, Feature-rich: Native access control, rate limiting, sensitive word filtering, etc. mechanisms; Easy to use, supports multiple deployment methods. Supports multiple pipeline configurations, different bots can be used for different scenarios.
+- 🧩 Plugin Extension, Active Community: Support event-driven, component extension, etc. plugin mechanisms; Integrate Anthropic [MCP protocol](https://modelcontextprotocol.io/); Currently has hundreds of plugins.
+- 😻 Web UI: Support management LangBot instance through the browser. No need to manually write configuration files.
 
-<img alt="Reply Effect (with Internet Plugin)" src="https://docs.langbot.app/QChatGPT-0516.png" width="500px"/>
+For more detailed specifications, please refer to the [documentation](https://docs.langbot.app/en/insight/features.html).
 
-- WebUI Demo: https://demo.langbot.dev/
-    - Login information: Email: `demo@langbot.app` Password: `langbot123456`
-    - Note: Only the WebUI effect is shown, please do not fill in any sensitive information in the public environment.
-
-## 🔌 Component Compatibility
+Or visit the demo environment: https://demo.langbot.dev/
+  - Login information: Email: `demo@langbot.app` Password: `langbot123456`
+  - Note: For WebUI demo only, please do not fill in any sensitive information in the public environment.
 
 ### Message Platform
 
@@ -92,10 +89,6 @@ Directly use the released version to run, see the [Manual Deployment](https://do
 | Discord | ✅ |  |
 | Telegram | ✅ |  |
 | Slack | ✅ |  |
-| LINE | 🚧 |  |
-| WhatsApp | 🚧 |  |
-
-🚧: In development
 
 ### LLMs
 
@@ -128,9 +121,3 @@ Thank you for the following [code contributors](https://github.com/langbot-app/L
 <a href="https://github.com/langbot-app/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=langbot-app/LangBot" />
 </a>
-
-## 😎 Stay Ahead
-
-Click the Star and Watch button in the upper right corner of the repository to get the latest updates.
-
-![star gif](https://docs.langbot.app/star.gif)

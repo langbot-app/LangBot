@@ -127,10 +127,8 @@ export default function BotDetailDialog({
                 <BotForm
                   initBotId={undefined}
                   onFormSubmit={handleFormSubmit}
-                  onFormCancel={handleFormCancel}
                   onBotDeleted={handleBotDeleted}
                   onNewBotCreated={handleNewBotCreated}
-                  hideButtons={true}
                 />
               </div>
               <DialogFooter className="px-6 py-4 border-t shrink-0">
@@ -199,10 +197,8 @@ export default function BotDetailDialog({
                   <BotForm
                     initBotId={botId}
                     onFormSubmit={handleFormSubmit}
-                    onFormCancel={handleFormCancel}
                     onBotDeleted={handleBotDeleted}
                     onNewBotCreated={handleNewBotCreated}
-                    hideButtons={true}
                   />
                 )}
                 {activeMenu === 'logs' && botId && (

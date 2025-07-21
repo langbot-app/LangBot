@@ -119,7 +119,7 @@ class EventLogger:
     async def _truncate_logs(self):
         if len(self.logs) > MAX_LOG_COUNT:
             for i in range(DELETE_COUNT_PER_TIME):
-                for image_key in self.logs[i].images:
+                for image_key in self.logs[i].images:  # type: ignore
                     await self.ap.storage_mgr.storage_provider.delete(image_key)
             self.logs = self.logs[DELETE_COUNT_PER_TIME:]
 

@@ -21,6 +21,7 @@ export enum DynamicFormItemType {
   LLM_MODEL_SELECTOR = 'llm-model-selector',
   PROMPT_EDITOR = 'prompt-editor',
   UNKNOWN = 'unknown',
+  KNOWLEDGE_BASE_SELECTOR = 'knowledge-base-selector',
 }
 
 export interface IDynamicFormItemOption {

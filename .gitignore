@@ -43,3 +43,4 @@ test.py
 /web_ui
 .venv/
 uv.lock
+/test

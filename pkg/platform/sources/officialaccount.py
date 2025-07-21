@@ -125,8 +125,8 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
             self.bot_account_id = event.receiver_id
             try:
                 return await callback(await self.event_converter.target2yiri(event), self)
-            except Exception as e:
-                await self.logger.error(f"Error in officialaccount callback: {traceback.format_exc()}")
+            except Exception:
+                await self.logger.error(f'Error in officialaccount callback: {traceback.format_exc()}')
 
         if event_type == platform_events.FriendMessage:
             self.bot.on_message('text')(on_message)

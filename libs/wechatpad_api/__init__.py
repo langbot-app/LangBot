@@ -1,1 +1,1 @@
-from .client import WeChatPadClient
+from .client import WeChatPadClient as WeChatPadClient

@@ -79,7 +79,7 @@ class PersistenceManager:
                 'stages': pipeline_service.default_stage_order,
                 'is_default': True,
                 'name': 'ChatPipeline',
-                'description': 'Default pipeline provided, your new bots will be automatically bound to this pipeline | 默认提供的流水线，您配置的机器人将自动绑定到此流水线',
+                'description': 'Default pipeline, new bots will be bound to this pipeline | 默认提供的流水线，您配置的机器人将自动绑定到此流水线',
                 'config': pipeline_config,
             }
 
