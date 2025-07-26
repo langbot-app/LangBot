@@ -42,6 +42,7 @@ export default function PipelineFormComponent({
   pipelineId,
   showButtons = true,
   onDeletePipeline,
+  onFormValuesChange,
   onCancel,
 }: {
   pipelineId?: string;
@@ -54,6 +55,7 @@ export default function PipelineFormComponent({
   onFinish: () => void;
   onNewPipelineCreated: (pipelineId: string) => void;
   onDeletePipeline: () => void;
+  onFormValuesChange?: (values: PipelineFormEntity) => void;
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
@@ -148,6 +150,22 @@ export default function PipelineFormComponent({
       });
     }
   }, [initValues, form, isEditMode]);
+
+  useEffect(() => {
+    if (onFormValuesChange && isEditMode) {
+      const subscription = form.watch((values) => {
+        const safeValues: PipelineFormEntity = {
+          basic: values?.basic || {},
+          ai: values?.ai || {},
+          trigger: values?.trigger || {},
+          safety: values?.safety || {},
+          output: values?.output || {},
+        };
+        onFormValuesChange(safeValues);
+      });
+      return () => subscription.unsubscribe();
+    }
+  }, [form, onFormValuesChange, isEditMode]);
 
   function handleFormSubmit(values: FormValues) {
     console.log('handleFormSubmit', values);
