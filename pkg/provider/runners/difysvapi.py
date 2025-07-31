@@ -108,7 +108,13 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         mode = 'basic'  # 标记是基础编排还是工作流编排
 
-        basic_mode_pending_chunk = ''
+        stream_output_pending_chunk = ''
+
+        batch_pending_max_size = self.pipeline_config['ai']['dify-service-api'].get(
+            'output-batch-size', 0
+        )  # 积累一定量的消息更新消息一次
+
+        batch_pending_index = 0
 
         inputs = {}
 
@@ -126,6 +132,13 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         ):
             self.ap.logger.debug('dify-chat-chunk: ' + str(chunk))
 
+            # 查询异常情况
+            if chunk['event'] == 'error':
+                yield llm_entities.Message(
+                    role='assistant',
+                    content=f"查询异常: [{chunk['code']}]. {chunk['message']}.\n请重试，如果还报错，请用 <font color='red'>**!reset**</font> 命令重置对话再尝试。",
+                )
+
             if chunk['event'] == 'workflow_started':
                 mode = 'workflow'
 
@@ -136,15 +149,35 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                             role='assistant',
                             content=self._try_convert_thinking(chunk['data']['outputs']['answer']),
                         )
+                elif chunk['event'] == 'message':
+                    stream_output_pending_chunk += chunk['answer']
+                    if self.pipeline_config['ai']['dify-service-api'].get('enable-streaming', False):
+                        # 消息数超过量就输出，从而达到streaming的效果
+                        batch_pending_index += 1
+                        if batch_pending_index >= batch_pending_max_size:
+                            yield llm_entities.Message(
+                                role='assistant',
+                                content=self._try_convert_thinking(stream_output_pending_chunk),
+                            )
+                            batch_pending_index = 0
             elif mode == 'basic':
                 if chunk['event'] == 'message':
-                    basic_mode_pending_chunk += chunk['answer']
+                    stream_output_pending_chunk += chunk['answer']
+                    if self.pipeline_config['ai']['dify-service-api'].get('enable-streaming', False):
+                        # 消息数超过量就输出，从而达到streaming的效果
+                        batch_pending_index += 1
+                        if batch_pending_index >= batch_pending_max_size:
+                            yield llm_entities.Message(
+                                role='assistant',
+                                content=self._try_convert_thinking(stream_output_pending_chunk),
+                            )
+                            batch_pending_index = 0
                 elif chunk['event'] == 'message_end':
                     yield llm_entities.Message(
                         role='assistant',
-                        content=self._try_convert_thinking(basic_mode_pending_chunk),
+                        content=self._try_convert_thinking(stream_output_pending_chunk),
                     )
-                    basic_mode_pending_chunk = ''
+                    stream_output_pending_chunk = ''
 
         if chunk is None:
             raise errors.DifyAPIError('Dify API 没有返回任何响应，请检查网络连接和API配置')

@@ -120,8 +120,10 @@ class RuntimeBot:
                 if isinstance(e, asyncio.CancelledError):
                     self.task_context.set_current_action('Exited.')
                     return
+
+                traceback_str = traceback.format_exc()
                 self.task_context.set_current_action('Exited with error.')
-                await self.logger.error(f'平台适配器运行出错:\n{e}\n{traceback.format_exc()}')
+                await self.logger.error(f'平台适配器运行出错:\n{e}\n{traceback_str}')
 
         self.task_wrapper = self.ap.task_mgr.create_task(
             exception_wrapper(),
