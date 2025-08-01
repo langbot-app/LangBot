@@ -3,6 +3,7 @@ import json
 import time
 from typing import Callable
 import dingtalk_stream  # type: ignore
+from dingtalk_stream import  AckMessage, ChatbotHandler, CallbackHandler, CallbackMessage, ChatbotMessage, AICardReplier
 from .EchoHandler import EchoTextHandler
 from .dingtalkevent import DingTalkEvent
 import httpx
@@ -252,6 +253,48 @@ class DingTalkClient:
         except Exception:
             await self.logger.error(f'failed to send proactive massage to group: {traceback.format_exc()}')
             raise Exception(f'failed to send proactive massage to group: {traceback.format_exc()}')
+
+    async def create_and_card(self, temp_card_id: str, incoming_message: dingtalk_stream.ChatbotMessage,quote_origin:bool=False):
+        content_key = "content"
+        card_data = {content_key: ""}
+
+        card_instance = dingtalk_stream.AICardReplier(
+            self.client, incoming_message
+        )
+        # print(card_instance)
+        # 先投放卡片: https://open.dingtalk.com/document/orgapp/create-and-deliver-cards
+        card_instance_id = await card_instance.async_create_and_deliver_card(
+            temp_card_id, card_data,
+        )
+        return card_instance,card_instance_id
+
+    async def send_card_message(self,
+                                card_instance,
+                                card_instance_id: str,content: str,is_final: bool):
+        content_key = "content"
+        try:
+            await card_instance.async_streaming(
+                card_instance_id,
+                content_key=content_key,
+                content_value=content,
+                append=False,
+                finished=is_final,
+                failed=False,
+            )
+        except Exception as e:
+            self.logger.exception(e)
+            await card_instance.async_streaming(
+                card_instance_id,
+                content_key=content_key,
+                content_value="",
+                append=False,
+                finished=is_final,
+                failed=True,
+            )
+
+
+
+
 
     async def start(self):
         """启动 WebSocket 连接，监听消息"""
