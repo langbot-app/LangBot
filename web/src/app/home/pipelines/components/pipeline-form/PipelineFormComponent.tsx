@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { Pipeline } from '@/app/infra/entities/api';
+import { GetPipelineResponseData, Pipeline } from '@/app/infra/entities/api';
 import {
-  PipelineFormEntity,
   PipelineConfigTab,
   PipelineConfigStage,
 } from '@/app/infra/entities/pipeline';
@@ -34,7 +33,6 @@ import { useTranslation } from 'react-i18next';
 import { i18nObj } from '@/i18n/I18nProvider';
 
 export default function PipelineFormComponent({
-  initValues,
   isDefaultPipeline,
   onFinish,
   onNewPipelineCreated,
@@ -49,8 +47,6 @@ export default function PipelineFormComponent({
   isEditMode: boolean;
   disableForm: boolean;
   showButtons?: boolean;
-  // 这里的写法很不安全不规范，未来流水线需要重新整理
-  initValues?: PipelineFormEntity;
   onFinish: () => void;
   onNewPipelineCreated: (pipelineId: string) => void;
   onDeletePipeline: () => void;
@@ -132,13 +128,26 @@ export default function PipelineFormComponent({
         }
       }
     });
+
+    if (isEditMode) {
+      httpClient
+        .getPipeline(pipelineId || '')
+        .then((resp: GetPipelineResponseData) => {
+          form.reset({
+            basic: {
+              name: resp.pipeline.name,
+              description: resp.pipeline.description,
+            },
+            ai: resp.pipeline.config.ai,
+            trigger: resp.pipeline.config.trigger,
+            safety: resp.pipeline.config.safety,
+            output: resp.pipeline.config.output,
+          });
+        });
+    }
   }, []);
 
   useEffect(() => {
-    if (initValues) {
-      form.reset(initValues);
-    }
-
     if (!isEditMode) {
       form.reset({
         basic: {
@@ -147,7 +156,7 @@ export default function PipelineFormComponent({
         },
       });
     }
-  }, [initValues, form, isEditMode]);
+  }, [form, isEditMode]);
 
   function handleFormSubmit(values: FormValues) {
     console.log('handleFormSubmit', values);

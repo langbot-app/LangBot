@@ -4,7 +4,6 @@ import CreateCardComponent from '@/app/infra/basic-component/create-card-compone
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { PipelineCardVO } from '@/app/home/pipelines/components/pipeline-card/PipelineCardVO';
 import PipelineCard from '@/app/home/pipelines/components/pipeline-card/PipelineCard';
-import { PipelineFormEntity } from '@/app/infra/entities/pipeline';
 import styles from './pipelineConfig.module.css';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -23,14 +22,7 @@ export default function PluginConfigPage() {
   const [isEditForm, setIsEditForm] = useState(false);
   const [pipelineList, setPipelineList] = useState<PipelineCardVO[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState('');
-  const [selectedPipelineFormValue, setSelectedPipelineFormValue] =
-    useState<PipelineFormEntity>({
-      basic: {},
-      ai: {},
-      trigger: {},
-      safety: {},
-      output: {},
-    });
+
   const [selectedPipelineIsDefault, setSelectedPipelineIsDefault] =
     useState(false);
   const [sortByValue, setSortByValue] = useState<string>('created_at');
@@ -81,39 +73,16 @@ export default function PluginConfigPage() {
       });
   }
 
-  function getSelectedPipelineForm(id?: string) {
-    httpClient.getPipeline(id ?? selectedPipelineId).then((value) => {
-      setSelectedPipelineFormValue({
-        ai: value.pipeline.config.ai,
-        basic: {
-          description: value.pipeline.description,
-          name: value.pipeline.name,
-        },
-        output: value.pipeline.config.output,
-        safety: value.pipeline.config.safety,
-        trigger: value.pipeline.config.trigger,
-      });
-      setSelectedPipelineIsDefault(value.pipeline.is_default ?? false);
-    });
-  }
-
   const handlePipelineClick = (pipelineId: string) => {
     setSelectedPipelineId(pipelineId);
     setIsEditForm(true);
     setDialogOpen(true);
-    getSelectedPipelineForm(pipelineId);
   };
 
   const handleCreateNew = () => {
     setIsEditForm(false);
     setSelectedPipelineId('');
-    setSelectedPipelineFormValue({
-      basic: {},
-      ai: {},
-      trigger: {},
-      safety: {},
-      output: {},
-    });
+
     setSelectedPipelineIsDefault(false);
     setDialogOpen(true);
   };
@@ -133,7 +102,6 @@ export default function PluginConfigPage() {
         pipelineId={selectedPipelineId || undefined}
         isEditMode={isEditForm}
         isDefaultPipeline={selectedPipelineIsDefault}
-        initValues={selectedPipelineFormValue}
         onFinish={() => {
           getPipelines();
         }}
@@ -142,7 +110,6 @@ export default function PluginConfigPage() {
           setSelectedPipelineId(pipelineId);
           setIsEditForm(true);
           setDialogOpen(true);
-          getSelectedPipelineForm(pipelineId);
         }}
         onDeletePipeline={() => {
           getPipelines();
