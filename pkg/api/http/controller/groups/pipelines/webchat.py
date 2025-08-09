@@ -1,3 +1,5 @@
+import json
+
 import quart
 
 from ... import group
@@ -9,10 +11,17 @@ class WebChatDebugRouterGroup(group.RouterGroup):
         @self.route('/send', methods=['POST'])
         async def send_message(pipeline_uuid: str) -> str:
             """Send a message to the pipeline for debugging"""
+
+            async def stream_generator(generator):
+                async for message in generator:
+                    yield f'data: {json.dumps({"message": message})}\n\n'
+                yield 'data: {"type": "end"}\n\n'
+
             try:
                 data = await quart.request.get_json()
                 session_type = data.get('session_type', 'person')
                 message_chain_obj = data.get('message', [])
+                is_stream = data.get('is_stream', False)
 
                 if not message_chain_obj:
                     return self.http_status(400, -1, 'message is required')
@@ -25,13 +34,28 @@ class WebChatDebugRouterGroup(group.RouterGroup):
                 if not webchat_adapter:
                     return self.http_status(404, -1, 'WebChat adapter not found')
 
-                result = await webchat_adapter.send_webchat_message(pipeline_uuid, session_type, message_chain_obj)
+                if is_stream:
+                    generator = webchat_adapter.send_webchat_message(
+                        pipeline_uuid, session_type, message_chain_obj, is_stream
+                    )
 
-                return self.success(
-                    data={
-                        'message': result,
-                    }
-                )
+                    return quart.Response(stream_generator(generator), mimetype='text/event-stream')
+
+                else:
+                    # result = await webchat_adapter.send_webchat_message(pipeline_uuid, session_type, message_chain_obj)
+                    result = None
+                    async for message in webchat_adapter.send_webchat_message(
+                        pipeline_uuid, session_type, message_chain_obj
+                    ):
+                        result = message
+                    if result is not None:
+                        return self.success(
+                            data={
+                                'message': result,
+                            }
+                        )
+                    else:
+                        return self.http_status(400, -1, 'message is required')
 
             except Exception as e:
                 return self.http_status(500, -1, f'Internal server error: {str(e)}')

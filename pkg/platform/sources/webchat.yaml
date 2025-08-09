@@ -9,7 +9,8 @@ metadata:
     en_US: "WebChat adapter for pipeline debugging"
     zh_Hans: "用于流水线调试的网页聊天适配器"
   icon: ""
-spec: {}
+spec:
+  config: []
 execution:
   python:
     path: "webchat.py"

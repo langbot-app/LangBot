@@ -501,7 +501,7 @@ class OfficialAdapter(adapter_model.MessagePlatformAdapter):
             for event_handler in event_handler_mapping[event_type]:
                 setattr(self.bot, event_handler, wrapper)
         except Exception as e:
-            self.logger.error(f"Error in qqbotpy callback: {traceback.format_exc()}")
+            self.logger.error(f'Error in qqbotpy callback: {traceback.format_exc()}')
             raise e
 
     def unregister_listener(

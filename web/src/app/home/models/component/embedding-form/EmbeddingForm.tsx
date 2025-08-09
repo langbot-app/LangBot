@@ -298,6 +298,18 @@ export default function EmbeddingForm({
 
   function testEmbeddingModelInForm() {
     setModelTesting(true);
+    const extraArgsObj: Record<string, string | number | boolean> = {};
+    form
+      .getValues('extra_args')
+      ?.forEach((arg: { key: string; type: string; value: string }) => {
+        if (arg.type === 'number') {
+          extraArgsObj[arg.key] = Number(arg.value);
+        } else if (arg.type === 'boolean') {
+          extraArgsObj[arg.key] = arg.value === 'true';
+        } else {
+          extraArgsObj[arg.key] = arg.value;
+        }
+      });
     httpClient
       .testEmbeddingModel('_', {
         uuid: '',
@@ -309,6 +321,7 @@ export default function EmbeddingForm({
           timeout: 120,
         },
         api_keys: [form.getValues('api_key')],
+        extra_args: extraArgsObj,
       })
       .then((res) => {
         console.log(res);

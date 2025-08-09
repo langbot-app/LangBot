@@ -241,8 +241,8 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
         #         self.logger.info("_handler_compound_quote", ET.tostring(xml_data, encoding='unicode'))
         appmsg_data = xml_data.find('.//appmsg')
         quote_data = ''  # 引用原文
-        quote_id = None  # 引用消息的原发送者
-        tousername = None  # 接收方: 所属微信的wxid
+        # quote_id = None  # 引用消息的原发送者
+        # tousername = None  # 接收方: 所属微信的wxid
         user_data = ''  # 用户消息
         sender_id = xml_data.findtext('.//fromusername')  # 发送方：单聊用户/群member
 
@@ -250,13 +250,10 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
         if appmsg_data:
             user_data = appmsg_data.findtext('.//title') or ''
             quote_data = appmsg_data.find('.//refermsg').findtext('.//content')
-            quote_id = appmsg_data.find('.//refermsg').findtext('.//chatusr')
+            # quote_id = appmsg_data.find('.//refermsg').findtext('.//chatusr')
             message_list.append(platform_message.WeChatAppMsg(app_msg=ET.tostring(appmsg_data, encoding='unicode')))
-        if message:
-            tousername = message['to_user_name']['str']
-
-        _ = quote_id
-        _ = tousername
+        # if message:
+        #     tousername = message['to_user_name']['str']
 
         if quote_data:
             quote_data_message_list = platform_message.MessageChain()

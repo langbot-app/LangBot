@@ -8,7 +8,6 @@ import base64
 import uuid
 import os
 import datetime
-import io
 import asyncio
 from enum import Enum
 

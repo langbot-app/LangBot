@@ -812,12 +812,14 @@ class File(MessageComponent):
     def __str__(self):
         return f'[文件]{self.name}'
 
+
 class Face(MessageComponent):
     """系统表情
     此处将超级表情骰子/划拳，一同归类于face
     当face_type为rps(划拳)时 face_id 对应的是手势
     当face_type为dice(骰子)时 face_id 对应的是点数
     """
+
     type: str = 'Face'
     """表情类型"""
     face_type: str = 'face'
@@ -834,14 +836,14 @@ class Face(MessageComponent):
         elif self.face_type == 'rps':
             return f'[表情]{self.face_name}({self.rps_data(self.face_id)})'
 
-
-    def rps_data(self,face_id):
-        rps_dict ={
-            1 : "布",
-            2 : "剪刀",
-            3 : "石头",
+    def rps_data(self, face_id):
+        rps_dict = {
+            1: '布',
+            2: '剪刀',
+            3: '石头',
         }
         return rps_dict[face_id]
+
 
 # ================ 个人微信专用组件 ================
 
@@ -971,5 +973,6 @@ class WeChatFile(MessageComponent):
     """文件地址"""
     file_base64: str = ''
     """base64"""
+
     def __str__(self):
         return f'[文件]{self.file_name}'

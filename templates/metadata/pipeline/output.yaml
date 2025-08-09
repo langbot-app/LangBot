@@ -105,3 +105,13 @@ stages:
         type: boolean
         required: true
         default: false
+      - name: remove-think
+        label:
+          en_US: Remove CoT
+          zh_Hans: 删除思维链
+        description:
+          en_US: If enabled, LangBot will remove the LLM thought content in response
+          zh_Hans: 如果启用，将自动删除大模型回复中的模型思考内容
+        type: boolean
+        required: true
+        default: true
