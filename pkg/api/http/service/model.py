@@ -101,7 +101,7 @@ class LLMModelsService:
             model=runtime_llm_model,
             messages=[llm_entities.Message(role='user', content='Hello, world!')],
             funcs=[],
-            extra_args={},
+            extra_args=model_data.get('extra_args', {}),
         )
 
 

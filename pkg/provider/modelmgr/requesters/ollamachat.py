@@ -44,6 +44,7 @@ class OllamaChatCompletions(requester.ProviderAPIRequester):
         use_model: requester.RuntimeLLMModel,
         use_funcs: list[tools_entities.LLMFunction] = None,
         extra_args: dict[str, typing.Any] = {},
+        remove_think: bool = False,
     ) -> llm_entities.Message:
         args = extra_args.copy()
         args['model'] = use_model.model_entity.name
@@ -110,6 +111,7 @@ class OllamaChatCompletions(requester.ProviderAPIRequester):
         messages: typing.List[llm_entities.Message],
         funcs: typing.List[tools_entities.LLMFunction] = None,
         extra_args: dict[str, typing.Any] = {},
+        remove_think: bool = False,
     ) -> llm_entities.Message:
         req_messages: list = []
         for m in messages:
@@ -126,6 +128,7 @@ class OllamaChatCompletions(requester.ProviderAPIRequester):
                 use_model=model,
                 use_funcs=funcs,
                 extra_args=extra_args,
+                remove_think=remove_think,
             )
         except asyncio.TimeoutError:
             raise errors.RequesterError('请求超时')

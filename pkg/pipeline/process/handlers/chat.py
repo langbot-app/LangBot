@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 import typing
 import traceback
 
@@ -22,11 +23,11 @@ class ChatMessageHandler(handler.MessageHandler):
         self,
         query: core_entities.Query,
     ) -> typing.AsyncGenerator[entities.StageProcessResult, None]:
-        """Process"""
-        # Call API
-        #   generator
+        """处理"""
+        # 调API
+        #   生成器
 
-        # Trigger plugin event
+        # 触发插件事件
         event_class = (
             events.PersonNormalMessageReceived
             if query.launcher_type == core_entities.LauncherTypes.PERSON
@@ -46,7 +47,6 @@ class ChatMessageHandler(handler.MessageHandler):
         if event_ctx.is_prevented_default():
             if event_ctx.event.reply is not None:
                 mc = platform_message.MessageChain(event_ctx.event.reply)
-
                 query.resp_messages.append(mc)
 
                 yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
@@ -54,10 +54,14 @@ class ChatMessageHandler(handler.MessageHandler):
                 yield entities.StageProcessResult(result_type=entities.ResultType.INTERRUPT, new_query=query)
         else:
             if event_ctx.event.alter is not None:
-                # if isinstance(event_ctx.event, str):  # Currently not considering multi-modal alter
+                # if isinstance(event_ctx.event, str):  # 现在暂时不考虑多模态alter
                 query.user_message.content = event_ctx.event.alter
 
             text_length = 0
+            try:
+                is_stream = await query.adapter.is_stream_output_supported()
+            except AttributeError:
+                is_stream = False
 
             try:
                 for r in runner_module.preregistered_runners:
@@ -65,22 +69,42 @@ class ChatMessageHandler(handler.MessageHandler):
                         runner = r(self.ap, query.pipeline_config)
                         break
                 else:
-                    raise ValueError(f'Request runner not found: {query.pipeline_config["ai"]["runner"]["runner"]}')
+                    raise ValueError(f'未找到请求运行器: {query.pipeline_config["ai"]["runner"]["runner"]}')
+                if is_stream:
+                    resp_message_id = uuid.uuid4()
+                    await query.adapter.create_message_card(str(resp_message_id), query.message_event)
+                    async for result in runner.run(query):
+                        result.resp_message_id = str(resp_message_id)
+                        if query.resp_messages:
+                            query.resp_messages.pop()
+                        if query.resp_message_chain:
+                            query.resp_message_chain.pop()
 
-                async for result in runner.run(query):
-                    query.resp_messages.append(result)
+                        query.resp_messages.append(result)
+                        self.ap.logger.info(f'对话({query.query_id})流式响应: {self.cut_str(result.readable_str())}')
 
-                    self.ap.logger.info(f'Response({query.query_id}): {self.cut_str(result.readable_str())}')
+                        if result.content is not None:
+                            text_length += len(result.content)
 
-                    if result.content is not None:
-                        text_length += len(result.content)
+                        yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
-                    yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
+                else:
+                    async for result in runner.run(query):
+                        query.resp_messages.append(result)
+
+                        self.ap.logger.info(f'对话({query.query_id})响应: {self.cut_str(result.readable_str())}')
+
+                        if result.content is not None:
+                            text_length += len(result.content)
+
+                        yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
                 query.session.using_conversation.messages.append(query.user_message)
+
                 query.session.using_conversation.messages.extend(query.resp_messages)
             except Exception as e:
-                self.ap.logger.error(f'Request failed({query.query_id}): {type(e).__name__} {str(e)}')
+                self.ap.logger.error(f'对话({query.query_id})请求失败: {type(e).__name__} {str(e)}')
+                traceback.print_exc()
 
                 hide_exception_info = query.pipeline_config['output']['misc']['hide-exception']
 

@@ -7,6 +7,10 @@ import asyncio
 from ...platform.types import events as platform_events
 from ...platform.types import message as platform_message
 
+from ...provider import entities as llm_entities
+
+
+
 from .. import stage, entities
 from ...core import entities as core_entities
 
@@ -36,10 +40,22 @@ class SendResponseBackStage(stage.PipelineStage):
 
         quote_origin = query.pipeline_config['output']['misc']['quote-origin']
 
-        await query.adapter.reply_message(
-            message_source=query.message_event,
-            message=query.resp_message_chain[-1],
-            quote_origin=quote_origin,
-        )
+        has_chunks = any(isinstance(msg, llm_entities.MessageChunk) for msg in query.resp_messages)
+        # TODO 命令与流式的兼容性问题
+        if await query.adapter.is_stream_output_supported() and has_chunks:
+            is_final = [msg.is_final for msg in query.resp_messages][0]
+            await query.adapter.reply_message_chunk(
+                message_source=query.message_event,
+                bot_message=query.resp_messages[-1],
+                message=query.resp_message_chain[-1],
+                quote_origin=quote_origin,
+                is_final=is_final,
+            )
+        else:
+            await query.adapter.reply_message(
+                message_source=query.message_event,
+                message=query.resp_message_chain[-1],
+                quote_origin=quote_origin,
+            )
 
         return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)

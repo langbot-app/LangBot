@@ -84,6 +84,7 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
         messages: typing.List[llm_entities.Message],
         funcs: typing.List[tools_entities.LLMFunction] = None,
         extra_args: dict[str, typing.Any] = {},
+        remove_think: bool = False,
     ) -> llm_entities.Message:
         """调用API
 
@@ -92,9 +93,33 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
             messages (typing.List[llm_entities.Message]): 消息对象列表
             funcs (typing.List[tools_entities.LLMFunction], optional): 使用的工具函数列表. Defaults to None.
             extra_args (dict[str, typing.Any], optional): 额外的参数. Defaults to {}.
+            remove_think (bool, optional): 是否移思考中的消息. Defaults to False.
 
         Returns:
             llm_entities.Message: 返回消息对象
+        """
+        pass
+
+    async def invoke_llm_stream(
+        self,
+        query: core_entities.Query,
+        model: RuntimeLLMModel,
+        messages: typing.List[llm_entities.Message],
+        funcs: typing.List[tools_entities.LLMFunction] = None,
+        extra_args: dict[str, typing.Any] = {},
+        remove_think: bool = False,
+    ) -> llm_entities.MessageChunk:
+        """调用API
+
+        Args:
+            model (RuntimeLLMModel): 使用的模型信息
+            messages (typing.List[llm_entities.Message]): 消息对象列表
+            funcs (typing.List[tools_entities.LLMFunction], optional): 使用的工具函数列表. Defaults to None.
+            extra_args (dict[str, typing.Any], optional): 额外的参数. Defaults to {}.
+            remove_think (bool, optional): 是否移除思考中的消息. Defaults to False.
+
+        Returns:
+            typing.AsyncGenerator[llm_entities.MessageChunk]: 返回消息对象
         """
         pass
 

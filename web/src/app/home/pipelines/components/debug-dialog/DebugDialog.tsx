@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { DialogContent } from '@/components/ui/dialog';
@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { Message } from '@/app/infra/entities/message';
 import { toast } from 'sonner';
 import AtBadge from './AtBadge';
+import { Switch } from '@/components/ui/switch';
 
 interface MessageComponent {
   type: 'At' | 'Plain';
@@ -36,17 +37,44 @@ export default function DebugDialog({
   const [showAtPopover, setShowAtPopover] = useState(false);
   const [hasAt, setHasAt] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const scrollToBottom = useCallback(() => {
+    // 使用setTimeout确保在DOM更新后执行滚动
+    setTimeout(() => {
+      const scrollArea = document.querySelector('.scroll-area') as HTMLElement;
+      if (scrollArea) {
+        scrollArea.scrollTo({
+          top: scrollArea.scrollHeight,
+          behavior: 'smooth',
+        });
+      }
+      // 同时确保messagesEndRef也滚动到视图
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 0);
+  }, []);
 
+  const loadMessages = useCallback(
+    async (pipelineId: string) => {
+      try {
+        const response = await httpClient.getWebChatHistoryMessages(
+          pipelineId,
+          sessionType,
+        );
+        setMessages(response.messages);
+      } catch (error) {
+        console.error('Failed to load messages:', error);
+      }
+    },
+    [sessionType],
+  );
+  // 在useEffect中监听messages变化时滚动
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, scrollToBottom]);
 
   useEffect(() => {
     if (open) {
@@ -59,7 +87,7 @@ export default function DebugDialog({
     if (open) {
       loadMessages(selectedPipelineId);
     }
-  }, [sessionType, selectedPipelineId]);
+  }, [sessionType, selectedPipelineId, open, loadMessages]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -83,18 +111,6 @@ export default function DebugDialog({
       setIsHovering(true);
     }
   }, [showAtPopover]);
-
-  const loadMessages = async (pipelineId: string) => {
-    try {
-      const response = await httpClient.getWebChatHistoryMessages(
-        pipelineId,
-        sessionType,
-      );
-      setMessages(response.messages);
-    } catch (error) {
-      console.error('Failed to load messages:', error);
-    }
-  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -165,19 +181,87 @@ export default function DebugDialog({
         timestamp: new Date().toISOString(),
         message_chain: messageChain,
       };
+      // 根据isStreaming状态决定使用哪种传输方式
+      if (isStreaming) {
+        // streaming
+        // 创建初始bot消息
+        const placeholderRandomId = Math.floor(Math.random() * 1000000);
+        const botMessagePlaceholder: Message = {
+          id: placeholderRandomId,
+          role: 'assistant',
+          content: 'Generating...',
+          timestamp: new Date().toISOString(),
+          message_chain: [{ type: 'Plain', text: 'Generating...' }],
+        };
 
-      setMessages((prevMessages) => [...prevMessages, userMessage]);
-      setInputValue('');
-      setHasAt(false);
+        // 添加用户消息和初始bot消息到状态
 
-      const response = await httpClient.sendWebChatMessage(
-        sessionType,
-        messageChain,
-        selectedPipelineId,
-        120000,
-      );
+        setMessages((prevMessages) => [
+          ...prevMessages,
+          userMessage,
+          botMessagePlaceholder,
+        ]);
+        setInputValue('');
+        setHasAt(false);
+        try {
+          await httpClient.sendStreamingWebChatMessage(
+            sessionType,
+            messageChain,
+            selectedPipelineId,
+            (data) => {
+              // 处理流式响应数据
+              console.log('data', data);
+              if (data.message) {
+                // 更新完整内容
 
-      setMessages((prevMessages) => [...prevMessages, response.message]);
+                setMessages((prevMessages) => {
+                  const updatedMessages = [...prevMessages];
+                  const botMessageIndex = updatedMessages.findIndex(
+                    (message) => message.id === placeholderRandomId,
+                  );
+                  if (botMessageIndex !== -1) {
+                    updatedMessages[botMessageIndex] = {
+                      ...updatedMessages[botMessageIndex],
+                      content: data.message.content,
+                      message_chain: [
+                        { type: 'Plain', text: data.message.content },
+                      ],
+                    };
+                  }
+                  return updatedMessages;
+                });
+              }
+            },
+            () => {},
+            (error) => {
+              // 处理错误
+              console.error('Streaming error:', error);
+              if (sessionType === 'person') {
+                toast.error(t('pipelines.debugDialog.sendFailed'));
+              }
+            },
+          );
+        } catch (error) {
+          console.error('Failed to send streaming message:', error);
+          if (sessionType === 'person') {
+            toast.error(t('pipelines.debugDialog.sendFailed'));
+          }
+        }
+      } else {
+        // non-streaming
+        setMessages((prevMessages) => [...prevMessages, userMessage]);
+        setInputValue('');
+        setHasAt(false);
+
+        const response = await httpClient.sendWebChatMessage(
+          sessionType,
+          messageChain,
+          selectedPipelineId,
+          180000,
+        );
+
+        setMessages((prevMessages) => [...prevMessages, response.message]);
+      }
     } catch (
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       error: any
@@ -306,6 +390,12 @@ export default function DebugDialog({
         </ScrollArea>
 
         <div className="p-4 pb-0 bg-white flex gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">
+              {t('pipelines.debugDialog.streaming')}
+            </span>
+            <Switch checked={isStreaming} onCheckedChange={setIsStreaming} />
+          </div>
           <div className="flex-1 flex items-center gap-2">
             {hasAt && (
               <AtBadge targetName="webchatbot" onRemove={handleAtRemove} />

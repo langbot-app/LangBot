@@ -372,6 +372,99 @@ class HttpClient {
     );
   }
 
+  public async sendStreamingWebChatMessage(
+    sessionType: string,
+    messageChain: object[],
+    pipelineId: string,
+    onMessage: (data: ApiRespWebChatMessage) => void,
+    onComplete: () => void,
+    onError: (error: Error) => void,
+  ): Promise<void> {
+    try {
+      // 构造完整的URL，处理相对路径的情况
+      let url = `${this.baseURL}/api/v1/pipelines/${pipelineId}/chat/send`;
+      if (this.baseURL === '/') {
+        // 获取用户访问的完整URL
+        const baseURL = window.location.origin;
+        url = `${baseURL}/api/v1/pipelines/${pipelineId}/chat/send`;
+      }
+
+      // 使用fetch发送流式请求，因为axios在浏览器环境中不直接支持流式响应
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.getSessionSync()}`,
+        },
+        body: JSON.stringify({
+          session_type: sessionType,
+          message: messageChain,
+          is_stream: true,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      if (!response.body) {
+        throw new Error('ReadableStream not supported');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      // 读取流式响应
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            onComplete();
+            break;
+          }
+
+          // 解码数据
+          buffer += decoder.decode(value, { stream: true });
+
+          // 处理完整的JSON对象
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data:')) {
+              try {
+                const data = JSON.parse(line.slice(5));
+
+                if (data.type === 'end') {
+                  // 流传输结束
+                  reader.cancel();
+                  onComplete();
+                  return;
+                }
+                if (data.type === 'start') {
+                  console.log(data.type);
+                }
+
+                if (data.message) {
+                  // 处理消息数据
+                  onMessage(data);
+                }
+              } catch (error) {
+                console.error('Error parsing streaming data:', error);
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } catch (error) {
+      onError(error as Error);
+    }
+  }
+
   public getWebChatHistoryMessages(
     pipelineId: string,
     sessionType: string,

@@ -204,9 +204,9 @@ async def get_slack_image_to_base64(pic_url: str, bot_token: str):
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(pic_url, headers=headers) as resp:
-                mime_type = resp.headers.get("Content-Type", "application/octet-stream")
+                mime_type = resp.headers.get('Content-Type', 'application/octet-stream')
                 file_bytes = await resp.read()
-                base64_str = base64.b64encode(file_bytes).decode("utf-8")
-            return f"data:{mime_type};base64,{base64_str}"
+                base64_str = base64.b64encode(file_bytes).decode('utf-8')
+            return f'data:{mime_type};base64,{base64_str}'
     except Exception as e:
         raise (e)

@@ -9,7 +9,6 @@ import re
 import base64
 import uuid
 import json
-import time
 import datetime
 import hashlib
 from Crypto.Cipher import AES
@@ -18,6 +17,7 @@ import aiohttp
 import lark_oapi.ws.exception
 import quart
 from lark_oapi.api.im.v1 import *
+from lark_oapi.api.cardkit.v1 import *
 
 from .. import adapter
 from ...core import app
@@ -343,8 +343,11 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
     config: dict
     quart_app: quart.Quart
     ap: app.Application
-    
-    message_id_to_card_id: typing.Dict[str, typing.Tuple[str, int]]
+
+
+    card_id_dict: dict[str, str]  # 消息id到卡片id的映射，便于创建卡片后的发送消息到指定卡片
+
+    seq: int  # 用于在发送卡片消息中识别消息顺序，直接以seq作为标识
 
     def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
         self.config = config
@@ -352,7 +355,9 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
         self.logger = logger
         self.quart_app = quart.Quart(__name__)
         self.listeners = {}
-        self.message_id_to_card_id = {}
+        self.card_id_dict = {}
+        self.seq = 1
+
 
         @self.quart_app.route('/lark/callback', methods=['POST'])
         async def lark_callback():
@@ -398,19 +403,6 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
                 return {'code': 500, 'message': 'error'}
 
         async def on_message(event: lark_oapi.im.v1.P2ImMessageReceiveV1):
-            if self.config['enable-card-reply'] and event.event.message.message_id not in self.message_id_to_card_id:
-                self.ap.logger.debug('卡片回复模式开启')
-                # 开启卡片回复模式. 这里可以实现飞书一发消息，马上创建卡片进行回复"思考中..."
-                reply_message_id = await self.create_message_card(event.event.message.message_id)
-                self.message_id_to_card_id[event.event.message.message_id] = (reply_message_id, time.time())
-
-                if len(self.message_id_to_card_id) > CARD_ID_CACHE_SIZE:
-                    self.message_id_to_card_id = {
-                        k: v
-                        for k, v in self.message_id_to_card_id.items()
-                        if v[1] > time.time() - CARD_ID_CACHE_MAX_LIFETIME
-                    }
-
             lb_event = await self.event_converter.target2yiri(event, self.api_client)
 
             await self.listeners[type(lb_event)](lb_event, self)
@@ -430,21 +422,200 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         pass
 
-    async def create_message_card(self, message_id: str) -> str:
+    async def is_stream_output_supported(self) -> bool:
+        is_stream = False
+        if self.config.get('enable-stream-reply', None):
+            is_stream = True
+        return is_stream
+
+    async def create_card_id(self, message_id):
+        try:
+            self.ap.logger.debug('飞书支持stream输出,创建卡片......')
+
+            card_data = {"schema": "2.0", "config": {"update_multi": True, "streaming_mode": True,
+                                                     "streaming_config": {"print_step": {"default": 1},
+                                                                          "print_frequency_ms": {"default": 70},
+                                                                          "print_strategy": "fast"}},
+                         "body": {"direction": "vertical", "padding": "12px 12px 12px 12px", "elements": [{"tag": "div",
+                                                                                                           "text": {
+                                                                                                               "tag": "plain_text",
+                                                                                                               "content": "LangBot",
+                                                                                                               "text_size": "normal",
+                                                                                                               "text_align": "left",
+                                                                                                               "text_color": "default"},
+                                                                                                           "icon": {
+                                                                                                               "tag": "custom_icon",
+                                                                                                               "img_key": "img_v3_02p3_05c65d5d-9bad-440a-a2fb-c89571bfd5bg"}},
+                                                                                                          {
+                                                                                                              "tag": "markdown",
+                                                                                                              "content": "",
+                                                                                                              "text_align": "left",
+                                                                                                              "text_size": "normal",
+                                                                                                              "margin": "0px 0px 0px 0px",
+                                                                                                              "element_id": "streaming_txt"},
+                                                                                                          {
+                                                                                                              "tag": "markdown",
+                                                                                                              "content": "",
+                                                                                                              "text_align": "left",
+                                                                                                              "text_size": "normal",
+                                                                                                              "margin": "0px 0px 0px 0px"},
+                                                                                                          {
+                                                                                                              "tag": "column_set",
+                                                                                                              "horizontal_spacing": "8px",
+                                                                                                              "horizontal_align": "left",
+                                                                                                              "columns": [
+                                                                                                                  {
+                                                                                                                      "tag": "column",
+                                                                                                                      "width": "weighted",
+                                                                                                                      "elements": [
+                                                                                                                          {
+                                                                                                                              "tag": "markdown",
+                                                                                                                              "content": "",
+                                                                                                                              "text_align": "left",
+                                                                                                                              "text_size": "normal",
+                                                                                                                              "margin": "0px 0px 0px 0px"},
+                                                                                                                          {
+                                                                                                                              "tag": "markdown",
+                                                                                                                              "content": "",
+                                                                                                                              "text_align": "left",
+                                                                                                                              "text_size": "normal",
+                                                                                                                              "margin": "0px 0px 0px 0px"},
+                                                                                                                          {
+                                                                                                                              "tag": "markdown",
+                                                                                                                              "content": "",
+                                                                                                                              "text_align": "left",
+                                                                                                                              "text_size": "normal",
+                                                                                                                              "margin": "0px 0px 0px 0px"}],
+                                                                                                                      "padding": "0px 0px 0px 0px",
+                                                                                                                      "direction": "vertical",
+                                                                                                                      "horizontal_spacing": "8px",
+                                                                                                                      "vertical_spacing": "2px",
+                                                                                                                      "horizontal_align": "left",
+                                                                                                                      "vertical_align": "top",
+                                                                                                                      "margin": "0px 0px 0px 0px",
+                                                                                                                      "weight": 1}],
+                                                                                                              "margin": "0px 0px 0px 0px"},
+                                                                                                          {"tag": "hr",
+                                                                                                           "margin": "0px 0px 0px 0px"},
+                                                                                                          {
+                                                                                                              "tag": "column_set",
+                                                                                                              "horizontal_spacing": "12px",
+                                                                                                              "horizontal_align": "right",
+                                                                                                              "columns": [
+                                                                                                                  {
+                                                                                                                      "tag": "column",
+                                                                                                                      "width": "weighted",
+                                                                                                                      "elements": [
+                                                                                                                          {
+                                                                                                                              "tag": "markdown",
+                                                                                                                              "content": "<font color=\"grey-600\">以上内容由 AI 生成，仅供参考。更多详细、准确信息可点击引用链接查看</font>",
+                                                                                                                              "text_align": "left",
+                                                                                                                              "text_size": "notation",
+                                                                                                                              "margin": "4px 0px 0px 0px",
+                                                                                                                              "icon": {
+                                                                                                                                  "tag": "standard_icon",
+                                                                                                                                  "token": "robot_outlined",
+                                                                                                                                  "color": "grey"}}],
+                                                                                                                      "padding": "0px 0px 0px 0px",
+                                                                                                                      "direction": "vertical",
+                                                                                                                      "horizontal_spacing": "8px",
+                                                                                                                      "vertical_spacing": "8px",
+                                                                                                                      "horizontal_align": "left",
+                                                                                                                      "vertical_align": "top",
+                                                                                                                      "margin": "0px 0px 0px 0px",
+                                                                                                                      "weight": 1},
+                                                                                                                  {
+                                                                                                                      "tag": "column",
+                                                                                                                      "width": "20px",
+                                                                                                                      "elements": [
+                                                                                                                          {
+                                                                                                                              "tag": "button",
+                                                                                                                              "text": {
+                                                                                                                                  "tag": "plain_text",
+                                                                                                                                  "content": ""},
+                                                                                                                              "type": "text",
+                                                                                                                              "width": "fill",
+                                                                                                                              "size": "medium",
+                                                                                                                              "icon": {
+                                                                                                                                  "tag": "standard_icon",
+                                                                                                                                  "token": "thumbsup_outlined"},
+                                                                                                                              "hover_tips": {
+                                                                                                                                  "tag": "plain_text",
+                                                                                                                                  "content": "有帮助"},
+                                                                                                                              "margin": "0px 0px 0px 0px"}],
+                                                                                                                      "padding": "0px 0px 0px 0px",
+                                                                                                                      "direction": "vertical",
+                                                                                                                      "horizontal_spacing": "8px",
+                                                                                                                      "vertical_spacing": "8px",
+                                                                                                                      "horizontal_align": "left",
+                                                                                                                      "vertical_align": "top",
+                                                                                                                      "margin": "0px 0px 0px 0px"},
+                                                                                                                  {
+                                                                                                                      "tag": "column",
+                                                                                                                      "width": "30px",
+                                                                                                                      "elements": [
+                                                                                                                          {
+                                                                                                                              "tag": "button",
+                                                                                                                              "text": {
+                                                                                                                                  "tag": "plain_text",
+                                                                                                                                  "content": ""},
+                                                                                                                              "type": "text",
+                                                                                                                              "width": "default",
+                                                                                                                              "size": "medium",
+                                                                                                                              "icon": {
+                                                                                                                                  "tag": "standard_icon",
+                                                                                                                                  "token": "thumbdown_outlined"},
+                                                                                                                              "hover_tips": {
+                                                                                                                                  "tag": "plain_text",
+                                                                                                                                  "content": "无帮助"},
+                                                                                                                              "margin": "0px 0px 0px 0px"}],
+                                                                                                                      "padding": "0px 0px 0px 0px",
+                                                                                                                      "vertical_spacing": "8px",
+                                                                                                                      "horizontal_align": "left",
+                                                                                                                      "vertical_align": "top",
+                                                                                                                      "margin": "0px 0px 0px 0px"}],
+                                                                                                              "margin": "0px 0px 4px 0px"}]}}
+            # delay / fast 创建卡片模板，delay 延迟打印，fast 实时打印，可以自定义更好看的消息模板
+
+            request: CreateCardRequest = (
+                CreateCardRequest.builder()
+                .request_body(CreateCardRequestBody.builder().type('card_json').data(json.dumps(card_data)).build())
+                .build()
+            )
+
+            # 发起请求
+            response: CreateCardResponse = self.api_client.cardkit.v1.card.create(request)
+
+            # 处理失败返回
+            if not response.success():
+                raise Exception(
+                    f'client.cardkit.v1.card.create failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
+                )
+
+            self.ap.logger.debug(f'飞书卡片创建成功,卡片ID: {response.data.card_id}')
+            self.card_id_dict[message_id] = response.data.card_id
+
+            card_id = response.data.card_id
+            return card_id
+
+        except Exception as e:
+            self.ap.logger.error(f'飞书卡片创建失败,错误信息: {e}')
+
+    async def create_message_card(self, message_id, event) -> str:
         """
         创建卡片消息。
-        使用卡片消息是因为普通消息更新次数有限制，而大模型流式返回结果可能很多而超过限制，而飞书卡片没有这个限制
+        使用卡片消息是因为普通消息更新次数有限制，而大模型流式返回结果可能很多而超过限制，而飞书卡片没有这个限制（api免费次数有限）
         """
+        # message_id = event.message_chain.message_id
 
-        # TODO 目前只支持卡片模板方式，且卡片变量一定是content，未来这块要做成可配置
-        # 发消息马上就会回复显示初始化的content信息，即思考中
+        card_id = await self.create_card_id(message_id)
         content = {
-            'type': 'template',
-            'data': {'template_id': self.config['card_template_id'], 'template_variable': {'content': 'Thinking...'}},
-        }
+            'type': 'card',
+            'data': {'card_id': card_id, 'template_variable': {'content': 'Thinking...'}},
+        }   # 当收到消息时发送消息模板，可添加模板变量，详情查看飞书中接口文档
         request: ReplyMessageRequest = (
             ReplyMessageRequest.builder()
-            .message_id(message_id)
+            .message_id(event.message_chain.message_id)
             .request_body(
                 ReplyMessageRequestBody.builder().content(json.dumps(content)).msg_type('interactive').build()
             )
@@ -459,60 +630,9 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
             raise Exception(
                 f'client.im.v1.message.reply failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
             )
-        return response.data.message_id
+        return True
 
     async def reply_message(
-        self,
-        message_source: platform_events.MessageEvent,
-        message: platform_message.MessageChain,
-        quote_origin: bool = False,
-    ):
-        if self.config['enable-card-reply']:
-            await self.reply_card_message(message_source, message, quote_origin)
-        else:
-            await self.reply_normal_message(message_source, message, quote_origin)
-
-    async def reply_card_message(
-        self,
-        message_source: platform_events.MessageEvent,
-        message: platform_message.MessageChain,
-        quote_origin: bool = False,
-    ):
-        """
-        回复消息变成更新卡片消息
-        """
-        lark_message = await self.message_converter.yiri2target(message, self.api_client)
-
-        text_message = ''
-        for ele in lark_message[0]:
-            if ele['tag'] == 'text':
-                text_message += ele['text']
-            elif ele['tag'] == 'md':
-                text_message += ele['text']
-
-        content = {
-            'type': 'template',
-            'data': {'template_id': self.config['card_template_id'], 'template_variable': {'content': text_message}},
-        }
-
-        request: PatchMessageRequest = (
-            PatchMessageRequest.builder()
-            .message_id(self.message_id_to_card_id[message_source.message_chain.message_id][0])
-            .request_body(PatchMessageRequestBody.builder().content(json.dumps(content)).build())
-            .build()
-        )
-
-        # 发起请求
-        response: PatchMessageResponse = self.api_client.im.v1.message.patch(request)
-
-        # 处理失败返回
-        if not response.success():
-            raise Exception(
-                f'client.im.v1.message.patch failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
-            )
-            return
-
-    async def reply_normal_message(
         self,
         message_source: platform_events.MessageEvent,
         message: platform_message.MessageChain,
@@ -549,6 +669,64 @@ class LarkAdapter(adapter.MessagePlatformAdapter):
             raise Exception(
                 f'client.im.v1.message.reply failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
             )
+
+    async def reply_message_chunk(
+        self,
+        message_source: platform_events.MessageEvent,
+        bot_message,
+        message: platform_message.MessageChain,
+        quote_origin: bool = False,
+        is_final: bool = False,
+    ):
+        """
+        回复消息变成更新卡片消息
+        """
+        # self.seq += 1
+        message_id = bot_message.resp_message_id
+        msg_seq = bot_message.msg_sequence
+        if msg_seq % 8 == 0 or is_final:
+
+            lark_message = await self.message_converter.yiri2target(message, self.api_client)
+
+
+            text_message = ''
+            for ele in lark_message[0]:
+                if ele['tag'] == 'text':
+                    text_message += ele['text']
+                elif ele['tag'] == 'md':
+                    text_message += ele['text']
+
+            # content = {
+            #     'type': 'card_json',
+            #     'data': {'card_id': self.card_id_dict[message_id], 'elements': {'content': text_message}},
+            # }
+
+            request: ContentCardElementRequest = (
+                ContentCardElementRequest.builder()
+                .card_id(self.card_id_dict[message_id])
+                .element_id('streaming_txt')
+                .request_body(
+                    ContentCardElementRequestBody.builder()
+                    # .uuid("a0d69e20-1dd1-458b-k525-dfeca4015204")
+                    .content(text_message)
+                    .sequence(msg_seq)
+                    .build()
+                )
+                .build()
+            )
+
+            if is_final and bot_message.tool_calls is None:
+                # self.seq = 1  # 消息回复结束之后重置seq
+                self.card_id_dict.pop(message_id)  # 清理已经使用过的卡片
+            # 发起请求
+            response: ContentCardElementResponse = self.api_client.cardkit.v1.card_element.content(request)
+
+            # 处理失败返回
+            if not response.success():
+                raise Exception(
+                    f'client.im.v1.message.patch failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
+                )
+                return
 
     async def is_muted(self, group_id: int) -> bool:
         return False

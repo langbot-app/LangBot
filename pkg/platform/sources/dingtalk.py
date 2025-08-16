@@ -1,3 +1,4 @@
+from re import S
 import traceback
 import typing
 from libs.dingtalk_api.dingtalkevent import DingTalkEvent
@@ -99,11 +100,15 @@ class DingTalkAdapter(adapter.MessagePlatformAdapter):
     message_converter: DingTalkMessageConverter = DingTalkMessageConverter()
     event_converter: DingTalkEventConverter = DingTalkEventConverter()
     config: dict
+    card_instance_id_dict: dict  # 回复卡片消息字典，key为消息id，value为回复卡片实例id，用于在流式消息时判断是否发送到指定卡片
+    seq: int  # 消息顺序，直接以seq作为标识
 
     def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
         self.config = config
         self.ap = ap
         self.logger = logger
+        self.card_instance_id_dict = {}
+        # self.seq = 1
         required_keys = [
             'client_id',
             'client_secret',
@@ -139,12 +144,54 @@ class DingTalkAdapter(adapter.MessagePlatformAdapter):
         content, at = await DingTalkMessageConverter.yiri2target(message)
         await self.bot.send_message(content, incoming_message, at)
 
+    async def reply_message_chunk(
+        self,
+        message_source: platform_events.MessageEvent,
+        bot_message,
+        message: platform_message.MessageChain,
+        quote_origin: bool = False,
+        is_final: bool = False,
+    ):
+        # event = await DingTalkEventConverter.yiri2target(
+        #     message_source,
+        # )
+        # incoming_message = event.incoming_message
+
+        # msg_id = incoming_message.message_id
+        message_id = bot_message.resp_message_id
+        msg_seq = bot_message.msg_sequence
+
+        if (msg_seq - 1) % 8 == 0 or is_final:
+
+            content, at = await DingTalkMessageConverter.yiri2target(message)
+
+            card_instance, card_instance_id = self.card_instance_id_dict[message_id]
+            # print(card_instance_id)
+            await self.bot.send_card_message(card_instance, card_instance_id, content, is_final)
+            if is_final and bot_message.tool_calls is None:
+                # self.seq = 1  # 消息回复结束之后重置seq
+                self.card_instance_id_dict.pop(message_id)  # 消息回复结束之后删除卡片实例id
+
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         content = await DingTalkMessageConverter.yiri2target(message)
         if target_type == 'person':
             await self.bot.send_proactive_message_to_one(target_id, content)
         if target_type == 'group':
             await self.bot.send_proactive_message_to_group(target_id, content)
+
+    async def is_stream_output_supported(self) -> bool:
+        is_stream = False
+        if self.config.get('enable-stream-reply', None):
+            is_stream = True
+        return is_stream
+
+    async def create_message_card(self, message_id, event):
+        card_template_id = self.config['card_template_id']
+        incoming_message = event.source_platform_object.incoming_message
+        # message_id = incoming_message.message_id
+        card_instance, card_instance_id = await self.bot.create_and_card(card_template_id, incoming_message)
+        self.card_instance_id_dict[message_id] = (card_instance, card_instance_id)
+        return True
 
     def register_listener(
         self,
