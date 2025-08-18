@@ -2,6 +2,8 @@ version: "3"
 
 services:
   langbot:
+    security_opt:
+      - "no-new-privileges:true"
     image: rockchin/langbot:latest
     container_name: langbot
     volumes:
