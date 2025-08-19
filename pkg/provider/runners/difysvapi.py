@@ -499,7 +499,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                         content = re.sub(r'^\n</think>', '', chunk['answer'])
                         pending_agent_message += content
                         think_end = True
-                    elif think_end:
+                    elif think_end or not think_start:
                         pending_agent_message += chunk['answer']
                     if think_start:
                         continue
