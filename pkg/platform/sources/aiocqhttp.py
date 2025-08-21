@@ -266,7 +266,7 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
                     await process_message_data(msg_data, reply_list)
 
                 reply_msg = platform_message.Quote(
-                    message_id=msg.data['id'], sender_id=msg_datas['user_id'], origin=reply_list
+                    message_id=msg.data['id'], sender_id=msg_datas['sender']['user_id'], origin=reply_list
                 )
                 yiri_msg_list.append(reply_msg)
 
