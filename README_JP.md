@@ -102,6 +102,7 @@ LangBotはBTPanelにリストされています。BTPanelをインストール�
 | [Zhipu AI](https://open.bigmodel.cn/) | ✅ |  |
 | [CompShare](https://www.compshare.cn/?ytag=GPU_YY-gh_langbot) | ✅ | 大模型とGPUリソースプラットフォーム |
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | ✅ | 大模型とGPUリソースプラットフォーム |
+| [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | ✅ | LLMとGPUリソースプラットフォーム |
 | [302.AI](https://share.302.ai/SuTG99) | ✅ | LLMゲートウェイ(MaaS) |
 | [Google Gemini](https://aistudio.google.com/prompts/new_chat) | ✅ | |
 | [Dify](https://dify.ai) | ✅ | LLMOpsプラットフォーム |

@@ -102,6 +102,7 @@ docker compose up -d
 | [Anthropic](https://www.anthropic.com/) | ✅ |  |
 | [xAI](https://x.ai/) | ✅ |  |
 | [智譜AI](https://open.bigmodel.cn/) | ✅ |  |
+| [勝算雲](https://www.shengsuanyun.com/?from=CH_KYIPP758) | ✅ | 大模型和 GPU 資源平台 |
 | [優雲智算](https://www.compshare.cn/?ytag=GPU_YY-gh_langbot) | ✅ | 大模型和 GPU 資源平台 |
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | ✅ | 大模型和 GPU 資源平台 |
 | [302.AI](https://share.302.ai/SuTG99) | ✅ | 大模型聚合平台 |
