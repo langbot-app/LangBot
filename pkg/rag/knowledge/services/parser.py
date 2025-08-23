@@ -9,6 +9,7 @@ import markdown
 from bs4 import BeautifulSoup
 import re
 import asyncio  # Import asyncio for async operations
+import zipfile
 from pkg.core import app
 
 
@@ -289,3 +290,78 @@ class FileParser:
             table_lines.append(' | '.join(padded_cells))
 
         return '\n'.join(table_lines)
+
+    async def _parse_zip(self, file_name: str) -> str:
+        """Parses a ZIP file, extracting and processing all supported document files within it."""
+        self.ap.logger.info(f'Parsing ZIP file: {file_name}')
+        
+        zip_bytes = await self.ap.storage_mgr.storage_provider.load(file_name)
+        
+        def _parse_zip_sync():
+            extracted_texts = []
+            supported_extensions = {'txt', 'pdf', 'docx', 'md', 'html'}
+            
+            with zipfile.ZipFile(io.BytesIO(zip_bytes), 'r') as zip_ref:
+                for file_info in zip_ref.filelist:
+                    if file_info.is_dir() or file_info.filename.startswith('.'):
+                        continue
+                    
+                    file_extension = file_info.filename.split('.')[-1].lower()
+                    if file_extension not in supported_extensions:
+                        self.ap.logger.debug(f'Skipping unsupported file in ZIP: {file_info.filename}')
+                        continue
+                    
+                    try:
+                        file_content = zip_ref.read(file_info.filename)
+                        
+                        extracted_texts.append(f"=== File: {file_info.filename} ===\n")
+                        
+                        if file_extension == 'txt':
+                            detected = chardet.detect(file_content)
+                            encoding = detected['encoding'] or 'utf-8'
+                            text = file_content.decode(encoding, errors='ignore')
+                            extracted_texts.append(text)
+                        elif file_extension == 'pdf':
+                            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+                            text_content = []
+                            for page in pdf_reader.pages:
+                                text = page.extract_text()
+                                if text:
+                                    text_content.append(text)
+                            extracted_texts.append('\n'.join(text_content))
+                        elif file_extension == 'docx':
+                            doc = Document(io.BytesIO(file_content))
+                            text_content = [paragraph.text for paragraph in doc.paragraphs if paragraph.text.strip()]
+                            extracted_texts.append('\n'.join(text_content))
+                        elif file_extension == 'md':
+                            detected = chardet.detect(file_content)
+                            encoding = detected['encoding'] or 'utf-8'
+                            md_content = file_content.decode(encoding, errors='ignore')
+                            html_content = markdown.markdown(
+                                md_content, extensions=['extra', 'codehilite', 'tables', 'toc', 'fenced_code']
+                            )
+                            soup = BeautifulSoup(html_content, 'html.parser')
+                            text = soup.get_text(separator=' ', strip=True)
+                            extracted_texts.append(text)
+                        elif file_extension == 'html':
+                            detected = chardet.detect(file_content)
+                            encoding = detected['encoding'] or 'utf-8'
+                            html_content = file_content.decode(encoding, errors='ignore')
+                            soup = BeautifulSoup(html_content, 'html.parser')
+                            for script_or_style in soup(['script', 'style']):
+                                script_or_style.decompose()
+                            text = soup.get_text(separator=' ', strip=True)
+                            extracted_texts.append(text)
+                        
+                        extracted_texts.append('\n\n')
+                        
+                    except Exception as e:
+                        self.ap.logger.warning(f'Failed to process file {file_info.filename} in ZIP: {e}')
+                        continue
+            
+            if not extracted_texts:
+                raise Exception('No supported files found in ZIP archive')
+            
+            return '\n'.join(extracted_texts)
+        
+        return await self._run_sync(_parse_zip_sync)

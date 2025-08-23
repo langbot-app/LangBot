@@ -282,7 +282,7 @@ const zhHans = {
       noResults: '暂无文档',
       dragAndDrop: '拖拽文件到此处或点击上传',
       uploading: '上传中...',
-      supportedFormats: '支持 PDF、Word、TXT、Markdown 等文档格式',
+      supportedFormats: '支持 PDF、Word、TXT、Markdown、HTML、ZIP 等文档格式',
       uploadSuccess: '文件上传成功！',
       uploadError: '文件上传失败，请重试',
       uploadingFile: '上传文件中...',
