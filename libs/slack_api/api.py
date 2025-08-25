@@ -4,7 +4,7 @@ from quart import Quart, jsonify, request
 from slack_sdk.web.async_client import AsyncWebClient
 from .slackevent import SlackEvent
 from typing import Callable
-from pkg.platform.types import events as platform_events
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
 
 
 class SlackClient:

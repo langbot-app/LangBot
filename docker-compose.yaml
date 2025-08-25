@@ -1,6 +1,21 @@
 version: "3"
 
 services:
+
+  langbot_plugin_runtime:
+    image: rockchin/langbot:latest
+    container_name: langbot_plugin_runtime
+    volumes:
+      - ./data/plugins:/app/data/plugins
+    ports:
+      - 5401:5401
+    restart: on-failure
+    environment:
+      - TZ=Asia/Shanghai
+    command: ["uv", "run", "-m", "langbot_plugin.cli.__init__", "rt"]
+    networks:
+      - langbot_network
+
   langbot:
     image: rockchin/langbot:latest
     container_name: langbot
@@ -11,6 +26,11 @@ services:
     environment:
       - TZ=Asia/Shanghai
     ports:
-      - 5300:5300  # 供 WebUI 使用
-      - 2280-2290:2280-2290  # 供消息平台适配器方向连接
-    # 根据具体环境配置网络
+      - 5300:5300  # For web ui
+      - 2280-2290:2280-2290  # For platform webhook
+    networks:
+      - langbot_network
+
+networks:
+  langbot_network:
+    driver: bridge

@@ -10,14 +10,14 @@ import botpy
 import botpy.message as botpy_message
 import botpy.types.message as botpy_message_type
 
-from .. import adapter as adapter_model
-from ...pipeline.longtext.strategies import forward
-from ...core import app
-from ...config import manager as cfg_mgr
-from ...platform.types import entities as platform_entities
-from ...platform.types import events as platform_events
-from ...platform.types import message as platform_message
-from ..logger import EventLogger
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
+from ....pipeline.longtext.strategies import forward
+from ....core import app
+from ....config import manager as cfg_mgr
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+from ...logger import EventLogger
 
 
 class OfficialGroupMessage(platform_events.GroupMessage):
@@ -133,7 +133,7 @@ class OpenIDMapping(typing.Generic[K, V]):
         return value
 
 
-class OfficialMessageConverter(adapter_model.MessageConverter):
+class OfficialMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     """QQ 官方消息转换器"""
 
     @staticmethod
@@ -237,7 +237,7 @@ class OfficialMessageConverter(adapter_model.MessageConverter):
         return chain
 
 
-class OfficialEventConverter(adapter_model.EventConverter):
+class OfficialEventConverter(abstract_platform_adapter.AbstractEventConverter):
     """事件转换器"""
 
     def __init__(self):
@@ -333,7 +333,7 @@ class OfficialEventConverter(adapter_model.EventConverter):
             )
 
 
-class OfficialAdapter(adapter_model.MessagePlatformAdapter):
+class OfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     """QQ 官方消息适配器"""
 
     bot: botpy.Client = None
@@ -484,7 +484,9 @@ class OfficialAdapter(adapter_model.MessagePlatformAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter_model.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         try:
 
@@ -507,7 +509,9 @@ class OfficialAdapter(adapter_model.MessagePlatformAdapter):
     def unregister_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter_model.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         delattr(self.bot, event_handler_mapping[event_type])
 
@@ -519,7 +523,7 @@ class OfficialAdapter(adapter_model.MessagePlatformAdapter):
 
         self.cfg['ret_coro'] = True
 
-        self.ap.logger.info('运行 QQ 官方适配器')
+        await self.logger.info('运行 QQ 官方适配器')
         await (await self.bot.start(**self.cfg))
 
     async def kill(self) -> bool:

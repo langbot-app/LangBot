@@ -8,7 +8,7 @@ from quart import Quart
 import xml.etree.ElementTree as ET
 from typing import Callable, Dict, Any
 from .wecomevent import WecomEvent
-from pkg.platform.types import message as platform_message
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import aiofiles
 
 

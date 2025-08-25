@@ -3,12 +3,11 @@ from __future__ import annotations
 from ...core import app
 
 from .. import stage, entities
-from ...core import entities as core_entities
 from . import filter as filter_model, entities as filter_entities
-from ...provider import entities as llm_entities
-from ...platform.types import message as platform_message
+from langbot_plugin.api.entities.builtin.provider import message as provider_message
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
 from ...utils import importutil
-
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 from . import filters
 
 importutil.import_modules_in_pkg(filters)
@@ -58,7 +57,7 @@ class ContentFilterStage(stage.PipelineStage):
     async def _pre_process(
         self,
         message: str,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
     ) -> entities.StageProcessResult:
         """请求llm前处理消息
         只要有一个不通过就不放行，只放行 PASS 的消息
@@ -86,14 +85,14 @@ class ContentFilterStage(stage.PipelineStage):
                     elif result.level == filter_entities.ResultLevel.PASS:  # 传到下一个
                         message = result.replacement
 
-            query.message_chain = platform_message.MessageChain(platform_message.Plain(message))
+            query.message_chain = platform_message.MessageChain([platform_message.Plain(text=message)])
 
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
     async def _post_process(
         self,
         message: str,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
     ) -> entities.StageProcessResult:
         """请求llm后处理响应
         只要是 PASS 或者 MASKED 的就通过此 filter，将其 replacement 设置为message，进入下一个 filter
@@ -123,7 +122,7 @@ class ContentFilterStage(stage.PipelineStage):
 
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
-    async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:
+    async def process(self, query: pipeline_query.Query, stage_inst_name: str) -> entities.StageProcessResult:
         """处理"""
         if stage_inst_name == 'PreContentFilterStage':
             contain_non_text = False
@@ -142,7 +141,7 @@ class ContentFilterStage(stage.PipelineStage):
             return await self._pre_process(str(query.message_chain).strip(), query)
         elif stage_inst_name == 'PostContentFilterStage':
             # 仅处理 query.resp_messages[-1].content 是 str 的情况
-            if isinstance(query.resp_messages[-1], llm_entities.Message) and isinstance(
+            if isinstance(query.resp_messages[-1], provider_message.Message) and isinstance(
                 query.resp_messages[-1].content, str
             ):
                 return await self._post_process(query.resp_messages[-1].content, query)

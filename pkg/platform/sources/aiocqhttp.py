@@ -5,17 +5,17 @@ import traceback
 import datetime
 
 import aiocqhttp
+import pydantic
 
-from .. import adapter
-from ...core import app
-from ..types import message as platform_message
-from ..types import events as platform_events
-from ..types import entities as platform_entities
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 from ...utils import image
-from ..logger import EventLogger
+import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 
 
-class AiocqhttpMessageConverter(adapter.MessageConverter):
+class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
     async def yiri2target(
         message_chain: platform_message.MessageChain,
@@ -266,20 +266,21 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
                     await process_message_data(msg_data, reply_list)
 
                 reply_msg = platform_message.Quote(
-                    message_id=msg.data['id'], sender_id=msg_datas['sender']['user_id'], origin=reply_list
+                    message_id=msg.data['id'], sender_id=msg_datas['user_id'], origin=reply_list
                 )
                 yiri_msg_list.append(reply_msg)
 
-            # 这里下载所有文件会导致下载文件过多，暂时不下载
-            # elif msg.type == 'file':
-            #     # file_name = msg.data['file']
-            #     file_id = msg.data['file_id']
-            #     file_data = await bot.get_file(file_id=file_id)
-            #     file_name = file_data.get('file_name')
-            #     file_path = file_data.get('file')
-            #     file_url = file_data.get('file_url')
-            #     file_size = file_data.get('file_size')
-            #     yiri_msg_list.append(platform_message.File(id=file_id, name=file_name,url=file_url,size=file_size))
+            elif msg.type == 'file':
+                pass
+                # file_name = msg.data['file']
+                # file_id = msg.data['file_id']
+                # file_data = await bot.get_file(file_id=file_id)
+                # file_name = file_data.get('file_name')
+                # file_path = file_data.get('file')
+                # _ = file_path
+                # file_url = file_data.get('file_url')
+                # file_size = file_data.get('file_size')
+                # yiri_msg_list.append(platform_message.File(id=file_id, name=file_name,url=file_url,size=file_size))
             elif msg.type == 'face':
                 face_id = msg.data['id']
                 face_name = msg.data['raw']['faceText']
@@ -298,7 +299,7 @@ class AiocqhttpMessageConverter(adapter.MessageConverter):
         return chain
 
 
-class AiocqhttpEventConverter(adapter.EventConverter):
+class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
     @staticmethod
     async def yiri2target(event: platform_events.MessageEvent, bot_account_id: int):
         return event.source_platform_object
@@ -348,23 +349,19 @@ class AiocqhttpEventConverter(adapter.EventConverter):
             )
 
 
-class AiocqhttpAdapter(adapter.MessagePlatformAdapter):
-    bot: aiocqhttp.CQHttp
-
-    bot_account_id: int
+class AiocqhttpAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
+    bot: aiocqhttp.CQHttp = pydantic.Field(exclude=True, default_factory=aiocqhttp.CQHttp)
 
     message_converter: AiocqhttpMessageConverter = AiocqhttpMessageConverter()
     event_converter: AiocqhttpEventConverter = AiocqhttpEventConverter()
 
-    config: dict
-
-    ap: app.Application
-
     on_websocket_connection_event_cache: typing.List[typing.Callable[[aiocqhttp.Event], None]] = []
 
-    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
-        self.config = config
-        self.logger = logger
+    def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger):
+        super().__init__(
+            config=config,
+            logger=logger,
+        )
 
         async def shutdown_trigger_placeholder():
             while True:
@@ -372,7 +369,6 @@ class AiocqhttpAdapter(adapter.MessagePlatformAdapter):
 
         self.config['shutdown_trigger'] = shutdown_trigger_placeholder
 
-        self.ap = ap
         self.on_websocket_connection_event_cache = []
 
         if 'access-token' in config:
@@ -408,7 +404,9 @@ class AiocqhttpAdapter(adapter.MessagePlatformAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         async def on_message(event: aiocqhttp.Event):
             self.bot_account_id = event.self_id
@@ -439,7 +437,9 @@ class AiocqhttpAdapter(adapter.MessagePlatformAdapter):
     def unregister_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         return super().unregister_listener(event_type, callback)
 

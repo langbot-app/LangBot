@@ -3,10 +3,10 @@ from __future__ import annotations
 import datetime
 
 from .. import stage, entities
-from ...core import entities as core_entities
-from ...provider import entities as llm_entities
-from ...plugin import events
-from ...platform.types import message as platform_message
+from langbot_plugin.api.entities.builtin.provider import message as provider_message
+import langbot_plugin.api.entities.events as events
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 @stage.stage_class('PreProcessor')
@@ -26,7 +26,7 @@ class PreProcessor(stage.PipelineStage):
 
     async def process(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         stage_inst_name: str,
     ) -> entities.StageProcessResult:
         """Process"""
@@ -49,79 +49,72 @@ class PreProcessor(stage.PipelineStage):
             query.bot_uuid,
         )
 
-        conversation.use_llm_model = llm_model
-
-        # Set query
+        # 设置query
         query.session = session
         query.prompt = conversation.prompt.copy()
         query.messages = conversation.messages.copy()
 
-        query.use_llm_model = llm_model
+        query.use_llm_model_uuid = llm_model.model_entity.uuid
 
         if selected_runner == 'local-agent':
-            query.use_funcs = (
-                conversation.use_funcs if query.use_llm_model.model_entity.abilities.__contains__('func_call') else None
-            )
+            query.use_funcs = []
 
-        query.variables = {
+            if llm_model.model_entity.abilities.__contains__('func_call'):
+                query.use_funcs = await self.ap.tool_mgr.get_all_tools()
+
+        variables = {
             'session_id': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
             'conversation_id': conversation.uuid,
             'msg_create_time': (
                 int(query.message_event.time) if query.message_event.time else int(datetime.datetime.now().timestamp())
             ),
         }
+        query.variables.update(variables)
 
         # Check if this model supports vision, if not, remove all images
         # TODO this checking should be performed in runner, and in this stage, the image should be reserved
-        if selected_runner == 'local-agent' and not query.use_llm_model.model_entity.abilities.__contains__('vision'):
+        if selected_runner == 'local-agent' and not llm_model.model_entity.abilities.__contains__('vision'):
             for msg in query.messages:
                 if isinstance(msg.content, list):
                     for me in msg.content:
                         if me.type == 'image_url':
                             msg.content.remove(me)
 
-        content_list: list[llm_entities.ContentElement] = []
+        content_list: list[provider_message.ContentElement] = []
 
         plain_text = ''
         qoute_msg = query.pipeline_config['trigger'].get('misc', '').get('combine-quote-message')
 
-        # tidy the content_list
-        # combine all text content into one, and put it in the first position
         for me in query.message_chain:
             if isinstance(me, platform_message.Plain):
+                content_list.append(provider_message.ContentElement.from_text(me.text))
                 plain_text += me.text
             elif isinstance(me, platform_message.Image):
-                if selected_runner != 'local-agent' or query.use_llm_model.model_entity.abilities.__contains__(
-                    'vision'
-                ):
+                if selected_runner != 'local-agent' or llm_model.model_entity.abilities.__contains__('vision'):
                     if me.base64 is not None:
-                        content_list.append(llm_entities.ContentElement.from_image_base64(me.base64))
+                        content_list.append(provider_message.ContentElement.from_image_base64(me.base64))
             elif isinstance(me, platform_message.Quote) and qoute_msg:
                 for msg in me.origin:
                     if isinstance(msg, platform_message.Plain):
-                        content_list.append(llm_entities.ContentElement.from_text(msg.text))
+                        content_list.append(provider_message.ContentElement.from_text(msg.text))
                     elif isinstance(msg, platform_message.Image):
-                        if selected_runner != 'local-agent' or query.use_llm_model.model_entity.abilities.__contains__(
-                            'vision'
-                        ):
+                        if selected_runner != 'local-agent' or llm_model.model_entity.abilities.__contains__('vision'):
                             if msg.base64 is not None:
-                                content_list.append(llm_entities.ContentElement.from_image_base64(msg.base64))
-
-        content_list.insert(0, llm_entities.ContentElement.from_text(plain_text))
+                                content_list.append(provider_message.ContentElement.from_image_base64(msg.base64))
 
         query.variables['user_message_text'] = plain_text
 
-        query.user_message = llm_entities.Message(role='user', content=content_list)
-        # =========== Trigger event PromptPreProcessing
+        query.user_message = provider_message.Message(role='user', content=content_list)
+        # =========== 触发事件 PromptPreProcessing
 
-        event_ctx = await self.ap.plugin_mgr.emit_event(
-            event=events.PromptPreProcessing(
-                session_name=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
-                default_prompt=query.prompt.messages,
-                prompt=query.messages,
-                query=query,
-            )
+        event = events.PromptPreProcessing(
+            session_name=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+            default_prompt=query.prompt.messages,
+            prompt=query.messages,
+            query=query,
         )
+
+        event_ctx = await self.ap.plugin_connector.emit_event(event)
 
         query.prompt.messages = event_ctx.event.default_prompt
         query.messages = event_ctx.event.prompt

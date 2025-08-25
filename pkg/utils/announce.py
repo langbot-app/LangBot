@@ -6,7 +6,7 @@ import os
 import base64
 import logging
 
-import pydantic.v1 as pydantic
+import pydantic
 import requests
 
 from ..core import app

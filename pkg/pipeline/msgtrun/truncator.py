@@ -3,8 +3,8 @@ from __future__ import annotations
 import typing
 import abc
 
-from ...core import entities as core_entities, app
-
+from ...core import app
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 preregistered_truncators: list[typing.Type[Truncator]] = []
 
@@ -47,7 +47,7 @@ class Truncator(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def truncate(self, query: core_entities.Query) -> core_entities.Query:
+    async def truncate(self, query: pipeline_query.Query) -> pipeline_query.Query:
         """截断
 
         一般只需要操作query.messages，也可以扩展操作query.prompt, query.user_message。

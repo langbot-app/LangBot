@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { i18nObj } from '@/i18n/I18nProvider';
+import { extractI18nObject } from '@/i18n/I18nProvider';
 import { EmbeddingCardVO } from '@/app/home/models/component/embedding-card/EmbeddingCardVO';
 import EmbeddingCard from '@/app/home/models/component/embedding-card/EmbeddingCard';
 import EmbeddingForm from '@/app/home/models/component/embedding-form/EmbeddingForm';
@@ -45,7 +45,7 @@ export default function LLMConfigPage() {
     const requesterNameListResp = await httpClient.getProviderRequesters('llm');
     const requesterNameList = requesterNameListResp.requesters.map((item) => {
       return {
-        label: i18nObj(item.label),
+        label: extractI18nObject(item.label),
         value: item.name,
       };
     });
@@ -102,7 +102,7 @@ export default function LLMConfigPage() {
       await httpClient.getProviderRequesters('text-embedding');
     const requesterNameList = requesterNameListResp.requesters.map((item) => {
       return {
-        label: i18nObj(item.label),
+        label: extractI18nObject(item.label),
         value: item.name,
       };
     });

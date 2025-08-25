@@ -1,13 +1,13 @@
-import { I18nLabel } from '@/app/infra/entities/common';
+import { I18nObject } from '@/app/infra/entities/common';
 
 export interface IDynamicFormItemSchema {
   id: string;
   default: string | number | boolean | Array<unknown>;
-  label: I18nLabel;
+  label: I18nObject;
   name: string;
   required: boolean;
   type: DynamicFormItemType;
-  description?: I18nLabel;
+  description?: I18nObject;
   options?: IDynamicFormItemOption[];
 }
 
@@ -26,5 +26,5 @@ export enum DynamicFormItemType {
 
 export interface IDynamicFormItemOption {
   name: string;
-  label: I18nLabel;
+  label: I18nObject;
 }

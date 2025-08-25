@@ -4,9 +4,9 @@ import typing
 
 from . import chatcmpl
 from .. import errors, requester
-from ....core import entities as core_entities
-from ... import entities as llm_entities
-from ...tools import entities as tools_entities
+import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 
 class DeepseekChatCompletions(chatcmpl.OpenAIChatCompletions):
@@ -19,13 +19,13 @@ class DeepseekChatCompletions(chatcmpl.OpenAIChatCompletions):
 
     async def _closure(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         req_messages: list[dict],
         use_model: requester.RuntimeLLMModel,
-        use_funcs: list[tools_entities.LLMFunction] = None,
+        use_funcs: list[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> llm_entities.Message:
+    ) -> provider_message.Message:
         self.client.api_key = use_model.token_mgr.get_token()
 
         args = {}

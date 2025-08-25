@@ -44,9 +44,9 @@ class WebChatDebugRouterGroup(group.RouterGroup):
                         'Content-Type': 'text/event-stream',
                         'Transfer-Encoding': 'chunked',
                         'Cache-Control': 'no-cache',
-                        'Connection': 'keep-alive'
+                        'Connection': 'keep-alive',
                     }
-                    return quart.Response(stream_generator(generator), mimetype='text/event-stream',headers=headers)
+                    return quart.Response(stream_generator(generator), mimetype='text/event-stream', headers=headers)
 
                 else:  # non-stream
                     result = None

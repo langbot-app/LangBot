@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 
-from ...core import app, entities as core_entities
-from ...provider import entities as provider_entities
+from ...core import app
+from langbot_plugin.api.entities.builtin.provider import message as provider_message, prompt as provider_prompt
+import langbot_plugin.api.entities.builtin.provider.session as provider_session
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 class SessionManager:
@@ -11,7 +13,7 @@ class SessionManager:
 
     ap: app.Application
 
-    session_list: list[core_entities.Session]
+    session_list: list[provider_session.Session]
 
     def __init__(self, ap: app.Application):
         self.ap = ap
@@ -20,7 +22,7 @@ class SessionManager:
     async def initialize(self):
         pass
 
-    async def get_session(self, query: core_entities.Query) -> core_entities.Session:
+    async def get_session(self, query: pipeline_query.Query) -> provider_session.Session:
         """获取会话"""
         for session in self.session_list:
             if query.launcher_type == session.launcher_type and query.launcher_id == session.launcher_id:
@@ -28,22 +30,22 @@ class SessionManager:
 
         session_concurrency = self.ap.instance_config.data['concurrency']['session']
 
-        session = core_entities.Session(
+        session = provider_session.Session(
             launcher_type=query.launcher_type,
             launcher_id=query.launcher_id,
-            semaphore=asyncio.Semaphore(session_concurrency),
         )
+        session._semaphore = asyncio.Semaphore(session_concurrency)
         self.session_list.append(session)
         return session
 
     async def get_conversation(
         self,
-        query: core_entities.Query,
-        session: core_entities.Session,
+        query: pipeline_query.Query,
+        session: provider_session.Session,
         prompt_config: list[dict],
         pipeline_uuid: str,
         bot_uuid: str,
-    ) -> core_entities.Conversation:
+    ) -> provider_session.Conversation:
         """获取对话或创建对话"""
 
         if not session.conversations:
@@ -53,20 +55,17 @@ class SessionManager:
         prompt_messages = []
 
         for prompt_message in prompt_config:
-            prompt_messages.append(provider_entities.Message(**prompt_message))
+            prompt_messages.append(provider_message.Message(**prompt_message))
 
-        prompt = provider_entities.Prompt(
+        prompt = provider_prompt.Prompt(
             name='default',
             messages=prompt_messages,
         )
 
         if session.using_conversation is None or session.using_conversation.pipeline_uuid != pipeline_uuid:
-            conversation = core_entities.Conversation(
+            conversation = provider_session.Conversation(
                 prompt=prompt,
                 messages=[],
-                use_funcs=await self.ap.tool_mgr.get_all_functions(
-                    plugin_enabled=True,
-                ),
                 pipeline_uuid=pipeline_uuid,
                 bot_uuid=bot_uuid,
             )

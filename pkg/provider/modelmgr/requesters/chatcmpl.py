@@ -8,9 +8,9 @@ import openai.types.chat.chat_completion as chat_completion
 import httpx
 
 from .. import errors, requester
-from ....core import entities as core_entities
-from ... import entities as llm_entities
-from ...tools import entities as tools_entities
+import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 
 class OpenAIChatCompletions(requester.ProviderAPIRequester):
@@ -50,7 +50,7 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
         self,
         chat_completion: chat_completion.ChatCompletion,
         remove_think: bool = False,
-    ) -> llm_entities.Message:
+    ) -> provider_message.Message:
         chatcmpl_message = chat_completion.choices[0].message.model_dump()
 
         # 确保 role 字段存在且不为 None
@@ -71,7 +71,8 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
         if 'reasoning_content' in chatcmpl_message:
             del chatcmpl_message['reasoning_content']
 
-        message = llm_entities.Message(**chatcmpl_message)
+        message = provider_message.Message(**chatcmpl_message)
+
         return message
 
     async def _process_thinking_content(
@@ -122,13 +123,13 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
 
     async def _closure_stream(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         req_messages: list[dict],
         use_model: requester.RuntimeLLMModel,
-        use_funcs: list[tools_entities.LLMFunction] = None,
+        use_funcs: list[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> llm_entities.MessageChunk:
+    ) -> provider_message.MessageChunk:
         self.client.api_key = use_model.token_mgr.get_token()
 
         args = {}
@@ -155,12 +156,12 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
         args['stream'] = True
 
         # 流式处理状态
-        tool_calls_map: dict[str, llm_entities.ToolCall] = {}
+        # tool_calls_map: dict[str, provider_message.ToolCall] = {}
         chunk_idx = 0
         thinking_started = False
         thinking_ended = False
         role = 'assistant'  # 默认角色
-        tool_id = ""
+        tool_id = ''
         tool_name = ''
         # accumulated_reasoning = ''  # 仅用于判断何时结束思维链
 
@@ -223,8 +224,6 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
                     if tool_call['type'] is None:
                         tool_call['type'] = 'function'
 
-
-
             # 跳过空的第一个 chunk（只有 role 没有内容）
             if chunk_idx == 0 and not delta_content and not reasoning_content and not delta.get('tool_calls'):
                 chunk_idx += 1
@@ -240,18 +239,18 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
             # 移除 None 值
             chunk_data = {k: v for k, v in chunk_data.items() if v is not None}
 
-            yield llm_entities.MessageChunk(**chunk_data)
+            yield provider_message.MessageChunk(**chunk_data)
             chunk_idx += 1
 
     async def _closure(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         req_messages: list[dict],
         use_model: requester.RuntimeLLMModel,
-        use_funcs: list[tools_entities.LLMFunction] = None,
+        use_funcs: list[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> llm_entities.Message:
+    ) -> provider_message.Message:
         self.client.api_key = use_model.token_mgr.get_token()
 
         args = {}
@@ -287,13 +286,13 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
 
     async def invoke_llm(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         model: requester.RuntimeLLMModel,
-        messages: typing.List[llm_entities.Message],
-        funcs: typing.List[tools_entities.LLMFunction] = None,
+        messages: typing.List[provider_message.Message],
+        funcs: typing.List[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> llm_entities.Message:
+    ) -> provider_message.Message:
         req_messages = []  # req_messages 仅用于类内，外部同步由 query.messages 进行
         for m in messages:
             msg_dict = m.dict(exclude_none=True)
@@ -361,13 +360,13 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
 
     async def invoke_llm_stream(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         model: requester.RuntimeLLMModel,
-        messages: typing.List[llm_entities.Message],
-        funcs: typing.List[tools_entities.LLMFunction] = None,
+        messages: typing.List[provider_message.Message],
+        funcs: typing.List[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> llm_entities.MessageChunk:
+    ) -> provider_message.MessageChunk:
         req_messages = []  # req_messages 仅用于类内，外部同步由 query.messages 进行
         for m in messages:
             msg_dict = m.dict(exclude_none=True)

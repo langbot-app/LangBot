@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .. import stage, entities
-from ...core import entities as core_entities
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 @stage.stage_class('BanSessionCheckStage')
@@ -14,7 +14,7 @@ class BanSessionCheckStage(stage.PipelineStage):
     async def initialize(self, pipeline_config: dict):
         pass
 
-    async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:
+    async def process(self, query: pipeline_query.Query, stage_inst_name: str) -> entities.StageProcessResult:
         found = False
 
         mode = query.pipeline_config['trigger']['access-control']['mode']

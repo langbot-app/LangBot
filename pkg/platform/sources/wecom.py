@@ -6,18 +6,17 @@ import traceback
 import datetime
 
 from libs.wecom_api.api import WecomClient
-from pkg.platform.adapter import MessagePlatformAdapter
-from pkg.platform.types import events as platform_events, message as platform_message
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 from libs.wecom_api.wecomevent import WecomEvent
-from .. import adapter
-from ...core import app
-from ..types import entities as platform_entities
-from ...command.errors import ParamNotEnoughError
+from langbot_plugin.api.entities.builtin.command import errors as command_errors
 from ...utils import image
 from ..logger import EventLogger
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 
 
-class WecomMessageConverter(adapter.MessageConverter):
+class WecomMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
     async def yiri2target(message_chain: platform_message.MessageChain, bot: WecomClient):
         content_list = []
@@ -71,7 +70,7 @@ class WecomMessageConverter(adapter.MessageConverter):
         return chain
 
 
-class WecomEventConverter:
+class WecomEventConverter(abstract_platform_adapter.AbstractEventConverter):
     @staticmethod
     async def yiri2target(event: platform_events.Event, bot_account_id: int, bot: WecomClient) -> WecomEvent:
         # only for extracting user information
@@ -127,17 +126,15 @@ class WecomEventConverter:
             return platform_events.FriendMessage(sender=friend, message_chain=yiri_chain, time=event.timestamp)
 
 
-class WecomAdapter(adapter.MessagePlatformAdapter):
+class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot: WecomClient
-    ap: app.Application
     bot_account_id: str
     message_converter: WecomMessageConverter = WecomMessageConverter()
     event_converter: WecomEventConverter = WecomEventConverter()
     config: dict
 
-    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
+    def __init__(self, config: dict, logger: EventLogger):
         self.config = config
-        self.ap = ap
         self.logger = logger
 
         required_keys = [
@@ -149,7 +146,7 @@ class WecomAdapter(adapter.MessagePlatformAdapter):
         ]
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
-            raise ParamNotEnoughError('企业微信缺少相关配置项，请查看文档或联系管理员')
+            raise command_errors.ParamNotEnoughError('企业微信缺少相关配置项，请查看文档或联系管理员')
 
         self.bot = WecomClient(
             corpid=config['corpid'],
@@ -195,7 +192,9 @@ class WecomAdapter(adapter.MessagePlatformAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         async def on_message(event: WecomEvent):
             self.bot_account_id = event.receiver_id
@@ -227,6 +226,8 @@ class WecomAdapter(adapter.MessagePlatformAdapter):
     async def unregister_listener(
         self,
         event_type: type,
-        callback: typing.Callable[[platform_events.Event, MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         return super().unregister_listener(event_type, callback)

@@ -10,18 +10,16 @@ import typing
 import traceback
 import base64
 import aiohttp
+import pydantic
 
-from lark_oapi.api.im.v1 import *
-
-from .. import adapter
-from ...core import app
-from ..types import message as platform_message
-from ..types import events as platform_events
-from ..types import entities as platform_entities
-from ..logger import EventLogger
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
+import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 
 
-class TelegramMessageConverter(adapter.MessageConverter):
+class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
     async def yiri2target(message_chain: platform_message.MessageChain, bot: telegram.Bot) -> list[dict]:
         components = []
@@ -90,7 +88,7 @@ class TelegramMessageConverter(adapter.MessageConverter):
         return platform_message.MessageChain(message_components)
 
 
-class TelegramEventConverter(adapter.EventConverter):
+class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
     @staticmethod
     async def yiri2target(event: platform_events.MessageEvent, bot: telegram.Bot):
         return event.source_platform_object
@@ -132,17 +130,14 @@ class TelegramEventConverter(adapter.EventConverter):
             )
 
 
-class TelegramAdapter(adapter.MessagePlatformAdapter):
-    bot: telegram.Bot
-    application: telegram.ext.Application
-
-    bot_account_id: str
+class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
+    bot: telegram.Bot = pydantic.Field(exclude=True)
+    application: telegram.ext.Application = pydantic.Field(exclude=True)
 
     message_converter: TelegramMessageConverter = TelegramMessageConverter()
     event_converter: TelegramEventConverter = TelegramEventConverter()
 
     config: dict
-    ap: app.Application
 
     msg_stream_id: dict  # 流式消息id字典，key为流式消息id，value为首次消息源id，用于在流式消息时判断编辑那条消息
 
@@ -150,16 +145,10 @@ class TelegramAdapter(adapter.MessagePlatformAdapter):
 
     listeners: typing.Dict[
         typing.Type[platform_events.Event],
-        typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        typing.Callable[[platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None],
     ] = {}
 
-    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
-        self.config = config
-        self.ap = ap
-        self.logger = logger
-        self.msg_stream_id = {}
-        # self.seq = 1
-
+    def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger):
         async def telegram_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if update.message.from_user.is_bot:
                 return
@@ -171,10 +160,18 @@ class TelegramAdapter(adapter.MessagePlatformAdapter):
             except Exception:
                 await self.logger.error(f'Error in telegram callback: {traceback.format_exc()}')
 
-        self.application = ApplicationBuilder().token(self.config['token']).build()
-        self.bot = self.application.bot
-        self.application.add_handler(
-            MessageHandler(filters.TEXT | (filters.COMMAND) | filters.PHOTO, telegram_callback)
+        application = ApplicationBuilder().token(config['token']).build()
+        bot = application.bot
+        application.add_handler(MessageHandler(filters.TEXT | (filters.COMMAND) | filters.PHOTO, telegram_callback))
+        super().__init__(
+            config=config,
+            logger=logger,
+            msg_stream_id={},
+            seq=1,
+            bot=bot,
+            application=application,
+            bot_account_id='',
+            listeners={},
         )
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
@@ -278,14 +275,18 @@ class TelegramAdapter(adapter.MessagePlatformAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         self.listeners[event_type] = callback
 
     def unregister_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         self.listeners.pop(event_type)
 

@@ -3,9 +3,9 @@ from __future__ import annotations
 import abc
 import typing
 
-from ...core import app, entities as core_entities
+from ...core import app
 from . import entities
-
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 preregistered_filters: list[typing.Type[ContentFilter]] = []
 
@@ -60,8 +60,8 @@ class ContentFilter(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    async def process(self, query: core_entities.Query, message: str = None, image_url=None) -> entities.FilterResult:
-        """Process message
+    async def process(self, query: pipeline_query.Query, message: str = None, image_url=None) -> entities.FilterResult:
+        """处理消息
 
         It is divided into two stages, depending on the value of enable_stages.
         For content filters, you do not need to consider the stage of the message, you only need to check the message content.

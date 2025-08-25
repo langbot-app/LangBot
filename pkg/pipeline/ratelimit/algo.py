@@ -2,7 +2,8 @@ from __future__ import annotations
 import abc
 import typing
 
-from ...core import app, entities as core_entities
+from ...core import app
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 preregistered_algos: list[typing.Type[ReteLimitAlgo]] = []
@@ -33,7 +34,7 @@ class ReteLimitAlgo(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     async def require_access(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         launcher_type: str,
         launcher_id: typing.Union[int, str],
     ) -> bool:
@@ -53,7 +54,7 @@ class ReteLimitAlgo(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     async def release_access(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         launcher_type: str,
         launcher_id: typing.Union[int, str],
     ):

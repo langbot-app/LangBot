@@ -4,19 +4,19 @@ import asyncio
 import traceback
 
 import datetime
+import pydantic
 
 from libs.wecom_customer_service_api.api import WecomCSClient
-from pkg.platform.adapter import MessagePlatformAdapter
-from pkg.platform.types import events as platform_events, message as platform_message
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 from libs.wecom_customer_service_api.wecomcsevent import WecomCSEvent
-from pkg.core import app
-from .. import adapter
-from ..types import entities as platform_entities
-from ...command.errors import ParamNotEnoughError
-from ..logger import EventLogger
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+from langbot_plugin.api.entities.builtin.command import errors as command_errors
+import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 
 
-class WecomMessageConverter(adapter.MessageConverter):
+class WecomMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
     async def yiri2target(message_chain: platform_message.MessageChain, bot: WecomCSClient):
         content_list = []
@@ -69,7 +69,7 @@ class WecomMessageConverter(adapter.MessageConverter):
         return chain
 
 
-class WecomEventConverter:
+class WecomEventConverter(abstract_platform_adapter.AbstractEventConverter):
     @staticmethod
     async def yiri2target(event: platform_events.Event, bot_account_id: int, bot: WecomCSClient) -> WecomCSEvent:
         # only for extracting user information
@@ -117,19 +117,12 @@ class WecomEventConverter:
             )
 
 
-class WecomCSAdapter(adapter.MessagePlatformAdapter):
-    bot: WecomCSClient
-    ap: app.Application
-    bot_account_id: str
+class WecomCSAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
+    bot: WecomCSClient = pydantic.Field(exclude=True)
     message_converter: WecomMessageConverter = WecomMessageConverter()
     event_converter: WecomEventConverter = WecomEventConverter()
-    config: dict
 
-    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
-        self.config = config
-        self.ap = ap
-        self.logger = logger
-
+    def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger):
         required_keys = [
             'corpid',
             'secret',
@@ -138,14 +131,22 @@ class WecomCSAdapter(adapter.MessagePlatformAdapter):
         ]
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
-            raise ParamNotEnoughError('企业微信客服缺少相关配置项，请查看文档或联系管理员')
+            raise command_errors.ParamNotEnoughError('企业微信客服缺少相关配置项，请查看文档或联系管理员')
 
-        self.bot = WecomCSClient(
+        bot = WecomCSClient(
             corpid=config['corpid'],
             secret=config['secret'],
             token=config['token'],
             EncodingAESKey=config['EncodingAESKey'],
-            logger=self.logger,
+            logger=logger,
+        )
+
+        super().__init__(
+            config=config,
+            logger=logger,
+            bot_account_id='',
+            listeners={},
+            bot=bot,
         )
 
     async def reply_message(
@@ -172,7 +173,9 @@ class WecomCSAdapter(adapter.MessagePlatformAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         async def on_message(event: WecomCSEvent):
             self.bot_account_id = event.receiver_id
@@ -201,9 +204,14 @@ class WecomCSAdapter(adapter.MessagePlatformAdapter):
     async def kill(self) -> bool:
         return False
 
+    async def is_muted(self, group_id: int) -> bool:
+        return False
+
     async def unregister_listener(
         self,
         event_type: type,
-        callback: typing.Callable[[platform_events.Event, MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         return super().unregister_listener(event_type, callback)

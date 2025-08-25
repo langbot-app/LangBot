@@ -9,7 +9,7 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 import { Bot, Adapter } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { i18nObj } from '@/i18n/I18nProvider';
+import { extractI18nObject } from '@/i18n/I18nProvider';
 import BotDetailDialog from '@/app/home/bots/BotDetailDialog';
 
 export default function BotConfigPage() {
@@ -27,7 +27,7 @@ export default function BotConfigPage() {
     const adapterListResp = await httpClient.getAdapters();
     const adapterList = adapterListResp.adapters.map((adapter: Adapter) => {
       return {
-        label: i18nObj(adapter.label),
+        label: extractI18nObject(adapter.label),
         value: adapter.name,
       };
     });

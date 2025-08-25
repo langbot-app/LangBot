@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import typing
 
-import pydantic.v1 as pydantic
+import pydantic
 
 from . import requester
 from . import token

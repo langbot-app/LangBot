@@ -11,19 +11,19 @@ import threading
 import quart
 import aiohttp
 
-from .. import adapter
-from ...core import app
-from ..types import message as platform_message
-from ..types import events as platform_events
-from ..types import entities as platform_entities
-from ...utils import image
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
+from ....core import app
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
+from ....utils import image
 import xml.etree.ElementTree as ET
 from typing import Optional, Tuple
 from functools import partial
-from ..logger import EventLogger
+from ...logger import EventLogger
 
 
-class GewechatMessageConverter(adapter.MessageConverter):
+class GewechatMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     def __init__(self, config: dict):
         self.config = config
 
@@ -398,7 +398,7 @@ class GewechatMessageConverter(adapter.MessageConverter):
         return from_user_name.endswith('@chatroom')
 
 
-class GewechatEventConverter(adapter.EventConverter):
+class GewechatEventConverter(abstract_platform_adapter.AbstractEventConverter):
     def __init__(self, config: dict):
         self.config = config
         self.message_converter = GewechatMessageConverter(config)
@@ -458,7 +458,7 @@ class GewechatEventConverter(adapter.EventConverter):
             )
 
 
-class GeWeChatAdapter(adapter.MessagePlatformAdapter):
+class GeWeChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     name: str = 'gewechat'  # 定义适配器名称
 
     bot: gewechat_client.GewechatClient
@@ -475,7 +475,7 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
 
     listeners: typing.Dict[
         typing.Type[platform_events.Event],
-        typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        typing.Callable[[platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None],
     ] = {}
 
     def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
@@ -491,7 +491,7 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
         async def gewechat_callback():
             data = await quart.request.json
             # print(json.dumps(data, indent=4, ensure_ascii=False))
-            self.ap.logger.debug(f'Gewechat callback event: {data}')
+            await self.logger.debug(f'Gewechat callback event: {data}')
 
             if 'data' in data:
                 data['Data'] = data['data']
@@ -601,7 +601,7 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
             if handler := handler_map.get(msg['type']):
                 handler(msg)
             else:
-                self.ap.logger.warning(f'未处理的消息类型: {msg["type"]}')
+                await self.logger.warning(f'未处理的消息类型: {msg["type"]}')
                 continue
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
@@ -625,14 +625,18 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         self.listeners[event_type] = callback
 
     def unregister_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         pass
 
@@ -656,9 +660,7 @@ class GeWeChatAdapter(adapter.MessagePlatformAdapter):
 
             self.config['app_id'] = app_id
 
-            self.ap.logger.info(f'Gewechat 登录成功，app_id: {app_id}')
-
-            self.ap.platform_mgr.write_back_config('gewechat', self, self.config)
+            print(f'Gewechat 登录成功，app_id: {app_id}')
 
             # 获取 nickname
             profile = self.bot.get_profile(self.config['app_id'])

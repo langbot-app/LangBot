@@ -6,8 +6,9 @@ import re
 import dashscope
 
 from .. import runner
-from ...core import app, entities as core_entities
-from .. import entities as llm_entities
+from ...core import app
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 
 class DashscopeAPIError(Exception):
@@ -65,7 +66,7 @@ class DashScopeAPIRunner(runner.RequestRunner):
         # 使用 re.sub() 进行替换
         return pattern.sub(replacement, text)
 
-    async def _preprocess_user_message(self, query: core_entities.Query) -> tuple[str, list[str]]:
+    async def _preprocess_user_message(self, query: pipeline_query.Query) -> tuple[str, list[str]]:
         """预处理用户消息，提取纯文本，阿里云提供的上传文件方法过于复杂，暂不支持上传文件（包括图片）"""
         plain_text = ''
         image_ids = []
@@ -89,7 +90,9 @@ class DashScopeAPIRunner(runner.RequestRunner):
 
         return plain_text, image_ids
 
-    async def _agent_messages(self, query: core_entities.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
+    async def _agent_messages(
+        self, query: pipeline_query.Query
+    ) -> typing.AsyncGenerator[provider_message.Message, None]:
         """Dashscope 智能体对话请求"""
 
         # 局部变量
@@ -103,7 +106,7 @@ class DashScopeAPIRunner(runner.RequestRunner):
         think_end = False
 
         plain_text, image_ids = await self._preprocess_user_message(query)
-        has_thoughts = True # 获取思考过程
+        has_thoughts = True  # 获取思考过程
         remove_think = self.pipeline_config['output'].get('misc', '').get('remove-think')
         if remove_think:
             has_thoughts = False
@@ -141,13 +144,13 @@ class DashScopeAPIRunner(runner.RequestRunner):
                 if stream_think[0].get('thought'):
                     if not think_start:
                         think_start = True
-                        pending_content += f"<think>\n{stream_think[0].get('thought')}"
+                        pending_content += f'<think>\n{stream_think[0].get("thought")}'
                     else:
                         # 继续输出 reasoning_content
                         pending_content += stream_think[0].get('thought')
-                elif stream_think[0].get('thought') == "" and not think_end:
+                elif stream_think[0].get('thought') == '' and not think_end:
                     think_end = True
-                    pending_content += "\n</think>\n"
+                    pending_content += '\n</think>\n'
                 if stream_output.get('text') is not None:
                     pending_content += stream_output.get('text')
                 # 是否是流式最后一个chunk
@@ -166,7 +169,7 @@ class DashScopeAPIRunner(runner.RequestRunner):
                     pending_content = self._replace_references(pending_content, references_dict)
 
                 if idx_chunk % 8 == 0 or is_final:
-                    yield llm_entities.MessageChunk(
+                    yield provider_message.MessageChunk(
                         role='assistant',
                         content=pending_content,
                         is_final=is_final,
@@ -188,13 +191,13 @@ class DashScopeAPIRunner(runner.RequestRunner):
                 if stream_think[0].get('thought'):
                     if not think_start:
                         think_start = True
-                        pending_content += f"<think>\n{stream_think[0].get('thought')}"
+                        pending_content += f'<think>\n{stream_think[0].get("thought")}'
                     else:
                         # 继续输出 reasoning_content
                         pending_content += stream_think[0].get('thought')
-                elif stream_think[0].get('thought') == "" and not think_end:
+                elif stream_think[0].get('thought') == '' and not think_end:
                     think_end = True
-                    pending_content += "\n</think>\n"
+                    pending_content += '\n</think>\n'
                 if stream_output.get('text') is not None:
                     pending_content += stream_output.get('text')
 
@@ -213,12 +216,14 @@ class DashScopeAPIRunner(runner.RequestRunner):
                 # 将参考资料替换到文本中
                 pending_content = self._replace_references(pending_content, references_dict)
 
-            yield llm_entities.Message(
+            yield provider_message.Message(
                 role='assistant',
                 content=pending_content,
             )
 
-    async def _workflow_messages(self, query: core_entities.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
+    async def _workflow_messages(
+        self, query: pipeline_query.Query
+    ) -> typing.AsyncGenerator[provider_message.Message, None]:
         """Dashscope 工作流对话请求"""
 
         # 局部变量
@@ -242,7 +247,7 @@ class DashScopeAPIRunner(runner.RequestRunner):
             incremental_output=True,  # 增量输出，使用流式输出需要开启增量输出
             session_id=query.session.using_conversation.uuid,  # 会话ID用于，多轮对话
             biz_params=biz_params,  # 工作流应用的自定义输入参数传递
-            flow_stream_mode="message_format"  # 消息模式，输出/结束节点的流式结果
+            flow_stream_mode='message_format',  # 消息模式，输出/结束节点的流式结果
             # rag_options={                                     # 主要用于文件交互，暂不支持
             #     "session_file_ids": ["FILE_ID1"],             # FILE_ID1 替换为实际的临时文件ID,逗号隔开多个
             # }
@@ -267,7 +272,7 @@ class DashScopeAPIRunner(runner.RequestRunner):
                 # 获取流式传输的output
                 stream_output = chunk.get('output', {})
                 if stream_output.get('workflow_message') is not None:
-                    pending_content +=  stream_output.get('workflow_message').get('message').get('content')
+                    pending_content += stream_output.get('workflow_message').get('message').get('content')
                 # if stream_output.get('text') is not None:
                 #     pending_content += stream_output.get('text')
 
@@ -285,7 +290,7 @@ class DashScopeAPIRunner(runner.RequestRunner):
                     # 将参考资料替换到文本中
                     pending_content = self._replace_references(pending_content, references_dict)
                 if idx_chunk % 8 == 0 or is_final:
-                    yield llm_entities.MessageChunk(
+                    yield provider_message.MessageChunk(
                         role='assistant',
                         content=pending_content,
                         is_final=is_final,
@@ -325,23 +330,23 @@ class DashScopeAPIRunner(runner.RequestRunner):
                 # 将参考资料替换到文本中
                 pending_content = self._replace_references(pending_content, references_dict)
 
-            yield llm_entities.Message(
+            yield provider_message.Message(
                 role='assistant',
                 content=pending_content,
             )
 
-    async def run(self, query: core_entities.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
+    async def run(self, query: pipeline_query.Query) -> typing.AsyncGenerator[provider_message.Message, None]:
         """运行"""
         msg_seq = 0
         if self.app_type == 'agent':
             async for msg in self._agent_messages(query):
-                if isinstance(msg, llm_entities.MessageChunk):
+                if isinstance(msg, provider_message.MessageChunk):
                     msg_seq += 1
                     msg.msg_sequence = msg_seq
                 yield msg
         elif self.app_type == 'workflow':
             async for msg in self._workflow_messages(query):
-                if isinstance(msg, llm_entities.MessageChunk):
+                if isinstance(msg, provider_message.MessageChunk):
                     msg_seq += 1
                     msg.msg_sequence = msg_seq
                 yield msg

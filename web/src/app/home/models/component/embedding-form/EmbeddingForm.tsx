@@ -38,7 +38,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { i18nObj } from '@/i18n/I18nProvider';
+import { extractI18nObject } from '@/i18n/I18nProvider';
 
 const getExtraArgSchema = (t: (key: string) => string) =>
   z
@@ -184,7 +184,7 @@ export default function EmbeddingForm({
     setRequesterNameList(
       requesterNameList.requesters.map((item) => {
         return {
-          label: i18nObj(item.label),
+          label: extractI18nObject(item.label),
           value: item.name,
         };
       }),

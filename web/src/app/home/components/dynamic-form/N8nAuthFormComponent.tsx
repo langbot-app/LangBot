@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/form';
 import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
-import { i18nObj } from '@/i18n/I18nProvider';
+import { extractI18nObject } from '@/i18n/I18nProvider';
 
 /**
  * N8n认证表单组件
@@ -182,7 +182,7 @@ export default function N8nAuthFormComponent({
             render={({ field }) => (
               <FormItem>
                 <FormLabel>
-                  {i18nObj(config.label)}{' '}
+                  {extractI18nObject(config.label)}{' '}
                   {config.required && <span className="text-red-500">*</span>}
                 </FormLabel>
                 <FormControl>
@@ -190,7 +190,7 @@ export default function N8nAuthFormComponent({
                 </FormControl>
                 {config.description && (
                   <p className="text-sm text-muted-foreground">
-                    {i18nObj(config.description)}
+                    {extractI18nObject(config.description)}
                   </p>
                 )}
                 <FormMessage />

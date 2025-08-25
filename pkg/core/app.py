@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import asyncio
 import traceback
-import sys
 import os
 
 from ..platform import botmgr as im_mgr
@@ -12,7 +11,7 @@ from ..provider.modelmgr import modelmgr as llm_model_mgr
 from ..provider.tools import toolmgr as llm_tool_mgr
 from ..config import manager as config_mgr
 from ..command import cmdmgr
-from ..plugin import manager as plugin_mgr
+from ..plugin import connector as plugin_connector
 from ..pipeline import pool
 from ..pipeline import controller, pipelinemgr
 from ..utils import version as version_mgr, proxy as proxy_mgr, announce as announce_mgr
@@ -80,7 +79,7 @@ class Application:
 
     # =========================
 
-    plugin_mgr: plugin_mgr.PluginManager = None
+    plugin_connector: plugin_connector.PluginRuntimeConnector = None
 
     query_pool: pool.QueryPool = None
 
@@ -128,7 +127,7 @@ class Application:
 
     async def run(self):
         try:
-            await self.plugin_mgr.initialize_plugins()
+            await self.plugin_connector.initialize_plugins()
 
             # 后续可能会允许动态重启其他任务
             # 故为了防止程序在非 Ctrl-C 情况下退出，这里创建一个不会结束的协程
@@ -169,6 +168,9 @@ class Application:
             self.logger.error(f'Application runtime fatal exception: {e}')
             self.logger.debug(f'Traceback: {traceback.format_exc()}')
 
+    def dispose(self):
+        self.plugin_connector.dispose()
+
     async def print_web_access_info(self):
         """Print access webui tips"""
 
@@ -195,59 +197,3 @@ class Application:
 """.strip()
         for line in tips.split('\n'):
             self.logger.info(line)
-
-    async def reload(
-        self,
-        scope: core_entities.LifecycleControlScope,
-    ):
-        match scope:
-            case core_entities.LifecycleControlScope.PLATFORM.value:
-                self.logger.info('Hot reload scope=' + scope)
-                await self.platform_mgr.shutdown()
-
-                self.platform_mgr = im_mgr.PlatformManager(self)
-
-                await self.platform_mgr.initialize()
-
-                self.task_mgr.create_task(
-                    self.platform_mgr.run(),
-                    name='platform-manager',
-                    scopes=[
-                        core_entities.LifecycleControlScope.APPLICATION,
-                        core_entities.LifecycleControlScope.PLATFORM,
-                    ],
-                )
-            case core_entities.LifecycleControlScope.PLUGIN.value:
-                self.logger.info('Hot reload scope=' + scope)
-                await self.plugin_mgr.destroy_plugins()
-
-                # 删除 sys.module 中所有的 plugins/* 下的模块
-                for mod in list(sys.modules.keys()):
-                    if mod.startswith('plugins.'):
-                        del sys.modules[mod]
-
-                self.plugin_mgr = plugin_mgr.PluginManager(self)
-                await self.plugin_mgr.initialize()
-
-                await self.plugin_mgr.initialize_plugins()
-
-                await self.plugin_mgr.load_plugins()
-                await self.plugin_mgr.initialize_plugins()
-            case core_entities.LifecycleControlScope.PROVIDER.value:
-                self.logger.info('Hot reload scope=' + scope)
-
-                await self.tool_mgr.shutdown()
-
-                llm_model_mgr_inst = llm_model_mgr.ModelManager(self)
-                await llm_model_mgr_inst.initialize()
-                self.model_mgr = llm_model_mgr_inst
-
-                llm_session_mgr_inst = llm_session_mgr.SessionManager(self)
-                await llm_session_mgr_inst.initialize()
-                self.sess_mgr = llm_session_mgr_inst
-
-                llm_tool_mgr_inst = llm_tool_mgr.ToolManager(self)
-                await llm_tool_mgr_inst.initialize()
-                self.tool_mgr = llm_tool_mgr_inst
-            case _:
-                pass

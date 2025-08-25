@@ -6,10 +6,10 @@ from . import chatcmpl
 
 import uuid
 
-from .. import errors, requester
-from ....core import entities as core_entities
-from ... import entities as llm_entities
-from ...tools import entities as tools_entities
+from .. import requester
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 
 class GeminiChatCompletions(chatcmpl.OpenAIChatCompletions):
@@ -20,16 +20,15 @@ class GeminiChatCompletions(chatcmpl.OpenAIChatCompletions):
         'timeout': 120,
     }
 
-
     async def _closure_stream(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         req_messages: list[dict],
         use_model: requester.RuntimeLLMModel,
-        use_funcs: list[tools_entities.LLMFunction] = None,
+        use_funcs: list[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> llm_entities.MessageChunk:
+    ) -> provider_message.MessageChunk:
         self.client.api_key = use_model.token_mgr.get_token()
 
         args = {}
@@ -56,12 +55,12 @@ class GeminiChatCompletions(chatcmpl.OpenAIChatCompletions):
         args['stream'] = True
 
         # 流式处理状态
-        tool_calls_map: dict[str, llm_entities.ToolCall] = {}
+        # tool_calls_map: dict[str, provider_message.ToolCall] = {}
         chunk_idx = 0
         thinking_started = False
         thinking_ended = False
         role = 'assistant'  # 默认角色
-        tool_id = ""
+        tool_id = ''
         tool_name = ''
         # accumulated_reasoning = ''  # 仅用于判断何时结束思维链
 
@@ -117,14 +116,12 @@ class GeminiChatCompletions(chatcmpl.OpenAIChatCompletions):
                 for tool_call in delta['tool_calls']:
                     if tool_call['id'] == '' and tool_id == '':
                         tool_id = str(uuid.uuid4())
-                    if  tool_call['function']['name']:
+                    if tool_call['function']['name']:
                         tool_name = tool_call['function']['name']
                     tool_call['id'] = tool_id
                     tool_call['function']['name'] = tool_name
                     if tool_call['type'] is None:
                         tool_call['type'] = 'function'
-
-
 
             # 跳过空的第一个 chunk（只有 role 没有内容）
             if chunk_idx == 0 and not delta_content and not reasoning_content and not delta.get('tool_calls'):
@@ -141,5 +138,5 @@ class GeminiChatCompletions(chatcmpl.OpenAIChatCompletions):
             # 移除 None 值
             chunk_data = {k: v for k, v in chunk_data.items() if v is not None}
 
-            yield llm_entities.MessageChunk(**chunk_data)
+            yield provider_message.MessageChunk(**chunk_data)
             chunk_idx += 1

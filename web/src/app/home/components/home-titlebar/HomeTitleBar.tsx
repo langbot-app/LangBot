@@ -1,6 +1,6 @@
-import { i18nObj } from '@/i18n/I18nProvider';
+import { extractI18nObject } from '@/i18n/I18nProvider';
 import styles from './HomeTittleBar.module.css';
-import { I18nLabel } from '@/app/infra/entities/common';
+import { I18nObject } from '@/app/infra/entities/common';
 
 export default function HomeTitleBar({
   title,
@@ -9,7 +9,7 @@ export default function HomeTitleBar({
 }: {
   title: string;
   subtitle: string;
-  helpLink: I18nLabel;
+  helpLink: I18nObject;
 }) {
   return (
     <div className={`${styles.titleBarContainer}`}>
@@ -19,7 +19,7 @@ export default function HomeTitleBar({
         <span className={`${styles.helpLink}`}>
           <div
             onClick={() => {
-              window.open(i18nObj(helpLink), '_blank');
+              window.open(extractI18nObject(helpLink), '_blank');
             }}
             className="cursor-pointer"
           >
