@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: LINE
+  label:
+    en_US: LINE
+    zh_Hans: LINE
+  description:
+    en_US: LINE Adapter
+    zh_Hans: LINE适配器，请查看文档了解使用方式
+  icon: line.svg
+spec:
+  config:
+    - name: channel_access_token
+      label:
+        en_US: Channel access token
+        zh_Hans: 频道访问令牌
+      type: string
+      required: true
+      default: ""
+    - name: port
+      label:
+        en_US: Webhook Port
+        zh_Hans: Webhook端口
+      description:
+        en_US: Only valid when webhook mode is enabled, please fill in the webhook port
+        zh_Hans: 仅在启用 Webhook 模式时有效，请填写 Webhook 端口
+      type: integer
+      required: true
+      default: 2287
+    - name: channel_secret
+      label:
+        en_US: Channel secret
+        zh_Hans: 消息密钥
+      description:
+        en_US: Only valid when webhook mode is enabled, please fill in the encrypt key
+        zh_Hans: 仅在启用 Webhook 模式时有效，请填写加密密钥
+      type: string
+      required: true
+      default: ""
+execution:
+  python:
+    path: ./line.py
+    attr: LINEAdapter
