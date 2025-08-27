@@ -42,7 +42,7 @@ class Processor(stage.PipelineStage):
 
         async def generator():
             cmd_prefix = self.ap.instance_config.data['command']['prefix']
-            cmd_enable = self.ap.instance_config.data['command']['enable']
+            cmd_enable = self.ap.instance_config.data['command'].get('enable', True)
 
             if cmd_enable and any(message_text.startswith(prefix) for prefix in cmd_prefix):
                 handler_to_use = self.cmd_handler
