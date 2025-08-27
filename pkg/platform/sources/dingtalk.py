@@ -23,6 +23,9 @@ class DingTalkMessageConverter(adapter.MessageConverter):
                 at = True
             if type(msg) is platform_message.Plain:
                 content += msg.text
+            if type(msg) is platform_message.Forward:
+                for node in msg.node_list:
+                    content += (await DingTalkMessageConverter.yiri2target(node.message_chain))[0]
         return content, at
 
     @staticmethod
