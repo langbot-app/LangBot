@@ -27,7 +27,7 @@ class BanSessionCheckStage(stage.PipelineStage):
             found = True
         else:
             for sess in sess_list:
-                if sess == f'{query.launcher_type.value}_{query.launcher_id}' or sess == query.launcher_id:
+                if sess == f'{query.launcher_type.value}_{query.launcher_id}':
                     found = True
                     break
 
