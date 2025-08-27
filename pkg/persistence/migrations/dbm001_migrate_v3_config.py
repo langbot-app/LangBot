@@ -212,6 +212,7 @@ class DBMigrateV3Config(migration.DBMigration):
         self.ap.instance_config.data['api']['port'] = self.ap.system_cfg.data['http-api']['port']
         self.ap.instance_config.data['command'] = {
             'prefix': self.ap.command_cfg.data['command-prefix'],
+            'enable': self.ap.command_cfg.data['command-enable'],
             'privilege': self.ap.command_cfg.data['privilege'],
         }
         self.ap.instance_config.data['concurrency']['pipeline'] = self.ap.system_cfg.data['pipeline-concurrency']

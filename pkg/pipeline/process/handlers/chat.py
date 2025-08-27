@@ -43,7 +43,7 @@ class ChatMessageHandler(handler.MessageHandler):
                 query=query,
             )
         )
-
+        is_create_card = False  # 判断下是否需要创建流式卡片
         if event_ctx.is_prevented_default():
             if event_ctx.event.reply is not None:
                 mc = platform_message.MessageChain(event_ctx.event.reply)
@@ -72,14 +72,17 @@ class ChatMessageHandler(handler.MessageHandler):
                     raise ValueError(f'未找到请求运行器: {query.pipeline_config["ai"]["runner"]["runner"]}')
                 if is_stream:
                     resp_message_id = uuid.uuid4()
-                    await query.adapter.create_message_card(str(resp_message_id), query.message_event)
+
                     async for result in runner.run(query):
                         result.resp_message_id = str(resp_message_id)
                         if query.resp_messages:
                             query.resp_messages.pop()
                         if query.resp_message_chain:
                             query.resp_message_chain.pop()
-
+                        # 此时连接外部 AI 服务正常,创建卡片
+                        if not is_create_card:  # 只有不是第一次才创建卡片
+                            await query.adapter.create_message_card(str(resp_message_id), query.message_event)
+                            is_create_card = True
                         query.resp_messages.append(result)
                         self.ap.logger.info(f'对话({query.query_id})流式响应: {self.cut_str(result.readable_str())}')
 

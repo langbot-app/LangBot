@@ -45,17 +45,23 @@ class AnnouncementManager:
 
     async def fetch_all(self) -> list[Announcement]:
         """获取所有公告"""
-        resp = requests.get(
-            url='https://api.github.com/repos/langbot-app/LangBot/contents/res/announcement.json',
-            proxies=self.ap.proxy_mgr.get_forward_proxies(),
-            timeout=5,
-        )
-        obj_json = resp.json()
-        b64_content = obj_json['content']
-        # 解码
-        content = base64.b64decode(b64_content).decode('utf-8')
+        try:
+            resp = requests.get(
+                url='https://api.github.com/repos/langbot-app/LangBot/contents/res/announcement.json',
+                proxies=self.ap.proxy_mgr.get_forward_proxies(),
+                timeout=5,
+            )
+            resp.raise_for_status()  # 检查请求是否成功
+            obj_json = resp.json()
+            b64_content = obj_json['content']
+            # 解码
+            content = base64.b64decode(b64_content).decode('utf-8')
 
-        return [Announcement(**item) for item in json.loads(content)]
+            return [Announcement(**item) for item in json.loads(content)]
+        except (requests.RequestException, json.JSONDecodeError, KeyError) as e:
+            self.ap.logger.warning(f"获取公告失败: {e}")
+            pass
+        return []  # 请求失败时返回空列表
 
     async def fetch_saved(self) -> list[Announcement]:
         if not os.path.exists('data/labels/announcement_saved.json'):
