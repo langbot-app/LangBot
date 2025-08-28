@@ -8,7 +8,7 @@ metadata:
   description:
     en_US: LINE Adapter
     zh_Hans: LINE适配器，请查看文档了解使用方式
-  icon: lark.svg
+  icon: line.png
 spec:
   config:
     - name: channel_access_token
@@ -24,7 +24,7 @@ spec:
         zh_Hans: Webhook端口
       description:
         en_US: Only valid when webhook mode is enabled, please fill in the webhook port
-        zh_Hans: 仅在启用 Webhook 模式时有效，请填写 Webhook 端口
+        zh_Hans: 请填写 Webhook 端口
       type: integer
       required: true
       default: 2287
@@ -34,7 +34,7 @@ spec:
         zh_Hans: 消息密钥
       description:
         en_US: Only valid when webhook mode is enabled, please fill in the encrypt key
-        zh_Hans: 仅在启用 Webhook 模式时有效，请填写加密密钥
+        zh_Hans: 请填写加密密钥
       type: string
       required: true
       default: ""
