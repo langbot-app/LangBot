@@ -9,7 +9,7 @@ import {
 import { useRouter, usePathname } from 'next/navigation';
 import { sidebarConfigList } from '@/app/home/components/home-sidebar/sidbarConfigList';
 import langbotIcon from '@/app/assets/langbot-logo.webp';
-import { systemInfo } from '@/app/infra/http/HttpClient';
+import { systemInfo, spaceClient } from '@/app/infra/http/HttpClient';
 import { useTranslation } from 'react-i18next';
 import { Moon, Sun, Monitor } from 'lucide-react';
 import { useTheme } from 'next-themes';
@@ -44,6 +44,7 @@ export default function HomeSidebar({
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [passwordChangeOpen, setPasswordChangeOpen] = useState(false);
   const [languageSelectorOpen, setLanguageSelectorOpen] = useState(false);
+  const [starCount, setStarCount] = useState<number | null>(null);
 
   useEffect(() => {
     initSelect();
@@ -51,6 +52,16 @@ export default function HomeSidebar({
       localStorage.setItem('token', 'test-token');
       localStorage.setItem('userEmail', 'test@example.com');
     }
+
+    spaceClient
+      .get('/api/v1/dist/info/repo')
+      .then((response) => {
+        const data = response as { repo: { stargazers_count: number } };
+        setStarCount(data.repo.stargazers_count);
+      })
+      .catch((error) => {
+        console.error('Failed to fetch GitHub star count:', error);
+      });
     return () => console.log('sidebar.unmounted');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -150,6 +161,23 @@ export default function HomeSidebar({
       </div>
 
       <div className={`${styles.sidebarBottomContainer}`}>
+        <SidebarChild
+          onClick={() => {
+            window.open('https://github.com/langbot-app/LangBot', '_blank');
+          }}
+          isSelected={false}
+          icon={
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
+              <path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z" />
+            </svg>
+          }
+          name={`${t('common.githubStars')} ${starCount !== null ? `(${starCount.toLocaleString()})` : ''}`}
+        />
+
         <SidebarChild
           onClick={() => {
             // open docs.langbot.app
