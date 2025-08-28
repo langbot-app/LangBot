@@ -64,6 +64,7 @@ dependencies = [
     "qdrant-client (>=1.15.1,<2.0.0)",
     "langbot-plugin==0.1.1b7",
     "asyncpg>=0.30.0",
+    "line-bot-sdk>=3.19.0"
 ]
 keywords = [
     "bot",
