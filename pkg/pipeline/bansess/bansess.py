@@ -30,6 +30,10 @@ class BanSessionCheckStage(stage.PipelineStage):
                 if sess == f'{query.launcher_type.value}_{query.launcher_id}':
                     found = True
                     break
+                # 使用 *_id 来表示加白/拉黑所有类型的用户（群聊、私聊均可）
+                if sess.startswith('*_') and (sess[2:] == query.launcher_id or sess[2:] == query.sender_id):
+                    found = True
+                    break
 
         ctn = False
 
