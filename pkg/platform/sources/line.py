@@ -90,7 +90,6 @@ class LINEMessageConverter(adapter.MessageConverter):
         message,
     ) -> platform_message.MessageChain:
         lb_msg_list = []
-        print(f"22:{message.message}")
         msg_create_time = datetime.datetime.fromtimestamp(int(message.timestamp) / 1000)
 
         lb_msg_list.append(platform_message.Source(id=message.webhook_event_id, time=msg_create_time))
@@ -117,7 +116,6 @@ class LINEEventConverter(adapter.EventConverter):
     async def target2yiri(
         event,
     ) -> platform_events.Event:
-        print(f"target2yiri:{event}")
         message_chain = await LINEMessageConverter.target2yiri(event)
 
         if event.source.type== 'user':
@@ -197,19 +195,15 @@ class LINEAdapter(adapter.MessagePlatformAdapter):
             try:
                 signature = quart.request.headers.get('X-Line-Signature')
                 body = await quart.request.get_data(as_text=True)
-                print(body)
                 events = self.parser.parse(body, signature)
 
                 # print(body.events)
                 # self.logger.info("Request body: " + body)
 
                 try:
-                    print(1)
-                    print(type(events))
-                    print(events)
+
+                    # print(events)
                     lb_event = await self.event_converter.target2yiri(events[0])
-                    print(lb_event)
-                    print(type(lb_event))
                     if lb_event.__class__ in self.listeners:
                         await self.listeners[lb_event.__class__](lb_event, self)
                 except InvalidSignatureError:
