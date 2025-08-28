@@ -13,8 +13,6 @@ import datetime
 import hashlib
 from Crypto.Cipher import AES
 
-import quart
-
 
 from .. import adapter
 from ...core import app
@@ -96,11 +94,8 @@ class LINEMessageConverter(adapter.MessageConverter):
             pass
         elif isinstance(message.message, ImageMessageContent):
             message_content = MessagingApiBlob(bot_client).get_message_content(message.message.id)
-            print(message_content)
-
 
             base64_string = base64.b64encode(message_content).decode('utf-8')
-            print(base64_string)
 
             # 如果需要Data URI格式（用于直接嵌入HTML等）
             # 首先需要知道图片类型，LINE图片通常是JPEG
@@ -200,7 +195,7 @@ class LINEAdapter(adapter.MessagePlatformAdapter):
             try:
                 signature = quart.request.headers.get('X-Line-Signature')
                 body = await quart.request.get_data(as_text=True)
-                events = self.parser.parse(body, signature)
+                events = self.parser.parse(body, signature)  # 解密解析消息
 
                 # print(body.events)
                 # self.logger.info("Request body: " + body)
