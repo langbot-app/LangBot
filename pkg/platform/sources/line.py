@@ -1,11 +1,6 @@
 import typing
 import quart
-import asyncio
-import traceback
-import json
-import datetime
-import base64
-import re
+
 
 import traceback
 import typing
@@ -28,10 +23,7 @@ from ..types import events as platform_events
 from ..types import entities as platform_entities
 from ..logger import EventLogger
 
-import os
 
-os.environ['HTTP_PROXY'] = 'http://127.0.0.1:7890'
-os.environ['HTTPS_PROXY'] = 'http://127.0.0.1:7890'
 
 from linebot.v3 import (
     WebhookHandler
@@ -60,6 +52,7 @@ from linebot.v3.webhooks import (
 
 # from linebot import WebhookParser
 from linebot.v3.webhook import WebhookParser
+from linebot.v3.messaging import MessagingApiBlob
 
 
 
@@ -102,11 +95,14 @@ class LINEMessageConverter(adapter.MessageConverter):
         elif isinstance(message.message, VideoMessageContent):
             pass
         elif isinstance(message.message, ImageMessageContent):
-            message_content = bot_client.get_message_content(message.message.id)
+            message_content = MessagingApiBlob(bot_client).get_message_content(message.message.id)
+            print(message_content)
 
             # 将二进制内容转换为Base64字符串
             image_data = b''.join([chunk for chunk in message_content.iter_content()])
+            print(image_data)
             base64_string = base64.b64encode(image_data).decode('utf-8')
+            print(base64_string)
 
             # 如果需要Data URI格式（用于直接嵌入HTML等）
             # 首先需要知道图片类型，LINE图片通常是JPEG
@@ -214,7 +210,7 @@ class LINEAdapter(adapter.MessagePlatformAdapter):
                 try:
 
                     # print(events)
-                    lb_event = await self.event_converter.target2yiri(events[0], self.bot)
+                    lb_event = await self.event_converter.target2yiri(events[0], self.api_client)
                     if lb_event.__class__ in self.listeners:
                         await self.listeners[lb_event.__class__](lb_event, self)
                 except InvalidSignatureError:
