@@ -88,6 +88,7 @@ class LINEMessageConverter(adapter.MessageConverter):
     @staticmethod
     async def target2yiri(
         message,
+        bot_client
     ) -> platform_message.MessageChain:
         lb_msg_list = []
         msg_create_time = datetime.datetime.fromtimestamp(int(message.timestamp) / 1000)
@@ -101,7 +102,16 @@ class LINEMessageConverter(adapter.MessageConverter):
         elif isinstance(message.message, VideoMessageContent):
             pass
         elif isinstance(message.message, ImageMessageContent):
-            pass
+            message_content = bot_client.get_message_content(message.message.id)
+
+            # 将二进制内容转换为Base64字符串
+            image_data = b''.join([chunk for chunk in message_content.iter_content()])
+            base64_string = base64.b64encode(image_data).decode('utf-8')
+
+            # 如果需要Data URI格式（用于直接嵌入HTML等）
+            # 首先需要知道图片类型，LINE图片通常是JPEG
+            data_uri = f"data:image/jpeg;base64,{base64_string}"
+            lb_msg_list.append(platform_message.Image(base64 = data_uri))
         return platform_message.MessageChain(lb_msg_list)
 
 
@@ -115,8 +125,9 @@ class LINEEventConverter(adapter.EventConverter):
     @staticmethod
     async def target2yiri(
         event,
+        bot_client
     ) -> platform_events.Event:
-        message_chain = await LINEMessageConverter.target2yiri(event)
+        message_chain = await LINEMessageConverter.target2yiri(event, bot_client)
 
         if event.source.type== 'user':
             return platform_events.FriendMessage(
@@ -203,7 +214,7 @@ class LINEAdapter(adapter.MessagePlatformAdapter):
                 try:
 
                     # print(events)
-                    lb_event = await self.event_converter.target2yiri(events[0])
+                    lb_event = await self.event_converter.target2yiri(events[0], self.bot)
                     if lb_event.__class__ in self.listeners:
                         await self.listeners[lb_event.__class__](lb_event, self)
                 except InvalidSignatureError:
