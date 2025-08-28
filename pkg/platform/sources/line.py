@@ -19,8 +19,7 @@ import hashlib
 from Crypto.Cipher import AES
 
 import quart
-from lark_oapi.api.im.v1 import *
-from lark_oapi.api.cardkit.v1 import *
+
 
 from .. import adapter
 from ...core import app
@@ -28,6 +27,11 @@ from ..types import message as platform_message
 from ..types import events as platform_events
 from ..types import entities as platform_entities
 from ..logger import EventLogger
+
+import os
+
+os.environ['HTTP_PROXY'] = 'http://127.0.0.1:7890'
+os.environ['HTTPS_PROXY'] = 'http://127.0.0.1:7890'
 
 from linebot.v3 import (
     WebhookHandler
@@ -54,7 +58,8 @@ from linebot.v3.webhooks import (
     StickerMessageContent
 )
 
-from . import adapter
+# from linebot import WebhookParser
+from linebot.v3.webhook import WebhookParser
 
 
 
@@ -82,17 +87,16 @@ class LINEMessageConverter(adapter.MessageConverter):
 
     @staticmethod
     async def target2yiri(
-        message: MessageEvent,
-        api_client: ApiClient,
+        message,
     ) -> platform_message.MessageChain:
         lb_msg_list = []
-
+        print(f"22:{message.message}")
         msg_create_time = datetime.datetime.fromtimestamp(int(message.timestamp) / 1000)
 
         lb_msg_list.append(platform_message.Source(id=message.webhook_event_id, time=msg_create_time))
 
         if isinstance(message.message, TextMessageContent):
-            lb_msg_list.append(platform_message.Plain(text=message.message['text']))
+            lb_msg_list.append(platform_message.Plain(text=message.message.text))
         elif isinstance(message.message, AudioMessageContent):
             pass
         elif isinstance(message.message, VideoMessageContent):
@@ -111,9 +115,10 @@ class LINEEventConverter(adapter.EventConverter):
 
     @staticmethod
     async def target2yiri(
-        event: MessageEvent, api_client: ApiClient
+        event,
     ) -> platform_events.Event:
-        message_chain = await LINEMessageConverter.target2yiri(event.event.message, api_client)
+        print(f"target2yiri:{event}")
+        message_chain = await LINEMessageConverter.target2yiri(event)
 
         if event.source.type== 'user':
             return platform_events.FriendMessage(
@@ -152,8 +157,8 @@ class LINEAdapter(adapter.MessagePlatformAdapter):
     api_client: ApiClient
 
     bot_account_id: str  # 用于在流水线中识别at是否是本bot，直接以bot_name作为标识
-    message_converter: LINEMessageConverter = LINEMessageConverter()
-    event_converter: LINEEventConverter = LINEEventConverter()
+    message_converter: LINEMessageConverter
+    event_converter: LINEEventConverter
 
     listeners: typing.Dict[
         typing.Type[platform_events.Event],
@@ -178,8 +183,12 @@ class LINEAdapter(adapter.MessagePlatformAdapter):
         self.card_id_dict = {}
         self.seq = 1
 
+        self.event_converter = LINEEventConverter()
+        self.message_converter = LINEMessageConverter()
+
         self.configuration = Configuration(access_token=config['channel_access_token'])
-        self.webhook = WebhookHandler(config['channel_secret'])
+        self.line_webhook = WebhookHandler(config['channel_secret'])
+        self.parser = WebhookParser(config['channel_secret'])
         self.api_client = ApiClient(self.configuration)
         self.bot = MessagingApi(self.api_client)
 
@@ -188,12 +197,23 @@ class LINEAdapter(adapter.MessagePlatformAdapter):
             try:
                 signature = quart.request.headers.get('X-Line-Signature')
                 body = await quart.request.get_data(as_text=True)
-                self.logger.info("Request body: " + body)
+                print(body)
+                events = self.parser.parse(body, signature)
+
+                # print(body.events)
+                # self.logger.info("Request body: " + body)
 
                 try:
-                    self.webhook.handle(body, signature)
+                    print(1)
+                    print(type(events))
+                    print(events)
+                    lb_event = await self.event_converter.target2yiri(events[0])
+                    print(lb_event)
+                    print(type(lb_event))
+                    if lb_event.__class__ in self.listeners:
+                        await self.listeners[lb_event.__class__](lb_event, self)
                 except InvalidSignatureError:
-                    self.logger.info("Invalid signature. Please check your channel access token/channel secret.")
+                    self.logger.info(f"Invalid signature. Please check your channel access token/channel secret.{traceback.format_exc()}")
                     return quart.Response('Invalid signature', status=400)
 
 
@@ -202,19 +222,7 @@ class LINEAdapter(adapter.MessagePlatformAdapter):
                 await self.logger.error(f'Error in LINE callback: {traceback.format_exc()}')
                 return {'code': 500, 'message': 'error'}
 
-        @self.webhook.add(MessageEvent)
-        async def handle_message(event):
-            # 不限定类型，所有event都进on_message
-            asyncio.create_task(self.on_message(event))
 
-        async def on_message(self, event: MessageEvent):
-            try:
-                print(event)
-                lb_event = await self.event_converter.target2yiri(event, self.api_client)
-                if type(lb_event) in self.listeners:
-                    await self.listeners[type(lb_event)](lb_event, self)
-            except Exception:
-                await self.logger.error(f'Error in LINE message: {traceback.format_exc()}')
     
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
