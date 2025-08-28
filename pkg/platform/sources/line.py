@@ -98,10 +98,8 @@ class LINEMessageConverter(adapter.MessageConverter):
             message_content = MessagingApiBlob(bot_client).get_message_content(message.message.id)
             print(message_content)
 
-            # 将二进制内容转换为Base64字符串
-            image_data = b''.join([chunk for chunk in message_content.iter_content()])
-            print(image_data)
-            base64_string = base64.b64encode(image_data).decode('utf-8')
+
+            base64_string = base64.b64encode(message_content).decode('utf-8')
             print(base64_string)
 
             # 如果需要Data URI格式（用于直接嵌入HTML等）
