@@ -8,7 +8,7 @@ metadata:
   description:
     en_US: LINE Adapter
     zh_Hans: LINE适配器，请查看文档了解使用方式
-  icon: line.svg
+  icon: lark.svg
 spec:
   config:
     - name: channel_access_token
