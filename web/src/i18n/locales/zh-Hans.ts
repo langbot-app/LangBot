@@ -57,7 +57,6 @@ const zhHans = {
     passwordsDoNotMatch: '两次输入的密码不一致',
     changePasswordSuccess: '密码修改成功',
     changePasswordFailed: '密码修改失败，请检查当前密码是否正确',
-    githubStars: 'GitHub 星标',
   },
   notFound: {
     title: '页面不存在',
