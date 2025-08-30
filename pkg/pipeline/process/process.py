@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from ...core import entities as core_entities
 from . import handler
 from .handlers import chat, command
 from .. import entities
 from .. import stage
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 @stage.stage_class('MessageProcessor')
@@ -30,7 +30,7 @@ class Processor(stage.PipelineStage):
 
     async def process(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         stage_inst_name: str,
     ) -> entities.StageProcessResult:
         """Process"""
@@ -42,12 +42,14 @@ class Processor(stage.PipelineStage):
 
         async def generator():
             cmd_prefix = self.ap.instance_config.data['command']['prefix']
+            cmd_enable = self.ap.instance_config.data['command'].get('enable', True)
 
-            if any(message_text.startswith(prefix) for prefix in cmd_prefix):
-                async for result in self.cmd_handler.handle(query):
-                    yield result
+            if cmd_enable and any(message_text.startswith(prefix) for prefix in cmd_prefix):
+                handler_to_use = self.cmd_handler
             else:
-                async for result in self.chat_handler.handle(query):
-                    yield result
+                handler_to_use = self.chat_handler
+
+            async for result in handler_to_use.handle(query):
+                yield result
 
         return generator()

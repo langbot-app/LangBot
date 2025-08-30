@@ -4,19 +4,18 @@ import asyncio
 import traceback
 
 import datetime
-from pkg.platform.adapter import MessagePlatformAdapter
-from pkg.platform.types import events as platform_events, message as platform_message
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 from libs.official_account_api.oaevent import OAEvent
 from libs.official_account_api.api import OAClient
 from libs.official_account_api.api import OAClientForLongerResponse
-from .. import adapter
-from ...core import app
-from ..types import entities as platform_entities
-from ...command.errors import ParamNotEnoughError
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+from langbot_plugin.api.entities.builtin.command import errors as command_errors
 from ..logger import EventLogger
 
 
-class OAMessageConverter(adapter.MessageConverter):
+class OAMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
     async def yiri2target(message_chain: platform_message.MessageChain):
         for msg in message_chain:
@@ -34,7 +33,7 @@ class OAMessageConverter(adapter.MessageConverter):
         return chain
 
 
-class OAEventConverter(adapter.EventConverter):
+class OAEventConverter(abstract_platform_adapter.AbstractEventConverter):
     @staticmethod
     async def target2yiri(event: OAEvent):
         if event.type == 'text':
@@ -56,17 +55,15 @@ class OAEventConverter(adapter.EventConverter):
             return None
 
 
-class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
+class OfficialAccountAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot: OAClient | OAClientForLongerResponse
-    ap: app.Application
     bot_account_id: str
     message_converter: OAMessageConverter = OAMessageConverter()
     event_converter: OAEventConverter = OAEventConverter()
     config: dict
 
-    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
+    def __init__(self, config: dict, logger: EventLogger):
         self.config = config
-        self.ap = ap
         self.logger = logger
 
         required_keys = [
@@ -78,7 +75,7 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
         ]
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
-            raise ParamNotEnoughError('微信公众号缺少相关配置项，请查看文档或联系管理员')
+            raise command_errors.ParamNotEnoughError('微信公众号缺少相关配置项，请查看文档或联系管理员')
 
         if self.config['Mode'] == 'drop':
             self.bot = OAClient(
@@ -119,7 +116,9 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
     def register_listener(
         self,
         event_type: type,
-        callback: typing.Callable[[platform_events.Event, MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         async def on_message(event: OAEvent):
             self.bot_account_id = event.receiver_id
@@ -150,6 +149,8 @@ class OfficialAccountAdapter(adapter.MessagePlatformAdapter):
     async def unregister_listener(
         self,
         event_type: type,
-        callback: typing.Callable[[platform_events.Event, MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         return super().unregister_listener(event_type, callback)

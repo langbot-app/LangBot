@@ -1,5 +1,5 @@
 import styles from './HomeSidebar.module.css';
-import { I18nLabel } from '@/app/infra/entities/common';
+import { I18nObject } from '@/app/infra/entities/common';
 
 export interface ISidebarChildVO {
   id: string;
@@ -7,7 +7,7 @@ export interface ISidebarChildVO {
   name: string;
   route: string;
   description: string;
-  helpLink: I18nLabel;
+  helpLink: I18nObject;
 }
 
 export class SidebarChildVO {
@@ -16,7 +16,7 @@ export class SidebarChildVO {
   name: string;
   route: string;
   description: string;
-  helpLink: I18nLabel;
+  helpLink: I18nObject;
 
   constructor(props: ISidebarChildVO) {
     this.id = props.id;

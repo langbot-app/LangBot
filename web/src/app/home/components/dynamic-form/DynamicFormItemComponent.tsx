@@ -25,7 +25,7 @@ import {
   HoverCardTrigger,
 } from '@/components/ui/hover-card';
 import { useTranslation } from 'react-i18next';
-import { i18nObj } from '@/i18n/I18nProvider';
+import { extractI18nObject } from '@/i18n/I18nProvider';
 import { Textarea } from '@/components/ui/textarea';
 
 export default function DynamicFormItemComponent({
@@ -140,7 +140,7 @@ export default function DynamicFormItemComponent({
             <SelectGroup>
               {config.options?.map((option) => (
                 <SelectItem key={option.name} value={option.name}>
-                  {i18nObj(option.label)}
+                  {extractI18nObject(option.label)}
                 </SelectItem>
               ))}
             </SelectGroup>

@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.1.0"
+version = "4.3.0.beta4"
 description = "高稳定、支持扩展、多模态 - 大模型原生即时通信机器人平台"
 readme = "README.md"
 requires-python = ">=3.10.1"
@@ -50,6 +50,7 @@ dependencies = [
     "ruff>=0.11.9",
     "pre-commit>=4.2.0",
     "uv>=0.7.11",
+    "mypy>=1.16.0",
     "PyPDF2>=3.0.1",
     "python-docx>=1.1.0",
     "pandas>=2.2.2",
@@ -60,6 +61,7 @@ dependencies = [
     "html2text>=2024.2.26",
     "langchain>=0.2.0",
     "chromadb>=0.4.24",
+    "langbot-plugin==0.1.1b6",
 ]
 keywords = [
     "bot",

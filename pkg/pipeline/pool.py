@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 import typing
 
-from ..core import entities
-from ..platform import adapter as msadapter
-from ..platform.types import message as platform_message
-from ..platform.types import events as platform_events
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.provider.session as provider_session
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 
 
 class QueryPool:
@@ -16,7 +17,10 @@ class QueryPool:
 
     pool_lock: asyncio.Lock
 
-    queries: list[entities.Query]
+    queries: list[pipeline_query.Query]
+
+    cached_queries: dict[int, pipeline_query.Query]
+    """Cached queries, used for plugin backward api call, will be removed after the query completely processed"""
 
     condition: asyncio.Condition
 
@@ -24,34 +28,38 @@ class QueryPool:
         self.query_id_counter = 0
         self.pool_lock = asyncio.Lock()
         self.queries = []
+        self.cached_queries = {}
         self.condition = asyncio.Condition(self.pool_lock)
 
     async def add_query(
         self,
         bot_uuid: str,
-        launcher_type: entities.LauncherTypes,
+        launcher_type: provider_session.LauncherTypes,
         launcher_id: typing.Union[int, str],
         sender_id: typing.Union[int, str],
         message_event: platform_events.MessageEvent,
         message_chain: platform_message.MessageChain,
-        adapter: msadapter.MessagePlatformAdapter,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         pipeline_uuid: typing.Optional[str] = None,
-    ) -> entities.Query:
+    ) -> pipeline_query.Query:
         async with self.condition:
-            query = entities.Query(
+            query_id = self.query_id_counter
+            query = pipeline_query.Query(
                 bot_uuid=bot_uuid,
-                query_id=self.query_id_counter,
+                query_id=query_id,
                 launcher_type=launcher_type,
                 launcher_id=launcher_id,
                 sender_id=sender_id,
                 message_event=message_event,
                 message_chain=message_chain,
+                variables={},
                 resp_messages=[],
                 resp_message_chain=[],
                 adapter=adapter,
                 pipeline_uuid=pipeline_uuid,
             )
             self.queries.append(query)
+            self.cached_queries[query_id] = query
             self.query_id_counter += 1
             self.condition.notify_all()
 

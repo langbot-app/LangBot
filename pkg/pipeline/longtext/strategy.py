@@ -4,8 +4,9 @@ import typing
 
 
 from ...core import app
-from ...core import entities as core_entities
-from ...platform.types import message as platform_message
+
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 preregistered_strategies: list[typing.Type[LongTextStrategy]] = []
@@ -49,8 +50,8 @@ class LongTextStrategy(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    async def process(self, message: str, query: core_entities.Query) -> list[platform_message.MessageComponent]:
-        """Process long text
+    async def process(self, message: str, query: pipeline_query.Query) -> list[platform_message.MessageComponent]:
+        """处理长文本
 
         If the text length exceeds the threshold, this method will be called.
 

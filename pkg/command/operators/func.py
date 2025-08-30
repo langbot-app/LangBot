@@ -1,19 +1,20 @@
 from __future__ import annotations
 from typing import AsyncGenerator
 
-from .. import operator, entities
+from .. import operator
+from langbot_plugin.api.entities.builtin.command import context as command_context
 
 
 @operator.operator_class(name='func', help='查看所有已注册的内容函数', usage='!func')
 class FuncOperator(operator.CommandOperator):
-    async def execute(self, context: entities.ExecuteContext) -> AsyncGenerator[entities.CommandReturn, None]:
+    async def execute(
+        self, context: command_context.ExecuteContext
+    ) -> AsyncGenerator[command_context.CommandReturn, None]:
         reply_str = '当前已启用的内容函数: \n\n'
 
         index = 1
 
-        all_functions = await self.ap.tool_mgr.get_all_functions(
-            plugin_enabled=True,
-        )
+        all_functions = await self.ap.tool_mgr.get_all_tools()
 
         for func in all_functions:
             reply_str += '{}. {}:\n{}\n\n'.format(
@@ -23,4 +24,4 @@ class FuncOperator(operator.CommandOperator):
             )
             index += 1
 
-        yield entities.CommandReturn(text=reply_str)
+        yield command_context.CommandReturn(text=reply_str)

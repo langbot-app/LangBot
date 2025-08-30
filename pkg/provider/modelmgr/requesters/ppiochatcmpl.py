@@ -4,12 +4,12 @@ import openai
 import typing
 
 from . import chatcmpl
-import openai.types.chat.chat_completion as chat_completion
 from .. import requester
-from ....core import entities as core_entities
-from ... import entities as llm_entities
-from ...tools import entities as tools_entities
+import openai.types.chat.chat_completion as chat_completion
 import re
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 
 class PPIOChatCompletions(chatcmpl.OpenAIChatCompletions):
@@ -28,7 +28,7 @@ class PPIOChatCompletions(chatcmpl.OpenAIChatCompletions):
         self,
         chat_completion: chat_completion.ChatCompletion,
         remove_think: bool,
-    ) -> llm_entities.Message:
+    ) -> provider_message.Message:
         chatcmpl_message = chat_completion.choices[0].message.model_dump()
         # print(chatcmpl_message.keys(), chatcmpl_message.values())
 
@@ -39,23 +39,23 @@ class PPIOChatCompletions(chatcmpl.OpenAIChatCompletions):
         reasoning_content = chatcmpl_message['reasoning_content'] if 'reasoning_content' in chatcmpl_message else None
 
         # deepseek的reasoner模型
-        chatcmpl_message["content"] = await self._process_thinking_content(
-            chatcmpl_message['content'],reasoning_content,remove_think)
+        chatcmpl_message['content'] = await self._process_thinking_content(
+            chatcmpl_message['content'], reasoning_content, remove_think
+        )
 
         # 移除 reasoning_content 字段，避免传递给 Message
         if 'reasoning_content' in chatcmpl_message:
             del chatcmpl_message['reasoning_content']
 
-
-        message = llm_entities.Message(**chatcmpl_message)
+        message = provider_message.Message(**chatcmpl_message)
 
         return message
 
     async def _process_thinking_content(
-            self,
-            content: str,
-            reasoning_content: str = None,
-            remove_think: bool = False,
+        self,
+        content: str,
+        reasoning_content: str = None,
+        remove_think: bool = False,
     ) -> tuple[str, str]:
         """处理思维链内容
 
@@ -68,21 +68,17 @@ class PPIOChatCompletions(chatcmpl.OpenAIChatCompletions):
             处理后的内容
         """
         if remove_think:
-            content = re.sub(
-                r'<think>.*?</think>', '', content, flags=re.DOTALL
-            )
+            content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL)
         else:
             if reasoning_content is not None:
-                content = (
-                    '<think>\n' + reasoning_content + '\n</think>\n' + content
-                )
+                content = '<think>\n' + reasoning_content + '\n</think>\n' + content
         return content
 
     async def _make_msg_chunk(
-            self,
-            delta: dict[str, typing.Any],
-            idx: int,
-    ) -> llm_entities.MessageChunk:
+        self,
+        delta: dict[str, typing.Any],
+        idx: int,
+    ) -> provider_message.MessageChunk:
         # 处理流式chunk和完整响应的差异
         # print(chat_completion.choices[0])
 
@@ -100,19 +96,19 @@ class PPIOChatCompletions(chatcmpl.OpenAIChatCompletions):
         if reasoning_content is not None:
             delta['content'] += reasoning_content
 
-        message = llm_entities.MessageChunk(**delta)
+        message = provider_message.MessageChunk(**delta)
 
         return message
 
     async def _closure_stream(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         req_messages: list[dict],
         use_model: requester.RuntimeLLMModel,
-        use_funcs: list[tools_entities.LLMFunction] = None,
+        use_funcs: list[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> llm_entities.Message | typing.AsyncGenerator[llm_entities.MessageChunk, None]:
+    ) -> provider_message.Message | typing.AsyncGenerator[provider_message.MessageChunk, None]:
         self.client.api_key = use_model.token_mgr.get_token()
 
         args = {}
@@ -139,7 +135,7 @@ class PPIOChatCompletions(chatcmpl.OpenAIChatCompletions):
         args['messages'] = messages
         args['stream'] = True
 
-        tool_calls_map: dict[str, llm_entities.ToolCall] = {}
+        # tool_calls_map: dict[str, provider_message.ToolCall] = {}
         chunk_idx = 0
         thinking_started = False
         thinking_ended = False
@@ -176,8 +172,7 @@ class PPIOChatCompletions(chatcmpl.OpenAIChatCompletions):
                     elif thinking_started and not thinking_ended:
                         continue
 
-
-            delta_tool_calls = None
+            # delta_tool_calls = None
             if delta.get('tool_calls'):
                 for tool_call in delta['tool_calls']:
                     if tool_call['id'] and tool_call['function']['name']:
@@ -194,7 +189,7 @@ class PPIOChatCompletions(chatcmpl.OpenAIChatCompletions):
                         tool_call['type'] = 'function'
 
             # 跳过空的第一个 chunk（只有 role 没有内容）
-            if chunk_idx == 0 and not delta_content  and not delta.get('tool_calls'):
+            if chunk_idx == 0 and not delta_content and not delta.get('tool_calls'):
                 chunk_idx += 1
                 continue
 
@@ -209,5 +204,5 @@ class PPIOChatCompletions(chatcmpl.OpenAIChatCompletions):
             # 移除 None 值
             chunk_data = {k: v for k, v in chunk_data.items() if v is not None}
 
-            yield llm_entities.MessageChunk(**chunk_data)
+            yield provider_message.MessageChunk(**chunk_data)
             chunk_idx += 1

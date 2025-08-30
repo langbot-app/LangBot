@@ -4,8 +4,7 @@ import aiohttp
 
 from .. import entities
 from .. import filter as filter_model
-from ....core import entities as core_entities
-
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 BAIDU_EXAMINE_URL = 'https://aip.baidubce.com/rest/2.0/solution/v1/text_censor/v2/user_defined?access_token={}'
 BAIDU_EXAMINE_TOKEN_URL = 'https://aip.baidubce.com/oauth/2.0/token'
@@ -27,7 +26,7 @@ class BaiduCloudExamine(filter_model.ContentFilter):
             ) as resp:
                 return (await resp.json())['access_token']
 
-    async def process(self, query: core_entities.Query, message: str) -> entities.FilterResult:
+    async def process(self, query: pipeline_query.Query, message: str) -> entities.FilterResult:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 BAIDU_EXAMINE_URL.format(await self._get_token()),

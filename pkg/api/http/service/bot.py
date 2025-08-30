@@ -17,16 +17,20 @@ class BotService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
-    async def get_bots(self) -> list[dict]:
-        """Get all bots"""
+    async def get_bots(self, include_secret: bool = True) -> list[dict]:
+        """获取所有机器人"""
         result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_bot.Bot))
 
         bots = result.all()
 
-        return [self.ap.persistence_mgr.serialize_model(persistence_bot.Bot, bot) for bot in bots]
+        masked_columns = []
+        if not include_secret:
+            masked_columns = ['adapter_config']
 
-    async def get_bot(self, bot_uuid: str) -> dict | None:
-        """Get bot"""
+        return [self.ap.persistence_mgr.serialize_model(persistence_bot.Bot, bot, masked_columns) for bot in bots]
+
+    async def get_bot(self, bot_uuid: str, include_secret: bool = True) -> dict | None:
+        """获取机器人"""
         result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.select(persistence_bot.Bot).where(persistence_bot.Bot.uuid == bot_uuid)
         )
@@ -36,7 +40,27 @@ class BotService:
         if bot is None:
             return None
 
-        return self.ap.persistence_mgr.serialize_model(persistence_bot.Bot, bot)
+        masked_columns = []
+        if not include_secret:
+            masked_columns = ['adapter_config']
+
+        return self.ap.persistence_mgr.serialize_model(persistence_bot.Bot, bot, masked_columns)
+
+    async def get_runtime_bot_info(self, bot_uuid: str, include_secret: bool = True) -> dict:
+        """获取机器人运行时信息"""
+        persistence_bot = await self.get_bot(bot_uuid, include_secret)
+        if persistence_bot is None:
+            raise Exception('Bot not found')
+
+        adapter_runtime_values = {}
+
+        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
+        if runtime_bot is not None:
+            adapter_runtime_values['bot_account_id'] = runtime_bot.adapter.bot_account_id
+
+        persistence_bot['adapter_runtime_values'] = adapter_runtime_values
+
+        return persistence_bot
 
     async def create_bot(self, bot_data: dict) -> str:
         """Create bot"""

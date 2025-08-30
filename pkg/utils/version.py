@@ -28,15 +28,19 @@ class VersionManager:
 
     async def get_release_list(self) -> list:
         """获取发行列表"""
-        rls_list_resp = requests.get(
-            url='https://api.github.com/repos/langbot-app/LangBot/releases',
-            proxies=self.ap.proxy_mgr.get_forward_proxies(),
-            timeout=5,
-        )
-
-        rls_list = rls_list_resp.json()
-
-        return rls_list
+        try:
+            rls_list_resp = requests.get(
+                url='https://api.github.com/repos/langbot-app/LangBot/releases',
+                proxies=self.ap.proxy_mgr.get_forward_proxies(),
+                timeout=5,
+            )
+            rls_list_resp.raise_for_status()  # 检查请求是否成功
+            rls_list = rls_list_resp.json()
+            return rls_list
+        except Exception as e:
+            self.ap.logger.warning(f"获取发行列表失败: {e}")
+            pass
+        return []
 
     async def update_all(self):
         """检查更新并下载源码"""

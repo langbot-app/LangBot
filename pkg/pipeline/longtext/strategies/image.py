@@ -8,10 +8,10 @@ import re
 from PIL import Image, ImageDraw, ImageFont
 
 import functools
-from ....platform.types import message as platform_message
 
 from .. import strategy as strategy_model
-from ....core import entities as core_entities
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
 
 @strategy_model.strategy_class('image')
@@ -27,7 +27,7 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
             encoding='utf-8',
         )
 
-    async def process(self, message: str, query: core_entities.Query) -> list[platform_message.MessageComponent]:
+    async def process(self, message: str, query: pipeline_query.Query) -> list[platform_message.MessageComponent]:
         img_path = self.text_to_image(
             text_str=message,
             save_as='temp/{}.png'.format(int(time.time())),
@@ -131,7 +131,7 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
         text_str: str,
         save_as='temp.png',
         width=800,
-        query: core_entities.Query = None,
+        query: pipeline_query.Query = None,
     ):
         text_str = text_str.replace('\t', '    ')
 

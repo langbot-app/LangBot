@@ -79,6 +79,9 @@ stages:
         label:
           en_US: Blacklist
           zh_Hans: 黑名单
+        description:
+          en_US: Sessions in the blacklist will be ignored, the format is `{launcher_type}_{launcher_id}`（remove quotes）, for example `person_123` matches private chat, `group_456` matches group chat, `person_*` matches all private chats, `group_*` matches all group chats, `*_123` matches private and group chats with user ID 123
+          zh_Hans: 黑名单中的会话将被忽略；会话格式：`{launcher_type}_{launcher_id}`（删除引号），例如 `person_123` 匹配私聊会话，`group_456` 匹配群聊会话；`person_*` 匹配所有私聊会话，`group_*` 匹配所有群聊会话；`*_123` 匹配用户 ID 为 123 的私聊和群聊消息
         type: array[string]
         required: true
         default: []
@@ -86,6 +89,9 @@ stages:
         label:
           en_US: Whitelist
           zh_Hans: 白名单
+        description:
+          en_US: Only respond to sessions in the whitelist, the format is `{launcher_type}_{launcher_id}`（remove quotes）, for example `person_123` matches private chat, `group_456` matches group chat, `person_*` matches all private chats, `group_*` matches all group chats, `*_123` matches private and group chats with user ID 123
+          zh_Hans: 仅响应白名单中的会话；会话格式：`{launcher_type}_{launcher_id}`（删除引号），例如 `person_123` 匹配私聊会话，`group_456` 匹配群聊会话；`person_*` 匹配所有私聊会话，`group_*` 匹配所有群聊会话；`*_123` 匹配用户 ID 为 123 的私聊和群聊消息
         type: array[string]
         required: true
         default: []

@@ -1,4 +1,4 @@
-import { I18nLabel } from '@/app/infra/entities/common';
+import { I18nObject } from '@/app/infra/entities/common';
 import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
 
 export interface PipelineFormEntity {
@@ -11,13 +11,13 @@ export interface PipelineFormEntity {
 
 export interface PipelineConfigTab {
   name: string;
-  label: I18nLabel;
+  label: I18nObject;
   stages: PipelineConfigStage[];
 }
 
 export interface PipelineConfigStage {
   name: string;
-  label: I18nLabel;
-  description?: I18nLabel;
+  label: I18nObject;
+  description?: I18nObject;
   config: IDynamicFormItemSchema[];
 }

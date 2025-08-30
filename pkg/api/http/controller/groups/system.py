@@ -14,6 +14,12 @@ class SystemRouterGroup(group.RouterGroup):
                     'version': constants.semantic_version,
                     'debug': constants.debug_mode,
                     'enabled_platform_count': len(self.ap.platform_mgr.get_running_adapters()),
+                    'enable_marketplace': self.ap.instance_config.data['plugin'].get('enable_marketplace', True),
+                    'cloud_service_url': (
+                        self.ap.instance_config.data['plugin']['cloud_service_url']
+                        if 'cloud_service_url' in self.ap.instance_config.data['plugin']
+                        else 'https://space.langbot.app'
+                    ),
                 }
             )
 
@@ -35,16 +41,7 @@ class SystemRouterGroup(group.RouterGroup):
 
             return self.success(data=task.to_dict())
 
-        @self.route('/reload', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
-        async def _() -> str:
-            json_data = await quart.request.json
-
-            scope = json_data.get('scope')
-
-            await self.ap.reload(scope=scope)
-            return self.success()
-
-        @self.route('/_debug/exec', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
+        @self.route('/debug/exec', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
             if not constants.debug_mode:
                 return self.http_status(403, 403, 'Forbidden')
@@ -54,3 +51,39 @@ class SystemRouterGroup(group.RouterGroup):
             ap = self.ap
 
             return self.success(data=exec(py_code, {'ap': ap}))
+
+        @self.route('/debug/tools/call', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
+        async def _() -> str:
+            if not constants.debug_mode:
+                return self.http_status(403, 403, 'Forbidden')
+
+            data = await quart.request.json
+
+            return self.success(
+                data=await self.ap.tool_mgr.execute_func_call(data['tool_name'], data['tool_parameters'])
+            )
+
+        @self.route(
+            '/debug/plugin/action',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN,
+        )
+        async def _() -> str:
+            if not constants.debug_mode:
+                return self.http_status(403, 403, 'Forbidden')
+
+            data = await quart.request.json
+
+            class AnoymousAction:
+                value = 'anonymous_action'
+
+                def __init__(self, value: str):
+                    self.value = value
+
+            resp = await self.ap.plugin_connector.handler.call_action(
+                AnoymousAction(data['action']),
+                data['data'],
+                timeout=data.get('timeout', 10),
+            )
+
+            return self.success(data=resp)

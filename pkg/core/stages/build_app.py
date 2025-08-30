@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 
 from .. import stage, app
 from ...utils import version, proxy, announce
 from ...pipeline import pool, controller, pipelinemgr
-from ...plugin import manager as plugin_mgr
+from ...plugin import connector as plugin_connector
 from ...command import cmdmgr
 from ...provider.session import sessionmgr as llm_session_mgr
 from ...provider.modelmgr import modelmgr as llm_model_mgr
@@ -62,10 +63,13 @@ class BuildAppStage(stage.BootingStage):
         ap.persistence_mgr = persistence_mgr_inst
         await persistence_mgr_inst.initialize()
 
-        plugin_mgr_inst = plugin_mgr.PluginManager(ap)
-        await plugin_mgr_inst.initialize()
-        ap.plugin_mgr = plugin_mgr_inst
-        await plugin_mgr_inst.load_plugins()
+        async def runtime_disconnect_callback(connector: plugin_connector.PluginRuntimeConnector) -> None:
+            await asyncio.sleep(3)
+            await plugin_connector_inst.initialize()
+
+        plugin_connector_inst = plugin_connector.PluginRuntimeConnector(ap, runtime_disconnect_callback)
+        await plugin_connector_inst.initialize()
+        ap.plugin_connector = plugin_connector_inst
 
         cmd_mgr_inst = cmdmgr.CommandManager(ap)
         await cmd_mgr_inst.initialize()

@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import typing
 
-from .. import operator, entities
+from .. import operator
+from langbot_plugin.api.entities.builtin.command import context as command_context
 
 
 @operator.operator_class(name='version', help='显示版本信息', usage='!version')
 class VersionCommand(operator.CommandOperator):
-    async def execute(self, context: entities.ExecuteContext) -> typing.AsyncGenerator[entities.CommandReturn, None]:
+    async def execute(
+        self, context: command_context.ExecuteContext
+    ) -> typing.AsyncGenerator[command_context.CommandReturn, None]:
         reply_str = f'当前版本: \n{self.ap.ver_mgr.get_current_version()}'
 
         try:
@@ -16,4 +19,4 @@ class VersionCommand(operator.CommandOperator):
         except Exception:
             pass
 
-        yield entities.CommandReturn(text=reply_str.strip())
+        yield command_context.CommandReturn(text=reply_str.strip())

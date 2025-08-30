@@ -9,15 +9,15 @@ import traceback
 import nakuru
 import nakuru.entities.components as nkc
 
-from .. import adapter as adapter_model
-from ...pipeline.longtext.strategies import forward
-from ...platform.types import message as platform_message
-from ...platform.types import entities as platform_entities
-from ...platform.types import events as platform_events
-from ..logger import EventLogger
+from ....pipeline.longtext.strategies import forward
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
+from ...logger import EventLogger
 
 
-class NakuruProjectMessageConverter(adapter_model.MessageConverter):
+class NakuruProjectMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     """消息转换器"""
 
     @staticmethod
@@ -109,7 +109,7 @@ class NakuruProjectMessageConverter(adapter_model.MessageConverter):
         return chain
 
 
-class NakuruProjectEventConverter(adapter_model.EventConverter):
+class NakuruProjectEventConverter(abstract_platform_adapter.AbstractEventConverter):
     """事件转换器"""
 
     @staticmethod
@@ -164,7 +164,7 @@ class NakuruProjectEventConverter(adapter_model.EventConverter):
             raise Exception('未支持转换的事件类型: ' + str(event))
 
 
-class NakuruAdapter(adapter_model.MessagePlatformAdapter):
+class NakuruAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     """nakuru-project适配器"""
 
     bot: nakuru.CQHTTP
@@ -256,13 +256,15 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter_model.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         try:
             source_cls = NakuruProjectEventConverter.yiri2target(event_type)
 
             # 包装函数
-            async def listener_wrapper(app: nakuru.CQHTTP, source: source_cls):
+            async def listener_wrapper(app: nakuru.CQHTTP, source: source_cls):  # type: ignore
                 await callback(self.event_converter.target2yiri(source), self)
 
             # 将包装函数和原函数的对应关系存入列表
@@ -283,7 +285,9 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
     def unregister_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter_model.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         nakuru_event_name = self.event_converter.yiri2target(event_type).__name__
 
@@ -322,7 +326,6 @@ class NakuruAdapter(adapter_model.MessagePlatformAdapter):
         except Exception:
             raise Exception('获取go-cqhttp账号信息失败, 请检查是否已启动go-cqhttp并配置正确')
         await self.bot._run()
-        self.ap.logger.info('运行 Nakuru 适配器')
         while True:
             await asyncio.sleep(1)
 

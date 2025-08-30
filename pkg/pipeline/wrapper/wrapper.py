@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import typing
 
-
-from ...core import entities as core_entities
 from .. import entities
 from .. import stage
-from ...plugin import events
-from ...platform.types import message as platform_message
+
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import langbot_plugin.api.entities.events as events
 
 
 @stage.stage_class('ResponseWrapper')
@@ -25,7 +25,7 @@ class ResponseWrapper(stage.PipelineStage):
 
     async def process(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         stage_inst_name: str,
     ) -> typing.AsyncGenerator[entities.StageProcessResult, None]:
         """处理"""
@@ -58,21 +58,22 @@ class ResponseWrapper(stage.PipelineStage):
                         reply_text = str(result.get_content_platform_message_chain())
 
                         # ============= 触发插件事件 ===============
-                        event_ctx = await self.ap.plugin_mgr.emit_event(
-                            event=events.NormalMessageResponded(
-                                launcher_type=query.launcher_type.value,
-                                launcher_id=query.launcher_id,
-                                sender_id=query.sender_id,
-                                session=session,
-                                prefix='',
-                                response_text=reply_text,
-                                finish_reason='stop',
-                                funcs_called=[fc.function.name for fc in result.tool_calls]
-                                if result.tool_calls is not None
-                                else [],
-                                query=query,
-                            )
+                        event = events.NormalMessageResponded(
+                            launcher_type=query.launcher_type.value,
+                            launcher_id=query.launcher_id,
+                            sender_id=query.sender_id,
+                            session=session,
+                            prefix='',
+                            response_text=reply_text,
+                            finish_reason='stop',
+                            funcs_called=[fc.function.name for fc in result.tool_calls]
+                            if result.tool_calls is not None
+                            else [],
+                            query=query,
                         )
+
+                        event_ctx = await self.ap.plugin_connector.emit_event(event)
+
                         if event_ctx.is_prevented_default():
                             yield entities.StageProcessResult(
                                 result_type=entities.ResultType.INTERRUPT,
@@ -96,25 +97,25 @@ class ResponseWrapper(stage.PipelineStage):
                         reply_text = f'调用函数 {".".join(function_names)}...'
 
                         query.resp_message_chain.append(
-                            platform_message.MessageChain([platform_message.Plain(reply_text)])
+                            platform_message.MessageChain([platform_message.Plain(text=reply_text)])
                         )
 
                         if query.pipeline_config['output']['misc']['track-function-calls']:
-                            event_ctx = await self.ap.plugin_mgr.emit_event(
-                                event=events.NormalMessageResponded(
-                                    launcher_type=query.launcher_type.value,
-                                    launcher_id=query.launcher_id,
-                                    sender_id=query.sender_id,
-                                    session=session,
-                                    prefix='',
-                                    response_text=reply_text,
-                                    finish_reason='stop',
-                                    funcs_called=[fc.function.name for fc in result.tool_calls]
-                                    if result.tool_calls is not None
-                                    else [],
-                                    query=query,
-                                )
+                            event = events.NormalMessageResponded(
+                                launcher_type=query.launcher_type.value,
+                                launcher_id=query.launcher_id,
+                                sender_id=query.sender_id,
+                                session=session,
+                                prefix='',
+                                response_text=reply_text,
+                                finish_reason='stop',
+                                funcs_called=[fc.function.name for fc in result.tool_calls]
+                                if result.tool_calls is not None
+                                else [],
+                                query=query,
                             )
+
+                            event_ctx = await self.ap.plugin_connector.emit_event(event)
 
                             if event_ctx.is_prevented_default():
                                 yield entities.StageProcessResult(
@@ -124,12 +125,12 @@ class ResponseWrapper(stage.PipelineStage):
                             else:
                                 if event_ctx.event.reply is not None:
                                     query.resp_message_chain.append(
-                                        platform_message.MessageChain(event_ctx.event.reply)
+                                        platform_message.MessageChain(text=event_ctx.event.reply)
                                     )
 
                                 else:
                                     query.resp_message_chain.append(
-                                        platform_message.MessageChain([platform_message.Plain(reply_text)])
+                                        platform_message.MessageChain([platform_message.Plain(text=reply_text)])
                                     )
 
                                 yield entities.StageProcessResult(

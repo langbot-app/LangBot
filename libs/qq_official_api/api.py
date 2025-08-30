@@ -3,7 +3,7 @@ from quart import request
 import httpx
 from quart import Quart
 from typing import Callable, Dict, Any
-from pkg.platform.types import events as platform_events
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
 from .qqofficialevent import QQOfficialEvent
 import json
 import traceback

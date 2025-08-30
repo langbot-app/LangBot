@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .. import stage, entities
-from ...core import entities as core_entities
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 @stage.stage_class('BanSessionCheckStage')
@@ -14,7 +14,7 @@ class BanSessionCheckStage(stage.PipelineStage):
     async def initialize(self, pipeline_config: dict):
         pass
 
-    async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:
+    async def process(self, query: pipeline_query.Query, stage_inst_name: str) -> entities.StageProcessResult:
         found = False
 
         mode = query.pipeline_config['trigger']['access-control']['mode']
@@ -28,6 +28,10 @@ class BanSessionCheckStage(stage.PipelineStage):
         else:
             for sess in sess_list:
                 if sess == f'{query.launcher_type.value}_{query.launcher_id}':
+                    found = True
+                    break
+                # 使用 *_id 来表示加白/拉黑某用户的私聊和群聊场景
+                if sess.startswith('*_') and (sess[2:] == query.launcher_id or sess[2:] == query.sender_id):
                     found = True
                     break
 

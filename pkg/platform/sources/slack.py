@@ -6,18 +6,17 @@ import traceback
 import datetime
 
 from libs.slack_api.api import SlackClient
-from pkg.platform.adapter import MessagePlatformAdapter
-from pkg.platform.types import events as platform_events, message as platform_message
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 from libs.slack_api.slackevent import SlackEvent
-from pkg.core import app
-from .. import adapter
-from ..types import entities as platform_entities
-from ...command.errors import ParamNotEnoughError
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
+from langbot_plugin.api.entities.builtin.command import errors as command_errors
 from ...utils import image
 from ..logger import EventLogger
 
 
-class SlackMessageConverter(adapter.MessageConverter):
+class SlackMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
     async def yiri2target(message_chain: platform_message.MessageChain):
         content_list = []
@@ -44,7 +43,7 @@ class SlackMessageConverter(adapter.MessageConverter):
         return chain
 
 
-class SlackEventConverter(adapter.EventConverter):
+class SlackEventConverter(abstract_platform_adapter.AbstractEventConverter):
     @staticmethod
     async def yiri2target(event: platform_events.MessageEvent) -> SlackEvent:
         return event.source_platform_object
@@ -84,17 +83,15 @@ class SlackEventConverter(adapter.EventConverter):
             )
 
 
-class SlackAdapter(adapter.MessagePlatformAdapter):
+class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot: SlackClient
-    ap: app.Application
     bot_account_id: str
     message_converter: SlackMessageConverter = SlackMessageConverter()
     event_converter: SlackEventConverter = SlackEventConverter()
     config: dict
 
-    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
+    def __init__(self, config: dict, logger: EventLogger):
         self.config = config
-        self.ap = ap
         self.logger = logger
         required_keys = [
             'bot_token',
@@ -102,7 +99,7 @@ class SlackAdapter(adapter.MessagePlatformAdapter):
         ]
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
-            raise ParamNotEnoughError('Slack机器人缺少相关配置项，请查看文档或联系管理员')
+            raise command_errors.ParamNotEnoughError('Slack机器人缺少相关配置项，请查看文档或联系管理员')
 
         self.bot = SlackClient(
             bot_token=self.config['bot_token'], signing_secret=self.config['signing_secret'], logger=self.logger
@@ -135,7 +132,9 @@ class SlackAdapter(adapter.MessagePlatformAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         async def on_message(event: SlackEvent):
             self.bot_account_id = 'SlackBot'
@@ -166,6 +165,8 @@ class SlackAdapter(adapter.MessagePlatformAdapter):
     async def unregister_listener(
         self,
         event_type: type,
-        callback: typing.Callable[[platform_events.Event, MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         return super().unregister_listener(event_type, callback)

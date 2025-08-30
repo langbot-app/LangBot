@@ -1,18 +1,16 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import typing
 
 import openai
 import openai.types.chat.chat_completion as chat_completion
-import openai.types.chat.chat_completion_message_tool_call as chat_completion_message_tool_call
 import httpx
 
 from .. import entities, errors, requester
-from ....core import entities as core_entities
-from ... import entities as llm_entities
-from ...tools import entities as tools_entities
+import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 
 class ModelScopeChatCompletions(requester.ProviderAPIRequester):
@@ -35,7 +33,7 @@ class ModelScopeChatCompletions(requester.ProviderAPIRequester):
 
     async def _req(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         args: dict,
         extra_body: dict = {},
         remove_think: bool = False,
@@ -113,25 +111,26 @@ class ModelScopeChatCompletions(requester.ProviderAPIRequester):
     async def _make_msg(
         self,
         chat_completion: list[dict[str, typing.Any]],
-    ) -> llm_entities.Message:
+    ) -> provider_message.Message:
         chatcmpl_message = chat_completion[0]
 
         # 确保 role 字段存在且不为 None
         if 'role' not in chatcmpl_message or chatcmpl_message['role'] is None:
             chatcmpl_message['role'] = 'assistant'
-        message = llm_entities.Message(**chatcmpl_message)
+
+        message = provider_message.Message(**chatcmpl_message)
 
         return message
 
     async def _closure(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         req_messages: list[dict],
         use_model: requester.RuntimeLLMModel,
-        use_funcs: list[tools_entities.LLMFunction] = None,
+        use_funcs: list[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
-        remove_think:bool = False,
-    ) -> llm_entities.Message:
+        remove_think: bool = False,
+    ) -> provider_message.Message:
         self.client.api_key = use_model.token_mgr.get_token()
 
         args = {}
@@ -173,16 +172,15 @@ class ModelScopeChatCompletions(requester.ProviderAPIRequester):
         async for chunk in await self.client.chat.completions.create(**args, extra_body=extra_body):
             yield chunk
 
-
     async def _closure_stream(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         req_messages: list[dict],
         use_model: requester.RuntimeLLMModel,
-        use_funcs: list[tools_entities.LLMFunction] = None,
+        use_funcs: list[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> llm_entities.Message | typing.AsyncGenerator[llm_entities.MessageChunk, None]:
+    ) -> provider_message.Message | typing.AsyncGenerator[provider_message.MessageChunk, None]:
         self.client.api_key = use_model.token_mgr.get_token()
 
         args = {}
@@ -209,9 +207,8 @@ class ModelScopeChatCompletions(requester.ProviderAPIRequester):
         args['messages'] = messages
         args['stream'] = True
 
-
         # 流式处理状态
-        tool_calls_map: dict[str, llm_entities.ToolCall] = {}
+        # tool_calls_map: dict[str, provider_message.ToolCall] = {}
         chunk_idx = 0
         thinking_started = False
         thinking_ended = False
@@ -275,8 +272,9 @@ class ModelScopeChatCompletions(requester.ProviderAPIRequester):
                         tool_call['type'] = 'function'
                     tool_call['id'] = tool_id
                     tool_call['function']['name'] = tool_name
-                    tool_call['function']['arguments'] = "" if tool_call['function']['arguments'] is None else tool_call['function']['arguments']
-
+                    tool_call['function']['arguments'] = (
+                        '' if tool_call['function']['arguments'] is None else tool_call['function']['arguments']
+                    )
 
             # 跳过空的第一个 chunk（只有 role 没有内容）
             if chunk_idx == 0 and not delta_content and not reasoning_content and not delta.get('tool_calls'):
@@ -294,19 +292,19 @@ class ModelScopeChatCompletions(requester.ProviderAPIRequester):
             # 移除 None 值
             chunk_data = {k: v for k, v in chunk_data.items() if v is not None}
 
-            yield llm_entities.MessageChunk(**chunk_data)
+            yield provider_message.MessageChunk(**chunk_data)
             chunk_idx += 1
             # return
 
     async def invoke_llm(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         model: entities.LLMModelInfo,
-        messages: typing.List[llm_entities.Message],
-        funcs: typing.List[tools_entities.LLMFunction] = None,
+        messages: typing.List[provider_message.Message],
+        funcs: typing.List[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> llm_entities.Message:
+    ) -> provider_message.Message:
         req_messages = []  # req_messages 仅用于类内，外部同步由 query.messages 进行
         for m in messages:
             msg_dict = m.dict(exclude_none=True)
@@ -320,7 +318,12 @@ class ModelScopeChatCompletions(requester.ProviderAPIRequester):
 
         try:
             return await self._closure(
-                query=query, req_messages=req_messages, use_model=model, use_funcs=funcs, extra_args=extra_args, remove_think=remove_think
+                query=query,
+                req_messages=req_messages,
+                use_model=model,
+                use_funcs=funcs,
+                extra_args=extra_args,
+                remove_think=remove_think,
             )
         except asyncio.TimeoutError:
             raise errors.RequesterError('请求超时')
@@ -340,13 +343,13 @@ class ModelScopeChatCompletions(requester.ProviderAPIRequester):
 
     async def invoke_llm_stream(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         model: requester.RuntimeLLMModel,
-        messages: typing.List[llm_entities.Message],
-        funcs: typing.List[tools_entities.LLMFunction] = None,
+        messages: typing.List[provider_message.Message],
+        funcs: typing.List[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> llm_entities.MessageChunk:
+    ) -> provider_message.MessageChunk:
         req_messages = []  # req_messages 仅用于类内，外部同步由 query.messages 进行
         for m in messages:
             msg_dict = m.dict(exclude_none=True)

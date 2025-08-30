@@ -47,7 +47,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { i18nObj } from '@/i18n/I18nProvider';
+import { extractI18nObject } from '@/i18n/I18nProvider';
 
 const getFormSchema = (t: (key: string) => string) =>
   z.object({
@@ -162,7 +162,7 @@ export default function BotForm({
     setAdapterNameList(
       adaptersRes.adapters.map((item) => {
         return {
-          label: i18nObj(item.label),
+          label: extractI18nObject(item.label),
           value: item.name,
         };
       }),
@@ -183,7 +183,7 @@ export default function BotForm({
     setAdapterDescriptionList(
       adaptersRes.adapters.reduce(
         (acc, item) => {
-          acc[item.name] = i18nObj(item.description);
+          acc[item.name] = extractI18nObject(item.description);
           return acc;
         },
         {} as Record<string, string>,

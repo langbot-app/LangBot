@@ -7,7 +7,7 @@ from ....core import app
 from ....entity.persistence import model as persistence_model
 from ....entity.persistence import pipeline as persistence_pipeline
 from ....provider.modelmgr import requester as model_requester
-from ....provider import entities as llm_entities
+from langbot_plugin.api.entities.builtin.provider import message as provider_message
 
 
 class LLMModelsService:
@@ -16,11 +16,19 @@ class LLMModelsService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
-    async def get_llm_models(self) -> list[dict]:
+    async def get_llm_models(self, include_secret: bool = True) -> list[dict]:
         result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_model.LLMModel))
 
         models = result.all()
-        return [self.ap.persistence_mgr.serialize_model(persistence_model.LLMModel, model) for model in models]
+
+        masked_columns = []
+        if not include_secret:
+            masked_columns = ['api_keys']
+
+        return [
+            self.ap.persistence_mgr.serialize_model(persistence_model.LLMModel, model, masked_columns)
+            for model in models
+        ]
 
     async def create_llm_model(self, model_data: dict) -> str:
         model_data['uuid'] = str(uuid.uuid4())
@@ -99,7 +107,7 @@ class LLMModelsService:
         await runtime_llm_model.requester.invoke_llm(
             query=None,
             model=runtime_llm_model,
-            messages=[llm_entities.Message(role='user', content='Hello, world!')],
+            messages=[provider_message.Message(role='user', content='Hello, world!')],
             funcs=[],
             extra_args=model_data.get('extra_args', {}),
         )

@@ -3,17 +3,19 @@ import logging
 import typing
 from datetime import datetime
 
-from pydantic import BaseModel
+import pydantic
 
-from .. import adapter as msadapter
-from ..types import events as platform_events, message as platform_message, entities as platform_entities
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
+import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 from ...core import app
-from ..logger import EventLogger
 
 logger = logging.getLogger(__name__)
 
 
-class WebChatMessage(BaseModel):
+class WebChatMessage(pydantic.BaseModel):
     id: int
     role: str
     content: str
@@ -41,30 +43,35 @@ class WebChatSession:
         return self.message_lists[pipeline_uuid]
 
 
-class WebChatAdapter(msadapter.MessagePlatformAdapter):
+class WebChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     """WebChat调试适配器，用于流水线调试"""
 
-    webchat_person_session: WebChatSession
-    webchat_group_session: WebChatSession
+    webchat_person_session: WebChatSession = pydantic.Field(exclude=True, default_factory=WebChatSession)
+    webchat_group_session: WebChatSession = pydantic.Field(exclude=True, default_factory=WebChatSession)
 
-    listeners: typing.Dict[
+    listeners: dict[
         typing.Type[platform_events.Event],
-        typing.Callable[[platform_events.Event, msadapter.MessagePlatformAdapter], None],
-    ] = {}
+        typing.Callable[[platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None],
+    ] = pydantic.Field(default_factory=dict, exclude=True)
 
-    is_stream: bool
+    is_stream: bool = pydantic.Field(exclude=True)
+    debug_messages: dict[str, list[dict]] = pydantic.Field(default_factory=dict, exclude=True)
 
-    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
-        self.ap = ap
-        self.logger = logger
-        self.config = config
+    ap: app.Application = pydantic.Field(exclude=True)
+
+    def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
+        super().__init__(
+            config=config,
+            logger=logger,
+            **kwargs,
+        )
 
         self.webchat_person_session = WebChatSession(id='webchatperson')
         self.webchat_group_session = WebChatSession(id='webchatgroup')
 
         self.bot_account_id = 'webchatbot'
 
-        self.is_stream = False
+        self.debug_messages = {}
 
     async def send_message(
         self,
@@ -159,7 +166,9 @@ class WebChatAdapter(msadapter.MessagePlatformAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        func: typing.Callable[[platform_events.Event, msadapter.MessagePlatformAdapter], typing.Awaitable[None]],
+        func: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], typing.Awaitable[None]
+        ],
     ):
         """注册事件监听器"""
         self.listeners[event_type] = func
@@ -167,10 +176,15 @@ class WebChatAdapter(msadapter.MessagePlatformAdapter):
     def unregister_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        func: typing.Callable[[platform_events.Event, msadapter.MessagePlatformAdapter], typing.Awaitable[None]],
+        func: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], typing.Awaitable[None]
+        ],
     ):
         """取消注册事件监听器"""
         del self.listeners[event_type]
+
+    async def is_muted(self, group_id: int) -> bool:
+        return False
 
     async def run_async(self):
         """运行适配器"""
@@ -221,7 +235,7 @@ class WebChatAdapter(msadapter.MessagePlatformAdapter):
         message_chain.insert(0, platform_message.Source(id=message_id, time=datetime.now().timestamp()))
 
         if session_type == 'person':
-            sender = platform_entities.Friend(id='webchatperson', nickname='User')
+            sender = platform_entities.Friend(id='webchatperson', nickname='User', remark='User')
             event = platform_events.FriendMessage(
                 sender=sender, message_chain=message_chain, time=datetime.now().timestamp()
             )

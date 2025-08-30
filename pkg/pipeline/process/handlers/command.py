@@ -4,16 +4,17 @@ import typing
 
 from .. import handler
 from ... import entities
-from ....core import entities as core_entities
-from ....provider import entities as llm_entities
-from ....plugin import events
-from ....platform.types import message as platform_message
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.provider.session as provider_session
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import langbot_plugin.api.entities.events as events
 
 
 class CommandHandler(handler.MessageHandler):
     async def handle(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
     ) -> typing.AsyncGenerator[entities.StageProcessResult, None]:
         """Process"""
 
@@ -28,22 +29,22 @@ class CommandHandler(handler.MessageHandler):
 
         event_class = (
             events.PersonCommandSent
-            if query.launcher_type == core_entities.LauncherTypes.PERSON
+            if query.launcher_type == provider_session.LauncherTypes.PERSON
             else events.GroupCommandSent
         )
 
-        event_ctx = await self.ap.plugin_mgr.emit_event(
-            event=event_class(
-                launcher_type=query.launcher_type.value,
-                launcher_id=query.launcher_id,
-                sender_id=query.sender_id,
-                command=spt[0],
-                params=spt[1:] if len(spt) > 1 else [],
-                text_message=str(query.message_chain),
-                is_admin=(privilege == 2),
-                query=query,
-            )
+        event = event_class(
+            launcher_type=query.launcher_type.value,
+            launcher_id=query.launcher_id,
+            sender_id=query.sender_id,
+            command=spt[0],
+            params=spt[1:] if len(spt) > 1 else [],
+            text_message=str(query.message_chain),
+            is_admin=(privilege == 2),
+            query=query,
         )
+
+        event_ctx = await self.ap.plugin_connector.emit_event(event)
 
         if event_ctx.is_prevented_default():
             if event_ctx.event.reply is not None:
@@ -64,7 +65,7 @@ class CommandHandler(handler.MessageHandler):
             async for ret in self.ap.cmd_mgr.execute(command_text=command_text, query=query, session=session):
                 if ret.error is not None:
                     query.resp_messages.append(
-                        llm_entities.Message(
+                        provider_message.Message(
                             role='command',
                             content=str(ret.error),
                         )
@@ -73,17 +74,20 @@ class CommandHandler(handler.MessageHandler):
                     self.ap.logger.info(f'Command({query.query_id}) error: {self.cut_str(str(ret.error))}')
 
                     yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
-                elif ret.text is not None or ret.image_url is not None:
-                    content: list[llm_entities.ContentElement] = []
+                elif ret.text is not None or ret.image_url is not None or ret.image_base64 is not None:
+                    content: list[provider_message.ContentElement] = []
 
                     if ret.text is not None:
-                        content.append(llm_entities.ContentElement.from_text(ret.text))
+                        content.append(provider_message.ContentElement.from_text(ret.text))
 
                     if ret.image_url is not None:
-                        content.append(llm_entities.ContentElement.from_image_url(ret.image_url))
+                        content.append(provider_message.ContentElement.from_image_url(ret.image_url))
+
+                    if ret.image_base64 is not None:
+                        content.append(provider_message.ContentElement.from_image_base64(ret.image_base64))
 
                     query.resp_messages.append(
-                        llm_entities.Message(
+                        provider_message.Message(
                             role='command',
                             content=content,
                         )

@@ -4,8 +4,8 @@ import json
 import copy
 import typing
 from .. import runner
-from ...core import entities as core_entities
-from .. import entities as llm_entities
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 
 rag_combined_prompt_template = """
@@ -32,11 +32,11 @@ class LocalAgentRunner(runner.RequestRunner):
 
         def __init__(self):
             self.active_calls: dict[str, dict] = {}
-            self.completed_calls: list[llm_entities.ToolCall] = []
+            self.completed_calls: list[provider_message.ToolCall] = []
 
     async def run(
-        self, query: core_entities.Query
-    ) -> typing.AsyncGenerator[llm_entities.Message | llm_entities.MessageChunk, None]:
+        self, query: pipeline_query.Query
+    ) -> typing.AsyncGenerator[provider_message.Message | provider_message.MessageChunk, None]:
         """运行请求"""
         pending_tool_calls = []
 
@@ -94,34 +94,36 @@ class LocalAgentRunner(runner.RequestRunner):
         except AttributeError:
             is_stream = False
 
-        remove_think = self.pipeline_config['output'].get('misc', '').get('remove-think')
+        remove_think = query.pipeline_config['output'].get('misc', '').get('remove-think')
+
+        use_llm_model = await self.ap.model_mgr.get_model_by_uuid(query.use_llm_model_uuid)
 
         if not is_stream:
             # 非流式输出，直接请求
 
-            msg = await query.use_llm_model.requester.invoke_llm(
+            msg = await use_llm_model.requester.invoke_llm(
                 query,
-                query.use_llm_model,
+                use_llm_model,
                 req_messages,
                 query.use_funcs,
-                extra_args=query.use_llm_model.model_entity.extra_args,
+                extra_args=use_llm_model.model_entity.extra_args,
                 remove_think=remove_think,
             )
             yield msg
             final_msg = msg
         else:
             # 流式输出，需要处理工具调用
-            tool_calls_map: dict[str, llm_entities.ToolCall] = {}
+            tool_calls_map: dict[str, provider_message.ToolCall] = {}
             msg_idx = 0
             accumulated_content = ''  # 从开始累积的所有内容
             last_role = 'assistant'
             msg_sequence = 1
-            async for msg in query.use_llm_model.requester.invoke_llm_stream(
+            async for msg in use_llm_model.requester.invoke_llm_stream(
                 query,
-                query.use_llm_model,
+                use_llm_model,
                 req_messages,
                 query.use_funcs,
-                extra_args=query.use_llm_model.model_entity.extra_args,
+                extra_args=use_llm_model.model_entity.extra_args,
                 remove_think=remove_think,
             ):
                 msg_idx = msg_idx + 1
@@ -138,10 +140,10 @@ class LocalAgentRunner(runner.RequestRunner):
                 if msg.tool_calls:
                     for tool_call in msg.tool_calls:
                         if tool_call.id not in tool_calls_map:
-                            tool_calls_map[tool_call.id] = llm_entities.ToolCall(
+                            tool_calls_map[tool_call.id] = provider_message.ToolCall(
                                 id=tool_call.id,
                                 type=tool_call.type,
-                                function=llm_entities.FunctionCall(
+                                function=provider_message.FunctionCall(
                                     name=tool_call.function.name if tool_call.function else '', arguments=''
                                 ),
                             )
@@ -152,7 +154,7 @@ class LocalAgentRunner(runner.RequestRunner):
                 # 每8个chunk或最后一个chunk时，输出所有累积的内容
                 if msg_idx % 8 == 0 or msg.is_final:
                     msg_sequence += 1
-                    yield llm_entities.MessageChunk(
+                    yield provider_message.MessageChunk(
                         role=last_role,
                         content=accumulated_content,  # 输出所有累积内容
                         tool_calls=list(tool_calls_map.values()) if (tool_calls_map and msg.is_final) else None,
@@ -161,7 +163,7 @@ class LocalAgentRunner(runner.RequestRunner):
                     )
 
             # 创建最终消息用于后续处理
-            final_msg = llm_entities.MessageChunk(
+            final_msg = provider_message.MessageChunk(
                 role=last_role,
                 content=accumulated_content,
                 tool_calls=list(tool_calls_map.values()) if tool_calls_map else None,
@@ -170,8 +172,7 @@ class LocalAgentRunner(runner.RequestRunner):
 
         pending_tool_calls = final_msg.tool_calls
         first_content = final_msg.content
-        if isinstance(final_msg, llm_entities.MessageChunk):
-
+        if isinstance(final_msg, provider_message.MessageChunk):
             first_end_sequence = final_msg.msg_sequence
 
         req_messages.append(final_msg)
@@ -184,15 +185,15 @@ class LocalAgentRunner(runner.RequestRunner):
 
                     parameters = json.loads(func.arguments)
 
-                    func_ret = await self.ap.tool_mgr.execute_func_call(query, func.name, parameters)
+                    func_ret = await self.ap.tool_mgr.execute_func_call(func.name, parameters)
                     if is_stream:
-                        msg = llm_entities.MessageChunk(
+                        msg = provider_message.MessageChunk(
                             role='tool',
                             content=json.dumps(func_ret, ensure_ascii=False),
                             tool_call_id=tool_call.id,
                         )
                     else:
-                        msg = llm_entities.Message(
+                        msg = provider_message.Message(
                             role='tool',
                             content=json.dumps(func_ret, ensure_ascii=False),
                             tool_call_id=tool_call.id,
@@ -203,7 +204,7 @@ class LocalAgentRunner(runner.RequestRunner):
                     req_messages.append(msg)
                 except Exception as e:
                     # 工具调用出错，添加一个报错信息到 req_messages
-                    err_msg = llm_entities.Message(role='tool', content=f'err: {e}', tool_call_id=tool_call.id)
+                    err_msg = provider_message.Message(role='tool', content=f'err: {e}', tool_call_id=tool_call.id)
 
                     yield err_msg
 
@@ -216,12 +217,12 @@ class LocalAgentRunner(runner.RequestRunner):
                 last_role = 'assistant'
                 msg_sequence = first_end_sequence
 
-                async for msg in query.use_llm_model.requester.invoke_llm_stream(
+                async for msg in use_llm_model.requester.invoke_llm_stream(
                     query,
-                    query.use_llm_model,
+                    use_llm_model,
                     req_messages,
                     query.use_funcs,
-                    extra_args=query.use_llm_model.model_entity.extra_args,
+                    extra_args=use_llm_model.model_entity.extra_args,
                     remove_think=remove_think,
                 ):
                     msg_idx += 1
@@ -242,10 +243,10 @@ class LocalAgentRunner(runner.RequestRunner):
                     if msg.tool_calls:
                         for tool_call in msg.tool_calls:
                             if tool_call.id not in tool_calls_map:
-                                tool_calls_map[tool_call.id] = llm_entities.ToolCall(
+                                tool_calls_map[tool_call.id] = provider_message.ToolCall(
                                     id=tool_call.id,
                                     type=tool_call.type,
-                                    function=llm_entities.FunctionCall(
+                                    function=provider_message.FunctionCall(
                                         name=tool_call.function.name if tool_call.function else '', arguments=''
                                     ),
                                 )
@@ -256,7 +257,7 @@ class LocalAgentRunner(runner.RequestRunner):
                     # 每8个chunk或最后一个chunk时，输出所有累积的内容
                     if msg_idx % 8 == 0 or msg.is_final:
                         msg_sequence += 1
-                        yield llm_entities.MessageChunk(
+                        yield provider_message.MessageChunk(
                             role=last_role,
                             content=accumulated_content,  # 输出所有累积内容
                             tool_calls=list(tool_calls_map.values()) if (tool_calls_map and msg.is_final) else None,
@@ -264,21 +265,20 @@ class LocalAgentRunner(runner.RequestRunner):
                             msg_sequence=msg_sequence,
                         )
 
-                final_msg = llm_entities.MessageChunk(
+                final_msg = provider_message.MessageChunk(
                     role=last_role,
                     content=accumulated_content,
                     tool_calls=list(tool_calls_map.values()) if tool_calls_map else None,
                     msg_sequence=msg_sequence,
-
                 )
             else:
                 # 处理完所有调用，再次请求
-                msg = await query.use_llm_model.requester.invoke_llm(
+                msg = await use_llm_model.requester.invoke_llm(
                     query,
-                    query.use_llm_model,
+                    use_llm_model,
                     req_messages,
                     query.use_funcs,
-                    extra_args=query.use_llm_model.model_entity.extra_args,
+                    extra_args=use_llm_model.model_entity.extra_args,
                     remove_think=remove_think,
                 )
 

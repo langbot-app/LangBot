@@ -3,8 +3,8 @@ from __future__ import annotations
 import abc
 
 from ...core import app
-from ...core import entities as core_entities
 from .. import entities
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
 class MessageHandler(metaclass=abc.ABCMeta):
@@ -19,7 +19,7 @@ class MessageHandler(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     async def handle(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
     ) -> entities.StageProcessResult:
         raise NotImplementedError
 

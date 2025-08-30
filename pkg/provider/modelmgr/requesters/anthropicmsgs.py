@@ -9,10 +9,10 @@ import httpx
 
 from .. import errors, requester
 
-from ....core import entities as core_entities
-from ... import entities as llm_entities
-from ...tools import entities as tools_entities
 from ....utils import image
+import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 
 class AnthropicMessages(requester.ProviderAPIRequester):
@@ -49,13 +49,13 @@ class AnthropicMessages(requester.ProviderAPIRequester):
 
     async def invoke_llm(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         model: requester.RuntimeLLMModel,
-        messages: typing.List[llm_entities.Message],
-        funcs: typing.List[tools_entities.LLMFunction] = None,
+        messages: typing.List[provider_message.Message],
+        funcs: typing.List[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> llm_entities.Message:
+    ) -> provider_message.Message:
         self.client.api_key = model.token_mgr.get_token()
 
         args = extra_args.copy()
@@ -75,7 +75,7 @@ class AnthropicMessages(requester.ProviderAPIRequester):
         if system_role_message:
             messages.pop(i)
 
-        if isinstance(system_role_message, llm_entities.Message) and isinstance(system_role_message.content, str):
+        if isinstance(system_role_message, provider_message.Message) and isinstance(system_role_message.content, str):
             args['system'] = system_role_message.content
 
         req_messages = []
@@ -161,16 +161,16 @@ class AnthropicMessages(requester.ProviderAPIRequester):
                     args['content'] += block.text
                 elif block.type == 'tool_use':
                     assert type(block) is anthropic.types.tool_use_block.ToolUseBlock
-                    tool_call = llm_entities.ToolCall(
+                    tool_call = provider_message.ToolCall(
                         id=block.id,
                         type='function',
-                        function=llm_entities.FunctionCall(name=block.name, arguments=json.dumps(block.input)),
+                        function=provider_message.FunctionCall(name=block.name, arguments=json.dumps(block.input)),
                     )
                     if 'tool_calls' not in args:
                         args['tool_calls'] = []
                     args['tool_calls'].append(tool_call)
 
-            return llm_entities.Message(**args)
+            return provider_message.Message(**args)
         except anthropic.AuthenticationError as e:
             raise errors.RequesterError(f'api-key 无效: {e.message}')
         except anthropic.BadRequestError as e:
@@ -183,13 +183,13 @@ class AnthropicMessages(requester.ProviderAPIRequester):
 
     async def invoke_llm_stream(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         model: requester.RuntimeLLMModel,
-        messages: typing.List[llm_entities.Message],
-        funcs: typing.List[tools_entities.LLMFunction] = None,
+        messages: typing.List[provider_message.Message],
+        funcs: typing.List[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> llm_entities.Message:
+    ) -> provider_message.Message:
         self.client.api_key = model.token_mgr.get_token()
 
         args = extra_args.copy()
@@ -210,7 +210,7 @@ class AnthropicMessages(requester.ProviderAPIRequester):
         if system_role_message:
             messages.pop(i)
 
-        if isinstance(system_role_message, llm_entities.Message) and isinstance(system_role_message.content, str):
+        if isinstance(system_role_message, provider_message.Message) and isinstance(system_role_message.content, str):
             args['system'] = system_role_message.content
 
         req_messages = []
@@ -356,7 +356,7 @@ class AnthropicMessages(requester.ProviderAPIRequester):
 
                 # assert type(chunk) is anthropic.types.message.Chunk
 
-                yield llm_entities.MessageChunk(**args)
+                yield provider_message.MessageChunk(**args)
 
             # return llm_entities.Message(**args)
         except anthropic.AuthenticationError as e:

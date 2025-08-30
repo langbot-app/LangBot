@@ -16,20 +16,20 @@ import threading
 
 import quart
 
-from .. import adapter
-from ...core import app
-from ..types import message as platform_message
-from ..types import events as platform_events
-from ..types import entities as platform_entities
 from ..logger import EventLogger
 import xml.etree.ElementTree as ET
 from typing import Optional, Tuple
 from functools import partial
 import logging
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
+import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 
 
-class WeChatPadMessageConverter(adapter.MessageConverter):
-    def __init__(self, config: dict, logger: logging.Logger):
+class WeChatPadMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
+    def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger):
         self.config = config
         self.bot = WeChatPadClient(self.config['wechatpad_url'], self.config['token'])
         self.logger = logger
@@ -447,7 +447,7 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
         return from_user_name.endswith('@chatroom')
 
 
-class WeChatPadEventConverter(adapter.EventConverter):
+class WeChatPadEventConverter(abstract_platform_adapter.AbstractEventConverter):
     def __init__(self, config: dict, logger: logging.Logger):
         self.config = config
         self.message_converter = WeChatPadMessageConverter(config, logger)
@@ -511,7 +511,7 @@ class WeChatPadEventConverter(adapter.EventConverter):
             )
 
 
-class WeChatPadAdapter(adapter.MessagePlatformAdapter):
+class WeChatPadAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     name: str = 'WeChatPad'  # 定义适配器名称
 
     bot: WeChatPadClient
@@ -521,29 +521,26 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
 
     config: dict
 
-    ap: app.Application
+    logger: EventLogger
 
     message_converter: WeChatPadMessageConverter
     event_converter: WeChatPadEventConverter
 
     listeners: typing.Dict[
         typing.Type[platform_events.Event],
-        typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        typing.Callable[[platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None],
     ] = {}
 
-    def __init__(self, config: dict, ap: app.Application, logger: EventLogger):
+    def __init__(self, config: dict, logger: EventLogger):
         self.config = config
-        self.ap = ap
         self.logger = logger
         self.quart_app = quart.Quart(__name__)
 
-        self.message_converter = WeChatPadMessageConverter(config, ap.logger)
-        self.event_converter = WeChatPadEventConverter(config, ap.logger)
+        self.message_converter = WeChatPadMessageConverter(config, logger)
+        self.event_converter = WeChatPadEventConverter(config, logger)
 
     async def ws_message(self, data):
         """处理接收到的消息"""
-        # self.ap.logger.debug(f"Gewechat callback event: {data}")
-        # print(data)
 
         try:
             event = await self.event_converter.target2yiri(data.copy(), self.bot_account_id)
@@ -609,9 +606,8 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
 
             if handler := handler_map.get(msg['type']):
                 handler(msg)
-                # self.ap.logger.warning(f"未处理的消息类型: {ret}")
             else:
-                self.ap.logger.warning(f'未处理的消息类型: {msg["type"]}')
+                self.logger.warning(f'未处理的消息类型: {msg["type"]}')
                 continue
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
@@ -635,14 +631,18 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         self.listeners[event_type] = callback
 
     def unregister_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, adapter.MessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         pass
 
@@ -653,7 +653,6 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
             if self.config['token']:
                 self.bot = WeChatPadClient(self.config['wechatpad_url'], self.config['token'])
                 data = self.bot.get_login_status()
-                self.ap.logger.info(data)
                 if data['Code'] == 300 and data['Text'] == '你已退出微信':
                     response = requests.post(
                         f'{self.config["wechatpad_url"]}/admin/GenAuthKey1?key={self.config["admin_key"]}',
@@ -673,7 +672,7 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
                 self.config['token'] = response.json()['Data'][0]
 
         self.bot = WeChatPadClient(self.config['wechatpad_url'], self.config['token'], logger=self.logger)
-        self.ap.logger.info(self.config['token'])
+        await self.logger.info(self.config['token'])
         thread_1 = threading.Event()
 
         def wechat_login_process():
@@ -681,10 +680,9 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
             # login_data =self.bot.get_login_qr()
 
             # url = login_data['Data']["QrCodeUrl"]
-            # self.ap.logger.info(login_data)
 
             profile = self.bot.get_profile()
-            self.ap.logger.info(profile)
+            # self.logger.info(profile)
 
             self.bot_account_id = profile['Data']['userInfo']['nickName']['str']
             self.config['wxid'] = profile['Data']['userInfo']['userName']['str']
@@ -696,27 +694,26 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
         def connect_websocket_sync() -> None:
             thread_1.wait()
             uri = f'{self.config["wechatpad_ws"]}/GetSyncMsg?key={self.config["token"]}'
-            self.ap.logger.info(f'Connecting to WebSocket: {uri}')
+            print(f'Connecting to WebSocket: {uri}')
 
             def on_message(ws, message):
                 try:
                     data = json.loads(message)
-                    self.ap.logger.debug(f'Received message: {data}')
                     # 这里需要确保ws_message是同步的，或者使用asyncio.run调用异步方法
                     asyncio.run(self.ws_message(data))
                 except json.JSONDecodeError:
-                    self.ap.logger.error(f'Non-JSON message: {message[:100]}...')
+                    self.logger.error(f'Non-JSON message: {message[:100]}...')
 
             def on_error(ws, error):
-                self.ap.logger.error(f'WebSocket error: {str(error)[:200]}')
+                self.logger.error(f'WebSocket error: {str(error)[:200]}')
 
             def on_close(ws, close_status_code, close_msg):
-                self.ap.logger.info('WebSocket closed, reconnecting...')
+                self.logger.info('WebSocket closed, reconnecting...')
                 time.sleep(5)
                 connect_websocket_sync()  # 自动重连
 
             def on_open(ws):
-                self.ap.logger.info('WebSocket connected successfully!')
+                self.logger.info('WebSocket connected successfully!')
 
             ws = websocket.WebSocketApp(
                 uri, on_message=on_message, on_error=on_error, on_close=on_close, on_open=on_open
@@ -727,10 +724,9 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
         # connect_websocket_sync()
 
         # 这行代码会在WebSocket连接断开后才会执行
-        # self.ap.logger.info("WebSocket client thread started")
         thread = threading.Thread(target=connect_websocket_sync, name='WebSocketClientThread', daemon=True)
         thread.start()
-        self.ap.logger.info('WebSocket client thread started')
+        self.logger.info('WebSocket client thread started')
 
     async def kill(self) -> bool:
         pass

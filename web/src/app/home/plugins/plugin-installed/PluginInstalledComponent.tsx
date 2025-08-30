@@ -11,12 +11,22 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
-import { i18nObj } from '@/i18n/I18nProvider';
+import { extractI18nObject } from '@/i18n/I18nProvider';
+import { toast } from 'sonner';
+import { useAsyncTask, AsyncTaskStatus } from '@/hooks/useAsyncTask';
 
 export interface PluginInstalledComponentRef {
   refreshPluginList: () => void;
+}
+
+enum PluginOperationType {
+  DELETE = 'DELETE',
+  UPDATE = 'UPDATE',
 }
 
 // eslint-disable-next-line react/display-name
@@ -28,6 +38,26 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
     const [selectedPlugin, setSelectedPlugin] = useState<PluginCardVO | null>(
       null,
     );
+    const [showOperationModal, setShowOperationModal] = useState(false);
+    const [operationType, setOperationType] = useState<PluginOperationType>(
+      PluginOperationType.DELETE,
+    );
+    const [targetPlugin, setTargetPlugin] = useState<PluginCardVO | null>(null);
+
+    const asyncTask = useAsyncTask({
+      onSuccess: () => {
+        const successMessage =
+          operationType === PluginOperationType.DELETE
+            ? t('plugins.deleteSuccess')
+            : t('plugins.updateSuccess');
+        toast.success(successMessage);
+        setShowOperationModal(false);
+        getPluginList();
+      },
+      onError: () => {
+        // Error is already handled in the hook state
+      },
+    });
 
     useEffect(() => {
       initData();
@@ -43,16 +73,23 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
         setPluginList(
           value.plugins.map((plugin) => {
             return new PluginCardVO({
-              author: plugin.author,
-              description: i18nObj(plugin.description),
+              author: plugin.manifest.manifest.metadata.author ?? '',
+              label: extractI18nObject(plugin.manifest.manifest.metadata.label),
+              description: extractI18nObject(
+                plugin.manifest.manifest.metadata.description ?? {
+                  en_US: '',
+                  zh_Hans: '',
+                },
+              ),
+              debug: plugin.debug,
               enabled: plugin.enabled,
-              name: plugin.name,
-              version: plugin.version,
+              name: plugin.manifest.manifest.metadata.name,
+              version: plugin.manifest.manifest.metadata.version ?? '',
               status: plugin.status,
-              tools: plugin.tools,
-              event_handlers: plugin.event_handlers,
-              repository: plugin.repository,
+              components: plugin.components,
               priority: plugin.priority,
+              install_source: plugin.install_source,
+              install_info: plugin.install_info,
             });
           }),
         );
@@ -68,8 +105,149 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
       setModalOpen(true);
     }
 
+    function handlePluginDelete(plugin: PluginCardVO) {
+      setTargetPlugin(plugin);
+      setOperationType(PluginOperationType.DELETE);
+      setShowOperationModal(true);
+      asyncTask.reset();
+    }
+
+    function handlePluginUpdate(plugin: PluginCardVO) {
+      setTargetPlugin(plugin);
+      setOperationType(PluginOperationType.UPDATE);
+      setShowOperationModal(true);
+      asyncTask.reset();
+    }
+
+    function executeOperation() {
+      if (!targetPlugin) return;
+
+      const apiCall =
+        operationType === PluginOperationType.DELETE
+          ? httpClient.removePlugin(targetPlugin.author, targetPlugin.name)
+          : httpClient.upgradePlugin(targetPlugin.author, targetPlugin.name);
+
+      apiCall
+        .then((res) => {
+          asyncTask.startTask(res.task_id);
+        })
+        .catch((error) => {
+          const errorMessage =
+            operationType === PluginOperationType.DELETE
+              ? t('plugins.deleteError') + error.message
+              : t('plugins.updateError') + error.message;
+          toast.error(errorMessage);
+        });
+    }
+
     return (
       <>
+        <Dialog
+          open={showOperationModal}
+          onOpenChange={(open) => {
+            if (!open) {
+              setShowOperationModal(false);
+              setTargetPlugin(null);
+              asyncTask.reset();
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {operationType === PluginOperationType.DELETE
+                  ? t('plugins.deleteConfirm')
+                  : t('plugins.updateConfirm')}
+              </DialogTitle>
+            </DialogHeader>
+            <DialogDescription>
+              {asyncTask.status === AsyncTaskStatus.WAIT_INPUT && (
+                <div>
+                  {operationType === PluginOperationType.DELETE
+                    ? t('plugins.confirmDeletePlugin', {
+                        author: targetPlugin?.author ?? '',
+                        name: targetPlugin?.name ?? '',
+                      })
+                    : t('plugins.confirmUpdatePlugin', {
+                        author: targetPlugin?.author ?? '',
+                        name: targetPlugin?.name ?? '',
+                      })}
+                </div>
+              )}
+              {asyncTask.status === AsyncTaskStatus.RUNNING && (
+                <div>
+                  {operationType === PluginOperationType.DELETE
+                    ? t('plugins.deleting')
+                    : t('plugins.updating')}
+                </div>
+              )}
+              {asyncTask.status === AsyncTaskStatus.ERROR && (
+                <div>
+                  {operationType === PluginOperationType.DELETE
+                    ? t('plugins.deleteError')
+                    : t('plugins.updateError')}
+                  <div className="text-red-500">{asyncTask.error}</div>
+                </div>
+              )}
+            </DialogDescription>
+            <DialogFooter>
+              {asyncTask.status === AsyncTaskStatus.WAIT_INPUT && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowOperationModal(false);
+                    setTargetPlugin(null);
+                    asyncTask.reset();
+                  }}
+                >
+                  {t('plugins.cancel')}
+                </Button>
+              )}
+              {asyncTask.status === AsyncTaskStatus.WAIT_INPUT && (
+                <Button
+                  variant={
+                    operationType === PluginOperationType.DELETE
+                      ? 'destructive'
+                      : 'default'
+                  }
+                  onClick={() => {
+                    executeOperation();
+                  }}
+                >
+                  {operationType === PluginOperationType.DELETE
+                    ? t('plugins.confirmDelete')
+                    : t('plugins.confirmUpdate')}
+                </Button>
+              )}
+              {asyncTask.status === AsyncTaskStatus.RUNNING && (
+                <Button
+                  variant={
+                    operationType === PluginOperationType.DELETE
+                      ? 'destructive'
+                      : 'default'
+                  }
+                  disabled
+                >
+                  {operationType === PluginOperationType.DELETE
+                    ? t('plugins.deleting')
+                    : t('plugins.updating')}
+                </Button>
+              )}
+              {asyncTask.status === AsyncTaskStatus.ERROR && (
+                <Button
+                  variant="default"
+                  onClick={() => {
+                    setShowOperationModal(false);
+                    asyncTask.reset();
+                  }}
+                >
+                  {t('plugins.close')}
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {pluginList.length === 0 ? (
           <div className="flex flex-col items-center justify-center text-gray-500 h-[calc(100vh-16rem)] w-full gap-2">
             <svg
@@ -94,9 +272,15 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
                     <PluginForm
                       pluginAuthor={selectedPlugin.author}
                       pluginName={selectedPlugin.name}
-                      onFormSubmit={() => {
+                      onFormSubmit={(timeout?: number) => {
                         setModalOpen(false);
-                        getPluginList();
+                        if (timeout) {
+                          setTimeout(() => {
+                            getPluginList();
+                          }, timeout);
+                        } else {
+                          getPluginList();
+                        }
                       }}
                       onFormCancel={() => {
                         setModalOpen(false);
@@ -113,6 +297,8 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
                   <PluginCardComponent
                     cardVO={vo}
                     onCardClick={() => handlePluginClick(vo)}
+                    onDeleteClick={() => handlePluginDelete(vo)}
+                    onUpgradeClick={() => handlePluginUpdate(vo)}
                   />
                 </div>
               );

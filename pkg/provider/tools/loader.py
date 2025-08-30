@@ -3,8 +3,8 @@ from __future__ import annotations
 import abc
 import typing
 
-from ...core import app, entities as core_entities
-from . import entities as tools_entities
+from ...core import app
+import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 
 preregistered_loaders: list[typing.Type[ToolLoader]] = []
@@ -35,7 +35,7 @@ class ToolLoader(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def get_tools(self, enabled: bool = True) -> list[tools_entities.LLMFunction]:
+    async def get_tools(self) -> list[resource_tool.LLMTool]:
         """获取所有工具"""
         pass
 
@@ -45,7 +45,7 @@ class ToolLoader(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def invoke_tool(self, query: core_entities.Query, name: str, parameters: dict) -> typing.Any:
+    async def invoke_tool(self, name: str, parameters: dict) -> typing.Any:
         """执行工具调用"""
         pass
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlalchemy
 import traceback
 
-from . import entities, requester
+from . import requester
 from ...core import app
 from ...discover import engine
 from . import token
@@ -15,14 +15,6 @@ FETCH_MODEL_LIST_URL = 'https://api.qchatgpt.rockchin.top/api/v2/fetch/model_lis
 
 class ModelManager:
     """模型管理器"""
-
-    model_list: list[entities.LLMModelInfo]  # deprecated
-
-    requesters: dict[str, requester.ProviderAPIRequester]  # deprecated
-
-    token_mgrs: dict[str, token.TokenManager]  # deprecated
-
-    # ====== 4.0 ======
 
     ap: app.Application
 
@@ -36,9 +28,6 @@ class ModelManager:
 
     def __init__(self, ap: app.Application):
         self.ap = ap
-        self.model_list = []
-        self.requesters = {}
-        self.token_mgrs = {}
         self.llm_models = []
         self.embedding_models = []
         self.requester_components = []
@@ -148,13 +137,6 @@ class ModelManager:
         """加载 Embedding 模型"""
         runtime_embedding_model = await self.init_runtime_embedding_model(model_info)
         self.embedding_models.append(runtime_embedding_model)
-
-    async def get_model_by_name(self, name: str) -> entities.LLMModelInfo:  # deprecated
-        """通过名称获取模型"""
-        for model in self.model_list:
-            if model.name == name:
-                return model
-        raise ValueError(f'无法确定模型 {name} 的信息')
 
     async def get_model_by_uuid(self, uuid: str) -> requester.RuntimeLLMModel:
         """通过uuid获取 LLM 模型"""

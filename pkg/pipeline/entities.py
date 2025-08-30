@@ -3,10 +3,10 @@ from __future__ import annotations
 import enum
 import typing
 
-import pydantic.v1 as pydantic
-from ..platform.types import message as platform_message
+import pydantic
 
-from ..core import entities
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
 
 class ResultType(enum.Enum):
@@ -20,7 +20,7 @@ class ResultType(enum.Enum):
 class StageProcessResult(pydantic.BaseModel):
     result_type: ResultType
 
-    new_query: entities.Query
+    new_query: pipeline_query.Query
 
     user_notice: typing.Optional[
         typing.Union[

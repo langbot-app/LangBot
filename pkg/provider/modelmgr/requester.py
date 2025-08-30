@@ -4,11 +4,11 @@ import abc
 import typing
 
 from ...core import app
-from ...core import entities as core_entities
-from .. import entities as llm_entities
-from ..tools import entities as tools_entities
 from ...entity.persistence import model as persistence_model
+import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 from . import token
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 
 class RuntimeLLMModel:
@@ -79,13 +79,13 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     async def invoke_llm(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         model: RuntimeLLMModel,
-        messages: typing.List[llm_entities.Message],
-        funcs: typing.List[tools_entities.LLMFunction] = None,
+        messages: typing.List[provider_message.Message],
+        funcs: typing.List[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> llm_entities.Message:
+    ) -> provider_message.Message:
         """调用API
 
         Args:
@@ -102,42 +102,41 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
 
     async def invoke_llm_stream(
         self,
-        query: core_entities.Query,
+        query: pipeline_query.Query,
         model: RuntimeLLMModel,
-        messages: typing.List[llm_entities.Message],
-        funcs: typing.List[tools_entities.LLMFunction] = None,
+        messages: typing.List[provider_message.Message],
+        funcs: typing.List[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> llm_entities.MessageChunk:
+    ) -> provider_message.MessageChunk:
         """调用API
 
         Args:
             model (RuntimeLLMModel): 使用的模型信息
-            messages (typing.List[llm_entities.Message]): 消息对象列表
-            funcs (typing.List[tools_entities.LLMFunction], optional): 使用的工具函数列表. Defaults to None.
+            messages (typing.List[provider_message.Message]): 消息对象列表
+            funcs (typing.List[resource_tool.LLMTool], optional): 使用的工具函数列表. Defaults to None.
             extra_args (dict[str, typing.Any], optional): 额外的参数. Defaults to {}.
             remove_think (bool, optional): 是否移除思考中的消息. Defaults to False.
 
         Returns:
-            typing.AsyncGenerator[llm_entities.MessageChunk]: 返回消息对象
+            typing.AsyncGenerator[provider_message.MessageChunk]: 返回消息对象
         """
         pass
 
     async def invoke_embedding(
         self,
         model: RuntimeEmbeddingModel,
-        input_text: list[str],
+        input_text: typing.List[str],
         extra_args: dict[str, typing.Any] = {},
-    ) -> list[list[float]]:
+    ) -> typing.List[typing.List[float]]:
         """调用 Embedding API
 
         Args:
-            query (core_entities.Query): 请求上下文
             model (RuntimeEmbeddingModel): 使用的模型信息
-            input_text (list[str]): 输入文本
+            input_text (typing.List[str]): 输入文本
             extra_args (dict[str, typing.Any], optional): 额外的参数. Defaults to {}.
 
         Returns:
-            list[list[float]]: 返回的 embedding 向量
+            typing.List[typing.List[float]]: 返回的 embedding 向量
         """
         pass

@@ -1,7 +1,8 @@
 import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
 import { PipelineConfigTab } from '@/app/infra/entities/pipeline';
-import { I18nLabel } from '@/app/infra/entities/common';
+import { I18nObject } from '@/app/infra/entities/common';
 import { Message } from '@/app/infra/entities/message';
+import { Plugin, PluginV4 } from '@/app/infra/entities/plugin';
 
 export interface ApiResponse<T> {
   code: number;
@@ -23,8 +24,8 @@ export interface ApiRespProviderRequester {
 
 export interface Requester {
   name: string;
-  label: I18nLabel;
-  description: I18nLabel;
+  label: I18nObject;
+  description: I18nObject;
   icon?: string;
   spec: {
     config: IDynamicFormItemSchema[];
@@ -113,8 +114,8 @@ export interface ApiRespPlatformAdapter {
 
 export interface Adapter {
   name: string;
-  label: I18nLabel;
-  description: I18nLabel;
+  label: I18nObject;
+  description: I18nObject;
   icon?: string;
   spec: {
     config: IDynamicFormItemSchema[];
@@ -179,22 +180,22 @@ export interface ApiRespPlugin {
   plugin: Plugin;
 }
 
-export interface Plugin {
-  author: string;
-  name: string;
-  description: I18nLabel;
-  label: I18nLabel;
-  version: string;
-  enabled: boolean;
-  priority: number;
-  status: string;
-  tools: object[];
-  event_handlers: object;
-  main_file: string;
-  pkg_path: string;
-  repository: string;
-  config_schema: IDynamicFormItemSchema[];
-}
+// export interface Plugin {
+//   author: string;
+//   name: string;
+//   description: I18nLabel;
+//   label: I18nLabel;
+//   version: string;
+//   enabled: boolean;
+//   priority: number;
+//   status: string;
+//   tools: object[];
+//   event_handlers: object;
+//   main_file: string;
+//   pkg_path: string;
+//   repository: string;
+//   config_schema: IDynamicFormItemSchema[];
+// }
 
 export interface ApiRespPluginConfig {
   config: object;
@@ -210,6 +211,8 @@ export interface PluginReorderElement {
 export interface ApiRespSystemInfo {
   debug: boolean;
   version: string;
+  cloud_service_url: string;
+  enable_marketplace: boolean;
 }
 
 export interface ApiRespAsyncTasks {
@@ -241,26 +244,13 @@ export interface ApiRespUserToken {
   token: string;
 }
 
-export interface MarketPlugin {
-  ID: number;
-  CreatedAt: string; // ISO 8601 格式日期
-  UpdatedAt: string;
-  DeletedAt: string | null;
-  name: string;
-  author: string;
-  description: string;
-  repository: string; // GitHub 仓库路径
-  artifacts_path: string;
-  stars: number;
-  downloads: number;
-  status: 'initialized' | 'mounted'; // 可根据实际状态值扩展联合类型
-  synced_at: string;
-  pushed_at: string; // 最后一次代码推送时间
+export interface ApiRespMarketplacePlugins {
+  plugins: PluginV4[];
+  total: number;
 }
 
-export interface MarketPluginResponse {
-  plugins: MarketPlugin[];
-  total: number;
+export interface ApiRespMarketplacePluginDetail {
+  plugin: PluginV4;
 }
 
 interface GetPipelineConfig {

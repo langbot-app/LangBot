@@ -5,10 +5,9 @@ import traceback
 
 from . import strategy
 from .. import stage, entities
-from ...core import entities as core_entities
-from ...platform.types import message as platform_message
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
 from ...utils import importutil
-
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 from . import strategies
 
 importutil.import_modules_in_pkg(strategies)
@@ -67,8 +66,8 @@ class LongTextProcessStage(stage.PipelineStage):
 
         await self.strategy_impl.initialize()
 
-    async def process(self, query: core_entities.Query, stage_inst_name: str) -> entities.StageProcessResult:
-        # Check if it contains non-Plain components
+    async def process(self, query: pipeline_query.Query, stage_inst_name: str) -> entities.StageProcessResult:
+        # 检查是否包含非 Plain 组件
         contains_non_plain = False
 
         for msg in query.resp_message_chain[-1]:
