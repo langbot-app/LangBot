@@ -35,6 +35,6 @@ class RequestRunner(abc.ABC):
         self.pipeline_config = pipeline_config
 
     @abc.abstractmethod
-    async def run(self, query: core_entities.Query) -> typing.AsyncGenerator[llm_entities.Message, None]:
+    async def run(self, query: core_entities.Query) -> typing.AsyncGenerator[llm_entities.Message | llm_entities.MessageChunk, None]:
         """运行请求"""
         pass

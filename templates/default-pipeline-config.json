@@ -70,6 +70,14 @@
             "header-value": "",
             "timeout": 120,
             "output-key": "response"
+        },
+        "langflow-api": {
+            "base-url": "http://localhost:7860",
+            "api-key": "your-api-key",
+            "flow-id": "your-flow-id",
+            "input-type": "chat",
+            "output-type": "chat",
+            "tweaks": {}
         }
     },
     "output": {
