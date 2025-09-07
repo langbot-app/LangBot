@@ -24,23 +24,23 @@ class Retriever(base_service.BaseService):
             extra_args={},  # TODO: add extra args
         )
 
-        chroma_results = await self.ap.vector_db_mgr.vector_db.search(kb_id, query_embedding[0], k)
+        vector_results = await self.ap.vector_db_mgr.vector_db.search(kb_id, query_embedding[0], k)
 
-        # 'ids' is always returned by ChromaDB, even if not explicitly in 'include'
-        matched_chroma_ids = chroma_results.get('ids', [[]])[0]
-        distances = chroma_results.get('distances', [[]])[0]
-        chroma_metadatas = chroma_results.get('metadatas', [[]])[0]
+        # 'ids' shape mirrors the Chroma-style response contract for compatibility
+        matched_vector_ids = vector_results.get('ids', [[]])[0]
+        distances = vector_results.get('distances', [[]])[0]
+        vector_metadatas = vector_results.get('metadatas', [[]])[0]
 
-        if not matched_chroma_ids:
-            self.ap.logger.info('No relevant chunks found in Chroma.')
+        if not matched_vector_ids:
+            self.ap.logger.info('No relevant chunks found in vector database.')
             return []
 
         result: list[retriever_entities.RetrieveResultEntry] = []
 
-        for i, id in enumerate(matched_chroma_ids):
+        for i, id in enumerate(matched_vector_ids):
             entry = retriever_entities.RetrieveResultEntry(
                 id=id,
-                metadata=chroma_metadatas[i],
+                metadata=vector_metadatas[i],
                 distance=distances[i],
             )
             result.append(entry)
