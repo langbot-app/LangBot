@@ -4,22 +4,22 @@ import os
 from typing import Any, Dict, List
 
 from qdrant_client import AsyncQdrantClient, models
-
+from pkg.core import app
 from pkg.vector.vdb import VectorDatabase
 
 
 class QdrantVectorDatabase(VectorDatabase):
-    def __init__(self, ap):
+    def __init__(self, ap: app.Application):
         self.ap = ap
-        url = os.getenv('QDRANT_URL')
-        host = os.getenv('QDRANT_HOST', 'localhost')
-        port_env = os.getenv('QDRANT_PORT', '6333')
-        api_key = os.getenv('QDRANT_API_KEY')
+        url = self.ap.instance_config.data['kb']['qdrant']['url']
+        host = self.ap.instance_config.data['kb']['qdrant']['host']
+        port = self.ap.instance_config.data['kb']['qdrant']['port']
+        api_key = self.ap.instance_config.data['kb']['qdrant']['api_key']
 
         if url:
             self.client = AsyncQdrantClient(url=url, api_key=api_key)
         else:
-            self.client = AsyncQdrantClient(host=host, port=int(port_env), api_key=api_key)
+            self.client = AsyncQdrantClient(host=host, port=int(port), api_key=api_key)
 
         self._collections: set[str] = set()
 
