@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 from ..core import app
 from .vdb import VectorDatabase
 from .vdbs.chroma import ChromaVectorDatabase
+from .vdbs.qdrant import QdrantVectorDatabase
 
 
 class VectorDBManager:
@@ -13,6 +15,11 @@ class VectorDBManager:
         self.ap = ap
 
     async def initialize(self):
-        # 初始化 Chroma 向量数据库（可扩展为多种实现）
         if self.vector_db is None:
-            self.vector_db = ChromaVectorDatabase(self.ap)
+            vdb_backend = os.getenv('VDB', 'chroma').lower()
+            if vdb_backend == 'qdrant':
+                self.vector_db = QdrantVectorDatabase(self.ap)
+                self.ap.logger.info('Initialized Qdrant vector database backend.')
+            else:
+                self.vector_db = ChromaVectorDatabase(self.ap)
+                self.ap.logger.info('Initialized Chroma vector database backend.')

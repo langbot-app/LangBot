@@ -3,7 +3,7 @@ name = "langbot"
 version = "4.2.2"
 description = "高稳定、支持扩展、多模态 - 大模型原生即时通信机器人平台"
 readme = "README.md"
-requires-python = ">=3.10.1"
+requires-python = ">=3.10.1,<4.0"
 dependencies = [
     "aiocqhttp>=1.4.4",
     "aiofiles>=24.1.0",
@@ -60,6 +60,7 @@ dependencies = [
     "html2text>=2024.2.26",
     "langchain>=0.2.0",
     "chromadb>=0.4.24",
+    "qdrant-client (>=1.15.1,<2.0.0)",
 ]
 keywords = [
     "bot",
