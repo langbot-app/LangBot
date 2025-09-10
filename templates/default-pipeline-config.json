@@ -77,7 +77,7 @@
             "flow-id": "your-flow-id",
             "input-type": "chat",
             "output-type": "chat",
-            "tweaks": {}
+            "tweaks": "{}"
         }
     },
     "output": {
