@@ -297,8 +297,8 @@ stages:
       en_US: Langflow API
       zh_Hans: Langflow API
     description:
-      en_US: Configure the Langflow API of the pipeline
-      zh_Hans: 配置 Langflow API
+      en_US: Configure the Langflow API of the pipeline, call the Langflow flow through the `Simplified Run Flow` interface
+      zh_Hans: 配置 Langflow API，通过 `Simplified Run Flow` 接口调用 Langflow 的流程
     config:
       - name: base-url
         label:
