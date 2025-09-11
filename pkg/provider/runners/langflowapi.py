@@ -4,6 +4,7 @@ import typing
 import json
 import httpx
 import uuid
+import traceback
 
 from .. import runner
 from ...core import app, entities as core_entities
@@ -91,48 +92,53 @@ class LangflowAPIRunner(runner.RequestRunner):
         async with httpx.AsyncClient() as client:
             if is_stream:
                 # 流式请求
-                async with client.stream('POST', url, json=payload, headers=headers, timeout=30.0) as response:
+                async with client.stream('POST', url, json=payload, headers=headers, timeout=120.0) as response:
+                    print(response)
                     response.raise_for_status()
 
                     accumulated_content = ''
                     message_count = 0
 
                     async for line in response.aiter_lines():
-                        if line.startswith('data: '):
-                            data_str = line[6:]  # 移除 "data: " 前缀
-                            try:
-                                data = json.loads(data_str)
+                        data_str = line
 
-                                # 提取消息内容
-                                message_text = ''
-                                if 'outputs' in data and len(data['outputs']) > 0:
-                                    output = data['outputs'][0]
-                                    if 'outputs' in output and len(output['outputs']) > 0:
-                                        inner_output = output['outputs'][0]
-                                        if 'outputs' in inner_output and 'message' in inner_output['outputs']:
-                                            message_data = inner_output['outputs']['message']
-                                            if 'message' in message_data:
-                                                message_text = message_data['message']
+                        if data_str.startswith('data: '):
+                            data_str = data_str[6:]  # 移除 "data: " 前缀
 
-                                # 如果没有找到消息，尝试其他可能的路径
-                                if not message_text and 'messages' in data:
-                                    messages = data['messages']
-                                    if messages and len(messages) > 0:
-                                        message_text = messages[0].get('message', '')
+                        try:
+                            data = json.loads(data_str)
 
-                                if message_text:
-                                    # 更新累积内容
-                                    accumulated_content = message_text
-                                    message_count += 1
+                            # 提取消息内容
+                            message_text = ''
+                            if 'outputs' in data and len(data['outputs']) > 0:
+                                output = data['outputs'][0]
+                                if 'outputs' in output and len(output['outputs']) > 0:
+                                    inner_output = output['outputs'][0]
+                                    if 'outputs' in inner_output and 'message' in inner_output['outputs']:
+                                        message_data = inner_output['outputs']['message']
+                                        if 'message' in message_data:
+                                            message_text = message_data['message']
 
-                                    # 每8条消息或有新内容时生成一个chunk
-                                    if message_count % 8 == 0 or len(message_text) > 0:
-                                        yield llm_entities.MessageChunk(
-                                            role='assistant', content=accumulated_content, is_final=False
-                                        )
-                            except json.JSONDecodeError:
-                                # 如果不是JSON，跳过这一行
-                                continue
+                            # 如果没有找到消息，尝试其他可能的路径
+                            if not message_text and 'messages' in data:
+                                messages = data['messages']
+                                if messages and len(messages) > 0:
+                                    message_text = messages[0].get('message', '')
+
+                            if message_text:
+                                # 更新累积内容
+                                accumulated_content = message_text
+                                message_count += 1
+
+                                # 每8条消息或有新内容时生成一个chunk
+                                if message_count % 8 == 0 or len(message_text) > 0:
+                                    yield llm_entities.MessageChunk(
+                                        role='assistant', content=accumulated_content, is_final=False
+                                    )
+                        except json.JSONDecodeError:
+                            # 如果不是JSON，跳过这一行
+                            traceback.print_exc()
+                            continue
 
                     # 发送最终消息
                     yield llm_entities.MessageChunk(role='assistant', content=accumulated_content, is_final=True)
@@ -172,43 +178,3 @@ class LangflowAPIRunner(runner.RequestRunner):
                 else:
                     reply_message = llm_entities.Message(role='assistant', content=message_text)
                     yield reply_message
-
-        # except httpx.TimeoutException:
-        #     error_message = "请求Langflow API超时"
-        #     if is_stream:
-        #         yield llm_entities.MessageChunk(
-        #             role="assistant",
-        #             content=error_message,
-        #             is_final=True
-        #         )
-        #     else:
-        #         yield llm_entities.Message(
-        #             role="assistant",
-        #             content=error_message
-        #         )
-        # except httpx.RequestError as e:
-        #     error_message = f"请求Langflow API时发生错误: {str(e)}"
-        #     if is_stream:
-        #         yield llm_entities.MessageChunk(
-        #             role="assistant",
-        #             content=error_message,
-        #             is_final=True
-        #         )
-        #     else:
-        #         yield llm_entities.Message(
-        #             role="assistant",
-        #             content=error_message
-        #         )
-        # except Exception as e:
-        #     error_message = f"处理Langflow API响应时发生错误: {str(e)}"
-        #     if is_stream:
-        #         yield llm_entities.MessageChunk(
-        #             role="assistant",
-        #             content=error_message,
-        #             is_final=True
-        #         )
-        #     else:
-        #         yield llm_entities.Message(
-        #             role="assistant",
-        #             content=error_message
-        #         )
