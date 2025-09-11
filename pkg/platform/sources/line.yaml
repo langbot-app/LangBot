@@ -8,6 +8,8 @@ metadata:
   description:
     en_US: LINE Adapter
     zh_Hans: LINE适配器，请查看文档了解使用方式
+    ja_JP: LINEアダプター、ドキュメントを参照してください
+    zh_Hant: LINE適配器，請查看文檔了解使用方式
   icon: line.png
 spec:
   config:
@@ -15,6 +17,8 @@ spec:
       label:
         en_US: Channel access token
         zh_Hans: 频道访问令牌
+        ja_JP: チャンネルアクセストークン
+        zh_Hant: 頻道訪問令牌
       type: string
       required: true
       default: ""
@@ -25,6 +29,8 @@ spec:
       description:
         en_US: Only valid when webhook mode is enabled, please fill in the webhook port
         zh_Hans: 请填写 Webhook 端口
+        ja_JP: Webhookポートを入力してください
+        zh_Hant: 請填寫 Webhook 端口
       type: integer
       required: true
       default: 2287
@@ -32,9 +38,13 @@ spec:
       label:
         en_US: Channel secret
         zh_Hans: 消息密钥
+        ja_JP: チャンネルシークレット
+        zh_Hant: 消息密钥
       description:
         en_US: Only valid when webhook mode is enabled, please fill in the encrypt key
         zh_Hans: 请填写加密密钥
+        ja_JP: Webhookモードが有効な場合にのみ、暗号化キーを入力してください
+        zh_Hant: 請填寫加密密钥
       type: string
       required: true
       default: ""
