@@ -15,11 +15,12 @@ class VectorDBManager:
         self.ap = ap
 
     async def initialize(self):
-        if self.ap.instance_config.data['kb']:
-            if self.ap.instance_config.data['kb']['default_vector_db'] == 'chroma':
+        kb_config = self.ap.instance_config.data.get('kb')
+        if kb_config:
+            if kb_config.get('default_vector_db') == 'chroma':
                 self.vector_db = ChromaVectorDatabase(self.ap)
                 self.ap.logger.info('Initialized Chroma vector database backend.')
-            elif self.ap.instance_config.data['kb']['default_vector_db'] == 'qdrant':
+            elif kb_config.get('default_vector_db') == 'qdrant':
                 self.vector_db = QdrantVectorDatabase(self.ap)
                 self.ap.logger.info('Initialized Qdrant vector database backend.')
             else:
