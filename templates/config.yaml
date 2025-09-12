@@ -20,10 +20,10 @@ system:
     jwt:
         expire: 604800
         secret: ''
-kb:
-    default_vector_db: chroma
+vdb:
+    use: chroma
     qdrant:
         url: ''
         host: localhost
-        port: '6333'
+        port: 6333
         api_key: ''

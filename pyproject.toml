@@ -1,7 +1,7 @@
 [project]
 name = "langbot"
 version = "4.2.2"
-description = "高稳定、支持扩展、多模态 - 大模型原生即时通信机器人平台"
+description = "Easy-to-use global IM bot platform designed for LLM era"
 readme = "README.md"
 requires-python = ">=3.10.1,<4.0"
 dependencies = [
