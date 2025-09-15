@@ -340,3 +340,4 @@ class WecomClient:
     async def get_media_id(self, image: platform_message.Image):
         media_id = await self.upload_to_work(image=image)
         return media_id
+    

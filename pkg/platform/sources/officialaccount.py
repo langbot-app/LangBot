@@ -2,7 +2,7 @@ from __future__ import annotations
 import typing
 import asyncio
 import traceback
-
+import pydantic
 import datetime
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 from libs.official_account_api.oaevent import OAEvent
@@ -56,46 +56,50 @@ class OAEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
 
 class OfficialAccountAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
-    bot: OAClient | OAClientForLongerResponse
-    bot_account_id: str
     message_converter: OAMessageConverter = OAMessageConverter()
     event_converter: OAEventConverter = OAEventConverter()
-    config: dict
+    bot: typing.Union[OAClient, OAClientForLongerResponse] = pydantic.Field(exclude=True)
 
     def __init__(self, config: dict, logger: EventLogger):
-        self.config = config
-        self.logger = logger
-
-        required_keys = [
-            'token',
-            'EncodingAESKey',
-            'AppSecret',
-            'AppID',
-            'Mode',
-        ]
-        missing_keys = [key for key in required_keys if key not in config]
+        required_keys = ['token', 'EncodingAESKey', 'AppSecret', 'AppID', 'Mode']
+        missing_keys = [k for k in required_keys if k not in config]
         if missing_keys:
-            raise command_errors.ParamNotEnoughError('微信公众号缺少相关配置项，请查看文档或联系管理员')
+            raise Exception(f'OfficialAccount 缺少配置项: {missing_keys}')
 
-        if self.config['Mode'] == 'drop':
-            self.bot = OAClient(
+        
+        if config['Mode'] == 'drop':
+            bot = OAClient(
                 token=config['token'],
                 EncodingAESKey=config['EncodingAESKey'],
                 Appsecret=config['AppSecret'],
                 AppID=config['AppID'],
-                logger=self.logger,
+                logger=logger,
             )
-        elif self.config['Mode'] == 'passive':
-            self.bot = OAClientForLongerResponse(
+        elif config['Mode'] == 'passive':
+            bot = OAClientForLongerResponse(
                 token=config['token'],
                 EncodingAESKey=config['EncodingAESKey'],
                 Appsecret=config['AppSecret'],
                 AppID=config['AppID'],
-                LoadingMessage=config['LoadingMessage'],
-                logger=self.logger,
+                LoadingMessage=config.get('LoadingMessage', ''),
+                logger=logger,
             )
         else:
             raise KeyError('请设置微信公众号通信模式')
+
+        bot_account_id = config.get('AppID', '')
+
+        
+        super().__init__(
+            bot=bot,
+            bot_account_id=bot_account_id,
+            config=config,
+            logger=logger,
+        )
+
+
+
+
 
     async def reply_message(
         self,
@@ -154,3 +158,6 @@ class OfficialAccountAdapter(abstract_platform_adapter.AbstractMessagePlatformAd
         ],
     ):
         return super().unregister_listener(event_type, callback)
+
+    async def is_muted(self, group_id: str, ) -> bool:
+        pass

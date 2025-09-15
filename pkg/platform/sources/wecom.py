@@ -134,9 +134,7 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     config: dict
 
     def __init__(self, config: dict, logger: EventLogger):
-        self.config = config
-        self.logger = logger
-
+        # 校验必填项
         required_keys = [
             'corpid',
             'secret',
@@ -146,16 +144,26 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         ]
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
-            raise command_errors.ParamNotEnoughError('企业微信缺少相关配置项，请查看文档或联系管理员')
+            raise Exception(f'Wecom 缺少配置项: {missing_keys}')
 
-        self.bot = WecomClient(
+        # 创建运行时 bot 对象
+        bot = WecomClient(
             corpid=config['corpid'],
             secret=config['secret'],
             token=config['token'],
             EncodingAESKey=config['EncodingAESKey'],
             contacts_secret=config['contacts_secret'],
-            logger=self.logger,
+            logger=logger,
         )
+
+        
+        super().__init__(
+            config=config,
+            logger=logger,
+            bot=bot,
+            bot_account_id="",
+        )
+
 
     async def reply_message(
         self,
@@ -231,3 +239,6 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         ],
     ):
         return super().unregister_listener(event_type, callback)
+    
+    async def is_muted(self, group_id: int) -> bool:
+        pass
