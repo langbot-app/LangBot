@@ -26,7 +26,7 @@ class ForwardComponentStrategy(strategy_model.LongTextStrategy):
             platform_message.ForwardMessageNode(
                 sender_id=query.adapter.bot_account_id,
                 sender_name='User',
-                message_chain=platform_message.MessageChain([message]),
+                message_chain=platform_message.MessageChain([platform_message.Plain(text=message)]),
             )
         ]
 

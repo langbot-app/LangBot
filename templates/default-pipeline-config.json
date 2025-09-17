@@ -83,7 +83,7 @@
     "output": {
         "long-text-processing": {
             "threshold": 1000,
-            "strategy": "forward",
+            "strategy": "none",
             "font-path": ""
         },
         "force-delay": {

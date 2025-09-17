@@ -27,7 +27,7 @@ stages:
           zh_Hans: 长文本的处理策略
         type: select
         required: true
-        default: forward
+        default: none
         options:
           - name: forward
             label:
@@ -37,6 +37,10 @@ stages:
             label:
               en_US: Convert to Image
               zh_Hans: 转换为图片
+          - name: none
+            label:
+              en_US: None
+              zh_Hans: 不处理
       - name: font-path
         label:
           en_US: Font Path

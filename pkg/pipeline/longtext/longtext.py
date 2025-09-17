@@ -21,10 +21,15 @@ class LongTextProcessStage(stage.PipelineStage):
         - resp_message_chain
     """
 
-    strategy_impl: strategy.LongTextStrategy
+    strategy_impl: strategy.LongTextStrategy | None
 
     async def initialize(self, pipeline_config: dict):
         config = pipeline_config['output']['long-text-processing']
+
+        if config['strategy'] == 'none':
+            self.strategy_impl = None
+            return
+
         if config['strategy'] == 'image':
             use_font = config['font-path']
             try:
@@ -67,6 +72,10 @@ class LongTextProcessStage(stage.PipelineStage):
         await self.strategy_impl.initialize()
 
     async def process(self, query: pipeline_query.Query, stage_inst_name: str) -> entities.StageProcessResult:
+        if self.strategy_impl is None:
+            self.ap.logger.debug('Long message processing strategy is not set, skip long message processing.')
+            return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
+
         # 检查是否包含非 Plain 组件
         contains_non_plain = False
 
