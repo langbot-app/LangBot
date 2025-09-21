@@ -179,7 +179,7 @@ class PluginRuntimeConnector:
     ) -> context.EventContext:
         event_ctx = context.EventContext.from_event(event)
         is_enable_plugin = self.ap.instance_config.data.get('plugin', {}).get( 'enable', True)
-        if is_enable_plugin:
+        if not is_enable_plugin:
             return event_ctx
 
         event_ctx_result = await self.handler.emit_event(event_ctx.model_dump(serialize_as_any=True))
