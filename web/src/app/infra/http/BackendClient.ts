@@ -32,6 +32,7 @@ import {
   ApiRespProviderEmbeddingModels,
   ApiRespProviderEmbeddingModel,
   EmbeddingModel,
+  ApiRespPluginSystemStatus,
 } from '@/app/infra/entities/api';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
@@ -498,6 +499,10 @@ export class BackendClient extends BaseHttpClient {
 
   public getAsyncTask(id: number): Promise<AsyncTask> {
     return this.get(`/api/v1/system/tasks/${id}`);
+  }
+
+  public getPluginSystemStatus(): Promise<ApiRespPluginSystemStatus> {
+    return this.get('/api/v1/system/status/plugin-system');
   }
 
   // ============ User API ============

@@ -182,6 +182,17 @@ const enUS = {
     pluginSortSuccess: 'Plugin sort successful',
     pluginSortError: 'Plugin sort failed: ',
     pluginNoConfig: 'The plugin has no configuration items.',
+    systemDisabled: 'Plugin System Disabled',
+    systemDisabledDesc:
+      'Plugin system is not enabled, please modify the configuration according to the documentation',
+    connectionError: 'Plugin System Connection Error',
+    connectionErrorDesc:
+      'Please check the plugin system configuration or contact the administrator.',
+    errorDetails: 'Error Details',
+    loadingStatus: 'Checking plugin system status...',
+    failedToGetStatus: 'Failed to get plugin system status',
+    pluginSystemNotReady:
+      'Plugin system is not ready, cannot perform this operation',
     deleting: 'Deleting...',
     deletePlugin: 'Delete Plugin',
     cancel: 'Cancel',

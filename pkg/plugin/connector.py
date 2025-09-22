@@ -112,6 +112,9 @@ class PluginRuntimeConnector:
         pass
 
     async def ping_plugin_runtime(self):
+        if not hasattr(self, 'handler'):
+            raise Exception('Plugin runtime is not connected')
+
         return await self.handler.ping()
 
     async def install_plugin(

@@ -215,6 +215,12 @@ export interface ApiRespSystemInfo {
   enable_marketplace: boolean;
 }
 
+export interface ApiRespPluginSystemStatus {
+  is_enable: boolean;
+  is_connected: boolean;
+  plugin_connector_error: string;
+}
+
 export interface ApiRespAsyncTasks {
   tasks: AsyncTask[];
 }

@@ -183,6 +183,17 @@ const jaJP = {
     pluginSortSuccess: 'プラグインの並び替えに成功しました',
     pluginSortError: 'プラグインの並び替えに失敗しました：',
     pluginNoConfig: 'プラグインに設定項目がありません。',
+    systemDisabled: 'プラグインシステムが無効になっています',
+    systemDisabledDesc:
+      'プラグインシステムが無効になっています。プラグインシステムを有効にするか、ドキュメントに従って設定を変更してください',
+    connectionError: 'プラグインシステム接続エラー',
+    connectionErrorDesc:
+      'プラグインシステム設定を確認するか、管理者に連絡してください',
+    errorDetails: 'エラー詳細',
+    loadingStatus: 'プラグインシステム状態を確認中...',
+    failedToGetStatus: 'プラグインシステム状態の取得に失敗しました',
+    pluginSystemNotReady:
+      'プラグインシステムが準備されていません。この操作を実行できません',
     deleting: '削除中...',
     deletePlugin: 'プラグインを削除',
     cancel: 'キャンセル',
