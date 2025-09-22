@@ -41,6 +41,8 @@ class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverte
             yiri_msg_list.append(platform_message.Plain(text=text_content))
         if event.picture:
             yiri_msg_list.append(platform_message.Image(base64=event.picture))
+        if event.file:
+            yiri_msg_list.append(platform_message.File(url=event.file, name=event.name))
         if event.audio:
             yiri_msg_list.append(platform_message.Voice(base64=event.audio))
 
