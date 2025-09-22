@@ -40,6 +40,8 @@ class PluginRuntimeConnector:
         [PluginRuntimeConnector], typing.Coroutine[typing.Any, typing.Any, None]
     ]
 
+    is_enable_plugin: bool = True
+
     def __init__(
         self,
         ap: app.Application,
@@ -49,12 +51,13 @@ class PluginRuntimeConnector:
     ):
         self.ap = ap
         self.runtime_disconnect_callback = runtime_disconnect_callback
+        self.is_enable_plugin = self.ap.instance_config.data.get('plugin', {}).get( 'enable', True)
 
     async def initialize(self):
-        is_enable_plugin = self.ap.instance_config.data.get('plugin', {}).get( 'enable', True)
-        if not is_enable_plugin:
+        if not self.is_enable_plugin:
             self.ap.logger.info('Plugin system is disabled.')
             return
+
         async def new_connection_callback(connection: base_connection.Connection):
             async def disconnect_callback(rchandler: handler.RuntimeConnectionHandler) -> bool:
                 if platform.get_platform() == 'docker' or platform.use_websocket_to_connect_plugin_runtime():
@@ -178,10 +181,9 @@ class PluginRuntimeConnector:
         event: events.BaseEventModel,
     ) -> context.EventContext:
         event_ctx = context.EventContext.from_event(event)
-        is_enable_plugin = self.ap.instance_config.data.get('plugin', {}).get( 'enable', True)
-        if not is_enable_plugin:
-            return event_ctx
 
+        if not self.is_enable_plugin:
+            return event_ctx
         event_ctx_result = await self.handler.emit_event(event_ctx.model_dump(serialize_as_any=True))
 
         event_ctx = context.EventContext.model_validate(event_ctx_result['event_context'])
@@ -212,7 +214,6 @@ class PluginRuntimeConnector:
             yield cmd_ret
 
     def dispose(self):
-        is_enable_plugin = self.ap.instance_config.data.get('plugin', {}).get( 'enable', True)
-        if is_enable_plugin and isinstance(self.ctrl, stdio_client_controller.StdioClientController):
+        if self.is_enable_plugin and isinstance(self.ctrl, stdio_client_controller.StdioClientController):
                 self.ap.logger.info('Terminating plugin runtime process...')
                 self.ctrl.process.terminate()
