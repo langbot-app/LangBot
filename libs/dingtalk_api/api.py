@@ -110,6 +110,24 @@ class DingTalkClient:
             else:
                 raise Exception(f'Error: {response.status_code}, {response.text}')
 
+    async def get_file_url(self, download_code: str):
+        if not await self.check_access_token():
+            await self.get_access_token()
+        url = 'https://api.dingtalk.com/v1.0/robot/messageFiles/download'
+        params = {'downloadCode': download_code, 'robotCode': self.robot_code}
+        headers = {'x-acs-dingtalk-access-token': self.access_token}
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, headers=headers, json=params)
+            if response.status_code == 200:
+                result = response.json()
+                download_url = result.get('downloadUrl')
+                if download_url:
+                    return download_url
+                else:
+                    await self.logger.error(f'failed to get file: {response.json()}')
+            else:
+                raise Exception(f'Error: {response.status_code}, {response.text}')
+
     async def update_incoming_message(self, message):
         """异步更新 DingTalkClient 中的 incoming_message"""
         message_data = await self.get_message(message)
@@ -189,6 +207,10 @@ class DingTalkClient:
                 message_data['Audio'] = await self.get_audio_url(incoming_message.to_dict()['content']['downloadCode'])
 
                 message_data['Type'] = 'audio'
+            elif incoming_message.message_type == 'file':
+                message_data['File'] = await self.get_file_url(incoming_message.get_down_list()[0])
+                message_data['Name'] = incoming_message.get_down_list()[1]
+                message_data['Type'] = 'file'
 
             copy_message_data = message_data.copy()
             del copy_message_data['IncomingMessage']
