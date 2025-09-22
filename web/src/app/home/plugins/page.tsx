@@ -13,8 +13,6 @@ import {
   UploadIcon,
   StoreIcon,
   Download,
-  AlertCircle,
-  WifiOff,
   Power,
 } from 'lucide-react';
 import {
