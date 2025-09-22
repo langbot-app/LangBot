@@ -91,3 +91,26 @@ class SystemRouterGroup(group.RouterGroup):
             )
 
             return self.success(data=resp)
+
+        @self.route(
+            '/status/plugin-system',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN,
+        )
+        async def _() -> str:
+            plugin_connector_error = 'ok'
+            is_connected = True
+
+            try:
+                await self.ap.plugin_connector.ping_plugin_runtime()
+            except Exception as e:
+                plugin_connector_error = str(e)
+                is_connected = False
+
+            return self.success(
+                data={
+                    'is_enable': self.ap.plugin_connector.is_enable_plugin,
+                    'is_connected': is_connected,
+                    'plugin_connector_error': plugin_connector_error,
+                }
+            )

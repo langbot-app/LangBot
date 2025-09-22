@@ -41,6 +41,7 @@ class PluginRuntimeConnector:
     ]
 
     is_enable_plugin: bool = True
+    """Mark if the plugin system is enabled"""
 
     def __init__(
         self,
@@ -51,7 +52,7 @@ class PluginRuntimeConnector:
     ):
         self.ap = ap
         self.runtime_disconnect_callback = runtime_disconnect_callback
-        self.is_enable_plugin = self.ap.instance_config.data.get('plugin', {}).get( 'enable', True)
+        self.is_enable_plugin = self.ap.instance_config.data.get('plugin', {}).get('enable', True)
 
     async def initialize(self):
         if not self.is_enable_plugin:
@@ -109,6 +110,9 @@ class PluginRuntimeConnector:
 
     async def initialize_plugins(self):
         pass
+
+    async def ping_plugin_runtime(self):
+        return await self.handler.ping()
 
     async def install_plugin(
         self,
@@ -215,5 +219,5 @@ class PluginRuntimeConnector:
 
     def dispose(self):
         if self.is_enable_plugin and isinstance(self.ctrl, stdio_client_controller.StdioClientController):
-                self.ap.logger.info('Terminating plugin runtime process...')
-                self.ctrl.process.terminate()
+            self.ap.logger.info('Terminating plugin runtime process...')
+            self.ctrl.process.terminate()
