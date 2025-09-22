@@ -33,7 +33,7 @@ class SendResponseBackStage(stage.PipelineStage):
         if query.pipeline_config['output']['misc']['at-sender'] and isinstance(
             query.message_event, platform_events.GroupMessage
         ):
-            query.resp_message_chain[-1].insert(0, platform_message.At(query.message_event.sender.id))
+            query.resp_message_chain[-1].insert(0, platform_message.At(target=query.message_event.sender.id))
 
         quote_origin = query.pipeline_config['output']['misc']['quote-origin']
 
