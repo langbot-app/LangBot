@@ -101,29 +101,29 @@ docker compose up -d
 
 ### 大模型能力
 
-| 模型 | 状态 | 备注 |
-| --- | --- | --- |
-| [OpenAI](https://platform.openai.com/) | ✅ | 可接入任何 OpenAI 接口格式模型 |
-| [DeepSeek](https://www.deepseek.com/) | ✅ |  |
-| [Moonshot](https://www.moonshot.cn/) | ✅ |  |
-| [Anthropic](https://www.anthropic.com/) | ✅ |  |
-| [xAI](https://x.ai/) | ✅ |  |
-| [智谱AI](https://open.bigmodel.cn/) | ✅ |  |
-| [胜算云](https://www.shengsuanyun.com/?from=CH_KYIPP758) | ✅ | 全球大模型都可调用（友情推荐） |
-| [优云智算](https://www.compshare.cn/?ytag=GPU_YY-gh_langbot) | ✅ | 大模型和 GPU 资源平台 |
-| [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | ✅ | 大模型和 GPU 资源平台 |
-| [302.AI](https://share.302.ai/SuTG99) | ✅ | 大模型聚合平台 |
-| [Google Gemini](https://aistudio.google.com/prompts/new_chat) | ✅ | |
-| [Dify](https://dify.ai) | ✅ | LLMOps 平台 |
-| [Ollama](https://ollama.com/) | ✅ | 本地大模型运行平台 |
-| [LMStudio](https://lmstudio.ai/) | ✅ | 本地大模型运行平台 |
-| [GiteeAI](https://ai.gitee.com/) | ✅ | 大模型接口聚合平台 |
-| [SiliconFlow](https://siliconflow.cn/) | ✅ | 大模型聚合平台 |
-| [阿里云百炼](https://bailian.console.aliyun.com/) | ✅ | 大模型聚合平台, LLMOps 平台 |
-| [火山方舟](https://console.volcengine.com/ark/region:ark+cn-beijing/model?vendor=Bytedance&view=LIST_VIEW) | ✅ | 大模型聚合平台, LLMOps 平台 |
-| [ModelScope](https://modelscope.cn/docs/model-service/API-Inference/intro) | ✅ | 大模型聚合平台 |
-| [MCP](https://modelcontextprotocol.io/) | ✅ | 支持通过 MCP 协议获取工具 |
-| [百宝箱Tbox](https://www.tbox.cn/open) | ✅ | 蚂蚁百宝箱智能体平台，每月免费10亿大模型Token |
+| 模型 | 状态 | 备注                                                                                               |
+| --- | --- |--------------------------------------------------------------------------------------------------|
+| [OpenAI](https://platform.openai.com/) | ✅ | 可接入任何 OpenAI 接口格式模型                                                                              |
+| [DeepSeek](https://www.deepseek.com/) | ✅ |                                                                                                  |
+| [Moonshot](https://www.moonshot.cn/) | ✅ |                                                                                                  |
+| [Anthropic](https://www.anthropic.com/) | ✅ |                                                                                                  |
+| [xAI](https://x.ai/) | ✅ |                                                                                                  |
+| [智谱AI](https://open.bigmodel.cn/) | ✅ |                                                                                                  |
+| [胜算云](https://www.shengsuanyun.com/?from=CH_KYIPP758) | ✅ | 全球大模型都可调用（友情推荐）                                                                                  |
+| [优云智算](https://www.compshare.cn/?ytag=GPU_YY-gh_langbot) | ✅ | 大模型和 GPU 资源平台                                                                                    |
+| [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | ✅ | 大模型和 GPU 资源平台                                                                                    |
+| [302.AI](https://share.302.ai/SuTG99) | ✅ | 大模型聚合平台                                                                                          |
+| [Google Gemini](https://aistudio.google.com/prompts/new_chat) | ✅ |                                                                                                  |
+| [Dify](https://dify.ai) | ✅ | LLMOps 平台                                                                                        |
+| [Ollama](https://ollama.com/) | ✅ | 本地大模型运行平台                                                                                        |
+| [LMStudio](https://lmstudio.ai/) | ✅ | 本地大模型运行平台                                                                                        |
+| [GiteeAI](https://ai.gitee.com/) | ✅ | 大模型接口聚合平台                                                                                        |
+| [SiliconFlow](https://siliconflow.cn/) | ✅ | 大模型聚合平台                                                                                          |
+| [阿里云百炼](https://bailian.console.aliyun.com/) | ✅ | 大模型聚合平台, LLMOps 平台                                                                               |
+| [火山方舟](https://console.volcengine.com/ark/region:ark+cn-beijing/model?vendor=Bytedance&view=LIST_VIEW) | ✅ | 大模型聚合平台, LLMOps 平台                                                                               |
+| [ModelScope](https://modelscope.cn/docs/model-service/API-Inference/intro) | ✅ | 大模型聚合平台                                                                                          |
+| [MCP](https://modelcontextprotocol.io/) | ✅ | 支持通过 MCP 协议获取工具                                                                                  |
+| [百宝箱Tbox](https://www.tbox.cn/open) | ✅ | 蚂蚁百宝箱智能体平台，每月免费10亿大模型Token。[参考文档](https://alipaytbox.yuque.com/sxs0ba/doc/tbox_openapi_overview) |
 
 ### TTS
 

@@ -45,10 +45,10 @@ class TboxAPIRunner(runner.RequestRunner):
         self.tbox_client = TboxClient(authorization=self.api_key)
 
     async def _preprocess_user_message(self, query: pipeline_query.Query) -> tuple[str, list[str]]:
-        """预处理用户消息，提取纯文本，并将图片上传到 Dify 服务
+        """预处理用户消息，提取纯文本，并将图片上传到 Tbox 服务
 
         Returns:
-            tuple[str, list[str]]: 纯文本和图片的 Dify 服务图片 ID
+            tuple[str, list[str]]: 纯文本和图片的 Tbox 文件ID
         """
         plain_text = ''
         image_ids = []
