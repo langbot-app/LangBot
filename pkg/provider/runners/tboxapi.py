@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import typing
-import re
 import json
+import base64
+import tempfile
+import os
 
 from tboxsdk.tbox import TboxClient
+from tboxsdk.model.file import File, FileType
 
 from .. import runner
 from ...core import app
+from ...utils import image
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
@@ -33,12 +37,6 @@ class TboxAPIRunner(runner.RequestRunner):
         self.ap = ap
         self.pipeline_config = pipeline_config
 
-        valid_app_types = ['agent', 'workflow']
-        self.app_type = self.pipeline_config['ai']['tbox-app-api']['app-type']
-        # 检查配置文件中使用的应用类型是否支持
-        if self.app_type not in valid_app_types:
-            raise TboxAPIError(f'不支持的 Tbox 应用类型: {self.app_type}')
-
         # 初始化Tbox 参数配置
         self.app_id = self.pipeline_config['ai']['tbox-app-api']['app-id']
         self.api_key = self.pipeline_config['ai']['tbox-app-api']['api-key']
@@ -61,14 +59,21 @@ class TboxAPIRunner(runner.RequestRunner):
                     plain_text += ce.text
                 elif ce.type == 'image_base64':
                     image_b64, image_format = await image.extract_b64_and_format(ce.image_base64)
+                    # 创建临时文件
                     file_bytes = base64.b64decode(image_b64)
-                    file = ('img.png', file_bytes, f'image/{image_format}')
-                    file_upload_resp = await self.dify_client.upload_file(
-                        file,
-                        f'{query.session.launcher_type.value}_{query.session.launcher_id}',
-                    )
-                    image_id = file_upload_resp['id']
-                    image_ids.append(image_id)
+                    try:
+                        with tempfile.NamedTemporaryFile(suffix=f'.{image_format}', delete=False) as tmp_file:
+                            tmp_file.write(file_bytes)
+                            tmp_file_path = tmp_file.name
+                        file_upload_resp = self.tbox_client.upload_file(
+                            tmp_file_path
+                        )
+                        image_id = file_upload_resp.get("data", "")
+                        image_ids.append(image_id)
+                    finally:
+                        # 清理临时文件
+                        if os.path.exists(tmp_file_path):
+                            os.unlink(tmp_file_path)
         elif isinstance(query.user_message.content, str):
             plain_text = query.user_message.content
 
@@ -81,9 +86,7 @@ class TboxAPIRunner(runner.RequestRunner):
 
         plain_text, image_ids = await self._preprocess_user_message(query)
         remove_think = self.pipeline_config['output'].get('misc', '').get('remove-think')
-        if image_ids:
-            raise TboxAPIError('Tbox API 不支持图片输入')
-        
+
         try:
             is_stream = await query.adapter.is_stream_output_supported()
         except AttributeError:
@@ -92,13 +95,21 @@ class TboxAPIRunner(runner.RequestRunner):
         # 获取Tbox的conversation_id
         conversation_id = query.session.using_conversation.uuid or None
 
+        files = None
+        if image_ids:
+            files = [
+                File(file_id=image_id, type=FileType.IMAGE)
+                for image_id in image_ids
+            ]
+
         # 发送对话请求
         response = self.tbox_client.chat(
             app_id=self.app_id,  # Tbox中智能体应用的ID
-            user_id=query.user_id, # 用户ID
+            user_id=query.bot_uuid, # 用户ID
             query=plain_text,  # 用户输入的文本信息
             stream=is_stream,  # 是否流式输出
             conversation_id=conversation_id,  # 会话ID，为None时Tbox会自动创建一个新会话
+            files=files,  # 图片内容
         )
 
         if is_stream:
@@ -113,7 +124,7 @@ class TboxAPIRunner(runner.RequestRunner):
             )
 
     def _process_non_stream_message(self, response: typing.Dict, query: pipeline_query.Query, remove_think: bool):
-        if response.get('errorCode') != 0:
+        if response.get('errorCode') != "0":
             raise TboxAPIError(f'Tbox API 请求失败: {response.get("errorMsg", "")}')
         payload = response.get('data', {})
         conversation_id = payload.get('conversationId', '')

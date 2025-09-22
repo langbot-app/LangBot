@@ -124,6 +124,7 @@ docker compose up -d
 | [火山方舟](https://console.volcengine.com/ark/region:ark+cn-beijing/model?vendor=Bytedance&view=LIST_VIEW) | ✅ | 大模型聚合平台, LLMOps 平台 |
 | [ModelScope](https://modelscope.cn/docs/model-service/API-Inference/intro) | ✅ | 大模型聚合平台 |
 | [MCP](https://modelcontextprotocol.io/) | ✅ | 支持通过 MCP 协议获取工具 |
+| [百宝箱Tbox](https://www.tbox.cn/open)                                                            | ✅ | 蚂蚁百宝箱智能体平台，每月免费10亿大模型Token |
 
 ### TTS
 
