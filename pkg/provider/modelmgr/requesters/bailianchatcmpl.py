@@ -44,13 +44,11 @@ class BailianChatCompletions(modelscopechatcmpl.ModelScopeChatCompletions):
         # 设置此次请求中的messages
         messages = req_messages.copy()
 
-        is_use_dashscope_call = False
-        is_enable_multi_modal = True
+        is_use_dashscope_call = False   # 是否使用阿里原生库调用
+        is_enable_multi_model = True  # 是否支持多轮对话
         use_time_num = 0 # 模型已调用次数，防止存在多文件时重复调用
         use_time_ids = [] # 已调用的ID列表
         message_id = 0  # 记录消息序号
-
-        messages = [msg for msg in messages if 'resp_message_id' not in msg]
 
         for msg in messages:
             # print(msg)
@@ -71,7 +69,7 @@ class BailianChatCompletions(modelscopechatcmpl.ModelScopeChatCompletions):
                             del me['file_name']
                             use_time_num +=1
                             use_time_ids.append(message_id)
-                            is_enable_multi_modal = False
+                            is_enable_multi_model = False
                         # 2. 语音文件识别, 无法通过openai的audio字段传递，暂时不支持
                         # https://bailian.console.aliyun.com/?tab=doc#/doc/?type=model&url=2979031
                         elif file_type in ['aac', 'amr', 'aiff', 'flac', 'm4a',
@@ -84,12 +82,15 @@ class BailianChatCompletions(modelscopechatcmpl.ModelScopeChatCompletions):
                             is_use_dashscope_call = True
                             use_time_num +=1
                             use_time_ids.append(message_id)
-                            is_enable_multi_modal = False
+                            is_enable_multi_model = False
             message_id += 1
 
         # 使用列表推导式，保留不在 use_time_ids[:-1] 中的元素，仅保留最后一个多媒体消息
-        if not is_enable_multi_modal and use_time_num > 1:
+        if not is_enable_multi_model and use_time_num > 1:
             messages = [msg for idx, msg in enumerate(messages) if idx not in use_time_ids[:-1]]
+
+        if not is_enable_multi_model:
+            messages = [msg for msg in messages if 'resp_message_id' not in msg]
 
         args['messages'] = messages
         args['stream'] = True
