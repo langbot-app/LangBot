@@ -32,6 +32,15 @@ class DingTalkEvent(dict):
         return self.get('Audio', '')
 
     @property
+    def file(self):
+        return self.get('File', '')
+
+    @property
+    def name(self):
+        return self.get('Name', '')
+
+
+    @property
     def conversation(self):
         return self.get('conversation_type', '')
 

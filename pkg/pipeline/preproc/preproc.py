@@ -92,6 +92,9 @@ class PreProcessor(stage.PipelineStage):
                 if selected_runner != 'local-agent' or llm_model.model_entity.abilities.__contains__('vision'):
                     if me.base64 is not None:
                         content_list.append(provider_message.ContentElement.from_image_base64(me.base64))
+            elif isinstance(me, platform_message.File):
+                # if me.url is not None:
+                content_list.append(provider_message.ContentElement.from_file_url(me.url, me.name))
             elif isinstance(me, platform_message.Quote) and qoute_msg:
                 for msg in me.origin:
                     if isinstance(msg, platform_message.Plain):
