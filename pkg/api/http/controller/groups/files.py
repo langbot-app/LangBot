@@ -15,6 +15,9 @@ class FilesRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('/image/<image_key>', methods=['GET'], auth_type=group.AuthType.NONE)
         async def _(image_key: str) -> quart.Response:
+            if '/' in image_key or '\\' in image_key:
+                return quart.Response(status=404)
+
             if not await self.ap.storage_mgr.storage_provider.exists(image_key):
                 return quart.Response(status=404)
 
@@ -35,6 +38,10 @@ class FilesRouterGroup(group.RouterGroup):
             file_bytes = await asyncio.to_thread(file.stream.read)
             extension = file.filename.split('.')[-1]
             file_name = file.filename.split('.')[0]
+
+            # check if file name contains '/' or '\'
+            if '/' in file_name or '\\' in file_name:
+                return self.fail(400, 'File name contains invalid characters')
 
             file_key = file_name + '_' + str(uuid.uuid4())[:8] + '.' + extension
             # save file to storage
