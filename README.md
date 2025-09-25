@@ -119,6 +119,7 @@ docker compose up -d
 | [LMStudio](https://lmstudio.ai/) | ✅ | 本地大模型运行平台 |
 | [GiteeAI](https://ai.gitee.com/) | ✅ | 大模型接口聚合平台 |
 | [SiliconFlow](https://siliconflow.cn/) | ✅ | 大模型聚合平台 |
+| [小马算力](https://www.tokenpony.cn/453z1) | ✅ | 大模型聚合平台 |
 | [阿里云百炼](https://bailian.console.aliyun.com/) | ✅ | 大模型聚合平台, LLMOps 平台 |
 | [火山方舟](https://console.volcengine.com/ark/region:ark+cn-beijing/model?vendor=Bytedance&view=LIST_VIEW) | ✅ | 大模型聚合平台, LLMOps 平台 |
 | [ModelScope](https://modelscope.cn/docs/model-service/API-Inference/intro) | ✅ | 大模型聚合平台 |
