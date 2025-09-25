@@ -58,7 +58,7 @@ class BailianChatCompletions(modelscopechatcmpl.ModelScopeChatCompletions):
                         me['image_url'] = {'url': me['image_base64']}
                         me['type'] = 'image_url'
                         del me['image_base64']
-                    elif me['type'] == 'file_url' and me.get('file_name', '').index('.')>0:
+                    elif me['type'] == 'file_url' and '.' in me.get('file_name', ''):
                         # 1. 视频文件推理
                         # https://bailian.console.aliyun.com/?tab=doc#/doc/?type=model&url=2845871
                         file_type = me.get('file_name').lower().split('.')[-1]
