@@ -208,8 +208,15 @@ class DingTalkClient:
 
                 message_data['Type'] = 'audio'
             elif incoming_message.message_type == 'file':
-                message_data['File'] = await self.get_file_url(incoming_message.get_down_list()[0])
-                message_data['Name'] = incoming_message.get_down_list()[1]
+                down_list = incoming_message.get_down_list()
+                if len(down_list) >= 2:
+                    message_data['File'] = await self.get_file_url(down_list[0])
+                    message_data['Name'] = down_list[1]
+                else:
+                    if self.logger:
+                        await self.logger.error(f'get_down_list() returned fewer than 2 elements: {down_list}')
+                    message_data['File'] = None
+                    message_data['Name'] = None
                 message_data['Type'] = 'file'
 
             copy_message_data = message_data.copy()
