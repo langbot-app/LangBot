@@ -72,6 +72,7 @@ class PluginRuntimeConnector:
                     return False
 
             self.handler = handler.RuntimeConnectionHandler(connection, disconnect_callback, self.ap)
+
             self.handler_task = asyncio.create_task(self.handler.run())
             _ = await self.handler.ping()
             self.ap.logger.info('Connected to plugin runtime.')
@@ -85,8 +86,13 @@ class PluginRuntimeConnector:
                 'runtime_ws_url', 'ws://langbot_plugin_runtime:5400/control/ws'
             )
 
-            async def make_connection_failed_callback(ctrl: ws_client_controller.WebSocketClientController) -> None:
-                self.ap.logger.error('Failed to connect to plugin runtime, trying to reconnect...')
+            async def make_connection_failed_callback(
+                ctrl: ws_client_controller.WebSocketClientController, exc: Exception = None
+            ) -> None:
+                if exc is not None:
+                    self.ap.logger.error(f'Failed to connect to plugin runtime({ws_url}): {exc}')
+                else:
+                    self.ap.logger.error(f'Failed to connect to plugin runtime({ws_url}), trying to reconnect...')
                 await self.runtime_disconnect_callback(self)
 
             self.ctrl = ws_client_controller.WebSocketClientController(
