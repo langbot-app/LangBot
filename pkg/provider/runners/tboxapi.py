@@ -85,7 +85,7 @@ class TboxAPIRunner(runner.RequestRunner):
         """TBox 智能体对话请求"""
 
         plain_text, image_ids = await self._preprocess_user_message(query)
-        remove_think = self.pipeline_config['output'].get('misc', '').get('remove-think')
+        remove_think = self.pipeline_config['output'].get('misc', {}).get('remove-think')
 
         try:
             is_stream = await query.adapter.is_stream_output_supported()
