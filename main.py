@@ -18,13 +18,24 @@ asciiart = r"""
 
 async def main_entry(loop: asyncio.AbstractEventLoop):
     parser = argparse.ArgumentParser(description='LangBot')
-    parser.add_argument('--standalone-runtime', action='store_true', help='使用独立插件运行时', default=False)
+    parser.add_argument(
+        '--standalone-runtime',
+        action='store_true',
+        help='Use standalone plugin runtime / 使用独立插件运行时',
+        default=False,
+    )
+    parser.add_argument('--debug', action='store_true', help='Debug mode / 调试模式', default=False)
     args = parser.parse_args()
 
     if args.standalone_runtime:
         from pkg.utils import platform
 
         platform.standalone_runtime = True
+
+    if args.debug:
+        from pkg.utils import constants
+
+        constants.debug_mode = True
 
     print(asciiart)
 
