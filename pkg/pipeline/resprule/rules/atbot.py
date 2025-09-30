@@ -16,13 +16,17 @@ class AtBotRule(rule_model.GroupRespondRule):
         rule_dict: dict,
         query: pipeline_query.Query,
     ) -> entities.RuleJudgeResult:
+        found = False
+
         def remove_at(message_chain: platform_message.MessageChain):
+            nonlocal found
             for component in message_chain.root:
                 if isinstance(component, platform_message.At) and component.target == query.adapter.bot_account_id:
                     message_chain.remove(component)
+                    found = True
                     break
 
         remove_at(message_chain)
         remove_at(message_chain)  # 回复消息时会at两次，检查并删除重复的
 
-        return entities.RuleJudgeResult(matching=False, replacement=message_chain)
+        return entities.RuleJudgeResult(matching=found, replacement=message_chain)
