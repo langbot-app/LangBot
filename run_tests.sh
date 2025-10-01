@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script to run pipeline unit tests
+# Script to run all unit tests
 # This script helps avoid circular import issues by setting up the environment properly
 
 set -e
@@ -18,11 +18,11 @@ if ! command -v pytest &> /dev/null; then
     pip install pytest pytest-asyncio pytest-cov
 fi
 
-echo "Running pipeline unit tests..."
+echo "Running all unit tests..."
 
 # Run tests with coverage
-pytest tests/pipeline/ -v --tb=short \
-    --cov=pkg/pipeline \
+pytest tests/unit_tests/ -v --tb=short \
+    --cov=pkg \
     --cov-report=term \
     --cov-report=html:htmlcov \
     "$@"

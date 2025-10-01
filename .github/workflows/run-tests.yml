@@ -1,26 +1,28 @@
-name: Pipeline Unit Tests
+name: Unit Tests
 
 on:
   pull_request:
     types: [opened, ready_for_review, synchronize]
     paths:
-      - 'pkg/pipeline/**'
-      - 'tests/pipeline/**'
-      - '.github/workflows/pipeline-tests.yml'
+      - 'pkg/**'
+      - 'tests/**'
+      - '.github/workflows/run-tests.yml'
       - 'pyproject.toml'
+      - 'run_tests.sh'
   push:
     branches:
       - master
       - develop
     paths:
-      - 'pkg/pipeline/**'
-      - 'tests/pipeline/**'
-      - '.github/workflows/pipeline-tests.yml'
+      - 'pkg/**'
+      - 'tests/**'
+      - '.github/workflows/run-tests.yml'
       - 'pyproject.toml'
+      - 'run_tests.sh'
 
 jobs:
   test:
-    name: Run Pipeline Tests
+    name: Run Unit Tests
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -35,7 +37,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'
 
       - name: Install uv
         run: |
@@ -46,7 +47,7 @@ jobs:
         run: |
           uv sync --dev
 
-      - name: Run pipeline tests
+      - name: Run unit tests
         run: |
           bash run_tests.sh
 
@@ -55,14 +56,14 @@ jobs:
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage.xml
-          flags: pipeline-tests
-          name: pipeline-coverage
+          flags: unit-tests
+          name: unit-tests-coverage
           fail_ci_if_error: false
 
       - name: Test Summary
         if: always()
         run: |
-          echo "## Pipeline Tests Results" >> $GITHUB_STEP_SUMMARY
+          echo "## Unit Tests Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Python Version: ${{ matrix.python-version }}" >> $GITHUB_STEP_SUMMARY
           echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
