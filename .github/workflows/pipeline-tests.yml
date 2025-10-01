@@ -1,0 +1,69 @@
+name: Pipeline Unit Tests
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, synchronize]
+    paths:
+      - 'pkg/pipeline/**'
+      - 'tests/pipeline/**'
+      - '.github/workflows/pipeline-tests.yml'
+      - 'pyproject.toml'
+  push:
+    branches:
+      - master
+      - develop
+    paths:
+      - 'pkg/pipeline/**'
+      - 'tests/pipeline/**'
+      - '.github/workflows/pipeline-tests.yml'
+      - 'pyproject.toml'
+
+jobs:
+  test:
+    name: Run Pipeline Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+      fail-fast: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          uv pip install --system -e .
+          uv pip install --system pytest pytest-asyncio pytest-cov
+
+      - name: Run pipeline tests
+        run: |
+          pytest tests/pipeline/ -v --cov=pkg/pipeline --cov-report=term --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          flags: pipeline-tests
+          name: pipeline-coverage
+          fail_ci_if_error: false
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "## Pipeline Tests Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Python Version: ${{ matrix.python-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
