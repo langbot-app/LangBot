@@ -48,8 +48,7 @@ jobs:
 
       - name: Run pipeline tests
         run: |
-          source .venv/bin/activate
-          pytest tests/pipeline/ -v --cov=pkg/pipeline --cov-report=term --cov-report=xml
+          bash run_tests.sh
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.12'
