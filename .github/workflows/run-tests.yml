@@ -55,7 +55,7 @@ jobs:
         if: matrix.python-version == '3.12'
         uses: codecov/codecov-action@v5
         with:
-          files: ./coverage
+          files: .coverage
           flags: unit-tests
           name: unit-tests-coverage
           fail_ci_if_error: false
