@@ -4,19 +4,34 @@ PipelineManager unit tests
 
 import pytest
 from unittest.mock import AsyncMock, Mock
+from importlib import import_module
 import sqlalchemy
 
-from pkg.pipeline.pipelinemgr import PipelineManager, RuntimePipeline, StageInstContainer
-from pkg.pipeline import stage, entities as pipeline_entities
-from pkg.entity.persistence import pipeline as persistence_pipeline
+
+def get_pipelinemgr_module():
+    return import_module('pkg.pipeline.pipelinemgr')
+
+
+def get_stage_module():
+    return import_module('pkg.pipeline.stage')
+
+
+def get_entities_module():
+    return import_module('pkg.pipeline.entities')
+
+
+def get_persistence_pipeline_module():
+    return import_module('pkg.entity.persistence.pipeline')
 
 
 @pytest.mark.asyncio
 async def test_pipeline_manager_initialize(mock_app):
     """Test pipeline manager initialization"""
+    pipelinemgr = get_pipelinemgr_module()
+
     mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(all=Mock(return_value=[])))
 
-    manager = PipelineManager(mock_app)
+    manager = pipelinemgr.PipelineManager(mock_app)
     await manager.initialize()
 
     assert manager.stage_dict is not None
@@ -26,9 +41,12 @@ async def test_pipeline_manager_initialize(mock_app):
 @pytest.mark.asyncio
 async def test_load_pipeline(mock_app):
     """Test loading a single pipeline"""
+    pipelinemgr = get_pipelinemgr_module()
+    persistence_pipeline = get_persistence_pipeline_module()
+
     mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(all=Mock(return_value=[])))
 
-    manager = PipelineManager(mock_app)
+    manager = pipelinemgr.PipelineManager(mock_app)
     await manager.initialize()
 
     # Create test pipeline entity
@@ -46,9 +64,12 @@ async def test_load_pipeline(mock_app):
 @pytest.mark.asyncio
 async def test_get_pipeline_by_uuid(mock_app):
     """Test getting pipeline by UUID"""
+    pipelinemgr = get_pipelinemgr_module()
+    persistence_pipeline = get_persistence_pipeline_module()
+
     mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(all=Mock(return_value=[])))
 
-    manager = PipelineManager(mock_app)
+    manager = pipelinemgr.PipelineManager(mock_app)
     await manager.initialize()
 
     # Create and add test pipeline
@@ -72,9 +93,12 @@ async def test_get_pipeline_by_uuid(mock_app):
 @pytest.mark.asyncio
 async def test_remove_pipeline(mock_app):
     """Test removing a pipeline"""
+    pipelinemgr = get_pipelinemgr_module()
+    persistence_pipeline = get_persistence_pipeline_module()
+
     mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(all=Mock(return_value=[])))
 
-    manager = PipelineManager(mock_app)
+    manager = pipelinemgr.PipelineManager(mock_app)
     await manager.initialize()
 
     # Create and add test pipeline
@@ -94,23 +118,26 @@ async def test_remove_pipeline(mock_app):
 @pytest.mark.asyncio
 async def test_runtime_pipeline_execute(mock_app, sample_query):
     """Test runtime pipeline execution"""
+    pipelinemgr = get_pipelinemgr_module()
+    stage = get_stage_module()
+    entities = get_entities_module()
+    persistence_pipeline = get_persistence_pipeline_module()
+
     # Create mock stage
     mock_stage = Mock(spec=stage.PipelineStage)
     mock_stage.process = AsyncMock(
-        return_value=pipeline_entities.StageProcessResult(
-            result_type=pipeline_entities.ResultType.CONTINUE, new_query=sample_query
-        )
+        return_value=entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=sample_query)
     )
 
     # Create stage container
-    stage_container = StageInstContainer(inst_name='TestStage', inst=mock_stage)
+    stage_container = pipelinemgr.StageInstContainer(inst_name='TestStage', inst=mock_stage)
 
     # Create pipeline entity
     pipeline_entity = Mock(spec=persistence_pipeline.LegacyPipeline)
     pipeline_entity.config = sample_query.pipeline_config
 
     # Create runtime pipeline
-    runtime_pipeline = RuntimePipeline(mock_app, pipeline_entity, [stage_container])
+    runtime_pipeline = pipelinemgr.RuntimePipeline(mock_app, pipeline_entity, [stage_container])
 
     # Mock plugin connector
     event_ctx = Mock()

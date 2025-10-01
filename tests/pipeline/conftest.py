@@ -115,11 +115,18 @@ def mock_conversation():
     """Provides Mock Conversation object"""
     conversation = Mock()
     conversation.uuid = 'test-conversation-uuid'
-    conversation.prompt = Mock()
-    conversation.prompt.messages = []
-    conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
-    conversation.messages = []
-    conversation.messages.copy = Mock(return_value=[])
+
+    # Create mock prompt with copy method
+    mock_prompt = Mock()
+    mock_prompt.messages = []
+    mock_prompt.copy = Mock(return_value=Mock(messages=[]))
+    conversation.prompt = mock_prompt
+
+    # Create mock messages list with copy method
+    mock_messages = Mock()
+    mock_messages.copy = Mock(return_value=[])
+    conversation.messages = mock_messages
+
     return conversation
 
 

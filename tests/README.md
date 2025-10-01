@@ -2,19 +2,25 @@
 
 This directory contains the test suite for LangBot, with a focus on comprehensive unit testing of pipeline stages.
 
+## Important Note
+
+Due to circular import dependencies in the pipeline module structure, the test files use **lazy imports** via `importlib.import_module()` instead of direct imports. This ensures tests can run without triggering circular import errors.
+
 ## Structure
 
 ```
 tests/
-├── pipeline/           # Pipeline stage tests
-│   ├── conftest.py    # Shared fixtures and test infrastructure
-│   ├── test_preproc.py
-│   ├── test_ratelimit.py
-│   ├── test_bansess.py
-│   ├── test_respback.py
-│   ├── test_resprule.py
-│   └── test_pipelinemgr.py
-└── README.md          # This file
+├── pipeline/                      # Pipeline stage tests
+│   ├── conftest.py               # Shared fixtures and test infrastructure
+│   ├── test_simple.py            # Basic infrastructure tests (always pass)
+│   ├── test_bansess.py           # BanSessionCheckStage tests
+│   ├── test_ratelimit.py         # RateLimit stage tests
+│   ├── test_preproc.py           # PreProcessor stage tests
+│   ├── test_respback.py          # SendResponseBackStage tests
+│   ├── test_resprule.py          # GroupRespondRuleCheckStage tests
+│   ├── test_pipelinemgr.py       # PipelineManager tests
+│   └── test_stages_integration.py # Integration tests
+└── README.md                      # This file
 ```
 
 ## Test Architecture
@@ -37,30 +43,51 @@ The test suite uses a centralized fixture system that provides:
 
 ## Running Tests
 
-### Run all tests
+### Using the test runner script (recommended)
 ```bash
-pytest
+bash run_tests.sh
 ```
 
-### Run pipeline tests only
+This script automatically:
+- Activates the virtual environment
+- Installs test dependencies if needed
+- Runs tests with coverage
+- Generates HTML coverage report
+
+### Manual test execution
+
+#### Run all tests
 ```bash
 pytest tests/pipeline/
 ```
 
-### Run specific test file
+#### Run only simple tests (no imports, always pass)
 ```bash
-pytest tests/pipeline/test_preproc.py
+pytest tests/pipeline/test_simple.py -v
 ```
 
-### Run with coverage
+#### Run specific test file
+```bash
+pytest tests/pipeline/test_bansess.py -v
+```
+
+#### Run with coverage
 ```bash
 pytest tests/pipeline/ --cov=pkg/pipeline --cov-report=html
 ```
 
-### Run specific test
+#### Run specific test
 ```bash
-pytest tests/pipeline/test_preproc.py::test_preproc_basic_flow -v
+pytest tests/pipeline/test_bansess.py::test_bansess_whitelist_allow -v
 ```
+
+### Known Issues
+
+Some tests may encounter circular import errors. This is a known issue with the current module structure. The test infrastructure is designed to work around this using lazy imports, but if you encounter issues:
+
+1. Make sure you're running from the project root directory
+2. Ensure the virtual environment is activated
+3. Try running `test_simple.py` first to verify the test infrastructure works
 
 ## CI/CD Integration
 
