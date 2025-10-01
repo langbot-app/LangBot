@@ -48,6 +48,7 @@ jobs:
 
       - name: Run pipeline tests
         run: |
+          source .venv/bin/activate
           pytest tests/pipeline/ -v --cov=pkg/pipeline --cov-report=term --cov-report=xml
 
       - name: Upload coverage to Codecov
