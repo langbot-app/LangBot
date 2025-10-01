@@ -44,8 +44,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system -e .
-          uv pip install --system pytest pytest-asyncio pytest-cov
+          uv sync --dev
 
       - name: Run pipeline tests
         run: |
