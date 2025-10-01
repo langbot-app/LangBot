@@ -172,34 +172,39 @@ def sample_message_event(sample_message_chain):
 
 @pytest.fixture
 def sample_query(sample_message_chain, sample_message_event, mock_adapter):
-    """Provides sample Query object"""
-    query = Mock()
-    query.query_id = 'test-query-id'
-    query.launcher_type = provider_session.LauncherTypes.PERSON
-    query.launcher_id = 12345
-    query.sender_id = 12345
-    query.message_chain = sample_message_chain
-    query.message_event = sample_message_event
-    query.adapter = mock_adapter
-    query.pipeline_uuid = 'test-pipeline-uuid'
-    query.bot_uuid = 'test-bot-uuid'
-    query.pipeline_config = {
-        'ai': {
-            'runner': {'runner': 'local-agent'},
-            'local-agent': {'model': 'test-model-uuid', 'prompt': 'test-prompt'},
+    """Provides sample Query object - using model_construct to bypass validation"""
+    import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+
+    # Use model_construct to bypass Pydantic validation for test purposes
+    query = pipeline_query.Query.model_construct(
+        query_id='test-query-id',
+        launcher_type=provider_session.LauncherTypes.PERSON,
+        launcher_id=12345,
+        sender_id=12345,
+        message_chain=sample_message_chain,
+        message_event=sample_message_event,
+        adapter=mock_adapter,
+        pipeline_uuid='test-pipeline-uuid',
+        bot_uuid='test-bot-uuid',
+        pipeline_config={
+            'ai': {
+                'runner': {'runner': 'local-agent'},
+                'local-agent': {'model': 'test-model-uuid', 'prompt': 'test-prompt'},
+            },
+            'output': {'misc': {'at-sender': False, 'quote-origin': False}},
+            'trigger': {'misc': {'combine-quote-message': False}},
         },
-        'output': {'misc': {'at-sender': False, 'quote-origin': False}},
-        'trigger': {'misc': {'combine-quote-message': False}},
-    }
-    query.session = None
-    query.prompt = None
-    query.messages = []
-    query.user_message = None
-    query.use_funcs = []
-    query.use_llm_model_uuid = None
-    query.variables = {}
-    query.resp_messages = []
-    query.current_stage_name = None
+        session=None,
+        prompt=None,
+        messages=[],
+        user_message=None,
+        use_funcs=[],
+        use_llm_model_uuid=None,
+        variables={},
+        resp_messages=[],
+        resp_message_chain=None,
+        current_stage_name=None
+    )
     return query
 
 
