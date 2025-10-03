@@ -308,3 +308,66 @@ export interface RetrieveResult {
 export interface ApiRespKnowledgeBaseRetrieve {
   results: RetrieveResult[];
 }
+
+// MCP
+export interface ApiRespMCPServers {
+  servers: MCPServer[];
+}
+
+export interface ApiRespMCPServer {
+  server: MCPServer;
+}
+
+export interface MCPServer {
+  name: string;
+  mode: 'stdio' | 'sse';
+  enable: boolean;
+  config: MCPServerConfig;
+  status: 'connected' | 'disconnected' | 'error';
+  tools: MCPTool[];
+  error?: string;
+}
+
+export interface MCPServerConfig {
+  name: string;
+  mode: 'stdio' | 'sse';
+  enable: boolean;
+  // stdio mode
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  // sse mode
+  url?: string;
+  headers?: Record<string, string>;
+  timeout?: number;
+}
+
+export interface MCPTool {
+  name: string;
+  description: string;
+  parameters: object;
+}
+
+// MCP Market
+export interface MCPMarketResponse {
+  servers: MCPMarketServer[];
+  total: number;
+}
+
+export interface MCPMarketServer {
+  ID: number;
+  CreatedAt: string; // ISO 8601 格式日期
+  UpdatedAt: string;
+  DeletedAt: string | null;
+  name: string;
+  author: string;
+  description: string;
+  repository: string; // GitHub 仓库路径
+  artifacts_path: string;
+  stars: number;
+  downloads: number;
+  status: 'initialized' | 'mounted';
+  synced_at: string;
+  pushed_at: string; // 最后一次代码推送时间
+  version?: string;
+}

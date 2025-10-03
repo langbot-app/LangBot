@@ -22,6 +22,7 @@ import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_
 from ..logger import EventLogger
 
 
+
 # 语音功能相关异常定义
 class VoiceConnectionError(Exception):
     """语音连接基础异常"""
