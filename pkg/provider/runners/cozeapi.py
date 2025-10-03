@@ -18,7 +18,6 @@ class CozeAPIRunner(runner.RequestRunner):
 
     def __init__(self, ap: app.Application, pipeline_config: dict):
         self.pipeline_config = pipeline_config
-        print(pipeline_config)
         self.ap = ap
         self.agent_token = pipeline_config["ai"]['coze-api']['api-key']
         self.bot_id = pipeline_config["ai"]['coze-api'].get('bot-id')
@@ -200,7 +199,6 @@ class CozeAPIRunner(runner.RequestRunner):
         self, query: pipeline_query.Query
     ) -> typing.AsyncGenerator[provider_message.MessageChunk, None]:
         """调用聊天助手（流式）"""
-        print(query.session)
         user_id = f'{query.launcher_id}_{query.sender_id}'
 
         # 预处理用户消息
@@ -228,8 +226,7 @@ class CozeAPIRunner(runner.RequestRunner):
                 stream=True
             ):
                 self.ap.logger.debug(f'coze-chat-stream-chunk: {chunk}')
-                print(chunk)
-                
+
                 event_type = chunk.get('event')
                 data = chunk.get('data', {})
                 content = ""
