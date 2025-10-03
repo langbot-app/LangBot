@@ -21,7 +21,7 @@ class AtBotRule(rule_model.GroupRespondRule):
         def remove_at(message_chain: platform_message.MessageChain):
             nonlocal found
             for component in message_chain.root:
-                if isinstance(component, platform_message.At) and component.target == query.adapter.bot_account_id:
+                if isinstance(component, platform_message.At) and str(component.target) == str(query.adapter.bot_account_id):
                     message_chain.remove(component)
                     found = True
                     break
