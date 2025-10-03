@@ -1,0 +1,71 @@
+name: Unit Tests
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, synchronize]
+    paths:
+      - 'pkg/**'
+      - 'tests/**'
+      - '.github/workflows/run-tests.yml'
+      - 'pyproject.toml'
+      - 'run_tests.sh'
+  push:
+    branches:
+      - master
+      - develop
+    paths:
+      - 'pkg/**'
+      - 'tests/**'
+      - '.github/workflows/run-tests.yml'
+      - 'pyproject.toml'
+      - 'run_tests.sh'
+
+jobs:
+  test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+      fail-fast: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          uv sync --dev
+
+      - name: Run unit tests
+        run: |
+          bash run_tests.sh
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          flags: unit-tests
+          name: unit-tests-coverage
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "## Unit Tests Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Python Version: ${{ matrix.python-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY

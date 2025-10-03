@@ -96,7 +96,7 @@ class RuntimePipeline:
             if query.pipeline_config['output']['misc']['at-sender'] and isinstance(
                 query.message_event, platform_events.GroupMessage
             ):
-                result.user_notice.insert(0, platform_message.At(query.message_event.sender.id))
+                result.user_notice.insert(0, platform_message.At(target=query.message_event.sender.id))
             if await query.adapter.is_stream_output_supported():
                 await query.adapter.reply_message_chunk(
                     message_source=query.message_event,

@@ -32,6 +32,8 @@ class PluginRuntimeConnector:
 
     handler_task: asyncio.Task
 
+    heartbeat_task: asyncio.Task | None = None
+
     stdio_client_controller: stdio_client_controller.StdioClientController
 
     ctrl: stdio_client_controller.StdioClientController | ws_client_controller.WebSocketClientController
@@ -54,6 +56,15 @@ class PluginRuntimeConnector:
         self.runtime_disconnect_callback = runtime_disconnect_callback
         self.is_enable_plugin = self.ap.instance_config.data.get('plugin', {}).get('enable', True)
 
+    async def heartbeat_loop(self):
+        while True:
+            await asyncio.sleep(10)
+            try:
+                await self.ping_plugin_runtime()
+                self.ap.logger.debug('Heartbeat to plugin runtime success.')
+            except Exception as e:
+                self.ap.logger.debug(f'Failed to heartbeat to plugin runtime: {e}')
+
     async def initialize(self):
         if not self.is_enable_plugin:
             self.ap.logger.info('Plugin system is disabled.')
@@ -72,6 +83,7 @@ class PluginRuntimeConnector:
                     return False
 
             self.handler = handler.RuntimeConnectionHandler(connection, disconnect_callback, self.ap)
+
             self.handler_task = asyncio.create_task(self.handler.run())
             _ = await self.handler.ping()
             self.ap.logger.info('Connected to plugin runtime.')
@@ -85,8 +97,13 @@ class PluginRuntimeConnector:
                 'runtime_ws_url', 'ws://langbot_plugin_runtime:5400/control/ws'
             )
 
-            async def make_connection_failed_callback(ctrl: ws_client_controller.WebSocketClientController) -> None:
-                self.ap.logger.error('Failed to connect to plugin runtime, trying to reconnect...')
+            async def make_connection_failed_callback(
+                ctrl: ws_client_controller.WebSocketClientController, exc: Exception = None
+            ) -> None:
+                if exc is not None:
+                    self.ap.logger.error(f'Failed to connect to plugin runtime({ws_url}): {exc}')
+                else:
+                    self.ap.logger.error(f'Failed to connect to plugin runtime({ws_url}), trying to reconnect...')
                 await self.runtime_disconnect_callback(self)
 
             self.ctrl = ws_client_controller.WebSocketClientController(
@@ -105,6 +122,9 @@ class PluginRuntimeConnector:
                 env=env,
             )
             task = self.ctrl.run(new_connection_callback)
+
+        if self.heartbeat_task is None:
+            self.heartbeat_task = asyncio.create_task(self.heartbeat_loop())
 
         asyncio.create_task(task)
 
@@ -224,3 +244,7 @@ class PluginRuntimeConnector:
         if self.is_enable_plugin and isinstance(self.ctrl, stdio_client_controller.StdioClientController):
             self.ap.logger.info('Terminating plugin runtime process...')
             self.ctrl.process.terminate()
+
+        if self.heartbeat_task is not None:
+            self.heartbeat_task.cancel()
+            self.heartbeat_task = None
