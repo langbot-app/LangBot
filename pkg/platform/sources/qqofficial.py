@@ -147,7 +147,7 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
             config=config,
             logger=logger,
             bot=bot,
-            bot_account_id="justbot",
+            bot_account_id=config['appid'],
         )
 
     async def reply_message(
