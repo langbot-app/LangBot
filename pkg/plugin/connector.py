@@ -18,7 +18,7 @@ from langbot_plugin.api.entities import events
 from langbot_plugin.api.entities import context
 import langbot_plugin.runtime.io.connection as base_connection
 from langbot_plugin.api.definition.components.manifest import ComponentManifest
-from langbot_plugin.api.entities.builtin.command import context as command_context
+from langbot_plugin.api.entities.builtin.command import context as command_context, errors as command_errors
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 from ..core import taskmgr
 
@@ -191,6 +191,9 @@ class PluginRuntimeConnector:
                     task_context.trace(trace)
 
     async def list_plugins(self) -> list[dict[str, Any]]:
+        if not self.is_enable_plugin:
+            return []
+
         return await self.handler.list_plugins()
 
     async def get_plugin_info(self, author: str, plugin_name: str) -> dict[str, Any]:
@@ -211,6 +214,7 @@ class PluginRuntimeConnector:
 
         if not self.is_enable_plugin:
             return event_ctx
+
         event_ctx_result = await self.handler.emit_event(event_ctx.model_dump(serialize_as_any=True))
 
         event_ctx = context.EventContext.model_validate(event_ctx_result['event_context'])
@@ -218,14 +222,23 @@ class PluginRuntimeConnector:
         return event_ctx
 
     async def list_tools(self) -> list[ComponentManifest]:
+        if not self.is_enable_plugin:
+            return []
+
         list_tools_data = await self.handler.list_tools()
 
         return [ComponentManifest.model_validate(tool) for tool in list_tools_data]
 
     async def call_tool(self, tool_name: str, parameters: dict[str, Any]) -> dict[str, Any]:
+        if not self.is_enable_plugin:
+            return {'error': 'Tool not found: plugin system is disabled'}
+
         return await self.handler.call_tool(tool_name, parameters)
 
     async def list_commands(self) -> list[ComponentManifest]:
+        if not self.is_enable_plugin:
+            return []
+
         list_commands_data = await self.handler.list_commands()
 
         return [ComponentManifest.model_validate(command) for command in list_commands_data]
@@ -233,6 +246,9 @@ class PluginRuntimeConnector:
     async def execute_command(
         self, command_ctx: command_context.ExecuteContext
     ) -> typing.AsyncGenerator[command_context.CommandReturn, None]:
+        if not self.is_enable_plugin:
+            yield command_context.CommandReturn(error=command_errors.CommandNotFoundError(command_ctx.command))
+
         gen = self.handler.execute_command(command_ctx.model_dump(serialize_as_any=True))
 
         async for ret in gen:
