@@ -21,9 +21,13 @@ class CozeAPIRunner(runner.RequestRunner):
         self.ap = ap
         self.agent_token = pipeline_config["ai"]['coze-api']['api-key']
         self.bot_id = pipeline_config["ai"]['coze-api'].get('bot-id')
+        self.chat_timeout = pipeline_config["ai"]['coze-api'].get('timeout')
+        self.auto_save_history = pipeline_config["ai"]['coze-api'].get('auto_save_history')
+        self.api_base = pipeline_config["ai"]['coze-api'].get('api-base')
 
         self.coze = AsyncCozeAPIClient(
-            self.agent_token
+            self.agent_token,
+            self.api_base
         )
     
     def _process_thinking_content(
@@ -140,6 +144,8 @@ class CozeAPIRunner(runner.RequestRunner):
                 user_id=user_id,
                 additional_messages=additional_messages,
                 conversation_id=conversation_id,
+                timeout=self.chat_timeout,
+                auto_save_history=self.auto_save_history,
                 stream=True
             ):
                 self.ap.logger.debug(f'coze-chat-stream: {chunk}')
@@ -223,6 +229,8 @@ class CozeAPIRunner(runner.RequestRunner):
                 user_id=user_id,
                 additional_messages=additional_messages,
                 conversation_id=conversation_id,
+                timeout=self.chat_timeout,
+                auto_save_history=self.auto_save_history,
                 stream=True
             ):
                 self.ap.logger.debug(f'coze-chat-stream-chunk: {chunk}')

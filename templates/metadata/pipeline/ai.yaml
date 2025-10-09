@@ -429,15 +429,6 @@ stages:
           zh_Hans: 是否自动保存对话历史
         type: boolean
         default: true
-      - name: multimodal-support
-        label:
-          en_US: Multimodal Support
-          zh_Hans: 多模态支持
-        description:
-          en_US: Enable support for images and other media types
-          zh_Hans: 启用图片和其他媒体类型支持
-        type: boolean
-        default: true
       - name: timeout
         label:
           en_US: Request Timeout
