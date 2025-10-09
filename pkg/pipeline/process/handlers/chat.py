@@ -9,7 +9,6 @@ from .. import handler
 from ... import entities
 from ....provider import runner as runner_module
 
-import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.events as events
 from ....utils import importutil
 from ....provider import runners
@@ -47,18 +46,19 @@ class ChatMessageHandler(handler.MessageHandler):
         event_ctx = await self.ap.plugin_connector.emit_event(event)
 
         is_create_card = False  # 判断下是否需要创建流式卡片
+
         if event_ctx.is_prevented_default():
-            if event_ctx.event.reply is not None:
-                mc = platform_message.MessageChain(event_ctx.event.reply)
+            if event_ctx.event.reply_message_chain is not None:
+                mc = event_ctx.event.reply_message_chain
                 query.resp_messages.append(mc)
 
                 yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
             else:
                 yield entities.StageProcessResult(result_type=entities.ResultType.INTERRUPT, new_query=query)
         else:
-            if event_ctx.event.alter is not None:
+            if event_ctx.event.user_message_alter is not None:
                 # if isinstance(event_ctx.event, str):  # 现在暂时不考虑多模态alter
-                query.user_message.content = event_ctx.event.alter
+                query.user_message.content = event_ctx.event.user_message_alter
 
             text_length = 0
             try:

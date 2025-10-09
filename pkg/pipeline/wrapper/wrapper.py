@@ -80,8 +80,8 @@ class ResponseWrapper(stage.PipelineStage):
                                 new_query=query,
                             )
                         else:
-                            if event_ctx.event.reply is not None:
-                                query.resp_message_chain.append(platform_message.MessageChain(event_ctx.event.reply))
+                            if event_ctx.event.reply_message_chain is not None:
+                                query.resp_message_chain.append(event_ctx.event.reply_message_chain)
 
                             else:
                                 query.resp_message_chain.append(result.get_content_platform_message_chain())
@@ -123,10 +123,8 @@ class ResponseWrapper(stage.PipelineStage):
                                     new_query=query,
                                 )
                             else:
-                                if event_ctx.event.reply is not None:
-                                    query.resp_message_chain.append(
-                                        platform_message.MessageChain(text=event_ctx.event.reply)
-                                    )
+                                if event_ctx.event.reply_message_chain is not None:
+                                    query.resp_message_chain.append(event_ctx.event.reply_message_chain)
 
                                 else:
                                     query.resp_message_chain.append(

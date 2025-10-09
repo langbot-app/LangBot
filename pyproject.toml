@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.3.5"
+version = "4.3.7"
 description = "Easy-to-use global IM bot platform designed for LLM era"
 readme = "README.md"
 requires-python = ">=3.10.1,<4.0"
@@ -62,7 +62,7 @@ dependencies = [
     "langchain>=0.2.0",
     "chromadb>=0.4.24",
     "qdrant-client (>=1.15.1,<2.0.0)",
-    "langbot-plugin==0.1.3",
+    "langbot-plugin==0.1.4",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "tboxsdk>=0.0.10",

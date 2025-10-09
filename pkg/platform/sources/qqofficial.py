@@ -139,19 +139,15 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
     event_converter: QQOfficialEventConverter = QQOfficialEventConverter()
 
     def __init__(self, config: dict, logger: EventLogger):
-        self.config = config
-        self.logger = logger
+        bot = QQOfficialClient(
+            app_id=config['appid'], secret=config['secret'], token=config['token'], logger=logger
+        )
 
-        required_keys = [
-            'appid',
-            'secret',
-        ]
-        missing_keys = [key for key in required_keys if key not in config]
-        if missing_keys:
-            raise command_errors.ParamNotEnoughError('QQ官方机器人缺少相关配置项，请查看文档或联系管理员')
-
-        self.bot = QQOfficialClient(
-            app_id=config['appid'], secret=config['secret'], token=config['token'], logger=self.logger
+        super().__init__(
+            config=config,
+            logger=logger,
+            bot=bot,
+            bot_account_id=config['appid'],
         )
 
     async def reply_message(

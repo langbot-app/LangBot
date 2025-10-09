@@ -5,7 +5,6 @@ import typing
 from .. import handler
 from ... import entities
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
-import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.events as events
@@ -49,8 +48,8 @@ class CommandHandler(handler.MessageHandler):
         event_ctx = await self.ap.plugin_connector.emit_event(event)
 
         if event_ctx.is_prevented_default():
-            if event_ctx.event.reply is not None:
-                mc = platform_message.MessageChain(event_ctx.event.reply)
+            if event_ctx.event.reply_message_chain is not None:
+                mc = event_ctx.event.reply_message_chain
 
                 query.resp_messages.append(mc)
 
@@ -59,11 +58,6 @@ class CommandHandler(handler.MessageHandler):
                 yield entities.StageProcessResult(result_type=entities.ResultType.INTERRUPT, new_query=query)
 
         else:
-            if event_ctx.event.alter is not None:
-                query.message_chain = platform_message.MessageChain(
-                    [platform_message.Plain(text=event_ctx.event.alter)]
-                )
-
             session = await self.ap.sess_mgr.get_session(query)
 
             async for ret in self.ap.cmd_mgr.execute(
@@ -80,8 +74,12 @@ class CommandHandler(handler.MessageHandler):
                     self.ap.logger.info(f'Command({query.query_id}) error: {self.cut_str(str(ret.error))}')
 
                     yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
-                elif (ret.text is not None or ret.image_url is not None or ret.image_base64 is not None
-                      or ret.file_url is not None):
+                elif (
+                    ret.text is not None
+                    or ret.image_url is not None
+                    or ret.image_base64 is not None
+                    or ret.file_url is not None
+                ):
                     content: list[provider_message.ContentElement] = []
 
                     if ret.text is not None:
