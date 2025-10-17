@@ -22,6 +22,7 @@ class LegacyPipeline(Base):
     is_default = sqlalchemy.Column(sqlalchemy.Boolean, nullable=False, default=False)
     stages = sqlalchemy.Column(sqlalchemy.JSON, nullable=False)
     config = sqlalchemy.Column(sqlalchemy.JSON, nullable=False)
+    extensions_preferences = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, default={})
 
 
 class PipelineRunRecord(Base):

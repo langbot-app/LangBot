@@ -78,6 +78,8 @@ class PersistenceManager:
 
             self.ap.logger.info(f'Successfully upgraded database to version {last_migration_number}.')
 
+        await self.write_default_pipeline()
+
     async def create_tables(self):
         # create tables
         async with self.get_db_engine().connect() as conn:
@@ -98,6 +100,7 @@ class PersistenceManager:
             if row is None:
                 await self.execute_async(sqlalchemy.insert(metadata.Metadata).values(item))
 
+    async def write_default_pipeline(self):
         # write default pipeline
         result = await self.execute_async(sqlalchemy.select(pipeline.LegacyPipeline))
         default_pipeline_uuid = None
