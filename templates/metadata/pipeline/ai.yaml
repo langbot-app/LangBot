@@ -416,8 +416,8 @@ stages:
           en_US: API Base URL
           zh_Hans: API 基础 URL
         description:
-          en_US: The base URL for the Coze API
-          zh_Hans: Coze API 的基础 URL
+          en_US: The base URL for the Coze API, please use https://api.coze.com for global Coze edition(coze.com).
+          zh_Hans: Coze API 的基础 URL，请使用 https://api.coze.com 用于全球 Coze 版（coze.com）
         type: string
         default: "https://api.coze.cn"
       - name: auto-save-history
