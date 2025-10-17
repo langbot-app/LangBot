@@ -278,6 +278,7 @@ const zhHant = {
     chat: '對話',
     configuration: '設定',
     debugChat: '對話除錯',
+    extensions: '插件集成',
     getPipelineListError: '取得流程線清單失敗：',
     daysAgo: '天前',
     today: '今天',

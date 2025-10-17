@@ -293,6 +293,7 @@ const enUS = {
     chat: 'Chat',
     configuration: 'Configuration',
     debugChat: 'Debug Chat',
+    extensions: 'Plugins',
     getPipelineListError: 'Failed to get pipeline list: ',
     daysAgo: 'days ago',
     today: 'Today',

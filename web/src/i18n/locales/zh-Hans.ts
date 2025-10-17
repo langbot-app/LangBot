@@ -280,6 +280,7 @@ const zhHans = {
     chat: '对话',
     configuration: '配置',
     debugChat: '对话调试',
+    extensions: '插件集成',
     getPipelineListError: '获取流水线列表失败：',
     daysAgo: '天前',
     today: '今天',
