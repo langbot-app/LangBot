@@ -19,6 +19,7 @@ from ...api.http.service import model as model_service
 from ...api.http.service import pipeline as pipeline_service
 from ...api.http.service import bot as bot_service
 from ...api.http.service import knowledge as knowledge_service
+from ...api.http.service import websocket_pool
 from ...discover import engine as discover_engine
 from ...storage import mgr as storagemgr
 from ...utils import logcache
@@ -87,9 +88,17 @@ class BuildAppStage(stage.BootingStage):
         await llm_tool_mgr_inst.initialize()
         ap.tool_mgr = llm_tool_mgr_inst
 
+        # Initialize WebSocket connection pool
+        ws_pool_inst = websocket_pool.WebSocketConnectionPool()
+        ap.ws_pool = ws_pool_inst
+
         im_mgr_inst = im_mgr.PlatformManager(ap=ap)
         await im_mgr_inst.initialize()
         ap.platform_mgr = im_mgr_inst
+
+        # Inject WebSocket pool into WebChatAdapter
+        if hasattr(ap.platform_mgr, 'webchat_proxy_bot') and ap.platform_mgr.webchat_proxy_bot:
+            ap.platform_mgr.webchat_proxy_bot.adapter.set_ws_pool(ws_pool_inst)
 
         pipeline_mgr = pipelinemgr.PipelineManager(ap)
         await pipeline_mgr.initialize()
