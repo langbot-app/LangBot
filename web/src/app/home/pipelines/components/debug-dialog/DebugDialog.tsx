@@ -11,6 +11,10 @@ import { Message } from '@/app/infra/entities/message';
 import { toast } from 'sonner';
 import AtBadge from './AtBadge';
 import { Switch } from '@/components/ui/switch';
+import {
+  PipelineWebSocketClient,
+  SessionType,
+} from '@/app/infra/websocket/PipelineWebSocketClient';
 
 interface MessageComponent {
   type: 'At' | 'Plain';
@@ -31,16 +35,26 @@ export default function DebugDialog({
 }: DebugDialogProps) {
   const { t } = useTranslation();
   const [selectedPipelineId, setSelectedPipelineId] = useState(pipelineId);
-  const [sessionType, setSessionType] = useState<'person' | 'group'>('person');
+  const [sessionType, setSessionType] = useState<SessionType>('person');
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [showAtPopover, setShowAtPopover] = useState(false);
   const [hasAt, setHasAt] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+
+  // WebSocket states
+  const [wsClient, setWsClient] = useState<PipelineWebSocketClient | null>(
+    null,
+  );
+  const [connectionStatus, setConnectionStatus] = useState<
+    'disconnected' | 'connecting' | 'connected'
+  >('disconnected');
+  const [pendingMessages, setPendingMessages] = useState<
+    Map<string, Message>
+  >(new Map());
 
   const scrollToBottom = useCallback(() => {
     // 使用setTimeout确保在DOM更新后执行滚动
@@ -57,37 +71,161 @@ export default function DebugDialog({
     }, 0);
   }, []);
 
-  const loadMessages = useCallback(
-    async (pipelineId: string) => {
-      try {
-        const response = await httpClient.getWebChatHistoryMessages(
-          pipelineId,
-          sessionType,
-        );
-        setMessages(response.messages);
-      } catch (error) {
-        console.error('Failed to load messages:', error);
-      }
-    },
-    [sessionType],
-  );
-  // 在useEffect中监听messages变化时滚动
+  // Scroll to bottom when messages change
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
+  // WebSocket connection setup
   useEffect(() => {
-    if (open) {
-      setSelectedPipelineId(pipelineId);
-      loadMessages(pipelineId);
-    }
-  }, [open, pipelineId]);
+    if (!open) return;
 
-  useEffect(() => {
-    if (open) {
-      loadMessages(selectedPipelineId);
-    }
-  }, [sessionType, selectedPipelineId, open, loadMessages]);
+    const client = new PipelineWebSocketClient(
+      selectedPipelineId,
+      sessionType,
+    );
+
+    // Setup event handlers
+    client.onConnected = (data) => {
+      console.log('[DebugDialog] WebSocket connected:', data);
+      setConnectionStatus('connected');
+      // Load history messages after connection
+      client.loadHistory();
+    };
+
+    client.onHistory = (data) => {
+      console.log('[DebugDialog] History loaded:', data?.messages.length);
+      if (data) {
+        setMessages(data.messages);
+      }
+    };
+
+    client.onMessageSent = (data) => {
+      console.log('[DebugDialog] Message sent confirmed:', data);
+      if (data) {
+        // Update client message ID to server message ID
+        const clientMsgId = data.client_message_id;
+        const serverMsgId = data.server_message_id;
+
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === -1 && pendingMessages.has(clientMsgId)
+              ? { ...msg, id: serverMsgId }
+              : msg,
+          ),
+        );
+
+        setPendingMessages((prev) => {
+          const newMap = new Map(prev);
+          newMap.delete(clientMsgId);
+          return newMap;
+        });
+      }
+    };
+
+    client.onMessageStart = (data) => {
+      console.log('[DebugDialog] Message start:', data);
+      if (data) {
+        const placeholderMessage: Message = {
+          id: data.message_id,
+          role: 'assistant',
+          content: '',
+          message_chain: [],
+          timestamp: data.timestamp,
+        };
+        setMessages((prev) => [...prev, placeholderMessage]);
+      }
+    };
+
+    client.onMessageChunk = (data) => {
+      if (data) {
+        // Update streaming message (content is cumulative)
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === data.message_id
+              ? {
+                  ...msg,
+                  content: data.content,
+                  message_chain: data.message_chain,
+                }
+              : msg,
+          ),
+        );
+      }
+    };
+
+    client.onMessageComplete = (data) => {
+      console.log('[DebugDialog] Message complete:', data);
+      if (data) {
+        // Mark message as complete
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === data.message_id
+              ? {
+                  ...msg,
+                  content: data.final_content,
+                  message_chain: data.message_chain,
+                }
+              : msg,
+          ),
+        );
+      }
+    };
+
+    client.onMessageError = (data) => {
+      console.error('[DebugDialog] Message error:', data);
+      if (data) {
+        toast.error(`Message error: ${data.error}`);
+      }
+    };
+
+    client.onPluginMessage = (data) => {
+      console.log('[DebugDialog] Plugin message:', data);
+      if (data) {
+        const pluginMessage: Message = {
+          id: data.message_id,
+          role: 'assistant',
+          content: data.content,
+          message_chain: data.message_chain,
+          timestamp: data.timestamp,
+        };
+        setMessages((prev) => [...prev, pluginMessage]);
+      }
+    };
+
+    client.onError = (data) => {
+      console.error('[DebugDialog] WebSocket error:', data);
+      if (data) {
+        toast.error(`WebSocket error: ${data.error}`);
+      }
+    };
+
+    client.onDisconnected = () => {
+      console.log('[DebugDialog] WebSocket disconnected');
+      setConnectionStatus('disconnected');
+    };
+
+    // Connect to WebSocket
+    setConnectionStatus('connecting');
+    client
+      .connect(httpClient.getSessionSync())
+      .then(() => {
+        console.log('[DebugDialog] WebSocket connection established');
+      })
+      .catch((err) => {
+        console.error('[DebugDialog] Failed to connect WebSocket:', err);
+        toast.error('Failed to connect to server');
+        setConnectionStatus('disconnected');
+      });
+
+    setWsClient(client);
+
+    // Cleanup on unmount or session type change
+    return () => {
+      console.log('[DebugDialog] Cleaning up WebSocket connection');
+      client.disconnect();
+    };
+  }, [open, selectedPipelineId, sessionType]); // Reconnect when session type changes
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -150,6 +288,12 @@ export default function DebugDialog({
   const sendMessage = async () => {
     if (!inputValue.trim() && !hasAt) return;
 
+    // Check WebSocket connection
+    if (!wsClient || connectionStatus !== 'connected') {
+      toast.error('Not connected to server');
+      return;
+    }
+
     try {
       const messageChain = [];
 
@@ -170,7 +314,7 @@ export default function DebugDialog({
       });
 
       if (hasAt) {
-        // for showing
+        // For display
         text_content = '@webchatbot' + text_content;
       }
 
@@ -181,97 +325,26 @@ export default function DebugDialog({
         timestamp: new Date().toISOString(),
         message_chain: messageChain,
       };
-      // 根据isStreaming状态决定使用哪种传输方式
-      if (isStreaming) {
-        // streaming
-        // 创建初始bot消息
-        const placeholderRandomId = Math.floor(Math.random() * 1000000);
-        const botMessagePlaceholder: Message = {
-          id: placeholderRandomId,
-          role: 'assistant',
-          content: 'Generating...',
-          timestamp: new Date().toISOString(),
-          message_chain: [{ type: 'Plain', text: 'Generating...' }],
-        };
 
-        // 添加用户消息和初始bot消息到状态
+      // Add user message to UI immediately
+      setMessages((prevMessages) => [...prevMessages, userMessage]);
+      setInputValue('');
+      setHasAt(false);
 
-        setMessages((prevMessages) => [
-          ...prevMessages,
-          userMessage,
-          botMessagePlaceholder,
-        ]);
-        setInputValue('');
-        setHasAt(false);
-        try {
-          await httpClient.sendStreamingWebChatMessage(
-            sessionType,
-            messageChain,
-            selectedPipelineId,
-            (data) => {
-              // 处理流式响应数据
-              console.log('data', data);
-              if (data.message) {
-                // 更新完整内容
+      // Send via WebSocket
+      const clientMessageId = wsClient.sendMessage(messageChain);
 
-                setMessages((prevMessages) => {
-                  const updatedMessages = [...prevMessages];
-                  const botMessageIndex = updatedMessages.findIndex(
-                    (message) => message.id === placeholderRandomId,
-                  );
-                  if (botMessageIndex !== -1) {
-                    updatedMessages[botMessageIndex] = {
-                      ...updatedMessages[botMessageIndex],
-                      content: data.message.content,
-                      message_chain: [
-                        { type: 'Plain', text: data.message.content },
-                      ],
-                    };
-                  }
-                  return updatedMessages;
-                });
-              }
-            },
-            () => {},
-            (error) => {
-              // 处理错误
-              console.error('Streaming error:', error);
-              if (sessionType === 'person') {
-                toast.error(t('pipelines.debugDialog.sendFailed'));
-              }
-            },
-          );
-        } catch (error) {
-          console.error('Failed to send streaming message:', error);
-          if (sessionType === 'person') {
-            toast.error(t('pipelines.debugDialog.sendFailed'));
-          }
-        }
-      } else {
-        // non-streaming
-        setMessages((prevMessages) => [...prevMessages, userMessage]);
-        setInputValue('');
-        setHasAt(false);
+      // Track pending message for ID mapping
+      setPendingMessages((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(clientMessageId, userMessage);
+        return newMap;
+      });
 
-        const response = await httpClient.sendWebChatMessage(
-          sessionType,
-          messageChain,
-          selectedPipelineId,
-          180000,
-        );
-
-        setMessages((prevMessages) => [...prevMessages, response.message]);
-      }
-    } catch (
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      error: any
-    ) {
-      console.log(error, 'type of error', typeof error);
-      console.error('Failed to send message:', error);
-
-      if (!error.message.includes('timeout') && sessionType === 'person') {
-        toast.error(t('pipelines.debugDialog.sendFailed'));
-      }
+      console.log('[DebugDialog] Message sent:', clientMessageId);
+    } catch (error) {
+      console.error('[DebugDialog] Failed to send message:', error);
+      toast.error(t('pipelines.debugDialog.sendFailed'));
     } finally {
       inputRef.current?.focus();
     }
@@ -390,12 +463,6 @@ export default function DebugDialog({
         </ScrollArea>
 
         <div className="p-4 pb-0 bg-white dark:bg-black flex gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">
-              {t('pipelines.debugDialog.streaming')}
-            </span>
-            <Switch checked={isStreaming} onCheckedChange={setIsStreaming} />
-          </div>
           <div className="flex-1 flex items-center gap-2">
             {hasAt && (
               <AtBadge targetName="webchatbot" onRemove={handleAtRemove} />

@@ -58,6 +58,7 @@ class WebChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     debug_messages: dict[str, list[dict]] = pydantic.Field(default_factory=dict, exclude=True)
 
     ap: app.Application = pydantic.Field(exclude=True)
+    ws_pool: typing.Any = pydantic.Field(exclude=True, default=None)  # WebSocketConnectionPool
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
         super().__init__(
@@ -72,6 +73,15 @@ class WebChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         self.bot_account_id = 'webchatbot'
 
         self.debug_messages = {}
+        self.ws_pool = None
+
+    def set_ws_pool(self, ws_pool):
+        """设置 WebSocket 连接池
+
+        Args:
+            ws_pool: WebSocketConnectionPool 实例
+        """
+        self.ws_pool = ws_pool
 
     async def send_message(
         self,
@@ -130,7 +140,7 @@ class WebChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         quote_origin: bool = False,
         is_final: bool = False,
     ) -> dict:
-        """回复消息"""
+        """Reply message chunk - supports both SSE (legacy) and WebSocket"""
         message_data = WebChatMessage(
             id=-1,
             role='assistant',
@@ -139,24 +149,32 @@ class WebChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             timestamp=datetime.now().isoformat(),
         )
 
-        # notify waiter
-        session = (
-            self.webchat_group_session
-            if isinstance(message_source, platform_events.GroupMessage)
-            else self.webchat_person_session
-        )
-        if message_source.message_chain.message_id not in session.resp_waiters:
-            # session.resp_waiters[message_source.message_chain.message_id] = asyncio.Queue()
-            queue = session.resp_queues[message_source.message_chain.message_id]
+        # Determine session type
+        if isinstance(message_source, platform_events.GroupMessage):
+            session_type = 'group'
+            session = self.webchat_group_session
+        else:  # FriendMessage
+            session_type = 'person'
+            session = self.webchat_person_session
 
-        # if isinstance(message_source, platform_events.FriendMessage):
-        #     queue = self.webchat_person_session.resp_queues[message_source.message_chain.message_id]
-        # elif isinstance(message_source, platform_events.GroupMessage):
-        #     queue = self.webchat_group_session.resp_queues[message_source.message_chain.message_id]
-        if is_final and bot_message.tool_calls is None:
-            message_data.is_final = True
-        # print(message_data)
-        await queue.put(message_data)
+        # Legacy SSE support: put message into queue
+        if message_source.message_chain.message_id in session.resp_queues:
+            queue = session.resp_queues[message_source.message_chain.message_id]
+            if is_final and bot_message.tool_calls is None:
+                message_data.is_final = True
+            await queue.put(message_data)
+
+        # WebSocket support: broadcast to all connections
+        if self.ws_pool:
+            pipeline_uuid = self.ap.platform_mgr.webchat_proxy_bot.bot_entity.use_pipeline_uuid
+
+            # Determine event type
+            event_type = 'message_complete' if (is_final and bot_message.tool_calls is None) else 'message_chunk'
+
+            # Broadcast to specified session only
+            await self.ws_pool.broadcast_to_session(
+                pipeline_uuid=pipeline_uuid, session_type=session_type, event_type=event_type, data=message_data.model_dump()
+            )
 
         return message_data.model_dump()
 

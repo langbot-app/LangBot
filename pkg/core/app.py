@@ -105,6 +105,10 @@ class Application:
 
     storage_mgr: storagemgr.StorageMgr = None
 
+    # ========= WebSocket =========
+
+    ws_pool = None  # WebSocketConnectionPool
+
     # ========= HTTP Services =========
 
     user_service: user_service.UserService = None
