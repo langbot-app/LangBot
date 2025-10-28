@@ -33,6 +33,9 @@ import {
   ApiRespProviderEmbeddingModel,
   EmbeddingModel,
   ApiRespPluginSystemStatus,
+  ApiRespMCPServers,
+  ApiRespMCPServer,
+  MCPServerConfig,
 } from '@/app/infra/entities/api';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
@@ -486,6 +489,73 @@ export class BackendClient extends BaseHttpClient {
     name: string,
   ): Promise<AsyncTaskCreatedResp> {
     return this.post(`/api/v1/plugins/${author}/${name}/upgrade`);
+  }
+
+  // ============ MCP API ============
+  public getMCPServers(): Promise<ApiRespMCPServers> {
+    return this.get('/api/v1/mcp/servers');
+  }
+
+  public getMCPServer(serverName: string): Promise<ApiRespMCPServer> {
+    return this.get(`/api/v1/mcp/servers/${serverName}`);
+  }
+
+  public createMCPServer(
+    server: MCPServerConfig,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.post('/api/v1/mcp/servers', { source: server });
+  }
+
+  public updateMCPServer(
+    serverName: string,
+    server: Partial<MCPServerConfig>,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.put(`/api/v1/mcp/servers/${serverName}`, server);
+  }
+
+  public deleteMCPServer(serverName: string): Promise<AsyncTaskCreatedResp> {
+    return this.delete(`/api/v1/mcp/servers/${serverName}`);
+  }
+
+  public toggleMCPServer(
+    serverName: string,
+    target_enabled: boolean,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.put(`/api/v1/mcp/servers/${serverName}`, {
+      enable: target_enabled,
+    });
+  }
+
+  public testMCPServer(serverName: string): Promise<AsyncTaskCreatedResp> {
+    return this.post(`/api/v1/mcp/servers/${serverName}/test`);
+  }
+
+  // public getMCPMarketServers(
+  //   page: number,
+  //   page_size: number,
+  //   query: string,
+  //   sort_by: string = 'stars',
+  //   sort_order: string = 'DESC',
+  // ): Promise<MCPMarketResponse> {
+  //   return this.post(`/api/v1/market/mcp`, {
+  //     page,
+  //     page_size,
+  //     query,
+  //     sort_by,
+  //     sort_order,
+  //   });
+  // }
+
+  public installMCPServerFromGithub(
+    source: string,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.post('/api/v1/mcp/install/github', { source });
+  }
+
+  public installMCPServerFromSSE(
+    source: object,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.post('/api/v1/mcp/servers', { source });
   }
 
   // ============ System API ============
