@@ -27,7 +27,7 @@ i18n
         translation: jaJP,
       },
     },
-    fallbackLng: 'zh-Hans',
+    fallbackLng: 'en-US',
     debug: process.env.NODE_ENV === 'development',
     interpolation: {
       escapeValue: false, // React already escapes values

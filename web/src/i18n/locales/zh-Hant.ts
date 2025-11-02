@@ -148,7 +148,7 @@ const zhHant = {
     logs: '日誌',
   },
   plugins: {
-    title: '外掛管理',
+    title: '外掛擴展',
     description: '安裝和設定用於擴展 LangBot 功能的外掛',
     createPlugin: '建立外掛',
     editPlugin: '編輯外掛',

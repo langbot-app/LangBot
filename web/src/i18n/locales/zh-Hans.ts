@@ -148,7 +148,7 @@ const zhHans = {
     logs: '日志',
   },
   plugins: {
-    title: '插件管理',
+    title: '插件扩展',
     description: '安装和配置用于扩展 LangBot 功能的插件',
     createPlugin: '创建插件',
     editPlugin: '编辑插件',
