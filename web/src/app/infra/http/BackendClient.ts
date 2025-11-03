@@ -454,9 +454,52 @@ export class BackendClient extends BaseHttpClient {
   }
 
   public installPluginFromGithub(
-    source: string,
+    assetUrl: string,
+    owner: string,
+    repo: string,
+    releaseTag: string,
   ): Promise<AsyncTaskCreatedResp> {
-    return this.post('/api/v1/plugins/install/github', { source });
+    return this.post('/api/v1/plugins/install/github', {
+      asset_url: assetUrl,
+      owner,
+      repo,
+      release_tag: releaseTag,
+    });
+  }
+
+  public getGithubReleases(repoUrl: string): Promise<{
+    releases: Array<{
+      id: number;
+      tag_name: string;
+      name: string;
+      published_at: string;
+      prerelease: boolean;
+      draft: boolean;
+    }>;
+    owner: string;
+    repo: string;
+  }> {
+    return this.post('/api/v1/plugins/github/releases', { repo_url: repoUrl });
+  }
+
+  public getGithubReleaseAssets(
+    owner: string,
+    repo: string,
+    releaseId: number,
+  ): Promise<{
+    assets: Array<{
+      id: number;
+      name: string;
+      size: number;
+      download_url: string;
+      content_type: string;
+    }>;
+  }> {
+    return this.post('/api/v1/plugins/github/release-assets', {
+      owner,
+      repo,
+      release_id: releaseId,
+    });
   }
 
   public installPluginFromLocal(file: File): Promise<AsyncTaskCreatedResp> {

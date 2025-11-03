@@ -16,6 +16,8 @@ import {
   StoreIcon,
   Download,
   Power,
+  Github,
+  ChevronLeft,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -41,9 +43,34 @@ import { ApiRespPluginSystemStatus } from '@/app/infra/entities/api';
 
 enum PluginInstallStatus {
   WAIT_INPUT = 'wait_input',
+  SELECT_RELEASE = 'select_release',
+  SELECT_ASSET = 'select_asset',
   ASK_CONFIRM = 'ask_confirm',
   INSTALLING = 'installing',
   ERROR = 'error',
+}
+
+enum GithubInstallStep {
+  INPUT_URL = 'input_url',
+  SELECT_RELEASE = 'select_release',
+  SELECT_ASSET = 'select_asset',
+}
+
+interface GithubRelease {
+  id: number;
+  tag_name: string;
+  name: string;
+  published_at: string;
+  prerelease: boolean;
+  draft: boolean;
+}
+
+interface GithubAsset {
+  id: number;
+  name: string;
+  size: number;
+  download_url: string;
+  content_type: string;
 }
 
 export default function PluginConfigPage() {
@@ -57,6 +84,19 @@ export default function PluginConfigPage() {
     useState<PluginInstallStatus>(PluginInstallStatus.WAIT_INPUT);
   const [installError, setInstallError] = useState<string | null>(null);
   const [githubURL, setGithubURL] = useState('');
+  const [githubStep, setGithubStep] = useState<GithubInstallStep>(
+    GithubInstallStep.INPUT_URL,
+  );
+  const [githubReleases, setGithubReleases] = useState<GithubRelease[]>([]);
+  const [selectedRelease, setSelectedRelease] = useState<GithubRelease | null>(
+    null,
+  );
+  const [githubAssets, setGithubAssets] = useState<GithubAsset[]>([]);
+  const [selectedAsset, setSelectedAsset] = useState<GithubAsset | null>(null);
+  const [githubOwner, setGithubOwner] = useState('');
+  const [githubRepo, setGithubRepo] = useState('');
+  const [fetchingReleases, setFetchingReleases] = useState(false);
+  const [fetchingAssets, setFetchingAssets] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [pluginSystemStatus, setPluginSystemStatus] =
     useState<ApiRespPluginSystemStatus | null>(null);
@@ -101,7 +141,7 @@ export default function PluginConfigPage() {
               toast.success(t('plugins.installSuccess'));
               alreadySuccess = true;
             }
-            setGithubURL('');
+            resetGithubState();
             setModalOpen(false);
             pluginInstalledRef.current?.refreshPluginList();
           }
@@ -112,52 +152,142 @@ export default function PluginConfigPage() {
 
   const pluginInstalledRef = useRef<PluginInstalledComponentRef>(null);
 
-  function handleModalConfirm() {
-    installPlugin(installSource, installInfo as Record<string, unknown>);
+  function resetGithubState() {
+    setGithubURL('');
+    setGithubStep(GithubInstallStep.INPUT_URL);
+    setGithubReleases([]);
+    setSelectedRelease(null);
+    setGithubAssets([]);
+    setSelectedAsset(null);
+    setGithubOwner('');
+    setGithubRepo('');
+    setFetchingReleases(false);
+    setFetchingAssets(false);
   }
 
-  const installPlugin = useCallback(
-    (installSource: string, installInfo: Record<string, unknown>) => {
-      setPluginInstallStatus(PluginInstallStatus.INSTALLING);
-      if (installSource === 'github') {
-        httpClient
-          .installPluginFromGithub((installInfo as { url: string }).url)
-          .then((resp) => {
-            const taskId = resp.task_id;
-            watchTask(taskId);
-          })
-          .catch((err) => {
-            console.log('error when install plugin:', err);
-            setInstallError(err.message);
-            setPluginInstallStatus(PluginInstallStatus.ERROR);
-          });
-      } else if (installSource === 'local') {
-        httpClient
-          .installPluginFromLocal((installInfo as { file: File }).file)
-          .then((resp) => {
-            const taskId = resp.task_id;
-            watchTask(taskId);
-          })
-          .catch((err) => {
-            console.log('error when install plugin:', err);
-            setInstallError(err.message);
-            setPluginInstallStatus(PluginInstallStatus.ERROR);
-          });
-      } else if (installSource === 'marketplace') {
-        httpClient
-          .installPluginFromMarketplace(
-            (installInfo as { plugin_author: string }).plugin_author,
-            (installInfo as { plugin_name: string }).plugin_name,
-            (installInfo as { plugin_version: string }).plugin_version,
-          )
-          .then((resp) => {
-            const taskId = resp.task_id;
-            watchTask(taskId);
-          });
+  async function fetchGithubReleases() {
+    if (!githubURL.trim()) {
+      toast.error(t('plugins.enterRepoUrl'));
+      return;
+    }
+
+    setFetchingReleases(true);
+    setInstallError(null);
+
+    try {
+      const result = await httpClient.getGithubReleases(githubURL);
+      setGithubReleases(result.releases);
+      setGithubOwner(result.owner);
+      setGithubRepo(result.repo);
+
+      if (result.releases.length === 0) {
+        toast.warning(t('plugins.noReleasesFound'));
+      } else {
+        setGithubStep(GithubInstallStep.SELECT_RELEASE);
+        setPluginInstallStatus(PluginInstallStatus.SELECT_RELEASE);
       }
-    },
-    [watchTask],
-  );
+    } catch (error: any) {  // eslint-disable-line @typescript-eslint/no-explicit-any
+      console.error('Failed to fetch GitHub releases:', error);
+      setInstallError(error.message || t('plugins.fetchReleasesError'));
+      setPluginInstallStatus(PluginInstallStatus.ERROR);
+    } finally {
+      setFetchingReleases(false);
+    }
+  }
+
+  async function handleReleaseSelect(release: GithubRelease) {
+    setSelectedRelease(release);
+    setFetchingAssets(true);
+    setInstallError(null);
+
+    try {
+      const result = await httpClient.getGithubReleaseAssets(
+        githubOwner,
+        githubRepo,
+        release.id,
+      );
+      setGithubAssets(result.assets);
+
+      if (result.assets.length === 0) {
+        toast.warning(t('plugins.noAssetsFound'));
+      } else {
+        setGithubStep(GithubInstallStep.SELECT_ASSET);
+        setPluginInstallStatus(PluginInstallStatus.SELECT_ASSET);
+      }
+    } catch (error: any) {  // eslint-disable-line @typescript-eslint/no-explicit-any
+      console.error('Failed to fetch GitHub release assets:', error);
+      setInstallError(error.message || t('plugins.fetchAssetsError'));
+      setPluginInstallStatus(PluginInstallStatus.ERROR);
+    } finally {
+      setFetchingAssets(false);
+    }
+  }
+
+  function handleAssetSelect(asset: GithubAsset) {
+    setSelectedAsset(asset);
+    setPluginInstallStatus(PluginInstallStatus.ASK_CONFIRM);
+  }
+
+  function handleModalConfirm() {
+    if (installSource === 'github' && selectedAsset && selectedRelease) {
+      installPlugin('github', {
+        asset_url: selectedAsset.download_url,
+        owner: githubOwner,
+        repo: githubRepo,
+        release_tag: selectedRelease.tag_name,
+      });
+    } else {
+      installPlugin(installSource, installInfo as Record<string, any>); // eslint-disable-line @typescript-eslint/no-explicit-any
+    }
+  }
+
+  function installPlugin(
+    installSource: string,
+    installInfo: Record<string, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
+  ) {
+    setPluginInstallStatus(PluginInstallStatus.INSTALLING);
+    if (installSource === 'github') {
+      httpClient
+        .installPluginFromGithub(
+          installInfo.asset_url,
+          installInfo.owner,
+          installInfo.repo,
+          installInfo.release_tag,
+        )
+        .then((resp) => {
+          const taskId = resp.task_id;
+          watchTask(taskId);
+        })
+        .catch((err) => {
+          console.log('error when install plugin:', err);
+          setInstallError(err.message);
+          setPluginInstallStatus(PluginInstallStatus.ERROR);
+        });
+    } else if (installSource === 'local') {
+      httpClient
+        .installPluginFromLocal(installInfo.file)
+        .then((resp) => {
+          const taskId = resp.task_id;
+          watchTask(taskId);
+        })
+        .catch((err) => {
+          console.log('error when install plugin:', err);
+          setInstallError(err.message);
+          setPluginInstallStatus(PluginInstallStatus.ERROR);
+        });
+    } else if (installSource === 'marketplace') {
+      httpClient
+        .installPluginFromMarketplace(
+          installInfo.plugin_author,
+          installInfo.plugin_name,
+          installInfo.plugin_version,
+        )
+        .then((resp) => {
+          const taskId = resp.task_id;
+          watchTask(taskId);
+        });
+    }
+  }
 
   const validateFileType = (file: File): boolean => {
     const allowedExtensions = ['.lbpkg', '.zip'];
@@ -353,10 +483,7 @@ export default function PluginConfigPage() {
                   </>
                 ) : (
                   <>
-                    <DropdownMenuItem onClick={handleFileSelect}>
-                      <UploadIcon className="w-4 h-4" />
-                      {t('plugins.uploadLocal')}
-                    </DropdownMenuItem>
+
                     {systemInfo.enable_marketplace && (
                       <DropdownMenuItem
                         onClick={() => {
@@ -367,6 +494,23 @@ export default function PluginConfigPage() {
                         {t('plugins.marketplace')}
                       </DropdownMenuItem>
                     )}
+                    <DropdownMenuItem onClick={handleFileSelect}>
+                      <UploadIcon className="w-4 h-4" />
+                      {t('plugins.uploadLocal')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setInstallSource('github');
+                        setPluginInstallStatus(PluginInstallStatus.WAIT_INPUT);
+                        setGithubStep(GithubInstallStep.INPUT_URL);
+                        setInstallError(null);
+                        resetGithubState();
+                        setModalOpen(true);
+                      }}
+                    >
+                      <Github className="w-4 h-4" />
+                      {t('plugins.installFromGithub')}
+                    </DropdownMenuItem>
                   </>
                 )}
               </DropdownMenuContent>
@@ -402,26 +546,135 @@ export default function PluginConfigPage() {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="w-[500px] p-6 bg-white dark:bg-[#1a1a1e]">
+      <Dialog open={modalOpen} onOpenChange={(open) => {
+        setModalOpen(open);
+        if (!open) {
+          resetGithubState();
+          setInstallError(null);
+        }
+      }}>
+        <DialogContent className="w-[500px] max-h-[80vh] p-6 bg-white dark:bg-[#1a1a1e] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-4">
-              <Download className="size-6" />
+              {installSource === 'github' ? (
+                <Github className="size-6" />
+              ) : (
+                <Download className="size-6" />
+              )}
               <span>{t('plugins.installPlugin')}</span>
             </DialogTitle>
           </DialogHeader>
-          {pluginInstallStatus === PluginInstallStatus.WAIT_INPUT && (
+
+          {/* GitHub Install Flow */}
+          {installSource === 'github' && pluginInstallStatus === PluginInstallStatus.WAIT_INPUT && (
             <div className="mt-4">
-              <p className="mb-2">{t('plugins.onlySupportGithub')}</p>
+              <p className="mb-2">{t('plugins.enterRepoUrl')}</p>
               <Input
-                placeholder={t('plugins.enterGithubLink')}
+                placeholder={t('plugins.repoUrlPlaceholder')}
                 value={githubURL}
                 onChange={(e) => setGithubURL(e.target.value)}
                 className="mb-4"
               />
+              {fetchingReleases && (
+                <p className="text-sm text-gray-500">{t('plugins.fetchingReleases')}</p>
+              )}
             </div>
           )}
-          {pluginInstallStatus === PluginInstallStatus.ASK_CONFIRM && (
+
+          {installSource === 'github' && pluginInstallStatus === PluginInstallStatus.SELECT_RELEASE && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-4">
+                <p className="font-medium">{t('plugins.selectRelease')}</p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setGithubStep(GithubInstallStep.INPUT_URL);
+                    setPluginInstallStatus(PluginInstallStatus.WAIT_INPUT);
+                    setGithubReleases([]);
+                  }}
+                >
+                  <ChevronLeft className="w-4 h-4 mr-1" />
+                  {t('plugins.backToRepoUrl')}
+                </Button>
+              </div>
+              <div className="max-h-[400px] overflow-y-auto space-y-2">
+                {githubReleases.map((release) => (
+                  <div
+                    key={release.id}
+                    className="p-3 border rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
+                    onClick={() => handleReleaseSelect(release)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium">{release.name || release.tag_name}</div>
+                      {release.prerelease && (
+                        <span className="text-xs bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 px-2 py-1 rounded">
+                          {t('plugins.prerelease')}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-sm text-gray-500 mt-1">
+                      {t('plugins.releaseTag', { tag: release.tag_name })}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {t('plugins.publishedAt', {
+                        date: new Date(release.published_at).toLocaleDateString(),
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {fetchingAssets && (
+                <p className="text-sm text-gray-500 mt-4">{t('plugins.fetchingReleases')}</p>
+              )}
+            </div>
+          )}
+
+          {installSource === 'github' && pluginInstallStatus === PluginInstallStatus.SELECT_ASSET && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-4">
+                <p className="font-medium">{t('plugins.selectAsset')}</p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setGithubStep(GithubInstallStep.SELECT_RELEASE);
+                    setPluginInstallStatus(PluginInstallStatus.SELECT_RELEASE);
+                    setGithubAssets([]);
+                    setSelectedAsset(null);
+                  }}
+                >
+                  <ChevronLeft className="w-4 h-4 mr-1" />
+                  {t('plugins.backToReleases')}
+                </Button>
+              </div>
+              {selectedRelease && (
+                <div className="mb-4 p-2 bg-gray-50 dark:bg-gray-900 rounded">
+                  <div className="text-sm font-medium">{selectedRelease.name || selectedRelease.tag_name}</div>
+                  <div className="text-xs text-gray-500">{selectedRelease.tag_name}</div>
+                </div>
+              )}
+              <div className="max-h-[400px] overflow-y-auto space-y-2">
+                {githubAssets.map((asset) => (
+                  <div
+                    key={asset.id}
+                    className="p-3 border rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
+                    onClick={() => handleAssetSelect(asset)}
+                  >
+                    <div className="font-medium">{asset.name}</div>
+                    <div className="text-sm text-gray-500 mt-1">
+                      {t('plugins.assetSize', {
+                        size: (asset.size / 1024 / 1024).toFixed(2) + ' MB',
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Marketplace Install Confirm */}
+          {installSource === 'marketplace' && pluginInstallStatus === PluginInstallStatus.ASK_CONFIRM && (
             <div className="mt-4">
               <p className="mb-2">
                 {t('plugins.askConfirm', {
@@ -431,20 +684,63 @@ export default function PluginConfigPage() {
               </p>
             </div>
           )}
+
+          {/* GitHub Install Confirm */}
+          {installSource === 'github' && pluginInstallStatus === PluginInstallStatus.ASK_CONFIRM && (
+            <div className="mt-4">
+              <p className="mb-4">{t('plugins.confirmInstall')}</p>
+              {selectedRelease && selectedAsset && (
+                <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded space-y-2">
+                  <div>
+                    <span className="text-sm font-medium">Repository: </span>
+                    <span className="text-sm">{githubOwner}/{githubRepo}</span>
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium">Release: </span>
+                    <span className="text-sm">{selectedRelease.tag_name}</span>
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium">File: </span>
+                    <span className="text-sm">{selectedAsset.name}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Installing State */}
           {pluginInstallStatus === PluginInstallStatus.INSTALLING && (
             <div className="mt-4">
               <p className="mb-2">{t('plugins.installing')}</p>
             </div>
           )}
+
+          {/* Error State */}
           {pluginInstallStatus === PluginInstallStatus.ERROR && (
             <div className="mt-4">
               <p className="mb-2">{t('plugins.installFailed')}</p>
               <p className="mb-2 text-red-500">{installError}</p>
             </div>
           )}
+
           <DialogFooter>
-            {(pluginInstallStatus === PluginInstallStatus.WAIT_INPUT ||
-              pluginInstallStatus === PluginInstallStatus.ASK_CONFIRM) && (
+            {pluginInstallStatus === PluginInstallStatus.WAIT_INPUT && installSource === 'github' && (
+              <>
+                <Button variant="outline" onClick={() => {
+                  setModalOpen(false);
+                  resetGithubState();
+                }}>
+                  {t('common.cancel')}
+                </Button>
+                <Button
+                  onClick={fetchGithubReleases}
+                  disabled={!githubURL.trim() || fetchingReleases}
+                >
+                  {fetchingReleases ? t('plugins.loading') : t('common.confirm')}
+                </Button>
+              </>
+            )}
+            {(pluginInstallStatus === PluginInstallStatus.ASK_CONFIRM) && (
               <>
                 <Button variant="outline" onClick={() => setModalOpen(false)}>
                   {t('common.cancel')}
