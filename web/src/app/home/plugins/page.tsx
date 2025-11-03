@@ -126,6 +126,14 @@ export default function PluginConfigPage() {
     fetchPluginSystemStatus();
   }, [t]);
 
+  function formatFileSize(bytes: number): string {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+  }
+
   function watchTask(taskId: number) {
     let alreadySuccess = false;
 
@@ -625,7 +633,7 @@ export default function PluginConfigPage() {
                 ))}
               </div>
               {fetchingAssets && (
-                <p className="text-sm text-gray-500 mt-4">{t('plugins.fetchingReleases')}</p>
+                <p className="text-sm text-gray-500 mt-4">{t('plugins.loading')}</p>
               )}
             </div>
           )}
@@ -664,7 +672,7 @@ export default function PluginConfigPage() {
                     <div className="font-medium">{asset.name}</div>
                     <div className="text-sm text-gray-500 mt-1">
                       {t('plugins.assetSize', {
-                        size: (asset.size / 1024 / 1024).toFixed(2) + ' MB',
+                        size: formatFileSize(asset.size),
                       })}
                     </div>
                   </div>

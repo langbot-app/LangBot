@@ -194,6 +194,7 @@ class PluginsRouterGroup(group.RouterGroup):
                 'owner': owner,
                 'repo': repo,
                 'release_tag': release_tag,
+                'github_url': f'https://github.com/{owner}/{repo}',
             }
             
             wrapper = self.ap.task_mgr.create_user_task(
