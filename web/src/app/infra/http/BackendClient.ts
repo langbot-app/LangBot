@@ -479,7 +479,9 @@ export class BackendClient extends BaseHttpClient {
     name: string,
     deleteData: boolean = false,
   ): Promise<AsyncTaskCreatedResp> {
-    return this.delete(`/api/v1/plugins/${author}/${name}?delete_data=${deleteData}`);
+    return this.delete(
+      `/api/v1/plugins/${author}/${name}?delete_data=${deleteData}`,
+    );
   }
 
   public upgradePlugin(

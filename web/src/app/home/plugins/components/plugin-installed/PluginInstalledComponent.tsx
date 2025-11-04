@@ -127,7 +127,11 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
 
       const apiCall =
         operationType === PluginOperationType.DELETE
-          ? httpClient.removePlugin(targetPlugin.author, targetPlugin.name, deleteData)
+          ? httpClient.removePlugin(
+              targetPlugin.author,
+              targetPlugin.name,
+              deleteData,
+            )
           : httpClient.upgradePlugin(targetPlugin.author, targetPlugin.name);
 
       apiCall
@@ -182,7 +186,9 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
                       <Checkbox
                         id="delete-data"
                         checked={deleteData}
-                        onCheckedChange={(checked) => setDeleteData(checked === true)}
+                        onCheckedChange={(checked) =>
+                          setDeleteData(checked === true)
+                        }
                       />
                       <label
                         htmlFor="delete-data"

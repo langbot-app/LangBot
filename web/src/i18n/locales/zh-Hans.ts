@@ -191,10 +191,8 @@ const zhHans = {
     cancel: '取消',
     saveConfig: '保存配置',
     saving: '保存中...',
-    confirmDeletePlugin:
-      '你确定要删除插件（{{author}}/{{name}}）吗？',
-    deleteDataCheckbox:
-      '同时删除插件配置和持久化存储',
+    confirmDeletePlugin: '你确定要删除插件（{{author}}/{{name}}）吗？',
+    deleteDataCheckbox: '同时删除插件配置和持久化存储',
     confirmDelete: '确认删除',
     deleteError: '删除失败：',
     close: '关闭',
