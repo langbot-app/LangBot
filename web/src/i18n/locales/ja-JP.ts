@@ -200,7 +200,9 @@ const jaJP = {
     saveConfig: '設定を保存',
     saving: '保存中...',
     confirmDeletePlugin:
-      'プラグイン「{{author}}/{{name}}」を削除してもよろしいですか？この操作により、プラグインの設定も削除されます。',
+      'プラグイン「{{author}}/{{name}}」を削除してもよろしいですか？',
+    deleteDataCheckbox:
+      'プラグイン設定と永続化ストレージも削除する',
     confirmDelete: '削除を確認',
     deleteError: '削除に失敗しました：',
     close: '閉じる',

@@ -192,6 +192,7 @@ const zhHant = {
     saveConfig: '儲存設定',
     saving: '儲存中...',
     confirmDeletePlugin: '您確定要刪除外掛（{{author}}/{{name}}）嗎？',
+    deleteDataCheckbox: '同時刪除外掛設定和持久化儲存',
     confirmDelete: '確認刪除',
     deleteError: '刪除失敗：',
     close: '關閉',

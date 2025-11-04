@@ -474,13 +474,14 @@ class RuntimeConnectionHandler(handler.Handler):
         async for ret in gen:
             yield ret
 
-    async def delete_plugin(self, plugin_author: str, plugin_name: str) -> typing.AsyncGenerator[dict[str, Any], None]:
+    async def delete_plugin(self, plugin_author: str, plugin_name: str, delete_data: bool = False) -> typing.AsyncGenerator[dict[str, Any], None]:
         """Delete plugin"""
         gen = self.call_action_generator(
             LangBotToRuntimeAction.DELETE_PLUGIN,
             {
                 'plugin_author': plugin_author,
                 'plugin_name': plugin_name,
+                'delete_data': delete_data,
             },
         )
 
@@ -578,6 +579,23 @@ class RuntimeConnectionHandler(handler.Handler):
             'plugin_icon_base64': base64.b64encode(plugin_icon_bytes).decode('utf-8'),
             'mime_type': mime_type,
         }
+
+    async def cleanup_plugin_data(self, plugin_author: str, plugin_name: str) -> None:
+        """Cleanup plugin settings and binary storage"""
+        # Delete plugin settings
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.delete(persistence_plugin.PluginSetting)
+            .where(persistence_plugin.PluginSetting.plugin_author == plugin_author)
+            .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
+        )
+
+        # Delete all binary storage for this plugin
+        owner = f'{plugin_author}/{plugin_name}'
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.delete(persistence_bstorage.BinaryStorage)
+            .where(persistence_bstorage.BinaryStorage.owner_type == 'plugin')
+            .where(persistence_bstorage.BinaryStorage.owner == owner)
+        )
 
     async def call_tool(self, tool_name: str, parameters: dict[str, Any]) -> dict[str, Any]:
         """Call tool"""

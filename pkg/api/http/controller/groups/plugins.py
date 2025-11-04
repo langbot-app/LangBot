@@ -45,9 +45,10 @@ class PluginsRouterGroup(group.RouterGroup):
                     return self.http_status(404, -1, 'plugin not found')
                 return self.success(data={'plugin': plugin})
             elif quart.request.method == 'DELETE':
+                delete_data = quart.request.args.get('delete_data', 'false').lower() == 'true'
                 ctx = taskmgr.TaskContext.new()
                 wrapper = self.ap.task_mgr.create_user_task(
-                    self.ap.plugin_connector.delete_plugin(author, plugin_name, task_context=ctx),
+                    self.ap.plugin_connector.delete_plugin(author, plugin_name, delete_data=delete_data, task_context=ctx),
                     kind='plugin-operation',
                     name=f'plugin-remove-{plugin_name}',
                     label=f'Removing plugin {plugin_name}',

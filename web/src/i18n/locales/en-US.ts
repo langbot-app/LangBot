@@ -199,7 +199,9 @@ const enUS = {
     saveConfig: 'Save Config',
     saving: 'Saving...',
     confirmDeletePlugin:
-      'Are you sure you want to delete the plugin ({{author}}/{{name}})? This will also delete the plugin configuration.',
+      'Are you sure you want to delete the plugin ({{author}}/{{name}})?',
+    deleteDataCheckbox:
+      'Also delete plugin configuration and persistence storage',
     confirmDelete: 'Confirm Delete',
     deleteError: 'Delete failed: ',
     close: 'Close',
