@@ -56,12 +56,6 @@ enum PluginInstallStatus {
   ERROR = 'error',
 }
 
-enum GithubInstallStep {
-  INPUT_URL = 'input_url',
-  SELECT_RELEASE = 'select_release',
-  SELECT_ASSET = 'select_asset',
-}
-
 interface GithubRelease {
   id: number;
   tag_name: string;
@@ -90,9 +84,6 @@ export default function PluginConfigPage() {
     useState<PluginInstallStatus>(PluginInstallStatus.WAIT_INPUT);
   const [installError, setInstallError] = useState<string | null>(null);
   const [githubURL, setGithubURL] = useState('');
-  const [githubStep, setGithubStep] = useState<GithubInstallStep>(
-    GithubInstallStep.INPUT_URL,
-  );
   const [githubReleases, setGithubReleases] = useState<GithubRelease[]>([]);
   const [selectedRelease, setSelectedRelease] = useState<GithubRelease | null>(
     null,
@@ -168,7 +159,6 @@ export default function PluginConfigPage() {
 
   function resetGithubState() {
     setGithubURL('');
-    setGithubStep(GithubInstallStep.INPUT_URL);
     setGithubReleases([]);
     setSelectedRelease(null);
     setGithubAssets([]);
@@ -197,13 +187,13 @@ export default function PluginConfigPage() {
       if (result.releases.length === 0) {
         toast.warning(t('plugins.noReleasesFound'));
       } else {
-        setGithubStep(GithubInstallStep.SELECT_RELEASE);
         setPluginInstallStatus(PluginInstallStatus.SELECT_RELEASE);
       }
-    } catch (error: any) {
-      // eslint-disable-line @typescript-eslint/no-explicit-any
+    } catch (error: unknown) {
       console.error('Failed to fetch GitHub releases:', error);
-      setInstallError(error.message || t('plugins.fetchReleasesError'));
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      setInstallError(errorMessage || t('plugins.fetchReleasesError'));
       setPluginInstallStatus(PluginInstallStatus.ERROR);
     } finally {
       setFetchingReleases(false);
@@ -226,13 +216,13 @@ export default function PluginConfigPage() {
       if (result.assets.length === 0) {
         toast.warning(t('plugins.noAssetsFound'));
       } else {
-        setGithubStep(GithubInstallStep.SELECT_ASSET);
         setPluginInstallStatus(PluginInstallStatus.SELECT_ASSET);
       }
-    } catch (error: any) {
-      // eslint-disable-line @typescript-eslint/no-explicit-any
+    } catch (error: unknown) {
       console.error('Failed to fetch GitHub release assets:', error);
-      setInstallError(error.message || t('plugins.fetchAssetsError'));
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      setInstallError(errorMessage || t('plugins.fetchAssetsError'));
       setPluginInstallStatus(PluginInstallStatus.ERROR);
     } finally {
       setFetchingAssets(false);
@@ -517,7 +507,6 @@ export default function PluginConfigPage() {
                       onClick={() => {
                         setInstallSource('github');
                         setPluginInstallStatus(PluginInstallStatus.WAIT_INPUT);
-                        setGithubStep(GithubInstallStep.INPUT_URL);
                         setInstallError(null);
                         resetGithubState();
                         setModalOpen(true);
@@ -611,7 +600,6 @@ export default function PluginConfigPage() {
                     variant="ghost"
                     size="sm"
                     onClick={() => {
-                      setGithubStep(GithubInstallStep.INPUT_URL);
                       setPluginInstallStatus(PluginInstallStatus.WAIT_INPUT);
                       setGithubReleases([]);
                     }}
@@ -668,7 +656,6 @@ export default function PluginConfigPage() {
                     variant="ghost"
                     size="sm"
                     onClick={() => {
-                      setGithubStep(GithubInstallStep.SELECT_RELEASE);
                       setPluginInstallStatus(
                         PluginInstallStatus.SELECT_RELEASE,
                       );
@@ -734,7 +721,6 @@ export default function PluginConfigPage() {
                     variant="ghost"
                     size="sm"
                     onClick={() => {
-                      setGithubStep(GithubInstallStep.SELECT_ASSET);
                       setPluginInstallStatus(PluginInstallStatus.SELECT_ASSET);
                       setSelectedAsset(null);
                     }}
