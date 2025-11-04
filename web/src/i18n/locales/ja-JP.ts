@@ -250,7 +250,7 @@ const jaJP = {
     noReleasesFound: 'リリースが見つかりません',
     fetchReleasesError: 'リリース一覧の取得に失敗しました：',
     selectAsset: 'インストールするファイルを選択',
-    noAssetsFound: 'このリリースには利用可能なファイルがありません',
+    noAssetsFound: 'このリリースには利用可能な .lbpkg ファイルがありません',
     fetchAssetsError: 'ファイル一覧の取得に失敗しました：',
     backToReleases: 'リリース一覧に戻る',
     backToRepoUrl: 'リポジトリURLに戻る',

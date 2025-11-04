@@ -238,7 +238,7 @@ const zhHans = {
     noReleasesFound: '未找到 Release',
     fetchReleasesError: '获取 Release 列表失败：',
     selectAsset: '选择要安装的文件',
-    noAssetsFound: '该 Release 没有可用的文件',
+    noAssetsFound: '该 Release 没有可用的 .lbpkg 文件',
     fetchAssetsError: '获取文件列表失败：',
     backToReleases: '返回 Release 列表',
     backToRepoUrl: '返回仓库地址',

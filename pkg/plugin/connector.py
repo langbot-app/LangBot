@@ -6,19 +6,24 @@ from typing import Any
 import typing
 import os
 import sys
-
+import httpx
 from async_lru import alru_cache
 
 from ..core import app
 from . import handler
 from ..utils import platform
-from langbot_plugin.runtime.io.controllers.stdio import client as stdio_client_controller
+from langbot_plugin.runtime.io.controllers.stdio import (
+    client as stdio_client_controller,
+)
 from langbot_plugin.runtime.io.controllers.ws import client as ws_client_controller
 from langbot_plugin.api.entities import events
 from langbot_plugin.api.entities import context
 import langbot_plugin.runtime.io.connection as base_connection
 from langbot_plugin.api.definition.components.manifest import ComponentManifest
-from langbot_plugin.api.entities.builtin.command import context as command_context, errors as command_errors
+from langbot_plugin.api.entities.builtin.command import (
+    context as command_context,
+    errors as command_errors,
+)
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 from ..core import taskmgr
 
@@ -71,7 +76,9 @@ class PluginRuntimeConnector:
             return
 
         async def new_connection_callback(connection: base_connection.Connection):
-            async def disconnect_callback(rchandler: handler.RuntimeConnectionHandler) -> bool:
+            async def disconnect_callback(
+                rchandler: handler.RuntimeConnectionHandler,
+            ) -> bool:
                 if platform.get_platform() == 'docker' or platform.use_websocket_to_connect_plugin_runtime():
                     self.ap.logger.error('Disconnected from plugin runtime, trying to reconnect...')
                     await self.runtime_disconnect_callback(self)
@@ -98,7 +105,8 @@ class PluginRuntimeConnector:
             )
 
             async def make_connection_failed_callback(
-                ctrl: ws_client_controller.WebSocketClientController, exc: Exception = None
+                ctrl: ws_client_controller.WebSocketClientController,
+                exc: Exception = None,
             ) -> None:
                 if exc is not None:
                     self.ap.logger.error(f'Failed to connect to plugin runtime({ws_url}): {exc}')
@@ -150,6 +158,25 @@ class PluginRuntimeConnector:
             install_info['plugin_file_key'] = file_key
             del install_info['plugin_file']
             self.ap.logger.info(f'Transfered file {file_key} to plugin runtime')
+        elif install_source == PluginInstallSource.GITHUB:
+            # download and transfer file
+            try:
+                async with httpx.AsyncClient(
+                    trust_env=True,
+                    follow_redirects=True,
+                    timeout=20,
+                ) as client:
+                    response = await client.get(
+                        install_info['asset_url'],
+                    )
+                    response.raise_for_status()
+                    file_bytes = response.content
+                    file_key = await self.handler.send_file(file_bytes, 'lbpkg')
+                    install_info['plugin_file_key'] = file_key
+                    self.ap.logger.info(f'Transfered file {file_key} to plugin runtime')
+            except Exception as e:
+                self.ap.logger.error(f'Failed to download file from GitHub: {e}')
+                raise Exception(f'Failed to download file from GitHub: {e}')
 
         async for ret in self.handler.install_plugin(install_source.value, install_info):
             current_action = ret.get('current_action', None)
@@ -163,7 +190,10 @@ class PluginRuntimeConnector:
                     task_context.trace(trace)
 
     async def upgrade_plugin(
-        self, plugin_author: str, plugin_name: str, task_context: taskmgr.TaskContext | None = None
+        self,
+        plugin_author: str,
+        plugin_name: str,
+        task_context: taskmgr.TaskContext | None = None,
     ) -> dict[str, Any]:
         async for ret in self.handler.upgrade_plugin(plugin_author, plugin_name):
             current_action = ret.get('current_action', None)

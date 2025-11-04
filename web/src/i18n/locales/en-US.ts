@@ -250,7 +250,7 @@ const enUS = {
     noReleasesFound: 'No releases found',
     fetchReleasesError: 'Failed to fetch releases: ',
     selectAsset: 'Select file to install',
-    noAssetsFound: 'No assets available in this release',
+    noAssetsFound: 'No .lbpkg files available in this release',
     fetchAssetsError: 'Failed to fetch assets: ',
     backToReleases: 'Back to releases',
     backToRepoUrl: 'Back to repository URL',
