@@ -56,7 +56,9 @@ class RuntimeConnectionHandler(handler.Handler):
                     .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
                 )
 
-                if result.first() is not None:
+                setting = result.first()
+
+                if setting is not None:
                     # delete plugin setting
                     await self.ap.persistence_mgr.execute_async(
                         sqlalchemy.delete(persistence_plugin.PluginSetting)
@@ -71,6 +73,10 @@ class RuntimeConnectionHandler(handler.Handler):
                         plugin_name=plugin_name,
                         install_source=install_source,
                         install_info=install_info,
+                        # inherit from existing setting
+                        enabled=setting.enabled if setting is not None else True,
+                        priority=setting.priority if setting is not None else 0,
+                        config=setting.config if setting is not None else {},  # noqa: F821
                     )
                 )
 
