@@ -465,7 +465,7 @@ export default function MCPFormDialog({
         </DialogHeader>
 
         {isEditMode && runtimeInfo && (
-          <div className="mb-4 space-y-3">
+          <div className="mb-0 space-y-3">
             {/* 测试中或连接失败时显示状态 */}
             {(mcpTesting ||
               runtimeInfo.status !== MCPSessionStatus.CONNECTED) && (
@@ -482,7 +482,14 @@ export default function MCPFormDialog({
             {!mcpTesting &&
               runtimeInfo.status === MCPSessionStatus.CONNECTED &&
               runtimeInfo.tools?.length > 0 && (
-                <ToolsList tools={runtimeInfo.tools} />
+                <>
+                  <div className="text-sm font-medium">
+                    {t('mcp.toolCount', {
+                      count: runtimeInfo.tools?.length || 0,
+                    })}
+                  </div>
+                  <ToolsList tools={runtimeInfo.tools} />
+                </>
               )}
           </div>
         )}
