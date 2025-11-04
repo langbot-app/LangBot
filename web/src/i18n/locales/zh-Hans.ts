@@ -308,7 +308,7 @@ const zhHans = {
     refreshSuccess: '刷新成功',
     refreshFailed: '刷新失败：',
     connectionSuccess: '连接成功',
-    connectionFailed: '连接失败',
+    connectionFailed: '连接失败，请检查URL',
     toolsFound: '个工具',
     unknownError: '未知错误',
     noToolsFound: '未找到任何工具',

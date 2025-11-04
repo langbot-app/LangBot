@@ -43,7 +43,6 @@ class RuntimeMCPSession:
     # connected: bool
     status: MCPSessionStatus
 
-    last_test_error_message: str
 
     _lifecycle_task: asyncio.Task | None
 
@@ -62,7 +61,6 @@ class RuntimeMCPSession:
         self.functions = []
 
         self.status = MCPSessionStatus.CONNECTING
-        self.last_test_error_message = ''
 
         self._lifecycle_task = None
         self._shutdown_event = asyncio.Event()
@@ -112,7 +110,6 @@ class RuntimeMCPSession:
             await self.refresh()
 
             self.status = MCPSessionStatus.CONNECTED
-            self.last_test_error_message = ''
 
             # 通知start()方法连接已建立
             self._ready_event.set()
@@ -122,7 +119,6 @@ class RuntimeMCPSession:
 
         except Exception as e:
             self.status = MCPSessionStatus.ERROR
-            self.last_test_error_message = str(e)
             self.ap.logger.error(f'Error in MCP session lifecycle {self.server_name}: {e}\n{traceback.format_exc()}')
             # 即使出错也要设置ready事件，让start()方法知道初始化已完成
             self._ready_event.set()
@@ -148,12 +144,11 @@ class RuntimeMCPSession:
             await asyncio.wait_for(self._ready_event.wait(), timeout=30.0)
         except asyncio.TimeoutError:
             self.status = MCPSessionStatus.ERROR
-            self.last_test_error_message = 'Connection timeout'
             raise Exception('Connection timeout after 30 seconds')
 
         # 检查是否有错误
         if self.status == MCPSessionStatus.ERROR:
-            raise Exception(self.last_test_error_message)
+            raise Exception('Connection failed, please check URL')
 
     async def refresh(self):
         self.functions.clear()
@@ -188,7 +183,6 @@ class RuntimeMCPSession:
     def get_runtime_info_dict(self) -> dict:
         return {
             'status': self.status.value,
-            'error_message': self.last_test_error_message,
             'tool_count': len(self.get_tools()),
             'tools': [
                 {

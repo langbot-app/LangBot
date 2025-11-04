@@ -322,7 +322,7 @@ const enUS = {
     refreshSuccess: 'Refresh successful',
     refreshFailed: 'Refresh failed: ',
     connectionSuccess: 'Connection successful',
-    connectionFailed: 'Connection failed',
+    connectionFailed: 'Connection failed， please check URL',
     toolsFound: 'tools',
     unknownError: 'Unknown error',
     noToolsFound: 'No tools found',

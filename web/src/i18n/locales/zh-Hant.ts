@@ -307,7 +307,7 @@ const zhHant = {
     refreshSuccess: '刷新成功',
     refreshFailed: '刷新失敗：',
     connectionSuccess: '連接成功',
-    connectionFailed: '連接失敗',
+    connectionFailed: '連接失敗，請檢查URL',
     toolsFound: '個工具',
     unknownError: '未知錯誤',
     noToolsFound: '未找到任何工具',
