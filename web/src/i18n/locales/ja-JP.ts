@@ -324,6 +324,7 @@ const jaJP = {
     refreshFailed: '刷新に失敗しました：',
     connectionSuccess: '接続に成功しました',
     connectionFailed: '接続に失敗しました，URLを確認してください',
+    connectionFailedStatus: '接続失敗',
     toolsFound: '個のツール',
     unknownError: '不明なエラー',
     noToolsFound: 'ツールが見つかりません',

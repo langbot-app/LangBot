@@ -134,7 +134,7 @@ export default function MCPCardComponent({
               <div className="flex flex-row items-center gap-[0.4rem]">
                 <AlertCircle className="w-4 h-4 text-red-500 dark:text-red-400" />
                 <div className="text-sm text-red-500 dark:text-red-400 font-medium">
-                  {t('mcp.connectionFailed')}
+                  {t('mcp.connectionFailedStatus')}
                 </div>
               </div>
             )}

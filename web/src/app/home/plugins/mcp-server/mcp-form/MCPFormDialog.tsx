@@ -132,11 +132,11 @@ function StatusDisplay({
         </svg>
         <span className="font-medium">{t('mcp.connectionFailed')}</span>
       </div>
-      {runtimeInfo.error_message && (
+      {/* {runtimeInfo.error_message && (
         <div className="text-sm text-red-500 pl-7">
           {runtimeInfo.error_message}
         </div>
-      )}
+      )} */}
     </div>
   );
 }
