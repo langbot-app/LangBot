@@ -242,7 +242,7 @@ const enUS = {
     saveConfigSuccessDebugPlugin:
       'Configuration saved successfully, please manually restart the plugin',
     saveConfigError: 'Configuration save failed: ',
-    installFromGithub: 'Install from GitHub',
+    installFromGithub: 'From GitHub',
     enterRepoUrl: 'Enter GitHub repository URL',
     repoUrlPlaceholder: 'e.g., https://github.com/owner/repo',
     fetchingReleases: 'Fetching releases...',
@@ -254,6 +254,7 @@ const enUS = {
     fetchAssetsError: 'Failed to fetch assets: ',
     backToReleases: 'Back to releases',
     backToRepoUrl: 'Back to repository URL',
+    backToAssets: 'Back to assets',
     releaseTag: 'Tag: {{tag}}',
     releaseName: 'Name: {{name}}',
     publishedAt: 'Published at: {{date}}',

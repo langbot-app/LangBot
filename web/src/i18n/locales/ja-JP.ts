@@ -242,7 +242,7 @@ const jaJP = {
     saveConfigSuccessDebugPlugin:
       '設定を保存しました。手動でプラグインを再起動してください',
     saveConfigError: '設定の保存に失敗しました：',
-    installFromGithub: 'GitHubからインストール',
+    installFromGithub: 'GitHubから',
     enterRepoUrl: 'GitHubリポジトリのURLを入力してください',
     repoUrlPlaceholder: '例: https://github.com/owner/repo',
     fetchingReleases: 'リリース一覧を取得中...',
@@ -254,6 +254,7 @@ const jaJP = {
     fetchAssetsError: 'ファイル一覧の取得に失敗しました：',
     backToReleases: 'リリース一覧に戻る',
     backToRepoUrl: 'リポジトリURLに戻る',
+    backToAssets: 'ファイル選択に戻る',
     releaseTag: 'タグ: {{tag}}',
     releaseName: '名前: {{name}}',
     publishedAt: '公開日: {{date}}',
