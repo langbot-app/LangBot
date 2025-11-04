@@ -474,14 +474,13 @@ class RuntimeConnectionHandler(handler.Handler):
         async for ret in gen:
             yield ret
 
-    async def delete_plugin(self, plugin_author: str, plugin_name: str, delete_data: bool = False) -> typing.AsyncGenerator[dict[str, Any], None]:
+    async def delete_plugin(self, plugin_author: str, plugin_name: str) -> typing.AsyncGenerator[dict[str, Any], None]:
         """Delete plugin"""
         gen = self.call_action_generator(
             LangBotToRuntimeAction.DELETE_PLUGIN,
             {
                 'plugin_author': plugin_author,
                 'plugin_name': plugin_name,
-                'delete_data': delete_data,
             },
         )
 
