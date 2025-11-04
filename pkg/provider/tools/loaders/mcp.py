@@ -45,6 +45,12 @@ class RuntimeMCPSession:
 
     last_test_error_message: str
 
+    _lifecycle_task: asyncio.Task | None
+
+    _shutdown_event: asyncio.Event
+
+    _ready_event: asyncio.Event
+
     def __init__(self, server_name: str, server_config: dict, enable: bool, ap: app.Application):
         self.server_name = server_name
         self.server_config = server_config
@@ -57,6 +63,10 @@ class RuntimeMCPSession:
 
         self.status = MCPSessionStatus.CONNECTING
         self.last_test_error_message = ''
+
+        self._lifecycle_task = None
+        self._shutdown_event = asyncio.Event()
+        self._ready_event = asyncio.Event()
 
     async def _init_stdio_python_server(self):
         server_params = StdioServerParameters(
@@ -89,10 +99,8 @@ class RuntimeMCPSession:
 
         await self.session.initialize()
 
-    async def start(self):
-        if not self.enable:
-            return
-
+    async def _lifecycle_loop(self):
+        """在后台任务中管理整个MCP会话的生命周期"""
         try:
             if self.server_config['mode'] == 'stdio':
                 await self._init_stdio_python_server()
@@ -105,10 +113,47 @@ class RuntimeMCPSession:
 
             self.status = MCPSessionStatus.CONNECTED
             self.last_test_error_message = ''
+
+            # 通知start()方法连接已建立
+            self._ready_event.set()
+
+            # 等待shutdown信号
+            await self._shutdown_event.wait()
+
         except Exception as e:
             self.status = MCPSessionStatus.ERROR
             self.last_test_error_message = str(e)
-            raise e
+            self.ap.logger.error(f'Error in MCP session lifecycle {self.server_name}: {e}\n{traceback.format_exc()}')
+            # 即使出错也要设置ready事件，让start()方法知道初始化已完成
+            self._ready_event.set()
+        finally:
+            # 在同一个任务中清理所有资源
+            try:
+                if self.exit_stack:
+                    await self.exit_stack.aclose()
+                self.functions.clear()
+                self.session = None
+            except Exception as e:
+                self.ap.logger.error(f'Error cleaning up MCP session {self.server_name}: {e}\n{traceback.format_exc()}')
+
+    async def start(self):
+        if not self.enable:
+            return
+
+        # 创建后台任务来管理生命周期
+        self._lifecycle_task = asyncio.create_task(self._lifecycle_loop())
+
+        # 等待连接建立或失败（带超时）
+        try:
+            await asyncio.wait_for(self._ready_event.wait(), timeout=30.0)
+        except asyncio.TimeoutError:
+            self.status = MCPSessionStatus.ERROR
+            self.last_test_error_message = 'Connection timeout'
+            raise Exception('Connection timeout after 30 seconds')
+
+        # 检查是否有错误
+        if self.status == MCPSessionStatus.ERROR:
+            raise Exception(self.last_test_error_message)
 
     async def refresh(self):
         self.functions.clear()
@@ -157,10 +202,22 @@ class RuntimeMCPSession:
     async def shutdown(self):
         """关闭会话并清理资源"""
         try:
-            if self.exit_stack:
-                await self.exit_stack.aclose()
-            self.functions.clear()
-            self.session = None
+            # 设置shutdown事件，通知lifecycle任务退出
+            self._shutdown_event.set()
+
+            # 等待lifecycle任务完成（带超时）
+            if self._lifecycle_task and not self._lifecycle_task.done():
+                try:
+                    await asyncio.wait_for(self._lifecycle_task, timeout=5.0)
+                except asyncio.TimeoutError:
+                    self.ap.logger.warning(f'MCP session {self.server_name} shutdown timeout, cancelling task')
+                    self._lifecycle_task.cancel()
+                    try:
+                        await self._lifecycle_task
+                    except asyncio.CancelledError:
+                        pass
+
+            self.ap.logger.info(f'MCP session {self.server_name} shutdown complete')
         except Exception as e:
             self.ap.logger.error(f'Error shutting down MCP session {self.server_name}: {e}\n{traceback.format_exc()}')
 

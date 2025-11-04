@@ -72,6 +72,7 @@ class MCPService:
         )
         old_server = result.first()
         old_server_name = old_server.name if old_server else None
+        old_enable = old_server.enable if old_server else False
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_mcp.MCPServer)
@@ -80,18 +81,38 @@ class MCPService:
         )
 
         if self.ap.tool_mgr.mcp_tool_loader:
-            if old_server_name and old_server_name in self.ap.tool_mgr.mcp_tool_loader.sessions:
-                await self.ap.tool_mgr.mcp_tool_loader.remove_mcp_server(old_server_name)
+            new_enable = server_data.get('enable', False)
 
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(persistence_mcp.MCPServer).where(persistence_mcp.MCPServer.uuid == server_uuid)
-            )
-            updated_server = result.first()
-            if updated_server:
-                # convert entity to config dict
-                server_config = self.ap.persistence_mgr.serialize_model(persistence_mcp.MCPServer, updated_server)
-                task = asyncio.create_task(self.ap.tool_mgr.mcp_tool_loader.host_mcp_server(server_config))
-                self.ap.tool_mgr.mcp_tool_loader._hosted_mcp_tasks.append(task)
+            need_remove = old_server_name and old_server_name in self.ap.tool_mgr.mcp_tool_loader.sessions
+            need_start = new_enable
+
+            
+            if old_enable and not new_enable:
+                if need_remove:
+                    await self.ap.tool_mgr.mcp_tool_loader.remove_mcp_server(old_server_name)
+            
+            elif not old_enable and new_enable:
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(persistence_mcp.MCPServer).where(persistence_mcp.MCPServer.uuid == server_uuid)
+                )
+                updated_server = result.first()
+                if updated_server:
+                    server_config = self.ap.persistence_mgr.serialize_model(persistence_mcp.MCPServer, updated_server)
+                    task = asyncio.create_task(self.ap.tool_mgr.mcp_tool_loader.host_mcp_server(server_config))
+                    self.ap.tool_mgr.mcp_tool_loader._hosted_mcp_tasks.append(task)
+            
+            elif old_enable and new_enable:
+                if need_remove:
+                    await self.ap.tool_mgr.mcp_tool_loader.remove_mcp_server(old_server_name)
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(persistence_mcp.MCPServer).where(persistence_mcp.MCPServer.uuid == server_uuid)
+                )
+                updated_server = result.first()
+                if updated_server:
+                    server_config = self.ap.persistence_mgr.serialize_model(persistence_mcp.MCPServer, updated_server)
+                    task = asyncio.create_task(self.ap.tool_mgr.mcp_tool_loader.host_mcp_server(server_config))
+                    self.ap.tool_mgr.mcp_tool_loader._hosted_mcp_tasks.append(task)
+            
 
     async def delete_mcp_server(self, server_uuid: str) -> None:
         result = await self.ap.persistence_mgr.execute_async(
