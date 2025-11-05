@@ -293,7 +293,6 @@ const enUS = {
     chat: 'Chat',
     configuration: 'Configuration',
     debugChat: 'Debug Chat',
-    extensions: 'Plugins',
     getPipelineListError: 'Failed to get pipeline list: ',
     daysAgo: 'days ago',
     today: 'Today',
@@ -320,6 +319,14 @@ const enUS = {
     defaultPipelineCannotDelete: 'Default pipeline cannot be deleted',
     deleteSuccess: 'Deleted successfully',
     deleteError: 'Delete failed: ',
+    extensions: {
+      title: 'Plugins',
+      loadError: 'Failed to load plugins',
+      saveSuccess: 'Saved successfully',
+      saveError: 'Save failed',
+      noPluginsAvailable: 'No plugins available',
+      disabled: 'Disabled',
+    },
     debugDialog: {
       title: 'Pipeline Chat',
       selectPipeline: 'Select Pipeline',

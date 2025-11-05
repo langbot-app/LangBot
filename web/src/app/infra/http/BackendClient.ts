@@ -166,6 +166,28 @@ export class BackendClient extends BaseHttpClient {
     return this.delete(`/api/v1/pipelines/${uuid}`);
   }
 
+  public getPipelineExtensions(uuid: string): Promise<{
+    bound_plugins: Array<{ author: string; name: string }>;
+    available_plugins: Array<{
+      plugin_author: string;
+      plugin_name: string;
+      version: string;
+      description: string;
+      enabled: boolean;
+    }>;
+  }> {
+    return this.get(`/api/v1/pipelines/${uuid}/extensions`);
+  }
+
+  public updatePipelineExtensions(
+    uuid: string,
+    bound_plugins: Array<{ author: string; name: string }>,
+  ): Promise<object> {
+    return this.put(`/api/v1/pipelines/${uuid}/extensions`, {
+      bound_plugins,
+    });
+  }
+
   // ============ Debug WebChat API ============
 
   // ============ Debug WebChat API ============
