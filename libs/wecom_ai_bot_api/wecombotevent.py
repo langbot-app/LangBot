@@ -22,7 +22,21 @@ class WecomBotEvent(dict):
         """
         用户id
         """
-        return self.get('from', {}).get('userid', '')
+        return self.get('from', {}).get('userid', '') or self.get('userid', '')
+
+    @property
+    def username(self) -> str:
+        """
+        用户名称
+        """
+        return self.get('username', '') or self.get('from', {}).get('alias', '') or self.get('from', {}).get('name', '') or self.userid
+
+    @property
+    def chatname(self) -> str:
+        """
+        群组名称
+        """
+        return self.get('chatname', '') or str(self.chatid)
 
     @property
     def content(self) -> str:

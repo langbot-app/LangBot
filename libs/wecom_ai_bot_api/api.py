@@ -463,7 +463,17 @@ class WecomBotClient:
                 base64 = await self.download_url_to_base64(picurl, self.EnCodingAESKey)
                 message_data['picurl'] = base64  # 只保留第一个 image
 
-        message_data['userid'] = msg_json.get('from', {}).get('userid', '')
+        # Extract user information
+        from_info = msg_json.get('from', {})
+        message_data['userid'] = from_info.get('userid', '')
+        message_data['username'] = from_info.get('alias', '') or from_info.get('name', '') or from_info.get('userid', '')
+
+        # Extract chat/group information
+        if msg_json.get('chattype', '') == 'group':
+            message_data['chatid'] = msg_json.get('chatid', '')
+            # Try to get group name if available
+            message_data['chatname'] = msg_json.get('chatname', '') or msg_json.get('chatid', '')
+
         message_data['msgid'] = msg_json.get('msgid', '')
 
         if msg_json.get('aibotid'):

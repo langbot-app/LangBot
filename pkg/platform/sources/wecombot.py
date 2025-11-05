@@ -49,7 +49,7 @@ class WecomBotEventConverter(abstract_platform_adapter.AbstractEventConverter):
             return platform_events.FriendMessage(
                 sender=platform_entities.Friend(
                     id=event.userid,
-                    nickname='',
+                    nickname=event.username,
                     remark='',
                 ),
                 message_chain=message_chain,
@@ -61,10 +61,10 @@ class WecomBotEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 sender = platform_entities.GroupMember(
                     id=event.userid,
                     permission='MEMBER',
-                    member_name=event.userid,
+                    member_name=event.username,
                     group=platform_entities.Group(
                         id=str(event.chatid),
-                        name='',
+                        name=event.chatname,
                         permission=platform_entities.Permission.Member,
                     ),
                     special_title='',
