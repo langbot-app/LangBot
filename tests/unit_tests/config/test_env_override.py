@@ -6,12 +6,6 @@ import os
 import pytest
 import tempfile
 import yaml
-from pathlib import Path
-
-
-# Import the function we want to test
-import sys
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from pkg.config.impls.yaml import _apply_env_overrides, YAMLConfigFile
 

@@ -22,40 +22,6 @@ def _apply_env_overrides(cfg: dict) -> dict:
     Returns:
         Updated configuration dictionary
     """
-    def set_nested_value(data: dict, keys: list[str], value: Any) -> bool:
-        """Set a nested value in a dictionary
-        
-        Args:
-            data: Dictionary to modify
-            keys: List of keys representing the path
-            value: Value to set
-            
-        Returns:
-            True if value was set, False if path doesn't exist or is invalid type
-        """
-        if not keys:
-            return False
-            
-        # Navigate to the parent of the target key
-        current = data
-        for key in keys[:-1]:
-            if key not in current:
-                return False
-            if not isinstance(current[key], dict):
-                return False
-            current = current[key]
-        
-        # Check if final key exists and is not a dict or list
-        final_key = keys[-1]
-        if final_key not in current:
-            return False
-        if isinstance(current[final_key], (dict, list)):
-            return False
-            
-        # Set the value
-        current[final_key] = value
-        return True
-    
     def convert_value(value: str, original_value: Any) -> Any:
         """Convert string value to appropriate type based on original value
         
@@ -64,7 +30,7 @@ def _apply_env_overrides(cfg: dict) -> dict:
             original_value: Original value to infer type from
             
         Returns:
-            Converted value
+            Converted value (falls back to string if conversion fails)
         """
         if isinstance(original_value, bool):
             return value.lower() in ('true', '1', 'yes', 'on')
@@ -72,11 +38,13 @@ def _apply_env_overrides(cfg: dict) -> dict:
             try:
                 return int(value)
             except ValueError:
+                # If conversion fails, keep as string (user error, but non-breaking)
                 return value
         elif isinstance(original_value, float):
             try:
                 return float(value)
             except ValueError:
+                # If conversion fails, keep as string (user error, but non-breaking)
                 return value
         else:
             return value
@@ -93,30 +61,25 @@ def _apply_env_overrides(cfg: dict) -> dict:
         # e.g., CONCURRENCY__PIPELINE -> ['concurrency', 'pipeline']
         keys = [key.lower() for key in env_key.split('__')]
         
-        # Get the original value to determine type
+        # Navigate to the target value and validate the path
         current = cfg
-        original_value = None
-        valid_path = True
         
-        for key in keys:
+        for i, key in enumerate(keys):
             if not isinstance(current, dict) or key not in current:
-                valid_path = False
                 break
-            if key == keys[-1]:
-                original_value = current[key]
-            else:
-                current = current[key]
-        
-        if not valid_path or original_value is None:
-            continue
             
-        # Skip if the value is a dict or list
-        if isinstance(original_value, (dict, list)):
-            continue
-        
-        # Convert and set the value
-        converted_value = convert_value(env_value, original_value)
-        set_nested_value(cfg, keys, converted_value)
+            if i == len(keys) - 1:
+                # At the final key - check if it's a scalar value
+                if isinstance(current[key], (dict, list)):
+                    # Skip dict and list types
+                    pass
+                else:
+                    # Valid scalar value - convert and set it
+                    converted_value = convert_value(env_value, current[key])
+                    current[key] = converted_value
+            else:
+                # Navigate deeper
+                current = current[key]
     
     return cfg
 
