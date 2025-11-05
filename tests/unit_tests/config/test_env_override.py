@@ -284,6 +284,43 @@ class TestYAMLConfigFileWithEnv:
                 del os.environ['API__PORT']
             if os.path.exists(config_path):
                 os.unlink(config_path)
+    
+    async def test_env_override_with_template_completion(self):
+        """Test that env vars override template defaults during completion"""
+        # Create temporary template and config files
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as template_file:
+            template_path = template_file.name
+            yaml.dump({
+                'api': {'port': 5300},
+                'concurrency': {'pipeline': 20}
+            }, template_file)
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as config_file:
+            config_path = config_file.name
+            # Config is missing concurrency key - will be filled from template
+            yaml.dump({
+                'api': {'port': 5300}
+            }, config_file)
+        
+        try:
+            # Set environment variable to override template default
+            os.environ['CONCURRENCY__PIPELINE'] = '100'
+            
+            # Load with completion
+            yaml_file = YAMLConfigFile(config_path, template_path)
+            cfg = await yaml_file.load(completion=True)
+            
+            # Env var should override template default
+            assert cfg['concurrency']['pipeline'] == 100
+            
+        finally:
+            # Cleanup
+            if 'CONCURRENCY__PIPELINE' in os.environ:
+                del os.environ['CONCURRENCY__PIPELINE']
+            if os.path.exists(config_path):
+                os.unlink(config_path)
+            if os.path.exists(template_path):
+                os.unlink(template_path)
 
 
 if __name__ == '__main__':
