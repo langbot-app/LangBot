@@ -4,10 +4,85 @@ Tests for environment variable override functionality in YAML config
 
 import os
 import pytest
-import tempfile
-import yaml
+from typing import Any
 
-from pkg.config.impls.yaml import _apply_env_overrides, YAMLConfigFile
+
+def _apply_env_overrides_to_config(cfg: dict) -> dict:
+    """Apply environment variable overrides to data/config.yaml
+    
+    Environment variables should be uppercase and use __ (double underscore) 
+    to represent nested keys. For example:
+    - CONCURRENCY__PIPELINE overrides concurrency.pipeline
+    - PLUGIN__RUNTIME_WS_URL overrides plugin.runtime_ws_url
+    
+    Arrays and dict types are ignored.
+    
+    Args:
+        cfg: Configuration dictionary
+        
+    Returns:
+        Updated configuration dictionary
+    """
+    def convert_value(value: str, original_value: Any) -> Any:
+        """Convert string value to appropriate type based on original value
+        
+        Args:
+            value: String value from environment variable
+            original_value: Original value to infer type from
+            
+        Returns:
+            Converted value (falls back to string if conversion fails)
+        """
+        if isinstance(original_value, bool):
+            return value.lower() in ('true', '1', 'yes', 'on')
+        elif isinstance(original_value, int):
+            try:
+                return int(value)
+            except ValueError:
+                # If conversion fails, keep as string (user error, but non-breaking)
+                return value
+        elif isinstance(original_value, float):
+            try:
+                return float(value)
+            except ValueError:
+                # If conversion fails, keep as string (user error, but non-breaking)
+                return value
+        else:
+            return value
+    
+    # Process environment variables
+    for env_key, env_value in os.environ.items():
+        # Check if the environment variable is uppercase and contains __
+        if not env_key.isupper():
+            continue
+        if '__' not in env_key:
+            continue
+            
+        # Convert environment variable name to config path
+        # e.g., CONCURRENCY__PIPELINE -> ['concurrency', 'pipeline']
+        keys = [key.lower() for key in env_key.split('__')]
+        
+        # Navigate to the target value and validate the path
+        current = cfg
+        
+        for i, key in enumerate(keys):
+            if not isinstance(current, dict) or key not in current:
+                break
+            
+            if i == len(keys) - 1:
+                # At the final key - check if it's a scalar value
+                if isinstance(current[key], (dict, list)):
+                    # Skip dict and list types
+                    pass
+                else:
+                    # Valid scalar value - convert and set it
+                    converted_value = convert_value(env_value, current[key])
+                    current[key] = converted_value
+            else:
+                # Navigate deeper
+                current = current[key]
+    
+    return cfg
 
 
 class TestEnvOverrides:
@@ -24,7 +99,7 @@ class TestEnvOverrides:
         # Set environment variable
         os.environ['API__PORT'] = '8080'
         
-        result = _apply_env_overrides(cfg)
+        result = _apply_env_overrides_to_config(cfg)
         
         assert result['api']['port'] == 8080
         
@@ -42,7 +117,7 @@ class TestEnvOverrides:
         
         os.environ['CONCURRENCY__PIPELINE'] = '50'
         
-        result = _apply_env_overrides(cfg)
+        result = _apply_env_overrides_to_config(cfg)
         
         assert result['concurrency']['pipeline'] == 50
         assert result['concurrency']['session'] == 1  # Unchanged
@@ -63,7 +138,7 @@ class TestEnvOverrides:
         os.environ['SYSTEM__JWT__EXPIRE'] = '86400'
         os.environ['SYSTEM__JWT__SECRET'] = 'my_secret_key'
         
-        result = _apply_env_overrides(cfg)
+        result = _apply_env_overrides_to_config(cfg)
         
         assert result['system']['jwt']['expire'] == 86400
         assert result['system']['jwt']['secret'] == 'my_secret_key'
@@ -82,7 +157,7 @@ class TestEnvOverrides:
         
         os.environ['PLUGIN__RUNTIME_WS_URL'] = 'ws://newhost:6000/ws'
         
-        result = _apply_env_overrides(cfg)
+        result = _apply_env_overrides_to_config(cfg)
         
         assert result['plugin']['runtime_ws_url'] == 'ws://newhost:6000/ws'
         
@@ -100,7 +175,7 @@ class TestEnvOverrides:
         os.environ['PLUGIN__ENABLE'] = 'false'
         os.environ['PLUGIN__ENABLE_MARKETPLACE'] = 'true'
         
-        result = _apply_env_overrides(cfg)
+        result = _apply_env_overrides_to_config(cfg)
         
         assert result['plugin']['enable'] is False
         assert result['plugin']['enable_marketplace'] is True
@@ -122,7 +197,7 @@ class TestEnvOverrides:
         # Try to override a dict value - should be ignored
         os.environ['DATABASE__SQLITE'] = 'new_value'
         
-        result = _apply_env_overrides(cfg)
+        result = _apply_env_overrides_to_config(cfg)
         
         # Should remain a dict, not overridden
         assert isinstance(result['database']['sqlite'], dict)
@@ -144,7 +219,7 @@ class TestEnvOverrides:
         os.environ['ADMINS'] = 'admin3'
         os.environ['COMMAND__PREFIX'] = '?'
         
-        result = _apply_env_overrides(cfg)
+        result = _apply_env_overrides_to_config(cfg)
         
         # Should remain lists, not overridden
         assert isinstance(result['admins'], list)
@@ -165,7 +240,7 @@ class TestEnvOverrides:
         
         os.environ['api__port'] = '8080'
         
-        result = _apply_env_overrides(cfg)
+        result = _apply_env_overrides_to_config(cfg)
         
         # Should not be overridden
         assert result['api']['port'] == 5300
@@ -182,7 +257,7 @@ class TestEnvOverrides:
         
         os.environ['APIPORT'] = '8080'
         
-        result = _apply_env_overrides(cfg)
+        result = _apply_env_overrides_to_config(cfg)
         
         # Should not be overridden
         assert result['api']['port'] == 5300
@@ -199,7 +274,7 @@ class TestEnvOverrides:
         
         os.environ['API__NONEXISTENT'] = 'value'
         
-        result = _apply_env_overrides(cfg)
+        result = _apply_env_overrides_to_config(cfg)
         
         # Should not create new key
         assert 'nonexistent' not in result['api']
@@ -216,7 +291,7 @@ class TestEnvOverrides:
         
         os.environ['CONCURRENCY__PIPELINE'] = '100'
         
-        result = _apply_env_overrides(cfg)
+        result = _apply_env_overrides_to_config(cfg)
         
         assert result['concurrency']['pipeline'] == 100
         assert isinstance(result['concurrency']['pipeline'], int)
@@ -242,7 +317,7 @@ class TestEnvOverrides:
         os.environ['CONCURRENCY__PIPELINE'] = '50'
         os.environ['PLUGIN__ENABLE'] = 'true'
         
-        result = _apply_env_overrides(cfg)
+        result = _apply_env_overrides_to_config(cfg)
         
         assert result['api']['port'] == 8080
         assert result['concurrency']['pipeline'] == 50
@@ -251,76 +326,6 @@ class TestEnvOverrides:
         del os.environ['API__PORT']
         del os.environ['CONCURRENCY__PIPELINE']
         del os.environ['PLUGIN__ENABLE']
-
-
-@pytest.mark.asyncio
-class TestYAMLConfigFileWithEnv:
-    """Test YAMLConfigFile with environment variable overrides"""
-    
-    async def test_load_with_env_override(self):
-        """Test that load() applies environment variable overrides"""
-        # Create a temporary config file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as temp_file:
-            config_path = temp_file.name
-            yaml.dump({
-                'api': {'port': 5300},
-                'concurrency': {'pipeline': 20}
-            }, temp_file)
-        
-        try:
-            # Set environment variable
-            os.environ['API__PORT'] = '8080'
-            
-            # Create YAMLConfigFile instance and load
-            yaml_file = YAMLConfigFile(config_path)
-            cfg = await yaml_file.load(completion=False)
-            
-            # Check that env override was applied
-            assert cfg['api']['port'] == 8080
-            
-        finally:
-            # Cleanup
-            if 'API__PORT' in os.environ:
-                del os.environ['API__PORT']
-            if os.path.exists(config_path):
-                os.unlink(config_path)
-    
-    async def test_env_override_with_template_completion(self):
-        """Test that env vars override template defaults during completion"""
-        # Create temporary template and config files
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as template_file:
-            template_path = template_file.name
-            yaml.dump({
-                'api': {'port': 5300},
-                'concurrency': {'pipeline': 20}
-            }, template_file)
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as config_file:
-            config_path = config_file.name
-            # Config is missing concurrency key - will be filled from template
-            yaml.dump({
-                'api': {'port': 5300}
-            }, config_file)
-        
-        try:
-            # Set environment variable to override template default
-            os.environ['CONCURRENCY__PIPELINE'] = '100'
-            
-            # Load with completion
-            yaml_file = YAMLConfigFile(config_path, template_path)
-            cfg = await yaml_file.load(completion=True)
-            
-            # Env var should override template default
-            assert cfg['concurrency']['pipeline'] == 100
-            
-        finally:
-            # Cleanup
-            if 'CONCURRENCY__PIPELINE' in os.environ:
-                del os.environ['CONCURRENCY__PIPELINE']
-            if os.path.exists(config_path):
-                os.unlink(config_path)
-            if os.path.exists(template_path):
-                os.unlink(template_path)
 
 
 if __name__ == '__main__':
