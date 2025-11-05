@@ -209,11 +209,18 @@ class PluginRuntimeConnector:
     async def emit_event(
         self,
         event: events.BaseEventModel,
+        bound_plugins: list[str] | None = None,
     ) -> context.EventContext:
         event_ctx = context.EventContext.from_event(event)
 
         if not self.is_enable_plugin:
             return event_ctx
+
+        # If bound_plugins is specified, we need to filter on the plugin runtime side
+        # For now, we pass it in event_ctx and let runtime handle filtering
+        if bound_plugins is not None:
+            event_ctx.event.metadata = event_ctx.event.metadata or {}
+            event_ctx.event.metadata['_bound_plugins'] = bound_plugins
 
         event_ctx_result = await self.handler.emit_event(event_ctx.model_dump(serialize_as_any=False))
 
@@ -221,33 +228,69 @@ class PluginRuntimeConnector:
 
         return event_ctx
 
-    async def list_tools(self) -> list[ComponentManifest]:
+    async def list_tools(self, bound_plugins: list[str] | None = None) -> list[ComponentManifest]:
         if not self.is_enable_plugin:
             return []
 
         list_tools_data = await self.handler.list_tools()
 
-        return [ComponentManifest.model_validate(tool) for tool in list_tools_data]
+        tools = [ComponentManifest.model_validate(tool) for tool in list_tools_data]
+        
+        # Filter tools by bound plugins
+        if bound_plugins is not None:
+            tools = [
+                tool for tool in tools 
+                if f"{tool.plugin_author}/{tool.plugin_name}" in bound_plugins
+            ]
+        
+        return tools
 
-    async def call_tool(self, tool_name: str, parameters: dict[str, Any]) -> dict[str, Any]:
+    async def call_tool(self, tool_name: str, parameters: dict[str, Any], bound_plugins: list[str] | None = None) -> dict[str, Any]:
         if not self.is_enable_plugin:
             return {'error': 'Tool not found: plugin system is disabled'}
 
+        # Check if tool is in bound plugins if specified
+        if bound_plugins is not None:
+            list_tools_data = await self.handler.list_tools()
+            tools = [ComponentManifest.model_validate(tool) for tool in list_tools_data]
+            tool_obj = next((t for t in tools if t.metadata.name == tool_name), None)
+            if tool_obj and f"{tool_obj.plugin_author}/{tool_obj.plugin_name}" not in bound_plugins:
+                return {'error': f'Tool {tool_name} not available in this pipeline'}
+
         return await self.handler.call_tool(tool_name, parameters)
 
-    async def list_commands(self) -> list[ComponentManifest]:
+    async def list_commands(self, bound_plugins: list[str] | None = None) -> list[ComponentManifest]:
         if not self.is_enable_plugin:
             return []
 
         list_commands_data = await self.handler.list_commands()
 
-        return [ComponentManifest.model_validate(command) for command in list_commands_data]
+        commands = [ComponentManifest.model_validate(command) for command in list_commands_data]
+        
+        # Filter commands by bound plugins
+        if bound_plugins is not None:
+            commands = [
+                cmd for cmd in commands 
+                if f"{cmd.plugin_author}/{cmd.plugin_name}" in bound_plugins
+            ]
+        
+        return commands
 
     async def execute_command(
-        self, command_ctx: command_context.ExecuteContext
+        self, command_ctx: command_context.ExecuteContext, bound_plugins: list[str] | None = None
     ) -> typing.AsyncGenerator[command_context.CommandReturn, None]:
         if not self.is_enable_plugin:
             yield command_context.CommandReturn(error=command_errors.CommandNotFoundError(command_ctx.command))
+            return
+
+        # Check if command is in bound plugins if specified
+        if bound_plugins is not None:
+            list_commands_data = await self.handler.list_commands()
+            commands = [ComponentManifest.model_validate(cmd) for cmd in list_commands_data]
+            cmd_obj = next((c for c in commands if c.metadata.name == command_ctx.command), None)
+            if cmd_obj and f"{cmd_obj.plugin_author}/{cmd_obj.plugin_name}" not in bound_plugins:
+                yield command_context.CommandReturn(error=command_errors.CommandNotFoundError(command_ctx.command))
+                return
 
         gen = self.handler.execute_command(command_ctx.model_dump(serialize_as_any=True))
 

@@ -35,7 +35,7 @@ class ToolLoader(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def get_tools(self) -> list[resource_tool.LLMTool]:
+    async def get_tools(self, bound_plugins: list[str] | None = None) -> list[resource_tool.LLMTool]:
         """获取所有工具"""
         pass
 

@@ -59,14 +59,15 @@ class CommandManager:
         context: command_context.ExecuteContext,
         operator_list: list[operator.CommandOperator],
         operator: operator.CommandOperator = None,
+        bound_plugins: list[str] | None = None,
     ) -> typing.AsyncGenerator[command_context.CommandReturn, None]:
         """执行命令"""
 
-        command_list = await self.ap.plugin_connector.list_commands()
+        command_list = await self.ap.plugin_connector.list_commands(bound_plugins)
 
         for command in command_list:
             if command.metadata.name == context.command:
-                async for ret in self.ap.plugin_connector.execute_command(context):
+                async for ret in self.ap.plugin_connector.execute_command(context, bound_plugins):
                     yield ret
                 break
         else:
@@ -102,5 +103,8 @@ class CommandManager:
 
         ctx.shift()
 
-        async for ret in self._execute(ctx, self.cmd_list):
+        # Get bound plugins from query
+        bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+
+        async for ret in self._execute(ctx, self.cmd_list, bound_plugins=bound_plugins):
             yield ret

@@ -136,3 +136,31 @@ class PipelineService:
             )
         )
         await self.ap.pipeline_mgr.remove_pipeline(pipeline_uuid)
+
+    async def update_pipeline_extensions(self, pipeline_uuid: str, bound_plugins: list[dict]) -> None:
+        """Update the bound plugins for a pipeline"""
+        # Get current pipeline
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
+                persistence_pipeline.LegacyPipeline.uuid == pipeline_uuid
+            )
+        )
+        
+        pipeline = result.first()
+        if pipeline is None:
+            raise ValueError(f'Pipeline {pipeline_uuid} not found')
+        
+        # Update extensions_preferences
+        extensions_preferences = pipeline.extensions_preferences or {}
+        extensions_preferences['plugins'] = bound_plugins
+        
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.update(persistence_pipeline.LegacyPipeline)
+            .where(persistence_pipeline.LegacyPipeline.uuid == pipeline_uuid)
+            .values(extensions_preferences=extensions_preferences)
+        )
+        
+        # Reload pipeline to apply changes
+        await self.ap.pipeline_mgr.remove_pipeline(pipeline_uuid)
+        pipeline = await self.get_pipeline(pipeline_uuid)
+        await self.ap.pipeline_mgr.load_pipeline(pipeline)

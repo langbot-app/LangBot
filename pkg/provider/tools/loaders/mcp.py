@@ -131,7 +131,7 @@ class MCPLoader(loader.ToolLoader):
             # self.ap.event_loop.create_task(session.initialize())
             self.sessions[server_config['name']] = session
 
-    async def get_tools(self) -> list[resource_tool.LLMTool]:
+    async def get_tools(self, bound_plugins: list[str] | None = None) -> list[resource_tool.LLMTool]:
         all_functions = []
 
         for session in self.sessions.values():
