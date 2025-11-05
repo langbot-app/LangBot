@@ -18,7 +18,8 @@ class BotsRouterGroup(group.RouterGroup):
         @self.route('/<bot_uuid>', methods=['GET', 'PUT', 'DELETE'])
         async def _(bot_uuid: str) -> str:
             if quart.request.method == 'GET':
-                bot = await self.ap.bot_service.get_bot(bot_uuid)
+                # 返回运行时信息，包括webhook地址等
+                bot = await self.ap.bot_service.get_runtime_bot_info(bot_uuid)
                 if bot is None:
                     return self.http_status(404, -1, 'bot not found')
                 return self.success(data={'bot': bot})

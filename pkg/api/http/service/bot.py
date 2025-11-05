@@ -58,6 +58,17 @@ class BotService:
         if runtime_bot is not None:
             adapter_runtime_values['bot_account_id'] = runtime_bot.adapter.bot_account_id
 
+            # 为支持统一 webhook 的适配器生成 webhook URL
+            # 目前只有 wecom 支持
+            if persistence_bot['adapter'] == 'wecom':
+                api_port = self.ap.instance_config.data['api']['port']
+                webhook_url = f"/bots/{bot_uuid}"
+                adapter_runtime_values['webhook_url'] = webhook_url
+                adapter_runtime_values['webhook_full_url'] = f"http://<Your-Server-IP>:{api_port}{webhook_url}"
+            else:
+                adapter_runtime_values['webhook_url'] = None
+                adapter_runtime_values['webhook_full_url'] = None
+
         persistence_bot['adapter_runtime_values'] = adapter_runtime_values
 
         return persistence_bot

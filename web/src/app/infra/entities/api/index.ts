@@ -141,6 +141,7 @@ export interface Bot {
   use_pipeline_uuid?: string;
   created_at?: string;
   updated_at?: string;
+  adapter_runtime_values?: object;
 }
 
 export interface ApiRespKnowledgeBases {

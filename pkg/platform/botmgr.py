@@ -232,6 +232,10 @@ class PlatformManager:
             logger,
         )
 
+        # 如果 adapter 支持 set_bot_uuid 方法，设置 bot_uuid（用于统一 webhook）
+        if hasattr(adapter_inst, 'set_bot_uuid'):
+            adapter_inst.set_bot_uuid(bot_entity.uuid)
+
         runtime_bot = RuntimeBot(ap=self.ap, bot_entity=bot_entity, adapter=adapter_inst, logger=logger)
 
         await runtime_bot.initialize()
