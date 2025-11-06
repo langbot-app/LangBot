@@ -529,23 +529,27 @@ class RuntimeConnectionHandler(handler.Handler):
     async def emit_event(
         self,
         event_context: dict[str, Any],
+        include_plugins: list[str] | None = None,
     ) -> dict[str, Any]:
         """Emit event"""
         result = await self.call_action(
             LangBotToRuntimeAction.EMIT_EVENT,
             {
                 'event_context': event_context,
+                'include_plugins': include_plugins,
             },
             timeout=60,
         )
 
         return result
 
-    async def list_tools(self) -> list[dict[str, Any]]:
+    async def list_tools(self, include_plugins: list[str] | None = None) -> list[dict[str, Any]]:
         """List tools"""
         result = await self.call_action(
             LangBotToRuntimeAction.LIST_TOOLS,
-            {},
+            {
+                'include_plugins': include_plugins,
+            },
             timeout=20,
         )
 
@@ -573,34 +577,42 @@ class RuntimeConnectionHandler(handler.Handler):
             'mime_type': mime_type,
         }
 
-    async def call_tool(self, tool_name: str, parameters: dict[str, Any]) -> dict[str, Any]:
+    async def call_tool(
+        self, tool_name: str, parameters: dict[str, Any], include_plugins: list[str] | None = None
+    ) -> dict[str, Any]:
         """Call tool"""
         result = await self.call_action(
             LangBotToRuntimeAction.CALL_TOOL,
             {
                 'tool_name': tool_name,
                 'tool_parameters': parameters,
+                'include_plugins': include_plugins,
             },
             timeout=60,
         )
 
         return result['tool_response']
 
-    async def list_commands(self) -> list[dict[str, Any]]:
+    async def list_commands(self, include_plugins: list[str] | None = None) -> list[dict[str, Any]]:
         """List commands"""
         result = await self.call_action(
             LangBotToRuntimeAction.LIST_COMMANDS,
-            {},
+            {
+                'include_plugins': include_plugins,
+            },
             timeout=10,
         )
         return result['commands']
 
-    async def execute_command(self, command_context: dict[str, Any]) -> typing.AsyncGenerator[dict[str, Any], None]:
+    async def execute_command(
+        self, command_context: dict[str, Any], include_plugins: list[str] | None = None
+    ) -> typing.AsyncGenerator[dict[str, Any], None]:
         """Execute command"""
         gen = self.call_action_generator(
             LangBotToRuntimeAction.EXECUTE_COMMAND,
             {
                 'command_context': command_context,
+                'include_plugins': include_plugins,
             },
             timeout=60,
         )
