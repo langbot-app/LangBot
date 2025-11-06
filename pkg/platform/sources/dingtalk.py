@@ -36,15 +36,31 @@ class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverte
             if atUser.dingtalk_id == event.incoming_message.chatbot_user_id:
                 yiri_msg_list.append(platform_message.At(target=bot_name))
 
-        if event.content:
-            text_content = event.content.replace('@' + bot_name, '')
-            yiri_msg_list.append(platform_message.Plain(text=text_content))
-        if event.picture:
-            yiri_msg_list.append(platform_message.Image(base64=event.picture))
+        if event.rich_content:
+            elements = event.rich_content.get("Elements")
+            for element in elements:
+                print(element)
+                if element.get('Type') == 'text':
+                    text = element.get('Content', '').replace('@' + bot_name, '')
+                    if text.strip():
+                        yiri_msg_list.append(platform_message.Plain(text=text))
+                elif element.get('Type') == 'image' and element.get('Picture'):
+                    yiri_msg_list.append(platform_message.Image(base64=element['Picture']))
+        else:
+            # 回退到原有简单逻辑
+            if event.content:
+                text_content = event.content.replace('@' + bot_name, '')
+                yiri_msg_list.append(platform_message.Plain(text=text_content))
+            if event.picture:
+                yiri_msg_list.append(platform_message.Image(base64=event.picture))
+
+            # 处理其他类型消息（文件、音频等）
         if event.file:
             yiri_msg_list.append(platform_message.File(url=event.file, name=event.name))
         if event.audio:
             yiri_msg_list.append(platform_message.Voice(base64=event.audio))
+
+
 
         chain = platform_message.MessageChain(yiri_msg_list)
 

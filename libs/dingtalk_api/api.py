@@ -188,12 +188,80 @@ class DingTalkClient:
 
             if incoming_message.message_type == 'richText':
                 data = incoming_message.rich_text_content.to_dict()
+
+                # 使用统一的结构化数据格式，保持顺序
+                rich_content = {
+                    'Type': 'richText',
+                    'Elements': [],  # 按顺序存储所有元素
+                    'SimpleContent': '',  # 兼容字段：纯文本内容
+                    'SimplePicture': ''  # 兼容字段：第一张图片
+                }
+
+                # 先收集所有文本和图片占位符
+                text_elements = []
+                image_placeholders = []
+
+                # 解析富文本内容，保持原始顺序
                 for item in data['richText']:
-                    if 'text' in item:
-                        message_data['Content'] = item['text']
-                    if incoming_message.get_image_list()[0]:
-                        message_data['Picture'] = await self.download_image(incoming_message.get_image_list()[0])
-                message_data['Type'] = 'text'
+
+                    # 处理文本内容
+                    if 'text' in item and item['text'] != "\n":
+                        element = {
+                            'Type': 'text',
+                            'Content': item['text']
+                        }
+                        rich_content['Elements'].append(element)
+                        text_elements.append(item['text'])
+
+                    # 检查是否是图片元素 - 根据钉钉API的实际结构调整
+                    # 钉钉富文本中的图片通常有特定标识，可能需要根据实际返回调整
+                    elif item.get("type") == "picture":
+                        # 创建图片占位符
+                        element = {
+                            'Type': 'image_placeholder',
+                        }
+                        rich_content['Elements'].append(element)
+
+                # 获取并下载所有图片
+                image_list = incoming_message.get_image_list()
+                if image_list:
+                    new_elements = []
+                    image_index = 0
+
+                    for element in rich_content['Elements']:
+                        if element['Type'] == 'image_placeholder':
+                            if image_index < len(image_list) and image_list[image_index]:
+                                image_url = await self.download_image(image_list[image_index])
+                                new_elements.append({
+                                    'Type': 'image',
+                                    'Picture': image_url
+                                })
+                                image_index += 1
+                            else:
+                                # 如果没有对应的图片，保留占位符或跳过
+                                continue
+                        else:
+                            new_elements.append(element)
+
+                    rich_content['Elements'] = new_elements
+
+
+                # 设置兼容字段
+                all_texts = [elem['Content'] for elem in rich_content['Elements'] if elem.get('Type') == 'text']
+                rich_content['SimpleContent'] = '\n'.join(all_texts) if all_texts else ''
+
+                all_images = [elem['Picture'] for elem in rich_content['Elements'] if elem.get('Type') == 'image']
+                if all_images:
+                    rich_content['SimplePicture'] = all_images[0]
+                    rich_content['AllImages'] = all_images  # 所有图片的列表
+
+                # 设置原始的 content 和 picture 字段以保持兼容
+                message_data['Content'] = rich_content['SimpleContent']
+                message_data['Rich_Content'] = rich_content
+                if all_images:
+                    message_data['Picture'] = all_images[0]
+
+
 
             elif incoming_message.message_type == 'text':
                 message_data['Content'] = incoming_message.get_text_list()[0]

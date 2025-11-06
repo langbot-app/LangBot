@@ -14,6 +14,7 @@ import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 from libs.dify_service_api.v1 import client, errors
 
 
+
 @runner.runner_class('dify-service-api')
 class DifyServiceAPIRunner(runner.RequestRunner):
     """Dify Service API 对话请求器"""
@@ -77,7 +78,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             tuple[str, list[str]]: 纯文本和图片的 Dify 服务图片 ID
         """
         plain_text = ''
-        image_ids = []
+        file_ids = []
 
         if isinstance(query.user_message.content, list):
             for ce in query.user_message.content:
@@ -92,11 +93,20 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                         f'{query.session.launcher_type.value}_{query.session.launcher_id}',
                     )
                     image_id = file_upload_resp['id']
-                    image_ids.append(image_id)
+                    file_ids.append(image_id)
+                elif ce.type == "file":
+                    image_b64, image_format = await image.extract_b64_and_format(ce.image_base64)
+                    file_bytes = base64.b64decode(image_b64)
+                    file_upload_resp = await self.dify_client.upload_file(
+                        file_bytes,
+                        f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+                    )
+                    file_id = file_upload_resp['id']
+                    file_ids.append(file_id)
         elif isinstance(query.user_message.content, str):
             plain_text = query.user_message.content
 
-        return plain_text, image_ids
+        return plain_text, file_ids
 
     async def _chat_messages(
         self, query: pipeline_query.Query
@@ -110,7 +120,6 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         files = [
             {
                 'type': 'image',
-                'transfer_method': 'local_file',
                 'upload_file_id': image_id,
             }
             for image_id in image_ids
@@ -128,7 +137,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         async for chunk in self.dify_client.chat_messages(
             inputs=inputs,
-            query=plain_text,
+            query=plain_text if plain_text else "如果是可读取文件，请读取此文件内容,如果是图片就描述此图片中内容",
             user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
             conversation_id=cov_id,
             files=files,
@@ -194,7 +203,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         async for chunk in self.dify_client.chat_messages(
             inputs=inputs,
-            query=plain_text,
+            query=plain_text if plain_text else "如果是可读取文件，请读取此文件内容,如果是图片就描述此图片中内容",
             user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
             response_mode='streaming',
             conversation_id=cov_id,
@@ -368,7 +377,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         async for chunk in self.dify_client.chat_messages(
             inputs=inputs,
-            query=plain_text,
+            query=plain_text if plain_text else "如果是可读取文件，请读取此文件内容,如果是图片就描述此图片中内容",
             user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
             conversation_id=cov_id,
             files=files,
@@ -453,7 +462,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         async for chunk in self.dify_client.chat_messages(
             inputs=inputs,
-            query=plain_text,
+            query=plain_text if plain_text else "如果是可读取文件，请读取此文件内容,如果是图片就描述此图片中内容",
             user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
             response_mode='streaming',
             conversation_id=cov_id,

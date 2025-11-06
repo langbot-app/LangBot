@@ -16,6 +16,10 @@ class DingTalkEvent(dict):
         return self.get('Content', '')
 
     @property
+    def rich_content(self):
+        return self.get('Rich_Content', '')
+
+    @property
     def incoming_message(self) -> Optional['dingtalk_stream.chatbot.ChatbotMessage']:
         return self.get('IncomingMessage')
 
