@@ -150,7 +150,7 @@ const zhHant = {
   },
   plugins: {
     title: '外掛擴展',
-    description: '安裝和設定用於擴展 LangBot 功能的外掛',
+    description: '安裝和設定用於擴展功能的外掛，請在流程線配置中選用',
     createPlugin: '建立外掛',
     editPlugin: '編輯外掛',
     installed: '已安裝',

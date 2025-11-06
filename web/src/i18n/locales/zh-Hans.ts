@@ -150,7 +150,7 @@ const zhHans = {
   },
   plugins: {
     title: '插件扩展',
-    description: '安装和配置用于扩展 LangBot 功能的插件',
+    description: '安装和配置用于扩展功能的插件，请在流水线配置中选用',
     createPlugin: '创建插件',
     editPlugin: '编辑插件',
     installed: '已安装',

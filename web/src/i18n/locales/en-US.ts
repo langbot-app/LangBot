@@ -154,7 +154,7 @@ const enUS = {
   plugins: {
     title: 'Extensions',
     description:
-      'Install and configure plugins to extend LangBot functionality',
+      'Install and configure plugins to extend functionality, please select them in the pipeline configuration',
     createPlugin: 'Create Plugin',
     editPlugin: 'Edit Plugin',
     installed: 'Installed',

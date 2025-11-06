@@ -155,7 +155,8 @@ const jaJP = {
   },
   plugins: {
     title: '拡張機能',
-    description: 'LangBotの機能を拡張するプラグインをインストール・設定',
+    description:
+      'LangBotの機能を拡張するプラグインをインストール・設定。流水線設定で使用します',
     createPlugin: 'プラグインを作成',
     editPlugin: 'プラグインを編集',
     installed: 'インストール済み',
