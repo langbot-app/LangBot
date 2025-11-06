@@ -34,6 +34,7 @@ class AuthType(enum.Enum):
 
     NONE = 'none'
     USER_TOKEN = 'user-token'
+    API_KEY = 'api-key'
 
 
 class RouterGroup(abc.ABC):
@@ -84,6 +85,24 @@ class RouterGroup(abc.ABC):
                         # check if f accepts user_email parameter
                         if 'user_email' in f.__code__.co_varnames:
                             kwargs['user_email'] = user_email
+                    except Exception as e:
+                        return self.http_status(401, -1, str(e))
+
+                elif auth_type == AuthType.API_KEY:
+                    # get API key from Authorization header or X-API-Key header
+                    api_key = quart.request.headers.get('X-API-Key', '')
+                    if not api_key:
+                        auth_header = quart.request.headers.get('Authorization', '')
+                        if auth_header.startswith('Bearer '):
+                            api_key = auth_header.replace('Bearer ', '')
+
+                    if not api_key:
+                        return self.http_status(401, -1, 'No valid API key provided')
+
+                    try:
+                        is_valid = await self.ap.apikey_service.verify_api_key(api_key)
+                        if not is_valid:
+                            return self.http_status(401, -1, 'Invalid API key')
                     except Exception as e:
                         return self.http_status(401, -1, str(e))
 

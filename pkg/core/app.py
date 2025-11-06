@@ -23,6 +23,7 @@ from ..api.http.service import pipeline as pipeline_service
 from ..api.http.service import bot as bot_service
 from ..api.http.service import knowledge as knowledge_service
 from ..api.http.service import mcp as mcp_service
+from ..api.http.service import apikey as apikey_service
 from ..discover import engine as discover_engine
 from ..storage import mgr as storagemgr
 from ..utils import logcache
@@ -121,6 +122,8 @@ class Application:
     knowledge_service: knowledge_service.KnowledgeService = None
 
     mcp_service: mcp_service.MCPService = None
+
+    apikey_service: apikey_service.ApiKeyService = None
 
     def __init__(self):
         pass
