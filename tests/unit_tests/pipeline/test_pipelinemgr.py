@@ -5,7 +5,6 @@ PipelineManager unit tests
 import pytest
 from unittest.mock import AsyncMock, Mock
 from importlib import import_module
-import sqlalchemy
 
 
 def get_pipelinemgr_module():
@@ -54,6 +53,7 @@ async def test_load_pipeline(mock_app):
     pipeline_entity.uuid = 'test-uuid'
     pipeline_entity.stages = []
     pipeline_entity.config = {'test': 'config'}
+    pipeline_entity.extensions_preferences = {'plugins': []}
 
     await manager.load_pipeline(pipeline_entity)
 
@@ -77,6 +77,7 @@ async def test_get_pipeline_by_uuid(mock_app):
     pipeline_entity.uuid = 'test-uuid'
     pipeline_entity.stages = []
     pipeline_entity.config = {}
+    pipeline_entity.extensions_preferences = {'plugins': []}
 
     await manager.load_pipeline(pipeline_entity)
 
@@ -106,6 +107,7 @@ async def test_remove_pipeline(mock_app):
     pipeline_entity.uuid = 'test-uuid'
     pipeline_entity.stages = []
     pipeline_entity.config = {}
+    pipeline_entity.extensions_preferences = {'plugins': []}
 
     await manager.load_pipeline(pipeline_entity)
     assert len(manager.pipelines) == 1
@@ -134,6 +136,7 @@ async def test_runtime_pipeline_execute(mock_app, sample_query):
 
     # Make it look like ResultType.CONTINUE
     from unittest.mock import MagicMock
+
     CONTINUE = MagicMock()
     CONTINUE.__eq__ = lambda self, other: True  # Always equal for comparison
     mock_result.result_type = CONTINUE
@@ -147,6 +150,7 @@ async def test_runtime_pipeline_execute(mock_app, sample_query):
     # Create pipeline entity
     pipeline_entity = Mock(spec=persistence_pipeline.LegacyPipeline)
     pipeline_entity.config = sample_query.pipeline_config
+    pipeline_entity.extensions_preferences = {'plugins': []}
 
     # Create runtime pipeline
     runtime_pipeline = pipelinemgr.RuntimePipeline(mock_app, pipeline_entity, [stage_container])
