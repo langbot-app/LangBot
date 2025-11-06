@@ -210,8 +210,6 @@ const zhHans = {
     uploadLocalPlugin: '上传本地插件',
     dragToUpload: '拖拽文件到此处上传',
     unsupportedFileType: '不支持的文件类型，仅支持 .lbpkg 和 .zip 文件',
-    fileTooLarge: '文件过大',
-    fileSizeExceeded: '文件大小超过 10MB 限制，请分割成较小的文件后上传',
     uploadingPlugin: '正在上传插件...',
     uploadSuccess: '上传成功',
     uploadFailed: '上传失败',

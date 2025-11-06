@@ -209,8 +209,6 @@ const zhHant = {
     uploadLocalPlugin: '上傳本地插件',
     dragToUpload: '拖拽文件到此處上傳',
     unsupportedFileType: '不支持的文件類型，僅支持 .lbpkg 和 .zip 文件',
-    fileTooLarge: '檔案過大',
-    fileSizeExceeded: '檔案大小超過 10MB 限制，請分割成較小的檔案後上傳',
     uploadingPlugin: '正在上傳插件...',
     uploadSuccess: '上傳成功',
     uploadFailed: '上傳失敗',

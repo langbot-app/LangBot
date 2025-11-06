@@ -9,7 +9,6 @@ import os
 
 from .....core import taskmgr
 from .. import group
-from ..main import MAX_FILE_SIZE
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 
 
@@ -252,20 +251,11 @@ class PluginsRouterGroup(group.RouterGroup):
 
         @self.route('/install/local', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
-            # Check file size limit before reading the file
-            content_length = quart.request.content_length
-            if content_length and content_length > MAX_FILE_SIZE:
-                return self.http_status(400, -1, 'File size exceeds 10MB limit. Please split large files into smaller parts.')
-            
             file = (await quart.request.files).get('file')
             if file is None:
                 return self.http_status(400, -1, 'file is required')
 
             file_bytes = file.read()
-            
-            # Double-check actual file size after reading
-            if len(file_bytes) > MAX_FILE_SIZE:
-                return self.http_status(400, -1, 'File size exceeds 10MB limit. Please split large files into smaller parts.')
 
             data = {
                 'plugin_file': file_bytes,
@@ -285,20 +275,15 @@ class PluginsRouterGroup(group.RouterGroup):
         @self.route('/config-files', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
             """Upload a file for plugin configuration"""
-            # Check file size limit before reading the file
-            content_length = quart.request.content_length
-            if content_length and content_length > MAX_FILE_SIZE:
-                return self.http_status(400, -1, 'File size exceeds 10MB limit. Please split large files into smaller parts.')
-            
             file = (await quart.request.files).get('file')
             if file is None:
                 return self.http_status(400, -1, 'file is required')
 
+            # Check file size (10MB limit)
+            MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
             file_bytes = file.read()
-            
-            # Double-check actual file size after reading
             if len(file_bytes) > MAX_FILE_SIZE:
-                return self.http_status(400, -1, 'File size exceeds 10MB limit. Please split large files into smaller parts.')
+                return self.http_status(400, -1, 'file size exceeds 10MB limit')
 
             # Generate unique file key with original extension
             original_filename = file.filename

@@ -220,8 +220,6 @@ const jaJP = {
     dragToUpload: 'ファイルをここにドラッグしてアップロード',
     unsupportedFileType:
       'サポートされていないファイルタイプです。.lbpkg と .zip ファイルのみサポートされています',
-    fileTooLarge: 'ファイルが大きすぎます',
-    fileSizeExceeded: 'ファイルサイズが10MBの制限を超えています。より小さいファイルに分割してください。',
     uploadingPlugin: 'プラグインをアップロード中...',
     uploadSuccess: 'アップロード成功',
     uploadFailed: 'アップロード失敗',
