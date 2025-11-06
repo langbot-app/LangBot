@@ -420,6 +420,11 @@ const zhHant = {
       noPluginsSelected: '未選擇任何插件',
       addPlugin: '新增插件',
       selectPlugins: '選擇插件',
+      pluginsTitle: '插件',
+      mcpServersTitle: 'MCP 伺服器',
+      noMCPServersSelected: '未選擇任何 MCP 伺服器',
+      addMCPServer: '新增 MCP 伺服器',
+      selectMCPServers: '選擇 MCP 伺服器',
     },
     debugDialog: {
       title: '流程線對話',

@@ -440,6 +440,11 @@ const jaJP = {
       noPluginsSelected: 'プラグインが選択されていません',
       addPlugin: 'プラグインを追加',
       selectPlugins: 'プラグインを選択',
+      pluginsTitle: 'プラグイン',
+      mcpServersTitle: 'MCPサーバー',
+      noMCPServersSelected: 'MCPサーバーが選択されていません',
+      addMCPServer: 'MCPサーバーを追加',
+      selectMCPServers: 'MCPサーバーを選択',
     },
     debugDialog: {
       title: 'パイプラインのチャット',

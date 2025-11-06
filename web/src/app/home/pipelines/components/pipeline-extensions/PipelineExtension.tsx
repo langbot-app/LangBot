@@ -14,9 +14,10 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, Server } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Plugin } from '@/app/infra/entities/plugin';
+import { MCPServer } from '@/app/infra/entities/api';
 import PluginComponentList from '@/app/home/plugins/components/plugin-installed/PluginComponentList';
 
 export default function PipelineExtension({
@@ -28,8 +29,12 @@ export default function PipelineExtension({
   const [loading, setLoading] = useState(true);
   const [selectedPlugins, setSelectedPlugins] = useState<Plugin[]>([]);
   const [allPlugins, setAllPlugins] = useState<Plugin[]>([]);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [tempSelectedIds, setTempSelectedIds] = useState<string[]>([]);
+  const [selectedMCPServers, setSelectedMCPServers] = useState<MCPServer[]>([]);
+  const [allMCPServers, setAllMCPServers] = useState<MCPServer[]>([]);
+  const [pluginDialogOpen, setPluginDialogOpen] = useState(false);
+  const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
+  const [tempSelectedPluginIds, setTempSelectedPluginIds] = useState<string[]>([]);
+  const [tempSelectedMCPIds, setTempSelectedMCPIds] = useState<string[]>([]);
 
   useEffect(() => {
     loadExtensions();
@@ -56,6 +61,15 @@ export default function PipelineExtension({
 
       setSelectedPlugins(selected);
       setAllPlugins(data.available_plugins);
+
+      // Load MCP servers
+      const boundMCPServerIds = new Set(data.bound_mcp_servers || []);
+      const selectedMCP = data.available_mcp_servers.filter((server) =>
+        boundMCPServerIds.has(server.uuid),
+      );
+
+      setSelectedMCPServers(selectedMCP);
+      setAllMCPServers(data.available_mcp_servers);
     } catch (error) {
       console.error('Failed to load extensions:', error);
       toast.error(t('pipelines.extensions.loadError'));
@@ -64,7 +78,7 @@ export default function PipelineExtension({
     }
   };
 
-  const saveToBackend = async (plugins: Plugin[]) => {
+  const saveToBackend = async (plugins: Plugin[], mcpServers: MCPServer[]) => {
     try {
       const boundPluginsArray = plugins.map((plugin) => {
         const metadata = plugin.manifest.manifest.metadata;
@@ -74,9 +88,12 @@ export default function PipelineExtension({
         };
       });
 
+      const boundMCPServerIds = mcpServers.map((server) => server.uuid);
+
       await backendClient.updatePipelineExtensions(
         pipelineId,
         boundPluginsArray,
+        boundMCPServerIds,
       );
       toast.success(t('pipelines.extensions.saveSuccess'));
     } catch (error) {
@@ -92,29 +109,59 @@ export default function PipelineExtension({
       (p) => getPluginId(p) !== pluginId,
     );
     setSelectedPlugins(newPlugins);
-    await saveToBackend(newPlugins);
+    await saveToBackend(newPlugins, selectedMCPServers);
   };
 
-  const handleOpenDialog = () => {
-    setTempSelectedIds(selectedPlugins.map((p) => getPluginId(p)));
-    setDialogOpen(true);
+  const handleRemoveMCPServer = async (serverUuid: string) => {
+    const newServers = selectedMCPServers.filter(
+      (s) => s.uuid !== serverUuid,
+    );
+    setSelectedMCPServers(newServers);
+    await saveToBackend(selectedPlugins, newServers);
+  };
+
+  const handleOpenPluginDialog = () => {
+    setTempSelectedPluginIds(selectedPlugins.map((p) => getPluginId(p)));
+    setPluginDialogOpen(true);
+  };
+
+  const handleOpenMCPDialog = () => {
+    setTempSelectedMCPIds(selectedMCPServers.map((s) => s.uuid));
+    setMcpDialogOpen(true);
   };
 
   const handleTogglePlugin = (pluginId: string) => {
-    setTempSelectedIds((prev) =>
+    setTempSelectedPluginIds((prev) =>
       prev.includes(pluginId)
         ? prev.filter((id) => id !== pluginId)
         : [...prev, pluginId],
     );
   };
 
-  const handleConfirmSelection = async () => {
+  const handleToggleMCPServer = (serverUuid: string) => {
+    setTempSelectedMCPIds((prev) =>
+      prev.includes(serverUuid)
+        ? prev.filter((id) => id !== serverUuid)
+        : [...prev, serverUuid],
+    );
+  };
+
+  const handleConfirmPluginSelection = async () => {
     const newSelected = allPlugins.filter((p) =>
-      tempSelectedIds.includes(getPluginId(p)),
+      tempSelectedPluginIds.includes(getPluginId(p)),
     );
     setSelectedPlugins(newSelected);
-    setDialogOpen(false);
-    await saveToBackend(newSelected);
+    setPluginDialogOpen(false);
+    await saveToBackend(newSelected, selectedMCPServers);
+  };
+
+  const handleConfirmMCPSelection = async () => {
+    const newSelected = allMCPServers.filter((s) =>
+      tempSelectedMCPIds.includes(s.uuid),
+    );
+    setSelectedMCPServers(newSelected);
+    setMcpDialogOpen(false);
+    await saveToBackend(selectedPlugins, newSelected);
   };
 
   if (loading) {
@@ -128,49 +175,109 @@ export default function PipelineExtension({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        {selectedPlugins.length === 0 ? (
-          <div className="flex h-32 items-center justify-center rounded-lg border-2 border-dashed border-border">
-            <p className="text-sm text-muted-foreground">
-              {t('pipelines.extensions.noPluginsSelected')}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {selectedPlugins.map((plugin) => {
-              const pluginId = getPluginId(plugin);
-              const metadata = plugin.manifest.manifest.metadata;
-              return (
+    <div className="space-y-6">
+      {/* Plugins Section */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-foreground">
+          {t('pipelines.extensions.pluginsTitle')}
+        </h3>
+        <div className="space-y-2">
+          {selectedPlugins.length === 0 ? (
+            <div className="flex h-32 items-center justify-center rounded-lg border-2 border-dashed border-border">
+              <p className="text-sm text-muted-foreground">
+                {t('pipelines.extensions.noPluginsSelected')}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {selectedPlugins.map((plugin) => {
+                const pluginId = getPluginId(plugin);
+                const metadata = plugin.manifest.manifest.metadata;
+                return (
+                  <div
+                    key={pluginId}
+                    className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent"
+                  >
+                    <div className="flex-1 flex items-center gap-3">
+                      <img
+                        src={backendClient.getPluginIconURL(
+                          metadata.author || '',
+                          metadata.name,
+                        )}
+                        alt={metadata.name}
+                        className="w-10 h-10 rounded-lg border bg-muted object-cover flex-shrink-0"
+                      />
+                      <div className="flex-1">
+                        <div className="font-medium">{metadata.name}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {metadata.author} • v{metadata.version}
+                        </div>
+                        <div className="flex gap-1 mt-1">
+                          <PluginComponentList
+                            components={plugin.components}
+                            showComponentName={true}
+                            showTitle={false}
+                            useBadge={true}
+                            t={t}
+                          />
+                        </div>
+                      </div>
+                      {!plugin.enabled && (
+                        <Badge variant="secondary">
+                          {t('pipelines.extensions.disabled')}
+                        </Badge>
+                      )}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleRemovePlugin(pluginId)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <Button onClick={handleOpenPluginDialog} variant="outline" className="w-full">
+          <Plus className="mr-2 h-4 w-4" />
+          {t('pipelines.extensions.addPlugin')}
+        </Button>
+      </div>
+
+      {/* MCP Servers Section */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-foreground">
+          {t('pipelines.extensions.mcpServersTitle')}
+        </h3>
+        <div className="space-y-2">
+          {selectedMCPServers.length === 0 ? (
+            <div className="flex h-32 items-center justify-center rounded-lg border-2 border-dashed border-border">
+              <p className="text-sm text-muted-foreground">
+                {t('pipelines.extensions.noMCPServersSelected')}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {selectedMCPServers.map((server) => (
                 <div
-                  key={pluginId}
+                  key={server.uuid}
                   className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent"
                 >
                   <div className="flex-1 flex items-center gap-3">
-                    <img
-                      src={backendClient.getPluginIconURL(
-                        metadata.author || '',
-                        metadata.name,
-                      )}
-                      alt={metadata.name}
-                      className="w-10 h-10 rounded-lg border bg-muted object-cover flex-shrink-0"
-                    />
+                    <div className="w-10 h-10 rounded-lg border bg-muted flex items-center justify-center flex-shrink-0">
+                      <Server className="h-5 w-5 text-muted-foreground" />
+                    </div>
                     <div className="flex-1">
-                      <div className="font-medium">{metadata.name}</div>
+                      <div className="font-medium">{server.name}</div>
                       <div className="text-sm text-muted-foreground">
-                        {metadata.author} • v{metadata.version}
-                      </div>
-                      <div className="flex gap-1 mt-1">
-                        <PluginComponentList
-                          components={plugin.components}
-                          showComponentName={true}
-                          showTitle={false}
-                          useBadge={true}
-                          t={t}
-                        />
+                        {server.mode}
                       </div>
                     </div>
-                    {!plugin.enabled && (
+                    {!server.enable && (
                       <Badge variant="secondary">
                         {t('pipelines.extensions.disabled')}
                       </Badge>
@@ -179,23 +286,24 @@ export default function PipelineExtension({
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => handleRemovePlugin(pluginId)}
+                    onClick={() => handleRemoveMCPServer(server.uuid)}
                   >
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
-              );
-            })}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
+
+        <Button onClick={handleOpenMCPDialog} variant="outline" className="w-full">
+          <Plus className="mr-2 h-4 w-4" />
+          {t('pipelines.extensions.addMCPServer')}
+        </Button>
       </div>
 
-      <Button onClick={handleOpenDialog} variant="outline" className="w-full">
-        <Plus className="mr-2 h-4 w-4" />
-        {t('pipelines.extensions.addPlugin')}
-      </Button>
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      {/* Plugin Selection Dialog */}
+      <Dialog open={pluginDialogOpen} onOpenChange={setPluginDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{t('pipelines.extensions.selectPlugins')}</DialogTitle>
@@ -204,7 +312,7 @@ export default function PipelineExtension({
             {allPlugins.map((plugin) => {
               const pluginId = getPluginId(plugin);
               const metadata = plugin.manifest.manifest.metadata;
-              const isSelected = tempSelectedIds.includes(pluginId);
+              const isSelected = tempSelectedPluginIds.includes(pluginId);
               return (
                 <div
                   key={pluginId}
@@ -245,10 +353,55 @@ export default function PipelineExtension({
             })}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setPluginDialogOpen(false)}>
               {t('common.cancel')}
             </Button>
-            <Button onClick={handleConfirmSelection}>
+            <Button onClick={handleConfirmPluginSelection}>
+              {t('common.confirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MCP Server Selection Dialog */}
+      <Dialog open={mcpDialogOpen} onOpenChange={setMcpDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{t('pipelines.extensions.selectMCPServers')}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+            {allMCPServers.map((server) => {
+              const isSelected = tempSelectedMCPIds.includes(server.uuid);
+              return (
+                <div
+                  key={server.uuid}
+                  className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent cursor-pointer"
+                  onClick={() => handleToggleMCPServer(server.uuid)}
+                >
+                  <Checkbox checked={isSelected} />
+                  <div className="w-10 h-10 rounded-lg border bg-muted flex items-center justify-center flex-shrink-0">
+                    <Server className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-medium">{server.name}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {server.mode}
+                    </div>
+                  </div>
+                  {!server.enable && (
+                    <Badge variant="secondary">
+                      {t('pipelines.extensions.disabled')}
+                    </Badge>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMcpDialogOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button onClick={handleConfirmMCPSelection}>
               {t('common.confirm')}
             </Button>
           </DialogFooter>

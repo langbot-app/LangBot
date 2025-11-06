@@ -173,6 +173,8 @@ export class BackendClient extends BaseHttpClient {
   public getPipelineExtensions(uuid: string): Promise<{
     bound_plugins: Array<{ author: string; name: string }>;
     available_plugins: Plugin[];
+    bound_mcp_servers: string[];
+    available_mcp_servers: MCPServer[];
   }> {
     return this.get(`/api/v1/pipelines/${uuid}/extensions`);
   }
@@ -180,9 +182,11 @@ export class BackendClient extends BaseHttpClient {
   public updatePipelineExtensions(
     uuid: string,
     bound_plugins: Array<{ author: string; name: string }>,
+    bound_mcp_servers: string[],
   ): Promise<object> {
     return this.put(`/api/v1/pipelines/${uuid}/extensions`, {
       bound_plugins,
+      bound_mcp_servers,
     });
   }
 

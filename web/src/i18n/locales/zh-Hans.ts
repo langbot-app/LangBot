@@ -422,6 +422,11 @@ const zhHans = {
       noPluginsSelected: '未选择任何插件',
       addPlugin: '添加插件',
       selectPlugins: '选择插件',
+      pluginsTitle: '插件',
+      mcpServersTitle: 'MCP 服务器',
+      noMCPServersSelected: '未选择任何 MCP 服务器',
+      addMCPServer: '添加 MCP 服务器',
+      selectMCPServers: '选择 MCP 服务器',
     },
     debugDialog: {
       title: '流水线对话',

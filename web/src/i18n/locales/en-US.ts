@@ -438,6 +438,11 @@ const enUS = {
       noPluginsSelected: 'No plugins selected',
       addPlugin: 'Add Plugin',
       selectPlugins: 'Select Plugins',
+      pluginsTitle: 'Plugins',
+      mcpServersTitle: 'MCP Servers',
+      noMCPServersSelected: 'No MCP servers selected',
+      addMCPServer: 'Add MCP Server',
+      selectMCPServers: 'Select MCP Servers',
     },
     debugDialog: {
       title: 'Pipeline Chat',
