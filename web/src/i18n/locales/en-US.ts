@@ -220,6 +220,8 @@ const enUS = {
     dragToUpload: 'Drag plugin file here to upload',
     unsupportedFileType:
       'Unsupported file type, only .lbpkg and .zip files are supported',
+    fileTooLarge: 'File too large',
+    fileSizeExceeded: 'File size exceeds 10MB limit. Please split into smaller files.',
     uploadingPlugin: 'Uploading plugin...',
     uploadSuccess: 'Upload successful',
     uploadFailed: 'Upload failed',
@@ -503,6 +505,8 @@ const enUS = {
       uploadSuccess: 'File uploaded successfully!',
       uploadError: 'File upload failed, please try again',
       uploadingFile: 'Uploading file...',
+      fileTooLarge: 'File too large',
+      fileSizeExceeded: 'File size exceeds 10MB limit. Please split into smaller files.',
       actions: 'Actions',
       delete: 'Delete File',
       fileDeleteSuccess: 'File deleted successfully',

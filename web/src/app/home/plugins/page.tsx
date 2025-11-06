@@ -314,6 +314,15 @@ export default function PluginConfigPage() {
         return;
       }
 
+      // Check file size (10MB limit)
+      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(t('plugins.fileSizeExceeded'), {
+          description: t('plugins.fileTooLarge'),
+        });
+        return;
+      }
+
       setModalOpen(true);
       setPluginInstallStatus(PluginInstallStatus.INSTALLING);
       setInstallError(null);
