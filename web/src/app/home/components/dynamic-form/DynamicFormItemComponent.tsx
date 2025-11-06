@@ -1,6 +1,7 @@
 import {
   DynamicFormItemType,
   IDynamicFormItemSchema,
+  IFileConfig,
 } from '@/app/infra/entities/form/dynamic';
 import { Input } from '@/components/ui/input';
 import {
@@ -27,18 +28,52 @@ import {
 import { useTranslation } from 'react-i18next';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent } from '@/components/ui/card';
 
 export default function DynamicFormItemComponent({
   config,
   field,
+  onFileUploaded,
 }: {
   config: IDynamicFormItemSchema;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   field: ControllerRenderProps<any, any>;
+  onFileUploaded?: (fileKey: string) => void;
 }) {
   const [llmModels, setLlmModels] = useState<LLMModel[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  const [uploading, setUploading] = useState<boolean>(false);
   const { t } = useTranslation();
+
+  const handleFileUpload = async (file: File): Promise<IFileConfig | null> => {
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error(t('plugins.fileUpload.tooLarge'));
+      return null;
+    }
+
+    try {
+      setUploading(true);
+      const response = await httpClient.uploadPluginConfigFile(file);
+      toast.success(t('plugins.fileUpload.success'));
+
+      // 通知父组件文件已上传
+      onFileUploaded?.(response.file_key);
+
+      return {
+        file_key: response.file_key,
+        mimetype: file.type,
+      };
+    } catch (error) {
+      toast.error(
+        t('plugins.fileUpload.failed') + ': ' + (error as Error).message,
+      );
+      return null;
+    } finally {
+      setUploading(false);
+    }
+  };
 
   useEffect(() => {
     if (config.type === DynamicFormItemType.LLM_MODEL_SELECTOR) {
@@ -79,6 +114,9 @@ export default function DynamicFormItemComponent({
 
     case DynamicFormItemType.STRING:
       return <Input {...field} />;
+
+    case DynamicFormItemType.TEXT:
+      return <Textarea {...field} className="min-h-[120px]" />;
 
     case DynamicFormItemType.BOOLEAN:
       return <Switch checked={field.value} onCheckedChange={field.onChange} />;
@@ -363,6 +401,185 @@ export default function DynamicFormItemComponent({
           >
             {t('common.addRound')}
           </Button>
+        </div>
+      );
+
+    case DynamicFormItemType.FILE:
+      return (
+        <div className="space-y-2">
+          {field.value && (field.value as IFileConfig).file_key ? (
+            <Card className="py-3 max-w-full overflow-hidden bg-gray-900">
+              <CardContent className="flex items-center gap-3 p-0 px-4 min-w-0">
+                <div className="flex-1 min-w-0 overflow-hidden">
+                  <div
+                    className="text-sm font-medium truncate"
+                    title={(field.value as IFileConfig).file_key}
+                  >
+                    {(field.value as IFileConfig).file_key}
+                  </div>
+                  <div className="text-xs text-muted-foreground truncate">
+                    {(field.value as IFileConfig).mimetype}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="flex-shrink-0 h-8 w-8 p-0"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    field.onChange(null);
+                  }}
+                  title={t('common.delete')}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    className="w-4 h-4 text-destructive"
+                  >
+                    <path d="M7 4V2H17V4H22V6H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V6H2V4H7ZM6 6V20H18V6H6ZM9 9H11V17H9V9ZM13 9H15V17H13V9Z"></path>
+                  </svg>
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="relative">
+              <input
+                type="file"
+                accept={config.accept}
+                disabled={uploading}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const fileConfig = await handleFileUpload(file);
+                    if (fileConfig) {
+                      field.onChange(fileConfig);
+                    }
+                  }
+                  e.target.value = '';
+                }}
+                className="hidden"
+                id={`file-input-${config.name}`}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={uploading}
+                onClick={() =>
+                  document.getElementById(`file-input-${config.name}`)?.click()
+                }
+              >
+                <svg
+                  className="w-4 h-4 mr-2"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z"></path>
+                </svg>
+                {uploading
+                  ? t('plugins.fileUpload.uploading')
+                  : t('plugins.fileUpload.chooseFile')}
+              </Button>
+            </div>
+          )}
+        </div>
+      );
+
+    case DynamicFormItemType.FILE_ARRAY:
+      return (
+        <div className="space-y-2">
+          {(field.value as IFileConfig[])?.map(
+            (fileConfig: IFileConfig, index: number) => (
+              <Card
+                key={index}
+                className="py-3 max-w-full overflow-hidden bg-gray-900"
+              >
+                <CardContent className="flex items-center gap-3 p-0 px-4 min-w-0">
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <div
+                      className="text-sm font-medium truncate"
+                      title={fileConfig.file_key}
+                    >
+                      {fileConfig.file_key}
+                    </div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {fileConfig.mimetype}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="flex-shrink-0 h-8 w-8 p-0"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const newValue = (field.value as IFileConfig[]).filter(
+                        (_: IFileConfig, i: number) => i !== index,
+                      );
+                      field.onChange(newValue);
+                    }}
+                    title={t('common.delete')}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      className="w-4 h-4 text-destructive"
+                    >
+                      <path d="M7 4V2H17V4H22V6H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V6H2V4H7ZM6 6V20H18V6H6ZM9 9H11V17H9V9ZM13 9H15V17H13V9Z"></path>
+                    </svg>
+                  </Button>
+                </CardContent>
+              </Card>
+            ),
+          )}
+          <div className="relative">
+            <input
+              type="file"
+              accept={config.accept}
+              disabled={uploading}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  const fileConfig = await handleFileUpload(file);
+                  if (fileConfig) {
+                    field.onChange([...(field.value || []), fileConfig]);
+                  }
+                }
+                e.target.value = '';
+              }}
+              className="hidden"
+              id={`file-array-input-${config.name}`}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={uploading}
+              onClick={() =>
+                document
+                  .getElementById(`file-array-input-${config.name}`)
+                  ?.click()
+              }
+            >
+              <svg
+                className="w-4 h-4 mr-2"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z"></path>
+              </svg>
+              {uploading
+                ? t('plugins.fileUpload.uploading')
+                : t('plugins.fileUpload.addFile')}
+            </Button>
+          </div>
         </div>
       );
 

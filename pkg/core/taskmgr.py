@@ -156,7 +156,7 @@ class TaskWrapper:
                 'state': self.task._state,
                 'exception': self.assume_exception().__str__() if self.assume_exception() is not None else None,
                 'exception_traceback': exception_traceback,
-                'result': self.assume_result().__str__() if self.assume_result() is not None else None,
+                'result': self.assume_result() if self.assume_result() is not None else None,
             },
         }
 

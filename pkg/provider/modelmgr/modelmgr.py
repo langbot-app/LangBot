@@ -59,7 +59,7 @@ class ModelManager:
             try:
                 await self.load_llm_model(llm_model)
             except provider_errors.RequesterNotFoundError as e:
-                self.ap.logger.warning(f'Requester {e.requester_name} not found, skipping model {llm_model.uuid}')
+                self.ap.logger.warning(f'Requester {e.requester_name} not found, skipping llm model {llm_model.uuid}')
             except Exception as e:
                 self.ap.logger.error(f'Failed to load model {llm_model.uuid}: {e}\n{traceback.format_exc()}')
 
@@ -67,7 +67,14 @@ class ModelManager:
         result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_model.EmbeddingModel))
         embedding_models = result.all()
         for embedding_model in embedding_models:
-            await self.load_embedding_model(embedding_model)
+            try:
+                await self.load_embedding_model(embedding_model)
+            except provider_errors.RequesterNotFoundError as e:
+                self.ap.logger.warning(
+                    f'Requester {e.requester_name} not found, skipping embedding model {embedding_model.uuid}'
+                )
+            except Exception as e:
+                self.ap.logger.error(f'Failed to load model {embedding_model.uuid}: {e}\n{traceback.format_exc()}')
 
     async def init_runtime_llm_model(
         self,
@@ -106,6 +113,9 @@ class ModelManager:
             model_info = persistence_model.EmbeddingModel(**model_info._mapping)
         elif isinstance(model_info, dict):
             model_info = persistence_model.EmbeddingModel(**model_info)
+
+        if model_info.requester not in self.requester_dict:
+            raise provider_errors.RequesterNotFoundError(model_info.requester)
 
         requester_inst = self.requester_dict[model_info.requester](ap=self.ap, config=model_info.requester_config)
 

@@ -65,7 +65,6 @@ export default function HomeSidebar({
         console.error('Failed to fetch GitHub star count:', error);
       });
     return () => console.log('sidebar.unmounted');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleChildClick(child: SidebarChildVO) {

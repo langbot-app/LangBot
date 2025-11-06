@@ -15,35 +15,37 @@ export default function PluginMarketCardComponent({
 
   return (
     <div
-      className="w-[100%] h-[9rem] bg-white rounded-[10px] shadow-[0px_0px_4px_0_rgba(0,0,0,0.2)] p-[1rem] cursor-pointer hover:shadow-[0px_2px_8px_0_rgba(0,0,0,0.15)] transition-shadow duration-200 dark:bg-[#1f1f22]"
+      className="w-[100%] h-auto min-h-[8rem] sm:h-[9rem] bg-white rounded-[10px] shadow-[0px_0px_4px_0_rgba(0,0,0,0.2)] p-3 sm:p-[1rem] cursor-pointer hover:shadow-[0px_2px_8px_0_rgba(0,0,0,0.15)] transition-shadow duration-200 dark:bg-[#1f1f22]"
       onClick={handleCardClick}
     >
-      <div className="w-full h-full flex flex-col justify-between">
+      <div className="w-full h-full flex flex-col justify-between gap-2">
         {/* 上部分：插件信息 */}
-        <div className="flex flex-row items-start justify-start gap-[1.2rem]">
-          <img src={cardVO.iconURL} alt="plugin icon" className="w-16 h-16" />
+        <div className="flex flex-row items-start justify-start gap-2 sm:gap-[1.2rem] min-h-0">
+          <img
+            src={cardVO.iconURL}
+            alt="plugin icon"
+            className="w-12 h-12 sm:w-16 sm:h-16 flex-shrink-0"
+          />
 
-          <div className="flex-1 flex flex-col items-start justify-start gap-[0.6rem]">
-            <div className="flex flex-col items-start justify-start">
-              <div className="text-[0.7rem] text-[#666] dark:text-[#999]">
+          <div className="flex-1 flex flex-col items-start justify-start gap-[0.4rem] sm:gap-[0.6rem] min-w-0 overflow-hidden">
+            <div className="flex flex-col items-start justify-start w-full min-w-0">
+              <div className="text-[0.65rem] sm:text-[0.7rem] text-[#666] dark:text-[#999] truncate w-full">
                 {cardVO.pluginId}
               </div>
-              <div className="flex flex-row items-center justify-start gap-[0.4rem]">
-                <div className="text-[1.2rem] text-black dark:text-[#f0f0f0]">
-                  {cardVO.label}
-                </div>
+              <div className="text-base sm:text-[1.2rem] text-black dark:text-[#f0f0f0] truncate w-full">
+                {cardVO.label}
               </div>
             </div>
 
-            <div className="text-[0.8rem] text-[#666] dark:text-[#999] line-clamp-2">
+            <div className="text-[0.7rem] sm:text-[0.8rem] text-[#666] dark:text-[#999] line-clamp-2 overflow-hidden">
               {cardVO.description}
             </div>
           </div>
 
-          <div className="flex h-full flex-row items-start justify-center gap-[0.4rem]">
+          <div className="flex flex-row items-start justify-center gap-[0.4rem] flex-shrink-0">
             {cardVO.githubURL && (
               <svg
-                className="w-[1.4rem] h-[1.4rem] text-black cursor-pointer hover:text-gray-600 dark:text-[#f0f0f0]"
+                className="w-5 h-5 sm:w-[1.4rem] sm:h-[1.4rem] text-black cursor-pointer hover:text-gray-600 dark:text-[#f0f0f0] flex-shrink-0"
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 24 24"
                 fill="currentColor"
@@ -59,9 +61,9 @@ export default function PluginMarketCardComponent({
         </div>
 
         {/* 下部分：下载量 */}
-        <div className="w-full flex flex-row items-center justify-start gap-[0.4rem] px-[0.4rem]">
+        <div className="w-full flex flex-row items-center justify-start gap-[0.3rem] sm:gap-[0.4rem] px-0 sm:px-[0.4rem] flex-shrink-0">
           <svg
-            className="w-[1.2rem] h-[1.2rem] text-[#2563eb]"
+            className="w-4 h-4 sm:w-[1.2rem] sm:h-[1.2rem] text-[#2563eb] flex-shrink-0"
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
             fill="none"
@@ -72,7 +74,7 @@ export default function PluginMarketCardComponent({
             <polyline points="7,10 12,15 17,10" />
             <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
-          <div className="text-sm text-[#2563eb] font-medium">
+          <div className="text-xs sm:text-sm text-[#2563eb] font-medium whitespace-nowrap">
             {cardVO.installCount.toLocaleString()}
           </div>
         </div>

@@ -172,7 +172,6 @@ function MarketPageContent({
   // 初始加载
   useEffect(() => {
     fetchPlugins(1, false, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 搜索功能
@@ -284,7 +283,7 @@ function MarketPageContent({
   // };
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6">
+    <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
       {/* 搜索框 */}
       <div className="flex items-center justify-center">
         <div className="relative w-full max-w-2xl">
@@ -302,19 +301,19 @@ function MarketPageContent({
                 handleSearch(searchQuery);
               }
             }}
-            className="pl-10 pr-4"
+            className="pl-10 pr-4 text-sm sm:text-base"
           />
         </div>
       </div>
 
       {/* 排序下拉框 */}
       <div className="flex items-center justify-center">
-        <div className="w-full max-w-2xl flex items-center gap-3">
-          <span className="text-sm text-muted-foreground whitespace-nowrap">
+        <div className="w-full max-w-2xl flex items-center gap-2 sm:gap-3">
+          <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
             {t('market.sortBy')}:
           </span>
           <Select value={sortOption} onValueChange={handleSortChange}>
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-40 sm:w-48 text-xs sm:text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -330,7 +329,7 @@ function MarketPageContent({
 
       {/* 搜索结果统计 */}
       {total > 0 && (
-        <div className="text-center text-muted-foreground">
+        <div className="text-center text-muted-foreground text-sm">
           {searchQuery
             ? t('market.searchResults', { count: total })
             : t('market.totalPlugins', { count: total })}

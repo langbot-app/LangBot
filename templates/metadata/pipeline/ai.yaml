@@ -43,6 +43,10 @@ stages:
             label:
               en_US: Langflow API
               zh_Hans: Langflow API
+          - name: coze-api
+            label:
+              en_US: Coze API
+              zh_Hans: 扣子 API
   - name: local-agent
     label:
       en_US: Local Agent
@@ -381,3 +385,56 @@ stages:
         type: json
         required: false
         default: '{}'
+  - name: coze-api
+    label:
+      en_US: coze API
+      zh_Hans: 扣子 API
+    description:
+      en_US: Configure the Coze API of the pipeline
+      zh_Hans: 配置Coze API
+    config:
+      - name: api-key
+        label:
+          en_US: API Key
+          zh_Hans: API 密钥
+        description:
+          en_US: The API key for the Coze server
+          zh_Hans: Coze服务器的 API 密钥
+        type: string
+        required: true
+      - name: bot-id
+        label:
+          en_US: Bot ID
+          zh_Hans: 机器人 ID
+        description:
+          en_US: The ID of the bot to run
+          zh_Hans: 要运行的机器人 ID
+        type: string
+        required: true
+      - name: api-base
+        label:
+          en_US: API Base URL
+          zh_Hans: API 基础 URL
+        description:
+          en_US: The base URL for the Coze API, please use https://api.coze.com for global Coze edition(coze.com).
+          zh_Hans: Coze API 的基础 URL，请使用 https://api.coze.com 用于全球 Coze 版（coze.com）
+        type: string
+        default: "https://api.coze.cn"
+      - name: auto-save-history
+        label:
+          en_US: Auto Save History
+          zh_Hans: 自动保存历史
+        description:
+          en_US: Whether to automatically save conversation history
+          zh_Hans: 是否自动保存对话历史
+        type: boolean
+        default: true
+      - name: timeout
+        label:
+          en_US: Request Timeout
+          zh_Hans: 请求超时
+        description:
+          en_US: Timeout in seconds for API requests
+          zh_Hans: API 请求超时时间（秒）
+        type: number
+        default: 120

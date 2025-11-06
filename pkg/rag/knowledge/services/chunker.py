@@ -4,6 +4,7 @@ import json
 from typing import List
 from pkg.rag.knowledge.services import base_service
 from pkg.core import app
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 class Chunker(base_service.BaseService):
@@ -27,21 +28,6 @@ class Chunker(base_service.BaseService):
         """
         if not text:
             return []
-        # words = text.split()
-        # chunks = []
-        # current_chunk = []
-
-        # for word in words:
-        #     current_chunk.append(word)
-        #     if len(current_chunk) > self.chunk_size:
-        #         chunks.append(" ".join(current_chunk[:self.chunk_size]))
-        #         current_chunk = current_chunk[self.chunk_size - self.chunk_overlap:]
-
-        # if current_chunk:
-        #     chunks.append(" ".join(current_chunk))
-
-        # A more robust chunking strategy (e.g., using recursive character text splitter)
-        from langchain.text_splitter import RecursiveCharacterTextSplitter
 
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=self.chunk_size,

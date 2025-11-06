@@ -19,6 +19,7 @@ from ...api.http.service import model as model_service
 from ...api.http.service import pipeline as pipeline_service
 from ...api.http.service import bot as bot_service
 from ...api.http.service import knowledge as knowledge_service
+from ...api.http.service import mcp as mcp_service
 from ...discover import engine as discover_engine
 from ...storage import mgr as storagemgr
 from ...utils import logcache
@@ -125,6 +126,9 @@ class BuildAppStage(stage.BootingStage):
 
         knowledge_service_inst = knowledge_service.KnowledgeService(ap)
         ap.knowledge_service = knowledge_service_inst
+
+        mcp_service_inst = mcp_service.MCPService(ap)
+        ap.mcp_service = mcp_service_inst
 
         ctrl = controller.Controller(ap)
         ap.ctrl = ctrl

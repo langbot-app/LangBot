@@ -3,9 +3,9 @@ from __future__ import annotations
 import typing
 
 from ...core import app
-from . import loader as tools_loader
 from ...utils import importutil
 from . import loaders
+from .loaders import mcp as mcp_loader, plugin as plugin_loader
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 importutil.import_modules_in_pkg(loaders)
@@ -16,25 +16,24 @@ class ToolManager:
 
     ap: app.Application
 
-    loaders: list[tools_loader.ToolLoader]
+    plugin_tool_loader: plugin_loader.PluginToolLoader
+    mcp_tool_loader: mcp_loader.MCPLoader
 
     def __init__(self, ap: app.Application):
         self.ap = ap
-        self.all_functions = []
-        self.loaders = []
 
     async def initialize(self):
-        for loader_cls in tools_loader.preregistered_loaders:
-            loader_inst = loader_cls(self.ap)
-            await loader_inst.initialize()
-            self.loaders.append(loader_inst)
+        self.plugin_tool_loader = plugin_loader.PluginToolLoader(self.ap)
+        await self.plugin_tool_loader.initialize()
+        self.mcp_tool_loader = mcp_loader.MCPLoader(self.ap)
+        await self.mcp_tool_loader.initialize()
 
     async def get_all_tools(self, bound_plugins: list[str] | None = None) -> list[resource_tool.LLMTool]:
         """获取所有函数"""
         all_functions: list[resource_tool.LLMTool] = []
 
-        for loader in self.loaders:
-            all_functions.extend(await loader.get_tools(bound_plugins))
+        all_functions.extend(await self.plugin_tool_loader.get_tools(bound_plugins))
+        all_functions.extend(await self.mcp_tool_loader.get_tools(bound_plugins))
 
         return all_functions
 
@@ -93,13 +92,14 @@ class ToolManager:
     async def execute_func_call(self, name: str, parameters: dict) -> typing.Any:
         """执行函数调用"""
 
-        for loader in self.loaders:
-            if await loader.has_tool(name):
-                return await loader.invoke_tool(name, parameters)
+        if await self.plugin_tool_loader.has_tool(name):
+            return await self.plugin_tool_loader.invoke_tool(name, parameters)
+        elif await self.mcp_tool_loader.has_tool(name):
+            return await self.mcp_tool_loader.invoke_tool(name, parameters)
         else:
             raise ValueError(f'未找到工具: {name}')
 
     async def shutdown(self):
         """关闭所有工具"""
-        for loader in self.loaders:
-            await loader.shutdown()
+        await self.plugin_tool_loader.shutdown()
+        await self.mcp_tool_loader.shutdown()

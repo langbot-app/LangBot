@@ -7,7 +7,7 @@ from .. import loader
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 
-@loader.loader_class('plugin-tool-loader')
+# @loader.loader_class('plugin-tool-loader')
 class PluginToolLoader(loader.ToolLoader):
     """插件工具加载器。
 

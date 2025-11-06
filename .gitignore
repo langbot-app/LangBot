@@ -44,5 +44,6 @@ test.py
 .venv/
 uv.lock
 /test
+plugins.bak
 coverage.xml
 .coverage

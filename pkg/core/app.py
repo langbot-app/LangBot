@@ -22,6 +22,7 @@ from ..api.http.service import model as model_service
 from ..api.http.service import pipeline as pipeline_service
 from ..api.http.service import bot as bot_service
 from ..api.http.service import knowledge as knowledge_service
+from ..api.http.service import mcp as mcp_service
 from ..discover import engine as discover_engine
 from ..storage import mgr as storagemgr
 from ..utils import logcache
@@ -118,6 +119,8 @@ class Application:
     bot_service: bot_service.BotService = None
 
     knowledge_service: knowledge_service.KnowledgeService = None
+
+    mcp_service: mcp_service.MCPService = None
 
     def __init__(self):
         pass

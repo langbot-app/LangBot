@@ -15,6 +15,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useTranslation } from 'react-i18next';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { toast } from 'sonner';
@@ -43,6 +44,7 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
       PluginOperationType.DELETE,
     );
     const [targetPlugin, setTargetPlugin] = useState<PluginCardVO | null>(null);
+    const [deleteData, setDeleteData] = useState<boolean>(false);
 
     const asyncTask = useAsyncTask({
       onSuccess: () => {
@@ -61,7 +63,6 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
 
     useEffect(() => {
       initData();
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     function initData() {
@@ -109,6 +110,7 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
       setTargetPlugin(plugin);
       setOperationType(PluginOperationType.DELETE);
       setShowOperationModal(true);
+      setDeleteData(false);
       asyncTask.reset();
     }
 
@@ -124,7 +126,11 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
 
       const apiCall =
         operationType === PluginOperationType.DELETE
-          ? httpClient.removePlugin(targetPlugin.author, targetPlugin.name)
+          ? httpClient.removePlugin(
+              targetPlugin.author,
+              targetPlugin.name,
+              deleteData,
+            )
           : httpClient.upgradePlugin(targetPlugin.author, targetPlugin.name);
 
       apiCall
@@ -162,16 +168,35 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
             </DialogHeader>
             <DialogDescription>
               {asyncTask.status === AsyncTaskStatus.WAIT_INPUT && (
-                <div>
-                  {operationType === PluginOperationType.DELETE
-                    ? t('plugins.confirmDeletePlugin', {
-                        author: targetPlugin?.author ?? '',
-                        name: targetPlugin?.name ?? '',
-                      })
-                    : t('plugins.confirmUpdatePlugin', {
-                        author: targetPlugin?.author ?? '',
-                        name: targetPlugin?.name ?? '',
-                      })}
+                <div className="flex flex-col gap-4">
+                  <div>
+                    {operationType === PluginOperationType.DELETE
+                      ? t('plugins.confirmDeletePlugin', {
+                          author: targetPlugin?.author ?? '',
+                          name: targetPlugin?.name ?? '',
+                        })
+                      : t('plugins.confirmUpdatePlugin', {
+                          author: targetPlugin?.author ?? '',
+                          name: targetPlugin?.name ?? '',
+                        })}
+                  </div>
+                  {operationType === PluginOperationType.DELETE && (
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="delete-data"
+                        checked={deleteData}
+                        onCheckedChange={(checked) =>
+                          setDeleteData(checked === true)
+                        }
+                      />
+                      <label
+                        htmlFor="delete-data"
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                      >
+                        {t('plugins.deleteDataCheckbox')}
+                      </label>
+                    </div>
+                  )}
                 </div>
               )}
               {asyncTask.status === AsyncTaskStatus.RUNNING && (

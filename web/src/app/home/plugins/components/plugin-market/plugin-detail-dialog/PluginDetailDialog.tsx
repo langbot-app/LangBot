@@ -228,6 +228,30 @@ export default function PluginDetailDialog({
               {...props}
             />
           ),
+          h3: ({ ...props }) => (
+            <h3
+              className="text-xl font-semibold mb-2 mt-4 dark:text-gray-400"
+              {...props}
+            />
+          ),
+          h4: ({ ...props }) => (
+            <h4
+              className="text-lg font-semibold mb-2 mt-4 dark:text-gray-400"
+              {...props}
+            />
+          ),
+          h5: ({ ...props }) => (
+            <h5
+              className="text-base font-semibold mb-2 mt-4 dark:text-gray-400"
+              {...props}
+            />
+          ),
+          h6: ({ ...props }) => (
+            <h6
+              className="text-sm font-semibold mb-2 mt-4 dark:text-gray-400"
+              {...props}
+            />
+          ),
           p: ({ ...props }) => (
             <p className="leading-relaxed dark:text-gray-400" {...props} />
           ),
@@ -274,6 +298,57 @@ export default function PluginDetailDialog({
               {...props}
             />
           ),
+          // 图片组件 - 转换本地路径为API路径
+          img: ({ src, alt, ...props }) => {
+            // 处理图片路径
+            let imageSrc = src || '';
+
+            // 确保 src 是字符串类型
+            if (typeof imageSrc !== 'string') {
+              return (
+                <img
+                  src={src}
+                  alt={alt || ''}
+                  className="max-w-full h-auto rounded-lg my-4"
+                  {...props}
+                />
+              );
+            }
+
+            // 如果是相对路径，转换为API路径
+            if (
+              imageSrc &&
+              !imageSrc.startsWith('http://') &&
+              !imageSrc.startsWith('https://') &&
+              !imageSrc.startsWith('data:')
+            ) {
+              // 移除开头的 ./ 或 / (支持多个前缀)
+              imageSrc = imageSrc.replace(/^(\.\/|\/)+/, '');
+
+              // 如果路径以 assets/ 开头，直接使用
+              // 否则假设它在 assets/ 目录下
+              if (!imageSrc.startsWith('assets/')) {
+                imageSrc = `assets/${imageSrc}`;
+              }
+
+              // 移除 assets/ 前缀以构建API URL
+              const assetPath = imageSrc.replace(/^assets\//, '');
+              imageSrc = getCloudServiceClientSync().getPluginAssetURL(
+                author!,
+                pluginName!,
+                assetPath,
+              );
+            }
+
+            return (
+              <img
+                src={imageSrc}
+                alt={alt || ''}
+                className="max-w-lg h-auto my-4"
+                {...props}
+              />
+            );
+          },
         }}
       >
         {readme}

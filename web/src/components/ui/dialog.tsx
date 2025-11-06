@@ -7,9 +7,71 @@ import { XIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 function Dialog({
+  onOpenChange,
+  open,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />;
+  const handleOpenChange = React.useCallback(
+    (isOpen: boolean) => {
+      onOpenChange?.(isOpen);
+
+      // 当对话框关闭时，确保清理 body 样式
+      if (!isOpen) {
+        // 立即清理
+        document.body.style.removeProperty('pointer-events');
+        document.body.style.removeProperty('overflow');
+
+        // 延迟再次清理，确保覆盖 Radix 的设置
+        setTimeout(() => {
+          document.body.style.removeProperty('pointer-events');
+          document.body.style.removeProperty('overflow');
+        }, 0);
+
+        setTimeout(() => {
+          document.body.style.removeProperty('pointer-events');
+          document.body.style.removeProperty('overflow');
+        }, 50);
+
+        setTimeout(() => {
+          document.body.style.removeProperty('pointer-events');
+          document.body.style.removeProperty('overflow');
+        }, 150);
+      }
+    },
+    [onOpenChange],
+  );
+
+  // 使用 effect 监控 open 状态变化
+  React.useEffect(() => {
+    if (open === false) {
+      const cleanup = () => {
+        document.body.style.removeProperty('pointer-events');
+        document.body.style.removeProperty('overflow');
+      };
+
+      cleanup();
+      const timer1 = setTimeout(cleanup, 0);
+      const timer2 = setTimeout(cleanup, 50);
+      const timer3 = setTimeout(cleanup, 150);
+      const timer4 = setTimeout(cleanup, 300);
+
+      return () => {
+        clearTimeout(timer1);
+        clearTimeout(timer2);
+        clearTimeout(timer3);
+        clearTimeout(timer4);
+      };
+    }
+  }, [open]);
+
+  return (
+    <DialogPrimitive.Root
+      data-slot="dialog"
+      open={open}
+      {...props}
+      onOpenChange={handleOpenChange}
+    />
+  );
 }
 
 function DialogTrigger({
@@ -60,7 +122,6 @@ function DialogContent({
           'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg',
           className,
         )}
-        onInteractOutside={() => {}}
         {...props}
       >
         {children}

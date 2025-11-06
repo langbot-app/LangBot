@@ -10,8 +10,6 @@ command:
 concurrency:
     pipeline: 20
     session: 1
-mcp:
-    servers: []
 proxy:
     http: ''
     https: ''

@@ -49,7 +49,7 @@ class WecomBotEventConverter(abstract_platform_adapter.AbstractEventConverter):
             return platform_events.FriendMessage(
                 sender=platform_entities.Friend(
                     id=event.userid,
-                    nickname='',
+                    nickname=event.username,
                     remark='',
                 ),
                 message_chain=message_chain,
@@ -61,10 +61,10 @@ class WecomBotEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 sender = platform_entities.GroupMember(
                     id=event.userid,
                     permission='MEMBER',
-                    member_name=event.userid,
+                    member_name=event.username,
                     group=platform_entities.Group(
                         id=str(event.chatid),
-                        name='',
+                        name=event.chatname,
                         permission=platform_entities.Permission.Member,
                     ),
                     special_title='',
@@ -116,6 +116,50 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         content = await self.message_converter.yiri2target(message)
         await self.bot.set_message(message_source.source_platform_object.message_id, content)
+
+    async def reply_message_chunk(
+        self,
+        message_source: platform_events.MessageEvent,
+        bot_message,
+        message: platform_message.MessageChain,
+        quote_origin: bool = False,
+        is_final: bool = False,
+    ):
+        """将流水线增量输出写入企业微信 stream 会话。
+
+        Args:
+            message_source: 流水线提供的原始消息事件。
+            bot_message: 当前片段对应的模型元信息（未使用）。
+            message: 需要回复的消息链。
+            quote_origin: 是否引用原消息（企业微信暂不支持）。
+            is_final: 标记当前片段是否为最终回复。
+
+        Returns:
+            dict: 包含 `stream` 键，标识写入是否成功。
+
+        Example:
+            在流水线 `reply_message_chunk` 调用中自动触发，无需手动调用。
+        """
+        # 转换为纯文本（智能机器人当前协议仅支持文本流）
+        content = await self.message_converter.yiri2target(message)
+        msg_id = message_source.source_platform_object.message_id
+
+        # 将片段推送到 WecomBotClient 中的队列，返回值用于判断是否走降级逻辑
+        success = await self.bot.push_stream_chunk(msg_id, content, is_final=is_final)
+        if not success and is_final:
+            # 未命中流式队列时使用旧有 set_message 兜底
+            await self.bot.set_message(msg_id, content)
+        return {'stream': success}
+
+    async def is_stream_output_supported(self) -> bool:
+        """智能机器人侧默认开启流式能力。
+
+        Returns:
+            bool: 恒定返回 True。
+
+        Example:
+            流水线执行阶段会调用此方法以确认是否启用流式。"""
+        return True
 
     async def send_message(self, target_type, target_id, message):
         pass

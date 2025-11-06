@@ -56,7 +56,9 @@ class RuntimeConnectionHandler(handler.Handler):
                     .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
                 )
 
-                if result.first() is not None:
+                setting = result.first()
+
+                if setting is not None:
                     # delete plugin setting
                     await self.ap.persistence_mgr.execute_async(
                         sqlalchemy.delete(persistence_plugin.PluginSetting)
@@ -71,6 +73,10 @@ class RuntimeConnectionHandler(handler.Handler):
                         plugin_name=plugin_name,
                         install_source=install_source,
                         install_info=install_info,
+                        # inherit from existing setting
+                        enabled=setting.enabled if setting is not None else True,
+                        priority=setting.priority if setting is not None else 0,
+                        config=setting.config if setting is not None else {},  # noqa: F821
                     )
                 )
 
@@ -430,6 +436,25 @@ class RuntimeConnectionHandler(handler.Handler):
                 },
             )
 
+        @self.action(RuntimeToLangBotAction.GET_CONFIG_FILE)
+        async def get_config_file(data: dict[str, Any]) -> handler.ActionResponse:
+            """Get a config file by file key"""
+            file_key = data['file_key']
+
+            try:
+                # Load file from storage
+                file_bytes = await self.ap.storage_mgr.storage_provider.load(file_key)
+
+                return handler.ActionResponse.success(
+                    data={
+                        'file_base64': base64.b64encode(file_bytes).decode('utf-8'),
+                    },
+                )
+            except Exception as e:
+                return handler.ActionResponse.error(
+                    message=f'Failed to load config file {file_key}: {e}',
+                )
+
     async def ping(self) -> dict[str, Any]:
         """Ping the runtime"""
         return await self.call_action(
@@ -576,6 +601,23 @@ class RuntimeConnectionHandler(handler.Handler):
             'plugin_icon_base64': base64.b64encode(plugin_icon_bytes).decode('utf-8'),
             'mime_type': mime_type,
         }
+
+    async def cleanup_plugin_data(self, plugin_author: str, plugin_name: str) -> None:
+        """Cleanup plugin settings and binary storage"""
+        # Delete plugin settings
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.delete(persistence_plugin.PluginSetting)
+            .where(persistence_plugin.PluginSetting.plugin_author == plugin_author)
+            .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
+        )
+
+        # Delete all binary storage for this plugin
+        owner = f'{plugin_author}/{plugin_name}'
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.delete(persistence_bstorage.BinaryStorage)
+            .where(persistence_bstorage.BinaryStorage.owner_type == 'plugin')
+            .where(persistence_bstorage.BinaryStorage.owner == owner)
+        )
 
     async def call_tool(
         self, tool_name: str, parameters: dict[str, Any], include_plugins: list[str] | None = None
