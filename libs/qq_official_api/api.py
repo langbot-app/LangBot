@@ -30,6 +30,13 @@ def handle_validation(body: dict, bot_secret: str):
 
     response = {'plain_token': body['d']['plain_token'], 'signature': signature_hex}
 
+    # 打印调试信息
+    print(f'[QQ Official Validation]')
+    print(f'  event_ts: {body["d"]["event_ts"]}')
+    print(f'  plain_token: {body["d"]["plain_token"]}')
+    print(f'  Message to sign: {msg}')
+    print(f'  Signature: {signature_hex}')
+
     return response
 
 
@@ -110,13 +117,17 @@ class QQOfficialClient:
         try:
             # 读取请求数据
             body = await req.get_data()
+
+            print(f'[QQ Official] Received request, body length: {len(body)}')
+
             payload = json.loads(body)
 
             # 验证是否为回调验证请求
             if payload.get('op') == 13:
+                print(f'[QQ Official] Received callback validation request (op=13)')
                 # 生成签名
                 response = handle_validation(payload, self.secret)
-
+                print(f'[QQ Official] Returning validation response')
                 return response
 
             if payload.get('op') == 0:
@@ -128,6 +139,7 @@ class QQOfficialClient:
             return {'code': 0, 'message': 'success'}
 
         except Exception as e:
+            print(f'[QQ Official] ERROR: {traceback.format_exc()}')
             await self.logger.error(f'Error in handle_callback_request: {traceback.format_exc()}')
             return {'error': str(e)}, 400
 

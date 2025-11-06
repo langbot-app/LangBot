@@ -92,8 +92,6 @@ class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     config: dict
 
     def __init__(self, config: dict, logger: EventLogger):
-        self.config = config
-        self.logger = logger
         required_keys = [
             'bot_token',
             'signing_secret',
@@ -102,11 +100,18 @@ class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if missing_keys:
             raise command_errors.ParamNotEnoughError('Slack机器人缺少相关配置项，请查看文档或联系管理员')
 
-        self.bot = SlackClient(
-            bot_token=self.config['bot_token'],
-            signing_secret=self.config['signing_secret'],
-            logger=self.logger,
+        bot = SlackClient(
+            bot_token=config['bot_token'],
+            signing_secret=config['signing_secret'],
+            logger=logger,
             unified_mode=True
+        )
+
+        super().__init__(
+            config=config,
+            logger=logger,
+            bot=bot,
+            bot_account_id=config['bot_token'],
         )
 
     async def reply_message(
