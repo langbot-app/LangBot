@@ -16,7 +16,7 @@ API keys can be managed through the web interface:
 
 Include your API key in the request header using one of these methods:
 
-**Method 1: X-API-Key header**
+**Method 1: X-API-Key header (Recommended)**
 ```
 X-API-Key: lbk_your_api_key_here
 ```
@@ -26,16 +26,29 @@ X-API-Key: lbk_your_api_key_here
 Authorization: Bearer lbk_your_api_key_here
 ```
 
-## Available Service APIs
+## Available APIs
 
-### LLM Model Management
+All existing LangBot APIs now support **both user token and API key authentication**. This means you can use API keys to access:
 
-All LLM model management endpoints require API key authentication.
+- **Model Management** - `/api/v1/provider/models/llm` and `/api/v1/provider/models/embedding`
+- **Bot Management** - `/api/v1/platform/bots`
+- **Pipeline Management** - `/api/v1/pipelines`
+- **Knowledge Base** - `/api/v1/knowledge/*`
+- **MCP Servers** - `/api/v1/mcp/servers`
+- And more...
 
-#### List All LLM Models
+### Authentication Methods
+
+Each endpoint accepts **either**:
+1. **User Token** (via `Authorization: Bearer <user_jwt_token>`) - for web UI and authenticated users
+2. **API Key** (via `X-API-Key` or `Authorization: Bearer <api_key>`) - for external services
+
+## Example: Model Management
+
+### List All LLM Models
 
 ```http
-GET /api/service/v1/models/llm
+GET /api/v1/provider/models/llm
 X-API-Key: lbk_your_api_key_here
 ```
 
@@ -61,17 +74,10 @@ Response:
 }
 ```
 
-#### Get a Specific LLM Model
+### Create a New LLM Model
 
 ```http
-GET /api/service/v1/models/llm/{model_uuid}
-X-API-Key: lbk_your_api_key_here
-```
-
-#### Create a New LLM Model
-
-```http
-POST /api/service/v1/models/llm
+POST /api/v1/provider/models/llm
 X-API-Key: lbk_your_api_key_here
 Content-Type: application/json
 
@@ -94,21 +100,10 @@ Content-Type: application/json
 }
 ```
 
-Response:
-```json
-{
-  "code": 0,
-  "msg": "ok",
-  "data": {
-    "uuid": "newly-created-model-uuid"
-  }
-}
-```
-
-#### Update an LLM Model
+### Update an LLM Model
 
 ```http
-PUT /api/service/v1/models/llm/{model_uuid}
+PUT /api/v1/provider/models/llm/{model_uuid}
 X-API-Key: lbk_your_api_key_here
 Content-Type: application/json
 
@@ -119,22 +114,55 @@ Content-Type: application/json
 }
 ```
 
-#### Delete an LLM Model
+### Delete an LLM Model
 
 ```http
-DELETE /api/service/v1/models/llm/{model_uuid}
+DELETE /api/v1/provider/models/llm/{model_uuid}
 X-API-Key: lbk_your_api_key_here
 ```
 
-#### Test an LLM Model
+## Example: Bot Management
+
+### List All Bots
 
 ```http
-POST /api/service/v1/models/llm/{model_uuid}/test
+GET /api/v1/platform/bots
+X-API-Key: lbk_your_api_key_here
+```
+
+### Create a New Bot
+
+```http
+POST /api/v1/platform/bots
 X-API-Key: lbk_your_api_key_here
 Content-Type: application/json
 
 {
-  // Model configuration to test
+  "name": "My Bot",
+  "adapter": "telegram",
+  "config": {...}
+}
+```
+
+## Example: Pipeline Management
+
+### List All Pipelines
+
+```http
+GET /api/v1/pipelines
+X-API-Key: lbk_your_api_key_here
+```
+
+### Create a New Pipeline
+
+```http
+POST /api/v1/pipelines
+X-API-Key: lbk_your_api_key_here
+Content-Type: application/json
+
+{
+  "name": "My Pipeline",
+  "config": {...}
 }
 ```
 
@@ -145,7 +173,7 @@ Content-Type: application/json
 ```json
 {
   "code": -1,
-  "msg": "No valid API key provided"
+  "msg": "No valid authentication provided (user token or API key required)"
 }
 ```
 
@@ -163,7 +191,7 @@ or
 ```json
 {
   "code": -1,
-  "msg": "Model not found"
+  "msg": "Resource not found"
 }
 ```
 
@@ -183,6 +211,7 @@ or
 3. **Rotate keys regularly**: Create new API keys periodically and delete old ones
 4. **Use descriptive names**: Give your API keys meaningful names to track their usage
 5. **Delete unused keys**: Remove API keys that are no longer needed
+6. **Use X-API-Key header**: Prefer using the `X-API-Key` header for clarity
 
 ## Example: Python Client
 
@@ -198,12 +227,31 @@ headers = {
 }
 
 # List all models
-response = requests.get(f"{BASE_URL}/api/service/v1/models/llm", headers=headers)
+response = requests.get(f"{BASE_URL}/api/v1/provider/models/llm", headers=headers)
 models = response.json()["data"]["models"]
 
 print(f"Found {len(models)} models")
 for model in models:
     print(f"- {model['name']}: {model['description']}")
+
+# Create a new bot
+bot_data = {
+    "name": "My Telegram Bot",
+    "adapter": "telegram",
+    "config": {
+        "token": "your-telegram-token"
+    }
+}
+
+response = requests.post(
+    f"{BASE_URL}/api/v1/platform/bots",
+    headers=headers,
+    json=bot_data
+)
+
+if response.status_code == 200:
+    bot_uuid = response.json()["data"]["uuid"]
+    print(f"Bot created with UUID: {bot_uuid}")
 ```
 
 ## Example: cURL
@@ -212,19 +260,32 @@ for model in models:
 # List all models
 curl -X GET \
   -H "X-API-Key: lbk_your_api_key_here" \
-  http://your-langbot-server:5300/api/service/v1/models/llm
+  http://your-langbot-server:5300/api/v1/provider/models/llm
 
-# Create a new model
+# Create a new pipeline
 curl -X POST \
   -H "X-API-Key: lbk_your_api_key_here" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "My Model",
-    "description": "Test model",
-    "requester": "openai-chat-completions",
-    "requester_config": {"model": "gpt-4", "args": {}},
-    "api_keys": [{"name": "default", "keys": ["sk-..."]}],
-    "abilities": ["chat"]
+    "name": "My Pipeline",
+    "config": {...}
   }' \
-  http://your-langbot-server:5300/api/service/v1/models/llm
+  http://your-langbot-server:5300/api/v1/pipelines
+
+# Get bot logs
+curl -X POST \
+  -H "X-API-Key: lbk_your_api_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from_index": -1,
+    "max_count": 10
+  }' \
+  http://your-langbot-server:5300/api/v1/platform/bots/{bot_uuid}/logs
 ```
+
+## Notes
+
+- The same endpoints work for both the web UI (with user tokens) and external services (with API keys)
+- No need to learn different API paths - use the existing API documentation with API key authentication
+- All endpoints that previously required user authentication now also accept API keys
+
