@@ -305,6 +305,17 @@ const zhHant = {
     defaultPipelineCannotDelete: '預設流程線不可刪除',
     deleteSuccess: '刪除成功',
     deleteError: '刪除失敗：',
+    extensions: {
+      title: '插件集成',
+      loadError: '載入插件清單失敗',
+      saveSuccess: '儲存成功',
+      saveError: '儲存失敗',
+      noPluginsAvailable: '暫無可用插件',
+      disabled: '已停用',
+      noPluginsSelected: '未選擇任何插件',
+      addPlugin: '新增插件',
+      selectPlugins: '選擇插件',
+    },
     debugDialog: {
       title: '流程線對話',
       selectPipeline: '選擇流程線',

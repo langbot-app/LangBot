@@ -34,6 +34,7 @@ import {
   EmbeddingModel,
   ApiRespPluginSystemStatus,
 } from '@/app/infra/entities/api';
+import { Plugin } from '@/app/infra/entities/plugin';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
 
@@ -164,6 +165,22 @@ export class BackendClient extends BaseHttpClient {
 
   public deletePipeline(uuid: string): Promise<object> {
     return this.delete(`/api/v1/pipelines/${uuid}`);
+  }
+
+  public getPipelineExtensions(uuid: string): Promise<{
+    bound_plugins: Array<{ author: string; name: string }>;
+    available_plugins: Plugin[];
+  }> {
+    return this.get(`/api/v1/pipelines/${uuid}/extensions`);
+  }
+
+  public updatePipelineExtensions(
+    uuid: string,
+    bound_plugins: Array<{ author: string; name: string }>,
+  ): Promise<object> {
+    return this.put(`/api/v1/pipelines/${uuid}/extensions`, {
+      bound_plugins,
+    });
   }
 
   // ============ Debug WebChat API ============

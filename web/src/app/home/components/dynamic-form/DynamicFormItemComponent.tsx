@@ -17,8 +17,6 @@ import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { LLMModel } from '@/app/infra/entities/api';
-import { Plugin } from '@/app/infra/entities/plugin';
-import { ApiRespPlugins } from '@/app/infra/entities/api';
 import { KnowledgeBase } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
 import {
@@ -40,7 +38,6 @@ export default function DynamicFormItemComponent({
 }) {
   const [llmModels, setLlmModels] = useState<LLMModel[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
-  const [plugins, setPlugins] = useState<Plugin[]>([]);
   const { t } = useTranslation();
 
   useEffect(() => {
@@ -66,25 +63,6 @@ export default function DynamicFormItemComponent({
         .catch((err) => {
           toast.error('Failed to get knowledge base list: ' + err.message);
         });
-    }
-  }, [config.type]);
-
-  useEffect(() => {
-    if (config.type === DynamicFormItemType.PLUGIN_SELECTOR) {
-      httpClient.getPlugins().then((resp: ApiRespPlugins) => {
-        if (config.scopes && config.scopes.length > 0) {
-          resp.plugins = resp.plugins.filter((plugin) => {
-            for (const component of plugin.components) {
-              if (config.scopes?.includes(component.manifest.manifest.kind)) {
-                return true;
-              }
-            }
-            return false;
-          });
-        }
-
-        setPlugins(resp.plugins);
-      });
     }
   }, [config.type]);
 

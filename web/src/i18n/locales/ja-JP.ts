@@ -323,6 +323,17 @@ const jaJP = {
     defaultPipelineCannotDelete: 'デフォルトパイプラインは削除できません',
     deleteSuccess: '削除に成功しました',
     deleteError: '削除に失敗しました：',
+    extensions: {
+      title: 'プラグイン統合',
+      loadError: 'プラグインリストの読み込みに失敗しました',
+      saveSuccess: '保存に成功しました',
+      saveError: '保存に失敗しました',
+      noPluginsAvailable: '利用可能なプラグインがありません',
+      disabled: '無効',
+      noPluginsSelected: 'プラグインが選択されていません',
+      addPlugin: 'プラグインを追加',
+      selectPlugins: 'プラグインを選択',
+    },
     debugDialog: {
       title: 'パイプラインのチャット',
       selectPipeline: 'パイプラインを選択',

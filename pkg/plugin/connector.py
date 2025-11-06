@@ -209,47 +209,62 @@ class PluginRuntimeConnector:
     async def emit_event(
         self,
         event: events.BaseEventModel,
+        bound_plugins: list[str] | None = None,
     ) -> context.EventContext:
         event_ctx = context.EventContext.from_event(event)
 
         if not self.is_enable_plugin:
             return event_ctx
 
-        event_ctx_result = await self.handler.emit_event(event_ctx.model_dump(serialize_as_any=False))
+        # Pass include_plugins to runtime for filtering
+        event_ctx_result = await self.handler.emit_event(
+            event_ctx.model_dump(serialize_as_any=False), include_plugins=bound_plugins
+        )
 
         event_ctx = context.EventContext.model_validate(event_ctx_result['event_context'])
 
         return event_ctx
 
-    async def list_tools(self) -> list[ComponentManifest]:
+    async def list_tools(self, bound_plugins: list[str] | None = None) -> list[ComponentManifest]:
         if not self.is_enable_plugin:
             return []
 
-        list_tools_data = await self.handler.list_tools()
+        # Pass include_plugins to runtime for filtering
+        list_tools_data = await self.handler.list_tools(include_plugins=bound_plugins)
 
-        return [ComponentManifest.model_validate(tool) for tool in list_tools_data]
+        tools = [ComponentManifest.model_validate(tool) for tool in list_tools_data]
 
-    async def call_tool(self, tool_name: str, parameters: dict[str, Any]) -> dict[str, Any]:
+        return tools
+
+    async def call_tool(
+        self, tool_name: str, parameters: dict[str, Any], bound_plugins: list[str] | None = None
+    ) -> dict[str, Any]:
         if not self.is_enable_plugin:
             return {'error': 'Tool not found: plugin system is disabled'}
 
-        return await self.handler.call_tool(tool_name, parameters)
+        # Pass include_plugins to runtime for validation
+        return await self.handler.call_tool(tool_name, parameters, include_plugins=bound_plugins)
 
-    async def list_commands(self) -> list[ComponentManifest]:
+    async def list_commands(self, bound_plugins: list[str] | None = None) -> list[ComponentManifest]:
         if not self.is_enable_plugin:
             return []
 
-        list_commands_data = await self.handler.list_commands()
+        # Pass include_plugins to runtime for filtering
+        list_commands_data = await self.handler.list_commands(include_plugins=bound_plugins)
 
-        return [ComponentManifest.model_validate(command) for command in list_commands_data]
+        commands = [ComponentManifest.model_validate(command) for command in list_commands_data]
+
+        return commands
 
     async def execute_command(
-        self, command_ctx: command_context.ExecuteContext
+        self, command_ctx: command_context.ExecuteContext, bound_plugins: list[str] | None = None
     ) -> typing.AsyncGenerator[command_context.CommandReturn, None]:
         if not self.is_enable_plugin:
             yield command_context.CommandReturn(error=command_errors.CommandNotFoundError(command_ctx.command))
+            return
 
-        gen = self.handler.execute_command(command_ctx.model_dump(serialize_as_any=True))
+        # Pass include_plugins to runtime for validation
+        gen = self.handler.execute_command(command_ctx.model_dump(serialize_as_any=True), include_plugins=bound_plugins)
 
         async for ret in gen:
             cmd_ret = command_context.CommandReturn.model_validate(ret)

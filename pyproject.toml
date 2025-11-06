@@ -62,7 +62,7 @@ dependencies = [
     "langchain>=0.2.0",
     "chromadb>=0.4.24",
     "qdrant-client (>=1.15.1,<2.0.0)",
-    "langbot-plugin==0.1.4",
+    "langbot-plugin==0.1.9b1",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "tboxsdk>=0.0.10",

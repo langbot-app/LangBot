@@ -84,7 +84,7 @@ export default function PipelineDialog({
     },
     {
       key: 'extensions',
-      label: t('pipelines.extensions'),
+      label: t('pipelines.extensions.title'),
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -117,7 +117,7 @@ export default function PipelineDialog({
         : t('pipelines.createPipeline');
     }
     if (currentMode === 'extensions') {
-      return t('pipelines.extensions');
+      return t('pipelines.extensions.title');
     }
     return t('pipelines.debugDialog.title');
   };

@@ -65,7 +65,9 @@ class PreProcessor(stage.PipelineStage):
             query.use_llm_model_uuid = llm_model.model_entity.uuid
 
             if llm_model.model_entity.abilities.__contains__('func_call'):
-                query.use_funcs = await self.ap.tool_mgr.get_all_tools()
+                # Get bound plugins for filtering tools
+                bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+                query.use_funcs = await self.ap.tool_mgr.get_all_tools(bound_plugins)
 
         variables = {
             'session_id': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
@@ -130,7 +132,9 @@ class PreProcessor(stage.PipelineStage):
             query=query,
         )
 
-        event_ctx = await self.ap.plugin_connector.emit_event(event)
+        # Get bound plugins for filtering
+        bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+        event_ctx = await self.ap.plugin_connector.emit_event(event, bound_plugins)
 
         query.prompt.messages = event_ctx.event.default_prompt
         query.messages = event_ctx.event.prompt

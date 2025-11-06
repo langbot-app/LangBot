@@ -46,3 +46,28 @@ class PipelinesRouterGroup(group.RouterGroup):
                 await self.ap.pipeline_service.delete_pipeline(pipeline_uuid)
 
                 return self.success()
+
+        @self.route('/<pipeline_uuid>/extensions', methods=['GET', 'PUT'])
+        async def _(pipeline_uuid: str) -> str:
+            if quart.request.method == 'GET':
+                # Get current extensions and available plugins
+                pipeline = await self.ap.pipeline_service.get_pipeline(pipeline_uuid)
+                if pipeline is None:
+                    return self.http_status(404, -1, 'pipeline not found')
+
+                plugins = await self.ap.plugin_connector.list_plugins()
+
+                return self.success(
+                    data={
+                        'bound_plugins': pipeline.get('extensions_preferences', {}).get('plugins', []),
+                        'available_plugins': plugins,
+                    }
+                )
+            elif quart.request.method == 'PUT':
+                # Update bound plugins for this pipeline
+                json_data = await quart.request.json
+                bound_plugins = json_data.get('bound_plugins', [])
+
+                await self.ap.pipeline_service.update_pipeline_extensions(pipeline_uuid, bound_plugins)
+
+                return self.success()

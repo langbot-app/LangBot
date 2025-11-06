@@ -68,6 +68,9 @@ class RuntimePipeline:
 
     stage_containers: list[StageInstContainer]
     """阶段实例容器"""
+    
+    bound_plugins: list[str]
+    """绑定到此流水线的插件列表（格式：author/plugin_name）"""
 
     def __init__(
         self,
@@ -78,9 +81,16 @@ class RuntimePipeline:
         self.ap = ap
         self.pipeline_entity = pipeline_entity
         self.stage_containers = stage_containers
+        
+        # Extract bound plugins from extensions_preferences
+        extensions_prefs = pipeline_entity.extensions_preferences or {}
+        plugin_list = extensions_prefs.get('plugins', [])
+        self.bound_plugins = [f"{p['author']}/{p['name']}" for p in plugin_list] if plugin_list else []
 
     async def run(self, query: pipeline_query.Query):
         query.pipeline_config = self.pipeline_entity.config
+        # Store bound plugins in query for filtering
+        query.variables['_pipeline_bound_plugins'] = self.bound_plugins
         await self.process_query(query)
 
     async def _check_output(self, query: pipeline_query.Query, result: pipeline_entities.StageProcessResult):
@@ -188,6 +198,9 @@ class RuntimePipeline:
     async def process_query(self, query: pipeline_query.Query):
         """处理请求"""
         try:
+            # Get bound plugins for this pipeline
+            bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+            
             # ======== 触发 MessageReceived 事件 ========
             event_type = (
                 events.PersonMessageReceived
@@ -203,7 +216,7 @@ class RuntimePipeline:
                 message_chain=query.message_chain,
             )
 
-            event_ctx = await self.ap.plugin_connector.emit_event(event_obj)
+            event_ctx = await self.ap.plugin_connector.emit_event(event_obj, bound_plugins)
 
             if event_ctx.is_prevented_default():
                 return

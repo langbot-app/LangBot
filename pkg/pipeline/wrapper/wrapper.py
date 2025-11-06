@@ -72,7 +72,9 @@ class ResponseWrapper(stage.PipelineStage):
                             query=query,
                         )
 
-                        event_ctx = await self.ap.plugin_connector.emit_event(event)
+                        # Get bound plugins for filtering
+                        bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+                        event_ctx = await self.ap.plugin_connector.emit_event(event, bound_plugins)
 
                         if event_ctx.is_prevented_default():
                             yield entities.StageProcessResult(
@@ -115,7 +117,9 @@ class ResponseWrapper(stage.PipelineStage):
                                 query=query,
                             )
 
-                            event_ctx = await self.ap.plugin_connector.emit_event(event)
+                            # Get bound plugins for filtering
+                            bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+                            event_ctx = await self.ap.plugin_connector.emit_event(event, bound_plugins)
 
                             if event_ctx.is_prevented_default():
                                 yield entities.StageProcessResult(

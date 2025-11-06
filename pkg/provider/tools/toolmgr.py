@@ -29,12 +29,12 @@ class ToolManager:
             await loader_inst.initialize()
             self.loaders.append(loader_inst)
 
-    async def get_all_tools(self) -> list[resource_tool.LLMTool]:
+    async def get_all_tools(self, bound_plugins: list[str] | None = None) -> list[resource_tool.LLMTool]:
         """获取所有函数"""
         all_functions: list[resource_tool.LLMTool] = []
 
         for loader in self.loaders:
-            all_functions.extend(await loader.get_tools())
+            all_functions.extend(await loader.get_tools(bound_plugins))
 
         return all_functions
 
