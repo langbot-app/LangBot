@@ -402,7 +402,6 @@ const jaJP = {
     chat: 'チャット',
     configuration: '設定',
     debugChat: 'チャットデバッグ',
-    extensions: 'プラグイン統合',
     getPipelineListError: 'パイプラインリストの取得に失敗しました：',
     daysAgo: '日前',
     today: '今日',
