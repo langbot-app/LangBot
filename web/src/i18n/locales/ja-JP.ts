@@ -506,8 +506,8 @@ const jaJP = {
       uploadSuccess: 'ファイルのアップロードに成功しました！',
       uploadError: 'ファイルのアップロードに失敗しました。再度お試しください',
       uploadingFile: 'ファイルをアップロード中...',
-      fileTooLarge: 'ファイルが大きすぎます',
-      fileSizeExceeded: 'ファイルサイズが10MBの制限を超えています。より小さいファイルに分割してください。',
+      fileSizeExceeded:
+        'ファイルサイズが10MBの制限を超えています。より小さいファイルに分割してください。',
       actions: 'アクション',
       delete: 'ドキュメントを削除',
       fileDeleteSuccess: 'ドキュメントの削除に成功しました',

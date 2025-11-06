@@ -9,6 +9,9 @@ from quart.typing import RouteCallable
 
 from ....core import app
 
+# Maximum file upload size limit (10MB)
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
 
 preregistered_groups: list[type[RouterGroup]] = []
 """Pre-registered list of RouterGroup"""

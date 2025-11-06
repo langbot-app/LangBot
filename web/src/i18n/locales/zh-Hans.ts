@@ -483,7 +483,6 @@ const zhHans = {
       uploadSuccess: '文件上传成功！',
       uploadError: '文件上传失败，请重试',
       uploadingFile: '上传文件中...',
-      fileTooLarge: '文件过大',
       fileSizeExceeded: '文件大小超过 10MB 限制，请分割成较小的文件后上传',
       actions: '操作',
       delete: '删除文件',
