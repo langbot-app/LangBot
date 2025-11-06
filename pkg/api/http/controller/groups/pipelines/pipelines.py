@@ -54,18 +54,40 @@ class PipelinesRouterGroup(group.RouterGroup):
                 pipeline = await self.ap.pipeline_service.get_pipeline(pipeline_uuid)
                 if pipeline is None:
                     return self.http_status(404, -1, 'pipeline not found')
-                
+
                 plugins = await self.ap.plugin_connector.list_plugins()
-                
-                return self.success(data={
-                    'bound_plugins': pipeline.get('extensions_preferences', {}).get('plugins', []),
-                    'available_plugins': plugins
-                })
+
+                # Transform nested plugin structure to flat structure for frontend
+                available_plugins = []
+                for plugin in plugins:
+                    # Extract metadata from nested structure
+                    # Structure: plugin['manifest']['manifest']['metadata']
+                    metadata = plugin.get('manifest', {}).get('manifest', {}).get('metadata', {})
+                    description_obj = metadata.get('description', {})
+
+                    available_plugins.append(
+                        {
+                            'plugin_author': metadata.get('author', ''),
+                            'plugin_name': metadata.get('name', ''),
+                            'version': metadata.get('version', ''),
+                            'description': description_obj.get('en_US', description_obj.get('zh_CN', ''))
+                            if isinstance(description_obj, dict)
+                            else str(description_obj),
+                            'enabled': plugin.get('enabled', True),
+                        }
+                    )
+
+                return self.success(
+                    data={
+                        'bound_plugins': pipeline.get('extensions_preferences', {}).get('plugins', []),
+                        'available_plugins': available_plugins,
+                    }
+                )
             elif quart.request.method == 'PUT':
                 # Update bound plugins for this pipeline
                 json_data = await quart.request.json
                 bound_plugins = json_data.get('bound_plugins', [])
-                
+
                 await self.ap.pipeline_service.update_pipeline_extensions(pipeline_uuid, bound_plugins)
-                
+
                 return self.success()
