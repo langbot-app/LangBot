@@ -324,6 +324,7 @@ export default function LLMForm({
           extraArgsObj[arg.key] = arg.value;
         }
       });
+    const apiKey = form.getValues('api_key');
     httpClient
       .testLLMModel('_', {
         uuid: '',
@@ -334,7 +335,7 @@ export default function LLMForm({
           base_url: form.getValues('url'),
           timeout: 120,
         },
-        api_keys: form.getValues('api_key') ? [form.getValues('api_key')] : [],
+        api_keys: apiKey ? [apiKey] : [],
         abilities: form.getValues('abilities'),
         extra_args: extraArgsObj,
       })

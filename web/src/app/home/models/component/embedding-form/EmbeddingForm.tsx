@@ -310,6 +310,7 @@ export default function EmbeddingForm({
           extraArgsObj[arg.key] = arg.value;
         }
       });
+    const apiKey = form.getValues('api_key');
     httpClient
       .testEmbeddingModel('_', {
         uuid: '',
@@ -320,7 +321,7 @@ export default function EmbeddingForm({
           base_url: form.getValues('url'),
           timeout: 120,
         },
-        api_keys: form.getValues('api_key') ? [form.getValues('api_key')] : [],
+        api_keys: apiKey ? [apiKey] : [],
         extra_args: extraArgsObj,
       })
       .then((res) => {
