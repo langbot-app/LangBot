@@ -178,7 +178,7 @@ class AsyncCozeAPIClient:
                         elif chunk.startswith("data:"):
                             chunk_data = chunk.replace("data:", "", 1).strip()
                     else:
-                        yield {"event": chunk_type, "data": json.loads(chunk_data)}
+                        yield {"event": chunk_type, "data": json.loads(chunk_data) if chunk_data else {}}  # 处理本地部署时，接口返回的data为空值
 
         except asyncio.TimeoutError:
             raise Exception(f"Coze API 流式请求超时 ({timeout}秒)")
