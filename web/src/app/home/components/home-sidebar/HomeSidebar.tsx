@@ -25,6 +25,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { Badge } from '@/components/ui/badge';
 import PasswordChangeDialog from '@/app/home/components/password-change-dialog/PasswordChangeDialog';
+import ApiKeyManagementDialog from '@/app/home/components/api-key-management-dialog/ApiKeyManagementDialog';
 
 // TODO 侧边导航栏要加动画
 export default function HomeSidebar({
@@ -45,6 +46,7 @@ export default function HomeSidebar({
   const { t } = useTranslation();
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [passwordChangeOpen, setPasswordChangeOpen] = useState(false);
+  const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false);
   const [languageSelectorOpen, setLanguageSelectorOpen] = useState(false);
   const [starCount, setStarCount] = useState<number | null>(null);
 
@@ -220,6 +222,23 @@ export default function HomeSidebar({
           name={t('common.helpDocs')}
         />
 
+        <SidebarChild
+          onClick={() => {
+            setApiKeyDialogOpen(true);
+          }}
+          isSelected={false}
+          icon={
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
+              <path d="M7 10H20C20.5523 10 21 10.4477 21 11V21C21 21.5523 20.5523 22 20 22H4C3.44772 22 3 21.5523 3 21V11C3 10.4477 3.44772 10 4 10H5V9C5 5.13401 8.13401 2 12 2C15.866 2 19 5.13401 19 9V10H17V9C17 6.23858 14.7614 4 12 4C9.23858 4 7 6.23858 7 9V10ZM12 14C10.8954 14 10 14.8954 10 16C10 17.1046 10.8954 18 12 18C13.1046 18 14 17.1046 14 16C14 14.8954 13.1046 14 12 14Z"></path>
+            </svg>
+          }
+          name={t('common.apiKeys')}
+        />
+
         <Popover
           open={popoverOpen}
           onOpenChange={(open) => {
@@ -325,6 +344,10 @@ export default function HomeSidebar({
       <PasswordChangeDialog
         open={passwordChangeOpen}
         onOpenChange={setPasswordChangeOpen}
+      />
+      <ApiKeyManagementDialog
+        open={apiKeyDialogOpen}
+        onOpenChange={setApiKeyDialogOpen}
       />
     </div>
   );
