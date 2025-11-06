@@ -67,7 +67,7 @@ export default function PipelineExtension({
       // Load MCP servers
       const boundMCPServerIds = new Set(data.bound_mcp_servers || []);
       const selectedMCP = data.available_mcp_servers.filter((server) =>
-        boundMCPServerIds.has(server.uuid),
+        boundMCPServerIds.has(server.uuid || ''),
       );
 
       setSelectedMCPServers(selectedMCP);
@@ -90,7 +90,7 @@ export default function PipelineExtension({
         };
       });
 
-      const boundMCPServerIds = mcpServers.map((server) => server.uuid);
+      const boundMCPServerIds = mcpServers.map((server) => server.uuid || '');
 
       await backendClient.updatePipelineExtensions(
         pipelineId,
@@ -157,7 +157,7 @@ export default function PipelineExtension({
 
   const handleConfirmMCPSelection = async () => {
     const newSelected = allMCPServers.filter((s) =>
-      tempSelectedMCPIds.includes(s.uuid),
+      tempSelectedMCPIds.includes(s.uuid || ''),
     );
     setSelectedMCPServers(newSelected);
     setMcpDialogOpen(false);
@@ -398,12 +398,12 @@ export default function PipelineExtension({
           </DialogHeader>
           <div className="flex-1 overflow-y-auto space-y-2 pr-2">
             {allMCPServers.map((server) => {
-              const isSelected = tempSelectedMCPIds.includes(server.uuid);
+              const isSelected = tempSelectedMCPIds.includes(server.uuid || '');
               return (
                 <div
                   key={server.uuid}
                   className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent cursor-pointer"
-                  onClick={() => handleToggleMCPServer(server.uuid)}
+                  onClick={() => handleToggleMCPServer(server.uuid || '')}
                 >
                   <Checkbox checked={isSelected} />
                   <div className="w-10 h-10 rounded-lg border bg-muted flex items-center justify-center flex-shrink-0">
