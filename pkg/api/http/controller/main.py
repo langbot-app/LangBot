@@ -5,6 +5,7 @@ import os
 
 import quart
 import quart_cors
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from ....core import app, entities as core_entities
 from ....utils import importutil
@@ -39,6 +40,16 @@ class HTTPController:
         self.quart_app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB
 
     async def initialize(self) -> None:
+        # Register custom error handler for file size limit
+        @self.quart_app.errorhandler(RequestEntityTooLarge)
+        async def handle_request_entity_too_large(e):
+            return quart.jsonify(
+                {
+                    'code': 400,
+                    'msg': 'File size exceeds 10MB limit. Please split large files into smaller parts.',
+                }
+            ), 400
+        
         await self.register_routes()
 
     async def run(self) -> None:
