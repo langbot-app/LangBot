@@ -17,6 +17,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Plugin } from '@/app/infra/entities/plugin';
+import PluginComponentList from '@/app/home/plugins/components/plugin-installed/PluginComponentList';
 
 export default function PipelineExtension({
   pipelineId,
@@ -145,11 +146,28 @@ export default function PipelineExtension({
                   key={pluginId}
                   className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent"
                 >
-                  <div className="flex items-center gap-3">
-                    <div>
+                  <div className="flex-1 flex items-center gap-3">
+                    <img
+                      src={backendClient.getPluginIconURL(
+                        metadata.author || '',
+                        metadata.name,
+                      )}
+                      alt={metadata.name}
+                      className="w-10 h-10 rounded-lg border bg-muted object-cover flex-shrink-0"
+                    />
+                    <div className="flex-1">
                       <div className="font-medium">{metadata.name}</div>
                       <div className="text-sm text-muted-foreground">
                         {metadata.author} • v{metadata.version}
+                      </div>
+                      <div className="flex gap-1 mt-1">
+                        <PluginComponentList
+                          components={plugin.components}
+                          showComponentName={true}
+                          showTitle={false}
+                          useBadge={true}
+                          t={t}
+                        />
                       </div>
                     </div>
                     {!plugin.enabled && (
@@ -194,10 +212,27 @@ export default function PipelineExtension({
                   onClick={() => handleTogglePlugin(pluginId)}
                 >
                   <Checkbox checked={isSelected} />
+                  <img
+                    src={backendClient.getPluginIconURL(
+                      metadata.author || '',
+                      metadata.name,
+                    )}
+                    alt={metadata.name}
+                    className="w-10 h-10 rounded-lg border bg-muted object-cover flex-shrink-0"
+                  />
                   <div className="flex-1">
                     <div className="font-medium">{metadata.name}</div>
                     <div className="text-sm text-muted-foreground">
                       {metadata.author} • v{metadata.version}
+                    </div>
+                    <div className="flex gap-1 mt-1">
+                      <PluginComponentList
+                        components={plugin.components}
+                        showComponentName={true}
+                        showTitle={false}
+                        useBadge={true}
+                        t={t}
+                      />
                     </div>
                   </div>
                   {!plugin.enabled && (
