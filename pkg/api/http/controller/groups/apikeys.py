@@ -1,6 +1,6 @@
 import quart
 
-from ... import group
+from .. import group
 
 
 @group.group_class('apikeys', '/api/v1/apikeys')
