@@ -411,7 +411,7 @@ const zhHant = {
     deleteSuccess: '刪除成功',
     deleteError: '刪除失敗：',
     extensions: {
-      title: '插件集成',
+      title: '擴展集成',
       loadError: '載入插件清單失敗',
       saveSuccess: '儲存成功',
       saveError: '儲存失敗',
@@ -425,6 +425,7 @@ const zhHant = {
       noMCPServersSelected: '未選擇任何 MCP 伺服器',
       addMCPServer: '新增 MCP 伺服器',
       selectMCPServers: '選擇 MCP 伺服器',
+      toolCount: '{{count}} 個工具',
     },
     debugDialog: {
       title: '流程線對話',

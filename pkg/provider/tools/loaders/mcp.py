@@ -29,7 +29,7 @@ class RuntimeMCPSession:
     ap: app.Application
 
     server_name: str
-    
+
     server_uuid: str
 
     server_config: dict
@@ -44,7 +44,6 @@ class RuntimeMCPSession:
 
     # connected: bool
     status: MCPSessionStatus
-
 
     _lifecycle_task: asyncio.Task | None
 
@@ -289,12 +288,14 @@ class MCPLoader(loader.ToolLoader):
         """
 
         name = server_config['name']
+        uuid = server_config['uuid']
         mode = server_config['mode']
         enable = server_config['enable']
         extra_args = server_config.get('extra_args', {})
 
         mixed_config = {
             'name': name,
+            'uuid': uuid,
             'mode': mode,
             'enable': enable,
             **extra_args,

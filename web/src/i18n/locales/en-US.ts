@@ -443,6 +443,7 @@ const enUS = {
       noMCPServersSelected: 'No MCP servers selected',
       addMCPServer: 'Add MCP Server',
       selectMCPServers: 'Select MCP Servers',
+      toolCount: '{{count}} tools',
     },
     debugDialog: {
       title: 'Pipeline Chat',

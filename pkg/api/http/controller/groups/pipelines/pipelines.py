@@ -56,7 +56,7 @@ class PipelinesRouterGroup(group.RouterGroup):
                     return self.http_status(404, -1, 'pipeline not found')
 
                 plugins = await self.ap.plugin_connector.list_plugins()
-                mcp_servers = await self.ap.mcp_service.get_mcp_servers(contain_runtime_info=False)
+                mcp_servers = await self.ap.mcp_service.get_mcp_servers(contain_runtime_info=True)
 
                 return self.success(
                     data={

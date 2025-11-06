@@ -14,7 +14,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, X, Server } from 'lucide-react';
+import { Plus, X, Server, Wrench } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { MCPServer } from '@/app/infra/entities/api';
@@ -33,7 +33,9 @@ export default function PipelineExtension({
   const [allMCPServers, setAllMCPServers] = useState<MCPServer[]>([]);
   const [pluginDialogOpen, setPluginDialogOpen] = useState(false);
   const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
-  const [tempSelectedPluginIds, setTempSelectedPluginIds] = useState<string[]>([]);
+  const [tempSelectedPluginIds, setTempSelectedPluginIds] = useState<string[]>(
+    [],
+  );
   const [tempSelectedMCPIds, setTempSelectedMCPIds] = useState<string[]>([]);
 
   useEffect(() => {
@@ -113,9 +115,7 @@ export default function PipelineExtension({
   };
 
   const handleRemoveMCPServer = async (serverUuid: string) => {
-    const newServers = selectedMCPServers.filter(
-      (s) => s.uuid !== serverUuid,
-    );
+    const newServers = selectedMCPServers.filter((s) => s.uuid !== serverUuid);
     setSelectedMCPServers(newServers);
     await saveToBackend(selectedPlugins, newServers);
   };
@@ -126,7 +126,7 @@ export default function PipelineExtension({
   };
 
   const handleOpenMCPDialog = () => {
-    setTempSelectedMCPIds(selectedMCPServers.map((s) => s.uuid));
+    setTempSelectedMCPIds(selectedMCPServers.map((s) => s.uuid || ''));
     setMcpDialogOpen(true);
   };
 
@@ -242,7 +242,11 @@ export default function PipelineExtension({
           )}
         </div>
 
-        <Button onClick={handleOpenPluginDialog} variant="outline" className="w-full">
+        <Button
+          onClick={handleOpenPluginDialog}
+          variant="outline"
+          className="w-full"
+        >
           <Plus className="mr-2 h-4 w-4" />
           {t('pipelines.extensions.addPlugin')}
         </Button>
@@ -276,6 +280,20 @@ export default function PipelineExtension({
                       <div className="text-sm text-muted-foreground">
                         {server.mode}
                       </div>
+                      {server.runtime_info &&
+                        server.runtime_info.status === 'connected' && (
+                          <Badge
+                            variant="outline"
+                            className="flex items-center gap-1 mt-1"
+                          >
+                            <Wrench className="h-3 w-3 text-white" />
+                            <span className="text-xs text-white">
+                              {t('pipelines.extensions.toolCount', {
+                                count: server.runtime_info.tool_count || 0,
+                              })}
+                            </span>
+                          </Badge>
+                        )}
                     </div>
                     {!server.enable && (
                       <Badge variant="secondary">
@@ -286,7 +304,7 @@ export default function PipelineExtension({
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => handleRemoveMCPServer(server.uuid)}
+                    onClick={() => handleRemoveMCPServer(server.uuid || '')}
                   >
                     <X className="h-4 w-4" />
                   </Button>
@@ -296,7 +314,11 @@ export default function PipelineExtension({
           )}
         </div>
 
-        <Button onClick={handleOpenMCPDialog} variant="outline" className="w-full">
+        <Button
+          onClick={handleOpenMCPDialog}
+          variant="outline"
+          className="w-full"
+        >
           <Plus className="mr-2 h-4 w-4" />
           {t('pipelines.extensions.addMCPServer')}
         </Button>
@@ -353,7 +375,10 @@ export default function PipelineExtension({
             })}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPluginDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setPluginDialogOpen(false)}
+            >
               {t('common.cancel')}
             </Button>
             <Button onClick={handleConfirmPluginSelection}>
@@ -367,7 +392,9 @@ export default function PipelineExtension({
       <Dialog open={mcpDialogOpen} onOpenChange={setMcpDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>{t('pipelines.extensions.selectMCPServers')}</DialogTitle>
+            <DialogTitle>
+              {t('pipelines.extensions.selectMCPServers')}
+            </DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto space-y-2 pr-2">
             {allMCPServers.map((server) => {
@@ -387,6 +414,17 @@ export default function PipelineExtension({
                     <div className="text-sm text-muted-foreground">
                       {server.mode}
                     </div>
+                    {server.runtime_info &&
+                      server.runtime_info.status === 'connected' && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <Wrench className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground">
+                            {t('pipelines.extensions.toolCount', {
+                              count: server.runtime_info.tool_count || 0,
+                            })}
+                          </span>
+                        </div>
+                      )}
                   </div>
                   {!server.enable && (
                     <Badge variant="secondary">

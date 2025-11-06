@@ -413,7 +413,7 @@ const zhHans = {
     deleteSuccess: '删除成功',
     deleteError: '删除失败：',
     extensions: {
-      title: '插件集成',
+      title: '扩展集成',
       loadError: '加载插件列表失败',
       saveSuccess: '保存成功',
       saveError: '保存失败',
@@ -427,6 +427,7 @@ const zhHans = {
       noMCPServersSelected: '未选择任何 MCP 服务器',
       addMCPServer: '添加 MCP 服务器',
       selectMCPServers: '选择 MCP 服务器',
+      toolCount: '{{count}} 个工具',
     },
     debugDialog: {
       title: '流水线对话',

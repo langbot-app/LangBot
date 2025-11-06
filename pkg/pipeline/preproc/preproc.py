@@ -70,6 +70,10 @@ class PreProcessor(stage.PipelineStage):
                 bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
                 query.use_funcs = await self.ap.tool_mgr.get_all_tools(bound_plugins, bound_mcp_servers)
 
+                self.ap.logger.debug(f'Bound plugins: {bound_plugins}')
+                self.ap.logger.debug(f'Bound MCP servers: {bound_mcp_servers}')
+                self.ap.logger.debug(f'Use funcs: {query.use_funcs}')
+
         variables = {
             'session_id': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
             'conversation_id': conversation.uuid,
