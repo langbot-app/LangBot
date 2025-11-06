@@ -101,7 +101,7 @@ export default function EmbeddingForm({
       name: '',
       model_provider: '',
       url: '',
-      api_key: 'sk-xxxxx',
+      api_key: '',
       extra_args: [],
     },
   });

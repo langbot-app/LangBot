@@ -103,7 +103,7 @@ export default function LLMForm({
       name: '',
       model_provider: '',
       url: '',
-      api_key: 'sk-xxxxx',
+      api_key: '',
       abilities: [],
       extra_args: [],
     },
