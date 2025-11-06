@@ -25,6 +25,9 @@ importutil.import_modules_in_pkg(groups_pipelines)
 importutil.import_modules_in_pkg(groups_knowledge)
 importutil.import_modules_in_pkg(groups_resources)
 
+# Maximum file upload size limit (10MB)
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
 
 class HTTPController:
     ap: app.Application
@@ -36,8 +39,8 @@ class HTTPController:
         self.quart_app = quart.Quart(__name__)
         quart_cors.cors(self.quart_app, allow_origin='*')
         
-        # Set maximum content length to 10MB to prevent large file uploads
-        self.quart_app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB
+        # Set maximum content length to prevent large file uploads
+        self.quart_app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
 
     async def initialize(self) -> None:
         # Register custom error handler for file size limit

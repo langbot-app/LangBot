@@ -8,6 +8,7 @@ import asyncio
 import quart.datastructures
 
 from .. import group
+from ..main import MAX_FILE_SIZE
 
 
 @group.group_class('files', '/api/v1/files')
@@ -33,7 +34,6 @@ class FilesRouterGroup(group.RouterGroup):
             request = quart.request
             
             # Check file size limit before reading the file
-            MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
             content_length = request.content_length
             if content_length and content_length > MAX_FILE_SIZE:
                 return self.fail(400, 'File size exceeds 10MB limit. Please split large files into smaller parts.')
