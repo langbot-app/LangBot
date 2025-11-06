@@ -34,14 +34,19 @@ def handle_validation(body: dict, bot_secret: str):
 
 
 class QQOfficialClient:
-    def __init__(self, secret: str, token: str, app_id: str, logger: None):
+    def __init__(self, secret: str, token: str, app_id: str, logger: None, unified_mode: bool = False):
+        self.unified_mode = unified_mode
         self.app = Quart(__name__)
-        self.app.add_url_rule(
-            '/callback/command',
-            'handle_callback',
-            self.handle_callback_request,
-            methods=['GET', 'POST'],
-        )
+
+        # 只有在非统一模式下才注册独立路由
+        if not self.unified_mode:
+            self.app.add_url_rule(
+                '/callback/command',
+                'handle_callback',
+                self.handle_callback_request,
+                methods=['GET', 'POST'],
+            )
+
         self.secret = secret
         self.token = token
         self.app_id = app_id
@@ -82,10 +87,29 @@ class QQOfficialClient:
                 raise Exception(f'获取access_token失败: {e}')
 
     async def handle_callback_request(self):
-        """处理回调请求"""
+        """处理回调请求（独立端口模式，使用全局 request）"""
+        return await self._handle_callback_internal(request)
+
+    async def handle_unified_webhook(self, req):
+        """处理回调请求（统一 webhook 模式，显式传递 request）。
+
+        Args:
+            req: Quart Request 对象
+
+        Returns:
+            响应数据
+        """
+        return await self._handle_callback_internal(req)
+
+    async def _handle_callback_internal(self, req):
+        """处理回调请求的内部实现。
+
+        Args:
+            req: Quart Request 对象
+        """
         try:
             # 读取请求数据
-            body = await request.get_data()
+            body = await req.get_data()
             payload = json.loads(body)
 
             # 验证是否为回调验证请求

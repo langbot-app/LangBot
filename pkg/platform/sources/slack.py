@@ -86,6 +86,7 @@ class SlackEventConverter(abstract_platform_adapter.AbstractEventConverter):
 class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot: SlackClient
     bot_account_id: str
+    bot_uuid: str = None
     message_converter: SlackMessageConverter = SlackMessageConverter()
     event_converter: SlackEventConverter = SlackEventConverter()
     config: dict
@@ -102,7 +103,10 @@ class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             raise command_errors.ParamNotEnoughError('Slack机器人缺少相关配置项，请查看文档或联系管理员')
 
         self.bot = SlackClient(
-            bot_token=self.config['bot_token'], signing_secret=self.config['signing_secret'], logger=self.logger
+            bot_token=self.config['bot_token'],
+            signing_secret=self.config['signing_secret'],
+            logger=self.logger,
+            unified_mode=True
         )
 
     async def reply_message(
@@ -148,16 +152,45 @@ class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         elif event_type == platform_events.GroupMessage:
             self.bot.on_message('channel')(on_message)
 
+    def set_bot_uuid(self, bot_uuid: str):
+        """设置 bot UUID（用于生成 webhook URL）"""
+        self.bot_uuid = bot_uuid
+
+    async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
+        """处理统一 webhook 请求。
+
+        Args:
+            bot_uuid: Bot 的 UUID
+            path: 子路径（如果有的话）
+            request: Quart Request 对象
+
+        Returns:
+            响应数据
+        """
+        return await self.bot.handle_unified_webhook(request)
+
     async def run_async(self):
-        async def shutdown_trigger_placeholder():
+        # 统一 webhook 模式下，不启动独立的 Quart 应用
+        # 保持运行但不启动独立端口
+
+        # 打印 webhook 回调地址
+        if self.bot_uuid and hasattr(self.logger, 'ap'):
+            try:
+                api_port = self.logger.ap.instance_config.data['api']['port']
+                webhook_url = f"http://127.0.0.1:{api_port}/bots/{self.bot_uuid}"
+                webhook_url_public = f"http://<Your-Public-IP>:{api_port}/bots/{self.bot_uuid}"
+
+                await self.logger.info(f"Slack 机器人 Webhook 回调地址:")
+                await self.logger.info(f"  本地地址: {webhook_url}")
+                await self.logger.info(f"  公网地址: {webhook_url_public}")
+                await self.logger.info(f"请在 Slack 后台配置此回调地址")
+            except Exception as e:
+                await self.logger.warning(f"无法生成 webhook URL: {e}")
+
+        async def keep_alive():
             while True:
                 await asyncio.sleep(1)
-
-        await self.bot.run_task(
-            host='0.0.0.0',
-            port=self.config['port'],
-            shutdown_trigger=shutdown_trigger_placeholder,
-        )
+        await keep_alive()
 
     async def kill(self) -> bool:
         return False

@@ -11,13 +11,6 @@ metadata:
   icon: wecombot.png
 spec:
   config:
-    - name: port
-      label:
-        en_US: Port
-        zh_Hans: 监听端口
-      type: integer
-      required: true
-      default: 2291
     - name: Corpid
       label:
         en_US: Corpid

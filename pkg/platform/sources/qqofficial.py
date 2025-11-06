@@ -135,12 +135,17 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
     bot: QQOfficialClient
     config: dict
     bot_account_id: str
+    bot_uuid: str = None
     message_converter: QQOfficialMessageConverter = QQOfficialMessageConverter()
     event_converter: QQOfficialEventConverter = QQOfficialEventConverter()
 
     def __init__(self, config: dict, logger: EventLogger):
         bot = QQOfficialClient(
-            app_id=config['appid'], secret=config['secret'], token=config['token'], logger=logger
+            app_id=config['appid'],
+            secret=config['secret'],
+            token=config['token'],
+            logger=logger,
+            unified_mode=True
         )
 
         super().__init__(
@@ -226,16 +231,45 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
             self.bot.on_message('GROUP_AT_MESSAGE_CREATE')(on_message)
             self.bot.on_message('AT_MESSAGE_CREATE')(on_message)
 
+    def set_bot_uuid(self, bot_uuid: str):
+        """设置 bot UUID（用于生成 webhook URL）"""
+        self.bot_uuid = bot_uuid
+
+    async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
+        """处理统一 webhook 请求。
+
+        Args:
+            bot_uuid: Bot 的 UUID
+            path: 子路径（如果有的话）
+            request: Quart Request 对象
+
+        Returns:
+            响应数据
+        """
+        return await self.bot.handle_unified_webhook(request)
+
     async def run_async(self):
-        async def shutdown_trigger_placeholder():
+        # 统一 webhook 模式下，不启动独立的 Quart 应用
+        # 保持运行但不启动独立端口
+
+        # 打印 webhook 回调地址
+        if self.bot_uuid and hasattr(self.logger, 'ap'):
+            try:
+                api_port = self.logger.ap.instance_config.data['api']['port']
+                webhook_url = f"http://127.0.0.1:{api_port}/bots/{self.bot_uuid}"
+                webhook_url_public = f"http://<Your-Public-IP>:{api_port}/bots/{self.bot_uuid}"
+
+                await self.logger.info(f"QQ 官方机器人 Webhook 回调地址:")
+                await self.logger.info(f"  本地地址: {webhook_url}")
+                await self.logger.info(f"  公网地址: {webhook_url_public}")
+                await self.logger.info(f"请在 QQ 官方机器人后台配置此回调地址")
+            except Exception as e:
+                await self.logger.warning(f"无法生成 webhook URL: {e}")
+
+        async def keep_alive():
             while True:
                 await asyncio.sleep(1)
-
-        await self.bot.run_task(
-            host='0.0.0.0',
-            port=self.config['port'],
-            shutdown_trigger=shutdown_trigger_placeholder,
-        )
+        await keep_alive()
 
     async def kill(self) -> bool:
         return False

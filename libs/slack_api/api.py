@@ -8,14 +8,19 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 
 
 class SlackClient:
-    def __init__(self, bot_token: str, signing_secret: str, logger: None):
+    def __init__(self, bot_token: str, signing_secret: str, logger: None, unified_mode: bool = False):
         self.bot_token = bot_token
         self.signing_secret = signing_secret
+        self.unified_mode = unified_mode
         self.app = Quart(__name__)
         self.client = AsyncWebClient(self.bot_token)
-        self.app.add_url_rule(
-            '/callback/command', 'handle_callback', self.handle_callback_request, methods=['GET', 'POST']
-        )
+
+        # 只有在非统一模式下才注册独立路由
+        if not self.unified_mode:
+            self.app.add_url_rule(
+                '/callback/command', 'handle_callback', self.handle_callback_request, methods=['GET', 'POST']
+            )
+
         self._message_handlers = {
             'example': [],
         }
@@ -23,8 +28,28 @@ class SlackClient:
         self.logger = logger
 
     async def handle_callback_request(self):
+        """处理回调请求（独立端口模式，使用全局 request）"""
+        return await self._handle_callback_internal(request)
+
+    async def handle_unified_webhook(self, req):
+        """处理回调请求（统一 webhook 模式，显式传递 request）。
+
+        Args:
+            req: Quart Request 对象
+
+        Returns:
+            响应数据
+        """
+        return await self._handle_callback_internal(req)
+
+    async def _handle_callback_internal(self, req):
+        """处理回调请求的内部实现。
+
+        Args:
+            req: Quart Request 对象
+        """
         try:
-            body = await request.get_data()
+            body = await req.get_data()
             data = json.loads(body)
             if 'type' in data:
                 if data['type'] == 'url_verification':

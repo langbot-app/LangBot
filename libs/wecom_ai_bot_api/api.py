@@ -200,7 +200,7 @@ class StreamSessionManager:
 
 
 class WecomBotClient:
-    def __init__(self, Token: str, EnCodingAESKey: str, Corpid: str, logger: EventLogger):
+    def __init__(self, Token: str, EnCodingAESKey: str, Corpid: str, logger: EventLogger, unified_mode: bool = False):
         """企业微信智能机器人客户端。
 
         Args:
@@ -208,6 +208,7 @@ class WecomBotClient:
             EnCodingAESKey: 企业微信消息加解密密钥。
             Corpid: 企业 ID。
             logger: 日志记录器。
+            unified_mode: 是否使用统一 webhook 模式（默认 False）。
 
         Example:
             >>> client = WecomBotClient(Token='token', EnCodingAESKey='aeskey', Corpid='corp', logger=logger)
@@ -217,13 +218,18 @@ class WecomBotClient:
         self.EnCodingAESKey = EnCodingAESKey
         self.Corpid = Corpid
         self.ReceiveId = ''
+        self.unified_mode = unified_mode
         self.app = Quart(__name__)
-        self.app.add_url_rule(
-            '/callback/command',
-            'handle_callback',
-            self.handle_callback_request,
-            methods=['POST', 'GET']
-        )
+
+        # 只有在非统一模式下才注册独立路由
+        if not self.unified_mode:
+            self.app.add_url_rule(
+                '/callback/command',
+                'handle_callback',
+                self.handle_callback_request,
+                methods=['POST', 'GET']
+            )
+
         self._message_handlers = {
             'example': [],
         }
@@ -362,7 +368,7 @@ class WecomBotClient:
         return await self._encrypt_and_reply(payload, nonce)
 
     async def handle_callback_request(self):
-        """企业微信回调入口。
+        """企业微信回调入口（独立端口模式，使用全局 request）。
 
         Returns:
             Quart Response: 根据请求类型返回验证、首包或刷新结果。
@@ -370,15 +376,34 @@ class WecomBotClient:
         Example:
             作为 Quart 路由处理函数直接注册并使用。
         """
+        return await self._handle_callback_internal(request)
+
+    async def handle_unified_webhook(self, req):
+        """处理回调请求（统一 webhook 模式，显式传递 request）。
+
+        Args:
+            req: Quart Request 对象
+
+        Returns:
+            响应数据
+        """
+        return await self._handle_callback_internal(req)
+
+    async def _handle_callback_internal(self, req):
+        """处理回调请求的内部实现，包括 GET 验证和 POST 消息接收。
+
+        Args:
+            req: Quart Request 对象
+        """
         try:
             self.wxcpt = WXBizMsgCrypt(self.Token, self.EnCodingAESKey, '')
-            await self.logger.info(f'{request.method} {request.url} {str(request.args)}')
+            await self.logger.info(f'{req.method} {req.url} {str(req.args)}')
 
-            if request.method == 'GET':
-                return await self._handle_get_callback()
+            if req.method == 'GET':
+                return await self._handle_get_callback(req)
 
-            if request.method == 'POST':
-                return await self._handle_post_callback()
+            if req.method == 'POST':
+                return await self._handle_post_callback(req)
 
             return Response('', status=405)
 
@@ -386,13 +411,13 @@ class WecomBotClient:
             await self.logger.error(traceback.format_exc())
             return Response('Internal Server Error', status=500)
 
-    async def _handle_get_callback(self) -> tuple[Response, int] | Response:
+    async def _handle_get_callback(self, req) -> tuple[Response, int] | Response:
         """处理企业微信的 GET 验证请求。"""
 
-        msg_signature = unquote(request.args.get('msg_signature', ''))
-        timestamp = unquote(request.args.get('timestamp', ''))
-        nonce = unquote(request.args.get('nonce', ''))
-        echostr = unquote(request.args.get('echostr', ''))
+        msg_signature = unquote(req.args.get('msg_signature', ''))
+        timestamp = unquote(req.args.get('timestamp', ''))
+        nonce = unquote(req.args.get('nonce', ''))
+        echostr = unquote(req.args.get('echostr', ''))
 
         if not all([msg_signature, timestamp, nonce, echostr]):
             await self.logger.error('请求参数缺失')
@@ -405,16 +430,16 @@ class WecomBotClient:
 
         return Response(decrypted_str, mimetype='text/plain')
 
-    async def _handle_post_callback(self) -> tuple[Response, int] | Response:
+    async def _handle_post_callback(self, req) -> tuple[Response, int] | Response:
         """处理企业微信的 POST 回调请求。"""
 
         self.stream_sessions.cleanup()
 
-        msg_signature = unquote(request.args.get('msg_signature', ''))
-        timestamp = unquote(request.args.get('timestamp', ''))
-        nonce = unquote(request.args.get('nonce', ''))
+        msg_signature = unquote(req.args.get('msg_signature', ''))
+        timestamp = unquote(req.args.get('timestamp', ''))
+        nonce = unquote(req.args.get('nonce', ''))
 
-        encrypted_json = await request.get_json()
+        encrypted_json = await req.get_json()
         encrypted_msg = (encrypted_json or {}).get('encrypt', '')
         if not encrypted_msg:
             await self.logger.error("请求体中缺少 'encrypt' 字段")
