@@ -71,6 +71,9 @@ class RuntimePipeline:
     
     bound_plugins: list[str]
     """绑定到此流水线的插件列表（格式：author/plugin_name）"""
+    
+    bound_mcp_servers: list[str]
+    """绑定到此流水线的MCP服务器列表（格式：uuid）"""
 
     def __init__(
         self,
@@ -82,15 +85,19 @@ class RuntimePipeline:
         self.pipeline_entity = pipeline_entity
         self.stage_containers = stage_containers
         
-        # Extract bound plugins from extensions_preferences
+        # Extract bound plugins and MCP servers from extensions_preferences
         extensions_prefs = pipeline_entity.extensions_preferences or {}
         plugin_list = extensions_prefs.get('plugins', [])
         self.bound_plugins = [f"{p['author']}/{p['name']}" for p in plugin_list] if plugin_list else []
+        
+        mcp_server_list = extensions_prefs.get('mcp_servers', [])
+        self.bound_mcp_servers = mcp_server_list if mcp_server_list else []
 
     async def run(self, query: pipeline_query.Query):
         query.pipeline_config = self.pipeline_entity.config
-        # Store bound plugins in query for filtering
+        # Store bound plugins and MCP servers in query for filtering
         query.variables['_pipeline_bound_plugins'] = self.bound_plugins
+        query.variables['_pipeline_bound_mcp_servers'] = self.bound_mcp_servers
         await self.process_query(query)
 
     async def _check_output(self, query: pipeline_query.Query, result: pipeline_entities.StageProcessResult):

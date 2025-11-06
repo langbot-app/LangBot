@@ -28,12 +28,12 @@ class ToolManager:
         self.mcp_tool_loader = mcp_loader.MCPLoader(self.ap)
         await self.mcp_tool_loader.initialize()
 
-    async def get_all_tools(self, bound_plugins: list[str] | None = None) -> list[resource_tool.LLMTool]:
+    async def get_all_tools(self, bound_plugins: list[str] | None = None, bound_mcp_servers: list[str] | None = None) -> list[resource_tool.LLMTool]:
         """获取所有函数"""
         all_functions: list[resource_tool.LLMTool] = []
 
         all_functions.extend(await self.plugin_tool_loader.get_tools(bound_plugins))
-        all_functions.extend(await self.mcp_tool_loader.get_tools(bound_plugins))
+        all_functions.extend(await self.mcp_tool_loader.get_tools(bound_mcp_servers))
 
         return all_functions
 

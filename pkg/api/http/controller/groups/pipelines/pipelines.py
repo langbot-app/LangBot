@@ -56,18 +56,24 @@ class PipelinesRouterGroup(group.RouterGroup):
                     return self.http_status(404, -1, 'pipeline not found')
 
                 plugins = await self.ap.plugin_connector.list_plugins()
+                mcp_servers = await self.ap.mcp_service.get_mcp_servers(contain_runtime_info=False)
 
                 return self.success(
                     data={
                         'bound_plugins': pipeline.get('extensions_preferences', {}).get('plugins', []),
                         'available_plugins': plugins,
+                        'bound_mcp_servers': pipeline.get('extensions_preferences', {}).get('mcp_servers', []),
+                        'available_mcp_servers': mcp_servers,
                     }
                 )
             elif quart.request.method == 'PUT':
-                # Update bound plugins for this pipeline
+                # Update bound plugins and MCP servers for this pipeline
                 json_data = await quart.request.json
                 bound_plugins = json_data.get('bound_plugins', [])
+                bound_mcp_servers = json_data.get('bound_mcp_servers', [])
 
-                await self.ap.pipeline_service.update_pipeline_extensions(pipeline_uuid, bound_plugins)
+                await self.ap.pipeline_service.update_pipeline_extensions(
+                    pipeline_uuid, bound_plugins, bound_mcp_servers
+                )
 
                 return self.success()

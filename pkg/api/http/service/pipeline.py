@@ -137,8 +137,8 @@ class PipelineService:
         )
         await self.ap.pipeline_mgr.remove_pipeline(pipeline_uuid)
 
-    async def update_pipeline_extensions(self, pipeline_uuid: str, bound_plugins: list[dict]) -> None:
-        """Update the bound plugins for a pipeline"""
+    async def update_pipeline_extensions(self, pipeline_uuid: str, bound_plugins: list[dict], bound_mcp_servers: list[str] = None) -> None:
+        """Update the bound plugins and MCP servers for a pipeline"""
         # Get current pipeline
         result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
@@ -153,6 +153,8 @@ class PipelineService:
         # Update extensions_preferences
         extensions_preferences = pipeline.extensions_preferences or {}
         extensions_preferences['plugins'] = bound_plugins
+        if bound_mcp_servers is not None:
+            extensions_preferences['mcp_servers'] = bound_mcp_servers
         
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_pipeline.LegacyPipeline)

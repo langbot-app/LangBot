@@ -65,9 +65,10 @@ class PreProcessor(stage.PipelineStage):
             query.use_llm_model_uuid = llm_model.model_entity.uuid
 
             if llm_model.model_entity.abilities.__contains__('func_call'):
-                # Get bound plugins for filtering tools
+                # Get bound plugins and MCP servers for filtering tools
                 bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
-                query.use_funcs = await self.ap.tool_mgr.get_all_tools(bound_plugins)
+                bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
+                query.use_funcs = await self.ap.tool_mgr.get_all_tools(bound_plugins, bound_mcp_servers)
 
         variables = {
             'session_id': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
