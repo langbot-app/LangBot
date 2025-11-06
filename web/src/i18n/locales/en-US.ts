@@ -72,6 +72,9 @@ const enUS = {
     apiKeyCopied: 'API key copied to clipboard',
     noApiKeys: 'No API keys configured',
     apiKeyHint: 'API keys allow external systems to access LangBot APIs',
+    actions: 'Actions',
+    apiKeyCreatedMessage:
+      "Please copy this API key now. You won't be able to see it again!",
   },
   notFound: {
     title: 'Page not found',

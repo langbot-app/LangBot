@@ -47,6 +47,11 @@ class ServiceModelsRouterGroup(group.RouterGroup):
         async def _(model_uuid: str) -> str:
             json_data = await quart.request.json
 
+            # Check if model exists
+            model = await self.ap.llm_model_service.get_llm_model(model_uuid)
+            if model is None:
+                return self.http_status(404, -1, 'Model not found')
+
             await self.ap.llm_model_service.test_llm_model(model_uuid, json_data)
 
             return self.success()

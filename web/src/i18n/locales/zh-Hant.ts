@@ -71,6 +71,8 @@ const zhHant = {
     apiKeyCopied: 'API 金鑰已複製到剪貼簿',
     noApiKeys: '暫無 API 金鑰',
     apiKeyHint: 'API 金鑰允許外部系統訪問 LangBot 的 API',
+    actions: '操作',
+    apiKeyCreatedMessage: '請立即複製此 API 金鑰。您將無法再次查看它！',
   },
   notFound: {
     title: '頁面不存在',

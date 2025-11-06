@@ -161,7 +161,7 @@ export default function ApiKeyManagementDialog({
                     <TableRow>
                       <TableHead>{t('common.name')}</TableHead>
                       <TableHead>{t('common.apiKeyValue')}</TableHead>
-                      <TableHead className="w-[100px]">Actions</TableHead>
+                      <TableHead className="w-[100px]">{t('common.actions')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -268,8 +268,7 @@ export default function ApiKeyManagementDialog({
           <DialogHeader>
             <DialogTitle>{t('common.apiKeyCreated')}</DialogTitle>
             <DialogDescription>
-              Please copy this API key now. You won&apos;t be able to see it
-              again!
+              {t('common.apiKeyCreatedMessage')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
