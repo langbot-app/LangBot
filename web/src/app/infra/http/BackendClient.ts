@@ -34,6 +34,7 @@ import {
   EmbeddingModel,
   ApiRespPluginSystemStatus,
 } from '@/app/infra/entities/api';
+import { Plugin } from '@/app/infra/entities/plugin';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
 
@@ -168,13 +169,7 @@ export class BackendClient extends BaseHttpClient {
 
   public getPipelineExtensions(uuid: string): Promise<{
     bound_plugins: Array<{ author: string; name: string }>;
-    available_plugins: Array<{
-      plugin_author: string;
-      plugin_name: string;
-      version: string;
-      description: string;
-      enabled: boolean;
-    }>;
+    available_plugins: Plugin[];
   }> {
     return this.get(`/api/v1/pipelines/${uuid}/extensions`);
   }

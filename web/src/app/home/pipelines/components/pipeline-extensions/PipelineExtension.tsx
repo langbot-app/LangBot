@@ -16,13 +16,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-
-interface Plugin {
-  plugin_author: string;
-  plugin_name: string;
-  version: string;
-  enabled: boolean;
-}
+import { Plugin } from '@/app/infra/entities/plugin';
 
 export default function PipelineExtension({
   pipelineId,
@@ -40,6 +34,12 @@ export default function PipelineExtension({
     loadExtensions();
   }, [pipelineId]);
 
+  const getPluginId = (plugin: Plugin): string => {
+    const author = plugin.manifest.manifest.metadata.author;
+    const name = plugin.manifest.manifest.metadata.name;
+    return `${author}/${name}`;
+  };
+
   const loadExtensions = async () => {
     try {
       setLoading(true);
@@ -50,7 +50,7 @@ export default function PipelineExtension({
       );
 
       const selected = data.available_plugins.filter((plugin) =>
-        boundPluginIds.has(`${plugin.plugin_author}/${plugin.plugin_name}`),
+        boundPluginIds.has(getPluginId(plugin)),
       );
 
       setSelectedPlugins(selected);
@@ -65,10 +65,13 @@ export default function PipelineExtension({
 
   const saveToBackend = async (plugins: Plugin[]) => {
     try {
-      const boundPluginsArray = plugins.map((plugin) => ({
-        author: plugin.plugin_author,
-        name: plugin.plugin_name,
-      }));
+      const boundPluginsArray = plugins.map((plugin) => {
+        const metadata = plugin.manifest.manifest.metadata;
+        return {
+          author: metadata.author || '',
+          name: metadata.name,
+        };
+      });
 
       await backendClient.updatePipelineExtensions(
         pipelineId,
@@ -85,16 +88,14 @@ export default function PipelineExtension({
 
   const handleRemovePlugin = async (pluginId: string) => {
     const newPlugins = selectedPlugins.filter(
-      (p) => `${p.plugin_author}/${p.plugin_name}` !== pluginId,
+      (p) => getPluginId(p) !== pluginId,
     );
     setSelectedPlugins(newPlugins);
     await saveToBackend(newPlugins);
   };
 
   const handleOpenDialog = () => {
-    setTempSelectedIds(
-      selectedPlugins.map((p) => `${p.plugin_author}/${p.plugin_name}`),
-    );
+    setTempSelectedIds(selectedPlugins.map((p) => getPluginId(p)));
     setDialogOpen(true);
   };
 
@@ -108,7 +109,7 @@ export default function PipelineExtension({
 
   const handleConfirmSelection = async () => {
     const newSelected = allPlugins.filter((p) =>
-      tempSelectedIds.includes(`${p.plugin_author}/${p.plugin_name}`),
+      tempSelectedIds.includes(getPluginId(p)),
     );
     setSelectedPlugins(newSelected);
     setDialogOpen(false);
@@ -137,7 +138,8 @@ export default function PipelineExtension({
         ) : (
           <div className="space-y-2">
             {selectedPlugins.map((plugin) => {
-              const pluginId = `${plugin.plugin_author}/${plugin.plugin_name}`;
+              const pluginId = getPluginId(plugin);
+              const metadata = plugin.manifest.manifest.metadata;
               return (
                 <div
                   key={pluginId}
@@ -145,9 +147,9 @@ export default function PipelineExtension({
                 >
                   <div className="flex items-center gap-3">
                     <div>
-                      <div className="font-medium">{plugin.plugin_name}</div>
+                      <div className="font-medium">{metadata.name}</div>
                       <div className="text-sm text-muted-foreground">
-                        {plugin.plugin_author} • v{plugin.version}
+                        {metadata.author} • v{metadata.version}
                       </div>
                     </div>
                     {!plugin.enabled && (
@@ -182,7 +184,8 @@ export default function PipelineExtension({
           </DialogHeader>
           <div className="flex-1 overflow-y-auto space-y-2 pr-2">
             {allPlugins.map((plugin) => {
-              const pluginId = `${plugin.plugin_author}/${plugin.plugin_name}`;
+              const pluginId = getPluginId(plugin);
+              const metadata = plugin.manifest.manifest.metadata;
               const isSelected = tempSelectedIds.includes(pluginId);
               return (
                 <div
@@ -192,9 +195,9 @@ export default function PipelineExtension({
                 >
                   <Checkbox checked={isSelected} />
                   <div className="flex-1">
-                    <div className="font-medium">{plugin.plugin_name}</div>
+                    <div className="font-medium">{metadata.name}</div>
                     <div className="text-sm text-muted-foreground">
-                      {plugin.plugin_author} • v{plugin.version}
+                      {metadata.author} • v{metadata.version}
                     </div>
                   </div>
                   {!plugin.enabled && (
