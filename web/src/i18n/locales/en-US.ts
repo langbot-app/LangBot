@@ -326,6 +326,10 @@ const enUS = {
       saveError: 'Save failed',
       noPluginsAvailable: 'No plugins available',
       disabled: 'Disabled',
+      selectedPlugins: 'Selected Plugins',
+      availablePlugins: 'Available Plugins',
+      dragPluginsHere: 'Drag plugins here to select',
+      allPluginsSelected: 'All plugins selected',
     },
     debugDialog: {
       title: 'Pipeline Chat',

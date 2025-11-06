@@ -313,6 +313,10 @@ const zhHans = {
       saveError: '保存失败',
       noPluginsAvailable: '暂无可用插件',
       disabled: '已禁用',
+      selectedPlugins: '已选择的插件',
+      availablePlugins: '可用插件',
+      dragPluginsHere: '拖拽插件到此处以选择',
+      allPluginsSelected: '所有插件已被选择',
     },
     debugDialog: {
       title: '流水线对话',

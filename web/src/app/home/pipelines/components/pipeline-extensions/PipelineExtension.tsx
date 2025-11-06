@@ -2,18 +2,29 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  DndContext,
+  type DragEndEvent,
+  type DragOverEvent,
+  DragOverlay,
+  type DragStartEvent,
+  PointerSensor,
+  closestCorners,
+  useSensor,
+  useSensors,
+  useDroppable,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import { backendClient } from '@/app/infra/http';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { SortablePluginItem } from './SortablePluginItem';
 
 interface Plugin {
   plugin_author: string;
@@ -23,9 +34,32 @@ interface Plugin {
   enabled: boolean;
 }
 
-interface BoundPlugin {
-  author: string;
-  name: string;
+interface PluginItem {
+  id: string;
+  plugin: Plugin;
+}
+
+function DroppableContainer({
+  id,
+  children,
+  isEmpty,
+}: {
+  id: string;
+  children: React.ReactNode;
+  isEmpty: boolean;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`min-h-[400px] space-y-2 rounded-lg transition-colors ${
+        isEmpty ? 'border-2 border-dashed border-border p-4' : ''
+      } ${isOver && isEmpty ? 'border-primary bg-primary/5' : ''}`}
+    >
+      {children}
+    </div>
+  );
 }
 
 export default function PipelineExtension({
@@ -36,10 +70,17 @@ export default function PipelineExtension({
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [availablePlugins, setAvailablePlugins] = useState<Plugin[]>([]);
-  const [boundPlugins, setBoundPlugins] = useState<Set<string>>(new Set());
-  const [initialBoundPlugins, setInitialBoundPlugins] = useState<Set<string>>(
-    new Set(),
+  const [selectedPlugins, setSelectedPlugins] = useState<PluginItem[]>([]);
+  const [availablePlugins, setAvailablePlugins] = useState<PluginItem[]>([]);
+  const [initialSelectedIds, setInitialSelectedIds] = useState<string[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
   );
 
   useEffect(() => {
@@ -51,14 +92,28 @@ export default function PipelineExtension({
       setLoading(true);
       const data = await backendClient.getPipelineExtensions(pipelineId);
 
-      setAvailablePlugins(data.available_plugins);
-
-      // Convert bound plugins to a Set for easy lookup
-      const boundSet = new Set(
+      // Convert plugins to items with unique ids
+      const boundPluginIds = new Set(
         data.bound_plugins.map((p) => `${p.author}/${p.name}`),
       );
-      setBoundPlugins(boundSet);
-      setInitialBoundPlugins(new Set(boundSet));
+
+      const selected: PluginItem[] = [];
+      const available: PluginItem[] = [];
+
+      data.available_plugins.forEach((plugin) => {
+        const pluginId = `${plugin.plugin_author}/${plugin.plugin_name}`;
+        const item = { id: pluginId, plugin };
+
+        if (boundPluginIds.has(pluginId)) {
+          selected.push(item);
+        } else {
+          available.push(item);
+        }
+      });
+
+      setSelectedPlugins(selected);
+      setAvailablePlugins(available);
+      setInitialSelectedIds(selected.map((item) => item.id));
     } catch (error) {
       console.error('Failed to load extensions:', error);
       toast.error(t('pipelines.extensions.loadError'));
@@ -67,23 +122,113 @@ export default function PipelineExtension({
     }
   };
 
-  const handleTogglePlugin = (pluginKey: string) => {
-    const newBoundPlugins = new Set(boundPlugins);
-    if (newBoundPlugins.has(pluginKey)) {
-      newBoundPlugins.delete(pluginKey);
-    } else {
-      newBoundPlugins.add(pluginKey);
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event;
+
+    if (!over) return;
+
+    const activeContainer = findContainer(active.id as string);
+    const overContainer =
+      over.id === 'selected' || over.id === 'available'
+        ? over.id
+        : findContainer(over.id as string);
+
+    if (
+      !activeContainer ||
+      !overContainer ||
+      activeContainer === overContainer
+    ) {
+      return;
     }
-    setBoundPlugins(newBoundPlugins);
+
+    // Moving between containers
+    setSelectedPlugins((prev) => {
+      const activeItems =
+        activeContainer === 'selected' ? prev : availablePlugins;
+      const overItems = overContainer === 'selected' ? prev : availablePlugins;
+
+      const activeIndex = activeItems.findIndex((item) => item.id === active.id);
+      const overIndex =
+        over.id === overContainer
+          ? overItems.length
+          : overItems.findIndex((item) => item.id === over.id);
+
+      const activeItem = activeItems[activeIndex];
+
+      if (activeContainer === 'selected') {
+        // Moving from selected to available
+        setAvailablePlugins((items) => {
+          const newItems = [...items];
+          newItems.splice(overIndex >= 0 ? overIndex : items.length, 0, activeItem);
+          return newItems;
+        });
+        return prev.filter((item) => item.id !== active.id);
+      } else {
+        // Moving from available to selected
+        setAvailablePlugins((items) =>
+          items.filter((item) => item.id !== active.id),
+        );
+        const newItems = [...prev];
+        newItems.splice(overIndex >= 0 ? overIndex : prev.length, 0, activeItem);
+        return newItems;
+      }
+    });
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    setActiveId(null);
+
+    if (!over) return;
+
+    const activeContainer = findContainer(active.id as string);
+    const overContainer =
+      over.id === 'selected' || over.id === 'available'
+        ? over.id
+        : findContainer(over.id as string);
+
+    if (!activeContainer || !overContainer) return;
+
+    // Sorting within the same container
+    if (activeContainer === overContainer) {
+      const items =
+        activeContainer === 'selected' ? selectedPlugins : availablePlugins;
+      const activeIndex = items.findIndex((item) => item.id === active.id);
+      const overIndex = items.findIndex((item) => item.id === over.id);
+
+      if (activeIndex !== overIndex && overIndex !== -1) {
+        const newItems = arrayMove(items, activeIndex, overIndex);
+        if (activeContainer === 'selected') {
+          setSelectedPlugins(newItems);
+        } else {
+          setAvailablePlugins(newItems);
+        }
+      }
+    }
+  };
+
+  const findContainer = (id: string): 'selected' | 'available' | null => {
+    if (selectedPlugins.find((item) => item.id === id)) {
+      return 'selected';
+    }
+    if (availablePlugins.find((item) => item.id === id)) {
+      return 'available';
+    }
+    return null;
   };
 
   const handleSave = async () => {
     try {
       setSaving(true);
 
-      // Convert Set back to array of objects
-      const boundPluginsArray = Array.from(boundPlugins).map((key) => {
-        const [author, name] = key.split('/');
+      // Convert selected plugins to the format expected by the API
+      const boundPluginsArray = selectedPlugins.map((item) => {
+        const [author, name] = item.id.split('/');
         return { author, name };
       });
 
@@ -91,7 +236,7 @@ export default function PipelineExtension({
         pipelineId,
         boundPluginsArray,
       );
-      setInitialBoundPlugins(new Set(boundPlugins));
+      setInitialSelectedIds(selectedPlugins.map((item) => item.id));
       toast.success(t('pipelines.extensions.saveSuccess'));
     } catch (error) {
       console.error('Failed to save extensions:', error);
@@ -102,12 +247,17 @@ export default function PipelineExtension({
   };
 
   const handleCancel = () => {
-    setBoundPlugins(new Set(initialBoundPlugins));
+    // Reload extensions to reset to saved state
+    loadExtensions();
   };
 
   const hasChanges =
-    JSON.stringify(Array.from(boundPlugins).sort()) !==
-    JSON.stringify(Array.from(initialBoundPlugins).sort());
+    JSON.stringify(selectedPlugins.map((item) => item.id).sort()) !==
+    JSON.stringify(initialSelectedIds.sort());
+
+  const activeItem =
+    selectedPlugins.find((item) => item.id === activeId) ||
+    availablePlugins.find((item) => item.id === activeId);
 
   if (loading) {
     return (
@@ -121,67 +271,114 @@ export default function PipelineExtension({
 
   return (
     <div className="space-y-4 h-full flex flex-col">
-      <div className="flex-1 overflow-y-auto space-y-4 pr-2">
-        {availablePlugins.length === 0 ? (
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-center text-muted-foreground">
-                {t('pipelines.extensions.noPluginsAvailable')}
-              </p>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="grid gap-6 md:grid-cols-2 flex-1 overflow-hidden">
+          {/* Selected Plugins (Left) */}
+          <Card className="flex flex-col">
+            <CardHeader>
+              <CardTitle className="text-foreground">
+                {t('pipelines.extensions.selectedPlugins')} (
+                {selectedPlugins.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-y-auto">
+              <DroppableContainer
+                id="selected"
+                isEmpty={selectedPlugins.length === 0}
+              >
+                <SortableContext
+                  items={selectedPlugins.map((item) => item.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {selectedPlugins.length === 0 ? (
+                    <div className="flex h-[400px] items-center justify-center">
+                      <p className="text-sm text-muted-foreground">
+                        {t('pipelines.extensions.dragPluginsHere')}
+                      </p>
+                    </div>
+                  ) : (
+                    selectedPlugins.map((item) => (
+                      <SortablePluginItem
+                        key={item.id}
+                        id={item.id}
+                        plugin={item.plugin}
+                      />
+                    ))
+                  )}
+                </SortableContext>
+              </DroppableContainer>
             </CardContent>
           </Card>
-        ) : (
-          availablePlugins.map((plugin) => {
-            const pluginKey = `${plugin.plugin_author}/${plugin.plugin_name}`;
-            const isBound = boundPlugins.has(pluginKey);
 
-            return (
-              <Card
-                key={pluginKey}
-                className={
-                  isBound ? 'border-primary' : 'border-muted hover:border-border'
-                }
+          {/* Available Plugins (Right) */}
+          <Card className="flex flex-col">
+            <CardHeader>
+              <CardTitle className="text-foreground">
+                {t('pipelines.extensions.availablePlugins')} (
+                {availablePlugins.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-y-auto">
+              <DroppableContainer
+                id="available"
+                isEmpty={availablePlugins.length === 0}
               >
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start space-x-3">
-                      <Checkbox
-                        id={pluginKey}
-                        checked={isBound}
-                        onCheckedChange={() => handleTogglePlugin(pluginKey)}
-                        className="mt-1"
-                      />
-                      <div className="flex-1">
-                        <CardTitle className="text-base">
-                          {plugin.plugin_name}
-                        </CardTitle>
-                        <CardDescription className="text-sm">
-                          {plugin.plugin_author} • v{plugin.version}
-                        </CardDescription>
-                      </div>
+                <SortableContext
+                  items={availablePlugins.map((item) => item.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {availablePlugins.length === 0 ? (
+                    <div className="flex h-[400px] items-center justify-center">
+                      <p className="text-sm text-muted-foreground">
+                        {t('pipelines.extensions.allPluginsSelected')}
+                      </p>
                     </div>
-                    {!plugin.enabled && (
-                      <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-                        {t('pipelines.extensions.disabled')}
-                      </span>
-                    )}
+                  ) : (
+                    availablePlugins.map((item) => (
+                      <SortablePluginItem
+                        key={item.id}
+                        id={item.id}
+                        plugin={item.plugin}
+                      />
+                    ))
+                  )}
+                </SortableContext>
+              </DroppableContainer>
+            </CardContent>
+          </Card>
+        </div>
+
+        <DragOverlay>
+          {activeItem ? (
+            <div className="cursor-grabbing">
+              <Card className="shadow-lg border-primary">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-1">
+                      <CardTitle className="text-base">
+                        {activeItem.plugin.plugin_name}
+                      </CardTitle>
+                      <p className="text-sm text-muted-foreground">
+                        {activeItem.plugin.plugin_author} • v
+                        {activeItem.plugin.version}
+                      </p>
+                    </div>
                   </div>
                 </CardHeader>
-                {plugin.description && (
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground">
-                      {plugin.description}
-                    </p>
-                  </CardContent>
-                )}
               </Card>
-            );
-          })
-        )}
-      </div>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
       {hasChanges && (
-        <div className="flex justify-end gap-2 pt-4 border-t sticky bottom-0 bg-white dark:bg-black z-10">
+        <div className="flex justify-end gap-2 pt-4 border-t">
           <Button
             type="button"
             variant="outline"
