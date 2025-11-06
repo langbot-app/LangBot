@@ -31,11 +31,23 @@ class FilesRouterGroup(group.RouterGroup):
         @self.route('/documents', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> quart.Response:
             request = quart.request
+            
+            # Check file size limit before reading the file
+            MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+            content_length = request.content_length
+            if content_length and content_length > MAX_FILE_SIZE:
+                return self.fail(400, 'File size exceeds 10MB limit. Please split large files into smaller parts.')
+            
             # get file bytes from 'file'
             file = (await request.files)['file']
             assert isinstance(file, quart.datastructures.FileStorage)
 
             file_bytes = await asyncio.to_thread(file.stream.read)
+            
+            # Double-check actual file size after reading
+            if len(file_bytes) > MAX_FILE_SIZE:
+                return self.fail(400, 'File size exceeds 10MB limit. Please split large files into smaller parts.')
+            
             extension = file.filename.split('.')[-1]
             file_name = file.filename.split('.')[0]
 

@@ -34,6 +34,9 @@ class HTTPController:
         self.ap = ap
         self.quart_app = quart.Quart(__name__)
         quart_cors.cors(self.quart_app, allow_origin='*')
+        
+        # Set maximum content length to 10MB to prevent large file uploads
+        self.quart_app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB
 
     async def initialize(self) -> None:
         await self.register_routes()
