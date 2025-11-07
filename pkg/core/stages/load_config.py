@@ -95,43 +95,43 @@ class LoadConfigStage(stage.BootingStage):
     async def run(self, ap: app.Application):
         """Load config file"""
 
-        # ======= deprecated =======
-        if os.path.exists('data/config/command.json'):
-            ap.command_cfg = await config.load_json_config(
-                'data/config/command.json',
-                'templates/legacy/command.json',
-                completion=False,
-            )
+        # # ======= deprecated =======
+        # if os.path.exists('data/config/command.json'):
+        #     ap.command_cfg = await config.load_json_config(
+        #         'data/config/command.json',
+        #         'templates/legacy/command.json',
+        #         completion=False,
+        #     )
 
-        if os.path.exists('data/config/pipeline.json'):
-            ap.pipeline_cfg = await config.load_json_config(
-                'data/config/pipeline.json',
-                'templates/legacy/pipeline.json',
-                completion=False,
-            )
+        # if os.path.exists('data/config/pipeline.json'):
+        #     ap.pipeline_cfg = await config.load_json_config(
+        #         'data/config/pipeline.json',
+        #         'templates/legacy/pipeline.json',
+        #         completion=False,
+        #     )
 
-        if os.path.exists('data/config/platform.json'):
-            ap.platform_cfg = await config.load_json_config(
-                'data/config/platform.json',
-                'templates/legacy/platform.json',
-                completion=False,
-            )
+        # if os.path.exists('data/config/platform.json'):
+        #     ap.platform_cfg = await config.load_json_config(
+        #         'data/config/platform.json',
+        #         'templates/legacy/platform.json',
+        #         completion=False,
+        #     )
 
-        if os.path.exists('data/config/provider.json'):
-            ap.provider_cfg = await config.load_json_config(
-                'data/config/provider.json',
-                'templates/legacy/provider.json',
-                completion=False,
-            )
+        # if os.path.exists('data/config/provider.json'):
+        #     ap.provider_cfg = await config.load_json_config(
+        #         'data/config/provider.json',
+        #         'templates/legacy/provider.json',
+        #         completion=False,
+        #     )
 
-        if os.path.exists('data/config/system.json'):
-            ap.system_cfg = await config.load_json_config(
-                'data/config/system.json',
-                'templates/legacy/system.json',
-                completion=False,
-            )
+        # if os.path.exists('data/config/system.json'):
+        #     ap.system_cfg = await config.load_json_config(
+        #         'data/config/system.json',
+        #         'templates/legacy/system.json',
+        #         completion=False,
+        #     )
 
-        # ======= deprecated =======
+        # # ======= deprecated =======
 
         ap.instance_config = await config.load_yaml_config('data/config.yaml', 'config.yaml', completion=False)
 
