@@ -62,7 +62,6 @@ async def load_python_module_config(config_name: str, template_name: str, comple
 
 async def load_json_config(
     config_name: str,
-    template_name: str = None,
     template_resource_name: str = None,
     template_data: dict = None,
     completion: bool = True,
@@ -71,11 +70,11 @@ async def load_json_config(
 
     Args:
         config_name (str): Config file name
-        template_name (str): Template file name
+        template_resource_name (str): Template resource name
         template_data (dict): Template data
         completion (bool): Whether to automatically complete the config file in memory
     """
-    cfg_inst = json_file.JSONConfigFile(config_name, template_name, template_data)
+    cfg_inst = json_file.JSONConfigFile(config_name, template_resource_name, template_data)
 
     cfg_mgr = ConfigManager(cfg_inst)
     await cfg_mgr.load_config(completion=completion)
