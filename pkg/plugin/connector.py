@@ -351,6 +351,9 @@ class PluginRuntimeConnector:
             yield cmd_ret
 
     def dispose(self):
+        # No need to consider the shutdown on Windows
+        # for Windows can kill processes and subprocesses chainly
+
         if self.is_enable_plugin and isinstance(self.ctrl, stdio_client_controller.StdioClientController):
             self.ap.logger.info('Terminating plugin runtime process...')
             self.ctrl.process.terminate()
