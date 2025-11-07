@@ -3,7 +3,7 @@ name = "langbot"
 version = "4.4.1"
 description = "Easy-to-use global IM bot platform designed for LLM era"
 readme = "README.md"
-license = {text = "AGPL-3.0-or-later"}
+license-files = ["LICENSE"]
 requires-python = ">=3.10.1,<4.0"
 dependencies = [
     "aiocqhttp>=1.4.4",
@@ -85,11 +85,10 @@ keywords = [
     "onebot",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Framework :: AsyncIO",
     "Framework :: Robot Framework",
     "Framework :: Robot Framework :: Library",
-    "License :: OSI Approved :: AGPL-3 License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Topic :: Communications :: Chat",
