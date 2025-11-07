@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 from typing import Any
+import yaml
+import importlib.resources as resources
 
 from .. import stage, app
 from ..bootutils import config
@@ -146,17 +148,11 @@ class LoadConfigStage(stage.BootingStage):
         )
         await ap.sensitive_meta.dump_config()
 
-        ap.pipeline_config_meta_trigger = await config.load_yaml_config(
-            'metadata/pipeline/trigger.yaml',
-            'metadata/pipeline/trigger.yaml',
-        )
-        ap.pipeline_config_meta_safety = await config.load_yaml_config(
-            'metadata/pipeline/safety.yaml',
-            'metadata/pipeline/safety.yaml',
-        )
-        ap.pipeline_config_meta_ai = await config.load_yaml_config(
-            'metadata/pipeline/ai.yaml', 'metadata/pipeline/ai.yaml'
-        )
-        ap.pipeline_config_meta_output = await config.load_yaml_config(
-            'metadata/pipeline/output.yaml', 'metadata/pipeline/output.yaml'
-        )
+        async def load_resource_yaml_template_data(resource_name: str) -> dict:
+            with resources.files('langbot.templates').joinpath(resource_name).open('r', encoding='utf-8') as f:
+                return yaml.load(f, Loader=yaml.FullLoader)
+
+        ap.pipeline_config_meta_trigger = await load_resource_yaml_template_data('metadata/pipeline/trigger.yaml')
+        ap.pipeline_config_meta_safety = await load_resource_yaml_template_data('metadata/pipeline/safety.yaml')
+        ap.pipeline_config_meta_ai = await load_resource_yaml_template_data('metadata/pipeline/ai.yaml')
+        ap.pipeline_config_meta_output = await load_resource_yaml_template_data('metadata/pipeline/output.yaml')

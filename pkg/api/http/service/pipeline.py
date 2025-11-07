@@ -30,12 +30,12 @@ class PipelineService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
-    async def get_pipeline_metadata(self) -> dict:
+    async def get_pipeline_metadata(self) -> list[dict]:
         return [
-            self.ap.pipeline_config_meta_trigger.data,
-            self.ap.pipeline_config_meta_safety.data,
-            self.ap.pipeline_config_meta_ai.data,
-            self.ap.pipeline_config_meta_output.data,
+            self.ap.pipeline_config_meta_trigger,
+            self.ap.pipeline_config_meta_safety,
+            self.ap.pipeline_config_meta_ai,
+            self.ap.pipeline_config_meta_output,
         ]
 
     async def get_pipelines(self, sort_by: str = 'created_at', sort_order: str = 'DESC') -> list[dict]:
@@ -75,12 +75,12 @@ class PipelineService:
 
     async def create_pipeline(self, pipeline_data: dict, default: bool = False) -> str:
         from ....utils import paths as path_utils
-        
+
         pipeline_data['uuid'] = str(uuid.uuid4())
         pipeline_data['for_version'] = self.ap.ver_mgr.get_current_version()
         pipeline_data['stages'] = default_stage_order.copy()
         pipeline_data['is_default'] = default
-        
+
         template_path = path_utils.get_resource_path('templates/default-pipeline-config.json')
         with open(template_path, 'r', encoding='utf-8') as f:
             pipeline_data['config'] = json.load(f)
@@ -142,7 +142,9 @@ class PipelineService:
         )
         await self.ap.pipeline_mgr.remove_pipeline(pipeline_uuid)
 
-    async def update_pipeline_extensions(self, pipeline_uuid: str, bound_plugins: list[dict], bound_mcp_servers: list[str] = None) -> None:
+    async def update_pipeline_extensions(
+        self, pipeline_uuid: str, bound_plugins: list[dict], bound_mcp_servers: list[str] = None
+    ) -> None:
         """Update the bound plugins and MCP servers for a pipeline"""
         # Get current pipeline
         result = await self.ap.persistence_mgr.execute_async(
@@ -150,23 +152,23 @@ class PipelineService:
                 persistence_pipeline.LegacyPipeline.uuid == pipeline_uuid
             )
         )
-        
+
         pipeline = result.first()
         if pipeline is None:
             raise ValueError(f'Pipeline {pipeline_uuid} not found')
-        
+
         # Update extensions_preferences
         extensions_preferences = pipeline.extensions_preferences or {}
         extensions_preferences['plugins'] = bound_plugins
         if bound_mcp_servers is not None:
             extensions_preferences['mcp_servers'] = bound_mcp_servers
-        
+
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_pipeline.LegacyPipeline)
             .where(persistence_pipeline.LegacyPipeline.uuid == pipeline_uuid)
             .values(extensions_preferences=extensions_preferences)
         )
-        
+
         # Reload pipeline to apply changes
         await self.ap.pipeline_mgr.remove_pipeline(pipeline_uuid)
         pipeline = await self.get_pipeline(pipeline_uuid)
