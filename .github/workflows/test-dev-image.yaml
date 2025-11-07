@@ -35,12 +35,17 @@ jobs:
           # Function to test API endpoint
           test_api() {
             echo "Testing API endpoint..."
-            response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5300/api/v1/system/info)
-            if [ "$response" = "200" ]; then
-              echo "API is healthy! Response code: $response"
+            response=$(curl -s -w "\n%{http_code}" http://localhost:5300/api/v1/system/info)
+            http_code=$(echo "$response" | tail -n 1)
+            response_body=$(echo "$response" | head -n -1)
+            
+            if [ "$http_code" = "200" ]; then
+              echo "API is healthy! Response code: $http_code"
+              echo "Response: $response_body"
               return 0
             else
-              echo "API returned non-200 response: $response"
+              echo "API returned non-200 response: $http_code"
+              echo "Response body: $response_body"
               return 1
             fi
           }
