@@ -435,7 +435,11 @@ export default function DynamicFormItemComponent({
                         );
                       }}
                     >
-                      <Checkbox checked={isSelected} />
+                      <Checkbox
+                        checked={isSelected}
+                        readOnly
+                        aria-label={`Select ${base.name}`}
+                      />
                       <div className="flex-1">
                         <div className="font-medium">{base.name}</div>
                         {base.description && (
