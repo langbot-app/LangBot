@@ -82,7 +82,8 @@ class PipelineService:
         pipeline_data['is_default'] = default
         
         template_path = path_utils.get_resource_path('templates/default-pipeline-config.json')
-        pipeline_data['config'] = json.load(open(template_path, 'r', encoding='utf-8'))
+        with open(template_path, 'r', encoding='utf-8') as f:
+            pipeline_data['config'] = json.load(f)
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_pipeline.LegacyPipeline).values(**pipeline_data)

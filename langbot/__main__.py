@@ -86,10 +86,7 @@ def main():
     # Set up the working directory
     # When installed as a package, we need to handle the working directory differently
     # We'll create data directory in current working directory if not exists
-    if not os.path.exists('data'):
-        print('Creating data directory in current working directory...')
-        print('在当前工作目录创建 data 目录...')
-        os.makedirs('data', exist_ok=True)
+    os.makedirs('data', exist_ok=True)
 
     loop = asyncio.new_event_loop()
 

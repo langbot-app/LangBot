@@ -26,7 +26,8 @@ def _check_if_source_install() -> bool:
                 if 'LangBot/main.py' in content:
                     _is_source_install = True
                     return True
-        except Exception:
+        except (IOError, OSError, UnicodeDecodeError):
+            # If we can't read the file, assume not a source install
             pass
     
     _is_source_install = False
@@ -51,7 +52,7 @@ def get_frontend_path() -> str:
     
     # Third, find it relative to the package installation
     # Get the directory where this file is located
-    # paths.py is in pkg/utils/, so go up 3 levels to get to the package root
+    # paths.py is in pkg/utils/, so parent.parent goes up to pkg/, then parent again goes up to the package root
     pkg_dir = Path(__file__).parent.parent.parent
     frontend_path = pkg_dir / 'web' / 'out'
     if frontend_path.exists():
@@ -81,7 +82,7 @@ def get_resource_path(resource: str) -> str:
     
     # Third, find it relative to package directory
     # Get the directory where this file is located
-    # paths.py is in pkg/utils/, so go up 3 levels to get to the package root
+    # paths.py is in pkg/utils/, so parent.parent goes up to pkg/, then parent again goes up to the package root
     pkg_dir = Path(__file__).parent.parent.parent
     resource_path = pkg_dir / resource
     if resource_path.exists():
