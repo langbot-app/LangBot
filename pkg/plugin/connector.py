@@ -43,6 +43,10 @@ class PluginRuntimeConnector:
 
     ctrl: stdio_client_controller.StdioClientController | ws_client_controller.WebSocketClientController
 
+    runtime_subprocess_on_windows: asyncio.subprocess.Process | None = None
+
+    runtime_subprocess_on_windows_task: asyncio.Task | None = None
+
     runtime_disconnect_callback: typing.Callable[
         [PluginRuntimeConnector], typing.Coroutine[typing.Any, typing.Any, None]
     ]
@@ -119,6 +123,41 @@ class PluginRuntimeConnector:
                 make_connection_failed_callback=make_connection_failed_callback,
             )
             task = self.ctrl.run(new_connection_callback)
+        elif platform.get_platform() == 'win32':
+            # Due to Windows's lack of supports for both stdio and subprocess:
+            # See also: https://docs.python.org/zh-cn/3.13/library/asyncio-platforms.html
+            # We have to launch runtime via cmd but communicate via ws.
+            self.ap.logger.info('(windows) use cmd to launch plugin runtime and communicate via ws')
+            
+            python_path = sys.executable
+            env = os.environ.copy()
+            self.runtime_subprocess_on_windows = await asyncio.create_subprocess_exec(
+                python_path,
+                '-m', 'langbot_plugin.cli.__init__', 'rt',
+                env=env,
+            )
+
+            # hold the process
+            self.runtime_subprocess_on_windows_task = asyncio.create_task(self.runtime_subprocess_on_windows.wait())
+
+            ws_url = 'ws://localhost:5400/control/ws'
+
+            async def make_connection_failed_callback(
+                ctrl: ws_client_controller.WebSocketClientController,
+                exc: Exception = None,
+            ) -> None:
+                if exc is not None:
+                    self.ap.logger.error(f'(windows) Failed to connect to plugin runtime({ws_url}): {exc}')
+                else:
+                    self.ap.logger.error(f'(windows) Failed to connect to plugin runtime({ws_url}), trying to reconnect...')
+                await self.runtime_disconnect_callback(self)
+            
+            self.ctrl = ws_client_controller.WebSocketClientController(
+                ws_url=ws_url,
+                make_connection_failed_callback=make_connection_failed_callback,
+            )
+            task = self.ctrl.run(new_connection_callback)
+
         else:  # stdio
             self.ap.logger.info('use stdio to connect to plugin runtime')
             # cmd: lbp rt -s
