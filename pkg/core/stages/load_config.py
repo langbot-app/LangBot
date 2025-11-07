@@ -133,9 +133,7 @@ class LoadConfigStage(stage.BootingStage):
 
         # ======= deprecated =======
 
-        ap.instance_config = await config.load_yaml_config(
-            'data/config.yaml', 'templates/config.yaml', completion=False
-        )
+        ap.instance_config = await config.load_yaml_config('data/config.yaml', 'config.yaml', completion=False)
 
         # Apply environment variable overrides to data/config.yaml
         ap.instance_config.data = _apply_env_overrides_to_config(ap.instance_config.data)
@@ -144,22 +142,21 @@ class LoadConfigStage(stage.BootingStage):
 
         ap.sensitive_meta = await config.load_json_config(
             'data/metadata/sensitive-words.json',
-            'templates/metadata/sensitive-words.json',
+            'metadata/sensitive-words.json',
         )
         await ap.sensitive_meta.dump_config()
 
         ap.pipeline_config_meta_trigger = await config.load_yaml_config(
-            'templates/metadata/pipeline/trigger.yaml',
-            'templates/metadata/pipeline/trigger.yaml',
+            'metadata/pipeline/trigger.yaml',
+            'metadata/pipeline/trigger.yaml',
         )
         ap.pipeline_config_meta_safety = await config.load_yaml_config(
-            'templates/metadata/pipeline/safety.yaml',
-            'templates/metadata/pipeline/safety.yaml',
+            'metadata/pipeline/safety.yaml',
+            'metadata/pipeline/safety.yaml',
         )
         ap.pipeline_config_meta_ai = await config.load_yaml_config(
-            'templates/metadata/pipeline/ai.yaml', 'templates/metadata/pipeline/ai.yaml'
+            'metadata/pipeline/ai.yaml', 'metadata/pipeline/ai.yaml'
         )
         ap.pipeline_config_meta_output = await config.load_yaml_config(
-            'templates/metadata/pipeline/output.yaml',
-            'templates/metadata/pipeline/output.yaml',
+            'metadata/pipeline/output.yaml', 'metadata/pipeline/output.yaml'
         )
