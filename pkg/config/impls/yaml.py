@@ -1,6 +1,6 @@
 import os
-import shutil
 import yaml
+import importlib.resources as resources
 
 from .. import model as file_model
 
@@ -11,29 +11,27 @@ class YAMLConfigFile(file_model.ConfigFile):
     def __init__(
         self,
         config_file_name: str,
-        template_file_name: str = None,
+        template_resource_name: str = None,
         template_data: dict = None,
     ) -> None:
         self.config_file_name = config_file_name
-        self.template_file_name = template_file_name
+        self.template_resource_name = template_resource_name
         self.template_data = template_data
-
-    def _get_template_path(self) -> str:
-        """Get the actual path to the template file, handling package installation"""
-        if self.template_file_name is None:
-            return None
-        
-        from ...utils import paths as path_utils
-        return path_utils.get_resource_path(self.template_file_name)
 
     def exists(self) -> bool:
         return os.path.exists(self.config_file_name)
 
+    async def get_template_file_str(self) -> str:
+        if self.template_resource_name is None:
+            return None
+
+        with resources.path('langbot.templates', self.template_resource_name) as path:
+            return path.open('r', encoding='utf-8').read()
+
     async def create(self):
-        template_path = self._get_template_path()
-        
-        if template_path is not None:
-            shutil.copyfile(template_path, self.config_file_name)
+        if await self.get_template_file_str() is not None:
+            with open(self.config_file_name, 'w', encoding='utf-8') as f:
+                f.write(await self.get_template_file_str())
         elif self.template_data is not None:
             with open(self.config_file_name, 'w', encoding='utf-8') as f:
                 yaml.dump(self.template_data, f, indent=4, allow_unicode=True)
@@ -44,11 +42,10 @@ class YAMLConfigFile(file_model.ConfigFile):
         if not self.exists():
             await self.create()
 
-        template_path = self._get_template_path()
-        
-        if template_path is not None:
-            with open(template_path, 'r', encoding='utf-8') as f:
-                self.template_data = yaml.load(f, Loader=yaml.FullLoader)
+        template_file_str = await self.get_template_file_str()
+
+        if template_file_str is not None:
+            self.template_data = yaml.load(template_file_str, Loader=yaml.FullLoader)
 
         with open(self.config_file_name, 'r', encoding='utf-8') as f:
             try:

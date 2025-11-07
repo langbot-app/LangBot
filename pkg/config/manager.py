@@ -63,6 +63,7 @@ async def load_python_module_config(config_name: str, template_name: str, comple
 async def load_json_config(
     config_name: str,
     template_name: str = None,
+    template_resource_name: str = None,
     template_data: dict = None,
     completion: bool = True,
 ) -> ConfigManager:
@@ -85,6 +86,7 @@ async def load_json_config(
 async def load_yaml_config(
     config_name: str,
     template_name: str = None,
+    template_resource_name: str = None,
     template_data: dict = None,
     completion: bool = True,
 ) -> ConfigManager:

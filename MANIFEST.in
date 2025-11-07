@@ -8,7 +8,7 @@ recursive-include pkg *.py
 recursive-include libs *.py
 
 # Include templates and resources
-recursive-include templates *
+recursive-include langbot/templates *
 recursive-include res *
 
 # Include compiled frontend files (will be added during build)
