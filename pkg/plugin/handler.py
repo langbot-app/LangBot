@@ -298,7 +298,7 @@ class RuntimeConnectionHandler(handler.Handler):
         @self.action(PluginToRuntimeAction.GET_LLM_MODELS)
         async def get_llm_models(data: dict[str, Any]) -> handler.ActionResponse:
             """Get llm models"""
-            llm_models = await self.ap.model_service.get_llm_models(include_secret=False)
+            llm_models = await self.ap.llm_model_service.get_llm_models(include_secret=False)
             return handler.ActionResponse.success(
                 data={
                     'llm_models': llm_models,
