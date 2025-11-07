@@ -25,8 +25,10 @@ class JSONConfigFile(file_model.ConfigFile):
         if self.template_resource_name is None:
             return None
 
-        with resources.path('langbot.templates', self.template_resource_name) as path:
-            return path.open('r', encoding='utf-8').read()
+        with (
+            resources.files('langbot.templates').joinpath(self.template_resource_name).open('r', encoding='utf-8') as f
+        ):
+            return f.read()
 
     async def create(self):
         if await self.get_template_file_str() is not None:
