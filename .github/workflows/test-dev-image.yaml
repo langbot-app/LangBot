@@ -35,7 +35,15 @@ jobs:
           # Function to test API endpoint
           test_api() {
             echo "Testing API endpoint..."
-            response=$(curl -s -w "\n%{http_code}" http://localhost:5300/api/v1/system/info)
+            response=$(curl -s --connect-timeout 10 --max-time 30 -w "\n%{http_code}" http://localhost:5300/api/v1/system/info 2>&1)
+            curl_exit_code=$?
+            
+            if [ $curl_exit_code -ne 0 ]; then
+              echo "Curl failed with exit code: $curl_exit_code"
+              echo "Error: $response"
+              return 1
+            fi
+            
             http_code=$(echo "$response" | tail -n 1)
             response_body=$(echo "$response" | head -n -1)
             
