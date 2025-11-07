@@ -39,6 +39,7 @@ const zhHant = {
     deleteSuccess: '刪除成功',
     deleteError: '刪除失敗：',
     addRound: '新增回合',
+    copy: '複製',
     copySuccess: '複製成功',
     test: '測試',
     forgotPassword: '忘記密碼？',

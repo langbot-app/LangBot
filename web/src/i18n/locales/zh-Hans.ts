@@ -39,6 +39,7 @@ const zhHans = {
     deleteSuccess: '删除成功',
     deleteError: '删除失败：',
     addRound: '添加回合',
+    copy: '复制',
     copySuccess: '复制成功',
     test: '测试',
     forgotPassword: '忘记密码？',

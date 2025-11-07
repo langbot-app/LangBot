@@ -40,6 +40,7 @@ const jaJP = {
     deleteSuccess: '削除に成功しました',
     deleteError: '削除に失敗しました：',
     addRound: 'ラウンドを追加',
+    copy: 'コピー',
     copySuccess: 'コピーに成功しました',
     test: 'テスト',
     forgotPassword: 'パスワードを忘れた？',

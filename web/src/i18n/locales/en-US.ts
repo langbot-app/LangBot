@@ -39,6 +39,7 @@ const enUS = {
     deleteSuccess: 'Deleted successfully',
     deleteError: 'Delete failed: ',
     addRound: 'Add Round',
+    copy: 'Copy',
     copySuccess: 'Copy Successfully',
     test: 'Test',
     forgotPassword: 'Forgot Password?',
