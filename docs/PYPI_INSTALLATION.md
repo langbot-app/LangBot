@@ -103,3 +103,15 @@ uvx langbot
 
 - Python 3.10.1 or higher
 - Operating System: Linux, macOS, or Windows
+
+## Differences from Source Installation
+
+When running LangBot from the PyPI package (via uvx or pip), there are a few behavioral differences compared to running from source:
+
+1. **Version Check**: The package version does not prompt for user input when the Python version is incompatible. It simply prints an error message and exits. This makes it compatible with non-interactive environments like containers and CI/CD.
+
+2. **Working Directory**: The package version does not require being run from the LangBot project root. You can run `langbot` from any directory, and it will create a `data/` directory in your current working directory.
+
+3. **Frontend Files**: The frontend is pre-built and included in the package, so you don't need to run `npm build` separately.
+
+These differences are intentional to make the package more user-friendly and suitable for various deployment scenarios.

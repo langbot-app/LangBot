@@ -111,13 +111,6 @@ build-backend = "setuptools.build_meta"
 packages = { find = {} }
 include-package-data = true
 
-[tool.setuptools.package-data]
-langbot = [
-    "web/out/**/*",
-    "templates/**/*",
-    "res/**/*",
-]
-
 [dependency-groups]
 dev = [
     "pre-commit>=4.2.0",
