@@ -179,8 +179,12 @@ class Application:
 
     async def print_web_access_info(self):
         """Print access webui tips"""
+        
+        from ..utils import paths
+        
+        frontend_path = paths.get_frontend_path()
 
-        if not os.path.exists(os.path.join('.', 'web/out')):
+        if not os.path.exists(frontend_path):
             self.logger.warning('WebUI 文件缺失，请根据文档部署：https://docs.langbot.app/zh')
             self.logger.warning(
                 'WebUI files are missing, please deploy according to the documentation: https://docs.langbot.app/en'

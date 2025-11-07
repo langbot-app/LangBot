@@ -86,7 +86,9 @@ class HTTPController:
             ginst = g(self.ap, self.quart_app)
             await ginst.initialize()
 
-        frontend_path = 'web/out'
+        from ....utils import paths
+        
+        frontend_path = paths.get_frontend_path()
 
         @self.quart_app.route('/')
         async def index():

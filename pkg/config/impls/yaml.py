@@ -18,12 +18,22 @@ class YAMLConfigFile(file_model.ConfigFile):
         self.template_file_name = template_file_name
         self.template_data = template_data
 
+    def _get_template_path(self) -> str:
+        """Get the actual path to the template file, handling package installation"""
+        if self.template_file_name is None:
+            return None
+        
+        from ...utils import paths as path_utils
+        return path_utils.get_resource_path(self.template_file_name)
+
     def exists(self) -> bool:
         return os.path.exists(self.config_file_name)
 
     async def create(self):
-        if self.template_file_name is not None:
-            shutil.copyfile(self.template_file_name, self.config_file_name)
+        template_path = self._get_template_path()
+        
+        if template_path is not None:
+            shutil.copyfile(template_path, self.config_file_name)
         elif self.template_data is not None:
             with open(self.config_file_name, 'w', encoding='utf-8') as f:
                 yaml.dump(self.template_data, f, indent=4, allow_unicode=True)
@@ -34,8 +44,10 @@ class YAMLConfigFile(file_model.ConfigFile):
         if not self.exists():
             await self.create()
 
-        if self.template_file_name is not None:
-            with open(self.template_file_name, 'r', encoding='utf-8') as f:
+        template_path = self._get_template_path()
+        
+        if template_path is not None:
+            with open(template_path, 'r', encoding='utf-8') as f:
                 self.template_data = yaml.load(f, Loader=yaml.FullLoader)
 
         with open(self.config_file_name, 'r', encoding='utf-8') as f:

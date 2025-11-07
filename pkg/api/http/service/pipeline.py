@@ -74,11 +74,15 @@ class PipelineService:
         return self.ap.persistence_mgr.serialize_model(persistence_pipeline.LegacyPipeline, pipeline)
 
     async def create_pipeline(self, pipeline_data: dict, default: bool = False) -> str:
+        from ....utils import paths as path_utils
+        
         pipeline_data['uuid'] = str(uuid.uuid4())
         pipeline_data['for_version'] = self.ap.ver_mgr.get_current_version()
         pipeline_data['stages'] = default_stage_order.copy()
         pipeline_data['is_default'] = default
-        pipeline_data['config'] = json.load(open('templates/default-pipeline-config.json', 'r', encoding='utf-8'))
+        
+        template_path = path_utils.get_resource_path('templates/default-pipeline-config.json')
+        pipeline_data['config'] = json.load(open(template_path, 'r', encoding='utf-8'))
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_pipeline.LegacyPipeline).values(**pipeline_data)

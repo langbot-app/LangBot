@@ -99,6 +99,24 @@ Homepage = "https://langbot.app"
 Documentation = "https://docs.langbot.app"
 Repository = "https://github.com/langbot-app/LangBot"
 
+[project.scripts]
+langbot = "langbot.__main__:main"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = { find = {} }
+include-package-data = true
+
+[tool.setuptools.package-data]
+"*" = [
+    "web/out/**/*",
+    "templates/**/*",
+    "res/**/*",
+]
+
 [dependency-groups]
 dev = [
     "pre-commit>=4.2.0",
