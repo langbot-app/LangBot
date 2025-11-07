@@ -1,0 +1,89 @@
+name: Build and Publish to PyPI
+
+on:
+  workflow_dispatch:
+  # Automatically publish on release
+  release:
+    types: [published]
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check version is beta
+        id: check_version
+        run: |
+          VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "Version: $VERSION"
+
+          # Ensure version contains 'b' for beta (e.g., 4.4.1b1, 4.4.1b2, etc.)
+          if [[ ! $VERSION =~ b[0-9]+$ ]]; then
+            echo "ERROR: Version $VERSION is not a beta version!"
+            echo "Only beta versions (e.g., 4.4.1b1) can be published via this workflow."
+            echo "To publish a production version, please do it manually."
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "✓ Version $VERSION is a valid beta version"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build frontend
+        run: |
+          cd web
+          npm install
+          npm run build
+          echo "✓ Frontend built successfully"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install hatchling
+        run: uv pip install --system hatchling
+
+      - name: Build package
+        run: |
+          # Only build wheel to avoid sdist size limit (web/out is large)
+          uv build --wheel
+          echo "✓ Package built successfully"
+          ls -lh dist/
+
+      - name: Publish to PyPI
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          echo "Publishing langbot version ${{ steps.check_version.outputs.version }} to PyPI..."
+          uv publish --token "$UV_PUBLISH_TOKEN"
+          echo "✓ Package published successfully to PyPI"
+
+      - name: Summary
+        run: |
+          echo "## 🎉 Package Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Package:** langbot" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.check_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Type:** Beta Release" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Install with:" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "uvx langbot@${{ steps.check_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "# or" >> $GITHUB_STEP_SUMMARY
+          echo "pip install langbot==${{ steps.check_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
