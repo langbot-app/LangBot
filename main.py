@@ -1,3 +1,0 @@
-import langbot
-
-langbot.main()

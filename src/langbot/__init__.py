@@ -18,8 +18,24 @@ asciiart = r"""
 
 async def main_entry(loop: asyncio.AbstractEventLoop):
     parser = argparse.ArgumentParser(description='LangBot')
-    parser.add_argument('--skip-plugin-deps-check', action='store_true', help='跳过插件依赖项检查', default=False)
+    parser.add_argument(
+        '--standalone-runtime',
+        action='store_true',
+        help='Use standalone plugin runtime / 使用独立插件运行时',
+        default=False,
+    )
+    parser.add_argument('--debug', action='store_true', help='Debug mode / 调试模式', default=False)
     args = parser.parse_args()
+
+    if args.standalone_runtime:
+        from pkg.utils import platform
+
+        platform.standalone_runtime = True
+
+    if args.debug:
+        from pkg.utils import constants
+
+        constants.debug_mode = True
 
     print(asciiart)
 
@@ -43,18 +59,6 @@ async def main_entry(loop: asyncio.AbstractEventLoop):
         print('The missing dependencies have been installed automatically, please restart the program.')
         sys.exit(0)
 
-    # check plugin deps
-    if not args.skip_plugin_deps_check:
-        await deps.precheck_plugin_deps()
-
-    # 检查pydantic版本，如果没有 pydantic.v1，则把 pydantic 映射为 v1
-    import pydantic.version
-
-    if pydantic.version.VERSION < '2.0':
-        import pydantic
-
-        sys.modules['pydantic.v1'] = pydantic
-
     # 检查配置文件
 
     from pkg.core.bootutils import files
@@ -72,8 +76,7 @@ async def main_entry(loop: asyncio.AbstractEventLoop):
     await boot.main(loop)
 
 
-def main():
-    import os
+if __name__ == '__main__':
     import sys
 
     # 必须大于 3.10.1
@@ -83,27 +86,6 @@ def main():
         print('Your Python version is not supported. Please exit the program by pressing any key.')
         exit(1)
 
-    # Check if the current directory is the LangBot project root directory
-    invalid_pwd = False
-
-    if not os.path.exists('main.py'):
-        invalid_pwd = True
-    else:
-        with open('main.py', 'r', encoding='utf-8') as f:
-            content = f.read()
-            if 'LangBot/main.py' not in content:
-                invalid_pwd = True
-    if invalid_pwd:
-        print('请在 LangBot 项目根目录下以命令形式运行此程序。')
-        input('按任意键退出...')
-        print('Please run this program in the LangBot project root directory in command form.')
-        print('Press any key to exit...')
-        exit(1)
-
     loop = asyncio.new_event_loop()
 
     loop.run_until_complete(main_entry(loop))
-
-
-if __name__ == '__main__':
-    main()
