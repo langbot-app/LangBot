@@ -424,6 +424,7 @@ const zhHans = {
     createError: '创建失败：',
     saveSuccess: '保存成功',
     saveError: '保存失败：',
+    copySuffix: ' Copy',
     deleteConfirmation:
       '你确定要删除这个流水线吗？已绑定此流水线的机器人将无法使用。',
     defaultPipelineCannotDelete: '默认流水线不可删除',

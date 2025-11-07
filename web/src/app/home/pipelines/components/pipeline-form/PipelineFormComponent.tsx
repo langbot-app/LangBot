@@ -353,7 +353,7 @@ export default function PipelineFormComponent({
         .then((resp) => {
           const originalPipeline = resp.pipeline;
           const newPipeline: Pipeline = {
-            name: `${originalPipeline.name} Copy`,
+            name: `${originalPipeline.name}${t('pipelines.copySuffix')}`,
             description: originalPipeline.description,
             config: originalPipeline.config,
           };

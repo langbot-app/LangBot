@@ -422,6 +422,7 @@ const zhHant = {
     createError: '建立失敗：',
     saveSuccess: '儲存成功',
     saveError: '儲存失敗：',
+    copySuffix: ' Copy',
     deleteConfirmation:
       '您確定要刪除這個流程線嗎？已綁定此流程線的機器人將無法使用。',
     defaultPipelineCannotDelete: '預設流程線不可刪除',
