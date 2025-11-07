@@ -70,9 +70,9 @@ const zhHans = {
     copyApiKey: '复制 API 密钥',
     apiKeyCopied: 'API 密钥已复制到剪贴板',
     noApiKeys: '暂无 API 密钥',
-    apiKeyHint: 'API 密钥允许外部系统访问 LangBot 的 API',
+    apiKeyHint: 'API 密钥允许外部系统访问 LangBot 的 Service API',
     actions: '操作',
-    apiKeyCreatedMessage: '请立即复制此 API 密钥。您将无法再次查看它！',
+    apiKeyCreatedMessage: '请复制此 API 密钥。',
   },
   notFound: {
     title: '页面不存在',

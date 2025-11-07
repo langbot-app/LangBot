@@ -72,10 +72,10 @@ const jaJP = {
     copyApiKey: 'API キーをコピー',
     apiKeyCopied: 'API キーをクリップボードにコピーしました',
     noApiKeys: 'API キーが設定されていません',
-    apiKeyHint: 'API キーを使用すると、外部システムが LangBot API にアクセスできます',
+    apiKeyHint:
+      'API キーを使用すると、外部システムが LangBot Service API にアクセスできます',
     actions: 'アクション',
-    apiKeyCreatedMessage:
-      'この API キーを今すぐコピーしてください。再度表示することはできません！',
+    apiKeyCreatedMessage: 'この API キーをコピーしてください。',
   },
   notFound: {
     title: 'ページが見つかりません',
