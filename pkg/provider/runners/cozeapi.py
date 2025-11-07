@@ -152,7 +152,7 @@ class CozeAPIRunner(runner.RequestRunner):
                 
                 event_type = chunk.get('event')
                 data = chunk.get('data', {})
-                print(data)
+                # Removed debug print statement to avoid cluttering logs in production
                 
                 if event_type == 'conversation.message.delta':
                     # 收集内容
