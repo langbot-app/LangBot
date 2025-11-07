@@ -101,8 +101,10 @@ export default function DynamicFormItemComponent({
   }, [config.type]);
 
   useEffect(() => {
-    if (config.type === DynamicFormItemType.KNOWLEDGE_BASE_SELECTOR || 
-        config.type === DynamicFormItemType.KNOWLEDGE_BASE_MULTI_SELECTOR) {
+    if (
+      config.type === DynamicFormItemType.KNOWLEDGE_BASE_SELECTOR ||
+      config.type === DynamicFormItemType.KNOWLEDGE_BASE_MULTI_SELECTOR
+    ) {
       httpClient
         .getKnowledgeBases()
         .then((resp) => {
@@ -417,7 +419,9 @@ export default function DynamicFormItemComponent({
               </DialogHeader>
               <div className="flex-1 overflow-y-auto space-y-2 pr-2">
                 {knowledgeBases.map((base) => {
-                  const isSelected = tempSelectedKBIds.includes(base.uuid ?? '');
+                  const isSelected = tempSelectedKBIds.includes(
+                    base.uuid ?? '',
+                  );
                   return (
                     <div
                       key={base.uuid}
