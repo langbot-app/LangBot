@@ -79,8 +79,8 @@ def main():
     # Check Python version
     if sys.version_info < (3, 10, 1):
         print('需要 Python 3.10.1 及以上版本，当前 Python 版本为：', sys.version)
-        input('按任意键退出...')
-        print('Your Python version is not supported. Please exit the program by pressing any key.')
+        print('Your Python version is not supported.')
+        print('Python 3.10.1 or higher is required. Current version:', sys.version)
         sys.exit(1)
 
     # Set up the working directory

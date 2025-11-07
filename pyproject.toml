@@ -112,7 +112,7 @@ packages = { find = {} }
 include-package-data = true
 
 [tool.setuptools.package-data]
-"*" = [
+langbot = [
     "web/out/**/*",
     "templates/**/*",
     "res/**/*",
