@@ -47,3 +47,8 @@ uv.lock
 plugins.bak
 coverage.xml
 .coverage
+
+# Build artifacts
+/dist
+/build
+*.egg-info

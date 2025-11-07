@@ -3,6 +3,7 @@ name = "langbot"
 version = "4.4.1"
 description = "Easy-to-use global IM bot platform designed for LLM era"
 readme = "README.md"
+license = {text = "AGPL-3.0-or-later"}
 requires-python = ">=3.10.1,<4.0"
 dependencies = [
     "aiocqhttp>=1.4.4",
