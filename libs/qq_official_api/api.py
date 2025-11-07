@@ -11,33 +11,70 @@ from cryptography.hazmat.primitives.asymmetric import ed25519
 
 
 def handle_validation(body: dict, bot_secret: str):
-    # bot正确的secert是32位的，此处仅为了适配演示demo
-    while len(bot_secret) < 32:
-        bot_secret = bot_secret * 2
-    bot_secret = bot_secret[:32]
-    # 实际使用场景中以上三行内容可清除
+    """
+    处理 QQ 官方机器人的回调验证请求
 
-    seed_bytes = bot_secret.encode()
+    Args:
+        body: 包含验证数据的请求体
+        bot_secret: 机器人密钥
 
-    signing_key = ed25519.Ed25519PrivateKey.from_private_bytes(seed_bytes)
+    Returns:
+        包含签名的验证响应
+    """
+    try:
+        # 解析验证数据
+        validation_data = body.get('d')
+        if not validation_data:
+            print("parse http payload failed: missing 'd' field")
+            return None
 
-    msg = body['d']['event_ts'] + body['d']['plain_token']
-    msg_bytes = msg.encode()
+        event_ts = validation_data.get('event_ts')
+        plain_token = validation_data.get('plain_token')
 
-    signature = signing_key.sign(msg_bytes)
+        if not event_ts or not plain_token:
+            print("parse http payload failed: missing event_ts or plain_token")
+            return None
 
-    signature_hex = signature.hex()
+        # 处理 bot_secret：确保长度达到 32 字节（ed25519.SeedSize）
+        seed = bot_secret
+        while len(seed) < 32:
+            seed = seed * 2
+        seed = seed[:32]
 
-    response = {'plain_token': body['d']['plain_token'], 'signature': signature_hex}
+        # 将 seed 转换为字节
+        seed_bytes = seed.encode()
 
-    # 打印调试信息
-    print(f'[QQ Official Validation]')
-    print(f'  event_ts: {body["d"]["event_ts"]}')
-    print(f'  plain_token: {body["d"]["plain_token"]}')
-    print(f'  Message to sign: {msg}')
-    print(f'  Signature: {signature_hex}')
+        # 从 seed 生成 ed25519 私钥
+        private_key = ed25519.Ed25519PrivateKey.from_private_bytes(seed_bytes)
 
-    return response
+        msg = event_ts + plain_token
+        msg_bytes = msg.encode()
+
+        signature = private_key.sign(msg_bytes)
+
+        # 将签名转换为十六进制字符串
+        signature_hex = signature.hex()
+
+        # 构建验证响应
+        response = {
+            'plain_token': plain_token,
+            'signature': signature_hex
+        }
+
+        # 打印调试信息
+        print(f'[QQ Official Validation]')
+        print(f'  event_ts: {event_ts}')
+        print(f'  plain_token: {plain_token}')
+        print(f'  Message to sign: {msg}')
+        print(f'  Signature: {signature_hex}')
+
+        return response
+
+    except Exception as e:
+        print(f"handle validation failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
 class QQOfficialClient:
@@ -127,6 +164,7 @@ class QQOfficialClient:
                 print(f'[QQ Official] Received callback validation request (op=13)')
                 # 生成签名
                 response = handle_validation(payload, self.secret)
+                print(response)
                 print(f'[QQ Official] Returning validation response')
                 return response
 
