@@ -348,21 +348,23 @@ export default function PipelineFormComponent({
 
   const handleCopy = () => {
     if (pipelineId) {
+      let newPipelineName = '';
       httpClient
         .getPipeline(pipelineId)
         .then((resp) => {
           const originalPipeline = resp.pipeline;
+          newPipelineName = `${originalPipeline.name}${t('pipelines.copySuffix')}`;
           const newPipeline: Pipeline = {
-            name: `${originalPipeline.name}${t('pipelines.copySuffix')}`,
+            name: newPipelineName,
             description: originalPipeline.description,
             config: originalPipeline.config,
           };
           return httpClient.createPipeline(newPipeline);
         })
-        .then((resp) => {
+        .then(() => {
           onFinish();
-          onNewPipelineCreated(resp.uuid);
-          toast.success(t('common.copySuccess'));
+          toast.success(`${t('common.copySuccess')}: ${newPipelineName}`);
+          onCancel();
         })
         .catch((err) => {
           toast.error(t('pipelines.createError') + err.message);
