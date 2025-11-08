@@ -437,7 +437,6 @@ export default function DynamicFormItemComponent({
                     >
                       <Checkbox
                         checked={isSelected}
-                        readOnly
                         aria-label={`Select ${base.name}`}
                       />
                       <div className="flex-1">
