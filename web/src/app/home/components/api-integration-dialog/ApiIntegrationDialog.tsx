@@ -251,9 +251,16 @@ export default function ApiIntegrationDialog({
             onValueChange={setActiveTab}
             className="w-full"
           >
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="apikeys">{t('common.apiKeys')}</TabsTrigger>
-              <TabsTrigger value="webhooks">{t('common.webhooks')}</TabsTrigger>
+            <TabsList className="shadow-md py-3 bg-[#f0f0f0] dark:bg-[#2a2a2e]">
+              <TabsTrigger className="px-5 py-4 cursor-pointer" value="apikeys">
+                {t('common.apiKeys')}
+              </TabsTrigger>
+              <TabsTrigger
+                className="px-5 py-4 cursor-pointer"
+                value="webhooks"
+              >
+                {t('common.webhooks')}
+              </TabsTrigger>
             </TabsList>
 
             {/* API Keys Tab */}
