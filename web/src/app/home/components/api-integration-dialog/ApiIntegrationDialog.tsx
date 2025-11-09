@@ -38,7 +38,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog';
 import { backendClient } from '@/app/infra/http';
-import { extractI18nObject } from '@/i18n/I18nProvider';
 
 interface ApiKey {
   id: number;
@@ -247,7 +246,11 @@ export default function ApiIntegrationDialog({
             <DialogTitle>{t('common.manageApiIntegration')}</DialogTitle>
           </DialogHeader>
 
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="w-full"
+          >
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="apikeys">{t('common.apiKeys')}</TabsTrigger>
               <TabsTrigger value="webhooks">{t('common.webhooks')}</TabsTrigger>
@@ -368,7 +371,9 @@ export default function ApiIntegrationDialog({
                       <TableRow>
                         <TableHead>{t('common.name')}</TableHead>
                         <TableHead>{t('common.webhookUrl')}</TableHead>
-                        <TableHead className="w-[80px]">{t('common.webhookEnabled')}</TableHead>
+                        <TableHead className="w-[80px]">
+                          {t('common.webhookEnabled')}
+                        </TableHead>
                         <TableHead className="w-[100px]">
                           {t('common.actions')}
                         </TableHead>
@@ -395,7 +400,9 @@ export default function ApiIntegrationDialog({
                           <TableCell>
                             <Switch
                               checked={webhook.enabled}
-                              onCheckedChange={() => handleToggleWebhook(webhook)}
+                              onCheckedChange={() =>
+                                handleToggleWebhook(webhook)
+                              }
                             />
                           </TableCell>
                           <TableCell>
@@ -500,7 +507,10 @@ export default function ApiIntegrationDialog({
       </Dialog>
 
       {/* Create Webhook Dialog */}
-      <Dialog open={showCreateWebhookDialog} onOpenChange={setShowCreateWebhookDialog}>
+      <Dialog
+        open={showCreateWebhookDialog}
+        onOpenChange={setShowCreateWebhookDialog}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{t('common.createWebhook')}</DialogTitle>
@@ -646,7 +656,9 @@ export default function ApiIntegrationDialog({
                 {t('common.cancel')}
               </AlertDialogCancel>
               <AlertDialogAction
-                onClick={() => deleteWebhookId && handleDeleteWebhook(deleteWebhookId)}
+                onClick={() =>
+                  deleteWebhookId && handleDeleteWebhook(deleteWebhookId)
+                }
               >
                 {t('common.delete')}
               </AlertDialogAction>
