@@ -13,6 +13,7 @@ from ..entity.persistence import bot as persistence_bot
 from ..entity.errors import platform as platform_errors
 
 from .logger import EventLogger
+from .webhook_pusher import WebhookPusher
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
@@ -66,6 +67,14 @@ class RuntimeBot:
                 message_session_id=f'person_{event.sender.id}',
             )
 
+            # Push to webhooks
+            if hasattr(self.ap, 'webhook_pusher') and self.ap.webhook_pusher:
+                asyncio.create_task(
+                    self.ap.webhook_pusher.push_person_message(
+                        event, self.bot_entity.uuid, adapter.__class__.__name__
+                    )
+                )
+
             await self.ap.query_pool.add_query(
                 bot_uuid=self.bot_entity.uuid,
                 launcher_type=provider_session.LauncherTypes.PERSON,
@@ -90,6 +99,14 @@ class RuntimeBot:
                 images=image_components,
                 message_session_id=f'group_{event.group.id}',
             )
+
+            # Push to webhooks
+            if hasattr(self.ap, 'webhook_pusher') and self.ap.webhook_pusher:
+                asyncio.create_task(
+                    self.ap.webhook_pusher.push_group_message(
+                        event, self.bot_entity.uuid, adapter.__class__.__name__
+                    )
+                )
 
             await self.ap.query_pool.add_query(
                 bot_uuid=self.bot_entity.uuid,
