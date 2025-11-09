@@ -104,9 +104,11 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 #     file_ids.append(file_id)
         elif isinstance(query.user_message.content, str):
             plain_text = query.user_message.content
-        plain_text = "When the file content is readable, please read the content of this file. When the file is an image, describe the content of this image." if file_ids and not plain_text else plain_text
-        plain_text = "The user message type cannot be parsed." if not file_ids and not plain_text else plain_text
+        # plain_text = "When the file content is readable, please read the content of this file. When the file is an image, describe the content of this image." if file_ids and not plain_text else plain_text
+        # plain_text = "The user message type cannot be parsed." if not file_ids and not plain_text else plain_text
         # plain_text = plain_text if plain_text else "When the file content is readable, please read the content of this file. When the file is an image, describe the content of this image."
+        # print(self.pipeline_config['ai'])
+        plain_text = plain_text if plain_text else self.pipeline_config['ai']['dify-service-api']['base-prompt']
 
         return plain_text, file_ids
 

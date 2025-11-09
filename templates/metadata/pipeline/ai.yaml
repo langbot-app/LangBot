@@ -124,6 +124,16 @@ stages:
           zh_Hans: 基础 URL
         type: string
         required: true
+      - name: base-prompt
+        label:
+          en_US: Base PROMPT
+          zh_Hans: 基础提示词
+        description:
+          en_US: When dify detects that there is an input that is empty, it will pass the default prompt word into it.
+          zh_Hans: 当dify接收到有输入为空的时候传入该默认提示词
+        type: string
+        required: true
+        default: "When the file content is readable, please read the content of this file. When the file is an image, describe the content of this image."
       - name: app-type
         label:
           en_US: App Type

@@ -1,3 +1,4 @@
+
 import traceback
 import typing
 from libs.dingtalk_api.dingtalkevent import DingTalkEvent
@@ -39,7 +40,6 @@ class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverte
         if event.rich_content:
             elements = event.rich_content.get("Elements")
             for element in elements:
-                print(element)
                 if element.get('Type') == 'text':
                     text = element.get('Content', '').replace('@' + bot_name, '')
                     if text.strip():
