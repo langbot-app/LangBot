@@ -19,13 +19,9 @@ class DBMigrateDifyApiConfig(migration.DBMigration):
 
             config = serialized_pipeline['config']
 
-            if 'dify-service-api' not in config['ai']:
-                config['ai']['dify-service-api'] = {
-                    'base-url': '',
-                    'base-prompt': 'When the file content is readable, please read the content of this file. When the file is an image, describe the content of this image.',
-                    'app-type': 'agent',
-                    'api-key': 'your-api-key',
-                }
+            if 'base-prompt' not in config['ai']['dify-service-api']:
+                config['ai']['dify-service-api']['base-prompt'] = 'When the file content is readable, please read the content of this file. When the file is an image, describe the content of this image.',
+
 
             await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.update(persistence_pipeline.LegacyPipeline)
