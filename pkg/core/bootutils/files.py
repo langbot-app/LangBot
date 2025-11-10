@@ -5,7 +5,6 @@ import shutil
 
 
 required_files = {
-    'plugins/__init__.py': 'templates/__init__.py',
     'data/config.yaml': 'templates/config.yaml',
 }
 
@@ -15,7 +14,6 @@ required_paths = [
     'data/metadata',
     'data/logs',
     'data/labels',
-    'plugins',
 ]
 
 

@@ -29,6 +29,15 @@ import { useTranslation } from 'react-i18next';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Plus, X } from 'lucide-react';
 
 export default function DynamicFormItemComponent({
   config,
@@ -44,6 +53,8 @@ export default function DynamicFormItemComponent({
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [bots, setBots] = useState<Bot[]>([]);
   const [uploading, setUploading] = useState<boolean>(false);
+  const [kbDialogOpen, setKbDialogOpen] = useState(false);
+  const [tempSelectedKBIds, setTempSelectedKBIds] = useState<string[]>([]);
   const { t } = useTranslation();
 
   const handleFileUpload = async (file: File): Promise<IFileConfig | null> => {
@@ -90,7 +101,10 @@ export default function DynamicFormItemComponent({
   }, [config.type]);
 
   useEffect(() => {
-    if (config.type === DynamicFormItemType.KNOWLEDGE_BASE_SELECTOR) {
+    if (
+      config.type === DynamicFormItemType.KNOWLEDGE_BASE_SELECTOR ||
+      config.type === DynamicFormItemType.KNOWLEDGE_BASE_MULTI_SELECTOR
+    ) {
       httpClient
         .getKnowledgeBases()
         .then((resp) => {
@@ -334,6 +348,128 @@ export default function DynamicFormItemComponent({
             </SelectGroup>
           </SelectContent>
         </Select>
+      );
+
+    case DynamicFormItemType.KNOWLEDGE_BASE_MULTI_SELECTOR:
+      return (
+        <>
+          <div className="space-y-2">
+            {field.value && field.value.length > 0 ? (
+              <div className="space-y-2">
+                {field.value.map((kbId: string) => {
+                  const kb = knowledgeBases.find((base) => base.uuid === kbId);
+                  if (!kb) return null;
+                  return (
+                    <div
+                      key={kbId}
+                      className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent"
+                    >
+                      <div className="flex-1">
+                        <div className="font-medium">{kb.name}</div>
+                        {kb.description && (
+                          <div className="text-sm text-muted-foreground">
+                            {kb.description}
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          const newValue = field.value.filter(
+                            (id: string) => id !== kbId,
+                          );
+                          field.onChange(newValue);
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex h-32 items-center justify-center rounded-lg border-2 border-dashed border-border">
+                <p className="text-sm text-muted-foreground">
+                  {t('knowledge.noKnowledgeBaseSelected')}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <Button
+            type="button"
+            onClick={() => {
+              setTempSelectedKBIds(field.value || []);
+              setKbDialogOpen(true);
+            }}
+            variant="outline"
+            className="w-full"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            {t('knowledge.addKnowledgeBase')}
+          </Button>
+
+          {/* Knowledge Base Selection Dialog */}
+          <Dialog open={kbDialogOpen} onOpenChange={setKbDialogOpen}>
+            <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+              <DialogHeader>
+                <DialogTitle>{t('knowledge.selectKnowledgeBases')}</DialogTitle>
+              </DialogHeader>
+              <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+                {knowledgeBases.map((base) => {
+                  const isSelected = tempSelectedKBIds.includes(
+                    base.uuid ?? '',
+                  );
+                  return (
+                    <div
+                      key={base.uuid}
+                      className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent cursor-pointer"
+                      onClick={() => {
+                        const kbId = base.uuid ?? '';
+                        setTempSelectedKBIds((prev) =>
+                          prev.includes(kbId)
+                            ? prev.filter((id) => id !== kbId)
+                            : [...prev, kbId],
+                        );
+                      }}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        aria-label={`Select ${base.name}`}
+                      />
+                      <div className="flex-1">
+                        <div className="font-medium">{base.name}</div>
+                        {base.description && (
+                          <div className="text-sm text-muted-foreground">
+                            {base.description}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setKbDialogOpen(false)}
+                >
+                  {t('common.cancel')}
+                </Button>
+                <Button
+                  onClick={() => {
+                    field.onChange(tempSelectedKBIds);
+                    setKbDialogOpen(false);
+                  }}
+                >
+                  {t('common.confirm')}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </>
       );
 
     case DynamicFormItemType.BOT_SELECTOR:

@@ -16,7 +16,3 @@ spec:
     LLMAPIRequester:
       fromDirs:
         - path: pkg/provider/modelmgr/requesters/
-    Plugin:
-      fromDirs:
-        - path: plugins/
-          maxDepth: 2

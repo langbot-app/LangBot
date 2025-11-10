@@ -118,6 +118,7 @@ class PersistenceManager:
                 'name': 'ChatPipeline',
                 'description': 'Default pipeline, new bots will be bound to this pipeline | 默认提供的流水线，您配置的机器人将自动绑定到此流水线',
                 'config': pipeline_config,
+                'extensions_preferences': {},
             }
 
             await self.execute_async(sqlalchemy.insert(pipeline.LegacyPipeline).values(pipeline_data))

@@ -34,6 +34,8 @@ class AuthType(enum.Enum):
 
     NONE = 'none'
     USER_TOKEN = 'user-token'
+    API_KEY = 'api-key'
+    USER_TOKEN_OR_API_KEY = 'user-token-or-api-key'
 
 
 class RouterGroup(abc.ABC):
@@ -86,6 +88,63 @@ class RouterGroup(abc.ABC):
                             kwargs['user_email'] = user_email
                     except Exception as e:
                         return self.http_status(401, -1, str(e))
+
+                elif auth_type == AuthType.API_KEY:
+                    # get API key from Authorization header or X-API-Key header
+                    api_key = quart.request.headers.get('X-API-Key', '')
+                    if not api_key:
+                        auth_header = quart.request.headers.get('Authorization', '')
+                        if auth_header.startswith('Bearer '):
+                            api_key = auth_header.replace('Bearer ', '')
+
+                    if not api_key:
+                        return self.http_status(401, -1, 'No valid API key provided')
+
+                    try:
+                        is_valid = await self.ap.apikey_service.verify_api_key(api_key)
+                        if not is_valid:
+                            return self.http_status(401, -1, 'Invalid API key')
+                    except Exception as e:
+                        return self.http_status(401, -1, str(e))
+
+                elif auth_type == AuthType.USER_TOKEN_OR_API_KEY:
+                    # Try API key first (check X-API-Key header)
+                    api_key = quart.request.headers.get('X-API-Key', '')
+                    
+                    if api_key:
+                        # API key authentication
+                        try:
+                            is_valid = await self.ap.apikey_service.verify_api_key(api_key)
+                            if not is_valid:
+                                return self.http_status(401, -1, 'Invalid API key')
+                        except Exception as e:
+                            return self.http_status(401, -1, str(e))
+                    else:
+                        # Try user token authentication (Authorization header)
+                        token = quart.request.headers.get('Authorization', '').replace('Bearer ', '')
+
+                        if not token:
+                            return self.http_status(401, -1, 'No valid authentication provided (user token or API key required)')
+
+                        try:
+                            user_email = await self.ap.user_service.verify_jwt_token(token)
+
+                            # check if this account exists
+                            user = await self.ap.user_service.get_user_by_email(user_email)
+                            if not user:
+                                return self.http_status(401, -1, 'User not found')
+
+                            # check if f accepts user_email parameter
+                            if 'user_email' in f.__code__.co_varnames:
+                                kwargs['user_email'] = user_email
+                        except Exception:
+                            # If user token fails, maybe it's an API key in Authorization header
+                            try:
+                                is_valid = await self.ap.apikey_service.verify_api_key(token)
+                                if not is_valid:
+                                    return self.http_status(401, -1, 'Invalid authentication credentials')
+                            except Exception as e:
+                                return self.http_status(401, -1, str(e))
 
                 try:
                     return await f(*args, **kwargs)

@@ -491,7 +491,7 @@ export default function BotForm({
                 <img
                   src={adapterIconList[form.watch('adapter')]}
                   alt="adapter icon"
-                  className="w-12 h-12"
+                  className="w-12 h-12 rounded-[8%]"
                 />
                 <div className="flex flex-col gap-1">
                   <div className="font-medium">

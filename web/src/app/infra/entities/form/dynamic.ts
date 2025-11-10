@@ -29,6 +29,7 @@ export enum DynamicFormItemType {
   PROMPT_EDITOR = 'prompt-editor',
   UNKNOWN = 'unknown',
   KNOWLEDGE_BASE_SELECTOR = 'knowledge-base-selector',
+  KNOWLEDGE_BASE_MULTI_SELECTOR = 'knowledge-base-multi-selector',
   PLUGIN_SELECTOR = 'plugin-selector',
   BOT_SELECTOR = 'bot-selector',
 }

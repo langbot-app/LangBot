@@ -20,6 +20,7 @@ from ...api.http.service import pipeline as pipeline_service
 from ...api.http.service import bot as bot_service
 from ...api.http.service import knowledge as knowledge_service
 from ...api.http.service import mcp as mcp_service
+from ...api.http.service import apikey as apikey_service
 from ...discover import engine as discover_engine
 from ...storage import mgr as storagemgr
 from ...utils import logcache
@@ -129,6 +130,9 @@ class BuildAppStage(stage.BootingStage):
 
         mcp_service_inst = mcp_service.MCPService(ap)
         ap.mcp_service = mcp_service_inst
+
+        apikey_service_inst = apikey_service.ApiKeyService(ap)
+        ap.apikey_service = apikey_service_inst
 
         ctrl = controller.Controller(ap)
         ap.ctrl = ctrl

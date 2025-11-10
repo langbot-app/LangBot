@@ -13,7 +13,6 @@ class SystemRouterGroup(group.RouterGroup):
                 data={
                     'version': constants.semantic_version,
                     'debug': constants.debug_mode,
-                    'enabled_platform_count': len(self.ap.platform_mgr.get_running_adapters()),
                     'enable_marketplace': self.ap.instance_config.data.get('plugin', {}).get(
                         'enable_marketplace', True
                     ),

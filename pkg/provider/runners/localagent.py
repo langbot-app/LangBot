@@ -40,10 +40,14 @@ class LocalAgentRunner(runner.RequestRunner):
         """运行请求"""
         pending_tool_calls = []
 
-        kb_uuid = query.pipeline_config['ai']['local-agent']['knowledge-base']
-
-        if kb_uuid == '__none__':
-            kb_uuid = None
+        # Get knowledge bases list (new field)
+        kb_uuids = query.pipeline_config['ai']['local-agent'].get('knowledge-bases', [])
+        
+        # Fallback to old field for backward compatibility
+        if not kb_uuids:
+            old_kb_uuid = query.pipeline_config['ai']['local-agent'].get('knowledge-base', '')
+            if old_kb_uuid and old_kb_uuid != '__none__':
+                kb_uuids = [old_kb_uuid]
 
         user_message = copy.deepcopy(query.user_message)
 
@@ -57,21 +61,28 @@ class LocalAgentRunner(runner.RequestRunner):
                     user_message_text += ce.text
                     break
 
-        if kb_uuid and user_message_text:
+        if kb_uuids and user_message_text:
             # only support text for now
-            kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
+            all_results = []
+            
+            # Retrieve from each knowledge base
+            for kb_uuid in kb_uuids:
+                kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
 
-            if not kb:
-                self.ap.logger.warning(f'Knowledge base {kb_uuid} not found')
-                raise ValueError(f'Knowledge base {kb_uuid} not found')
+                if not kb:
+                    self.ap.logger.warning(f'Knowledge base {kb_uuid} not found, skipping')
+                    continue
 
-            result = await kb.retrieve(user_message_text, kb.knowledge_base_entity.top_k)
+                result = await kb.retrieve(user_message_text, kb.knowledge_base_entity.top_k)
+                
+                if result:
+                    all_results.extend(result)
 
             final_user_message_text = ''
 
-            if result:
+            if all_results:
                 rag_context = '\n\n'.join(
-                    f'[{i + 1}] {entry.metadata.get("text", "")}' for i, entry in enumerate(result)
+                    f'[{i + 1}] {entry.metadata.get("text", "")}' for i, entry in enumerate(all_results)
                 )
                 final_user_message_text = rag_combined_prompt_template.format(
                     rag_context=rag_context, user_message=user_message_text

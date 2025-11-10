@@ -105,17 +105,18 @@ class LLMModelsService:
         else:
             runtime_llm_model = await self.ap.model_mgr.init_runtime_llm_model(model_data)
 
-        # 有些模型厂商默认开启了思考功能，测试容易延迟
-        extra_args = model_data.get('extra_args', {})
-        if not extra_args or 'thinking' not in extra_args:
-            extra_args['thinking'] = {'type': 'disabled'}
+        # Mon Nov 10 2025: Commented for some providers may not support thinking parameter
+        # # 有些模型厂商默认开启了思考功能，测试容易延迟
+        # extra_args = model_data.get('extra_args', {})
+        # if not extra_args or 'thinking' not in extra_args:
+        #     extra_args['thinking'] = {'type': 'disabled'}
 
         await runtime_llm_model.requester.invoke_llm(
             query=None,
             model=runtime_llm_model,
             messages=[provider_message.Message(role='user', content='Hello, world! Please just reply a "Hello".')],
             funcs=[],
-            extra_args=extra_args,
+            # extra_args=extra_args,
         )
 
 

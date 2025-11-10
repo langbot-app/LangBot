@@ -152,6 +152,7 @@ class CozeAPIRunner(runner.RequestRunner):
                 
                 event_type = chunk.get('event')
                 data = chunk.get('data', {})
+                # Removed debug print statement to avoid cluttering logs in production
                 
                 if event_type == 'conversation.message.delta':
                     # 收集内容
@@ -162,7 +163,7 @@ class CozeAPIRunner(runner.RequestRunner):
                     if 'reasoning_content' in data:
                         full_reasoning += data.get('reasoning_content', '')
                 
-                elif event_type == 'done':
+                elif event_type.split(".")[-1]  == 'done' :  # 本地部署coze时，结束event不为done
                     # 保存会话ID
                     if 'conversation_id' in data:
                         conversation_id = data.get('conversation_id')
@@ -258,7 +259,7 @@ class CozeAPIRunner(runner.RequestRunner):
                                 stop_reasoning = True
 
                 
-                elif event_type == 'done':
+                elif event_type.split(".")[-1]  == 'done' :  # 本地部署coze时，结束event不为done
                     # 保存会话ID
                     if 'conversation_id' in data:
                         conversation_id = data.get('conversation_id')
