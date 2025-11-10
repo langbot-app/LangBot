@@ -9,7 +9,6 @@ from pathlib import Path
 import os
 
 
-
 class AsyncDifyServiceClient:
     """Dify Service API 客户端"""
 
@@ -115,21 +114,20 @@ class AsyncDifyServiceClient:
         # 处理 Path 对象
         if isinstance(file, Path):
             if not file.exists():
-                raise ValueError(f"File not found: {file}")
-            with open(file, "rb") as f:
+                raise ValueError(f'File not found: {file}')
+            with open(file, 'rb') as f:
                 file = f.read()
 
         # 处理文件路径字符串
         elif isinstance(file, str):
             if not os.path.isfile(file):
-                raise ValueError(f"File not found: {file}")
-            with open(file, "rb") as f:
+                raise ValueError(f'File not found: {file}')
+            with open(file, 'rb') as f:
                 file = f.read()
 
         # 处理文件对象
         elif hasattr(file, 'read'):
             file = file.read()
-        """上传文件"""
         async with httpx.AsyncClient(
             base_url=self.base_url,
             trust_env=True,
