@@ -204,7 +204,7 @@ export default function LLMForm({
         return {
           label: extractI18nObject(item.label),
           value: item.name,
-          provider_category: item.provider_category || 'manufacturer',
+          provider_category: item.spec.provider_category || 'manufacturer',
         };
       }),
     );

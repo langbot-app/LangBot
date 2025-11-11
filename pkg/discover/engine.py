@@ -175,7 +175,6 @@ class Component(pydantic.BaseModel):
             'label': self.metadata.label.to_dict(),
             'description': self.metadata.description.to_dict(),
             'icon': self.metadata.icon,
-            'provider_category': self.spec.get('provider_category'),
             'spec': self.spec,
         }
 
