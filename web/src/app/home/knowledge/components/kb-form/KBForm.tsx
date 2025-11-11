@@ -13,7 +13,6 @@ import {
   FormMessage,
   FormDescription,
 } from '@/components/ui/form';
-import { IEmbeddingModelEntity } from './ChooseEntity';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import {
   Select,
@@ -23,8 +22,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { KnowledgeBase } from '@/app/infra/entities/api';
+import { KnowledgeBase, EmbeddingModel } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from '@/components/ui/hover-card';
 
 const getFormSchema = (t: (key: string) => string) =>
   z.object({
@@ -63,9 +67,7 @@ export default function KBForm({
     },
   });
 
-  const [embeddingModelNameList, setEmbeddingModelNameList] = useState<
-    IEmbeddingModelEntity[]
-  >([]);
+  const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModel[]>([]);
 
   useEffect(() => {
     getEmbeddingModelNameList().then(() => {
@@ -97,14 +99,7 @@ export default function KBForm({
 
   const getEmbeddingModelNameList = async () => {
     const resp = await httpClient.getProviderEmbeddingModels();
-    setEmbeddingModelNameList(
-      resp.models.map((item) => {
-        return {
-          label: item.name,
-          value: item.uuid,
-        };
-      }),
-    );
+    setEmbeddingModels(resp.models);
   };
 
   const onSubmit = (data: z.infer<typeof formSchema>) => {
@@ -216,10 +211,87 @@ export default function KBForm({
                         </SelectTrigger>
                         <SelectContent className="fixed z-[1000]">
                           <SelectGroup>
-                            {embeddingModelNameList.map((item) => (
-                              <SelectItem key={item.value} value={item.value}>
-                                {item.label}
-                              </SelectItem>
+                            {embeddingModels.map((model) => (
+                              <HoverCard
+                                key={model.uuid}
+                                openDelay={0}
+                                closeDelay={0}
+                              >
+                                <HoverCardTrigger asChild>
+                                  <SelectItem value={model.uuid}>
+                                    {model.name}
+                                  </SelectItem>
+                                </HoverCardTrigger>
+                                <HoverCardContent
+                                  className="w-80 data-[state=open]:animate-none data-[state=closed]:animate-none"
+                                  align="end"
+                                  side="right"
+                                  sideOffset={10}
+                                >
+                                  <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <img
+                                        src={httpClient.getProviderRequesterIconURL(
+                                          model.requester,
+                                        )}
+                                        alt="icon"
+                                        className="w-8 h-8 rounded-full"
+                                      />
+                                      <h4 className="font-medium">
+                                        {model.name}
+                                      </h4>
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">
+                                      {model.description}
+                                    </p>
+                                    {model.requester_config && (
+                                      <div className="flex items-center gap-1 text-xs">
+                                        <svg
+                                          className="w-4 h-4 text-gray-500"
+                                          xmlns="http://www.w3.org/2000/svg"
+                                          viewBox="0 0 24 24"
+                                          fill="currentColor"
+                                        >
+                                          <path d="M13.0607 8.11097L14.4749 9.52518C17.2086 12.2589 17.2086 16.691 14.4749 19.4247L14.1214 19.7782C11.3877 22.5119 6.95555 22.5119 4.22188 19.7782C1.48821 17.0446 1.48821 12.6124 4.22188 9.87874L5.6361 11.293C3.68348 13.2456 3.68348 16.4114 5.6361 18.364C7.58872 20.3166 10.7545 20.3166 12.7072 18.364L13.0607 18.0105C15.0133 16.0578 15.0133 12.892 13.0607 10.9394L11.6465 9.52518L13.0607 8.11097ZM19.7782 14.1214L18.364 12.7072C20.3166 10.7545 20.3166 7.58872 18.364 5.6361C16.4114 3.68348 13.2456 3.68348 11.293 5.6361L10.9394 5.98965C8.98678 7.94227 8.98678 11.1081 10.9394 13.0607L12.3536 14.4749L10.9394 15.8891L9.52518 14.4749C6.79151 11.7413 6.79151 7.30911 9.52518 4.57544L9.87874 4.22188C12.6124 1.48821 17.0446 1.48821 19.7782 4.22188C22.5119 6.95555 22.5119 11.3877 19.7782 14.1214Z"></path>
+                                        </svg>
+                                        <span className="font-semibold">
+                                          Base URL：
+                                        </span>
+                                        {model.requester_config.base_url}
+                                      </div>
+                                    )}
+                                    {model.extra_args &&
+                                      Object.keys(model.extra_args).length >
+                                        0 && (
+                                        <div className="text-xs">
+                                          <div className="font-semibold mb-1">
+                                            {t('models.extraParameters')}
+                                          </div>
+                                          <div className="space-y-1">
+                                            {Object.entries(
+                                              model.extra_args as Record<
+                                                string,
+                                                unknown
+                                              >,
+                                            ).map(([key, value]) => (
+                                              <div
+                                                key={key}
+                                                className="flex items-center gap-1"
+                                              >
+                                                <span className="text-gray-500">
+                                                  {key}：
+                                                </span>
+                                                <span className="break-all">
+                                                  {JSON.stringify(value)}
+                                                </span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                  </div>
+                                </HoverCardContent>
+                              </HoverCard>
                             ))}
                           </SelectGroup>
                         </SelectContent>
