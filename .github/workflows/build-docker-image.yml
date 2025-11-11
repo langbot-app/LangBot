@@ -1,7 +1,5 @@
 name: Build Docker Image
 on:
-  #防止fork乱用action设置只能手动触发构建
-  workflow_dispatch:
   ## 发布release的时候会自动构建
   release:
     types: [published]
