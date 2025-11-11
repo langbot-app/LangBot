@@ -24,7 +24,7 @@ spec:
     default: 120
   support_type:
   - llm
-  provider_category: manufacturer
+  provider_category: maas
 execution:
   python:
     path: ./volcarkchatcmpl.py
