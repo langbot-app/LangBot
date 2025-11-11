@@ -6,6 +6,7 @@ metadata:
     en_US: LM Studio
     zh_Hans: LM Studio
   icon: lmstudio.webp
+  provider_category: self_deployed
 spec:
   config:
     - name: base_url

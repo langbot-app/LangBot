@@ -6,6 +6,7 @@ metadata:
     en_US: QH AI
     zh_Hans: 启航 AI
   icon: qhaigc.png
+  provider_category: aggregator
 spec:
   config:
     - name: base_url

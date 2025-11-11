@@ -34,6 +34,7 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -186,6 +187,7 @@ export default function EmbeddingForm({
         return {
           label: extractI18nObject(item.label),
           value: item.name,
+          provider_category: item.provider_category || 'manufacturer',
         };
       }),
     );
@@ -425,11 +427,48 @@ export default function EmbeddingForm({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
-                          {requesterNameList.map((item) => (
-                            <SelectItem key={item.value} value={item.value}>
-                              {item.label}
-                            </SelectItem>
-                          ))}
+                          <SelectLabel>
+                            {t('models.modelManufacturer')}
+                          </SelectLabel>
+                          {requesterNameList
+                            .filter(
+                              (item) =>
+                                item.provider_category === 'manufacturer',
+                            )
+                            .map((item) => (
+                              <SelectItem key={item.value} value={item.value}>
+                                {item.label}
+                              </SelectItem>
+                            ))}
+                        </SelectGroup>
+                        <SelectGroup>
+                          <SelectLabel>
+                            {t('models.aggregationPlatform')}
+                          </SelectLabel>
+                          {requesterNameList
+                            .filter(
+                              (item) => item.provider_category === 'aggregator',
+                            )
+                            .map((item) => (
+                              <SelectItem key={item.value} value={item.value}>
+                                {item.label}
+                              </SelectItem>
+                            ))}
+                        </SelectGroup>
+                        <SelectGroup>
+                          <SelectLabel>
+                            {t('models.selfDeployed')}
+                          </SelectLabel>
+                          {requesterNameList
+                            .filter(
+                              (item) =>
+                                item.provider_category === 'self_deployed',
+                            )
+                            .map((item) => (
+                              <SelectItem key={item.value} value={item.value}>
+                                {item.label}
+                              </SelectItem>
+                            ))}
                         </SelectGroup>
                       </SelectContent>
                     </Select>

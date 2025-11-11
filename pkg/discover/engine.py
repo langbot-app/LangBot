@@ -51,6 +51,9 @@ class Metadata(pydantic.BaseModel):
     icon: typing.Optional[str] = None
     """图标"""
 
+    provider_category: typing.Optional[str] = None
+    """供应商类别: manufacturer (模型厂), aggregator (中转商), self_deployed (自部署)"""
+
     author: typing.Optional[str] = None
     """作者"""
 
@@ -175,6 +178,7 @@ class Component(pydantic.BaseModel):
             'label': self.metadata.label.to_dict(),
             'description': self.metadata.description.to_dict(),
             'icon': self.metadata.icon,
+            'provider_category': self.metadata.provider_category,
             'spec': self.spec,
         }
 

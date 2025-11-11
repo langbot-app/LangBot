@@ -6,6 +6,7 @@ metadata:
     en_US: ZhipuAI
     zh_Hans: 智谱 AI
   icon: zhipuai.svg
+  provider_category: manufacturer
 spec:
   config:
     - name: base_url

@@ -141,6 +141,9 @@ const enUS = {
     selectModelProvider: 'Select Model Provider',
     modelProviderDescription:
       'Please fill in the model name provided by the supplier',
+    modelManufacturer: 'Model Manufacturer',
+    aggregationPlatform: 'Aggregation Platform',
+    selfDeployed: 'Self-deployed',
     selectModel: 'Select Model',
     testSuccess: 'Test successful',
     testError: 'Test failed, please check your model configuration',

@@ -6,6 +6,7 @@ metadata:
     en_US: Aliyun Bailian
     zh_Hans: 阿里云百炼
   icon: bailian.png
+  provider_category: manufacturer
 spec:
   config:
     - name: base_url

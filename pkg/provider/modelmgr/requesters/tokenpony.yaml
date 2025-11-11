@@ -6,6 +6,7 @@ metadata:
     en_US: TokenPony
     zh_Hans: 小马算力
   icon: tokenpony.svg
+  provider_category: aggregator
 spec:
   config:
     - name: base_url

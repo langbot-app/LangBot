@@ -6,6 +6,7 @@ metadata:
     en_US: Google Gemini
     zh_Hans: Google Gemini
   icon: gemini.svg
+  provider_category: manufacturer
 spec:
   config:
     - name: base_url

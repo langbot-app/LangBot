@@ -6,6 +6,7 @@ metadata:
     en_US: ModelScope
     zh_Hans: 魔搭社区
   icon: modelscope.svg
+  provider_category: aggregator
 spec:
   config:
     - name: base_url
