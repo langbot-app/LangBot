@@ -471,9 +471,7 @@ export default function LLMForm({
                             ))}
                         </SelectGroup>
                         <SelectGroup>
-                          <SelectLabel>
-                            {t('models.selfDeployed')}
-                          </SelectLabel>
+                          <SelectLabel>{t('models.selfDeployed')}</SelectLabel>
                           {requesterNameList
                             .filter(
                               (item) =>

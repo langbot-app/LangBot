@@ -27,6 +27,7 @@ export interface Requester {
   label: I18nObject;
   description: I18nObject;
   icon?: string;
+  provider_category?: string;
   spec: {
     config: IDynamicFormItemSchema[];
   };
