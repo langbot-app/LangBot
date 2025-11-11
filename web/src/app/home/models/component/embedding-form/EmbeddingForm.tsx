@@ -446,9 +446,7 @@ export default function EmbeddingForm({
                             {t('models.aggregationPlatform')}
                           </SelectLabel>
                           {requesterNameList
-                            .filter(
-                              (item) => item.provider_category === 'aggregator',
-                            )
+                            .filter((item) => item.provider_category === 'maas')
                             .map((item) => (
                               <SelectItem key={item.value} value={item.value}>
                                 {item.label}
@@ -460,7 +458,7 @@ export default function EmbeddingForm({
                           {requesterNameList
                             .filter(
                               (item) =>
-                                item.provider_category === 'self_deployed',
+                                item.provider_category === 'self-hosted',
                             )
                             .map((item) => (
                               <SelectItem key={item.value} value={item.value}>

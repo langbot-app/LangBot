@@ -6,7 +6,7 @@ metadata:
     en_US: ppio 
     zh_Hans: 派欧云
   icon: ppio.svg
-  provider_category: aggregator
+  provider_category: maas
 spec:
   config:
     - name: base_url

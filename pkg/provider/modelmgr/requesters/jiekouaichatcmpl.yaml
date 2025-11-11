@@ -6,7 +6,7 @@ metadata:
     en_US: JieKou AI
     zh_Hans: 接口 AI
   icon: jiekouai.png
-  provider_category: aggregator
+  provider_category: maas
 spec:
   config:
     - name: base_url

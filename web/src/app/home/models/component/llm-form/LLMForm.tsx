@@ -461,9 +461,7 @@ export default function LLMForm({
                             {t('models.aggregationPlatform')}
                           </SelectLabel>
                           {requesterNameList
-                            .filter(
-                              (item) => item.provider_category === 'aggregator',
-                            )
+                            .filter((item) => item.provider_category === 'maas')
                             .map((item) => (
                               <SelectItem key={item.value} value={item.value}>
                                 {item.label}
@@ -475,7 +473,7 @@ export default function LLMForm({
                           {requesterNameList
                             .filter(
                               (item) =>
-                                item.provider_category === 'self_deployed',
+                                item.provider_category === 'self-hosted',
                             )
                             .map((item) => (
                               <SelectItem key={item.value} value={item.value}>

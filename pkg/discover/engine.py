@@ -52,7 +52,7 @@ class Metadata(pydantic.BaseModel):
     """图标"""
 
     provider_category: typing.Optional[str] = None
-    """供应商类别: manufacturer (模型厂), aggregator (中转商), self_deployed (自部署)"""
+    """供应商类别: manufacturer (模型厂), maas (中转商), self-hosted (自部署)"""
 
     author: typing.Optional[str] = None
     """作者"""
