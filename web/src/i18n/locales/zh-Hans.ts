@@ -150,7 +150,8 @@ const zhHans = {
     logs: '日志',
     webhookUrl: 'Webhook 回调地址',
     webhookUrlCopied: 'Webhook 地址已复制',
-    webhookUrlHint: '点击输入框自动全选，然后按 Ctrl+C (Mac: Cmd+C) 复制，或点击右侧按钮',
+    webhookUrlHint:
+      '点击输入框自动全选，然后按 Ctrl+C (Mac: Cmd+C) 复制，或点击右侧按钮',
   },
   plugins: {
     title: '插件管理',

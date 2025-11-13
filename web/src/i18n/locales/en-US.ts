@@ -153,7 +153,8 @@ const enUS = {
     logs: 'Logs',
     webhookUrl: 'Webhook Callback URL',
     webhookUrlCopied: 'Webhook URL copied',
-    webhookUrlHint: 'Click the input to select all, then press Ctrl+C (Mac: Cmd+C) to copy, or click the button',
+    webhookUrlHint:
+      'Click the input to select all, then press Ctrl+C (Mac: Cmd+C) to copy, or click the button',
   },
   plugins: {
     title: 'Plugins',

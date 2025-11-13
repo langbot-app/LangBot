@@ -142,8 +142,12 @@ export default function BotForm({
 
       // 尝试使用现代API
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        console.log('[Copy] Using Clipboard API with input value:', inputElement.value);
-        navigator.clipboard.writeText(inputElement.value)
+        console.log(
+          '[Copy] Using Clipboard API with input value:',
+          inputElement.value,
+        );
+        navigator.clipboard
+          .writeText(inputElement.value)
           .then(() => {
             console.log('[Copy] Clipboard API success');
             inputElement.blur(); // 取消选中
@@ -151,7 +155,10 @@ export default function BotForm({
             toast.success(t('bots.webhookUrlCopied'));
           })
           .catch((err) => {
-            console.error('[Copy] Clipboard API failed, trying execCommand:', err);
+            console.error(
+              '[Copy] Clipboard API failed, trying execCommand:',
+              err,
+            );
             // 降级到execCommand
             const successful = document.execCommand('copy');
             console.log('[Copy] execCommand result:', successful);
@@ -165,7 +172,10 @@ export default function BotForm({
           });
       } else {
         // 直接使用execCommand
-        console.log('[Copy] Using execCommand with input value:', inputElement.value);
+        console.log(
+          '[Copy] Using execCommand with input value:',
+          inputElement.value,
+        );
         const successful = document.execCommand('copy');
         console.log('[Copy] execCommand result:', successful);
         inputElement.blur();
@@ -300,7 +310,8 @@ export default function BotForm({
             enable: bot.enable ?? true,
             use_pipeline_uuid: bot.use_pipeline_uuid ?? '',
             webhook_full_url: bot.adapter_runtime_values
-              ? (bot.adapter_runtime_values as any).webhook_full_url
+              ? ((bot.adapter_runtime_values as Record<string, unknown>)
+                  .webhook_full_url as string)
               : undefined,
           });
         })
@@ -479,7 +490,10 @@ export default function BotForm({
                             <SelectContent className="fixed z-[1000]">
                               <SelectGroup>
                                 {pipelineNameList.map((item) => (
-                                  <SelectItem key={item.value} value={item.value}>
+                                  <SelectItem
+                                    key={item.value}
+                                    value={item.value}
+                                  >
                                     {item.label}
                                   </SelectItem>
                                 ))}

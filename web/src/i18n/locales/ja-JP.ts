@@ -155,7 +155,8 @@ const jaJP = {
     logs: 'ログ',
     webhookUrl: 'Webhook コールバック URL',
     webhookUrlCopied: 'Webhook URL をコピーしました',
-    webhookUrlHint: '入力ボックスをクリックして全選択し、Ctrl+C (Mac: Cmd+C) でコピーするか、右側のボタンをクリックしてください',
+    webhookUrlHint:
+      '入力ボックスをクリックして全選択し、Ctrl+C (Mac: Cmd+C) でコピーするか、右側のボタンをクリックしてください',
   },
   plugins: {
     title: 'プラグイン',
