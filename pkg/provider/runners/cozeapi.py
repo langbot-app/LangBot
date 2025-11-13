@@ -125,8 +125,8 @@ class CozeAPIRunner(runner.RequestRunner):
         
         注意：由于cozepy没有提供非流式API，这里使用流式API并在结束后一次性返回完整内容
         """
-        user_id = f'{query.launcher_id}_{query.sender_id}'
-        
+        user_id = f'{query.launcher_type.value}_{query.launcher_id}'
+
         # 预处理用户消息
         additional_messages = await self._preprocess_user_message(query)
         
@@ -206,7 +206,7 @@ class CozeAPIRunner(runner.RequestRunner):
         self, query: pipeline_query.Query
     ) -> typing.AsyncGenerator[provider_message.MessageChunk, None]:
         """调用聊天助手（流式）"""
-        user_id = f'{query.launcher_id}_{query.sender_id}'
+        user_id = f'{query.launcher_type.value}_{query.launcher_id}'
 
         # 预处理用户消息
         additional_messages = await self._preprocess_user_message(query)
