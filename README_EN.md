@@ -55,6 +55,10 @@ Community contributed Zeabur template.
 
 Directly use the released version to run, see the [Manual Deployment](https://docs.langbot.app/en/deploy/langbot/manual.html) documentation.
 
+#### Kubernetes Deployment
+
+Refer to the [Kubernetes Deployment](./docker/README_K8S.md) documentation.
+
 ## 😎 Stay Ahead
 
 Click the Star and Watch button in the upper right corner of the repository to get the latest updates.

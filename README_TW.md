@@ -57,6 +57,10 @@ docker compose up -d
 
 直接使用發行版運行，查看文件[手動部署](https://docs.langbot.app/zh/deploy/langbot/manual.html)。
 
+#### Kubernetes 部署
+
+參考 [Kubernetes 部署](./docker/README_K8S.md) 文件。
+
 ## 😎 保持更新
 
 點擊倉庫右上角 Star 和 Watch 按鈕，獲取最新動態。

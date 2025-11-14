@@ -27,7 +27,7 @@ Kubernetes 部署包含以下组件：
    - 数据持久化卷
    
 2. **langbot-plugin-runtime**: 插件运行时服务
-   - WebSocket 通信（端口 5401）
+   - WebSocket 通信（端口 5400）
    - 插件数据持久化卷
 
 3. **持久化存储**:
@@ -340,7 +340,7 @@ The Kubernetes deployment includes the following components:
    - Data persistence volume
    
 2. **langbot-plugin-runtime**: Plugin runtime service
-   - WebSocket communication (port 5401)
+   - WebSocket communication (port 5400)
    - Plugin data persistence volume
 
 3. **Persistent Storage**:

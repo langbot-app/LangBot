@@ -82,6 +82,7 @@ metadata:
   namespace: langbot
 data:
   TZ: "Asia/Shanghai"
+  PLUGIN__RUNTIME_WS_URL: "ws://langbot-plugin-runtime:5400/control/ws"
 
 ---
 # Deployment for LangBot Plugin Runtime
@@ -108,7 +109,7 @@ spec:
         imagePullPolicy: Always
         command: ["uv", "run", "-m", "langbot_plugin.cli.__init__", "rt"]
         ports:
-        - containerPort: 5401
+        - containerPort: 5400
           name: runtime
           protocol: TCP
         env:
@@ -130,7 +131,7 @@ spec:
         # Liveness probe to restart container if it becomes unresponsive
         livenessProbe:
           tcpSocket:
-            port: 5401
+            port: 5400
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
@@ -138,7 +139,7 @@ spec:
         # Readiness probe to know when container is ready to accept traffic
         readinessProbe:
           tcpSocket:
-            port: 5401
+            port: 5400
           initialDelaySeconds: 10
           periodSeconds: 5
           timeoutSeconds: 3
@@ -163,8 +164,8 @@ spec:
   selector:
     app: langbot-plugin-runtime
   ports:
-  - port: 5401
-    targetPort: 5401
+  - port: 5400
+    targetPort: 5400
     protocol: TCP
     name: runtime
 
@@ -207,6 +208,11 @@ spec:
             configMapKeyRef:
               name: langbot-config
               key: TZ
+        - name: PLUGIN__RUNTIME_WS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: PLUGIN__RUNTIME_WS_URL
         volumeMounts:
         - name: data
           mountPath: /app/data

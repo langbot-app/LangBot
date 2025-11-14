@@ -55,6 +55,10 @@ LangBotはBTPanelにリストされています。BTPanelをインストール�
 
 リリースバージョンを直接使用して実行します。[手動デプロイ](https://docs.langbot.app/en/deploy/langbot/manual.html)のドキュメントを参照してください。
 
+#### Kubernetes デプロイ
+
+[Kubernetes デプロイ](./docker/README_K8S.md) ドキュメントを参照してください。
+
 ## 😎 最新情報を入手
 
 リポジトリの右上にある Star と Watch ボタンをクリックして、最新の更新を取得してください。
