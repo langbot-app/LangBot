@@ -3,7 +3,7 @@ Tests for storage manager and provider selection
 """
 
 import pytest
-from unittest.mock import Mock, AsyncMock, MagicMock, patch
+from unittest.mock import Mock, AsyncMock, patch
 from pkg.storage.mgr import StorageMgr
 from pkg.storage.providers.localstorage import LocalStorageProvider
 from pkg.storage.providers.s3storage import S3StorageProvider
