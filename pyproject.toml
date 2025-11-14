@@ -67,6 +67,7 @@ dependencies = [
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "tboxsdk>=0.0.10",
+    "boto3>=1.35.0",
 ]
 keywords = [
     "bot",

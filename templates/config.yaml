@@ -35,6 +35,14 @@ vdb:
         host: localhost
         port: 6333
         api_key: ''
+storage:
+    use: local
+    s3:
+        endpoint_url: ''
+        access_key_id: ''
+        secret_access_key: ''
+        region: 'us-east-1'
+        bucket: 'langbot-storage'
 plugin:
     enable: true
     runtime_ws_url: 'ws://langbot_plugin_runtime:5400/control/ws'
