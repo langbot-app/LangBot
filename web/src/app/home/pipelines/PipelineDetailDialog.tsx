@@ -190,7 +190,7 @@ export default function PipelineDialog({
               <DialogTitle>{getDialogTitle()}</DialogTitle>
             </DialogHeader>
             <div
-              className="flex-1 auto px-6 pb-4 w-full"
+              className="flex-1 overflow-y-auto px-6 pb-4 w-full"
               style={{ height: 'calc(100% - 4rem)' }}
             >
               {currentMode === 'config' && (
