@@ -8,19 +8,19 @@ from importlib import import_module
 
 
 def get_pipelinemgr_module():
-    return import_module('pkg.pipeline.pipelinemgr')
+    return import_module('langbot.pkg.pipeline.pipelinemgr')
 
 
 def get_stage_module():
-    return import_module('pkg.pipeline.stage')
+    return import_module('langbot.pkg.pipeline.stage')
 
 
 def get_entities_module():
-    return import_module('pkg.pipeline.entities')
+    return import_module('langbot.pkg.pipeline.entities')
 
 
 def get_persistence_pipeline_module():
-    return import_module('pkg.entity.persistence.pipeline')
+    return import_module('langbot.pkg.entity.persistence.pipeline')
 
 
 @pytest.mark.asyncio

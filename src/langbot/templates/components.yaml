@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Blueprint
+metadata:
+  name: builtin-components
+  label:
+    en_US: Builtin Components
+    zh_Hans: 内置组件
+spec:
+  components:
+    MessagePlatformAdapter:
+      fromDirs:
+        - path: pkg/platform/sources/
+    LLMAPIRequester:
+      fromDirs:
+        - path: pkg/provider/modelmgr/requesters/

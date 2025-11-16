@@ -10,16 +10,13 @@ This file provides infrastructure for all pipeline tests, including:
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, Mock
-from typing import Any
+from unittest.mock import AsyncMock, Mock
 
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
-import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
-import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
-from pkg.pipeline import entities as pipeline_entities
+from langbot.pkg.pipeline import entities as pipeline_entities
 
 
 class MockApplication:
@@ -203,7 +200,7 @@ def sample_query(sample_message_chain, sample_message_event, mock_adapter):
         variables={},
         resp_messages=[],
         resp_message_chain=None,
-        current_stage_name=None
+        current_stage_name=None,
     )
     return query
 

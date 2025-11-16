@@ -1,8 +1,9 @@
 [project]
 name = "langbot"
-version = "4.5.0"
+version = "4.6.0-beta.1"
 description = "Easy-to-use global IM bot platform designed for LLM era"
 readme = "README.md"
+license-files = ["LICENSE"]
 requires-python = ">=3.10.1,<4.0"
 dependencies = [
     "aiocqhttp>=1.4.4",
@@ -85,11 +86,10 @@ keywords = [
     "onebot",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Framework :: AsyncIO",
     "Framework :: Robot Framework",
     "Framework :: Robot Framework :: Library",
-    "License :: OSI Approved :: AGPL-3 License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Topic :: Communications :: Chat",
@@ -99,6 +99,16 @@ classifiers = [
 Homepage = "https://langbot.app"
 Documentation = "https://docs.langbot.app"
 Repository = "https://github.com/langbot-app/LangBot"
+
+[project.scripts]
+langbot = "langbot.__main__:main"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-data = { "langbot" = ["templates/*", "pkg/provider/modelmgr/requesters/*", "pkg/platform/sources/*", "web/out/**"] }
 
 [dependency-groups]
 dev = [

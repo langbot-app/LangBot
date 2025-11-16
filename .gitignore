@@ -47,3 +47,9 @@ uv.lock
 plugins.bak
 coverage.xml
 .coverage
+src/langbot/web/
+
+# Build artifacts
+/dist
+/build
+*.egg-info
