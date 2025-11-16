@@ -462,6 +462,8 @@ const zhHant = {
       addMCPServer: '新增 MCP 伺服器',
       selectMCPServers: '選擇 MCP 伺服器',
       toolCount: '{{count}} 個工具',
+      noPluginsInstalled: '無已安裝的插件',
+      noMCPServersConfigured: '無已配置的 MCP 伺服器',
     },
     debugDialog: {
       title: '流程線對話',

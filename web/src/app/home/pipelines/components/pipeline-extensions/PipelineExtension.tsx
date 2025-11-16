@@ -331,48 +331,56 @@ export default function PipelineExtension({
             <DialogTitle>{t('pipelines.extensions.selectPlugins')}</DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto space-y-2 pr-2">
-            {allPlugins.map((plugin) => {
-              const pluginId = getPluginId(plugin);
-              const metadata = plugin.manifest.manifest.metadata;
-              const isSelected = tempSelectedPluginIds.includes(pluginId);
-              return (
-                <div
-                  key={pluginId}
-                  className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent cursor-pointer"
-                  onClick={() => handleTogglePlugin(pluginId)}
-                >
-                  <Checkbox checked={isSelected} />
-                  <img
-                    src={backendClient.getPluginIconURL(
-                      metadata.author || '',
-                      metadata.name,
+            {allPlugins.length === 0 ? (
+              <div className="flex h-32 items-center justify-center rounded-lg border-2 border-dashed border-border">
+                <p className="text-sm text-muted-foreground">
+                  {t('pipelines.extensions.noPluginsInstalled')}
+                </p>
+              </div>
+            ) : (
+              allPlugins.map((plugin) => {
+                const pluginId = getPluginId(plugin);
+                const metadata = plugin.manifest.manifest.metadata;
+                const isSelected = tempSelectedPluginIds.includes(pluginId);
+                return (
+                  <div
+                    key={pluginId}
+                    className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent cursor-pointer"
+                    onClick={() => handleTogglePlugin(pluginId)}
+                  >
+                    <Checkbox checked={isSelected} />
+                    <img
+                      src={backendClient.getPluginIconURL(
+                        metadata.author || '',
+                        metadata.name,
+                      )}
+                      alt={metadata.name}
+                      className="w-10 h-10 rounded-lg border bg-muted object-cover flex-shrink-0"
+                    />
+                    <div className="flex-1">
+                      <div className="font-medium">{metadata.name}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {metadata.author} • v{metadata.version}
+                      </div>
+                      <div className="flex gap-1 mt-1">
+                        <PluginComponentList
+                          components={plugin.components}
+                          showComponentName={true}
+                          showTitle={false}
+                          useBadge={true}
+                          t={t}
+                        />
+                      </div>
+                    </div>
+                    {!plugin.enabled && (
+                      <Badge variant="secondary">
+                        {t('pipelines.extensions.disabled')}
+                      </Badge>
                     )}
-                    alt={metadata.name}
-                    className="w-10 h-10 rounded-lg border bg-muted object-cover flex-shrink-0"
-                  />
-                  <div className="flex-1">
-                    <div className="font-medium">{metadata.name}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {metadata.author} • v{metadata.version}
-                    </div>
-                    <div className="flex gap-1 mt-1">
-                      <PluginComponentList
-                        components={plugin.components}
-                        showComponentName={true}
-                        showTitle={false}
-                        useBadge={true}
-                        t={t}
-                      />
-                    </div>
                   </div>
-                  {!plugin.enabled && (
-                    <Badge variant="secondary">
-                      {t('pipelines.extensions.disabled')}
-                    </Badge>
-                  )}
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
           <DialogFooter>
             <Button
@@ -397,46 +405,56 @@ export default function PipelineExtension({
             </DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto space-y-2 pr-2">
-            {allMCPServers.map((server) => {
-              const isSelected = tempSelectedMCPIds.includes(server.uuid || '');
-              return (
-                <div
-                  key={server.uuid}
-                  className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent cursor-pointer"
-                  onClick={() => handleToggleMCPServer(server.uuid || '')}
-                >
-                  <Checkbox checked={isSelected} />
-                  <div className="w-10 h-10 rounded-lg border bg-muted flex items-center justify-center flex-shrink-0">
-                    <Server className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-medium">{server.name}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {server.mode}
+            {allMCPServers.length === 0 ? (
+              <div className="flex h-32 items-center justify-center rounded-lg border-2 border-dashed border-border">
+                <p className="text-sm text-muted-foreground">
+                  {t('pipelines.extensions.noMCPServersConfigured')}
+                </p>
+              </div>
+            ) : (
+              allMCPServers.map((server) => {
+                const isSelected = tempSelectedMCPIds.includes(
+                  server.uuid || '',
+                );
+                return (
+                  <div
+                    key={server.uuid}
+                    className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent cursor-pointer"
+                    onClick={() => handleToggleMCPServer(server.uuid || '')}
+                  >
+                    <Checkbox checked={isSelected} />
+                    <div className="w-10 h-10 rounded-lg border bg-muted flex items-center justify-center flex-shrink-0">
+                      <Server className="h-5 w-5 text-muted-foreground" />
                     </div>
-                    {server.runtime_info &&
-                      server.runtime_info.status === 'connected' && (
-                        <Badge
-                          variant="outline"
-                          className="flex items-center gap-1 mt-1"
-                        >
-                          <Wrench className="h-3 w-3 text-black dark:text-white" />
-                          <span className="text-xs text-black dark:text-white">
-                            {t('pipelines.extensions.toolCount', {
-                              count: server.runtime_info.tool_count || 0,
-                            })}
-                          </span>
-                        </Badge>
-                      )}
+                    <div className="flex-1">
+                      <div className="font-medium">{server.name}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {server.mode}
+                      </div>
+                      {server.runtime_info &&
+                        server.runtime_info.status === 'connected' && (
+                          <Badge
+                            variant="outline"
+                            className="flex items-center gap-1 mt-1"
+                          >
+                            <Wrench className="h-3 w-3 text-black dark:text-white" />
+                            <span className="text-xs text-black dark:text-white">
+                              {t('pipelines.extensions.toolCount', {
+                                count: server.runtime_info.tool_count || 0,
+                              })}
+                            </span>
+                          </Badge>
+                        )}
+                    </div>
+                    {!server.enable && (
+                      <Badge variant="secondary">
+                        {t('pipelines.extensions.disabled')}
+                      </Badge>
+                    )}
                   </div>
-                  {!server.enable && (
-                    <Badge variant="secondary">
-                      {t('pipelines.extensions.disabled')}
-                    </Badge>
-                  )}
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setMcpDialogOpen(false)}>

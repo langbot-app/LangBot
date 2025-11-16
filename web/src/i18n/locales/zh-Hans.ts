@@ -464,6 +464,8 @@ const zhHans = {
       addMCPServer: '添加 MCP 服务器',
       selectMCPServers: '选择 MCP 服务器',
       toolCount: '{{count}} 个工具',
+      noPluginsInstalled: '无已安装的插件',
+      noMCPServersConfigured: '无已配置的 MCP 服务器',
     },
     debugDialog: {
       title: '流水线对话',

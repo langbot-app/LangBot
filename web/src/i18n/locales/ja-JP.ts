@@ -485,6 +485,8 @@ const jaJP = {
       addMCPServer: 'MCPサーバーを追加',
       selectMCPServers: 'MCPサーバーを選択',
       toolCount: '{{count}}個のツール',
+      noPluginsInstalled: 'インストールされているプラグインがありません',
+      noMCPServersConfigured: '設定されているMCPサーバーがありません',
     },
     debugDialog: {
       title: 'パイプラインのチャット',

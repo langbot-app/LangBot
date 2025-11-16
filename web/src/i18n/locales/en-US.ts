@@ -482,6 +482,8 @@ const enUS = {
       addMCPServer: 'Add MCP Server',
       selectMCPServers: 'Select MCP Servers',
       toolCount: '{{count}} tools',
+      noPluginsInstalled: 'No installed plugins',
+      noMCPServersConfigured: 'No configured MCP servers',
     },
     debugDialog: {
       title: 'Pipeline Chat',
