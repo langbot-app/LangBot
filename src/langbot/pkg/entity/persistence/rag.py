@@ -43,6 +43,17 @@ class Chunk(Base):
     text = sqlalchemy.Column(sqlalchemy.Text)
 
 
+class ExternalKnowledgeBase(Base):
+    __tablename__ = 'external_knowledge_bases'
+    uuid = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True, unique=True)
+    name = sqlalchemy.Column(sqlalchemy.String, index=True)
+    description = sqlalchemy.Column(sqlalchemy.Text)
+    api_url = sqlalchemy.Column(sqlalchemy.String, nullable=False)
+    api_key = sqlalchemy.Column(sqlalchemy.String, nullable=True)
+    created_at = sqlalchemy.Column(sqlalchemy.DateTime, default=sqlalchemy.func.now())
+    top_k = sqlalchemy.Column(sqlalchemy.Integer, default=5)
+
+
 # class Vector(Base):
 #     __tablename__ = 'knowledge_base_vectors'
 #     uuid = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True, unique=True)

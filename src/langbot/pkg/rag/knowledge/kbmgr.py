@@ -11,9 +11,11 @@ import sqlalchemy
 from langbot.pkg.entity.persistence import rag as persistence_rag
 from langbot.pkg.core import taskmgr
 from langbot.pkg.entity.rag import retriever as retriever_entities
+from .base import KnowledgeBaseInterface
+from .external import ExternalKnowledgeBase
 
 
-class RuntimeKnowledgeBase:
+class RuntimeKnowledgeBase(KnowledgeBaseInterface):
     ap: app.Application
 
     knowledge_base_entity: persistence_rag.KnowledgeBase
@@ -27,7 +29,7 @@ class RuntimeKnowledgeBase:
     retriever: Retriever
 
     def __init__(self, ap: app.Application, knowledge_base_entity: persistence_rag.KnowledgeBase):
-        self.ap = ap
+        super().__init__(ap)
         self.knowledge_base_entity = knowledge_base_entity
         self.parser = parser.FileParser(ap=self.ap)
         self.chunker = chunker.Chunker(ap=self.ap)
@@ -206,6 +208,18 @@ class RuntimeKnowledgeBase:
             sqlalchemy.delete(persistence_rag.File).where(persistence_rag.File.uuid == file_id)
         )
 
+    def get_uuid(self) -> str:
+        """Get the UUID of the knowledge base"""
+        return self.knowledge_base_entity.uuid
+
+    def get_name(self) -> str:
+        """Get the name of the knowledge base"""
+        return self.knowledge_base_entity.name
+
+    def get_type(self) -> str:
+        """Get the type of knowledge base"""
+        return 'internal'
+
     async def dispose(self):
         await self.ap.vector_db_mgr.vector_db.delete_collection(self.knowledge_base_entity.uuid)
 
@@ -213,7 +227,7 @@ class RuntimeKnowledgeBase:
 class RAGManager:
     ap: app.Application
 
-    knowledge_bases: list[RuntimeKnowledgeBase]
+    knowledge_bases: list[KnowledgeBaseInterface]
 
     def __init__(self, ap: app.Application):
         self.ap = ap
@@ -227,8 +241,8 @@ class RAGManager:
 
         self.knowledge_bases = []
 
+        # Load internal knowledge bases
         result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_rag.KnowledgeBase))
-
         knowledge_bases = result.all()
 
         for knowledge_base in knowledge_bases:
@@ -237,6 +251,20 @@ class RAGManager:
             except Exception as e:
                 self.ap.logger.error(
                     f'Error loading knowledge base {knowledge_base.uuid}: {e}\n{traceback.format_exc()}'
+                )
+
+        # Load external knowledge bases
+        external_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_rag.ExternalKnowledgeBase)
+        )
+        external_kbs = external_result.all()
+
+        for external_kb in external_kbs:
+            try:
+                await self.load_external_knowledge_base(external_kb)
+            except Exception as e:
+                self.ap.logger.error(
+                    f'Error loading external knowledge base {external_kb.uuid}: {e}\n{traceback.format_exc()}'
                 )
 
     async def load_knowledge_base(
@@ -256,21 +284,39 @@ class RAGManager:
 
         return runtime_knowledge_base
 
-    async def get_knowledge_base_by_uuid(self, kb_uuid: str) -> RuntimeKnowledgeBase | None:
+    async def load_external_knowledge_base(
+        self,
+        external_kb_entity: persistence_rag.ExternalKnowledgeBase | sqlalchemy.Row | dict,
+    ) -> ExternalKnowledgeBase:
+        """Load external knowledge base into runtime"""
+        if isinstance(external_kb_entity, sqlalchemy.Row):
+            external_kb_entity = persistence_rag.ExternalKnowledgeBase(**external_kb_entity._mapping)
+        elif isinstance(external_kb_entity, dict):
+            external_kb_entity = persistence_rag.ExternalKnowledgeBase(**external_kb_entity)
+
+        external_kb = ExternalKnowledgeBase(ap=self.ap, external_kb_entity=external_kb_entity)
+
+        await external_kb.initialize()
+
+        self.knowledge_bases.append(external_kb)
+
+        return external_kb
+
+    async def get_knowledge_base_by_uuid(self, kb_uuid: str) -> KnowledgeBaseInterface | None:
         for kb in self.knowledge_bases:
-            if kb.knowledge_base_entity.uuid == kb_uuid:
+            if kb.get_uuid() == kb_uuid:
                 return kb
         return None
 
     async def remove_knowledge_base_from_runtime(self, kb_uuid: str):
         for kb in self.knowledge_bases:
-            if kb.knowledge_base_entity.uuid == kb_uuid:
+            if kb.get_uuid() == kb_uuid:
                 self.knowledge_bases.remove(kb)
                 return
 
     async def delete_knowledge_base(self, kb_uuid: str):
         for kb in self.knowledge_bases:
-            if kb.knowledge_base_entity.uuid == kb_uuid:
+            if kb.get_uuid() == kb_uuid:
                 await kb.dispose()
                 self.knowledge_bases.remove(kb)
                 return
