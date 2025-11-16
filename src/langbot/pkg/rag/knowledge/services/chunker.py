@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 from typing import List
-from pkg.rag.knowledge.services import base_service
-from pkg.core import app
+from langbot.pkg.rag.knowledge.services import base_service
+from langbot.pkg.core import app
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 

@@ -31,12 +31,12 @@ async def main_entry(loop: asyncio.AbstractEventLoop):
     args = parser.parse_args()
 
     if args.standalone_runtime:
-        from pkg.utils import platform
+        from langbot.pkg.utils import platform
 
         platform.standalone_runtime = True
 
     if args.debug:
-        from pkg.utils import constants
+        from langbot.pkg.utils import constants
 
         constants.debug_mode = True
 
@@ -60,7 +60,7 @@ async def main_entry(loop: asyncio.AbstractEventLoop):
         sys.exit(0)
 
     # Check configuration files
-    from pkg.core.bootutils import files
+    from langbot.pkg.core.bootutils import files
 
     generated_files = await files.generate_files()
 
@@ -70,7 +70,7 @@ async def main_entry(loop: asyncio.AbstractEventLoop):
         for file in generated_files:
             print('-', file)
 
-    from pkg.core import boot
+    from langbot.pkg.core import boot
 
     await boot.main(loop)
 

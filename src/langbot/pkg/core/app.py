@@ -8,7 +8,7 @@ import os
 from ..platform import botmgr as im_mgr
 from ..provider.session import sessionmgr as llm_session_mgr
 from ..provider.modelmgr import modelmgr as llm_model_mgr
-from ..provider.tools import toolmgr as llm_tool_mgr
+from langbot.pkg.provider.tools import toolmgr as llm_tool_mgr
 from ..config import manager as config_mgr
 from ..command import cmdmgr
 from ..plugin import connector as plugin_connector

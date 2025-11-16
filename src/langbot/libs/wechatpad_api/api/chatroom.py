@@ -1,4 +1,4 @@
-from libs.wechatpad_api.util.http_util import post_json
+from langbot.libs.wechatpad_api.util.http_util import post_json
 
 
 class ChatRoomApi:

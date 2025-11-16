@@ -6,7 +6,8 @@ import os
 import yaml
 import pydantic
 
-from ..core import app
+from langbot.pkg.core import app
+from langbot.pkg.utils import importutil
 
 
 class I18nString(pydantic.BaseModel):
@@ -165,7 +166,7 @@ class Component(pydantic.BaseModel):
         if module_path.endswith('.py'):
             module_path = module_path[:-3]
         module_path = module_path.replace('/', '.').replace('\\', '.')
-        module = importlib.import_module(module_path)
+        module = importlib.import_module(f'langbot.{module_path}')
         return getattr(module, self.execution.python.attr)
 
     def to_plain_dict(self) -> dict:
@@ -193,16 +194,17 @@ class ComponentDiscoveryEngine:
 
     def load_component_manifest(self, path: str, owner: str = 'builtin', no_save: bool = False) -> Component | None:
         """加载组件清单"""
-        with open(path, 'r', encoding='utf-8') as f:
-            manifest = yaml.safe_load(f)
-            if not Component.is_component_manifest(manifest):
-                return None
-            comp = Component(owner=owner, manifest=manifest, rel_path=path)
-            if not no_save:
-                if comp.kind not in self.components:
-                    self.components[comp.kind] = []
-                self.components[comp.kind].append(comp)
-            return comp
+        # with open(path, 'r', encoding='utf-8') as f:
+        #     manifest = yaml.safe_load(f)
+        manifest = yaml.safe_load(importutil.read_resource_file(path))
+        if not Component.is_component_manifest(manifest):
+            return None
+        comp = Component(owner=owner, manifest=manifest, rel_path=path)
+        if not no_save:
+            if comp.kind not in self.components:
+                self.components[comp.kind] = []
+            self.components[comp.kind].append(comp)
+        return comp
 
     def load_component_manifests_in_dir(
         self,
@@ -217,7 +219,8 @@ class ComponentDiscoveryEngine:
         def recursive_load_component_manifests_in_dir(path: str, depth: int = 1):
             if depth > max_depth:
                 return
-            for file in os.listdir(path):
+
+            for file in importutil.list_resource_files(path):
                 if (not os.path.isdir(os.path.join(path, file))) and (file.endswith('.yaml') or file.endswith('.yml')):
                     comp = self.load_component_manifest(os.path.join(path, file), owner, no_save)
                     if comp is not None:

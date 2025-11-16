@@ -5,13 +5,13 @@ import traceback
 import pydantic
 import datetime
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
-from libs.official_account_api.oaevent import OAEvent
-from libs.official_account_api.api import OAClient
-from libs.official_account_api.api import OAClientForLongerResponse
+from langbot.libs.official_account_api.oaevent import OAEvent
+from langbot.libs.official_account_api.api import OAClient
+from langbot.libs.official_account_api.api import OAClientForLongerResponse
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
-from ..logger import EventLogger
+from langbot.pkg.platform.logger import EventLogger
 
 
 class OAMessageConverter(abstract_platform_adapter.AbstractMessageConverter):

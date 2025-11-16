@@ -4,13 +4,13 @@ import uuid
 import zipfile
 import io
 from .services import parser, chunker
-from pkg.core import app
-from pkg.rag.knowledge.services.embedder import Embedder
-from pkg.rag.knowledge.services.retriever import Retriever
+from langbot.pkg.core import app
+from langbot.pkg.rag.knowledge.services.embedder import Embedder
+from langbot.pkg.rag.knowledge.services.retriever import Retriever
 import sqlalchemy
-from ...entity.persistence import rag as persistence_rag
-from pkg.core import taskmgr
-from ...entity.rag import retriever as retriever_entities
+from langbot.pkg.entity.persistence import rag as persistence_rag
+from langbot.pkg.core import taskmgr
+from langbot.pkg.entity.rag import retriever as retriever_entities
 
 
 class RuntimeKnowledgeBase:

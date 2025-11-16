@@ -16,7 +16,7 @@ import struct
 from Crypto.Cipher import AES
 import xml.etree.cElementTree as ET
 import socket
-from libs.wecom_ai_bot_api import ierror
+from langbot.libs.wecom_ai_bot_api import ierror
 
 
 """

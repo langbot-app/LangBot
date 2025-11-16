@@ -3,9 +3,9 @@ from __future__ import annotations
 import typing
 
 from ...core import app
-from ...utils import importutil
-from . import loaders
-from .loaders import mcp as mcp_loader, plugin as plugin_loader
+from langbot.pkg.utils import importutil
+from langbot.pkg.provider.tools import loaders
+from langbot.pkg.provider.tools.loaders import mcp as mcp_loader, plugin as plugin_loader
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 importutil.import_modules_in_pkg(loaders)

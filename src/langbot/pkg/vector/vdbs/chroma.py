@@ -2,8 +2,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 from chromadb import PersistentClient
-from pkg.vector.vdb import VectorDatabase
-from pkg.core import app
+from langbot.pkg.vector.vdb import VectorDatabase
+from langbot.pkg.core import app
 import chromadb
 import chromadb.errors
 

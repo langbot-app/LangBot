@@ -9,7 +9,7 @@ import markdown
 from bs4 import BeautifulSoup
 import re
 import asyncio  # Import asyncio for async operations
-from pkg.core import app
+from langbot.pkg.core import app
 
 
 class FileParser:

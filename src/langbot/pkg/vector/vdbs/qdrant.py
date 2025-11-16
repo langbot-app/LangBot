@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from qdrant_client import AsyncQdrantClient, models
-from pkg.core import app
-from pkg.vector.vdb import VectorDatabase
+from langbot.pkg.core import app
+from langbot.pkg.vector.vdb import VectorDatabase
 
 
 class QdrantVectorDatabase(VectorDatabase):

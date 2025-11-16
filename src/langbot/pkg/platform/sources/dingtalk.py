@@ -1,13 +1,13 @@
 import traceback
 import typing
-from libs.dingtalk_api.dingtalkevent import DingTalkEvent
+from langbot.libs.dingtalk_api.dingtalkevent import DingTalkEvent
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
-from libs.dingtalk_api.api import DingTalkClient
+from langbot.libs.dingtalk_api.api import DingTalkClient
 import datetime
-from ..logger import EventLogger
+from langbot.pkg.platform.logger import EventLogger
 
 
 class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):

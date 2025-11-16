@@ -5,11 +5,11 @@ import traceback
 
 import datetime
 
-from libs.wecom_api.api import WecomClient
+from langbot.libs.wecom_api.api import WecomClient
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
-from libs.wecom_api.wecomevent import WecomEvent
-from ...utils import image
-from ..logger import EventLogger
+from langbot.libs.wecom_api.wecomevent import WecomEvent
+from langbot.pkg.utils import image
+from langbot.pkg.platform.logger import EventLogger
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities

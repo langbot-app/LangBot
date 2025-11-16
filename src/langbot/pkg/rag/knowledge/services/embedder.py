@@ -1,10 +1,10 @@
 from __future__ import annotations
 import uuid
 from typing import List
-from pkg.rag.knowledge.services.base_service import BaseService
-from ....entity.persistence import rag as persistence_rag
-from ....core import app
-from ....provider.modelmgr.requester import RuntimeEmbeddingModel
+from langbot.pkg.rag.knowledge.services.base_service import BaseService
+from langbot.pkg.entity.persistence import rag as persistence_rag
+from langbot.pkg.core import app
+from langbot.pkg.provider.modelmgr.requester import RuntimeEmbeddingModel
 import sqlalchemy
 
 

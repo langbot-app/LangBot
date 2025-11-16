@@ -1,9 +1,9 @@
-from libs.wechatpad_api.api.login import LoginApi
-from libs.wechatpad_api.api.friend import FriendApi
-from libs.wechatpad_api.api.message import MessageApi
-from libs.wechatpad_api.api.user import UserApi
-from libs.wechatpad_api.api.downloadpai import DownloadApi
-from libs.wechatpad_api.api.chatroom import ChatRoomApi
+from langbot.libs.wechatpad_api.api.login import LoginApi
+from langbot.libs.wechatpad_api.api.friend import FriendApi
+from langbot.libs.wechatpad_api.api.message import MessageApi
+from langbot.libs.wechatpad_api.api.user import UserApi
+from langbot.libs.wechatpad_api.api.downloadpai import DownloadApi
+from langbot.libs.wechatpad_api.api.chatroom import ChatRoomApi
 
 
 class WeChatPadClient:

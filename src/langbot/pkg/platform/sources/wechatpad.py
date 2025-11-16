@@ -4,7 +4,7 @@ import json
 import time
 import httpx
 
-from libs.wechatpad_api.client import WeChatPadClient
+from langbot.libs.wechatpad_api.client import WeChatPadClient
 
 import typing
 import asyncio
@@ -16,7 +16,7 @@ import threading
 
 import quart
 
-from ..logger import EventLogger
+from langbot.pkg.platform.logger import EventLogger
 import xml.etree.ElementTree as ET
 from typing import Optional, Tuple
 from functools import partial

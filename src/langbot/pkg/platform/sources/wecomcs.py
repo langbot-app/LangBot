@@ -6,9 +6,9 @@ import traceback
 import datetime
 import pydantic
 
-from libs.wecom_customer_service_api.api import WecomCSClient
+from langbot.libs.wecom_customer_service_api.api import WecomCSClient
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
-from libs.wecom_customer_service_api.wecomcsevent import WecomCSEvent
+from langbot.libs.wecom_customer_service_api.wecomcsevent import WecomCSEvent
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events

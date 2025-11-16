@@ -2,7 +2,7 @@ import os
 import json
 import importlib.resources as resources
 
-from .. import model as file_model
+from langbot.pkg.config import model as file_model
 
 
 class JSONConfigFile(file_model.ConfigFile):

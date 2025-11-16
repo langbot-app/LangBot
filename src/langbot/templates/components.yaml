@@ -7,9 +7,6 @@ metadata:
     zh_Hans: 内置组件
 spec:
   components:
-    ComponentTemplate:
-      fromFiles:
-        - pkg/provider/modelmgr/requester.yaml
     MessagePlatformAdapter:
       fromDirs:
         - path: pkg/platform/sources/

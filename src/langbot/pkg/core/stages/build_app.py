@@ -37,7 +37,7 @@ class BuildAppStage(stage.BootingStage):
         ap.task_mgr = taskmgr.AsyncTaskManager(ap)
 
         discover = discover_engine.ComponentDiscoveryEngine(ap)
-        discover.discover_blueprint('components.yaml')
+        discover.discover_blueprint('templates/components.yaml')
         ap.discover = discover
 
         proxy_mgr = proxy.ProxyManager(ap)

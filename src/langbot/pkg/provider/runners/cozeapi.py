@@ -4,12 +4,12 @@ import typing
 import json
 import base64
 
-from .. import runner
-from ...core import app
+from langbot.pkg.provider import runner
+from langbot.pkg.core import app
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
-from ...utils import image
+from langbot.pkg.utils import image
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
-from libs.coze_server_api.client import AsyncCozeAPIClient
+from langbot.libs.coze_server_api.client import AsyncCozeAPIClient
 
 
 @runner.runner_class('coze-api')

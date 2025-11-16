@@ -9,10 +9,10 @@ import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platf
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
-from libs.qq_official_api.api import QQOfficialClient
-from libs.qq_official_api.qqofficialevent import QQOfficialEvent
-from ...utils import image
-from ..logger import EventLogger
+from langbot.libs.qq_official_api.api import QQOfficialClient
+from langbot.libs.qq_official_api.qqofficialevent import QQOfficialEvent
+from langbot.pkg.utils import image
+from langbot.pkg.platform.logger import EventLogger
 
 
 class QQOfficialMessageConverter(abstract_platform_adapter.AbstractMessageConverter):

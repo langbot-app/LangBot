@@ -5,15 +5,15 @@ import traceback
 
 import datetime
 
-from libs.slack_api.api import SlackClient
+from langbot.libs.slack_api.api import SlackClient
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
-from libs.slack_api.slackevent import SlackEvent
+from langbot.libs.slack_api.slackevent import SlackEvent
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 from langbot_plugin.api.entities.builtin.command import errors as command_errors
-from ...utils import image
-from ..logger import EventLogger
+from langbot.pkg.utils import image
+from langbot.pkg.platform.logger import EventLogger
 
 
 class SlackMessageConverter(abstract_platform_adapter.AbstractMessageConverter):

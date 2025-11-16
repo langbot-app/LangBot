@@ -6,12 +6,12 @@ import uuid
 import base64
 
 
-from .. import runner
-from ...core import app
+from langbot.pkg.provider import runner
+from langbot.pkg.core import app
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
-from ...utils import image
+from langbot.pkg.utils import image
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
-from libs.dify_service_api.v1 import client, errors
+from langbot.libs.dify_service_api.v1 import client, errors
 
 
 @runner.runner_class('dify-service-api')

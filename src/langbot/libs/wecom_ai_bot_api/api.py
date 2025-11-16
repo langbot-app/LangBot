@@ -13,9 +13,9 @@ import httpx
 from Crypto.Cipher import AES
 from quart import Quart, request, Response, jsonify
 
-from libs.wecom_ai_bot_api import wecombotevent
-from libs.wecom_ai_bot_api.WXBizMsgCrypt3 import WXBizMsgCrypt
-from pkg.platform.logger import EventLogger
+from langbot.libs.wecom_ai_bot_api import wecombotevent
+from langbot.libs.wecom_ai_bot_api.WXBizMsgCrypt3 import WXBizMsgCrypt
+from langbot.pkg.platform.logger import EventLogger
 
 
 @dataclass

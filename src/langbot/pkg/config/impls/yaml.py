@@ -2,7 +2,7 @@ import os
 import yaml
 import importlib.resources as resources
 
-from .. import model as file_model
+from langbot.pkg.config import model as file_model
 
 
 class YAMLConfigFile(file_model.ConfigFile):
