@@ -26,28 +26,21 @@ jobs:
       - name: Build frontend
         run: |
           cd web
-          npm install
-          npm run build
+          npm install -g pnpm
+          pnpm install
+          pnpm build
+          mkdir -p ../src/langbot/web/out
+          cp -r out ../src/langbot/web/
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v6
         with:
-          python-version: '3.10'
-
-      - name: Install build dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install build twine
+          version: "latest"
 
       - name: Build package
         run: |
-          python -m build
-
-      - name: Check package
-        run: |
-          twine check dist/*
+          uv build
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          skip-existing: true
+        run: |
+          uv publish --token ${{ secrets.PYPI_TOKEN }}
