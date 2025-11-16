@@ -4,9 +4,9 @@ Tests for storage manager and provider selection
 
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
-from pkg.storage.mgr import StorageMgr
-from pkg.storage.providers.localstorage import LocalStorageProvider
-from pkg.storage.providers.s3storage import S3StorageProvider
+from langbot.pkg.storage.mgr import StorageMgr
+from langbot.pkg.storage.providers.localstorage import LocalStorageProvider
+from langbot.pkg.storage.providers.s3storage import S3StorageProvider
 
 
 class TestStorageProviderSelection:
@@ -34,11 +34,7 @@ class TestStorageProviderSelection:
         # Mock application
         mock_app = Mock()
         mock_app.instance_config = Mock()
-        mock_app.instance_config.data = {
-            'storage': {
-                'use': 'local'
-            }
-        }
+        mock_app.instance_config.data = {'storage': {'use': 'local'}}
         mock_app.logger = Mock()
 
         storage_mgr = StorageMgr(mock_app)
@@ -62,8 +58,8 @@ class TestStorageProviderSelection:
                     'access_key_id': 'test_key',
                     'secret_access_key': 'test_secret',
                     'region': 'us-east-1',
-                    'bucket': 'test-bucket'
-                }
+                    'bucket': 'test-bucket',
+                },
             }
         }
         mock_app.logger = Mock()
@@ -81,11 +77,7 @@ class TestStorageProviderSelection:
         # Mock application
         mock_app = Mock()
         mock_app.instance_config = Mock()
-        mock_app.instance_config.data = {
-            'storage': {
-                'use': 'invalid_type'
-            }
-        }
+        mock_app.instance_config.data = {'storage': {'use': 'invalid_type'}}
         mock_app.logger = Mock()
 
         storage_mgr = StorageMgr(mock_app)

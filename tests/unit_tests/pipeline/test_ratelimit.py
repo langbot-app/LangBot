@@ -13,10 +13,9 @@ import langbot_plugin.api.entities.builtin.provider.session as provider_session
 def get_modules():
     """Lazy import to ensure proper initialization order"""
     # Import pipelinemgr first to trigger proper stage registration
-    pipelinemgr = import_module('pkg.pipeline.pipelinemgr')
-    ratelimit = import_module('pkg.pipeline.ratelimit.ratelimit')
-    entities = import_module('pkg.pipeline.entities')
-    algo_module = import_module('pkg.pipeline.ratelimit.algo')
+    ratelimit = import_module('langbot.pkg.pipeline.ratelimit.ratelimit')
+    entities = import_module('langbot.pkg.pipeline.entities')
+    algo_module = import_module('langbot.pkg.pipeline.ratelimit.algo')
     return ratelimit, entities, algo_module
 
 
@@ -44,11 +43,7 @@ async def test_require_access_allowed(mock_app, sample_query):
 
     assert result.result_type == entities.ResultType.CONTINUE
     assert result.new_query == sample_query
-    mock_algo.require_access.assert_called_once_with(
-        sample_query,
-        'person',
-        '12345'
-    )
+    mock_algo.require_access.assert_called_once_with(sample_query, 'person', '12345')
 
 
 @pytest.mark.asyncio
@@ -102,8 +97,4 @@ async def test_release_access(mock_app, sample_query):
 
     assert result.result_type == entities.ResultType.CONTINUE
     assert result.new_query == sample_query
-    mock_algo.release_access.assert_called_once_with(
-        sample_query,
-        'person',
-        '12345'
-    )
+    mock_algo.release_access.assert_called_once_with(sample_query, 'person', '12345')
