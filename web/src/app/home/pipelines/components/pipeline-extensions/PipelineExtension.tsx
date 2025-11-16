@@ -332,7 +332,7 @@ export default function PipelineExtension({
           </DialogHeader>
           <div className="flex-1 overflow-y-auto space-y-2 pr-2">
             {allPlugins.length === 0 ? (
-              <div className="flex h-32 items-center justify-center rounded-lg border-2 border-dashed border-border">
+              <div className="flex h-full items-center justify-center">
                 <p className="text-sm text-muted-foreground">
                   {t('pipelines.extensions.noPluginsInstalled')}
                 </p>
@@ -406,7 +406,7 @@ export default function PipelineExtension({
           </DialogHeader>
           <div className="flex-1 overflow-y-auto space-y-2 pr-2">
             {allMCPServers.length === 0 ? (
-              <div className="flex h-32 items-center justify-center rounded-lg border-2 border-dashed border-border">
+              <div className="flex h-full items-center justify-center">
                 <p className="text-sm text-muted-foreground">
                   {t('pipelines.extensions.noMCPServersConfigured')}
                 </p>
