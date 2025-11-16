@@ -328,10 +328,16 @@ export default function KnowledgePage() {
       </Dialog>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="mb-4">
-          <TabsTrigger value="builtin">{t('knowledge.builtIn')}</TabsTrigger>
-          <TabsTrigger value="external">{t('knowledge.external')}</TabsTrigger>
-        </TabsList>
+        <div className="flex flex-row justify-between items-center px-[0.8rem]">
+          <TabsList className="shadow-md py-5 bg-[#f0f0f0] dark:bg-[#2a2a2e]">
+            <TabsTrigger value="builtin" className="px-6 py-4 cursor-pointer">
+              {t('knowledge.builtIn')}
+            </TabsTrigger>
+            <TabsTrigger value="external" className="px-6 py-4 cursor-pointer">
+              {t('knowledge.external')}
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="builtin">
           <div className={styles.knowledgeListContainer}>
