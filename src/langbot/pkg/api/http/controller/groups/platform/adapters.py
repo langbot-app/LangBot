@@ -1,6 +1,7 @@
 import quart
-
+import mimetypes
 from ... import group
+from langbot.pkg.utils import importutil
 
 
 @group.group_class('adapters', '/api/v1/platform/adapters')
@@ -31,4 +32,6 @@ class AdaptersRouterGroup(group.RouterGroup):
             if icon_path is None:
                 return self.http_status(404, -1, 'icon not found')
 
-            return await quart.send_file(icon_path)
+            return quart.Response(
+                importutil.read_resource_file_bytes(icon_path), mimetype=mimetypes.guess_type(icon_path)[0]
+            )

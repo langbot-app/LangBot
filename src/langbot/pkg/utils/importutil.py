@@ -41,5 +41,9 @@ def read_resource_file(resource_path: str) -> str:
         return f.read()
 
 
+def read_resource_file_bytes(resource_path: str) -> bytes:
+    return importlib.resources.files('langbot').joinpath(resource_path).read_bytes()
+
+
 def list_resource_files(resource_path: str) -> list[str]:
     return [f.name for f in importlib.resources.files('langbot').joinpath(resource_path).iterdir()]
