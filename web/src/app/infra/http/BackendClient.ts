@@ -36,6 +36,9 @@ import {
   ApiRespMCPServers,
   ApiRespMCPServer,
   MCPServer,
+  ExternalKnowledgeBase,
+  ApiRespExternalKnowledgeBases,
+  ApiRespExternalKnowledgeBase,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
@@ -443,6 +446,43 @@ export class BackendClient extends BaseHttpClient {
     query: string,
   ): Promise<ApiRespKnowledgeBaseRetrieve> {
     return this.post(`/api/v1/knowledge/bases/${uuid}/retrieve`, { query });
+  }
+
+  // ============ External Knowledge Base API ============
+  public getExternalKnowledgeBases(): Promise<ApiRespExternalKnowledgeBases> {
+    return this.get('/api/v1/knowledge/external-bases');
+  }
+
+  public getExternalKnowledgeBase(
+    uuid: string,
+  ): Promise<ApiRespExternalKnowledgeBase> {
+    return this.get(`/api/v1/knowledge/external-bases/${uuid}`);
+  }
+
+  public createExternalKnowledgeBase(
+    base: ExternalKnowledgeBase,
+  ): Promise<{ uuid: string }> {
+    return this.post('/api/v1/knowledge/external-bases', base);
+  }
+
+  public updateExternalKnowledgeBase(
+    uuid: string,
+    base: ExternalKnowledgeBase,
+  ): Promise<{ uuid: string }> {
+    return this.put(`/api/v1/knowledge/external-bases/${uuid}`, base);
+  }
+
+  public deleteExternalKnowledgeBase(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/knowledge/external-bases/${uuid}`);
+  }
+
+  public retrieveExternalKnowledgeBase(
+    uuid: string,
+    query: string,
+  ): Promise<ApiRespKnowledgeBaseRetrieve> {
+    return this.post(`/api/v1/knowledge/external-bases/${uuid}/retrieve`, {
+      query,
+    });
   }
 
   // ============ Plugins API ============

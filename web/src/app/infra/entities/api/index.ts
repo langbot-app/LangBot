@@ -162,6 +162,24 @@ export interface KnowledgeBase {
   updated_at?: string;
 }
 
+export interface ExternalKnowledgeBase {
+  uuid?: string;
+  name: string;
+  description: string;
+  api_url: string;
+  api_key?: string;
+  top_k: number;
+  created_at?: string;
+}
+
+export interface ApiRespExternalKnowledgeBases {
+  bases: ExternalKnowledgeBase[];
+}
+
+export interface ApiRespExternalKnowledgeBase {
+  base: ExternalKnowledgeBase;
+}
+
 export interface ApiRespKnowledgeBaseFiles {
   files: KnowledgeBaseFile[];
 }
