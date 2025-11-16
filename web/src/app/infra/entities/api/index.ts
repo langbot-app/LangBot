@@ -29,6 +29,7 @@ export interface Requester {
   icon?: string;
   spec: {
     config: IDynamicFormItemSchema[];
+    provider_category: string;
   };
 }
 

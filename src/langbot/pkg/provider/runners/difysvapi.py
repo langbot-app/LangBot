@@ -77,7 +77,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             tuple[str, list[str]]: 纯文本和图片的 Dify 服务图片 ID
         """
         plain_text = ''
-        image_ids = []
+        file_ids = []
 
         if isinstance(query.user_message.content, list):
             for ce in query.user_message.content:
@@ -92,11 +92,24 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                         f'{query.session.launcher_type.value}_{query.session.launcher_id}',
                     )
                     image_id = file_upload_resp['id']
-                    image_ids.append(image_id)
+                    file_ids.append(image_id)
+                # elif ce.type == "file_url":
+                #     file_bytes = base64.b64decode(ce.file_url)
+                #     file_upload_resp = await self.dify_client.upload_file(
+                #         file_bytes,
+                #         f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+                #     )
+                #     file_id = file_upload_resp['id']
+                #     file_ids.append(file_id)
         elif isinstance(query.user_message.content, str):
             plain_text = query.user_message.content
+        # plain_text = "When the file content is readable, please read the content of this file. When the file is an image, describe the content of this image." if file_ids and not plain_text else plain_text
+        # plain_text = "The user message type cannot be parsed." if not file_ids and not plain_text else plain_text
+        # plain_text = plain_text if plain_text else "When the file content is readable, please read the content of this file. When the file is an image, describe the content of this image."
+        # print(self.pipeline_config['ai'])
+        plain_text = plain_text if plain_text else self.pipeline_config['ai']['dify-service-api']['base-prompt']
 
-        return plain_text, image_ids
+        return plain_text, file_ids
 
     async def _chat_messages(
         self, query: pipeline_query.Query
@@ -110,7 +123,6 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         files = [
             {
                 'type': 'image',
-                'transfer_method': 'local_file',
                 'upload_file_id': image_id,
             }
             for image_id in image_ids

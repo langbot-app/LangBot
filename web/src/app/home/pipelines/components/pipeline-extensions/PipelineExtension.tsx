@@ -286,8 +286,8 @@ export default function PipelineExtension({
                             variant="outline"
                             className="flex items-center gap-1 mt-1"
                           >
-                            <Wrench className="h-3 w-3 text-white" />
-                            <span className="text-xs text-white">
+                            <Wrench className="h-3 w-3 text-black dark:text-white" />
+                            <span className="text-xs text-black dark:text-white">
                               {t('pipelines.extensions.toolCount', {
                                 count: server.runtime_info.tool_count || 0,
                               })}
@@ -416,14 +416,17 @@ export default function PipelineExtension({
                     </div>
                     {server.runtime_info &&
                       server.runtime_info.status === 'connected' && (
-                        <div className="flex items-center gap-1 mt-1">
-                          <Wrench className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-xs text-muted-foreground">
+                        <Badge
+                          variant="outline"
+                          className="flex items-center gap-1 mt-1"
+                        >
+                          <Wrench className="h-3 w-3 text-black dark:text-white" />
+                          <span className="text-xs text-black dark:text-white">
                             {t('pipelines.extensions.toolCount', {
                               count: server.runtime_info.tool_count || 0,
                             })}
                           </span>
-                        </div>
+                        </Badge>
                       )}
                   </div>
                   {!server.enable && (

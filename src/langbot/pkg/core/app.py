@@ -6,6 +6,7 @@ import traceback
 import os
 
 from ..platform import botmgr as im_mgr
+from ..platform.webhook_pusher import WebhookPusher
 from ..provider.session import sessionmgr as llm_session_mgr
 from ..provider.modelmgr import modelmgr as llm_model_mgr
 from langbot.pkg.provider.tools import toolmgr as llm_tool_mgr
@@ -24,6 +25,7 @@ from ..api.http.service import bot as bot_service
 from ..api.http.service import knowledge as knowledge_service
 from ..api.http.service import mcp as mcp_service
 from ..api.http.service import apikey as apikey_service
+from ..api.http.service import webhook as webhook_service
 from ..discover import engine as discover_engine
 from ..storage import mgr as storagemgr
 from ..utils import logcache
@@ -44,6 +46,8 @@ class Application:
     discover: discover_engine.ComponentDiscoveryEngine = None
 
     platform_mgr: im_mgr.PlatformManager = None
+
+    webhook_pusher: WebhookPusher = None
 
     cmd_mgr: cmdmgr.CommandManager = None
 
@@ -122,6 +126,8 @@ class Application:
     mcp_service: mcp_service.MCPService = None
 
     apikey_service: apikey_service.ApiKeyService = None
+
+    webhook_service: webhook_service.WebhookService = None
 
     def __init__(self):
         pass

@@ -80,16 +80,16 @@ stages:
           zh_Hans: 除非您了解消息结构，否则请只使用 system 单提示词
         type: prompt-editor
         required: true
-      - name: knowledge-base
+      - name: knowledge-bases
         label:
-          en_US: Knowledge Base
+          en_US: Knowledge Bases
           zh_Hans: 知识库
         description:
-          en_US: Configure the knowledge base to use for the agent, if not selected, the agent will directly use the LLM to reply
+          en_US: Configure the knowledge bases to use for the agent, if not selected, the agent will directly use the LLM to reply
           zh_Hans: 配置用于提升回复质量的知识库，若不选择，则直接使用大模型回复
-        type: knowledge-base-selector
+        type: knowledge-base-multi-selector
         required: false
-        default: ''
+        default: []
   - name: tbox-app-api
     label:
       en_US: Tbox App API
@@ -124,6 +124,16 @@ stages:
           zh_Hans: 基础 URL
         type: string
         required: true
+      - name: base-prompt
+        label:
+          en_US: Base PROMPT
+          zh_Hans: 基础提示词
+        description:
+          en_US: When Dify receives a message with empty input (only images), it will pass this default prompt into it.
+          zh_Hans: 当 Dify 接收到输入文字为空（仅图片）的消息时，传入该默认提示词
+        type: string
+        required: true
+        default: "When the file content is readable, please read the content of this file. When the file is an image, describe the content of this image."
       - name: app-type
         label:
           en_US: App Type

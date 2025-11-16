@@ -58,6 +58,9 @@ export default function DynamicFormComponent({
           case 'knowledge-base-selector':
             fieldSchema = z.string();
             break;
+          case 'knowledge-base-multi-selector':
+            fieldSchema = z.array(z.string());
+            break;
           case 'bot-selector':
             fieldSchema = z.string();
             break;

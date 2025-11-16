@@ -57,6 +57,10 @@ docker compose up -d
 
 直接使用發行版運行，查看文件[手動部署](https://docs.langbot.app/zh/deploy/langbot/manual.html)。
 
+#### Kubernetes 部署
+
+參考 [Kubernetes 部署](./docker/README_K8S.md) 文件。
+
 ## 😎 保持更新
 
 點擊倉庫右上角 Star 和 Watch 按鈕，獲取最新動態。
@@ -107,6 +111,7 @@ docker compose up -d
 | [勝算雲](https://www.shengsuanyun.com/?from=CH_KYIPP758) | ✅ | 大模型和 GPU 資源平台 |
 | [優雲智算](https://www.compshare.cn/?ytag=GPU_YY-gh_langbot) | ✅ | 大模型和 GPU 資源平台 |
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | ✅ | 大模型和 GPU 資源平台 |
+| [接口 AI](https://jiekou.ai/) | ✅ | 大模型聚合平台，專注全球大模型接入 |
 | [302.AI](https://share.302.ai/SuTG99) | ✅ | 大模型聚合平台 |
 | [Google Gemini](https://aistudio.google.com/prompts/new_chat) | ✅ | |
 | [Dify](https://dify.ai) | ✅ | LLMOps 平台 |

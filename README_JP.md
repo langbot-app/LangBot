@@ -55,6 +55,10 @@ LangBotはBTPanelにリストされています。BTPanelをインストール�
 
 リリースバージョンを直接使用して実行します。[手動デプロイ](https://docs.langbot.app/en/deploy/langbot/manual.html)のドキュメントを参照してください。
 
+#### Kubernetes デプロイ
+
+[Kubernetes デプロイ](./docker/README_K8S.md) ドキュメントを参照してください。
+
 ## 😎 最新情報を入手
 
 リポジトリの右上にある Star と Watch ボタンをクリックして、最新の更新を取得してください。
@@ -104,6 +108,7 @@ LangBotはBTPanelにリストされています。BTPanelをインストール�
 | [Zhipu AI](https://open.bigmodel.cn/) | ✅ |  |
 | [CompShare](https://www.compshare.cn/?ytag=GPU_YY-gh_langbot) | ✅ | 大模型とGPUリソースプラットフォーム |
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | ✅ | 大模型とGPUリソースプラットフォーム |
+| [接口 AI](https://jiekou.ai/) | ✅ | LLMゲートウェイ(MaaS) |
 | [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | ✅ | LLMとGPUリソースプラットフォーム |
 | [302.AI](https://share.302.ai/SuTG99) | ✅ | LLMゲートウェイ(MaaS) |
 | [Google Gemini](https://aistudio.google.com/prompts/new_chat) | ✅ | |

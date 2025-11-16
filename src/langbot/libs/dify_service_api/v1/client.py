@@ -5,6 +5,8 @@ import typing
 import json
 
 from .errors import DifyAPIError
+from pathlib import Path
+import os
 
 
 class AsyncDifyServiceClient:
@@ -109,7 +111,23 @@ class AsyncDifyServiceClient:
         user: str,
         timeout: float = 30.0,
     ) -> str:
-        """上传文件"""
+        # 处理 Path 对象
+        if isinstance(file, Path):
+            if not file.exists():
+                raise ValueError(f'File not found: {file}')
+            with open(file, 'rb') as f:
+                file = f.read()
+
+        # 处理文件路径字符串
+        elif isinstance(file, str):
+            if not os.path.isfile(file):
+                raise ValueError(f'File not found: {file}')
+            with open(file, 'rb') as f:
+                file = f.read()
+
+        # 处理文件对象
+        elif hasattr(file, 'read'):
+            file = file.read()
         async with httpx.AsyncClient(
             base_url=self.base_url,
             trust_env=True,
@@ -121,6 +139,8 @@ class AsyncDifyServiceClient:
                 headers={'Authorization': f'Bearer {self.api_key}'},
                 files={
                     'file': file,
+                },
+                data={
                     'user': (None, user),
                 },
             )

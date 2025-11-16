@@ -24,7 +24,7 @@ export default function PluginMarketCardComponent({
           <img
             src={cardVO.iconURL}
             alt="plugin icon"
-            className="w-12 h-12 sm:w-16 sm:h-16 flex-shrink-0"
+            className="w-12 h-12 sm:w-16 sm:h-16 flex-shrink-0 rounded-[8%]"
           />
 
           <div className="flex-1 flex flex-col items-start justify-start gap-[0.4rem] sm:gap-[0.6rem] min-w-0 overflow-hidden">

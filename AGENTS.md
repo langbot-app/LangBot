@@ -64,6 +64,11 @@ Plugin Runtime automatically starts each installed plugin and interacts through 
 - LangBot is a global project, any comments in code should be in English, and user experience should be considered in all aspects.
 - Thus you should consider the i18n support in all aspects.
 - LangBot is widely adopted in both toC and toB scenarios, so you should consider the compatibility and security in all aspects.
+- If you were asked to make a commit, please follow the commit message format: 
+    - format: <type>(<scope>): <subject>
+    - type: must be a specific type, such as feat (new feature), fix (bug fix), docs (documentation), style (code style), refactor (refactoring), perf (performance optimization), etc.
+    - scope: the scope of the commit, such as the package name, the file name, the function name, the class name, the module name, etc.
+    - subject: the subject of the commit, such as the description of the commit, the reason for the commit, the impact of the commit, etc.
 
 ## Some Principles
 

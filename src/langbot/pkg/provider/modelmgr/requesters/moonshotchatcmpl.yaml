@@ -8,22 +8,23 @@ metadata:
   icon: moonshot.png
 spec:
   config:
-    - name: base_url
-      label:
-        en_US: Base URL
-        zh_Hans: 基础 URL
-      type: string
-      required: true
-      default: "https://api.moonshot.ai/v1"
-    - name: timeout
-      label:
-        en_US: Timeout
-        zh_Hans: 超时时间
-      type: integer
-      required: true
-      default: 120
+  - name: base_url
+    label:
+      en_US: Base URL
+      zh_Hans: 基础 URL
+    type: string
+    required: true
+    default: https://api.moonshot.ai/v1
+  - name: timeout
+    label:
+      en_US: Timeout
+      zh_Hans: 超时时间
+    type: integer
+    required: true
+    default: 120
   support_type:
-    - llm
+  - llm
+  provider_category: manufacturer
 execution:
   python:
     path: ./moonshotchatcmpl.py

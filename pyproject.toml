@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.4.1"
+version = "4.5.0"
 description = "Easy-to-use global IM bot platform designed for LLM era"
 readme = "README.md"
 license-files = ["LICENSE"]
@@ -64,10 +64,11 @@ dependencies = [
     "langchain-text-splitters>=0.0.1",
     "chromadb>=0.4.24",
     "qdrant-client (>=1.15.1,<2.0.0)",
-    "langbot-plugin==0.1.9b2",
+    "langbot-plugin==0.1.11b1",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "tboxsdk>=0.0.10",
+    "boto3>=1.35.0",
 ]
 keywords = [
     "bot",

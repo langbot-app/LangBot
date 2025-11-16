@@ -33,7 +33,6 @@ import { useTranslation } from 'react-i18next';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 
 export default function PipelineFormComponent({
-  isDefaultPipeline,
   onFinish,
   onNewPipelineCreated,
   isEditMode,
@@ -43,7 +42,6 @@ export default function PipelineFormComponent({
   onCancel,
 }: {
   pipelineId?: string;
-  isDefaultPipeline: boolean;
   isEditMode: boolean;
   disableForm: boolean;
   showButtons?: boolean;
@@ -54,6 +52,7 @@ export default function PipelineFormComponent({
 }) {
   const { t } = useTranslation();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDefaultPipeline, setIsDefaultPipeline] = useState<boolean>(false);
 
   const formSchema = isEditMode
     ? z.object({
@@ -133,6 +132,7 @@ export default function PipelineFormComponent({
       httpClient
         .getPipeline(pipelineId || '')
         .then((resp: GetPipelineResponseData) => {
+          setIsDefaultPipeline(resp.pipeline.is_default ?? false);
           form.reset({
             basic: {
               name: resp.pipeline.name,
@@ -346,6 +346,34 @@ export default function PipelineFormComponent({
     }
   };
 
+  const handleCopy = () => {
+    if (pipelineId) {
+      let newPipelineName = '';
+      httpClient
+        .getPipeline(pipelineId)
+        .then((resp) => {
+          const originalPipeline = resp.pipeline;
+          newPipelineName = `${originalPipeline.name}${t(
+            'pipelines.copySuffix',
+          )}`;
+          const newPipeline: Pipeline = {
+            name: newPipelineName,
+            description: originalPipeline.description,
+            config: originalPipeline.config,
+          };
+          return httpClient.createPipeline(newPipeline);
+        })
+        .then(() => {
+          onFinish();
+          toast.success(`${t('common.copySuccess')}: ${newPipelineName}`);
+          onCancel();
+        })
+        .catch((err) => {
+          toast.error(t('pipelines.createError') + err.message);
+        });
+    }
+  };
+
   return (
     <>
       <div className="!max-w-[70vw] max-w-6xl h-full p-0 flex flex-col bg-white dark:bg-black">
@@ -478,6 +506,18 @@ export default function PipelineFormComponent({
                   {t('pipelines.defaultPipelineCannotDelete')}
                 </div>
               )}
+
+              {isEditMode && (
+                <Button
+                  type="button"
+                  variant="default"
+                  onClick={handleCopy}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  {t('common.copy')}
+                </Button>
+              )}
+
               <Button type="submit" form="pipeline-form">
                 {isEditMode ? t('common.save') : t('common.submit')}
               </Button>

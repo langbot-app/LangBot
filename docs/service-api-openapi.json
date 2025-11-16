@@ -3,7 +3,7 @@
   "info": {
     "title": "LangBot API with API Key Authentication",
     "description": "LangBot external service API documentation. These endpoints support API Key authentication \nfor external systems to programmatically access LangBot resources.\n\n**Authentication Methods:**\n- User Token (via `Authorization: Bearer <token>`)\n- API Key (via `X-API-Key: <key>` or `Authorization: Bearer <key>`)\n\nAll endpoints documented here accept BOTH authentication methods.\n",
-    "version": "4.4.1",
+    "version": "4.5.0",
     "contact": {
       "name": "LangBot",
       "url": "https://langbot.app"

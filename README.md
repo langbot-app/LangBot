@@ -80,6 +80,10 @@ docker compose up -d
 
 直接使用发行版运行，查看文档[手动部署](https://docs.langbot.app/zh/deploy/langbot/manual.html)。
 
+#### Kubernetes 部署
+
+参考 [Kubernetes 部署](./docker/README_K8S.md) 文档。
+
 ## 😎 保持更新
 
 点击仓库右上角 Star 和 Watch 按钮，获取最新动态。
@@ -131,6 +135,7 @@ docker compose up -d
 | [胜算云](https://www.shengsuanyun.com/?from=CH_KYIPP758) | ✅ | 全球大模型都可调用（友情推荐） |
 | [优云智算](https://www.compshare.cn/?ytag=GPU_YY-gh_langbot) | ✅ | 大模型和 GPU 资源平台 |
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | ✅ | 大模型和 GPU 资源平台 |
+| [接口 AI](https://jiekou.ai/) | ✅ | 大模型聚合平台，专注全球大模型接入 |
 | [302.AI](https://share.302.ai/SuTG99) | ✅ | 大模型聚合平台 |
 | [Google Gemini](https://aistudio.google.com/prompts/new_chat) | ✅ | |
 | [Dify](https://dify.ai) | ✅ | LLMOps 平台 |
@@ -143,7 +148,7 @@ docker compose up -d
 | [火山方舟](https://console.volcengine.com/ark/region:ark+cn-beijing/model?vendor=Bytedance&view=LIST_VIEW) | ✅ | 大模型聚合平台, LLMOps 平台 |
 | [ModelScope](https://modelscope.cn/docs/model-service/API-Inference/intro) | ✅ | 大模型聚合平台 |
 | [MCP](https://modelcontextprotocol.io/) | ✅ | 支持通过 MCP 协议获取工具 |
-| [百宝箱Tbox](https://www.tbox.cn/open)                                                            | ✅ | 蚂蚁百宝箱智能体平台，每月免费10亿大模型Token |
+| [百宝箱Tbox](https://www.tbox.cn/open) | ✅ | 蚂蚁百宝箱智能体平台，每月免费10亿大模型Token |
 
 ### TTS
 

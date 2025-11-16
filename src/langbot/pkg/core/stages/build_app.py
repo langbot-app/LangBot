@@ -12,6 +12,7 @@ from ...provider.modelmgr import modelmgr as llm_model_mgr
 from ...provider.tools import toolmgr as llm_tool_mgr
 from ...rag.knowledge import kbmgr as rag_mgr
 from ...platform import botmgr as im_mgr
+from ...platform.webhook_pusher import WebhookPusher
 from ...persistence import mgr as persistencemgr
 from ...api.http.controller import main as http_controller
 from ...api.http.service import user as user_service
@@ -21,6 +22,7 @@ from ...api.http.service import bot as bot_service
 from ...api.http.service import knowledge as knowledge_service
 from ...api.http.service import mcp as mcp_service
 from ...api.http.service import apikey as apikey_service
+from ...api.http.service import webhook as webhook_service
 from ...discover import engine as discover_engine
 from ...storage import mgr as storagemgr
 from ...utils import logcache
@@ -89,6 +91,10 @@ class BuildAppStage(stage.BootingStage):
         await im_mgr_inst.initialize()
         ap.platform_mgr = im_mgr_inst
 
+        # Initialize webhook pusher
+        webhook_pusher_inst = WebhookPusher(ap)
+        ap.webhook_pusher = webhook_pusher_inst
+
         pipeline_mgr = pipelinemgr.PipelineManager(ap)
         await pipeline_mgr.initialize()
         ap.pipeline_mgr = pipeline_mgr
@@ -129,6 +135,9 @@ class BuildAppStage(stage.BootingStage):
 
         apikey_service_inst = apikey_service.ApiKeyService(ap)
         ap.apikey_service = apikey_service_inst
+
+        webhook_service_inst = webhook_service.WebhookService(ap)
+        ap.webhook_service = webhook_service_inst
 
         ctrl = controller.Controller(ap)
         ap.ctrl = ctrl

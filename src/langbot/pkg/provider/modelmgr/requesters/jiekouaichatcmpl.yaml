@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: LLMAPIRequester
+metadata:
+  name: jiekouai-chat-completions
+  label:
+    en_US: JieKou AI
+    zh_Hans: 接口 AI
+  icon: jiekouai.png
+spec:
+  config:
+  - name: base_url
+    label:
+      en_US: Base URL
+      zh_Hans: 基础 URL
+    type: string
+    required: true
+    default: https://api.jiekou.ai/openai
+  - name: args
+    label:
+      en_US: Args
+      zh_Hans: 附加参数
+    type: object
+    required: true
+    default: {}
+  - name: timeout
+    label:
+      en_US: Timeout
+      zh_Hans: 超时时间
+    type: int
+    required: true
+    default: 120
+  support_type:
+  - llm
+  - text-embedding
+  provider_category: maas
+execution:
+  python:
+    path: ./jiekouaichatcmpl.py
+    attr: JieKouAIChatCompletions

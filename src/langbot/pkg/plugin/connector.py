@@ -129,18 +129,19 @@ class PluginRuntimeConnector:
             # We have to launch runtime via cmd but communicate via ws.
             self.ap.logger.info('(windows) use cmd to launch plugin runtime and communicate via ws')
 
-            python_path = sys.executable
-            env = os.environ.copy()
-            self.runtime_subprocess_on_windows = await asyncio.create_subprocess_exec(
-                python_path,
-                '-m',
-                'langbot_plugin.cli.__init__',
-                'rt',
-                env=env,
-            )
+            if self.runtime_subprocess_on_windows is None:  # only launch once
+                python_path = sys.executable
+                env = os.environ.copy()
+                self.runtime_subprocess_on_windows = await asyncio.create_subprocess_exec(
+                    python_path,
+                    '-m',
+                    'langbot_plugin.cli.__init__',
+                    'rt',
+                    env=env,
+                )
 
-            # hold the process
-            self.runtime_subprocess_on_windows_task = asyncio.create_task(self.runtime_subprocess_on_windows.wait())
+                # hold the process
+                self.runtime_subprocess_on_windows_task = asyncio.create_task(self.runtime_subprocess_on_windows.wait())
 
             ws_url = 'ws://localhost:5400/control/ws'
 
