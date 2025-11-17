@@ -57,6 +57,7 @@ function MarketPageContent({
 
   const pageSize = 16; // 每页16个，4行x4列
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   // 排序选项
   const sortOptions: SortOption[] = [
@@ -262,19 +263,21 @@ function MarketPageContent({
     }
   }, [currentPage, isLoadingMore, hasMore, fetchPlugins, searchQuery]);
 
-  // 监听滚动事件
+  // Listen to scroll events on the scroll container
   useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+
     const handleScroll = () => {
-      if (
-        window.innerHeight + document.documentElement.scrollTop >=
-        document.documentElement.offsetHeight - 100
-      ) {
+      const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+      // Load more when scrolled to within 100px of the bottom
+      if (scrollTop + clientHeight >= scrollHeight - 100) {
         loadMore();
       }
     };
 
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    scrollContainer.addEventListener('scroll', handleScroll);
+    return () => scrollContainer.removeEventListener('scroll', handleScroll);
   }, [loadMore]);
 
   // 安装插件
@@ -283,99 +286,109 @@ function MarketPageContent({
   // };
 
   return (
-    <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
-      {/* 搜索框 */}
-      <div className="flex items-center justify-center">
-        <div className="relative w-full max-w-2xl">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-          <Input
-            placeholder={t('market.searchPlaceholder')}
-            value={searchQuery}
-            onChange={(e) => handleSearchInputChange(e.target.value)}
-            onKeyPress={(e) => {
-              if (e.key === 'Enter') {
-                // 立即搜索，清除防抖定时器
-                if (searchTimeoutRef.current) {
-                  clearTimeout(searchTimeoutRef.current);
+    <div className="h-full flex flex-col">
+      {/* Fixed header with search and sort controls */}
+      <div className="flex-shrink-0 space-y-4 px-3 sm:px-4 py-4 sm:py-6">
+        {/* Search box */}
+        <div className="flex items-center justify-center">
+          <div className="relative w-full max-w-2xl">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+            <Input
+              placeholder={t('market.searchPlaceholder')}
+              value={searchQuery}
+              onChange={(e) => handleSearchInputChange(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  // Immediately search, clear debounce timer
+                  if (searchTimeoutRef.current) {
+                    clearTimeout(searchTimeoutRef.current);
+                  }
+                  handleSearch(searchQuery);
                 }
-                handleSearch(searchQuery);
-              }
-            }}
-            className="pl-10 pr-4 text-sm sm:text-base"
-          />
-        </div>
-      </div>
-
-      {/* 排序下拉框 */}
-      <div className="flex items-center justify-center">
-        <div className="w-full max-w-2xl flex items-center gap-2 sm:gap-3">
-          <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
-            {t('market.sortBy')}:
-          </span>
-          <Select value={sortOption} onValueChange={handleSortChange}>
-            <SelectTrigger className="w-40 sm:w-48 text-xs sm:text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {sortOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {/* 搜索结果统计 */}
-      {total > 0 && (
-        <div className="text-center text-muted-foreground text-sm">
-          {searchQuery
-            ? t('market.searchResults', { count: total })
-            : t('market.totalPlugins', { count: total })}
-        </div>
-      )}
-
-      {/* 插件列表 */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin" />
-          <span className="ml-2">{t('market.loading')}</span>
-        </div>
-      ) : plugins.length === 0 ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="text-muted-foreground">
-            {searchQuery ? t('market.noResults') : t('market.noPlugins')}
+              }}
+              className="pl-10 pr-4 text-sm sm:text-base"
+            />
           </div>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6">
-          {plugins.map((plugin) => (
-            <PluginMarketCardComponent
-              key={plugin.pluginId}
-              cardVO={plugin}
-              onPluginClick={handlePluginClick}
-            />
-          ))}
-        </div>
-      )}
 
-      {/* 加载更多指示器 */}
-      {isLoadingMore && (
-        <div className="flex items-center justify-center py-6">
-          <Loader2 className="h-6 w-6 animate-spin" />
-          <span className="ml-2">{t('market.loadingMore')}</span>
+        {/* Sort dropdown */}
+        <div className="flex items-center justify-center">
+          <div className="w-full max-w-2xl flex items-center gap-2 sm:gap-3">
+            <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
+              {t('market.sortBy')}:
+            </span>
+            <Select value={sortOption} onValueChange={handleSortChange}>
+              <SelectTrigger className="w-40 sm:w-48 text-xs sm:text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {sortOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-      )}
 
-      {/* 没有更多数据提示 */}
-      {!hasMore && plugins.length > 0 && (
-        <div className="text-center text-muted-foreground py-6">
-          {t('market.allLoaded')}
-        </div>
-      )}
+        {/* Search results stats */}
+        {total > 0 && (
+          <div className="text-center text-muted-foreground text-sm">
+            {searchQuery
+              ? t('market.searchResults', { count: total })
+              : t('market.totalPlugins', { count: total })}
+          </div>
+        )}
+      </div>
 
-      {/* 插件详情对话框 */}
+      {/* Scrollable content area */}
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto px-3 sm:px-4"
+      >
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin" />
+            <span className="ml-2">{t('market.loading')}</span>
+          </div>
+        ) : plugins.length === 0 ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-muted-foreground">
+              {searchQuery ? t('market.noResults') : t('market.noPlugins')}
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6 pb-6">
+              {plugins.map((plugin) => (
+                <PluginMarketCardComponent
+                  key={plugin.pluginId}
+                  cardVO={plugin}
+                  onPluginClick={handlePluginClick}
+                />
+              ))}
+            </div>
+
+            {/* Loading more indicator */}
+            {isLoadingMore && (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="h-6 w-6 animate-spin" />
+                <span className="ml-2">{t('market.loadingMore')}</span>
+              </div>
+            )}
+
+            {/* No more data hint */}
+            {!hasMore && plugins.length > 0 && (
+              <div className="text-center text-muted-foreground py-6">
+                {t('market.allLoaded')}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Plugin detail dialog */}
       <PluginDetailDialog
         open={dialogOpen}
         onOpenChange={handleDialogClose}

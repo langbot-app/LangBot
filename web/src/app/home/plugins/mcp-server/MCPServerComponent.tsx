@@ -73,14 +73,14 @@ export default function MCPComponent({
 
   return (
     <div className="w-full h-full">
-      {/* 已安装的服务器列表 */}
-      <div className="w-full px-[0.8rem] pt-[0rem]  gap-4">
+      {/* Server list */}
+      <div className="w-full h-full px-[0.8rem] pt-[0rem]">
         {loading ? (
-          <div className="flex flex-col items-center justify-center text-gray-500 h-[calc(100vh-16rem)] w-full gap-2">
+          <div className="flex flex-col items-center justify-center text-gray-500 min-h-[60vh] w-full gap-2">
             {t('mcp.loading')}
           </div>
         ) : installedServers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center text-gray-500 h-[calc(100vh-16rem)] w-full gap-2">
+          <div className="flex flex-col items-center justify-center text-gray-500 min-h-[60vh] w-full gap-2">
             <svg
               className="h-[3rem] w-[3rem]"
               xmlns="http://www.w3.org/2000/svg"
@@ -92,7 +92,7 @@ export default function MCPComponent({
             <div className="text-lg mb-2">{t('mcp.noServerInstalled')}</div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-[2rem]">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-[2rem] pb-6">
             {installedServers.map((server, index) => (
               <div key={`${server.name}-${index}`}>
                 <MCPCardComponent

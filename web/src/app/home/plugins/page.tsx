@@ -431,7 +431,7 @@ export default function PluginConfigPage() {
 
   return (
     <div
-      className={`${styles.pageContainer} ${isDragOver ? 'bg-blue-50' : ''}`}
+      className={`${styles.pageContainer} h-full flex flex-col ${isDragOver ? 'bg-blue-50' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -443,8 +443,12 @@ export default function PluginConfigPage() {
         onChange={handleFileChange}
         style={{ display: 'none' }}
       />
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <div className="flex flex-row justify-between items-center px-[0.8rem]">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="w-full h-full flex flex-col"
+      >
+        <div className="flex flex-row justify-between items-center px-[0.8rem] flex-shrink-0">
           <TabsList className="shadow-md py-5 bg-[#f0f0f0] dark:bg-[#2a2a2e]">
             <TabsTrigger value="installed" className="px-6 py-4 cursor-pointer">
               {t('plugins.installed')}
@@ -522,10 +526,10 @@ export default function PluginConfigPage() {
             </DropdownMenu>
           </div>
         </div>
-        <TabsContent value="installed">
+        <TabsContent value="installed" className="flex-1 overflow-y-auto mt-0">
           <PluginInstalledComponent ref={pluginInstalledRef} />
         </TabsContent>
-        <TabsContent value="market">
+        <TabsContent value="market" className="flex-1 overflow-y-auto mt-0">
           <MarketPage
             installPlugin={(plugin: PluginV4) => {
               setInstallSource('marketplace');
@@ -539,7 +543,10 @@ export default function PluginConfigPage() {
             }}
           />
         </TabsContent>
-        <TabsContent value="mcp-servers">
+        <TabsContent
+          value="mcp-servers"
+          className="flex-1 overflow-y-auto mt-0"
+        >
           <MCPServerComponent
             key={refreshKey}
             onEditServer={(serverName) => {

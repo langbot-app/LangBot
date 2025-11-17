@@ -274,7 +274,7 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
         </Dialog>
 
         {pluginList.length === 0 ? (
-          <div className="flex flex-col items-center justify-center text-gray-500 h-[calc(100vh-16rem)] w-full gap-2">
+          <div className="flex flex-col items-center justify-center text-gray-500 min-h-[60vh] w-full gap-2">
             <svg
               className="h-[3rem] w-[3rem]"
               xmlns="http://www.w3.org/2000/svg"
