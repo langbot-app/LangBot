@@ -92,6 +92,11 @@ class N8nServiceAPIRunner(runner.RequestRunner):
         payload.update(query.variables)
 
         try:
+            is_stream = await query.adapter.is_stream_output_supported()
+        except AttributeError:
+            is_stream = False
+
+        try:
             # 准备请求头和认证信息
             headers = {}
             auth = None
@@ -146,10 +151,17 @@ class N8nServiceAPIRunner(runner.RequestRunner):
                         output_content = json.dumps(response_data, ensure_ascii=False)
 
                     # 返回消息
-                    yield provider_message.Message(
-                        role='assistant',
-                        content=output_content,
-                    )
+                    if is_stream:
+                        yield provider_message.MessageChunk(
+                            role='assistant',
+                            content=output_content,
+                            is_final=True,
+                        )
+                    else:
+                        yield provider_message.Message(
+                            role='assistant',
+                            content=output_content,
+                        )
         except Exception as e:
             self.ap.logger.error(f'n8n webhook call exception: {str(e)}')
             raise N8nAPIError(f'n8n webhook call exception: {str(e)}')
