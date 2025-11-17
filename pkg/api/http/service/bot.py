@@ -58,9 +58,7 @@ class BotService:
         if runtime_bot is not None:
             adapter_runtime_values['bot_account_id'] = runtime_bot.adapter.bot_account_id
 
-            # 为支持统一 webhook 的适配器生成 webhook URL
-            # 支持：wecom、wecombot、officialaccount、qqofficial、slack
-            if persistence_bot['adapter'] in ['wecom', 'wecombot', 'officialaccount', 'qqofficial', 'slack']:
+            if persistence_bot['adapter'] in ['wecom', 'wecombot', 'officialaccount', 'qqofficial', 'slack','wecomcs']:
                 api_port = self.ap.instance_config.data['api']['port']
                 webhook_url = f"/bots/{bot_uuid}"
                 adapter_runtime_values['webhook_url'] = webhook_url

@@ -13,7 +13,7 @@ import aiofiles
 
 
 class WecomCSClient:
-    def __init__(self, corpid: str, secret: str, token: str, EncodingAESKey: str, logger: None):
+    def __init__(self, corpid: str, secret: str, token: str, EncodingAESKey: str, logger: None, unified_mode: bool = False):
         self.corpid = corpid
         self.secret = secret
         self.access_token_for_contacts = ''
@@ -22,10 +22,15 @@ class WecomCSClient:
         self.base_url = 'https://qyapi.weixin.qq.com/cgi-bin'
         self.access_token = ''
         self.logger = logger
+        self.unified_mode = unified_mode
         self.app = Quart(__name__)
-        self.app.add_url_rule(
-            '/callback/command', 'handle_callback', self.handle_callback_request, methods=['GET', 'POST']
-        )
+
+        # 只有在非统一模式下才注册独立路由
+        if not self.unified_mode:
+            self.app.add_url_rule(
+                '/callback/command', 'handle_callback', self.handle_callback_request, methods=['GET', 'POST']
+            )
+
         self._message_handlers = {
             'example': [],
         }
@@ -192,27 +197,45 @@ class WecomCSClient:
             return data
 
     async def handle_callback_request(self):
+        """处理回调请求（独立端口模式，使用全局 request）。"""
+        return await self._handle_callback_internal(request)
+
+    async def handle_unified_webhook(self, req):
+        """处理回调请求（统一 webhook 模式，显式传递 request）。
+
+        Args:
+            req: Quart Request 对象
+
+        Returns:
+            响应数据
         """
-        处理回调请求，包括 GET 验证和 POST 消息接收。
+        return await self._handle_callback_internal(req)
+
+    async def _handle_callback_internal(self, req):
+        """
+        处理回调请求的内部实现，包括 GET 验证和 POST 消息接收。
+
+        Args:
+            req: Quart Request 对象
         """
         try:
-            msg_signature = request.args.get('msg_signature')
-            timestamp = request.args.get('timestamp')
-            nonce = request.args.get('nonce')
+            msg_signature = req.args.get('msg_signature')
+            timestamp = req.args.get('timestamp')
+            nonce = req.args.get('nonce')
             try:
                 wxcpt = WXBizMsgCrypt(self.token, self.aes, self.corpid)
             except Exception as e:
                 raise Exception(f'初始化失败，错误码: {e}')
 
-            if request.method == 'GET':
-                echostr = request.args.get('echostr')
+            if req.method == 'GET':
+                echostr = req.args.get('echostr')
                 ret, reply_echo_str = wxcpt.VerifyURL(msg_signature, timestamp, nonce, echostr)
                 if ret != 0:
                     raise Exception(f'验证失败，错误码: {ret}')
                 return reply_echo_str
 
-            elif request.method == 'POST':
-                encrypt_msg = await request.data
+            elif req.method == 'POST':
+                encrypt_msg = await req.data
                 ret, xml_msg = wxcpt.DecryptMsg(encrypt_msg, msg_signature, timestamp, nonce)
                 if ret != 0:
                     raise Exception(f'消息解密失败，错误码: {ret}')

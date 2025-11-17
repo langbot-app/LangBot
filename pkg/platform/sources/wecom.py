@@ -189,9 +189,7 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 await self.bot.send_image(fixed_user_id, Wecom_event.agent_id, content['media_id'])
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
-        """企业微信目前只有发送给个人的方法，
-        构造target_id的方式为前半部分为账户id，后半部分为agent_id,中间使用“|”符号隔开。
-        """
+
         content_list = await WecomMessageConverter.yiri2target(message, self.bot)
         parts = target_id.split('|')
         user_id = parts[0]
@@ -237,10 +235,7 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         return await self.bot.handle_unified_webhook(request)
 
     async def run_async(self):
-        # 统一 webhook 模式下，不启动独立的 Quart 应用
-        # 保持运行但不启动独立端口
 
-        # 打印 webhook 回调地址
         if self.bot_uuid and hasattr(self.logger, 'ap'):
             try:
                 api_port = self.logger.ap.instance_config.data['api']['port']
