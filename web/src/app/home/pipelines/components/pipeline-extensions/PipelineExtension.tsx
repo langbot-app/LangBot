@@ -351,7 +351,10 @@ export default function PipelineExtension({
             <DialogTitle>{t('pipelines.extensions.selectPlugins')}</DialogTitle>
           </DialogHeader>
           {allPlugins.length > 0 && (
-            <div className="flex items-center gap-3 px-1 py-2 border-b">
+            <div
+              className="flex items-center gap-3 px-1 py-2 border-b cursor-pointer"
+              onClick={handleToggleAllPlugins}
+            >
               <Checkbox
                 checked={
                   tempSelectedPluginIds.length === allPlugins.length &&
@@ -439,7 +442,10 @@ export default function PipelineExtension({
             </DialogTitle>
           </DialogHeader>
           {allMCPServers.length > 0 && (
-            <div className="flex items-center gap-3 px-1 py-2 border-b">
+            <div
+              className="flex items-center gap-3 px-1 py-2 border-b cursor-pointer"
+              onClick={handleToggleAllMCPServers}
+            >
               <Checkbox
                 checked={
                   tempSelectedMCPIds.length === allMCPServers.length &&
