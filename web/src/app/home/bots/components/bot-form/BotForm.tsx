@@ -506,7 +506,7 @@ export default function BotForm({
                   />
                 </div>
 
-                {/* Webhook 地址显示（仅企业微信） */}
+                {/* Webhook 地址显示（统一 Webhook 模式） */}
                 {webhookUrl && (
                   <FormItem>
                     <FormLabel>{t('bots.webhookUrl')}</FormLabel>

@@ -85,7 +85,7 @@ class QQOfficialClient:
             req: Quart Request 对象
         """
         try:
-            # 读取请求数据
+            
             body = await req.get_data()
 
             print(f'[QQ Official] Received request, body length: {len(body)}')
