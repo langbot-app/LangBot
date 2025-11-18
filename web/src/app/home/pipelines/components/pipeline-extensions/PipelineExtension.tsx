@@ -146,6 +146,26 @@ export default function PipelineExtension({
     );
   };
 
+  const handleToggleAllPlugins = () => {
+    if (tempSelectedPluginIds.length === allPlugins.length) {
+      // Deselect all
+      setTempSelectedPluginIds([]);
+    } else {
+      // Select all
+      setTempSelectedPluginIds(allPlugins.map((p) => getPluginId(p)));
+    }
+  };
+
+  const handleToggleAllMCPServers = () => {
+    if (tempSelectedMCPIds.length === allMCPServers.length) {
+      // Deselect all
+      setTempSelectedMCPIds([]);
+    } else {
+      // Select all
+      setTempSelectedMCPIds(allMCPServers.map((s) => s.uuid || ''));
+    }
+  };
+
   const handleConfirmPluginSelection = async () => {
     const newSelected = allPlugins.filter((p) =>
       tempSelectedPluginIds.includes(getPluginId(p)),
@@ -330,6 +350,20 @@ export default function PipelineExtension({
           <DialogHeader>
             <DialogTitle>{t('pipelines.extensions.selectPlugins')}</DialogTitle>
           </DialogHeader>
+          {allPlugins.length > 0 && (
+            <div className="flex items-center gap-3 px-1 py-2 border-b">
+              <Checkbox
+                checked={
+                  tempSelectedPluginIds.length === allPlugins.length &&
+                  allPlugins.length > 0
+                }
+                onCheckedChange={handleToggleAllPlugins}
+              />
+              <span className="text-sm font-medium">
+                {t('pipelines.extensions.selectAll')}
+              </span>
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto space-y-2 pr-2">
             {allPlugins.length === 0 ? (
               <div className="flex h-full items-center justify-center">
@@ -404,6 +438,20 @@ export default function PipelineExtension({
               {t('pipelines.extensions.selectMCPServers')}
             </DialogTitle>
           </DialogHeader>
+          {allMCPServers.length > 0 && (
+            <div className="flex items-center gap-3 px-1 py-2 border-b">
+              <Checkbox
+                checked={
+                  tempSelectedMCPIds.length === allMCPServers.length &&
+                  allMCPServers.length > 0
+                }
+                onCheckedChange={handleToggleAllMCPServers}
+              />
+              <span className="text-sm font-medium">
+                {t('pipelines.extensions.selectAll')}
+              </span>
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto space-y-2 pr-2">
             {allMCPServers.length === 0 ? (
               <div className="flex h-full items-center justify-center">

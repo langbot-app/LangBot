@@ -464,6 +464,7 @@ const zhHant = {
       toolCount: '{{count}} 個工具',
       noPluginsInstalled: '無已安裝的插件',
       noMCPServersConfigured: '無已配置的 MCP 伺服器',
+      selectAll: '全選',
     },
     debugDialog: {
       title: '流程線對話',

@@ -484,6 +484,7 @@ const enUS = {
       toolCount: '{{count}} tools',
       noPluginsInstalled: 'No installed plugins',
       noMCPServersConfigured: 'No configured MCP servers',
+      selectAll: 'Select All',
     },
     debugDialog: {
       title: 'Pipeline Chat',

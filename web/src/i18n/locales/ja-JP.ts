@@ -487,6 +487,7 @@ const jaJP = {
       toolCount: '{{count}}個のツール',
       noPluginsInstalled: 'インストールされているプラグインがありません',
       noMCPServersConfigured: '設定されているMCPサーバーがありません',
+      selectAll: 'すべて選択',
     },
     debugDialog: {
       title: 'パイプラインのチャット',
