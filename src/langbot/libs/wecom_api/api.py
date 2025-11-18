@@ -109,14 +109,13 @@ class WecomClient:
     async def send_image(self, user_id: str, agent_id: int, media_id: str):
         if not await self.check_access_token():
             self.access_token = await self.get_access_token(self.secret)
-        url = self.base_url + '/media/upload?access_token=' + self.access_token
+
+        url = self.base_url + '/message/send?access_token=' + self.access_token
         async with httpx.AsyncClient() as client:
             params = {
                 'touser': user_id,
-                'toparty': '',
-                'totag': '',
-                'agentid': agent_id,
                 'msgtype': 'image',
+                'agentid': agent_id,
                 'image': {
                     'media_id': media_id,
                 },
@@ -125,20 +124,14 @@ class WecomClient:
                 'enable_duplicate_check': 0,
                 'duplicate_check_interval': 1800,
             }
-            try:
-                response = await client.post(url, json=params)
-                data = response.json()
-            except Exception as e:
-                await self.logger.error(f'发送图片失败:{data}')
-                raise Exception('Failed to send image: ' + str(e))
-
-            # 企业微信错误码40014和42001，代表accesstoken问题
+            response = await client.post(url, json=params)
+            data = response.json()
             if data['errcode'] == 40014 or data['errcode'] == 42001:
                 self.access_token = await self.get_access_token(self.secret)
                 return await self.send_image(user_id, agent_id, media_id)
-
             if data['errcode'] != 0:
-                raise Exception('Failed to send image: ' + str(data))
+                await self.logger.error(f'发送消息失败:{data}')
+                raise Exception('Failed to send message: ' + str(data))
 
     async def send_private_msg(self, user_id: str, agent_id: int, content: str):
         if not await self.check_access_token():
