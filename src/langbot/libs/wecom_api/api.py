@@ -130,8 +130,8 @@ class WecomClient:
                 self.access_token = await self.get_access_token(self.secret)
                 return await self.send_image(user_id, agent_id, media_id)
             if data['errcode'] != 0:
-                await self.logger.error(f'发送消息失败:{data}')
-                raise Exception('Failed to send message: ' + str(data))
+                await self.logger.error(f'发送图片失败:{data}')
+                raise Exception('Failed to send image: ' + str(data))
 
     async def send_private_msg(self, user_id: str, agent_id: int, content: str):
         if not await self.check_access_token():
