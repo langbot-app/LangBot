@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: LLMAPIRequester
+metadata:
+  name: volcark-chat-completions
+  label:
+    en_US: Volc Engine Ark
+    zh_Hans: 火山方舟
+  icon: volcark.svg
+spec:
+  config:
+  - name: base_url
+    label:
+      en_US: Base URL
+      zh_Hans: 基础 URL
+    type: string
+    required: true
+    default: https://ark.cn-beijing.volces.com/api/v3
+  - name: timeout
+    label:
+      en_US: Timeout
+      zh_Hans: 超时时间
+    type: integer
+    required: true
+    default: 120
+  support_type:
+  - llm
+  provider_category: maas
+execution:
+  python:
+    path: ./volcarkchatcmpl.py
+    attr: VolcArkChatCompletions

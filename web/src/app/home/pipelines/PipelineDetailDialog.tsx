@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/sidebar';
 import PipelineFormComponent from './components/pipeline-form/PipelineFormComponent';
 import DebugDialog from './components/debug-dialog/DebugDialog';
+import PipelineExtension from './components/pipeline-extensions/PipelineExtension';
 
 interface PipelineDialogProps {
   open: boolean;
@@ -31,14 +32,13 @@ interface PipelineDialogProps {
   onCancel: () => void;
 }
 
-type DialogMode = 'config' | 'debug';
+type DialogMode = 'config' | 'debug' | 'extensions';
 
 export default function PipelineDialog({
   open,
   onOpenChange,
   pipelineId: propPipelineId,
   isEditMode = false,
-  isDefaultPipeline = false,
   onFinish,
   onNewPipelineCreated,
   onDeletePipeline,
@@ -82,6 +82,19 @@ export default function PipelineDialog({
       ),
     },
     {
+      key: 'extensions',
+      label: t('pipelines.extensions.title'),
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+        >
+          <path d="M7 5C7 2.79086 8.79086 1 11 1C13.2091 1 15 2.79086 15 5H18C18.5523 5 19 5.44772 19 6V9C21.2091 9 23 10.7909 23 13C23 15.2091 21.2091 17 19 17V20C19 20.5523 18.5523 21 18 21H4C3.44772 21 3 20.5523 3 20V6C3 5.44772 3.44772 5 4 5H7ZM11 3C9.89543 3 9 3.89543 9 5C9 5.23554 9.0403 5.45952 9.11355 5.66675C9.22172 5.97282 9.17461 6.31235 8.98718 6.57739C8.79974 6.84243 8.49532 7 8.17071 7H5V19H17V15.8293C17 15.5047 17.1576 15.2003 17.4226 15.0128C17.6877 14.8254 18.0272 14.7783 18.3332 14.8865C18.5405 14.9597 18.7645 15 19 15C20.1046 15 21 14.1046 21 13C21 11.8954 20.1046 11 19 11C18.7645 11 18.5405 11.0403 18.3332 11.1135C18.0272 11.2217 17.6877 11.1746 17.4226 10.9872C17.1576 10.7997 17 10.4953 17 10.1707V7H13.8293C13.5047 7 13.2003 6.84243 13.0128 6.57739C12.8254 6.31235 12.7783 5.97282 12.8865 5.66675C12.9597 5.45952 13 5.23555 13 5C13 3.89543 12.1046 3 11 3Z"></path>
+        </svg>
+      ),
+    },
+    {
       key: 'debug',
       label: t('pipelines.debugChat'),
       icon: (
@@ -102,6 +115,9 @@ export default function PipelineDialog({
         ? t('pipelines.editPipeline')
         : t('pipelines.createPipeline');
     }
+    if (currentMode === 'extensions') {
+      return t('pipelines.extensions.title');
+    }
     return t('pipelines.debugDialog.title');
   };
 
@@ -116,7 +132,6 @@ export default function PipelineDialog({
             </DialogHeader>
             <div className="flex-1 overflow-y-auto px-6 pb-6">
               <PipelineFormComponent
-                isDefaultPipeline={isDefaultPipeline}
                 onFinish={handleFinish}
                 onNewPipelineCreated={handleNewPipelineCreated}
                 isEditMode={isEditMode}
@@ -175,12 +190,11 @@ export default function PipelineDialog({
               <DialogTitle>{getDialogTitle()}</DialogTitle>
             </DialogHeader>
             <div
-              className="flex-1 auto px-6 pb-4 w-full"
+              className="flex-1 overflow-y-auto px-6 pb-4 w-full"
               style={{ height: 'calc(100% - 4rem)' }}
             >
               {currentMode === 'config' && (
                 <PipelineFormComponent
-                  isDefaultPipeline={isDefaultPipeline}
                   onFinish={handleFinish}
                   onNewPipelineCreated={handleNewPipelineCreated}
                   isEditMode={isEditMode}
@@ -193,6 +207,11 @@ export default function PipelineDialog({
                   }}
                 />
               )}
+
+              {currentMode === 'extensions' && pipelineId && (
+                <PipelineExtension pipelineId={pipelineId} />
+              )}
+
               {currentMode === 'debug' && pipelineId && (
                 <DebugDialog
                   open={true}

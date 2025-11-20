@@ -22,9 +22,6 @@ export default function PluginConfigPage() {
   const [isEditForm, setIsEditForm] = useState(false);
   const [pipelineList, setPipelineList] = useState<PipelineCardVO[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState('');
-
-  const [selectedPipelineIsDefault, setSelectedPipelineIsDefault] =
-    useState(false);
   const [sortByValue, setSortByValue] = useState<string>('created_at');
   const [sortOrderValue, setSortOrderValue] = useState<string>('DESC');
 
@@ -92,8 +89,6 @@ export default function PluginConfigPage() {
   const handleCreateNew = () => {
     setIsEditForm(false);
     setSelectedPipelineId('');
-
-    setSelectedPipelineIsDefault(false);
     setDialogOpen(true);
   };
 
@@ -116,7 +111,6 @@ export default function PluginConfigPage() {
         onOpenChange={setDialogOpen}
         pipelineId={selectedPipelineId || undefined}
         isEditMode={isEditForm}
-        isDefaultPipeline={selectedPipelineIsDefault}
         onFinish={() => {
           getPipelines();
         }}

@@ -3,7 +3,7 @@
 import styles from './layout.module.css';
 import HomeSidebar from '@/app/home/components/home-sidebar/HomeSidebar';
 import HomeTitleBar from '@/app/home/components/home-titlebar/HomeTitleBar';
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { SidebarChildVO } from '@/app/home/components/home-sidebar/HomeSidebarChild';
 import { I18nObject } from '@/app/infra/entities/common';
 
@@ -18,11 +18,15 @@ export default function HomeLayout({
     en_US: '',
     zh_Hans: '',
   });
-  const onSelectedChangeAction = (child: SidebarChildVO) => {
+
+  const onSelectedChangeAction = useCallback((child: SidebarChildVO) => {
     setTitle(child.name);
     setSubtitle(child.description);
     setHelpLink(child.helpLink);
-  };
+  }, []);
+
+  // Memoize the main content area to prevent re-renders when sidebar state changes
+  const mainContent = useMemo(() => children, [children]);
 
   return (
     <div className={styles.homeLayoutContainer}>
@@ -33,7 +37,7 @@ export default function HomeLayout({
       <div className={styles.main}>
         <HomeTitleBar title={title} subtitle={subtitle} helpLink={helpLink} />
 
-        <main className={styles.mainContent}>{children}</main>
+        <main className={styles.mainContent}>{mainContent}</main>
       </div>
     </div>
   );

@@ -1,0 +1,400 @@
+# Kubernetes Deployment for LangBot
+# This file provides Kubernetes deployment manifests for LangBot based on docker-compose.yaml
+# 
+# Usage:
+#   kubectl apply -f kubernetes.yaml
+#
+# Prerequisites:
+#   - A Kubernetes cluster (1.19+)
+#   - kubectl configured to communicate with your cluster
+#   - (Optional) A StorageClass for dynamic volume provisioning
+#
+# Components:
+#   - Namespace: langbot
+#   - PersistentVolumeClaims for data persistence
+#   - Deployments for langbot and langbot_plugin_runtime
+#   - Services for network access
+#   - ConfigMap for timezone configuration
+
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: langbot
+  labels:
+    app: langbot
+
+---
+# PersistentVolumeClaim for LangBot data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: langbot-data
+  namespace: langbot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  # Uncomment and modify if you have a specific StorageClass
+  # storageClassName: your-storage-class
+
+---
+# PersistentVolumeClaim for LangBot plugins
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: langbot-plugins
+  namespace: langbot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  # Uncomment and modify if you have a specific StorageClass
+  # storageClassName: your-storage-class
+
+---
+# PersistentVolumeClaim for Plugin Runtime data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: langbot-plugin-runtime-data
+  namespace: langbot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  # Uncomment and modify if you have a specific StorageClass
+  # storageClassName: your-storage-class
+
+---
+# ConfigMap for environment configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: langbot-config
+  namespace: langbot
+data:
+  TZ: "Asia/Shanghai"
+  PLUGIN__RUNTIME_WS_URL: "ws://langbot-plugin-runtime:5400/control/ws"
+
+---
+# Deployment for LangBot Plugin Runtime
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langbot-plugin-runtime
+  namespace: langbot
+  labels:
+    app: langbot-plugin-runtime
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: langbot-plugin-runtime
+  template:
+    metadata:
+      labels:
+        app: langbot-plugin-runtime
+    spec:
+      containers:
+      - name: langbot-plugin-runtime
+        image: rockchin/langbot:latest
+        imagePullPolicy: Always
+        command: ["uv", "run", "-m", "langbot_plugin.cli.__init__", "rt"]
+        ports:
+        - containerPort: 5400
+          name: runtime
+          protocol: TCP
+        env:
+        - name: TZ
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: TZ
+        volumeMounts:
+        - name: plugin-data
+          mountPath: /app/data/plugins
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        # Liveness probe to restart container if it becomes unresponsive
+        livenessProbe:
+          tcpSocket:
+            port: 5400
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        # Readiness probe to know when container is ready to accept traffic
+        readinessProbe:
+          tcpSocket:
+            port: 5400
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: plugin-data
+        persistentVolumeClaim:
+          claimName: langbot-plugin-runtime-data
+      restartPolicy: Always
+
+---
+# Service for LangBot Plugin Runtime
+apiVersion: v1
+kind: Service
+metadata:
+  name: langbot-plugin-runtime
+  namespace: langbot
+  labels:
+    app: langbot-plugin-runtime
+spec:
+  type: ClusterIP
+  selector:
+    app: langbot-plugin-runtime
+  ports:
+  - port: 5400
+    targetPort: 5400
+    protocol: TCP
+    name: runtime
+
+---
+# Deployment for LangBot
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langbot
+  namespace: langbot
+  labels:
+    app: langbot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: langbot
+  template:
+    metadata:
+      labels:
+        app: langbot
+    spec:
+      containers:
+      - name: langbot
+        image: rockchin/langbot:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 5300
+          name: web
+          protocol: TCP
+        - containerPort: 2280
+          name: webhook-start
+          protocol: TCP
+        # Note: Kubernetes doesn't support port ranges directly in container ports
+        # The webhook ports 2280-2290 are available, but we only expose the start of the range
+        # If you need all ports exposed, consider using a Service with multiple port definitions
+        env:
+        - name: TZ
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: TZ
+        - name: PLUGIN__RUNTIME_WS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: PLUGIN__RUNTIME_WS_URL
+        volumeMounts:
+        - name: data
+          mountPath: /app/data
+        - name: plugins
+          mountPath: /app/plugins
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        # Liveness probe to restart container if it becomes unresponsive
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 5300
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        # Readiness probe to know when container is ready to accept traffic
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 5300
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: langbot-data
+      - name: plugins
+        persistentVolumeClaim:
+          claimName: langbot-plugins
+      restartPolicy: Always
+
+---
+# Service for LangBot (ClusterIP for internal access)
+apiVersion: v1
+kind: Service
+metadata:
+  name: langbot
+  namespace: langbot
+  labels:
+    app: langbot
+spec:
+  type: ClusterIP
+  selector:
+    app: langbot
+  ports:
+  - port: 5300
+    targetPort: 5300
+    protocol: TCP
+    name: web
+  - port: 2280
+    targetPort: 2280
+    protocol: TCP
+    name: webhook-2280
+  - port: 2281
+    targetPort: 2281
+    protocol: TCP
+    name: webhook-2281
+  - port: 2282
+    targetPort: 2282
+    protocol: TCP
+    name: webhook-2282
+  - port: 2283
+    targetPort: 2283
+    protocol: TCP
+    name: webhook-2283
+  - port: 2284
+    targetPort: 2284
+    protocol: TCP
+    name: webhook-2284
+  - port: 2285
+    targetPort: 2285
+    protocol: TCP
+    name: webhook-2285
+  - port: 2286
+    targetPort: 2286
+    protocol: TCP
+    name: webhook-2286
+  - port: 2287
+    targetPort: 2287
+    protocol: TCP
+    name: webhook-2287
+  - port: 2288
+    targetPort: 2288
+    protocol: TCP
+    name: webhook-2288
+  - port: 2289
+    targetPort: 2289
+    protocol: TCP
+    name: webhook-2289
+  - port: 2290
+    targetPort: 2290
+    protocol: TCP
+    name: webhook-2290
+
+---
+# Ingress for external access (Optional - requires Ingress Controller)
+# Uncomment and modify the following section if you want to expose LangBot via Ingress
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: langbot-ingress
+#   namespace: langbot
+#   annotations:
+#     # Uncomment and modify based on your ingress controller
+#     # nginx.ingress.kubernetes.io/rewrite-target: /
+#     # cert-manager.io/cluster-issuer: letsencrypt-prod
+# spec:
+#   ingressClassName: nginx  # Change based on your ingress controller
+#   rules:
+#   - host: langbot.yourdomain.com  # Change to your domain
+#     http:
+#       paths:
+#       - path: /
+#         pathType: Prefix
+#         backend:
+#           service:
+#             name: langbot
+#             port:
+#               number: 5300
+#   # Uncomment for TLS/HTTPS
+#   # tls:
+#   # - hosts:
+#   #   - langbot.yourdomain.com
+#   #   secretName: langbot-tls
+
+---
+# Service for LangBot with LoadBalancer (Alternative to Ingress)
+# Uncomment the following if you want to expose LangBot directly via LoadBalancer
+# This is useful in cloud environments (AWS, GCP, Azure, etc.)
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: langbot-loadbalancer
+#   namespace: langbot
+#   labels:
+#     app: langbot
+# spec:
+#   type: LoadBalancer
+#   selector:
+#     app: langbot
+#   ports:
+#   - port: 80
+#     targetPort: 5300
+#     protocol: TCP
+#     name: web
+#   - port: 2280
+#     targetPort: 2280
+#     protocol: TCP
+#     name: webhook-start
+#   # Add more webhook ports as needed
+
+---
+# Service for LangBot with NodePort (Alternative for exposing service)
+# Uncomment if you want to expose LangBot via NodePort
+# This is useful for testing or when LoadBalancer is not available
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: langbot-nodeport
+#   namespace: langbot
+#   labels:
+#     app: langbot
+# spec:
+#   type: NodePort
+#   selector:
+#     app: langbot
+#   ports:
+#   - port: 5300
+#     targetPort: 5300
+#     nodePort: 30300  # Must be in range 30000-32767
+#     protocol: TCP
+#     name: web
+#   - port: 2280
+#     targetPort: 2280
+#     nodePort: 30280  # Must be in range 30000-32767
+#     protocol: TCP
+#     name: webhook

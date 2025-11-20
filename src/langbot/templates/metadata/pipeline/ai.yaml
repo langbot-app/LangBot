@@ -1,0 +1,450 @@
+name: ai
+label:
+  en_US: AI Feature
+  zh_Hans: AI 能力
+stages:
+  - name: runner
+    label:
+      en_US: Runner
+      zh_Hans: 运行方式
+    description:
+      en_US: Strategy to call AI to process messages
+      zh_Hans: 调用 AI 处理消息的方式
+    config:
+      - name: runner
+        label:
+          en_US: Runner
+          zh_Hans: 运行器
+        type: select
+        required: true
+        default: local-agent
+        options:
+          - name: local-agent
+            label:
+              en_US: Local Agent
+              zh_Hans: 内置 Agent
+          - name: tbox-app-api
+            label:
+              en_US: Tbox App API
+              zh_Hans: 蚂蚁百宝箱平台 API
+          - name: dify-service-api
+            label:
+              en_US: Dify Service API
+              zh_Hans: Dify 服务 API
+          - name: dashscope-app-api
+            label:
+              en_US: Aliyun Dashscope App API
+              zh_Hans: 阿里云百炼平台 API
+          - name: n8n-service-api
+            label:
+              en_US: n8n Workflow API
+              zh_Hans: n8n 工作流 API
+          - name: langflow-api
+            label:
+              en_US: Langflow API
+              zh_Hans: Langflow API
+          - name: coze-api
+            label:
+              en_US: Coze API
+              zh_Hans: 扣子 API
+  - name: local-agent
+    label:
+      en_US: Local Agent
+      zh_Hans: 内置 Agent
+    description:
+      en_US: Configure the embedded agent of the pipeline
+      zh_Hans: 配置内置 Agent
+    config:
+      - name: model
+        label:
+          en_US: Model
+          zh_Hans: 模型
+        type: llm-model-selector
+        required: true
+      - name: max-round
+        label:
+          en_US: Max Round
+          zh_Hans: 最大回合数
+        description:
+          en_US: The maximum number of previous messages that the agent can remember
+          zh_Hans: 最大前文消息回合数
+        type: integer
+        required: true
+        default: 10
+      - name: prompt
+        label:
+          en_US: Prompt
+          zh_Hans: 提示词
+        description:
+          en_US: The prompt of the agent
+          zh_Hans: 除非您了解消息结构，否则请只使用 system 单提示词
+        type: prompt-editor
+        required: true
+      - name: knowledge-bases
+        label:
+          en_US: Knowledge Bases
+          zh_Hans: 知识库
+        description:
+          en_US: Configure the knowledge bases to use for the agent, if not selected, the agent will directly use the LLM to reply
+          zh_Hans: 配置用于提升回复质量的知识库，若不选择，则直接使用大模型回复
+        type: knowledge-base-multi-selector
+        required: false
+        default: []
+  - name: tbox-app-api
+    label:
+      en_US: Tbox App API
+      zh_Hans: 蚂蚁百宝箱平台 API
+    description:
+      en_US: Configure the Tbox App API of the pipeline
+      zh_Hans: 配置蚂蚁百宝箱平台 API
+    config:
+      - name: api-key
+        label:
+          en_US: API Key
+          zh_Hans: API 密钥
+        type: string
+        required: true
+      - name: app-id
+        label:
+          en_US: App ID
+          zh_Hans: 应用 ID
+        type: string
+        required: true
+  - name: dify-service-api
+    label:
+      en_US: Dify Service API
+      zh_Hans: Dify 服务 API
+    description:
+      en_US: Configure the Dify service API of the pipeline
+      zh_Hans: 配置 Dify 服务 API
+    config:
+      - name: base-url
+        label:
+          en_US: Base URL
+          zh_Hans: 基础 URL
+        type: string
+        required: true
+      - name: base-prompt
+        label:
+          en_US: Base PROMPT
+          zh_Hans: 基础提示词
+        description:
+          en_US: When Dify receives a message with empty input (only images), it will pass this default prompt into it.
+          zh_Hans: 当 Dify 接收到输入文字为空（仅图片）的消息时，传入该默认提示词
+        type: string
+        required: true
+        default: "When the file content is readable, please read the content of this file. When the file is an image, describe the content of this image."
+      - name: app-type
+        label:
+          en_US: App Type
+          zh_Hans: 应用类型
+        type: select
+        required: true
+        default: chat
+        options:
+          - name: chat
+            label:
+              en_US: Chat
+              zh_Hans: 聊天（包括Chatflow）
+          - name: agent
+            label:
+              en_US: Agent
+              zh_Hans: Agent
+          - name: workflow
+            label:
+              en_US: Workflow
+              zh_Hans: 工作流
+      - name: api-key
+        label:
+          en_US: API Key
+          zh_Hans: API 密钥
+        type: string
+        required: true
+  - name: dashscope-app-api
+    label:
+      en_US: Aliyun Dashscope App API
+      zh_Hans: 阿里云百炼平台 API
+    description:
+      en_US: Configure the Aliyun Dashscope App API of the pipeline
+      zh_Hans: 配置阿里云百炼平台 API
+    config:
+      - name: app-type
+        label:
+          en_US: App Type
+          zh_Hans: 应用类型
+        type: select
+        required: true
+        default: agent
+        options:
+          - name: agent
+            label:
+              en_US: Agent
+              zh_Hans: Agent
+          - name: workflow
+            label:
+              en_US: Workflow
+              zh_Hans: 工作流
+      - name: api-key
+        label:
+          en_US: API Key
+          zh_Hans: API 密钥
+        type: string
+        required: true
+      - name: app-id
+        label:
+          en_US: App ID
+          zh_Hans: 应用 ID
+        type: string
+        required: true
+      - name: references_quote
+        label:
+          en_US: References Quote
+          zh_Hans: 引用文本
+        description:
+          en_US: The text prompt when the references are included
+          zh_Hans: 包含引用资料时的文本提示
+        type: string
+        required: false
+        default: '参考资料来自:'
+  - name: n8n-service-api
+    label:
+      en_US: n8n Workflow API
+      zh_Hans: n8n 工作流 API
+    description:
+      en_US: Configure the n8n workflow API of the pipeline
+      zh_Hans: 配置 n8n 工作流 API
+    config:
+      - name: webhook-url
+        label:
+          en_US: Webhook URL
+          zh_Hans: Webhook URL
+        description:
+          en_US: The webhook URL of the n8n workflow
+          zh_Hans: n8n 工作流的 webhook URL
+        type: string
+        required: true
+      - name: auth-type
+        label:
+          en_US: Authentication Type
+          zh_Hans: 认证类型
+        description:
+          en_US: The authentication type for the webhook call
+          zh_Hans: webhook 调用的认证类型
+        type: select
+        required: true
+        default: 'none'
+        options:
+          - name: 'none'
+            label:
+              en_US: None
+              zh_Hans: 无认证
+          - name: 'basic'
+            label:
+              en_US: Basic Auth
+              zh_Hans: 基本认证
+          - name: 'jwt'
+            label:
+              en_US: JWT
+              zh_Hans: JWT认证
+          - name: 'header'
+            label:
+              en_US: Header Auth
+              zh_Hans: 请求头认证
+      - name: basic-username
+        label:
+          en_US: Username
+          zh_Hans: 用户名
+        description:
+          en_US: The username for Basic Auth
+          zh_Hans: 基本认证的用户名
+        type: string
+        required: false
+        default: ''
+      - name: basic-password
+        label:
+          en_US: Password
+          zh_Hans: 密码
+        description:
+          en_US: The password for Basic Auth
+          zh_Hans: 基本认证的密码
+        type: string
+        required: false
+        default: ''
+      - name: jwt-secret
+        label:
+          en_US: Secret
+          zh_Hans: 密钥
+        description:
+          en_US: The secret for JWT authentication
+          zh_Hans: JWT认证的密钥
+        type: string
+        required: false
+        default: ''
+      - name: jwt-algorithm
+        label:
+          en_US: Algorithm
+          zh_Hans: 算法
+        description:
+          en_US: The algorithm for JWT authentication
+          zh_Hans: JWT认证的算法
+        type: string
+        required: false
+        default: 'HS256'
+      - name: header-name
+        label:
+          en_US: Header Name
+          zh_Hans: 请求头名称
+        description:
+          en_US: The header name for Header Auth
+          zh_Hans: 请求头认证的名称
+        type: string
+        required: false
+        default: ''
+      - name: header-value
+        label:
+          en_US: Header Value
+          zh_Hans: 请求头值
+        description:
+          en_US: The header value for Header Auth
+          zh_Hans: 请求头认证的值
+        type: string
+        required: false
+        default: ''
+      - name: timeout
+        label:
+          en_US: Timeout
+          zh_Hans: 超时时间
+        description:
+          en_US: The timeout in seconds for the webhook call
+          zh_Hans: webhook 调用的超时时间（秒）
+        type: integer
+        required: false
+        default: 120
+      - name: output-key
+        label:
+          en_US: Output Key
+          zh_Hans: 输出键名
+        description:
+          en_US: The key name of the output in the webhook response
+          zh_Hans: webhook 响应中输出内容的键名
+        type: string
+        required: false
+        default: 'response'
+  - name: langflow-api
+    label:
+      en_US: Langflow API
+      zh_Hans: Langflow API
+    description:
+      en_US: Configure the Langflow API of the pipeline, call the Langflow flow through the `Simplified Run Flow` interface
+      zh_Hans: 配置 Langflow API，通过 `Simplified Run Flow` 接口调用 Langflow 的流程
+    config:
+      - name: base-url
+        label:
+          en_US: Base URL
+          zh_Hans: 基础 URL
+        description:
+          en_US: The base URL of the Langflow server
+          zh_Hans: Langflow 服务器的基础 URL
+        type: string
+        required: true
+      - name: api-key
+        label:
+          en_US: API Key
+          zh_Hans: API 密钥
+        description:
+          en_US: The API key for the Langflow server
+          zh_Hans: Langflow 服务器的 API 密钥
+        type: string
+        required: true
+      - name: flow-id
+        label:
+          en_US: Flow ID
+          zh_Hans: 流程 ID
+        description:
+          en_US: The ID of the flow to run
+          zh_Hans: 要运行的流程 ID
+        type: string
+        required: true
+      - name: input-type
+        label:
+          en_US: Input Type
+          zh_Hans: 输入类型
+        description:
+          en_US: The input type for the flow
+          zh_Hans: 流程的输入类型
+        type: string
+        required: false
+        default: 'chat'
+      - name: output-type
+        label:
+          en_US: Output Type
+          zh_Hans: 输出类型
+        description:
+          en_US: The output type for the flow
+          zh_Hans: 流程的输出类型
+        type: string
+        required: false
+        default: 'chat'
+      - name: tweaks
+        label:
+          en_US: Tweaks
+          zh_Hans: 调整参数
+        description:
+          en_US: Optional tweaks to apply to the flow
+          zh_Hans: 可选的流程调整参数
+        type: json
+        required: false
+        default: '{}'
+  - name: coze-api
+    label:
+      en_US: coze API
+      zh_Hans: 扣子 API
+    description:
+      en_US: Configure the Coze API of the pipeline
+      zh_Hans: 配置Coze API
+    config:
+      - name: api-key
+        label:
+          en_US: API Key
+          zh_Hans: API 密钥
+        description:
+          en_US: The API key for the Coze server
+          zh_Hans: Coze服务器的 API 密钥
+        type: string
+        required: true
+      - name: bot-id
+        label:
+          en_US: Bot ID
+          zh_Hans: 机器人 ID
+        description:
+          en_US: The ID of the bot to run
+          zh_Hans: 要运行的机器人 ID
+        type: string
+        required: true
+      - name: api-base
+        label:
+          en_US: API Base URL
+          zh_Hans: API 基础 URL
+        description:
+          en_US: The base URL for the Coze API, please use https://api.coze.com for global Coze edition(coze.com).
+          zh_Hans: Coze API 的基础 URL，请使用 https://api.coze.com 用于全球 Coze 版（coze.com）
+        type: string
+        default: "https://api.coze.cn"
+      - name: auto-save-history
+        label:
+          en_US: Auto Save History
+          zh_Hans: 自动保存历史
+        description:
+          en_US: Whether to automatically save conversation history
+          zh_Hans: 是否自动保存对话历史
+        type: boolean
+        default: true
+      - name: timeout
+        label:
+          en_US: Request Timeout
+          zh_Hans: 请求超时
+        description:
+          en_US: Timeout in seconds for API requests
+          zh_Hans: API 请求超时时间（秒）
+        type: number
+        default: 120

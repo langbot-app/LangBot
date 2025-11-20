@@ -11,18 +11,23 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 
 export default function DynamicFormComponent({
   itemConfigList,
   onSubmit,
   initialValues,
+  onFileUploaded,
 }: {
   itemConfigList: IDynamicFormItemSchema[];
   onSubmit?: (val: object) => unknown;
   initialValues?: Record<string, object>;
+  onFileUploaded?: (fileKey: string) => void;
 }) {
+  const isInitialMount = useRef(true);
+  const previousInitialValues = useRef(initialValues);
+
   // 根据 itemConfigList 动态生成 zod schema
   const formSchema = z.object(
     itemConfigList.reduce(
@@ -51,6 +56,12 @@ export default function DynamicFormComponent({
             fieldSchema = z.string();
             break;
           case 'knowledge-base-selector':
+            fieldSchema = z.string();
+            break;
+          case 'knowledge-base-multi-selector':
+            fieldSchema = z.array(z.string());
+            break;
+          case 'bot-selector':
             fieldSchema = z.string();
             break;
           case 'prompt-editor':
@@ -97,9 +108,24 @@ export default function DynamicFormComponent({
   });
 
   // 当 initialValues 变化时更新表单值
+  // 但要避免因为内部表单更新触发的 onSubmit 导致的 initialValues 变化而重新设置表单
   useEffect(() => {
     console.log('initialValues', initialValues);
-    if (initialValues) {
+
+    // 首次挂载时，使用 initialValues 初始化表单
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      previousInitialValues.current = initialValues;
+      return;
+    }
+
+    // 检查 initialValues 是否真的发生了实质性变化
+    // 使用 JSON.stringify 进行深度比较
+    const hasRealChange =
+      JSON.stringify(previousInitialValues.current) !==
+      JSON.stringify(initialValues);
+
+    if (initialValues && hasRealChange) {
       // 合并默认值和初始值
       const mergedValues = itemConfigList.reduce(
         (acc, item) => {
@@ -112,6 +138,8 @@ export default function DynamicFormComponent({
       Object.entries(mergedValues).forEach(([key, value]) => {
         form.setValue(key as keyof FormValues, value);
       });
+
+      previousInitialValues.current = initialValues;
     }
   }, [initialValues, form, itemConfigList]);
 
@@ -149,7 +177,11 @@ export default function DynamicFormComponent({
                   {config.required && <span className="text-red-500">*</span>}
                 </FormLabel>
                 <FormControl>
-                  <DynamicFormItemComponent config={config} field={field} />
+                  <DynamicFormItemComponent
+                    config={config}
+                    field={field}
+                    onFileUploaded={onFileUploaded}
+                  />
                 </FormControl>
                 {config.description && (
                   <p className="text-sm text-muted-foreground">

@@ -2,6 +2,17 @@
 
 > 请在此部分填写你实现/解决/优化的内容:  
 > Summary of what you implemented/solved/optimized:
+> 
+
+### 更改前后对比截图 / Screenshots
+
+> 请在此部分粘贴更改前后对比截图（可以是界面截图、控制台输出、对话截图等）:  
+> Please paste the screenshots of changes before and after here (can be interface screenshots, console output, conversation screenshots, etc.):
+> 
+> 修改前 / Before:
+> 
+> 修改后 / After:
+> 
 
 ## 检查清单 / Checklist
 

@@ -23,6 +23,13 @@ export default function FileUploadZone({
     async (file: File) => {
       if (isUploading) return;
 
+      // Check file size (10MB limit)
+      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(t('knowledge.documentsTab.fileSizeExceeded'));
+        return;
+      }
+
       setIsUploading(true);
       const toastId = toast.loading(t('knowledge.documentsTab.uploadingFile'));
 
@@ -46,7 +53,7 @@ export default function FileUploadZone({
         setIsUploading(false);
       }
     },
-    [kbId, isUploading, onUploadSuccess, onUploadError],
+    [kbId, isUploading, onUploadSuccess, onUploadError, t],
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {

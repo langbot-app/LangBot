@@ -1,0 +1,50 @@
+admins: []
+api:
+    port: 5300
+command:
+    enable: true
+    prefix:
+    - '!'
+    - ！
+    privilege: {}
+concurrency:
+    pipeline: 20
+    session: 1
+proxy:
+    http: ''
+    https: ''
+system:
+    recovery_key: ''
+    jwt:
+        expire: 604800
+        secret: ''
+database:
+    use: sqlite
+    sqlite:
+        path: 'data/langbot.db'
+    postgresql:
+        host: '127.0.0.1'
+        port: 5432
+        user: 'postgres'
+        password: 'postgres'
+        database: 'postgres'
+vdb:
+    use: chroma
+    qdrant:
+        url: ''
+        host: localhost
+        port: 6333
+        api_key: ''
+storage:
+    use: local
+    s3:
+        endpoint_url: ''
+        access_key_id: ''
+        secret_access_key: ''
+        region: 'us-east-1'
+        bucket: 'langbot-storage'
+plugin:
+    enable: true
+    runtime_ws_url: 'ws://langbot_plugin_runtime:5400/control/ws'
+    enable_marketplace: true
+    cloud_service_url: 'https://space.langbot.app'

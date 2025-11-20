@@ -29,6 +29,7 @@ export interface Requester {
   icon?: string;
   spec: {
     config: IDynamicFormItemSchema[];
+    provider_category: string;
   };
 }
 
@@ -308,4 +309,50 @@ export interface RetrieveResult {
 
 export interface ApiRespKnowledgeBaseRetrieve {
   results: RetrieveResult[];
+}
+
+// MCP
+export interface ApiRespMCPServers {
+  servers: MCPServer[];
+}
+
+export interface ApiRespMCPServer {
+  server: MCPServer;
+}
+
+export interface MCPServerExtraArgsSSE {
+  url: string;
+  headers: Record<string, string>;
+  timeout: number;
+  ssereadtimeout: number;
+}
+
+export enum MCPSessionStatus {
+  CONNECTING = 'connecting',
+  CONNECTED = 'connected',
+  ERROR = 'error',
+}
+
+export interface MCPServerRuntimeInfo {
+  status: MCPSessionStatus;
+  error_message: string;
+  tool_count: number;
+  tools: MCPTool[];
+}
+
+export interface MCPServer {
+  uuid?: string;
+  name: string;
+  mode: 'stdio' | 'sse';
+  enable: boolean;
+  extra_args: MCPServerExtraArgsSSE;
+  runtime_info?: MCPServerRuntimeInfo;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface MCPTool {
+  name: string;
+  description: string;
+  parameters?: object;
 }

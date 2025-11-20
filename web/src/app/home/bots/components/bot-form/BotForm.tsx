@@ -117,7 +117,6 @@ export default function BotForm({
 
   useEffect(() => {
     setBotFormValues();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 复制到剪贴板的辅助函数 - 使用页面上的真实input元素
@@ -614,7 +613,7 @@ export default function BotForm({
                 <img
                   src={adapterIconList[form.watch('adapter')]}
                   alt="adapter icon"
-                  className="w-12 h-12"
+                  className="w-12 h-12 rounded-[8%]"
                 />
                 <div className="flex flex-col gap-1">
                   <div className="font-medium">

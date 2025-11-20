@@ -1,8 +1,9 @@
 [project]
 name = "langbot"
-version = "4.3.9"
+version = "4.5.3"
 description = "Easy-to-use global IM bot platform designed for LLM era"
 readme = "README.md"
+license-files = ["LICENSE"]
 requires-python = ">=3.10.1,<4.0"
 dependencies = [
     "aiocqhttp>=1.4.4",
@@ -45,7 +46,6 @@ dependencies = [
     "urllib3>=2.4.0",
     "websockets>=15.0.1",
     "python-socks>=2.7.1", # dingtalk missing dependency
-    "taskgroup==0.0.0a4", # graingert/taskgroup#20
     "pip>=25.1.1",
     "ruff>=0.11.9",
     "pre-commit>=4.2.0",
@@ -63,10 +63,11 @@ dependencies = [
     "langchain-text-splitters>=0.0.1",
     "chromadb>=0.4.24",
     "qdrant-client (>=1.15.1,<2.0.0)",
-    "langbot-plugin==0.1.4",
+    "langbot-plugin==0.1.11",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "tboxsdk>=0.0.10",
+    "boto3>=1.35.0",
 ]
 keywords = [
     "bot",
@@ -84,11 +85,10 @@ keywords = [
     "onebot",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Framework :: AsyncIO",
     "Framework :: Robot Framework",
     "Framework :: Robot Framework :: Library",
-    "License :: OSI Approved :: AGPL-3 License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Topic :: Communications :: Chat",
@@ -98,6 +98,16 @@ classifiers = [
 Homepage = "https://langbot.app"
 Documentation = "https://docs.langbot.app"
 Repository = "https://github.com/langbot-app/LangBot"
+
+[project.scripts]
+langbot = "langbot.__main__:main"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-data = { "langbot" = ["templates/**", "pkg/provider/modelmgr/requesters/*", "pkg/platform/sources/*", "web/out/**"] }
 
 [dependency-groups]
 dev = [

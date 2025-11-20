@@ -69,6 +69,14 @@ export class CloudServiceClient extends BaseHttpClient {
     return `${this.baseURL}/api/v1/marketplace/plugins/${author}/${name}/resources/icon`;
   }
 
+  public getPluginAssetURL(
+    author: string,
+    pluginName: string,
+    filepath: string,
+  ): string {
+    return `${this.baseURL}/api/v1/marketplace/plugins/${author}/${pluginName}/resources/assets/${filepath}`;
+  }
+
   public getPluginMarketplaceURL(author: string, name: string): string {
     return `${this.baseURL}/market?author=${author}&plugin=${name}`;
   }

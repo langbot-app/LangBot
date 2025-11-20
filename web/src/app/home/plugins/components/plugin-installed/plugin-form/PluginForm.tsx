@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ApiRespPluginConfig } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { httpClient } from '@/app/infra/http/HttpClient';
@@ -24,6 +24,9 @@ export default function PluginForm({
   const [pluginInfo, setPluginInfo] = useState<Plugin>();
   const [pluginConfig, setPluginConfig] = useState<ApiRespPluginConfig>();
   const [isSaving, setIsLoading] = useState(false);
+  const currentFormValues = useRef<object>({});
+  const uploadedFileKeys = useRef<Set<string>>(new Set());
+  const initialFileKeys = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     // 获取插件信息
@@ -33,28 +36,103 @@ export default function PluginForm({
     // 获取插件配置
     httpClient.getPluginConfig(pluginAuthor, pluginName).then((res) => {
       setPluginConfig(res);
+
+      // 提取初始配置中的所有文件 key
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const extractFileKeys = (obj: any): string[] => {
+        const keys: string[] = [];
+        if (obj && typeof obj === 'object') {
+          if ('file_key' in obj && typeof obj.file_key === 'string') {
+            keys.push(obj.file_key);
+          }
+          for (const value of Object.values(obj)) {
+            if (Array.isArray(value)) {
+              value.forEach((item) => keys.push(...extractFileKeys(item)));
+            } else if (typeof value === 'object' && value !== null) {
+              keys.push(...extractFileKeys(value));
+            }
+          }
+        }
+        return keys;
+      };
+
+      const fileKeys = extractFileKeys(res.config);
+      initialFileKeys.current = new Set(fileKeys);
     });
   }, [pluginAuthor, pluginName]);
 
-  const handleSubmit = async (values: object) => {
+  const handleSubmit = async () => {
     setIsLoading(true);
     const isDebugPlugin = pluginInfo?.debug;
-    httpClient
-      .updatePluginConfig(pluginAuthor, pluginName, values)
-      .then(() => {
-        toast.success(
-          isDebugPlugin
-            ? t('plugins.saveConfigSuccessDebugPlugin')
-            : t('plugins.saveConfigSuccessNormal'),
-        );
-        onFormSubmit(1000);
-      })
-      .catch((error) => {
-        toast.error(t('plugins.saveConfigError') + error.message);
-      })
-      .finally(() => {
-        setIsLoading(false);
+
+    try {
+      // 保存配置
+      await httpClient.updatePluginConfig(
+        pluginAuthor,
+        pluginName,
+        currentFormValues.current,
+      );
+
+      // 提取最终保存的配置中的所有文件 key
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const extractFileKeys = (obj: any): string[] => {
+        const keys: string[] = [];
+        if (obj && typeof obj === 'object') {
+          if ('file_key' in obj && typeof obj.file_key === 'string') {
+            keys.push(obj.file_key);
+          }
+          for (const value of Object.values(obj)) {
+            if (Array.isArray(value)) {
+              value.forEach((item) => keys.push(...extractFileKeys(item)));
+            } else if (typeof value === 'object' && value !== null) {
+              keys.push(...extractFileKeys(value));
+            }
+          }
+        }
+        return keys;
+      };
+
+      const finalFileKeys = new Set(extractFileKeys(currentFormValues.current));
+
+      // 计算需要删除的文件：
+      // 1. 在编辑期间上传的，但最终未保存的文件
+      // 2. 初始配置中有的，但最终配置中没有的文件（被删除的文件）
+      const filesToDelete: string[] = [];
+
+      // 上传了但未使用的文件
+      uploadedFileKeys.current.forEach((key) => {
+        if (!finalFileKeys.has(key)) {
+          filesToDelete.push(key);
+        }
       });
+
+      // 初始有但最终没有的文件（被删除的）
+      initialFileKeys.current.forEach((key) => {
+        if (!finalFileKeys.has(key)) {
+          filesToDelete.push(key);
+        }
+      });
+
+      // 删除不需要的文件
+      const deletePromises = filesToDelete.map((fileKey) =>
+        httpClient.deletePluginConfigFile(fileKey).catch((err) => {
+          console.warn(`Failed to delete file ${fileKey}:`, err);
+        }),
+      );
+
+      await Promise.all(deletePromises);
+
+      toast.success(
+        isDebugPlugin
+          ? t('plugins.saveConfigSuccessDebugPlugin')
+          : t('plugins.saveConfigSuccessNormal'),
+      );
+      onFormSubmit(1000);
+    } catch (error) {
+      toast.error(t('plugins.saveConfigError') + (error as Error).message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   if (!pluginInfo || !pluginConfig) {
@@ -95,14 +173,12 @@ export default function PluginForm({
             itemConfigList={pluginInfo.manifest.manifest.spec.config}
             initialValues={pluginConfig.config as Record<string, object>}
             onSubmit={(values) => {
-              let config = pluginConfig.config;
-              config = {
-                ...config,
-                ...values,
-              };
-              setPluginConfig({
-                config: config,
-              });
+              // 只保存表单值的引用，不触发状态更新
+              currentFormValues.current = values;
+            }}
+            onFileUploaded={(fileKey) => {
+              // 追踪上传的文件
+              uploadedFileKeys.current.add(fileKey);
             }}
           />
         )}
@@ -117,7 +193,7 @@ export default function PluginForm({
         <div className="flex justify-end gap-2">
           <Button
             type="submit"
-            onClick={() => handleSubmit(pluginConfig.config)}
+            onClick={() => handleSubmit()}
             disabled={isSaving}
           >
             {isSaving ? t('plugins.saving') : t('plugins.saveConfig')}

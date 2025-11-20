@@ -46,7 +46,7 @@ export default function PluginCardComponent({
           <img
             src={httpClient.getPluginIconURL(cardVO.author, cardVO.name)}
             alt="plugin icon"
-            className="w-16 h-16"
+            className="w-16 h-16 rounded-[8%]"
           />
 
           <div className="w-full h-full flex flex-col items-start justify-between gap-[0.6rem]">

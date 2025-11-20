@@ -1,6 +1,7 @@
 import {
   DynamicFormItemType,
   IDynamicFormItemSchema,
+  IFileConfig,
 } from '@/app/infra/entities/form/dynamic';
 import { Input } from '@/components/ui/input';
 import {
@@ -16,7 +17,7 @@ import { ControllerRenderProps } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { LLMModel } from '@/app/infra/entities/api';
+import { LLMModel, Bot } from '@/app/infra/entities/api';
 import { KnowledgeBase } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
 import {
@@ -27,18 +28,64 @@ import {
 import { useTranslation } from 'react-i18next';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Plus, X } from 'lucide-react';
 
 export default function DynamicFormItemComponent({
   config,
   field,
+  onFileUploaded,
 }: {
   config: IDynamicFormItemSchema;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   field: ControllerRenderProps<any, any>;
+  onFileUploaded?: (fileKey: string) => void;
 }) {
   const [llmModels, setLlmModels] = useState<LLMModel[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  const [bots, setBots] = useState<Bot[]>([]);
+  const [uploading, setUploading] = useState<boolean>(false);
+  const [kbDialogOpen, setKbDialogOpen] = useState(false);
+  const [tempSelectedKBIds, setTempSelectedKBIds] = useState<string[]>([]);
   const { t } = useTranslation();
+
+  const handleFileUpload = async (file: File): Promise<IFileConfig | null> => {
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error(t('plugins.fileUpload.tooLarge'));
+      return null;
+    }
+
+    try {
+      setUploading(true);
+      const response = await httpClient.uploadPluginConfigFile(file);
+      toast.success(t('plugins.fileUpload.success'));
+
+      // 通知父组件文件已上传
+      onFileUploaded?.(response.file_key);
+
+      return {
+        file_key: response.file_key,
+        mimetype: file.type,
+      };
+    } catch (error) {
+      toast.error(
+        t('plugins.fileUpload.failed') + ': ' + (error as Error).message,
+      );
+      return null;
+    } finally {
+      setUploading(false);
+    }
+  };
 
   useEffect(() => {
     if (config.type === DynamicFormItemType.LLM_MODEL_SELECTOR) {
@@ -48,20 +95,36 @@ export default function DynamicFormItemComponent({
           setLlmModels(resp.models);
         })
         .catch((err) => {
-          toast.error('获取 LLM 模型列表失败：' + err.message);
+          toast.error('Failed to get LLM model list: ' + err.message);
         });
     }
   }, [config.type]);
 
   useEffect(() => {
-    if (config.type === DynamicFormItemType.KNOWLEDGE_BASE_SELECTOR) {
+    if (
+      config.type === DynamicFormItemType.KNOWLEDGE_BASE_SELECTOR ||
+      config.type === DynamicFormItemType.KNOWLEDGE_BASE_MULTI_SELECTOR
+    ) {
       httpClient
         .getKnowledgeBases()
         .then((resp) => {
           setKnowledgeBases(resp.bases);
         })
         .catch((err) => {
-          toast.error('获取知识库列表失败：' + err.message);
+          toast.error('Failed to get knowledge base list: ' + err.message);
+        });
+    }
+  }, [config.type]);
+
+  useEffect(() => {
+    if (config.type === DynamicFormItemType.BOT_SELECTOR) {
+      httpClient
+        .getBots()
+        .then((resp) => {
+          setBots(resp.bots);
+        })
+        .catch((err) => {
+          toast.error('Failed to get bot list: ' + err.message);
         });
     }
   }, [config.type]);
@@ -79,6 +142,9 @@ export default function DynamicFormItemComponent({
 
     case DynamicFormItemType.STRING:
       return <Input {...field} />;
+
+    case DynamicFormItemType.TEXT:
+      return <Textarea {...field} className="min-h-[120px]" />;
 
     case DynamicFormItemType.BOOLEAN:
       return <Switch checked={field.value} onCheckedChange={field.onChange} />;
@@ -174,7 +240,7 @@ export default function DynamicFormItemComponent({
                             model.requester,
                           )}
                           alt="icon"
-                          className="w-8 h-8 rounded-full"
+                          className="w-8 h-8 rounded-[8%]"
                         />
                         <h4 className="font-medium">{model.name}</h4>
                       </div>
@@ -284,6 +350,146 @@ export default function DynamicFormItemComponent({
         </Select>
       );
 
+    case DynamicFormItemType.KNOWLEDGE_BASE_MULTI_SELECTOR:
+      return (
+        <>
+          <div className="space-y-2">
+            {field.value && field.value.length > 0 ? (
+              <div className="space-y-2">
+                {field.value.map((kbId: string) => {
+                  const kb = knowledgeBases.find((base) => base.uuid === kbId);
+                  if (!kb) return null;
+                  return (
+                    <div
+                      key={kbId}
+                      className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent"
+                    >
+                      <div className="flex-1">
+                        <div className="font-medium">{kb.name}</div>
+                        {kb.description && (
+                          <div className="text-sm text-muted-foreground">
+                            {kb.description}
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          const newValue = field.value.filter(
+                            (id: string) => id !== kbId,
+                          );
+                          field.onChange(newValue);
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex h-32 items-center justify-center rounded-lg border-2 border-dashed border-border">
+                <p className="text-sm text-muted-foreground">
+                  {t('knowledge.noKnowledgeBaseSelected')}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <Button
+            type="button"
+            onClick={() => {
+              setTempSelectedKBIds(field.value || []);
+              setKbDialogOpen(true);
+            }}
+            variant="outline"
+            className="w-full"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            {t('knowledge.addKnowledgeBase')}
+          </Button>
+
+          {/* Knowledge Base Selection Dialog */}
+          <Dialog open={kbDialogOpen} onOpenChange={setKbDialogOpen}>
+            <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+              <DialogHeader>
+                <DialogTitle>{t('knowledge.selectKnowledgeBases')}</DialogTitle>
+              </DialogHeader>
+              <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+                {knowledgeBases.map((base) => {
+                  const isSelected = tempSelectedKBIds.includes(
+                    base.uuid ?? '',
+                  );
+                  return (
+                    <div
+                      key={base.uuid}
+                      className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent cursor-pointer"
+                      onClick={() => {
+                        const kbId = base.uuid ?? '';
+                        setTempSelectedKBIds((prev) =>
+                          prev.includes(kbId)
+                            ? prev.filter((id) => id !== kbId)
+                            : [...prev, kbId],
+                        );
+                      }}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        aria-label={`Select ${base.name}`}
+                      />
+                      <div className="flex-1">
+                        <div className="font-medium">{base.name}</div>
+                        {base.description && (
+                          <div className="text-sm text-muted-foreground">
+                            {base.description}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setKbDialogOpen(false)}
+                >
+                  {t('common.cancel')}
+                </Button>
+                <Button
+                  onClick={() => {
+                    field.onChange(tempSelectedKBIds);
+                    setKbDialogOpen(false);
+                  }}
+                >
+                  {t('common.confirm')}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </>
+      );
+
+    case DynamicFormItemType.BOT_SELECTOR:
+      return (
+        <Select value={field.value} onValueChange={field.onChange}>
+          <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+            <SelectValue placeholder={t('bots.selectBot')} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {bots.map((bot) => (
+                <SelectItem key={bot.uuid} value={bot.uuid ?? ''}>
+                  {bot.name}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      );
+
     case DynamicFormItemType.PROMPT_EDITOR:
       return (
         <div className="space-y-2">
@@ -363,6 +569,185 @@ export default function DynamicFormItemComponent({
           >
             {t('common.addRound')}
           </Button>
+        </div>
+      );
+
+    case DynamicFormItemType.FILE:
+      return (
+        <div className="space-y-2">
+          {field.value && (field.value as IFileConfig).file_key ? (
+            <Card className="py-3 max-w-full overflow-hidden bg-gray-900">
+              <CardContent className="flex items-center gap-3 p-0 px-4 min-w-0">
+                <div className="flex-1 min-w-0 overflow-hidden">
+                  <div
+                    className="text-sm font-medium truncate"
+                    title={(field.value as IFileConfig).file_key}
+                  >
+                    {(field.value as IFileConfig).file_key}
+                  </div>
+                  <div className="text-xs text-muted-foreground truncate">
+                    {(field.value as IFileConfig).mimetype}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="flex-shrink-0 h-8 w-8 p-0"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    field.onChange(null);
+                  }}
+                  title={t('common.delete')}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    className="w-4 h-4 text-destructive"
+                  >
+                    <path d="M7 4V2H17V4H22V6H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V6H2V4H7ZM6 6V20H18V6H6ZM9 9H11V17H9V9ZM13 9H15V17H13V9Z"></path>
+                  </svg>
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="relative">
+              <input
+                type="file"
+                accept={config.accept}
+                disabled={uploading}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const fileConfig = await handleFileUpload(file);
+                    if (fileConfig) {
+                      field.onChange(fileConfig);
+                    }
+                  }
+                  e.target.value = '';
+                }}
+                className="hidden"
+                id={`file-input-${config.name}`}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={uploading}
+                onClick={() =>
+                  document.getElementById(`file-input-${config.name}`)?.click()
+                }
+              >
+                <svg
+                  className="w-4 h-4 mr-2"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z"></path>
+                </svg>
+                {uploading
+                  ? t('plugins.fileUpload.uploading')
+                  : t('plugins.fileUpload.chooseFile')}
+              </Button>
+            </div>
+          )}
+        </div>
+      );
+
+    case DynamicFormItemType.FILE_ARRAY:
+      return (
+        <div className="space-y-2">
+          {(field.value as IFileConfig[])?.map(
+            (fileConfig: IFileConfig, index: number) => (
+              <Card
+                key={index}
+                className="py-3 max-w-full overflow-hidden bg-gray-900"
+              >
+                <CardContent className="flex items-center gap-3 p-0 px-4 min-w-0">
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <div
+                      className="text-sm font-medium truncate"
+                      title={fileConfig.file_key}
+                    >
+                      {fileConfig.file_key}
+                    </div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {fileConfig.mimetype}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="flex-shrink-0 h-8 w-8 p-0"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const newValue = (field.value as IFileConfig[]).filter(
+                        (_: IFileConfig, i: number) => i !== index,
+                      );
+                      field.onChange(newValue);
+                    }}
+                    title={t('common.delete')}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      className="w-4 h-4 text-destructive"
+                    >
+                      <path d="M7 4V2H17V4H22V6H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V6H2V4H7ZM6 6V20H18V6H6ZM9 9H11V17H9V9ZM13 9H15V17H13V9Z"></path>
+                    </svg>
+                  </Button>
+                </CardContent>
+              </Card>
+            ),
+          )}
+          <div className="relative">
+            <input
+              type="file"
+              accept={config.accept}
+              disabled={uploading}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  const fileConfig = await handleFileUpload(file);
+                  if (fileConfig) {
+                    field.onChange([...(field.value || []), fileConfig]);
+                  }
+                }
+                e.target.value = '';
+              }}
+              className="hidden"
+              id={`file-array-input-${config.name}`}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={uploading}
+              onClick={() =>
+                document
+                  .getElementById(`file-array-input-${config.name}`)
+                  ?.click()
+              }
+            >
+              <svg
+                className="w-4 h-4 mr-2"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z"></path>
+              </svg>
+              {uploading
+                ? t('plugins.fileUpload.uploading')
+                : t('plugins.fileUpload.addFile')}
+            </Button>
+          </div>
         </div>
       );
 

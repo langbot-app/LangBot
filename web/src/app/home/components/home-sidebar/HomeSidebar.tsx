@@ -25,6 +25,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { Badge } from '@/components/ui/badge';
 import PasswordChangeDialog from '@/app/home/components/password-change-dialog/PasswordChangeDialog';
+import ApiIntegrationDialog from '@/app/home/components/api-integration-dialog/ApiIntegrationDialog';
 
 // TODO 侧边导航栏要加动画
 export default function HomeSidebar({
@@ -45,6 +46,7 @@ export default function HomeSidebar({
   const { t } = useTranslation();
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [passwordChangeOpen, setPasswordChangeOpen] = useState(false);
+  const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false);
   const [languageSelectorOpen, setLanguageSelectorOpen] = useState(false);
   const [starCount, setStarCount] = useState<number | null>(null);
 
@@ -65,7 +67,6 @@ export default function HomeSidebar({
         console.error('Failed to fetch GitHub star count:', error);
       });
     return () => console.log('sidebar.unmounted');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleChildClick(child: SidebarChildVO) {
@@ -189,24 +190,7 @@ export default function HomeSidebar({
 
         <SidebarChild
           onClick={() => {
-            // open docs.langbot.app
-            const language = localStorage.getItem('langbot_language');
-            if (language === 'zh-Hans') {
-              window.open(
-                'https://docs.langbot.app/zh/insight/guide.html',
-                '_blank',
-              );
-            } else if (language === 'zh-Hant') {
-              window.open(
-                'https://docs.langbot.app/zh/insight/guide.html',
-                '_blank',
-              );
-            } else {
-              window.open(
-                'https://docs.langbot.app/en/insight/guide.html',
-                '_blank',
-              );
-            }
+            setApiKeyDialogOpen(true);
           }}
           isSelected={false}
           icon={
@@ -215,10 +199,10 @@ export default function HomeSidebar({
               viewBox="0 0 24 24"
               fill="currentColor"
             >
-              <path d="M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22ZM12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20ZM11 15H13V17H11V15ZM13 13.3551V14H11V12.5C11 11.9477 11.4477 11.5 12 11.5C12.8284 11.5 13.5 10.8284 13.5 10C13.5 9.17157 12.8284 8.5 12 8.5C11.2723 8.5 10.6656 9.01823 10.5288 9.70577L8.56731 9.31346C8.88637 7.70919 10.302 6.5 12 6.5C13.933 6.5 15.5 8.067 15.5 10C15.5 11.5855 14.4457 12.9248 13 13.3551Z"></path>
+              <path d="M10.7577 11.8281L18.6066 3.97919L20.0208 5.3934L18.6066 6.80761L21.0815 9.28249L19.6673 10.6967L17.1924 8.22183L15.7782 9.63604L17.8995 11.7574L16.4853 13.1716L14.364 11.0503L12.1719 13.2423C13.4581 15.1837 13.246 17.8251 11.5355 19.5355C9.58291 21.4882 6.41709 21.4882 4.46447 19.5355C2.51184 17.5829 2.51184 14.4171 4.46447 12.4645C6.17493 10.754 8.81633 10.5419 10.7577 11.8281ZM10.1213 18.1213C11.2929 16.9497 11.2929 15.0503 10.1213 13.8787C8.94975 12.7071 7.05025 12.7071 5.87868 13.8787C4.70711 15.0503 4.70711 16.9497 5.87868 18.1213C7.05025 19.2929 8.94975 19.2929 10.1213 18.1213Z"></path>
             </svg>
           }
-          name={t('common.helpDocs')}
+          name={t('common.apiIntegration')}
         />
 
         <Popover
@@ -288,6 +272,41 @@ export default function HomeSidebar({
                 variant="ghost"
                 className="w-full justify-start font-normal"
                 onClick={() => {
+                  // open docs.langbot.app
+                  const language = localStorage.getItem('langbot_language');
+                  if (language === 'zh-Hans') {
+                    window.open(
+                      'https://docs.langbot.app/zh/insight/guide.html',
+                      '_blank',
+                    );
+                  } else if (language === 'zh-Hant') {
+                    window.open(
+                      'https://docs.langbot.app/zh/insight/guide.html',
+                      '_blank',
+                    );
+                  } else {
+                    window.open(
+                      'https://docs.langbot.app/en/insight/guide.html',
+                      '_blank',
+                    );
+                  }
+                  setPopoverOpen(false);
+                }}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  className="w-4 h-4 mr-2"
+                >
+                  <path d="M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22ZM12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20ZM11 15H13V17H11V15ZM13 13.3551V14H11V12.5C11 11.9477 11.4477 11.5 12 11.5C12.8284 11.5 13.5 10.8284 13.5 10C13.5 9.17157 12.8284 8.5 12 8.5C11.2723 8.5 10.6656 9.01823 10.5288 9.70577L8.56731 9.31346C8.88637 7.70919 10.302 6.5 12 6.5C13.933 6.5 15.5 8.067 15.5 10C15.5 11.5855 14.4457 12.9248 13 13.3551Z"></path>
+                </svg>
+                {t('common.helpDocs')}
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full justify-start font-normal"
+                onClick={() => {
                   setPasswordChangeOpen(true);
                   setPopoverOpen(false);
                 }}
@@ -326,6 +345,10 @@ export default function HomeSidebar({
       <PasswordChangeDialog
         open={passwordChangeOpen}
         onOpenChange={setPasswordChangeOpen}
+      />
+      <ApiIntegrationDialog
+        open={apiKeyDialogOpen}
+        onOpenChange={setApiKeyDialogOpen}
       />
     </div>
   );

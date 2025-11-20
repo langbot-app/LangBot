@@ -1,0 +1,101 @@
+{
+    "trigger": {
+        "group-respond-rules": {
+            "at": true,
+            "prefix": [
+                "ai"
+            ],
+            "regexp": [],
+            "random": 0.0
+        },
+        "access-control": {
+            "mode": "blacklist",
+            "blacklist": [],
+            "whitelist": []
+        },
+        "ignore-rules": {
+            "prefix": [],
+            "regexp": []
+        },
+        "misc": {
+            "combine-quote-message": true
+        }
+    },
+    "safety": {
+        "content-filter": {
+            "scope": "all",
+            "check-sensitive-words": true
+        },
+        "rate-limit": {
+            "window-length": 60,
+            "limitation": 60,
+            "strategy": "drop"
+        }
+    },
+    "ai": {
+        "runner": {
+            "runner": "local-agent"
+        },
+        "local-agent": {
+            "model": "",
+            "max-round": 10,
+            "prompt": [
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant."
+                }
+            ],
+            "knowledge-bases": []
+        },
+        "dify-service-api": {
+            "base-url": "https://api.dify.ai/v1",
+            "app-type": "chat",
+            "api-key": "your-api-key",
+            "timeout": 30
+        },
+        "dashscope-app-api": {
+            "app-type": "agent",
+            "api-key": "your-api-key",
+            "app-id": "your-app-id",
+            "references-quote": "参考资料来自:"
+        },
+        "n8n-service-api": {
+            "webhook-url": "http://your-n8n-webhook-url",
+            "auth-type": "none",
+            "basic-username": "",
+            "basic-password": "",
+            "jwt-secret": "",
+            "jwt-algorithm": "HS256",
+            "header-name": "",
+            "header-value": "",
+            "timeout": 120,
+            "output-key": "response"
+        },
+        "langflow-api": {
+            "base-url": "http://localhost:7860",
+            "api-key": "your-api-key",
+            "flow-id": "your-flow-id",
+            "input-type": "chat",
+            "output-type": "chat",
+            "tweaks": "{}"
+        }
+    },
+    "output": {
+        "long-text-processing": {
+            "threshold": 1000,
+            "strategy": "none",
+            "font-path": ""
+        },
+        "force-delay": {
+            "min": 0,
+            "max": 0
+        },
+        "misc": {
+            "hide-exception": true,
+            "at-sender": true,
+            "quote-origin": true,
+            "track-function-calls": false,
+            "remove-think": false
+        }
+    }
+}

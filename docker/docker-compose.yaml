@@ -1,3 +1,5 @@
+# Docker Compose configuration for LangBot
+# For Kubernetes deployment, see kubernetes.yaml and README_K8S.md
 version: "3"
 
 services:
@@ -5,6 +7,7 @@ services:
   langbot_plugin_runtime:
     image: rockchin/langbot:latest
     container_name: langbot_plugin_runtime
+    platform: linux/amd64 # For Apple Silicon compatibility
     volumes:
       - ./data/plugins:/app/data/plugins
     ports:
@@ -19,6 +22,7 @@ services:
   langbot:
     image: rockchin/langbot:latest
     container_name: langbot
+    platform: linux/amd64 # For Apple Silicon compatibility
     volumes:
       - ./data:/app/data
       - ./plugins:/app/plugins
