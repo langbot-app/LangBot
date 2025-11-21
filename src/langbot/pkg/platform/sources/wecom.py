@@ -5,10 +5,9 @@ import traceback
 
 import datetime
 
-from libs.wecom_api.api import WecomClient
+from langbot.libs.wecom_api.api import WecomClient
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
-from libs.wecom_api.wecomevent import WecomEvent
-from langbot_plugin.api.entities.builtin.command import errors as command_errors
+from langbot.libs.wecom_api.wecomevent import WecomEvent
 from ...utils import image
 from ..logger import EventLogger
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
@@ -159,12 +158,11 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             unified_mode=True,
         )
 
-
         super().__init__(
             config=config,
             logger=logger,
             bot=bot,
-            bot_account_id="",
+            bot_account_id='',
         )
 
     def set_bot_uuid(self, bot_uuid: str):
@@ -189,7 +187,6 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 await self.bot.send_image(fixed_user_id, Wecom_event.agent_id, content['media_id'])
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
-
         content_list = await WecomMessageConverter.yiri2target(message, self.bot)
         parts = target_id.split('|')
         user_id = parts[0]
@@ -235,23 +232,23 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         return await self.bot.handle_unified_webhook(request)
 
     async def run_async(self):
-
         if self.bot_uuid and hasattr(self.logger, 'ap'):
             try:
                 api_port = self.logger.ap.instance_config.data['api']['port']
-                webhook_url = f"http://127.0.0.1:{api_port}/bots/{self.bot_uuid}"
-                webhook_url_public = f"http://<Your-Public-IP>:{api_port}/bots/{self.bot_uuid}"
+                webhook_url = f'http://127.0.0.1:{api_port}/bots/{self.bot_uuid}'
+                webhook_url_public = f'http://<Your-Public-IP>:{api_port}/bots/{self.bot_uuid}'
 
-                await self.logger.info(f"企业微信 Webhook 回调地址:")
-                await self.logger.info(f"  本地地址: {webhook_url}")
-                await self.logger.info(f"  公网地址: {webhook_url_public}")
-                await self.logger.info(f"请在企业微信后台配置此回调地址")
+                await self.logger.info('企业微信 Webhook 回调地址:')
+                await self.logger.info(f'  本地地址: {webhook_url}')
+                await self.logger.info(f'  公网地址: {webhook_url_public}')
+                await self.logger.info('请在企业微信后台配置此回调地址')
             except Exception as e:
-                await self.logger.warning(f"无法生成 webhook URL: {e}")
+                await self.logger.warning(f'无法生成 webhook URL: {e}')
 
         async def keep_alive():
             while True:
                 await asyncio.sleep(1)
+
         await keep_alive()
 
     async def kill(self) -> bool:
@@ -265,6 +262,6 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         ],
     ):
         return super().unregister_listener(event_type, callback)
-    
+
     async def is_muted(self, group_id: int) -> bool:
         pass

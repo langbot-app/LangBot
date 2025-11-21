@@ -9,9 +9,8 @@ import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platf
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
-from langbot_plugin.api.entities.builtin.command import errors as command_errors
-from libs.qq_official_api.api import QQOfficialClient
-from libs.qq_official_api.qqofficialevent import QQOfficialEvent
+from langbot.libs.qq_official_api.api import QQOfficialClient
+from langbot.libs.qq_official_api.qqofficialevent import QQOfficialEvent
 from ...utils import image
 from ..logger import EventLogger
 
@@ -141,11 +140,7 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
 
     def __init__(self, config: dict, logger: EventLogger):
         bot = QQOfficialClient(
-            app_id=config['appid'],
-            secret=config['secret'],
-            token=config['token'],
-            logger=logger,
-            unified_mode=True
+            app_id=config['appid'], secret=config['secret'], token=config['token'], logger=logger, unified_mode=True
         )
 
         super().__init__(
@@ -256,19 +251,20 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
         if self.bot_uuid and hasattr(self.logger, 'ap'):
             try:
                 api_port = self.logger.ap.instance_config.data['api']['port']
-                webhook_url = f"http://127.0.0.1:{api_port}/bots/{self.bot_uuid}"
-                webhook_url_public = f"http://<Your-Public-IP>:{api_port}/bots/{self.bot_uuid}"
+                webhook_url = f'http://127.0.0.1:{api_port}/bots/{self.bot_uuid}'
+                webhook_url_public = f'http://<Your-Public-IP>:{api_port}/bots/{self.bot_uuid}'
 
-                await self.logger.info(f"QQ 官方机器人 Webhook 回调地址:")
-                await self.logger.info(f"  本地地址: {webhook_url}")
-                await self.logger.info(f"  公网地址: {webhook_url_public}")
-                await self.logger.info(f"请在 QQ 官方机器人后台配置此回调地址")
+                await self.logger.info('QQ 官方机器人 Webhook 回调地址:')
+                await self.logger.info(f'  本地地址: {webhook_url}')
+                await self.logger.info(f'  公网地址: {webhook_url_public}')
+                await self.logger.info('请在 QQ 官方机器人后台配置此回调地址')
             except Exception as e:
-                await self.logger.warning(f"无法生成 webhook URL: {e}")
+                await self.logger.warning(f'无法生成 webhook URL: {e}')
 
         async def keep_alive():
             while True:
                 await asyncio.sleep(1)
+
         await keep_alive()
 
     async def kill(self) -> bool:

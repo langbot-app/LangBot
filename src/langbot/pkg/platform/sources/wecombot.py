@@ -8,11 +8,10 @@ import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platf
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
-import pydantic
-from ..logger import  EventLogger
-from libs.wecom_ai_bot_api.wecombotevent import WecomBotEvent
-from libs.wecom_ai_bot_api.api import WecomBotClient
-from ...core import app
+from ..logger import EventLogger
+from langbot.libs.wecom_ai_bot_api.wecombotevent import WecomBotEvent
+from langbot.libs.wecom_ai_bot_api.api import WecomBotClient
+
 
 class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
@@ -36,14 +35,14 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
 
         return chain
 
+
 class WecomBotEventConverter(abstract_platform_adapter.AbstractEventConverter):
+    @staticmethod
+    async def yiri2target(event: platform_events.MessageEvent):
+        return event.source_platform_object
 
     @staticmethod
-    async def yiri2target(event:platform_events.MessageEvent):
-        return event.source_platform_object
-    
-    @staticmethod
-    async def target2yiri(event:WecomBotEvent):
+    async def target2yiri(event: WecomBotEvent):
         message_chain = await WecomBotMessageConverter.target2yiri(event)
         if event.type == 'single':
             return platform_events.FriendMessage(
@@ -82,6 +81,7 @@ class WecomBotEventConverter(abstract_platform_adapter.AbstractEventConverter):
             except Exception:
                 print(traceback.format_exc())
 
+
 class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot: WecomBotClient
     bot_account_id: str
@@ -91,13 +91,11 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot_uuid: str = None
 
     def __init__(self, config: dict, logger: EventLogger):
-        
         required_keys = ['Token', 'EncodingAESKey', 'Corpid', 'BotId']
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
             raise Exception(f'WecomBot 缺少配置项: {missing_keys}')
 
-        
         bot = WecomBotClient(
             Token=config['Token'],
             EnCodingAESKey=config['EncodingAESKey'],
@@ -114,9 +112,12 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             bot_account_id=bot_account_id,
         )
 
-
-    async def reply_message(self, message_source:platform_events.MessageEvent, message:platform_message.MessageChain,quote_origin: bool = False):
-
+    async def reply_message(
+        self,
+        message_source: platform_events.MessageEvent,
+        message: platform_message.MessageChain,
+        quote_origin: bool = False,
+    ):
         content = await self.message_converter.yiri2target(message)
         await self.bot.set_message(message_source.source_platform_object.message_id, content)
 
@@ -170,7 +171,9 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
-        callback: typing.Callable[[platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         async def on_message(event: WecomBotEvent):
             try:
@@ -178,6 +181,7 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             except Exception:
                 await self.logger.error(f'Error in wecombot callback: {traceback.format_exc()}')
                 print(traceback.format_exc())
+
         try:
             if event_type == platform_events.FriendMessage:
                 self.bot.on_message('single')(on_message)
@@ -211,19 +215,20 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if self.bot_uuid and hasattr(self.logger, 'ap'):
             try:
                 api_port = self.logger.ap.instance_config.data['api']['port']
-                webhook_url = f"http://127.0.0.1:{api_port}/bots/{self.bot_uuid}"
-                webhook_url_public = f"http://<Your-Public-IP>:{api_port}/bots/{self.bot_uuid}"
+                webhook_url = f'http://127.0.0.1:{api_port}/bots/{self.bot_uuid}'
+                webhook_url_public = f'http://<Your-Public-IP>:{api_port}/bots/{self.bot_uuid}'
 
-                await self.logger.info(f"企业微信机器人 Webhook 回调地址:")
-                await self.logger.info(f"  本地地址: {webhook_url}")
-                await self.logger.info(f"  公网地址: {webhook_url_public}")
-                await self.logger.info(f"请在企业微信后台配置此回调地址")
+                await self.logger.info('企业微信机器人 Webhook 回调地址:')
+                await self.logger.info(f'  本地地址: {webhook_url}')
+                await self.logger.info(f'  公网地址: {webhook_url_public}')
+                await self.logger.info('请在企业微信后台配置此回调地址')
             except Exception as e:
-                await self.logger.warning(f"无法生成 webhook URL: {e}")
+                await self.logger.warning(f'无法生成 webhook URL: {e}')
 
         async def keep_alive():
             while True:
                 await asyncio.sleep(1)
+
         await keep_alive()
 
     async def kill(self) -> bool:
@@ -232,11 +237,11 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     async def unregister_listener(
         self,
         event_type: type,
-        callback: typing.Callable[[platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
     ):
         return super().unregister_listener(event_type, callback)
-    
+
     async def is_muted(self, group_id: int) -> bool:
         pass
-
-    

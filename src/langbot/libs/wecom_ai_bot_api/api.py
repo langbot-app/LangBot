@@ -13,9 +13,9 @@ import httpx
 from Crypto.Cipher import AES
 from quart import Quart, request, Response, jsonify
 
-from libs.wecom_ai_bot_api import wecombotevent
-from libs.wecom_ai_bot_api.WXBizMsgCrypt3 import WXBizMsgCrypt
-from pkg.platform.logger import EventLogger
+from langbot.libs.wecom_ai_bot_api import wecombotevent
+from langbot.libs.wecom_ai_bot_api.WXBizMsgCrypt3 import WXBizMsgCrypt
+from langbot.pkg.platform.logger import EventLogger
 
 
 @dataclass
@@ -224,10 +224,7 @@ class WecomBotClient:
         # 只有在非统一模式下才注册独立路由
         if not self.unified_mode:
             self.app.add_url_rule(
-                '/callback/command',
-                'handle_callback',
-                self.handle_callback_request,
-                methods=['POST', 'GET']
+                '/callback/command', 'handle_callback', self.handle_callback_request, methods=['POST', 'GET']
             )
 
         self._message_handlers = {
@@ -445,7 +442,7 @@ class WecomBotClient:
             await self.logger.error("请求体中缺少 'encrypt' 字段")
             return Response('Bad Request', status=400)
 
-        xml_post_data = f"<xml><Encrypt><![CDATA[{encrypted_msg}]]></Encrypt></xml>"
+        xml_post_data = f'<xml><Encrypt><![CDATA[{encrypted_msg}]]></Encrypt></xml>'
         ret, decrypted_xml = self.wxcpt.DecryptMsg(xml_post_data, msg_signature, timestamp, nonce)
         if ret != 0:
             await self.logger.error('解密失败')
@@ -483,7 +480,7 @@ class WecomBotClient:
                     picurl = item.get('image', {}).get('url')
 
             if texts:
-                message_data['content'] = "".join(texts)  # 拼接所有 text
+                message_data['content'] = ''.join(texts)  # 拼接所有 text
             if picurl:
                 base64 = await self.download_url_to_base64(picurl, self.EnCodingAESKey)
                 message_data['picurl'] = base64  # 只保留第一个 image
@@ -491,7 +488,9 @@ class WecomBotClient:
         # Extract user information
         from_info = msg_json.get('from', {})
         message_data['userid'] = from_info.get('userid', '')
-        message_data['username'] = from_info.get('alias', '') or from_info.get('name', '') or from_info.get('userid', '')
+        message_data['username'] = (
+            from_info.get('alias', '') or from_info.get('name', '') or from_info.get('userid', '')
+        )
 
         # Extract chat/group information
         if msg_json.get('chattype', '') == 'group':
@@ -580,7 +579,7 @@ class WecomBotClient:
 
             encrypted_bytes = response.content
 
-        aes_key = base64.b64decode(encoding_aes_key + "=")  # base64 补齐
+        aes_key = base64.b64decode(encoding_aes_key + '=')  # base64 补齐
         iv = aes_key[:16]
 
         cipher = AES.new(aes_key, AES.MODE_CBC, iv)
@@ -589,22 +588,22 @@ class WecomBotClient:
         pad_len = decrypted[-1]
         decrypted = decrypted[:-pad_len]
 
-        if decrypted.startswith(b"\xff\xd8"):  # JPEG
-            mime_type = "image/jpeg"
-        elif decrypted.startswith(b"\x89PNG"):  # PNG
-            mime_type = "image/png"
-        elif decrypted.startswith((b"GIF87a", b"GIF89a")):  # GIF
-            mime_type = "image/gif"
-        elif decrypted.startswith(b"BM"):  # BMP
-            mime_type = "image/bmp"
-        elif decrypted.startswith(b"II*\x00") or decrypted.startswith(b"MM\x00*"):  # TIFF
-            mime_type = "image/tiff"
+        if decrypted.startswith(b'\xff\xd8'):  # JPEG
+            mime_type = 'image/jpeg'
+        elif decrypted.startswith(b'\x89PNG'):  # PNG
+            mime_type = 'image/png'
+        elif decrypted.startswith((b'GIF87a', b'GIF89a')):  # GIF
+            mime_type = 'image/gif'
+        elif decrypted.startswith(b'BM'):  # BMP
+            mime_type = 'image/bmp'
+        elif decrypted.startswith(b'II*\x00') or decrypted.startswith(b'MM\x00*'):  # TIFF
+            mime_type = 'image/tiff'
         else:
-            mime_type = "application/octet-stream"
+            mime_type = 'application/octet-stream'
 
         # 转 base64
-        base64_str = base64.b64encode(decrypted).decode("utf-8")
-        return f"data:{mime_type};base64,{base64_str}"
+        base64_str = base64.b64encode(decrypted).decode('utf-8')
+        return f'data:{mime_type};base64,{base64_str}'
 
     async def run_task(self, host: str, port: int, *args, **kwargs):
         """

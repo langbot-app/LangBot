@@ -5,13 +5,12 @@ import traceback
 import pydantic
 import datetime
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
-from libs.official_account_api.oaevent import OAEvent
-from libs.official_account_api.api import OAClient
-from libs.official_account_api.api import OAClientForLongerResponse
+from langbot.libs.official_account_api.oaevent import OAEvent
+from langbot.libs.official_account_api.api import OAClient
+from langbot.libs.official_account_api.api import OAClientForLongerResponse
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
-from langbot_plugin.api.entities.builtin.command import errors as command_errors
 from ..logger import EventLogger
 
 
@@ -93,17 +92,12 @@ class OfficialAccountAdapter(abstract_platform_adapter.AbstractMessagePlatformAd
 
         bot_account_id = config.get('AppID', '')
 
-
         super().__init__(
             bot=bot,
             bot_account_id=bot_account_id,
             config=config,
             logger=logger,
         )
-
-
-
-
 
     async def reply_message(
         self,
@@ -165,19 +159,20 @@ class OfficialAccountAdapter(abstract_platform_adapter.AbstractMessagePlatformAd
         if self.bot_uuid and hasattr(self.logger, 'ap'):
             try:
                 api_port = self.logger.ap.instance_config.data['api']['port']
-                webhook_url = f"http://127.0.0.1:{api_port}/bots/{self.bot_uuid}"
-                webhook_url_public = f"http://<Your-Public-IP>:{api_port}/bots/{self.bot_uuid}"
+                webhook_url = f'http://127.0.0.1:{api_port}/bots/{self.bot_uuid}'
+                webhook_url_public = f'http://<Your-Public-IP>:{api_port}/bots/{self.bot_uuid}'
 
-                await self.logger.info(f"微信公众号 Webhook 回调地址:")
-                await self.logger.info(f"  本地地址: {webhook_url}")
-                await self.logger.info(f"  公网地址: {webhook_url_public}")
-                await self.logger.info(f"请在微信公众号后台配置此回调地址")
+                await self.logger.info('微信公众号 Webhook 回调地址:')
+                await self.logger.info(f'  本地地址: {webhook_url}')
+                await self.logger.info(f'  公网地址: {webhook_url_public}')
+                await self.logger.info('请在微信公众号后台配置此回调地址')
             except Exception as e:
-                await self.logger.warning(f"无法生成 webhook URL: {e}")
+                await self.logger.warning(f'无法生成 webhook URL: {e}')
 
         async def keep_alive():
             while True:
                 await asyncio.sleep(1)
+
         await keep_alive()
 
     async def kill(self) -> bool:
@@ -192,5 +187,8 @@ class OfficialAccountAdapter(abstract_platform_adapter.AbstractMessagePlatformAd
     ):
         return super().unregister_listener(event_type, callback)
 
-    async def is_muted(self, group_id: str, ) -> bool:
+    async def is_muted(
+        self,
+        group_id: str,
+    ) -> bool:
         pass
