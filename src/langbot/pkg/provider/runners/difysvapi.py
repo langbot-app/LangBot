@@ -37,16 +37,6 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             base_url=self.pipeline_config['ai']['dify-service-api']['base-url'],
         )
 
-    def _get_model_config(self) -> dict | None:
-        """获取模型配置参数
-
-        Returns:
-            模型配置字典，如果未配置或为空则返回None
-        """
-        model_config = self.pipeline_config['ai']['dify-service-api'].get('model-config')
-        # Return None if model_config is None or empty dict to avoid sending unnecessary parameters
-        return model_config if model_config else None
-
     def _process_thinking_content(
         self,
         content: str,
@@ -155,7 +145,6 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             conversation_id=cov_id,
             files=files,
             timeout=120,
-            model_config=self._get_model_config(),
         ):
             self.ap.logger.debug('dify-chat-chunk: ' + str(chunk))
 
@@ -223,7 +212,6 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             conversation_id=cov_id,
             files=files,
             timeout=120,
-            model_config=self._get_model_config(),
         ):
             self.ap.logger.debug('dify-agent-chunk: ' + str(chunk))
 
@@ -397,7 +385,6 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             conversation_id=cov_id,
             files=files,
             timeout=120,
-            model_config=self._get_model_config(),
         ):
             self.ap.logger.debug('dify-chat-chunk: ' + str(chunk))
 
@@ -484,7 +471,6 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             conversation_id=cov_id,
             files=files,
             timeout=120,
-            model_config=self._get_model_config(),
         ):
             self.ap.logger.debug('dify-agent-chunk: ' + str(chunk))
 

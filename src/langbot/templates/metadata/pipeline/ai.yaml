@@ -160,16 +160,6 @@ stages:
           zh_Hans: API 密钥
         type: string
         required: true
-      - name: model-config
-        label:
-          en_US: Model Config
-          zh_Hans: 模型配置
-        description:
-          en_US: Optional model configuration parameters, mainly used for assistant type apps. JSON format with fields like completion_params (temperature, max_tokens, etc.)
-          zh_Hans: 可选的模型配置参数，主要用于助手类型应用。JSON格式，可包含 completion_params（temperature、max_tokens等）等字段
-        type: json
-        required: false
-        default: '{}'
   - name: dashscope-app-api
     label:
       en_US: Aliyun Dashscope App API
