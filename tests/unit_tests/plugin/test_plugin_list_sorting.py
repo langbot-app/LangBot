@@ -201,18 +201,17 @@ async def test_plugin_list_empty():
     mock_app = MagicMock()
     mock_app.instance_config.data.get.return_value = {'enable': True}
     mock_app.logger = MagicMock()
-    
+
     # Create connector
     connector = PluginRuntimeConnector(mock_app, AsyncMock())
     connector.handler = MagicMock()
-    
+
     # Mock empty plugin list
     connector.handler.list_plugins = AsyncMock(return_value=[])
-    
+
     # Call list_plugins
     result = await connector.list_plugins()
-    
+
     # Verify empty list
     assert len(result) == 0
-    assert result == []
 
