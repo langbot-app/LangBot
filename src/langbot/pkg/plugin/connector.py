@@ -282,42 +282,42 @@ class PluginRuntimeConnector:
             return []
 
         plugins = await self.handler.list_plugins()
-        
+
         # Sort plugins: debug plugins first, then by installation time (newest first)
         # Get installation timestamps from database
         plugin_timestamps = {}
         for plugin in plugins:
             author = plugin.get('manifest', {}).get('metadata', {}).get('author', '')
             name = plugin.get('manifest', {}).get('metadata', {}).get('name', '')
-            
+
             if author and name:
                 result = await self.ap.persistence_mgr.execute_async(
                     sqlalchemy.select(persistence_plugin.PluginSetting.created_at)
                     .where(persistence_plugin.PluginSetting.plugin_author == author)
                     .where(persistence_plugin.PluginSetting.plugin_name == name)
                 )
-                
+
                 row = result.first()
                 if row:
                     plugin_timestamps[f'{author}/{name}'] = row.created_at
-        
+
         # Sort: debug plugins first (descending), then by created_at (descending)
         def sort_key(plugin):
             author = plugin.get('manifest', {}).get('metadata', {}).get('author', '')
             name = plugin.get('manifest', {}).get('metadata', {}).get('name', '')
             plugin_id = f'{author}/{name}'
-            
+
             is_debug = plugin.get('debug', False)
             created_at = plugin_timestamps.get(plugin_id)
-            
+
             # Return tuple: (not is_debug, -timestamp)
             # not is_debug: False (0) for debug plugins, True (1) for non-debug
             # -timestamp: to sort newest first (will be None for plugins without timestamp)
             timestamp_value = -created_at.timestamp() if created_at else 0
             return (not is_debug, timestamp_value)
-        
+
         plugins.sort(key=sort_key)
-        
+
         return plugins
 
     async def get_plugin_info(self, author: str, plugin_name: str) -> dict[str, Any]:
