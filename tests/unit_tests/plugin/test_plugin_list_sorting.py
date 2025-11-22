@@ -52,31 +52,40 @@ async def test_plugin_list_sorting_debug_first():
     ]
     
     connector.handler.list_plugins = AsyncMock(return_value=mock_plugins)
-    
-    # Mock database queries to return timestamps
-    # plugin1: oldest, plugin2: middle, plugin3: newest
-    call_count = [0]  # Use list to allow mutation in nested function
-    
+
+    # Mock database query to return all timestamps in a single batch
     async def mock_execute_async(query):
         mock_result = MagicMock()
-        mock_row = MagicMock()
-        
-        # Return timestamps in order of calls
-        # First call is for plugin1, second for plugin2, third for plugin3
-        if call_count[0] == 0:
-            mock_row.created_at = now - timedelta(days=2)  # plugin1 (oldest)
-        elif call_count[0] == 1:
-            mock_row.created_at = now - timedelta(days=1)  # plugin2 (middle)
-        elif call_count[0] == 2:
-            mock_row.created_at = now  # plugin3 (newest)
-        
-        call_count[0] += 1
-        mock_result.first.return_value = mock_row
-        
+
+        # Create mock rows for all plugins with timestamps
+        mock_rows = []
+
+        # plugin1: oldest, plugin2: middle, plugin3: newest
+        mock_row1 = MagicMock()
+        mock_row1.plugin_author = 'author1'
+        mock_row1.plugin_name = 'plugin1'
+        mock_row1.created_at = now - timedelta(days=2)
+        mock_rows.append(mock_row1)
+
+        mock_row2 = MagicMock()
+        mock_row2.plugin_author = 'author2'
+        mock_row2.plugin_name = 'plugin2'
+        mock_row2.created_at = now - timedelta(days=1)
+        mock_rows.append(mock_row2)
+
+        mock_row3 = MagicMock()
+        mock_row3.plugin_author = 'author3'
+        mock_row3.plugin_name = 'plugin3'
+        mock_row3.created_at = now
+        mock_rows.append(mock_row3)
+
+        # Make the result iterable
+        mock_result.__iter__ = lambda self: iter(mock_rows)
+
         return mock_result
-    
+
     mock_app.persistence_mgr.execute_async = mock_execute_async
-    
+
     # Call list_plugins
     result = await connector.list_plugins()
     
@@ -137,29 +146,40 @@ async def test_plugin_list_sorting_by_installation_time():
             }
         },
     ]
-    
+
     connector.handler.list_plugins = AsyncMock(return_value=mock_plugins)
-    
-    # Mock database queries to return timestamps
-    call_count = [0]
-    
+
+    # Mock database query to return all timestamps in a single batch
     async def mock_execute_async(query):
         mock_result = MagicMock()
-        mock_row = MagicMock()
-        
-        # Return timestamps in order of calls
-        if call_count[0] == 0:
-            mock_row.created_at = now - timedelta(days=10)  # oldest_plugin
-        elif call_count[0] == 1:
-            mock_row.created_at = now - timedelta(days=5)  # middle_plugin
-        elif call_count[0] == 2:
-            mock_row.created_at = now  # newest_plugin
-        
-        call_count[0] += 1
-        mock_result.first.return_value = mock_row
-        
+
+        # Create mock rows for all plugins with timestamps
+        mock_rows = []
+
+        # oldest_plugin: oldest, middle_plugin: middle, newest_plugin: newest
+        mock_row1 = MagicMock()
+        mock_row1.plugin_author = 'author1'
+        mock_row1.plugin_name = 'oldest_plugin'
+        mock_row1.created_at = now - timedelta(days=10)
+        mock_rows.append(mock_row1)
+
+        mock_row2 = MagicMock()
+        mock_row2.plugin_author = 'author2'
+        mock_row2.plugin_name = 'middle_plugin'
+        mock_row2.created_at = now - timedelta(days=5)
+        mock_rows.append(mock_row2)
+
+        mock_row3 = MagicMock()
+        mock_row3.plugin_author = 'author3'
+        mock_row3.plugin_name = 'newest_plugin'
+        mock_row3.created_at = now
+        mock_rows.append(mock_row3)
+
+        # Make the result iterable
+        mock_result.__iter__ = lambda self: iter(mock_rows)
+
         return mock_result
-    
+
     mock_app.persistence_mgr.execute_async = mock_execute_async
     
     # Call list_plugins

@@ -284,22 +284,39 @@ class PluginRuntimeConnector:
         plugins = await self.handler.list_plugins()
 
         # Sort plugins: debug plugins first, then by installation time (newest first)
-        # Get installation timestamps from database
+        # Get installation timestamps from database in a single query
         plugin_timestamps = {}
-        for plugin in plugins:
-            author = plugin.get('manifest', {}).get('metadata', {}).get('author', '')
-            name = plugin.get('manifest', {}).get('metadata', {}).get('name', '')
 
-            if author and name:
+        if plugins:
+            # Build list of (author, name) tuples for all plugins
+            plugin_ids = []
+            for plugin in plugins:
+                author = plugin.get('manifest', {}).get('metadata', {}).get('author', '')
+                name = plugin.get('manifest', {}).get('metadata', {}).get('name', '')
+                if author and name:
+                    plugin_ids.append((author, name))
+
+            # Fetch all timestamps in a single query using OR conditions
+            if plugin_ids:
+                conditions = [
+                    sqlalchemy.and_(
+                        persistence_plugin.PluginSetting.plugin_author == author,
+                        persistence_plugin.PluginSetting.plugin_name == name,
+                    )
+                    for author, name in plugin_ids
+                ]
+
                 result = await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.select(persistence_plugin.PluginSetting.created_at)
-                    .where(persistence_plugin.PluginSetting.plugin_author == author)
-                    .where(persistence_plugin.PluginSetting.plugin_name == name)
+                    sqlalchemy.select(
+                        persistence_plugin.PluginSetting.plugin_author,
+                        persistence_plugin.PluginSetting.plugin_name,
+                        persistence_plugin.PluginSetting.created_at,
+                    ).where(sqlalchemy.or_(*conditions))
                 )
 
-                row = result.first()
-                if row:
-                    plugin_timestamps[f'{author}/{name}'] = row.created_at
+                for row in result:
+                    plugin_id = f'{row.plugin_author}/{row.plugin_name}'
+                    plugin_timestamps[plugin_id] = row.created_at
 
         # Sort: debug plugins first (descending), then by created_at (descending)
         def sort_key(plugin):
