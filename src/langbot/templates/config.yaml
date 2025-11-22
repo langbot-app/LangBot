@@ -1,6 +1,7 @@
 admins: []
 api:
     port: 5300
+    webhook_display_prefix: 'http://127.0.0.1:5300'
 command:
     enable: true
     prefix:
