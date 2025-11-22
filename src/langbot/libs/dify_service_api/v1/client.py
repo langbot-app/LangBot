@@ -53,6 +53,8 @@ class AsyncDifyServiceClient:
             }
 
             # Add model_config if provided
+            # model_config allows overriding model settings (temperature, max_tokens, etc.)
+            # for assistant type apps in Dify's open-source version
             if model_config is not None:
                 payload['model_config'] = model_config
 

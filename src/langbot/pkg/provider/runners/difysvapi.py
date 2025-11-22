@@ -41,12 +41,11 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         """获取模型配置参数
 
         Returns:
-            模型配置字典，如果未配置则返回None
+            模型配置字典，如果未配置或为空则返回None
         """
         model_config = self.pipeline_config['ai']['dify-service-api'].get('model-config')
-        if model_config:
-            return model_config
-        return None
+        # Return None if model_config is None or empty dict to avoid sending unnecessary parameters
+        return model_config if model_config else None
 
     def _process_thinking_content(
         self,
