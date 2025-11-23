@@ -1,1 +1,1 @@
-# Plugin unit tests
+# Plugin connector unit tests

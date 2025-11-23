@@ -291,8 +291,8 @@ class PluginRuntimeConnector:
             # Build list of (author, name) tuples for all plugins
             plugin_ids = []
             for plugin in plugins:
-                author = plugin.get('manifest', {}).get('metadata', {}).get('author', '')
-                name = plugin.get('manifest', {}).get('metadata', {}).get('name', '')
+                author = plugin.get('manifest', {}).get('manifest', {}).get('metadata', {}).get('author', '')
+                name = plugin.get('manifest', {}).get('manifest', {}).get('metadata', {}).get('name', '')
                 if author and name:
                     plugin_ids.append((author, name))
 
@@ -320,8 +320,8 @@ class PluginRuntimeConnector:
 
         # Sort: debug plugins first (descending), then by created_at (descending)
         def sort_key(plugin):
-            author = plugin.get('manifest', {}).get('metadata', {}).get('author', '')
-            name = plugin.get('manifest', {}).get('metadata', {}).get('name', '')
+            author = plugin.get('manifest', {}).get('manifest', {}).get('metadata', {}).get('author', '')
+            name = plugin.get('manifest', {}).get('manifest', {}).get('metadata', {}).get('name', '')
             plugin_id = f'{author}/{name}'
 
             is_debug = plugin.get('debug', False)

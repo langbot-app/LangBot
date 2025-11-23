@@ -1,7 +1,7 @@
 """Test plugin list sorting functionality."""
 
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 
@@ -9,48 +9,54 @@ import pytest
 async def test_plugin_list_sorting_debug_first():
     """Test that debug plugins appear before non-debug plugins."""
     from src.langbot.pkg.plugin.connector import PluginRuntimeConnector
-    
+
     # Mock the application
     mock_app = MagicMock()
     mock_app.instance_config.data.get.return_value = {'enable': True}
     mock_app.logger = MagicMock()
-    
+
     # Create connector
     connector = PluginRuntimeConnector(mock_app, AsyncMock())
     connector.handler = MagicMock()
-    
+
     # Mock plugin data with different debug states and timestamps
     now = datetime.now()
     mock_plugins = [
         {
             'debug': False,
             'manifest': {
-                'metadata': {
-                    'author': 'author1',
-                    'name': 'plugin1',
+                'manifest': {
+                    'metadata': {
+                        'author': 'author1',
+                        'name': 'plugin1',
+                    }
                 }
-            }
+            },
         },
         {
             'debug': True,
             'manifest': {
-                'metadata': {
-                    'author': 'author2',
-                    'name': 'plugin2',
+                'manifest': {
+                    'metadata': {
+                        'author': 'author2',
+                        'name': 'plugin2',
+                    }
                 }
-            }
+            },
         },
         {
             'debug': False,
             'manifest': {
-                'metadata': {
-                    'author': 'author3',
-                    'name': 'plugin3',
+                'manifest': {
+                    'metadata': {
+                        'author': 'author3',
+                        'name': 'plugin3',
+                    }
                 }
-            }
+            },
         },
     ]
-    
+
     connector.handler.list_plugins = AsyncMock(return_value=mock_plugins)
 
     # Mock database query to return all timestamps in a single batch
@@ -88,62 +94,68 @@ async def test_plugin_list_sorting_debug_first():
 
     # Call list_plugins
     result = await connector.list_plugins()
-    
+
     # Verify sorting: debug plugin should be first
     assert len(result) == 3
     assert result[0]['debug'] is True  # plugin2 (debug)
-    assert result[0]['manifest']['metadata']['name'] == 'plugin2'
-    
+    assert result[0]['manifest']['manifest']['metadata']['name'] == 'plugin2'
+
     # Remaining should be sorted by created_at (newest first)
     assert result[1]['debug'] is False
-    assert result[1]['manifest']['metadata']['name'] == 'plugin3'  # newest non-debug
+    assert result[1]['manifest']['manifest']['metadata']['name'] == 'plugin3'  # newest non-debug
     assert result[2]['debug'] is False
-    assert result[2]['manifest']['metadata']['name'] == 'plugin1'  # oldest non-debug
+    assert result[2]['manifest']['manifest']['metadata']['name'] == 'plugin1'  # oldest non-debug
 
 
 @pytest.mark.asyncio
 async def test_plugin_list_sorting_by_installation_time():
     """Test that non-debug plugins are sorted by installation time (newest first)."""
     from src.langbot.pkg.plugin.connector import PluginRuntimeConnector
-    
+
     # Mock the application
     mock_app = MagicMock()
     mock_app.instance_config.data.get.return_value = {'enable': True}
     mock_app.logger = MagicMock()
-    
+
     # Create connector
     connector = PluginRuntimeConnector(mock_app, AsyncMock())
     connector.handler = MagicMock()
-    
+
     # Mock plugin data - all non-debug with different installation times
     now = datetime.now()
     mock_plugins = [
         {
             'debug': False,
             'manifest': {
-                'metadata': {
-                    'author': 'author1',
-                    'name': 'oldest_plugin',
+                'manifest': {
+                    'metadata': {
+                        'author': 'author1',
+                        'name': 'oldest_plugin',
+                    }
                 }
-            }
+            },
         },
         {
             'debug': False,
             'manifest': {
-                'metadata': {
-                    'author': 'author2',
-                    'name': 'middle_plugin',
+                'manifest': {
+                    'metadata': {
+                        'author': 'author2',
+                        'name': 'middle_plugin',
+                    }
                 }
-            }
+            },
         },
         {
             'debug': False,
             'manifest': {
-                'metadata': {
-                    'author': 'author3',
-                    'name': 'newest_plugin',
+                'manifest': {
+                    'metadata': {
+                        'author': 'author3',
+                        'name': 'newest_plugin',
+                    }
                 }
-            }
+            },
         },
     ]
 
@@ -181,22 +193,22 @@ async def test_plugin_list_sorting_by_installation_time():
         return mock_result
 
     mock_app.persistence_mgr.execute_async = mock_execute_async
-    
+
     # Call list_plugins
     result = await connector.list_plugins()
-    
+
     # Verify sorting: newest first
     assert len(result) == 3
-    assert result[0]['manifest']['metadata']['name'] == 'newest_plugin'
-    assert result[1]['manifest']['metadata']['name'] == 'middle_plugin'
-    assert result[2]['manifest']['metadata']['name'] == 'oldest_plugin'
+    assert result[0]['manifest']['manifest']['metadata']['name'] == 'newest_plugin'
+    assert result[1]['manifest']['manifest']['metadata']['name'] == 'middle_plugin'
+    assert result[2]['manifest']['manifest']['metadata']['name'] == 'oldest_plugin'
 
 
 @pytest.mark.asyncio
 async def test_plugin_list_empty():
     """Test that empty plugin list is handled correctly."""
     from src.langbot.pkg.plugin.connector import PluginRuntimeConnector
-    
+
     # Mock the application
     mock_app = MagicMock()
     mock_app.instance_config.data.get.return_value = {'enable': True}
@@ -214,4 +226,3 @@ async def test_plugin_list_empty():
 
     # Verify empty list
     assert len(result) == 0
-
