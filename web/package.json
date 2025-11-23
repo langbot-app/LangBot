@@ -45,6 +45,7 @@
     "axios": "^1.12.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "highlight.js": "^11.11.1",
     "i18next": "^25.1.2",
     "i18next-browser-languagedetector": "^8.1.0",
     "input-otp": "^1.4.2",
@@ -59,6 +60,8 @@
     "react-i18next": "^15.5.1",
     "react-markdown": "^10.1.0",
     "react-photo-view": "^1.2.7",
+    "react-syntax-highlighter": "^16.1.0",
+    "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
     "sonner": "^2.0.3",
     "tailwind-merge": "^3.2.0",
@@ -72,6 +75,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/react-syntax-highlighter": "^15.5.13",
     "eslint": "^9",
     "eslint-config-next": "15.2.4",
     "eslint-config-prettier": "^10.1.2",
@@ -81,5 +85,6 @@
     "tw-animate-css": "^1.2.9",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.31.1"
-  }
+  },
+  "packageManager": "pnpm@8.9.2+sha512.b9d35fe91b2a5854dadc43034a3e7b2e675fa4b56e20e8e09ef078fa553c18f8aed44051e7b36e8b8dd435f97eb0c44c4ff3b44fc7c6fa7d21e1fac17bbe661e"
 }

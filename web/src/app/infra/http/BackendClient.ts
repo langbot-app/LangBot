@@ -483,6 +483,13 @@ export class BackendClient extends BaseHttpClient {
     return this.delete(`/api/v1/plugins/config-files/${fileKey}`);
   }
 
+  public getPluginReadme(
+    author: string,
+    name: string,
+  ): Promise<{ readme: string }> {
+    return this.get(`/api/v1/plugins/${author}/${name}/readme`);
+  }
+
   public getPluginIconURL(author: string, name: string): string {
     if (this.instance.defaults.baseURL === '/') {
       const url = window.location.href;

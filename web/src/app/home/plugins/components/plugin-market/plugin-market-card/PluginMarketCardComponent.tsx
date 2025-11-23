@@ -48,7 +48,7 @@ export default function PluginMarketCardComponent({
 
   return (
     <div
-      className="w-[100%] h-auto min-h-[8rem] sm:min-h-[9rem] bg-white rounded-[10px] shadow-[0px_0px_4px_0_rgba(0,0,0,0.2)] p-3 sm:p-[1rem] hover:shadow-[0px_2px_8px_0_rgba(0,0,0,0.15)] transition-shadow duration-200 dark:bg-[#1f1f22] relative"
+      className="w-[100%] h-auto min-h-[8rem] sm:min-h-[9rem] bg-white rounded-[10px] shadow-[0px_0px_4px_0_rgba(0,0,0,0.2)] p-3 sm:p-[1rem] hover:shadow-[0px_4px_12px_0_rgba(0,0,0,0.15)] transition-all duration-300 hover:scale-[1.02] dark:bg-[#1f1f22] relative"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -137,25 +137,27 @@ export default function PluginMarketCardComponent({
       </div>
 
       {/* Hover overlay with action buttons */}
-      {isHovered && (
-        <div className="absolute inset-0 bg-gray-100/65 dark:bg-black/40 rounded-[10px] flex items-center justify-center gap-3 transition-opacity duration-200">
-          <Button
-            onClick={handleInstallClick}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2"
-          >
-            <Download className="w-4 h-4" />
-            {t('market.install')}
-          </Button>
-          <Button
-            onClick={handleViewDetailsClick}
-            variant="outline"
-            className="bg-white hover:bg-gray-100 text-gray-900 dark:bg-white dark:hover:bg-gray-100 dark:text-gray-900 px-4 py-2 rounded-lg shadow-lg flex items-center gap-2"
-          >
-            <ExternalLink className="w-4 h-4" />
-            {t('market.viewDetails')}
-          </Button>
-        </div>
-      )}
+      <div
+        className={`absolute inset-0 bg-gray-100/65 dark:bg-black/40 rounded-[10px] flex items-center justify-center gap-3 transition-all duration-300 ${isHovered ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+      >
+        <Button
+          onClick={handleInstallClick}
+          className={`bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 transition-all duration-300 ${isHovered ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'}`}
+          style={{ transitionDelay: isHovered ? '50ms' : '0ms' }}
+        >
+          <Download className="w-4 h-4" />
+          {t('market.install')}
+        </Button>
+        <Button
+          onClick={handleViewDetailsClick}
+          variant="outline"
+          className={`bg-white hover:bg-gray-100 text-gray-900 dark:bg-white dark:hover:bg-gray-100 dark:text-gray-900 px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 transition-all duration-300 ${isHovered ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'}`}
+          style={{ transitionDelay: isHovered ? '100ms' : '0ms' }}
+        >
+          <ExternalLink className="w-4 h-4" />
+          {t('market.viewDetails')}
+        </Button>
+      </div>
     </div>
   );
 }
