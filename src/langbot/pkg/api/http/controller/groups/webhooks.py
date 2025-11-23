@@ -1,49 +1,57 @@
+from __future__ import annotations
+
 import quart
+import traceback
 
 from .. import group
 
 
-@group.group_class('webhooks', '/api/v1/webhooks')
-class WebhooksRouterGroup(group.RouterGroup):
+@group.group_class('webhooks', '/bots')
+class WebhookRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
-        @self.route('', methods=['GET', 'POST'])
-        async def _() -> str:
-            if quart.request.method == 'GET':
-                webhooks = await self.ap.webhook_service.get_webhooks()
-                return self.success(data={'webhooks': webhooks})
-            elif quart.request.method == 'POST':
-                json_data = await quart.request.json
-                name = json_data.get('name', '')
-                url = json_data.get('url', '')
-                description = json_data.get('description', '')
-                enabled = json_data.get('enabled', True)
+        @self.route('/<bot_uuid>', methods=['GET', 'POST'], auth_type=group.AuthType.NONE)
+        async def handle_webhook(bot_uuid: str):
+            """处理 bot webhook 回调（无子路径）"""
+            return await self._dispatch_webhook(bot_uuid, '')
 
-                if not name:
-                    return self.http_status(400, -1, 'Name is required')
-                if not url:
-                    return self.http_status(400, -1, 'URL is required')
+        @self.route('/<bot_uuid>/<path:path>', methods=['GET', 'POST'], auth_type=group.AuthType.NONE)
+        async def handle_webhook_with_path(bot_uuid: str, path: str):
+            """处理 bot webhook 回调（带子路径）"""
+            return await self._dispatch_webhook(bot_uuid, path)
 
-                webhook = await self.ap.webhook_service.create_webhook(name, url, description, enabled)
-                return self.success(data={'webhook': webhook})
+    async def _dispatch_webhook(self, bot_uuid: str, path: str):
+        """分发 webhook 请求到对应的 bot adapter
 
-        @self.route('/<int:webhook_id>', methods=['GET', 'PUT', 'DELETE'])
-        async def _(webhook_id: int) -> str:
-            if quart.request.method == 'GET':
-                webhook = await self.ap.webhook_service.get_webhook(webhook_id)
-                if webhook is None:
-                    return self.http_status(404, -1, 'Webhook not found')
-                return self.success(data={'webhook': webhook})
+        Args:
+            bot_uuid: Bot 的 UUID
+            path: 子路径（如果有的话）
 
-            elif quart.request.method == 'PUT':
-                json_data = await quart.request.json
-                name = json_data.get('name')
-                url = json_data.get('url')
-                description = json_data.get('description')
-                enabled = json_data.get('enabled')
+        Returns:
+            适配器返回的响应
+        """
+        try:
+            
+            runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
 
-                await self.ap.webhook_service.update_webhook(webhook_id, name, url, description, enabled)
-                return self.success()
+            if not runtime_bot:
+                return quart.jsonify({'error': 'Bot not found'}), 404
 
-            elif quart.request.method == 'DELETE':
-                await self.ap.webhook_service.delete_webhook(webhook_id)
-                return self.success()
+            if not runtime_bot.enable:
+                return quart.jsonify({'error': 'Bot is disabled'}), 403
+
+            
+            if not hasattr(runtime_bot.adapter, 'handle_unified_webhook'):
+                return quart.jsonify({'error': 'Adapter does not support unified webhook'}), 501
+
+            
+            response = await runtime_bot.adapter.handle_unified_webhook(
+                bot_uuid=bot_uuid,
+                path=path,
+                request=quart.request,
+            )
+
+            return response
+
+        except Exception as e:
+            self.ap.logger.error(f'Webhook dispatch error for bot {bot_uuid}: {traceback.format_exc()}')
+            return quart.jsonify({'error': str(e)}), 500

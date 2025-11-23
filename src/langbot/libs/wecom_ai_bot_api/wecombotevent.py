@@ -29,12 +29,7 @@ class WecomBotEvent(dict):
         """
         用户名称
         """
-        return (
-            self.get('username', '')
-            or self.get('from', {}).get('alias', '')
-            or self.get('from', {}).get('name', '')
-            or self.userid
-        )
+        return self.get('username', '') or self.get('from', {}).get('alias', '') or self.get('from', {}).get('name', '') or self.userid
 
     @property
     def chatname(self) -> str:
@@ -70,7 +65,7 @@ class WecomBotEvent(dict):
         消息id
         """
         return self.get('msgid', '')
-
+    
     @property
     def ai_bot_id(self) -> str:
         """

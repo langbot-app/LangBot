@@ -23,20 +23,25 @@ xml_template = """
 
 
 class OAClient:
-    def __init__(self, token: str, EncodingAESKey: str, AppID: str, Appsecret: str, logger: None):
+    def __init__(self, token: str, EncodingAESKey: str, AppID: str, Appsecret: str, logger: None, unified_mode: bool = False):
         self.token = token
         self.aes = EncodingAESKey
         self.appid = AppID
         self.appsecret = Appsecret
         self.base_url = 'https://api.weixin.qq.com'
         self.access_token = ''
+        self.unified_mode = unified_mode
         self.app = Quart(__name__)
-        self.app.add_url_rule(
-            '/callback/command',
-            'handle_callback',
-            self.handle_callback_request,
-            methods=['GET', 'POST'],
-        )
+
+        # 只有在非统一模式下才注册独立路由
+        if not self.unified_mode:
+            self.app.add_url_rule(
+                '/callback/command',
+                'handle_callback',
+                self.handle_callback_request,
+                methods=['GET', 'POST'],
+            )
+
         self._message_handlers = {
             'example': [],
         }
@@ -46,19 +51,39 @@ class OAClient:
         self.logger = logger
 
     async def handle_callback_request(self):
+        """处理回调请求（独立端口模式，使用全局 request）。"""
+        return await self._handle_callback_internal(request)
+
+    async def handle_unified_webhook(self, req):
+        """处理回调请求（统一 webhook 模式，显式传递 request）。
+
+        Args:
+            req: Quart Request 对象
+
+        Returns:
+            响应数据
+        """
+        return await self._handle_callback_internal(req)
+
+    async def _handle_callback_internal(self, req):
+        """处理回调请求的内部实现，包括 GET 验证和 POST 消息接收。
+
+        Args:
+            req: Quart Request 对象
+        """
         try:
             # 每隔100毫秒查询是否生成ai回答
             start_time = time.time()
-            signature = request.args.get('signature', '')
-            timestamp = request.args.get('timestamp', '')
-            nonce = request.args.get('nonce', '')
-            echostr = request.args.get('echostr', '')
-            msg_signature = request.args.get('msg_signature', '')
+            signature = req.args.get('signature', '')
+            timestamp = req.args.get('timestamp', '')
+            nonce = req.args.get('nonce', '')
+            echostr = req.args.get('echostr', '')
+            msg_signature = req.args.get('msg_signature', '')
             if msg_signature is None:
                 await self.logger.error('msg_signature不在请求体中')
                 raise Exception('msg_signature不在请求体中')
 
-            if request.method == 'GET':
+            if req.method == 'GET':
                 # 校验签名
                 check_str = ''.join(sorted([self.token, timestamp, nonce]))
                 check_signature = hashlib.sha1(check_str.encode('utf-8')).hexdigest()
@@ -68,8 +93,8 @@ class OAClient:
                 else:
                     await self.logger.error('拒绝请求')
                     raise Exception('拒绝请求')
-            elif request.method == 'POST':
-                encryt_msg = await request.data
+            elif req.method == 'POST':
+                encryt_msg = await req.data
                 wxcpt = WXBizMsgCrypt(self.token, self.aes, self.appid)
                 ret, xml_msg = wxcpt.DecryptMsg(encryt_msg, msg_signature, timestamp, nonce)
                 xml_msg = xml_msg.decode('utf-8')
@@ -182,6 +207,7 @@ class OAClientForLongerResponse:
         Appsecret: str,
         LoadingMessage: str,
         logger: None,
+        unified_mode: bool = False,
     ):
         self.token = token
         self.aes = EncodingAESKey
@@ -189,13 +215,18 @@ class OAClientForLongerResponse:
         self.appsecret = Appsecret
         self.base_url = 'https://api.weixin.qq.com'
         self.access_token = ''
+        self.unified_mode = unified_mode
         self.app = Quart(__name__)
-        self.app.add_url_rule(
-            '/callback/command',
-            'handle_callback',
-            self.handle_callback_request,
-            methods=['GET', 'POST'],
-        )
+
+        # 只有在非统一模式下才注册独立路由
+        if not self.unified_mode:
+            self.app.add_url_rule(
+                '/callback/command',
+                'handle_callback',
+                self.handle_callback_request,
+                methods=['GET', 'POST'],
+            )
+
         self._message_handlers = {
             'example': [],
         }
@@ -206,24 +237,44 @@ class OAClientForLongerResponse:
         self.logger = logger
 
     async def handle_callback_request(self):
+        """处理回调请求（独立端口模式，使用全局 request）。"""
+        return await self._handle_callback_internal(request)
+
+    async def handle_unified_webhook(self, req):
+        """处理回调请求（统一 webhook 模式，显式传递 request）。
+
+        Args:
+            req: Quart Request 对象
+
+        Returns:
+            响应数据
+        """
+        return await self._handle_callback_internal(req)
+
+    async def _handle_callback_internal(self, req):
+        """处理回调请求的内部实现，包括 GET 验证和 POST 消息接收。
+
+        Args:
+            req: Quart Request 对象
+        """
         try:
-            signature = request.args.get('signature', '')
-            timestamp = request.args.get('timestamp', '')
-            nonce = request.args.get('nonce', '')
-            echostr = request.args.get('echostr', '')
-            msg_signature = request.args.get('msg_signature', '')
+            signature = req.args.get('signature', '')
+            timestamp = req.args.get('timestamp', '')
+            nonce = req.args.get('nonce', '')
+            echostr = req.args.get('echostr', '')
+            msg_signature = req.args.get('msg_signature', '')
 
             if msg_signature is None:
                 await self.logger.error('msg_signature不在请求体中')
                 raise Exception('msg_signature不在请求体中')
 
-            if request.method == 'GET':
+            if req.method == 'GET':
                 check_str = ''.join(sorted([self.token, timestamp, nonce]))
                 check_signature = hashlib.sha1(check_str.encode('utf-8')).hexdigest()
                 return echostr if check_signature == signature else '拒绝请求'
 
-            elif request.method == 'POST':
-                encryt_msg = await request.data
+            elif req.method == 'POST':
+                encryt_msg = await req.data
                 wxcpt = WXBizMsgCrypt(self.token, self.aes, self.appid)
                 ret, xml_msg = wxcpt.DecryptMsg(encryt_msg, msg_signature, timestamp, nonce)
                 xml_msg = xml_msg.decode('utf-8')

@@ -41,6 +41,7 @@ const zhHant = {
     addRound: '新增回合',
     copy: '複製',
     copySuccess: '複製成功',
+    copyFailed: '複製失敗',
     test: '測試',
     forgotPassword: '忘記密碼？',
     loading: '載入中...',
@@ -182,6 +183,10 @@ const zhHant = {
     log: '日誌',
     configuration: '設定',
     logs: '日誌',
+    webhookUrl: 'Webhook 回調位址',
+    webhookUrlCopied: 'Webhook 位址已複製',
+    webhookUrlHint:
+      '點擊輸入框自動全選，然後按 Ctrl+C (Mac: Cmd+C) 複製，或點擊右側按鈕',
   },
   plugins: {
     title: '外掛擴展',
