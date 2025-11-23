@@ -637,7 +637,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 'query_id': query_id,
                 'include_plugins': include_plugins,
             },
-            timeout=60,
+            timeout=180,
         )
 
         return result['tool_response']
