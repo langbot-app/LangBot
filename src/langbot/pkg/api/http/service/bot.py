@@ -59,10 +59,10 @@ class BotService:
             adapter_runtime_values['bot_account_id'] = runtime_bot.adapter.bot_account_id
 
             if persistence_bot['adapter'] in ['wecom', 'wecombot', 'officialaccount', 'qqofficial', 'slack', 'wecomcs']:
-                api_port = self.ap.instance_config.data['api']['port']
+                webhook_prefix = self.ap.instance_config.data['api'].get('webhook_prefix', 'http://127.0.0.1:5300')
                 webhook_url = f'/bots/{bot_uuid}'
                 adapter_runtime_values['webhook_url'] = webhook_url
-                adapter_runtime_values['webhook_full_url'] = f'http://<Your-Server-IP>:{api_port}{webhook_url}'
+                adapter_runtime_values['webhook_full_url'] = f'{webhook_prefix}{webhook_url}'
             else:
                 adapter_runtime_values['webhook_url'] = None
                 adapter_runtime_values['webhook_full_url'] = None
