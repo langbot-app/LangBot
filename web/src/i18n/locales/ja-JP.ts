@@ -281,6 +281,10 @@ const jaJP = {
     saveConfigSuccessDebugPlugin:
       '設定を保存しました。手動でプラグインを再起動してください',
     saveConfigError: '設定の保存に失敗しました：',
+    config: '設定',
+    readme: 'ドキュメント',
+    loadingReadme: 'ドキュメントを読み込み中...',
+    noReadme: 'このプラグインはREADMEドキュメントを提供していません',
     fileUpload: {
       tooLarge: 'ファイルサイズが 10MB の制限を超えています',
       success: 'ファイルのアップロードに成功しました',

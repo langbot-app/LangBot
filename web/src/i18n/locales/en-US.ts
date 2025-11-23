@@ -280,6 +280,10 @@ const enUS = {
     saveConfigSuccessDebugPlugin:
       'Configuration saved successfully, please manually restart the plugin',
     saveConfigError: 'Configuration save failed: ',
+    config: 'Configuration',
+    readme: 'Documentation',
+    loadingReadme: 'Loading documentation...',
+    noReadme: 'This plugin does not provide README documentation',
     fileUpload: {
       tooLarge: 'File size exceeds 10MB limit',
       success: 'File uploaded successfully',

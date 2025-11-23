@@ -266,6 +266,10 @@ const zhHans = {
     saveConfigSuccessNormal: '保存配置成功',
     saveConfigSuccessDebugPlugin: '保存配置成功，请手动重启插件',
     saveConfigError: '保存配置失败：',
+    config: '配置',
+    readme: '文档',
+    loadingReadme: '正在加载文档...',
+    noReadme: '该插件没有提供 README 文档',
     fileUpload: {
       tooLarge: '文件大小超过 10MB 限制',
       success: '文件上传成功',

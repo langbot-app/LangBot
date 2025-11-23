@@ -4,6 +4,7 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { PluginCardVO } from '@/app/home/plugins/components/plugin-installed/PluginCardVO';
 import PluginCardComponent from '@/app/home/plugins/components/plugin-installed/plugin-card/PluginCardComponent';
 import PluginForm from '@/app/home/plugins/components/plugin-installed/plugin-form/PluginForm';
+import PluginReadme from '@/app/home/plugins/components/plugin-installed/plugin-readme/PluginReadme';
 import styles from '@/app/home/plugins/plugins.module.css';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import {
@@ -39,6 +40,8 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
     const [selectedPlugin, setSelectedPlugin] = useState<PluginCardVO | null>(
       null,
     );
+    const [readmeModalOpen, setReadmeModalOpen] = useState<boolean>(false);
+    const [readmePlugin, setReadmePlugin] = useState<PluginCardVO | null>(null);
     const [showOperationModal, setShowOperationModal] = useState(false);
     const [operationType, setOperationType] = useState<PluginOperationType>(
       PluginOperationType.DELETE,
@@ -104,6 +107,11 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
     function handlePluginClick(plugin: PluginCardVO) {
       setSelectedPlugin(plugin);
       setModalOpen(true);
+    }
+
+    function handleViewReadme(plugin: PluginCardVO) {
+      setReadmePlugin(plugin);
+      setReadmeModalOpen(true);
     }
 
     function handlePluginDelete(plugin: PluginCardVO) {
@@ -316,6 +324,25 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
               </DialogContent>
             </Dialog>
 
+            <Dialog open={readmeModalOpen} onOpenChange={setReadmeModalOpen}>
+              <DialogContent className="sm:max-w-[900px] max-w-[90vw] max-h-[85vh] p-0 flex flex-col">
+                <DialogHeader className="px-6 pt-6 pb-2 border-b">
+                  <DialogTitle>
+                    {readmePlugin &&
+                      `${readmePlugin.author}/${readmePlugin.name} - ${t('plugins.readme')}`}
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="flex-1 overflow-y-auto">
+                  {readmePlugin && (
+                    <PluginReadme
+                      pluginAuthor={readmePlugin.author}
+                      pluginName={readmePlugin.name}
+                    />
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+
             {pluginList.map((vo, index) => {
               return (
                 <div key={index}>
@@ -324,6 +351,7 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
                     onCardClick={() => handlePluginClick(vo)}
                     onDeleteClick={() => handlePluginDelete(vo)}
                     onUpgradeClick={() => handlePluginUpdate(vo)}
+                    onViewReadme={() => handleViewReadme(vo)}
                   />
                 </div>
               );

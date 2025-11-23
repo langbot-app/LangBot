@@ -184,7 +184,7 @@ export default function PluginForm({
             itemConfigList={pluginInfo.manifest.manifest.spec.config}
             initialValues={pluginConfig.config as Record<string, object>}
             onSubmit={(values) => {
-              // 只保存表单值的引用，不触发状态更新
+              // 只保存表单值的引用,不触发状态更新
               currentFormValues.current = values;
             }}
             onFileUploaded={(fileKey) => {

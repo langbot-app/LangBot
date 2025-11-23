@@ -2,7 +2,15 @@ import { PluginCardVO } from '@/app/home/plugins/components/plugin-installed/Plu
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
-import { BugIcon, ExternalLink, Ellipsis, Trash, ArrowUp } from 'lucide-react';
+import {
+  BugIcon,
+  ExternalLink,
+  Ellipsis,
+  Trash,
+  ArrowUp,
+  Settings,
+  FileText,
+} from 'lucide-react';
 import { getCloudServiceClientSync } from '@/app/infra/http';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Button } from '@/components/ui/button';
@@ -19,20 +27,28 @@ export default function PluginCardComponent({
   onCardClick,
   onDeleteClick,
   onUpgradeClick,
+  onViewReadme,
 }: {
   cardVO: PluginCardVO;
   onCardClick: () => void;
   onDeleteClick: (cardVO: PluginCardVO) => void;
   onUpgradeClick: (cardVO: PluginCardVO) => void;
+  onViewReadme: (cardVO: PluginCardVO) => void;
 }) {
   const { t } = useTranslation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   return (
     <>
       <div
-        className="w-[100%] h-[10rem] bg-white rounded-[10px] shadow-[0px_2px_2px_0_rgba(0,0,0,0.2)] p-[1.2rem] cursor-pointer dark:bg-[#1f1f22]"
-        onClick={onCardClick}
+        className="w-[100%] h-[10rem] bg-white rounded-[10px] shadow-[0px_2px_2px_0_rgba(0,0,0,0.2)] p-[1.2rem] cursor-pointer dark:bg-[#1f1f22] relative transition-all duration-300 hover:shadow-[0px_4px_12px_0_rgba(0,0,0,0.15)] hover:scale-[1.02]"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => {
+          if (!dropdownOpen) {
+            setIsHovered(false);
+          }
+        }}
       >
         <div className="w-full h-full flex flex-row items-start justify-start gap-[1.2rem]">
           {/* <svg
@@ -148,13 +164,24 @@ export default function PluginCardComponent({
             </div>
           </div>
 
-          <div className="flex flex-col items-center justify-between h-full">
+          <div className="flex flex-col items-center justify-between h-full relative z-20">
             <div className="flex items-center justify-center"></div>
 
             <div className="flex items-center justify-center">
-              <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
+              <DropdownMenu
+                open={dropdownOpen}
+                onOpenChange={(open) => {
+                  setDropdownOpen(open);
+                  if (!open) {
+                    setIsHovered(false);
+                  }
+                }}
+              >
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost">
+                  <Button
+                    variant="ghost"
+                    className="bg-white dark:bg-[#1f1f22] hover:bg-gray-100 dark:hover:bg-[#2a2a2d]"
+                  >
                     <Ellipsis className="w-4 h-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -174,7 +201,7 @@ export default function PluginCardComponent({
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem
-                    className="flex flex-row items-center justify-start gap-[0.4rem] cursor-pointer"
+                    className="flex flex-row items-center justify-start gap-[0.4rem] cursor-pointer text-red-600 focus:text-red-600"
                     onClick={(e) => {
                       e.stopPropagation();
                       onDeleteClick(cardVO);
@@ -188,6 +215,35 @@ export default function PluginCardComponent({
               </DropdownMenu>
             </div>
           </div>
+        </div>
+
+        {/* Hover overlay with action buttons */}
+        <div
+          className={`absolute inset-0 bg-gray-100/65 dark:bg-black/40 rounded-[10px] flex items-center justify-center gap-3 transition-all duration-300 z-10 ${isHovered ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        >
+          <Button
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewReadme(cardVO);
+            }}
+            className={`bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 transition-all duration-300 ${isHovered ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'}`}
+            style={{ transitionDelay: isHovered ? '50ms' : '0ms' }}
+          >
+            <FileText className="w-4 h-4" />
+            {t('plugins.readme')}
+          </Button>
+          <Button
+            onClick={(e) => {
+              e.stopPropagation();
+              onCardClick();
+            }}
+            variant="outline"
+            className={`bg-white hover:bg-gray-100 text-gray-900 dark:bg-white dark:hover:bg-gray-100 dark:text-gray-900 px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 transition-all duration-300 ${isHovered ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'}`}
+            style={{ transitionDelay: isHovered ? '100ms' : '0ms' }}
+          >
+            <Settings className="w-4 h-4" />
+            {t('plugins.config')}
+          </Button>
         </div>
       </div>
     </>

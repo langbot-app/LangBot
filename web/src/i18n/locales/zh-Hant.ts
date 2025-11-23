@@ -265,6 +265,10 @@ const zhHant = {
     saveConfigSuccessNormal: '儲存配置成功',
     saveConfigSuccessDebugPlugin: '儲存配置成功，請手動重啟插件',
     saveConfigError: '儲存配置失敗：',
+    config: '配置',
+    readme: '文件',
+    loadingReadme: '正在載入文件...',
+    noReadme: '該插件沒有提供 README 文件',
     fileUpload: {
       tooLarge: '檔案大小超過 10MB 限制',
       success: '檔案上傳成功',
