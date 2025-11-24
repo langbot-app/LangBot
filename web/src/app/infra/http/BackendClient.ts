@@ -493,6 +493,17 @@ export class BackendClient extends BaseHttpClient {
     );
   }
 
+  public getPluginAssetURL(
+    author: string,
+    name: string,
+    filepath: string,
+  ): string {
+    return (
+      this.instance.defaults.baseURL +
+      `/api/v1/plugins/${author}/${name}/assets/${filepath}`
+    );
+  }
+
   public getPluginIconURL(author: string, name: string): string {
     if (this.instance.defaults.baseURL === '/') {
       const url = window.location.href;

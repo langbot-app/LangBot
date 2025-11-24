@@ -106,6 +106,17 @@ class PluginsRouterGroup(group.RouterGroup):
 
             return quart.Response(icon_data, mimetype=mime_type)
 
+        @self.route(
+            '/<author>/<plugin_name>/assets/<filepath>',
+            methods=['GET'],
+            auth_type=group.AuthType.NONE,
+        )
+        async def _(author: str, plugin_name: str, filepath: str) -> quart.Response:
+            asset_data = await self.ap.plugin_connector.get_plugin_assets(author, plugin_name, filepath)
+            asset_bytes = base64.b64decode(asset_data['asset_base64'])
+            mime_type = asset_data['mime_type']
+            return quart.Response(asset_bytes, mimetype=mime_type)
+
         @self.route('/github/releases', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
             """Get releases from a GitHub repository URL"""

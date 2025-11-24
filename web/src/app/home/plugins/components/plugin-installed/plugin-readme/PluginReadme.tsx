@@ -69,6 +69,49 @@ export default function PluginReadme({
                 <ol className="list-decimal">{children}</ol>
               ),
               li: ({ children }) => <li className="ml-4">{children}</li>,
+              img: ({ src, alt, ...props }) => {
+                let imageSrc = src || '';
+
+                if (typeof imageSrc !== 'string') {
+                  return (
+                    <img
+                      src={src}
+                      alt={alt || ''}
+                      className="max-w-full h-auto rounded-lg my-4"
+                      {...props}
+                    />
+                  );
+                }
+
+                if (
+                  imageSrc &&
+                  !imageSrc.startsWith('http://') &&
+                  !imageSrc.startsWith('https://') &&
+                  !imageSrc.startsWith('data:')
+                ) {
+                  imageSrc = imageSrc.replace(/^(\.\/|\/)+/, '');
+
+                  if (!imageSrc.startsWith('assets/')) {
+                    imageSrc = `assets/${imageSrc}`;
+                  }
+
+                  const assetPath = imageSrc.replace(/^assets\//, '');
+                  imageSrc = httpClient.getPluginAssetURL(
+                    pluginAuthor,
+                    pluginName,
+                    assetPath,
+                  );
+                }
+
+                return (
+                  <img
+                    src={imageSrc}
+                    alt={alt || ''}
+                    className="max-w-lg h-auto my-4"
+                    {...props}
+                  />
+                );
+              },
             }}
           >
             {readme}

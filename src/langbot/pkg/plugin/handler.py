@@ -627,6 +627,26 @@ class RuntimeConnectionHandler(handler.Handler):
 
         return readme_bytes.decode('utf-8')
 
+    async def get_plugin_assets(self, plugin_author: str, plugin_name: str, filepath: str) -> dict[str, Any]:
+        """Get plugin assets"""
+        result = await self.call_action(
+            LangBotToRuntimeAction.GET_PLUGIN_ASSETS_FILE,
+            {
+                'plugin_author': plugin_author,
+                'plugin_name': plugin_name,
+                'file_path': filepath,
+            },
+            timeout=20,
+        )
+        asset_file_key = result['file_file_key']
+        mime_type = result['mime_type']
+        asset_bytes = await self.read_local_file(asset_file_key)
+        await self.delete_local_file(asset_file_key)
+        return {
+            'asset_base64': base64.b64encode(asset_bytes).decode('utf-8'),
+            'mime_type': mime_type,
+        }
+
     async def cleanup_plugin_data(self, plugin_author: str, plugin_name: str) -> None:
         """Cleanup plugin settings and binary storage"""
         # Delete plugin settings
