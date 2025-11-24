@@ -88,7 +88,8 @@ class PluginsRouterGroup(group.RouterGroup):
             auth_type=group.AuthType.USER_TOKEN,
         )
         async def _(author: str, plugin_name: str) -> quart.Response:
-            readme = await self.ap.plugin_connector.get_plugin_readme(author, plugin_name)
+            language = quart.request.args.get('language', 'en')
+            readme = await self.ap.plugin_connector.get_plugin_readme(author, plugin_name, language=language)
             return self.success(data={'readme': readme})
 
         @self.route(

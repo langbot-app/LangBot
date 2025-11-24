@@ -486,8 +486,11 @@ export class BackendClient extends BaseHttpClient {
   public getPluginReadme(
     author: string,
     name: string,
+    language: string = 'en',
   ): Promise<{ readme: string }> {
-    return this.get(`/api/v1/plugins/${author}/${name}/readme`);
+    return this.get(
+      `/api/v1/plugins/${author}/${name}/readme?language=${language}`,
+    );
   }
 
   public getPluginIconURL(author: string, name: string): string {

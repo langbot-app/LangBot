@@ -4,7 +4,8 @@
   -webkit-text-size-adjust: 100%;
   color: var(--color-fg-default);
   background-color: transparent;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans',
+    Helvetica, Arial, sans-serif;
   font-size: 16px;
   line-height: 1.5;
   word-wrap: break-word;
@@ -138,7 +139,8 @@
   font-size: 85%;
   background-color: var(--color-neutral-muted);
   border-radius: 6px;
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+    'Liberation Mono', monospace;
 }
 
 .markdown-body pre {
@@ -204,7 +206,7 @@
 }
 
 .markdown-body img {
-  max-width: 100%;
+  max-width: 50%;
   box-sizing: content-box;
   background-color: transparent;
 }

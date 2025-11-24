@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useTranslation } from 'react-i18next';
-import { useTheme } from 'next-themes';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeSlug from 'rehype-slug';
 import rehypeAutolinkHeadings from 'rehype-autolink-headings';
+import { getAPILanguageCode } from '@/i18n/I18nProvider';
 import './github-markdown.css';
 
 export default function PluginReadme({
@@ -18,43 +18,16 @@ export default function PluginReadme({
   pluginName: string;
 }) {
   const { t } = useTranslation();
-  const { theme, systemTheme } = useTheme();
   const [readme, setReadme] = useState<string>('');
   const [isLoadingReadme, setIsLoadingReadme] = useState(false);
 
-  // Dynamically load highlight.js theme based on current theme
-  useEffect(() => {
-    const currentTheme = theme === 'system' ? systemTheme : theme;
-    const isDark = currentTheme === 'dark';
-
-    // Remove existing highlight.js theme
-    const existingTheme = document.querySelector('link[data-highlight-theme]');
-    if (existingTheme) {
-      existingTheme.remove();
-    }
-
-    // Add new theme
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.setAttribute('data-highlight-theme', 'true');
-    link.href = isDark
-      ? 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css'
-      : 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css';
-    document.head.appendChild(link);
-
-    return () => {
-      const themeLink = document.querySelector('link[data-highlight-theme]');
-      if (themeLink) {
-        themeLink.remove();
-      }
-    };
-  }, [theme, systemTheme]);
+  const language = getAPILanguageCode();
 
   useEffect(() => {
     // Fetch plugin README
     setIsLoadingReadme(true);
     httpClient
-      .getPluginReadme(pluginAuthor, pluginName)
+      .getPluginReadme(pluginAuthor, pluginName, language)
       .then((res) => {
         setReadme(res.readme);
       })

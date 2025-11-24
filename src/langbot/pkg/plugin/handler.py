@@ -602,7 +602,7 @@ class RuntimeConnectionHandler(handler.Handler):
             'mime_type': mime_type,
         }
 
-    async def get_plugin_readme(self, plugin_author: str, plugin_name: str) -> str:
+    async def get_plugin_readme(self, plugin_author: str, plugin_name: str, language: str = 'en') -> str:
         """Get plugin readme"""
         try:
             result = await self.call_action(
@@ -610,10 +610,12 @@ class RuntimeConnectionHandler(handler.Handler):
                 {
                     'plugin_author': plugin_author,
                     'plugin_name': plugin_name,
+                    'language': language,
                 },
                 timeout=20,
             )
         except Exception:
+            traceback.print_exc()
             return ''
 
         readme_file_key = result.get('readme_file_key')
