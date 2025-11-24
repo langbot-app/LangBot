@@ -189,10 +189,7 @@ export default function PluginCardComponent({
                       onClick={(e) => {
                         e.stopPropagation();
                         if (cardVO.install_source === 'github') {
-                          window.open(
-                            cardVO.install_info.github_url,
-                            '_blank',
-                          );
+                          window.open(cardVO.install_info.github_url, '_blank');
                         } else if (cardVO.install_source === 'marketplace') {
                           window.open(
                             getCloudServiceClientSync().getPluginMarketplaceURL(
