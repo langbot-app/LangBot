@@ -209,7 +209,7 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
             elif msg_data['type'] == 'text':
                 reply_list.append(platform_message.Plain(text=msg_data['data']['text']))
 
-            elif msg_data['type'] == 'forward':  # 这里来应该传入转发消息组，暂时传入qoute
+            elif msg_data['type'] == 'forward':  # 这里来应该传入转发消息组，暂时传入Quote
                 for forward_msg_datas in msg_data['data']['content']:
                     for forward_msg_data in forward_msg_datas['message']:
                         await process_message_data(forward_msg_data, reply_list)
@@ -259,7 +259,7 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
                 #     await process_message_data(msg_data, yiri_msg_list)
                 pass
 
-            elif msg.type == 'reply':  # 此处处理引用消息传入Qoute
+            elif msg.type == 'reply':  # 此处处理引用消息传入Quote
                 msg_datas = await bot.get_msg(message_id=msg.data['id'])
 
                 for msg_data in msg_datas['message']:
