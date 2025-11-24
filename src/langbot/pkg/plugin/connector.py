@@ -347,6 +347,10 @@ class PluginRuntimeConnector:
     async def get_plugin_icon(self, plugin_author: str, plugin_name: str) -> dict[str, Any]:
         return await self.handler.get_plugin_icon(plugin_author, plugin_name)
 
+    @alru_cache(ttl=5 * 60)  # 5 minutes
+    async def get_plugin_readme(self, plugin_author: str, plugin_name: str) -> str:
+        return await self.handler.get_plugin_readme(plugin_author, plugin_name)
+
     async def emit_event(
         self,
         event: events.BaseEventModel,

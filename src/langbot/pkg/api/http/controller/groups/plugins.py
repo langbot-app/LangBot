@@ -83,6 +83,15 @@ class PluginsRouterGroup(group.RouterGroup):
                 return self.success(data={})
 
         @self.route(
+            '/<author>/<plugin_name>/readme',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN,
+        )
+        async def _(author: str, plugin_name: str) -> quart.Response:
+            readme = await self.ap.plugin_connector.get_plugin_readme(author, plugin_name)
+            return self.success(data={'readme': readme})
+
+        @self.route(
             '/<author>/<plugin_name>/icon',
             methods=['GET'],
             auth_type=group.AuthType.NONE,

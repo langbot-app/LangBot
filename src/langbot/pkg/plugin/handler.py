@@ -602,6 +602,29 @@ class RuntimeConnectionHandler(handler.Handler):
             'mime_type': mime_type,
         }
 
+    async def get_plugin_readme(self, plugin_author: str, plugin_name: str) -> str:
+        """Get plugin readme"""
+        try:
+            result = await self.call_action(
+                LangBotToRuntimeAction.GET_PLUGIN_README,
+                {
+                    'plugin_author': plugin_author,
+                    'plugin_name': plugin_name,
+                },
+                timeout=20,
+            )
+        except Exception:
+            return ''
+
+        readme_file_key = result.get('readme_file_key')
+        if not readme_file_key:
+            return ''
+
+        readme_bytes = await self.read_local_file(readme_file_key)
+        await self.delete_local_file(readme_file_key)
+
+        return readme_bytes.decode('utf-8')
+
     async def cleanup_plugin_data(self, plugin_author: str, plugin_name: str) -> None:
         """Cleanup plugin settings and binary storage"""
         # Delete plugin settings
