@@ -1,11 +1,11 @@
 """Base classes and interfaces for knowledge bases"""
+
 from __future__ import annotations
 
 import abc
-import typing
 
 from langbot.pkg.core import app
-from langbot.pkg.entity.rag import retriever as retriever_entities
+from langbot_plugin.api.entities.rag import context as rag_context
 
 
 class KnowledgeBaseInterface(metaclass=abc.ABCMeta):
@@ -22,13 +22,13 @@ class KnowledgeBaseInterface(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    async def retrieve(self, query: str, top_k: int) -> list[retriever_entities.RetrieveResultEntry]:
+    async def retrieve(self, query: str, top_k: int) -> list[rag_context.RetrievalResultEntry]:
         """Retrieve relevant documents from the knowledge base
-        
+
         Args:
             query: The query string
             top_k: Number of top results to return
-            
+
         Returns:
             List of retrieve result entries
         """

@@ -10,7 +10,7 @@ from langbot.pkg.rag.knowledge.services.retriever import Retriever
 import sqlalchemy
 from langbot.pkg.entity.persistence import rag as persistence_rag
 from langbot.pkg.core import taskmgr
-from langbot.pkg.entity.rag import retriever as retriever_entities
+from langbot_plugin.api.entities.rag import context as rag_context
 from .base import KnowledgeBaseInterface
 from .external import ExternalKnowledgeBase
 
@@ -189,7 +189,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
 
         return stored_file_tasks[0] if stored_file_tasks else ''
 
-    async def retrieve(self, query: str, top_k: int) -> list[retriever_entities.RetrieveResultEntry]:
+    async def retrieve(self, query: str, top_k: int) -> list[rag_context.RetrievalResultEntry]:
         embedding_model = await self.ap.model_mgr.get_embedding_model_by_uuid(
             self.knowledge_base_entity.embedding_model_uuid
         )

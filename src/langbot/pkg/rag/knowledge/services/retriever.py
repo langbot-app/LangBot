@@ -3,7 +3,7 @@ from __future__ import annotations
 from . import base_service
 from ....core import app
 from ....provider.modelmgr.requester import RuntimeEmbeddingModel
-from ....entity.rag import retriever as retriever_entities
+from langbot_plugin.api.entities.rag import context as rag_context
 
 
 class Retriever(base_service.BaseService):
@@ -13,7 +13,7 @@ class Retriever(base_service.BaseService):
 
     async def retrieve(
         self, kb_id: str, query: str, embedding_model: RuntimeEmbeddingModel, k: int = 5
-    ) -> list[retriever_entities.RetrieveResultEntry]:
+    ) -> list[rag_context.RetrievalResultEntry]:
         self.ap.logger.info(
             f"Retrieving for query: '{query[:10]}' with k={k} using {embedding_model.model_entity.uuid}"
         )
@@ -35,10 +35,10 @@ class Retriever(base_service.BaseService):
             self.ap.logger.info('No relevant chunks found in vector database.')
             return []
 
-        result: list[retriever_entities.RetrieveResultEntry] = []
+        result: list[rag_context.RetrievalResultEntry] = []
 
         for i, id in enumerate(matched_vector_ids):
-            entry = retriever_entities.RetrieveResultEntry(
+            entry = rag_context.RetrievalResultEntry(
                 id=id,
                 metadata=vector_metadatas[i],
                 distance=distances[i],
