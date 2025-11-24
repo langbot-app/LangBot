@@ -138,12 +138,16 @@ export default function PluginMarketCardComponent({
 
       {/* Hover overlay with action buttons */}
       <div
-        className={`absolute inset-0 bg-gray-100/65 dark:bg-black/40 rounded-[10px] flex items-center justify-center gap-3 transition-all duration-300 ${isHovered ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`absolute inset-0 bg-gray-100/65 dark:bg-black/40 rounded-[10px] flex items-center justify-center gap-3 transition-all duration-300 ${
+          isHovered ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
       >
         <Button
           onClick={handleInstallClick}
-          className={`bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 transition-all duration-300 ${isHovered ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'}`}
-          style={{ transitionDelay: isHovered ? '50ms' : '0ms' }}
+          className={`bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 transition-all duration-300 ${
+            isHovered ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
+          }`}
+          style={{ transitionDelay: isHovered ? '20ms' : '0ms' }}
         >
           <Download className="w-4 h-4" />
           {t('market.install')}
@@ -151,8 +155,10 @@ export default function PluginMarketCardComponent({
         <Button
           onClick={handleViewDetailsClick}
           variant="outline"
-          className={`bg-white hover:bg-gray-100 text-gray-900 dark:bg-white dark:hover:bg-gray-100 dark:text-gray-900 px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 transition-all duration-300 ${isHovered ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'}`}
-          style={{ transitionDelay: isHovered ? '100ms' : '0ms' }}
+          className={`bg-white hover:bg-gray-100 text-gray-900 dark:bg-white dark:hover:bg-gray-100 dark:text-gray-900 px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 transition-all duration-300 ${
+            isHovered ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
+          }`}
+          style={{ transitionDelay: isHovered ? '40ms' : '0ms' }}
         >
           <ExternalLink className="w-4 h-4" />
           {t('market.viewDetails')}
