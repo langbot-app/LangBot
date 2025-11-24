@@ -268,6 +268,7 @@ const zhHans = {
     saveConfigError: '保存配置失败：',
     config: '配置',
     readme: '文档',
+    viewSource: '查看来源',
     loadingReadme: '正在加载文档...',
     noReadme: '该插件没有提供 README 文档',
     fileUpload: {

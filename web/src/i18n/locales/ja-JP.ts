@@ -283,6 +283,7 @@ const jaJP = {
     saveConfigError: '設定の保存に失敗しました：',
     config: '設定',
     readme: 'ドキュメント',
+    viewSource: 'ソースを表示',
     loadingReadme: 'ドキュメントを読み込み中...',
     noReadme: 'このプラグインはREADMEドキュメントを提供していません',
     fileUpload: {

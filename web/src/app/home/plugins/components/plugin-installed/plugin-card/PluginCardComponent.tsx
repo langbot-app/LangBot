@@ -91,16 +91,8 @@ export default function PluginCardComponent({
                         <Badge
                           variant="outline"
                           className="text-[0.7rem] border-blue-400 text-blue-400 flex-shrink-0"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            window.open(
-                              cardVO.install_info.github_url,
-                              '_blank',
-                            );
-                          }}
                         >
                           {t('plugins.fromGithub')}
-                          <ExternalLink className="w-4 h-4" />
                         </Badge>
                       )}
                       {cardVO.install_source === 'local' && (
@@ -115,19 +107,8 @@ export default function PluginCardComponent({
                         <Badge
                           variant="outline"
                           className="text-[0.7rem] border-purple-400 text-purple-400 flex-shrink-0"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            window.open(
-                              getCloudServiceClientSync().getPluginMarketplaceURL(
-                                cardVO.author,
-                                cardVO.name,
-                              ),
-                              '_blank',
-                            );
-                          }}
                         >
                           {t('plugins.fromMarketplace')}
-                          <ExternalLink className="w-4 h-4" />
                         </Badge>
                       )}
                     </>
@@ -198,6 +179,34 @@ export default function PluginCardComponent({
                     >
                       <ArrowUp className="w-4 h-4" />
                       <span>{t('plugins.update')}</span>
+                    </DropdownMenuItem>
+                  )}
+                  {/**view source */}
+                  {(cardVO.install_source === 'github' ||
+                    cardVO.install_source === 'marketplace') && (
+                    <DropdownMenuItem
+                      className="flex flex-row items-center justify-start gap-[0.4rem] cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (cardVO.install_source === 'github') {
+                          window.open(
+                            cardVO.install_info.github_url,
+                            '_blank',
+                          );
+                        } else if (cardVO.install_source === 'marketplace') {
+                          window.open(
+                            getCloudServiceClientSync().getPluginMarketplaceURL(
+                              cardVO.author,
+                              cardVO.name,
+                            ),
+                            '_blank',
+                          );
+                        }
+                        setDropdownOpen(false);
+                      }}
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span>{t('plugins.viewSource')}</span>
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem

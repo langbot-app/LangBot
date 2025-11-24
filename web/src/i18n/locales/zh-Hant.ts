@@ -267,6 +267,7 @@ const zhHant = {
     saveConfigError: '儲存配置失敗：',
     config: '配置',
     readme: '文件',
+    viewSource: '查看來源',
     loadingReadme: '正在載入文件...',
     noReadme: '該插件沒有提供 README 文件',
     fileUpload: {

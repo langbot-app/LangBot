@@ -282,6 +282,7 @@ const enUS = {
     saveConfigError: 'Configuration save failed: ',
     config: 'Configuration',
     readme: 'Documentation',
+    viewSource: 'View Source',
     loadingReadme: 'Loading documentation...',
     noReadme: 'This plugin does not provide README documentation',
     fileUpload: {
