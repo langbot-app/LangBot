@@ -99,7 +99,7 @@ class PreProcessor(stage.PipelineStage):
         content_list: list[provider_message.ContentElement] = []
 
         plain_text = ''
-        qoute_msg = query.pipeline_config['trigger'].get('misc', '').get('combine-quote-message')
+        quote_msg = query.pipeline_config['trigger'].get('misc', '').get('combine-quote-message')
 
         for me in query.message_chain:
             if isinstance(me, platform_message.Plain):
@@ -114,7 +114,7 @@ class PreProcessor(stage.PipelineStage):
             elif isinstance(me, platform_message.File):
                 # if me.url is not None:
                 content_list.append(provider_message.ContentElement.from_file_url(me.url, me.name))
-            elif isinstance(me, platform_message.Quote) and qoute_msg:
+            elif isinstance(me, platform_message.Quote) and quote_msg:
                 for msg in me.origin:
                     if isinstance(msg, platform_message.Plain):
                         content_list.append(provider_message.ContentElement.from_text(msg.text))
