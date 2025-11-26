@@ -171,6 +171,8 @@ export class BackendClient extends BaseHttpClient {
   }
 
   public getPipelineExtensions(uuid: string): Promise<{
+    enable_all_plugins: boolean;
+    enable_all_mcp_servers: boolean;
     bound_plugins: Array<{ author: string; name: string }>;
     available_plugins: Plugin[];
     bound_mcp_servers: string[];
@@ -183,10 +185,14 @@ export class BackendClient extends BaseHttpClient {
     uuid: string,
     bound_plugins: Array<{ author: string; name: string }>,
     bound_mcp_servers: string[],
+    enable_all_plugins: boolean = true,
+    enable_all_mcp_servers: boolean = true,
   ): Promise<object> {
     return this.put(`/api/v1/pipelines/${uuid}/extensions`, {
       bound_plugins,
       bound_mcp_servers,
+      enable_all_plugins,
+      enable_all_mcp_servers,
     });
   }
 

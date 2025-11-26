@@ -476,6 +476,10 @@ const zhHans = {
       noPluginsInstalled: '无已安装的插件',
       noMCPServersConfigured: '无已配置的 MCP 服务器',
       selectAll: '全选',
+      enableAllPlugins: '启用所有插件',
+      enableAllMCPServers: '启用所有 MCP 服务器',
+      allPluginsEnabled: '已启用所有插件',
+      allMCPServersEnabled: '已启用所有 MCP 服务器',
     },
     debugDialog: {
       title: '流水线对话',

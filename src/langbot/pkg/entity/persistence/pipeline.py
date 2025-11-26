@@ -22,7 +22,11 @@ class LegacyPipeline(Base):
     is_default = sqlalchemy.Column(sqlalchemy.Boolean, nullable=False, default=False)
     stages = sqlalchemy.Column(sqlalchemy.JSON, nullable=False)
     config = sqlalchemy.Column(sqlalchemy.JSON, nullable=False)
-    extensions_preferences = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, default={})
+    extensions_preferences = sqlalchemy.Column(
+        sqlalchemy.JSON,
+        nullable=False,
+        default={'enable_all_plugins': True, 'enable_all_mcp_servers': True, 'plugins': [], 'mcp_servers': []},
+    )
 
 
 class PipelineRunRecord(Base):

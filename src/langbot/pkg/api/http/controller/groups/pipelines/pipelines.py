@@ -62,22 +62,27 @@ class PipelinesRouterGroup(group.RouterGroup):
                 plugins = await self.ap.plugin_connector.list_plugins()
                 mcp_servers = await self.ap.mcp_service.get_mcp_servers(contain_runtime_info=True)
 
+                extensions_prefs = pipeline.get('extensions_preferences', {})
                 return self.success(
                     data={
-                        'bound_plugins': pipeline.get('extensions_preferences', {}).get('plugins', []),
+                        'enable_all_plugins': extensions_prefs.get('enable_all_plugins', True),
+                        'enable_all_mcp_servers': extensions_prefs.get('enable_all_mcp_servers', True),
+                        'bound_plugins': extensions_prefs.get('plugins', []),
                         'available_plugins': plugins,
-                        'bound_mcp_servers': pipeline.get('extensions_preferences', {}).get('mcp_servers', []),
+                        'bound_mcp_servers': extensions_prefs.get('mcp_servers', []),
                         'available_mcp_servers': mcp_servers,
                     }
                 )
             elif quart.request.method == 'PUT':
                 # Update bound plugins and MCP servers for this pipeline
                 json_data = await quart.request.json
+                enable_all_plugins = json_data.get('enable_all_plugins', True)
+                enable_all_mcp_servers = json_data.get('enable_all_mcp_servers', True)
                 bound_plugins = json_data.get('bound_plugins', [])
                 bound_mcp_servers = json_data.get('bound_mcp_servers', [])
 
                 await self.ap.pipeline_service.update_pipeline_extensions(
-                    pipeline_uuid, bound_plugins, bound_mcp_servers
+                    pipeline_uuid, bound_plugins, bound_mcp_servers, enable_all_plugins, enable_all_mcp_servers
                 )
 
                 return self.success()

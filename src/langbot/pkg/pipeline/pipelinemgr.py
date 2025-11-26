@@ -69,11 +69,17 @@ class RuntimePipeline:
     stage_containers: list[StageInstContainer]
     """阶段实例容器"""
 
-    bound_plugins: list[str]
-    """绑定到此流水线的插件列表（格式：author/plugin_name）"""
+    bound_plugins: list[str] | None
+    """绑定到此流水线的插件列表（格式：author/plugin_name），None表示启用所有"""
 
-    bound_mcp_servers: list[str]
-    """绑定到此流水线的MCP服务器列表（格式：uuid）"""
+    bound_mcp_servers: list[str] | None
+    """绑定到此流水线的MCP服务器列表（格式：uuid），None表示启用所有"""
+
+    enable_all_plugins: bool
+    """是否启用所有插件"""
+
+    enable_all_mcp_servers: bool
+    """是否启用所有MCP服务器"""
 
     def __init__(
         self,
@@ -87,11 +93,22 @@ class RuntimePipeline:
 
         # Extract bound plugins and MCP servers from extensions_preferences
         extensions_prefs = pipeline_entity.extensions_preferences or {}
-        plugin_list = extensions_prefs.get('plugins', [])
-        self.bound_plugins = [f'{p["author"]}/{p["name"]}' for p in plugin_list] if plugin_list else []
+        self.enable_all_plugins = extensions_prefs.get('enable_all_plugins', True)
+        self.enable_all_mcp_servers = extensions_prefs.get('enable_all_mcp_servers', True)
 
-        mcp_server_list = extensions_prefs.get('mcp_servers', [])
-        self.bound_mcp_servers = mcp_server_list if mcp_server_list else []
+        if self.enable_all_plugins:
+            # None indicates to use all available plugins
+            self.bound_plugins = None
+        else:
+            plugin_list = extensions_prefs.get('plugins', [])
+            self.bound_plugins = [f'{p["author"]}/{p["name"]}' for p in plugin_list] if plugin_list else []
+
+        if self.enable_all_mcp_servers:
+            # None indicates to use all available MCP servers
+            self.bound_mcp_servers = None
+        else:
+            mcp_server_list = extensions_prefs.get('mcp_servers', [])
+            self.bound_mcp_servers = mcp_server_list if mcp_server_list else []
 
     async def run(self, query: pipeline_query.Query):
         query.pipeline_config = self.pipeline_entity.config

@@ -85,6 +85,15 @@ class PipelineService:
         with open(template_path, 'r', encoding='utf-8') as f:
             pipeline_data['config'] = json.load(f)
 
+        # Ensure extensions_preferences is set with enable_all_plugins and enable_all_mcp_servers=True by default
+        if 'extensions_preferences' not in pipeline_data:
+            pipeline_data['extensions_preferences'] = {
+                'enable_all_plugins': True,
+                'enable_all_mcp_servers': True,
+                'plugins': [],
+                'mcp_servers': [],
+            }
+
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_pipeline.LegacyPipeline).values(**pipeline_data)
         )
@@ -143,7 +152,12 @@ class PipelineService:
         await self.ap.pipeline_mgr.remove_pipeline(pipeline_uuid)
 
     async def update_pipeline_extensions(
-        self, pipeline_uuid: str, bound_plugins: list[dict], bound_mcp_servers: list[str] = None
+        self,
+        pipeline_uuid: str,
+        bound_plugins: list[dict],
+        bound_mcp_servers: list[str] = None,
+        enable_all_plugins: bool = True,
+        enable_all_mcp_servers: bool = True,
     ) -> None:
         """Update the bound plugins and MCP servers for a pipeline"""
         # Get current pipeline
@@ -159,6 +173,8 @@ class PipelineService:
 
         # Update extensions_preferences
         extensions_preferences = pipeline.extensions_preferences or {}
+        extensions_preferences['enable_all_plugins'] = enable_all_plugins
+        extensions_preferences['enable_all_mcp_servers'] = enable_all_mcp_servers
         extensions_preferences['plugins'] = bound_plugins
         if bound_mcp_servers is not None:
             extensions_preferences['mcp_servers'] = bound_mcp_servers
