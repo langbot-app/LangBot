@@ -1,5 +1,5 @@
 import { TFunction } from 'i18next';
-import { Wrench, AudioWaveform, Hash } from 'lucide-react';
+import { Wrench, AudioWaveform, Hash, Book } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 export default function PluginComponentList({
@@ -21,6 +21,7 @@ export default function PluginComponentList({
     Tool: <Wrench className="w-5 h-5" />,
     EventListener: <AudioWaveform className="w-5 h-5" />,
     Command: <Hash className="w-5 h-5" />,
+    KnowledgeRetriever: <Book className="w-5 h-5" />,
   };
 
   const componentKindList = Object.keys(components || {});

@@ -5,7 +5,7 @@ from __future__ import annotations
 import abc
 
 from langbot.pkg.core import app
-from langbot_plugin.api.entities.rag import context as rag_context
+from langbot_plugin.api.entities.builtin.rag import context as rag_context
 
 
 class KnowledgeBaseInterface(metaclass=abc.ABCMeta):

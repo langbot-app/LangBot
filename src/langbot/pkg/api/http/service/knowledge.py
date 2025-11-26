@@ -81,7 +81,7 @@ class KnowledgeService:
         runtime_kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
         if runtime_kb is None:
             raise Exception('Knowledge base not found')
-        
+
         # Get top_k based on KB type
         if runtime_kb.get_type() == 'internal':
             top_k = runtime_kb.knowledge_base_entity.top_k
@@ -89,7 +89,7 @@ class KnowledgeService:
             top_k = runtime_kb.external_kb_entity.top_k
         else:
             top_k = 5  # default fallback
-            
+
         return [result.model_dump() for result in await runtime_kb.retrieve(query, top_k)]
 
     async def get_files_by_knowledge_base(self, kb_uuid: str) -> list[dict]:
@@ -131,66 +131,3 @@ class KnowledgeService:
             await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.delete(persistence_rag.File).where(persistence_rag.File.uuid == file.uuid)
             )
-
-    # External Knowledge Base methods
-    async def get_external_knowledge_bases(self) -> list[dict]:
-        """获取所有外部知识库"""
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_rag.ExternalKnowledgeBase)
-        )
-        external_kbs = result.all()
-        return [
-            self.ap.persistence_mgr.serialize_model(persistence_rag.ExternalKnowledgeBase, external_kb)
-            for external_kb in external_kbs
-        ]
-
-    async def get_external_knowledge_base(self, kb_uuid: str) -> dict | None:
-        """获取外部知识库"""
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_rag.ExternalKnowledgeBase).where(
-                persistence_rag.ExternalKnowledgeBase.uuid == kb_uuid
-            )
-        )
-        external_kb = result.first()
-        if external_kb is None:
-            return None
-        return self.ap.persistence_mgr.serialize_model(persistence_rag.ExternalKnowledgeBase, external_kb)
-
-    async def create_external_knowledge_base(self, kb_data: dict) -> str:
-        """创建外部知识库"""
-        kb_data['uuid'] = str(uuid.uuid4())
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.insert(persistence_rag.ExternalKnowledgeBase).values(kb_data)
-        )
-
-        kb = await self.get_external_knowledge_base(kb_data['uuid'])
-
-        await self.ap.rag_mgr.load_external_knowledge_base(kb)
-
-        return kb_data['uuid']
-
-    async def update_external_knowledge_base(self, kb_uuid: str, kb_data: dict) -> None:
-        """更新外部知识库"""
-        if 'uuid' in kb_data:
-            del kb_data['uuid']
-
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.update(persistence_rag.ExternalKnowledgeBase)
-            .values(kb_data)
-            .where(persistence_rag.ExternalKnowledgeBase.uuid == kb_uuid)
-        )
-        await self.ap.rag_mgr.remove_knowledge_base_from_runtime(kb_uuid)
-
-        kb = await self.get_external_knowledge_base(kb_uuid)
-
-        await self.ap.rag_mgr.load_external_knowledge_base(kb)
-
-    async def delete_external_knowledge_base(self, kb_uuid: str) -> None:
-        """删除外部知识库"""
-        await self.ap.rag_mgr.delete_knowledge_base(kb_uuid)
-
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.delete(persistence_rag.ExternalKnowledgeBase).where(
-                persistence_rag.ExternalKnowledgeBase.uuid == kb_uuid
-            )
-        )

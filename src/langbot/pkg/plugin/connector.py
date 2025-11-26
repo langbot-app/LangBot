@@ -427,6 +427,40 @@ class PluginRuntimeConnector:
 
             yield cmd_ret
 
+    # KnowledgeRetriever methods
+    async def list_knowledge_retrievers(self, bound_plugins: list[str] | None = None) -> list[dict[str, Any]]:
+        """List all available KnowledgeRetriever components."""
+        if not self.is_enable_plugin:
+            return []
+
+        retrievers_data = await self.handler.list_knowledge_retrievers(include_plugins=bound_plugins)
+        return retrievers_data
+
+    async def create_knowledge_retriever_instance(
+        self, instance_id: str, plugin_author: str, plugin_name: str, retriever_name: str, config: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Create a KnowledgeRetriever instance."""
+        if not self.is_enable_plugin:
+            return {'error': 'Plugin system is disabled'}
+
+        return await self.handler.create_knowledge_retriever_instance(
+            instance_id, plugin_author, plugin_name, retriever_name, config
+        )
+
+    async def delete_knowledge_retriever_instance(self, instance_id: str) -> dict[str, Any]:
+        """Delete a KnowledgeRetriever instance."""
+        if not self.is_enable_plugin:
+            return {'error': 'Plugin system is disabled'}
+
+        return await self.handler.delete_knowledge_retriever_instance(instance_id)
+
+    async def retrieve_knowledge(self, instance_id: str, query: str, top_k: int) -> list[dict[str, Any]]:
+        """Retrieve knowledge using a KnowledgeRetriever instance."""
+        if not self.is_enable_plugin:
+            return []
+
+        return await self.handler.retrieve_knowledge(instance_id, query, top_k)
+
     def dispose(self):
         # No need to consider the shutdown on Windows
         # for Windows can kill processes and subprocesses chainly

@@ -166,10 +166,11 @@ export interface ExternalKnowledgeBase {
   uuid?: string;
   name: string;
   description: string;
-  api_url: string;
-  api_key?: string;
-  top_k: number;
   created_at?: string;
+  plugin_author: string;
+  plugin_name: string;
+  retriever_name: string;
+  retriever_config?: Record<string, any>;
 }
 
 export interface ApiRespExternalKnowledgeBases {

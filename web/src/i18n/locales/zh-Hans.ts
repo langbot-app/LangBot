@@ -576,6 +576,9 @@ const zhHans = {
     createExternalSuccess: '外部知识库创建成功',
     updateExternalSuccess: '外部知识库更新成功',
     deleteExternalSuccess: '外部知识库删除成功',
+    retriever: '检索器',
+    selectRetriever: '选择一个检索器...',
+    retrieverConfiguration: '检索器配置',
   },
   register: {
     title: '初始化 LangBot 👋',

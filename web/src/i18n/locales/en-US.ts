@@ -600,6 +600,9 @@ const enUS = {
     createExternalSuccess: 'External knowledge base created successfully',
     updateExternalSuccess: 'External knowledge base updated successfully',
     deleteExternalSuccess: 'External knowledge base deleted successfully',
+    retriever: 'Retriever',
+    selectRetriever: 'Select a retriever...',
+    retrieverConfiguration: 'Retriever Configuration',
   },
   register: {
     title: 'Initialize LangBot 👋',

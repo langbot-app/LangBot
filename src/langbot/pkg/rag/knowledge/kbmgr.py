@@ -10,7 +10,7 @@ from langbot.pkg.rag.knowledge.services.retriever import Retriever
 import sqlalchemy
 from langbot.pkg.entity.persistence import rag as persistence_rag
 from langbot.pkg.core import taskmgr
-from langbot_plugin.api.entities.rag import context as rag_context
+from langbot_plugin.api.entities.builtin.rag import context as rag_context
 from .base import KnowledgeBaseInterface
 from .external import ExternalKnowledgeBase
 

@@ -485,6 +485,10 @@ export class BackendClient extends BaseHttpClient {
     });
   }
 
+  public listKnowledgeRetrievers(): Promise<{ retrievers: any[] }> {
+    return this.get('/api/v1/knowledge/external-bases/retrievers');
+  }
+
   // ============ Plugins API ============
   public getPlugins(): Promise<ApiRespPlugins> {
     return this.get('/api/v1/plugins');

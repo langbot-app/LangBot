@@ -713,3 +713,56 @@ class RuntimeConnectionHandler(handler.Handler):
 
         async for ret in gen:
             yield ret
+
+    # KnowledgeRetriever methods
+    async def list_knowledge_retrievers(self, include_plugins: list[str] | None = None) -> list[dict[str, Any]]:
+        """List knowledge retrievers"""
+        result = await self.call_action(
+            LangBotToRuntimeAction.LIST_KNOWLEDGE_RETRIEVERS,
+            {
+                'include_plugins': include_plugins,
+            },
+            timeout=10,
+        )
+        return result['retrievers']
+
+    async def create_knowledge_retriever_instance(
+        self, instance_id: str, plugin_author: str, plugin_name: str, retriever_name: str, config: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Create knowledge retriever instance"""
+        result = await self.call_action(
+            LangBotToRuntimeAction.CREATE_KNOWLEDGE_RETRIEVER_INSTANCE,
+            {
+                'instance_id': instance_id,
+                'plugin_author': plugin_author,
+                'plugin_name': plugin_name,
+                'retriever_name': retriever_name,
+                'config': config,
+            },
+            timeout=30,
+        )
+        return result
+
+    async def delete_knowledge_retriever_instance(self, instance_id: str) -> dict[str, Any]:
+        """Delete knowledge retriever instance"""
+        result = await self.call_action(
+            LangBotToRuntimeAction.DELETE_KNOWLEDGE_RETRIEVER_INSTANCE,
+            {
+                'instance_id': instance_id,
+            },
+            timeout=10,
+        )
+        return result
+
+    async def retrieve_knowledge(self, instance_id: str, query: str, top_k: int) -> list[dict[str, Any]]:
+        """Retrieve knowledge"""
+        result = await self.call_action(
+            LangBotToRuntimeAction.RETRIEVE_KNOWLEDGE,
+            {
+                'instance_id': instance_id,
+                'query': query,
+                'top_k': top_k,
+            },
+            timeout=30,
+        )
+        return result['results']

@@ -3,7 +3,7 @@ from __future__ import annotations
 from . import base_service
 from ....core import app
 from ....provider.modelmgr.requester import RuntimeEmbeddingModel
-from langbot_plugin.api.entities.rag import context as rag_context
+from langbot_plugin.api.entities.builtin.rag import context as rag_context
 
 
 class Retriever(base_service.BaseService):

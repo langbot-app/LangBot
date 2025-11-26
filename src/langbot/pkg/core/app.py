@@ -26,6 +26,7 @@ from ..api.http.service import knowledge as knowledge_service
 from ..api.http.service import mcp as mcp_service
 from ..api.http.service import apikey as apikey_service
 from ..api.http.service import webhook as webhook_service
+from ..api.http.service import external_kb as external_kb_service
 from ..discover import engine as discover_engine
 from ..storage import mgr as storagemgr
 from ..utils import logcache
@@ -122,6 +123,8 @@ class Application:
     bot_service: bot_service.BotService = None
 
     knowledge_service: knowledge_service.KnowledgeService = None
+
+    external_kb_service: external_kb_service.ExternalKBService = None
 
     mcp_service: mcp_service.MCPService = None
 
