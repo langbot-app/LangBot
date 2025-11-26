@@ -241,7 +241,7 @@ export default function ApiIntegrationDialog({
           onOpenChange(newOpen);
         }}
       >
-        <DialogContent className="sm:max-w-[800px]">
+        <DialogContent className="sm:max-w-[800px] max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{t('common.manageApiIntegration')}</DialogTitle>
           </DialogHeader>
@@ -249,7 +249,7 @@ export default function ApiIntegrationDialog({
           <Tabs
             value={activeTab}
             onValueChange={setActiveTab}
-            className="w-full"
+            className="w-full flex-1 flex flex-col overflow-hidden"
           >
             <TabsList className="shadow-md py-3 bg-[#f0f0f0] dark:bg-[#2a2a2e]">
               <TabsTrigger className="px-5 py-4 cursor-pointer" value="apikeys">
@@ -264,7 +264,10 @@ export default function ApiIntegrationDialog({
             </TabsList>
 
             {/* API Keys Tab */}
-            <TabsContent value="apikeys" className="space-y-4">
+            <TabsContent
+              value="apikeys"
+              className="space-y-4 flex-1 flex flex-col overflow-hidden"
+            >
               <div className="flex items-start gap-2 text-sm text-muted-foreground">
                 {t('common.apiKeyHint')}
               </div>
@@ -289,7 +292,7 @@ export default function ApiIntegrationDialog({
                   {t('common.noApiKeys')}
                 </div>
               ) : (
-                <div className="border rounded-md overflow-x-auto">
+                <div className="border rounded-md overflow-auto flex-1">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -351,7 +354,10 @@ export default function ApiIntegrationDialog({
             </TabsContent>
 
             {/* Webhooks Tab */}
-            <TabsContent value="webhooks" className="space-y-4">
+            <TabsContent
+              value="webhooks"
+              className="space-y-4 flex-1 flex flex-col overflow-hidden"
+            >
               <div className="flex items-start gap-2 text-sm text-muted-foreground">
                 {t('common.webhookHint')}
               </div>
@@ -376,7 +382,7 @@ export default function ApiIntegrationDialog({
                   {t('common.noWebhooks')}
                 </div>
               ) : (
-                <div className="border rounded-md overflow-x-auto max-w-full">
+                <div className="border rounded-md overflow-auto flex-1 max-w-full">
                   <Table className="table-fixed w-full">
                     <TableHeader>
                       <TableRow>
