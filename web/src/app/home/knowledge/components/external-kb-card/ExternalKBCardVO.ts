@@ -5,6 +5,8 @@ export class ExternalKBCardVO {
   retrieverName: string;
   retrieverConfig: Record<string, unknown>;
   lastUpdatedTimeAgo: string;
+  pluginAuthor: string;
+  pluginName: string;
 
   constructor({
     id,
@@ -13,6 +15,8 @@ export class ExternalKBCardVO {
     retrieverName,
     retrieverConfig,
     lastUpdatedTimeAgo,
+    pluginAuthor,
+    pluginName,
   }: {
     id: string;
     name: string;
@@ -20,6 +24,8 @@ export class ExternalKBCardVO {
     retrieverName: string;
     retrieverConfig: Record<string, unknown>;
     lastUpdatedTimeAgo: string;
+    pluginAuthor: string;
+    pluginName: string;
   }) {
     this.id = id;
     this.name = name;
@@ -27,5 +33,7 @@ export class ExternalKBCardVO {
     this.retrieverName = retrieverName;
     this.retrieverConfig = retrieverConfig;
     this.lastUpdatedTimeAgo = lastUpdatedTimeAgo;
+    this.pluginAuthor = pluginAuthor;
+    this.pluginName = pluginName;
   }
 }

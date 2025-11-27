@@ -476,21 +476,14 @@ export default function ExternalKBForm({
                                 >
                                   <div className="space-y-2">
                                     <div className="flex items-start gap-3">
-                                      <div className="w-10 h-10 rounded-[8%] bg-gray-200 dark:bg-gray-700 flex items-center justify-center flex-shrink-0">
-                                        <svg
-                                          className="w-5 h-5 text-gray-400"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          viewBox="0 0 24 24"
-                                        >
-                                          <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth={2}
-                                            d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                                          />
-                                        </svg>
-                                      </div>
+                                      <img
+                                        src={httpClient.getPluginIconURL(
+                                          retriever.plugin_author,
+                                          retriever.plugin_name,
+                                        )}
+                                        alt="plugin icon"
+                                        className="w-10 h-10 rounded-[8%] flex-shrink-0"
+                                      />
                                       <div className="flex flex-col gap-1 flex-1 min-w-0">
                                         <h4 className="font-medium text-sm">
                                           {label}
@@ -523,21 +516,14 @@ export default function ExternalKBForm({
             {/* Selected Retriever Card */}
             {currentRetrieverFullName && (
               <div className="flex items-start gap-3 p-4 rounded-lg border">
-                <div className="w-12 h-12 rounded-[8%] bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-                  <svg
-                    className="w-6 h-6 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                    />
-                  </svg>
-                </div>
+                <img
+                  src={httpClient.getPluginIconURL(
+                    form.watch('plugin_author'),
+                    form.watch('plugin_name'),
+                  )}
+                  alt="plugin icon"
+                  className="w-12 h-12 rounded-[8%] flex-shrink-0"
+                />
                 <div className="flex flex-col gap-1">
                   <div className="font-medium">
                     {getRetrieverLabel(currentRetrieverFullName)}

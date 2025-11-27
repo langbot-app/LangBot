@@ -10,7 +10,11 @@ import KBCard from '@/app/home/knowledge/components/kb-card/KBCard';
 import ExternalKBCard from '@/app/home/knowledge/components/external-kb-card/ExternalKBCard';
 import KBDetailDialog from '@/app/home/knowledge/KBDetailDialog';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { KnowledgeBase, ExternalKnowledgeBase } from '@/app/infra/entities/api';
+import {
+  KnowledgeBase,
+  ExternalKnowledgeBase,
+  ApiRespPluginSystemStatus,
+} from '@/app/infra/entities/api';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function KnowledgePage() {
@@ -25,11 +29,23 @@ export default function KnowledgePage() {
     'builtin',
   );
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [pluginSystemStatus, setPluginSystemStatus] =
+    useState<ApiRespPluginSystemStatus | null>(null);
 
   useEffect(() => {
     getKnowledgeBaseList();
     getExternalKBList();
+    fetchPluginSystemStatus();
   }, []);
+
+  async function fetchPluginSystemStatus() {
+    try {
+      const status = await httpClient.getPluginSystemStatus();
+      setPluginSystemStatus(status);
+    } catch (error) {
+      console.error('Failed to fetch plugin system status:', error);
+    }
+  }
 
   async function getKnowledgeBaseList() {
     const resp = await httpClient.getKnowledgeBases();
@@ -89,6 +105,8 @@ export default function KnowledgePage() {
             retrieverName: `${kb.plugin_author}/${kb.plugin_name}/${kb.retriever_name}`,
             retrieverConfig: kb.retriever_config || {},
             lastUpdatedTimeAgo: lastUpdatedTimeAgoText,
+            pluginAuthor: kb.plugin_author,
+            pluginName: kb.plugin_name,
           });
         }),
       );
@@ -171,9 +189,16 @@ export default function KnowledgePage() {
             <TabsTrigger value="builtin" className="px-6 py-4 cursor-pointer">
               {t('knowledge.builtIn')}
             </TabsTrigger>
-            <TabsTrigger value="external" className="px-6 py-4 cursor-pointer">
-              {t('knowledge.external')}
-            </TabsTrigger>
+            {/* Only show external tab if plugin system is enabled and connected */}
+            {pluginSystemStatus?.is_enable &&
+              pluginSystemStatus?.is_connected && (
+                <TabsTrigger
+                  value="external"
+                  className="px-6 py-4 cursor-pointer"
+                >
+                  {t('knowledge.external')}
+                </TabsTrigger>
+              )}
           </TabsList>
         </div>
 
