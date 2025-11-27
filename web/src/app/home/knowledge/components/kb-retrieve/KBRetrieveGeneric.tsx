@@ -59,6 +59,25 @@ export default function KBRetrieveGeneric({
     );
   };
 
+  /**
+   * Extract text content from the content array
+   * The content array may contain multiple items with type 'text'
+   */
+  const extractTextFromContent = (result: RetrieveResult): string => {
+    // First try to get content from the new format
+    if (result.content && Array.isArray(result.content)) {
+      const textParts = result.content
+        .filter((item) => item.type === 'text' && item.text)
+        .map((item) => item.text);
+
+      if (textParts.length > 0) {
+        return textParts.join('\n\n');
+      }
+    }
+
+    return '';
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
@@ -93,7 +112,7 @@ export default function KBRetrieveGeneric({
               </CardHeader>
               <CardContent>
                 <p className="text-sm whitespace-pre-wrap">
-                  {result.metadata.text}
+                  {extractTextFromContent(result)}
                 </p>
               </CardContent>
             </Card>

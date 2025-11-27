@@ -48,9 +48,34 @@ export default function KBRetrieve({ kbId }: KBRetrieveProps) {
     }
   };
 
-  const getFileName = (fileId: string) => {
+  const getFileName = (fileId?: string) => {
+    if (!fileId) return '';
     const file = files.find((f) => f.uuid === fileId);
     return file?.file_name || fileId;
+  };
+
+  /**
+   * Extract text content from the content array
+   * The content array may contain multiple items with type 'text'
+   */
+  const extractTextFromContent = (result: RetrieveResult): string => {
+    // First try to get content from the new format
+    if (result.content && Array.isArray(result.content)) {
+      const textParts = result.content
+        .filter((item) => item.type === 'text' && item.text)
+        .map((item) => item.text);
+
+      if (textParts.length > 0) {
+        return textParts.join('\n\n');
+      }
+    }
+
+    // Fallback to metadata.text for backward compatibility
+    if (result.metadata?.text) {
+      return result.metadata.text as string;
+    }
+
+    return '';
   };
 
   return (
@@ -87,7 +112,7 @@ export default function KBRetrieve({ kbId }: KBRetrieveProps) {
               </CardHeader>
               <CardContent>
                 <p className="text-sm whitespace-pre-wrap">
-                  {result.metadata.text}
+                  {extractTextFromContent(result)}
                 </p>
               </CardContent>
             </Card>

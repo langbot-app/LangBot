@@ -314,12 +314,22 @@ export interface ApiRespWebChatMessages {
   messages: Message[];
 }
 
+export interface RetrieveResultContent {
+  type: 'text' | 'image_url' | 'image_base64' | 'file_url';
+  text?: string;
+  file_name?: string;
+  file_url?: string;
+  image_url?: string;
+  image_base64?: string;
+}
+
 export interface RetrieveResult {
   id: string;
+  content?: RetrieveResultContent[];
   metadata: {
-    file_id: string;
-    text: string;
-    uuid: string;
+    file_id?: string;
+    text?: string;
+    uuid?: string;
     [key: string]: unknown;
   };
   distance: number;
