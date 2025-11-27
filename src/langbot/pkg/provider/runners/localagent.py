@@ -78,7 +78,7 @@ class LocalAgentRunner(runner.RequestRunner):
                 if kb.get_type() == 'internal':
                     top_k = kb.knowledge_base_entity.top_k
                 elif kb.get_type() == 'external':
-                    top_k = kb.external_kb_entity.top_k
+                    top_k = 5  # external kb's top_k is managed by plugin config
                 else:
                     top_k = 5  # default fallback
 

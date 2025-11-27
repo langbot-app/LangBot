@@ -9,6 +9,7 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -17,8 +18,13 @@ import { ControllerRenderProps } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { LLMModel, Bot } from '@/app/infra/entities/api';
-import { KnowledgeBase } from '@/app/infra/entities/api';
+import {
+  LLMModel,
+  Bot,
+  KnowledgeBase,
+  ExternalKnowledgeBase,
+  ApiRespPluginSystemStatus,
+} from '@/app/infra/entities/api';
 import { toast } from 'sonner';
 import {
   HoverCard,
@@ -51,10 +57,15 @@ export default function DynamicFormItemComponent({
 }) {
   const [llmModels, setLlmModels] = useState<LLMModel[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  const [externalKnowledgeBases, setExternalKnowledgeBases] = useState<
+    ExternalKnowledgeBase[]
+  >([]);
   const [bots, setBots] = useState<Bot[]>([]);
   const [uploading, setUploading] = useState<boolean>(false);
   const [kbDialogOpen, setKbDialogOpen] = useState(false);
   const [tempSelectedKBIds, setTempSelectedKBIds] = useState<string[]>([]);
+  const [pluginSystemStatus, setPluginSystemStatus] =
+    useState<ApiRespPluginSystemStatus | null>(null);
   const { t } = useTranslation();
 
   const handleFileUpload = async (file: File): Promise<IFileConfig | null> => {
@@ -113,8 +124,36 @@ export default function DynamicFormItemComponent({
         .catch((err) => {
           toast.error('Failed to get knowledge base list: ' + err.message);
         });
+
+      // Fetch plugin system status
+      httpClient
+        .getPluginSystemStatus()
+        .then((status) => {
+          setPluginSystemStatus(status);
+        })
+        .catch((err) => {
+          console.error('Failed to get plugin system status:', err);
+        });
     }
   }, [config.type]);
+
+  useEffect(() => {
+    if (
+      (config.type === DynamicFormItemType.KNOWLEDGE_BASE_SELECTOR ||
+        config.type === DynamicFormItemType.KNOWLEDGE_BASE_MULTI_SELECTOR) &&
+      pluginSystemStatus?.is_enable &&
+      pluginSystemStatus?.is_connected
+    ) {
+      httpClient
+        .getExternalKnowledgeBases()
+        .then((resp) => {
+          setExternalKnowledgeBases(resp.bases);
+        })
+        .catch((err) => {
+          console.error('Failed to get external knowledge base list:', err);
+        });
+    }
+  }, [config.type, pluginSystemStatus]);
 
   useEffect(() => {
     if (config.type === DynamicFormItemType.BOT_SELECTOR) {
@@ -340,12 +379,39 @@ export default function DynamicFormItemComponent({
           <SelectContent>
             <SelectGroup>
               <SelectItem value="__none__">{t('knowledge.empty')}</SelectItem>
-              {knowledgeBases.map((base) => (
-                <SelectItem key={base.uuid} value={base.uuid ?? ''}>
-                  {base.name}
-                </SelectItem>
-              ))}
             </SelectGroup>
+
+            {knowledgeBases.length > 0 && (
+              <SelectGroup>
+                <SelectLabel>{t('knowledge.builtIn')}</SelectLabel>
+                {knowledgeBases.map((base) => (
+                  <SelectItem key={base.uuid} value={base.uuid ?? ''}>
+                    {base.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            )}
+
+            {externalKnowledgeBases.length > 0 && (
+              <SelectGroup>
+                <SelectLabel>{t('knowledge.external')}</SelectLabel>
+                {externalKnowledgeBases.map((base) => (
+                  <SelectItem key={base.uuid} value={base.uuid ?? ''}>
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={httpClient.getPluginIconURL(
+                          base.plugin_author,
+                          base.plugin_name,
+                        )}
+                        alt="plugin icon"
+                        className="w-4 h-4 rounded-[8%] flex-shrink-0"
+                      />
+                      <span>{base.name}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            )}
           </SelectContent>
         </Select>
       );
@@ -358,19 +424,36 @@ export default function DynamicFormItemComponent({
               <div className="space-y-2">
                 {field.value.map((kbId: string) => {
                   const kb = knowledgeBases.find((base) => base.uuid === kbId);
-                  if (!kb) return null;
+                  const externalKb = externalKnowledgeBases.find(
+                    (base) => base.uuid === kbId,
+                  );
+                  const currentKb = kb || externalKb;
+                  if (!currentKb) return null;
+
                   return (
                     <div
                       key={kbId}
                       className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent"
                     >
-                      <div className="flex-1">
-                        <div className="font-medium">{kb.name}</div>
-                        {kb.description && (
-                          <div className="text-sm text-muted-foreground">
-                            {kb.description}
-                          </div>
+                      <div className="flex items-center gap-2 flex-1">
+                        {externalKb && (
+                          <img
+                            src={httpClient.getPluginIconURL(
+                              externalKb.plugin_author,
+                              externalKb.plugin_name,
+                            )}
+                            alt="plugin icon"
+                            className="w-8 h-8 rounded-[8%] flex-shrink-0"
+                          />
                         )}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium">{currentKb.name}</div>
+                          {currentKb.description && (
+                            <div className="text-sm text-muted-foreground">
+                              {currentKb.description}
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <Button
                         type="button"
@@ -417,39 +500,96 @@ export default function DynamicFormItemComponent({
               <DialogHeader>
                 <DialogTitle>{t('knowledge.selectKnowledgeBases')}</DialogTitle>
               </DialogHeader>
-              <div className="flex-1 overflow-y-auto space-y-2 pr-2">
-                {knowledgeBases.map((base) => {
-                  const isSelected = tempSelectedKBIds.includes(
-                    base.uuid ?? '',
-                  );
-                  return (
-                    <div
-                      key={base.uuid}
-                      className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent cursor-pointer"
-                      onClick={() => {
-                        const kbId = base.uuid ?? '';
-                        setTempSelectedKBIds((prev) =>
-                          prev.includes(kbId)
-                            ? prev.filter((id) => id !== kbId)
-                            : [...prev, kbId],
-                        );
-                      }}
-                    >
-                      <Checkbox
-                        checked={isSelected}
-                        aria-label={`Select ${base.name}`}
-                      />
-                      <div className="flex-1">
-                        <div className="font-medium">{base.name}</div>
-                        {base.description && (
-                          <div className="text-sm text-muted-foreground">
-                            {base.description}
-                          </div>
-                        )}
-                      </div>
+              <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+                {/* Built-in Knowledge Bases */}
+                {knowledgeBases.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold text-muted-foreground px-2">
+                      {t('knowledge.builtIn')}
                     </div>
-                  );
-                })}
+                    {knowledgeBases.map((base) => {
+                      const isSelected = tempSelectedKBIds.includes(
+                        base.uuid ?? '',
+                      );
+                      return (
+                        <div
+                          key={base.uuid}
+                          className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent cursor-pointer"
+                          onClick={() => {
+                            const kbId = base.uuid ?? '';
+                            setTempSelectedKBIds((prev) =>
+                              prev.includes(kbId)
+                                ? prev.filter((id) => id !== kbId)
+                                : [...prev, kbId],
+                            );
+                          }}
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            aria-label={`Select ${base.name}`}
+                          />
+                          <div className="flex-1">
+                            <div className="font-medium">{base.name}</div>
+                            {base.description && (
+                              <div className="text-sm text-muted-foreground">
+                                {base.description}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* External Knowledge Bases */}
+                {externalKnowledgeBases.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold text-muted-foreground px-2">
+                      {t('knowledge.external')}
+                    </div>
+                    {externalKnowledgeBases.map((base) => {
+                      const isSelected = tempSelectedKBIds.includes(
+                        base.uuid ?? '',
+                      );
+                      return (
+                        <div
+                          key={base.uuid}
+                          className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent cursor-pointer"
+                          onClick={() => {
+                            const kbId = base.uuid ?? '';
+                            setTempSelectedKBIds((prev) =>
+                              prev.includes(kbId)
+                                ? prev.filter((id) => id !== kbId)
+                                : [...prev, kbId],
+                            );
+                          }}
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            aria-label={`Select ${base.name}`}
+                          />
+                          <img
+                            src={httpClient.getPluginIconURL(
+                              base.plugin_author,
+                              base.plugin_name,
+                            )}
+                            alt="plugin icon"
+                            className="w-8 h-8 rounded-[8%] flex-shrink-0"
+                          />
+                          <div className="flex-1">
+                            <div className="font-medium">{base.name}</div>
+                            {base.description && (
+                              <div className="text-sm text-muted-foreground">
+                                {base.description}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
               <DialogFooter>
                 <Button
