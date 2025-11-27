@@ -590,13 +590,6 @@ const enUS = {
     builtIn: 'Built-in',
     external: 'External',
     addExternal: 'Add External Knowledge Base',
-    externalApiUrl: 'API URL',
-    externalApiUrlPlaceholder: 'Enter external knowledge base API URL',
-    externalApiUrlRequired: 'API URL cannot be empty',
-    externalApiKey: 'API Key (Optional)',
-    externalApiKeyPlaceholder: 'Enter API key if required',
-    externalKbDescription:
-      'External knowledge bases retrieve documents via HTTP API',
     createExternalSuccess: 'External knowledge base created successfully',
     updateExternalSuccess: 'External knowledge base updated successfully',
     deleteExternalSuccess: 'External knowledge base deleted successfully',
