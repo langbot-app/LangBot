@@ -494,6 +494,10 @@ const enUS = {
       noPluginsInstalled: 'No installed plugins',
       noMCPServersConfigured: 'No configured MCP servers',
       selectAll: 'Select All',
+      enableAllPlugins: 'Enable All Plugins',
+      enableAllMCPServers: 'Enable All MCP Servers',
+      allPluginsEnabled: 'All plugins enabled',
+      allMCPServersEnabled: 'All MCP servers enabled',
     },
     debugDialog: {
       title: 'Pipeline Chat',

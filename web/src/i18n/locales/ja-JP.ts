@@ -497,6 +497,10 @@ const jaJP = {
       noPluginsInstalled: 'インストールされているプラグインがありません',
       noMCPServersConfigured: '設定されているMCPサーバーがありません',
       selectAll: 'すべて選択',
+      enableAllPlugins: 'すべてのプラグインを有効にする',
+      enableAllMCPServers: 'すべてのMCPサーバーを有効にする',
+      allPluginsEnabled: 'すべてのプラグインが有効になっています',
+      allMCPServersEnabled: 'すべてのMCPサーバーが有効になっています',
     },
     debugDialog: {
       title: 'パイプラインのチャット',

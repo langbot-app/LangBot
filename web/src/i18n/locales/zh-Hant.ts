@@ -474,6 +474,10 @@ const zhHant = {
       noPluginsInstalled: '無已安裝的插件',
       noMCPServersConfigured: '無已配置的 MCP 伺服器',
       selectAll: '全選',
+      enableAllPlugins: '啟用所有插件',
+      enableAllMCPServers: '啟用所有 MCP 伺服器',
+      allPluginsEnabled: '已啟用所有插件',
+      allMCPServersEnabled: '已啟用所有 MCP 伺服器',
     },
     debugDialog: {
       title: '流程線對話',
