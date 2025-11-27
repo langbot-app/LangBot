@@ -261,7 +261,8 @@ class RAGManager:
 
         for external_kb in external_kbs:
             try:
-                await self.load_external_knowledge_base(external_kb)
+                # Don't trigger sync during batch loading - will sync once after LangBot connects to runtime
+                await self.load_external_knowledge_base(external_kb, trigger_sync=False)
             except Exception as e:
                 self.ap.logger.error(
                     f'Error loading external knowledge base {external_kb.uuid}: {e}\n{traceback.format_exc()}'
@@ -287,8 +288,14 @@ class RAGManager:
     async def load_external_knowledge_base(
         self,
         external_kb_entity: persistence_rag.ExternalKnowledgeBase | sqlalchemy.Row | dict,
+        trigger_sync: bool = True,
     ) -> ExternalKnowledgeBase:
-        """Load external knowledge base into runtime"""
+        """Load external knowledge base into runtime
+
+        Args:
+            external_kb_entity: External KB entity to load
+            trigger_sync: Whether to trigger sync after loading (default True for manual creation, False for batch loading)
+        """
         if isinstance(external_kb_entity, sqlalchemy.Row):
             external_kb_entity = persistence_rag.ExternalKnowledgeBase(**external_kb_entity._mapping)
         elif isinstance(external_kb_entity, dict):
@@ -299,6 +306,15 @@ class RAGManager:
         await external_kb.initialize()
 
         self.knowledge_bases.append(external_kb)
+
+        # Trigger sync to create the instance immediately (for manual creation)
+        # Skip sync during batch loading from DB to avoid multiple sync calls
+        if trigger_sync:
+            try:
+                await self.ap.plugin_connector.sync_polymorphic_component_instances()
+                self.ap.logger.info(f'Triggered sync after loading external KB {external_kb_entity.uuid}')
+            except Exception as e:
+                self.ap.logger.error(f'Failed to sync after loading external KB: {e}')
 
         return external_kb
 

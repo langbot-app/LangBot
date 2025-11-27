@@ -23,26 +23,13 @@ class ExternalKnowledgeBase(KnowledgeBaseInterface):
 
     async def initialize(self):
         """Initialize the external knowledge base"""
-        # Create a retriever instance for this KB
-        # Use plugin_author, plugin_name, retriever_name directly from entity
-        plugin_author = self.external_kb_entity.plugin_author
-        plugin_name = self.external_kb_entity.plugin_name
-        retriever_name = self.external_kb_entity.retriever_name
-
         # Use KB UUID as instance ID
+        # Instance creation is now handled by the unified sync mechanism
+        # when LangBot connects to runtime
         self.retriever_instance_id = self.external_kb_entity.uuid
 
-        # Create retriever instance
-        await self.ap.plugin_connector.create_knowledge_retriever_instance(
-            self.retriever_instance_id,
-            plugin_author,
-            plugin_name,
-            retriever_name,
-            self.external_kb_entity.retriever_config or {},
-        )
-
         self.ap.logger.info(
-            f'Created retriever instance {self.retriever_instance_id} for KB {self.external_kb_entity.uuid}'
+            f'Initialized external KB {self.external_kb_entity.uuid}, instance will be created by sync mechanism'
         )
 
     async def retrieve(self, query: str, top_k: int = 5) -> list[rag_context.RetrievalResultEntry]:
@@ -87,15 +74,12 @@ class ExternalKnowledgeBase(KnowledgeBaseInterface):
 
     async def dispose(self):
         """Clean up resources"""
-        # Delete retriever instance if exists
-        if self.retriever_instance_id:
-            try:
-                await self.ap.plugin_connector.delete_knowledge_retriever_instance(
-                    self.external_kb_entity.plugin_author,
-                    self.external_kb_entity.plugin_name,
-                    self.external_kb_entity.retriever_name,
-                    self.retriever_instance_id,
-                )
-                self.ap.logger.info(f'Deleted retriever instance {self.retriever_instance_id}')
-            except Exception as e:
-                self.ap.logger.error(f'Failed to delete retriever instance: {e}')
+        # Trigger sync to immediately delete the instance from plugin process
+        # This ensures instance is cleaned up without waiting for next LangBot restart
+        try:
+            await self.ap.plugin_connector.sync_polymorphic_component_instances()
+            self.ap.logger.info(
+                f'Disposed external KB {self.external_kb_entity.uuid}, triggered sync to delete instance'
+            )
+        except Exception as e:
+            self.ap.logger.error(f'Failed to sync after disposing KB: {e}')

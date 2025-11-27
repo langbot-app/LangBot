@@ -780,3 +780,14 @@ class RuntimeConnectionHandler(handler.Handler):
             timeout=30,
         )
         return result['retrieval_results']
+
+    async def sync_polymorphic_component_instances(self, required_instances: list[dict[str, Any]]) -> dict[str, Any]:
+        """Sync polymorphic component instances with runtime"""
+        result = await self.call_action(
+            LangBotToRuntimeAction.SYNC_POLYMORPHIC_COMPONENT_INSTANCES,
+            {
+                'required_instances': required_instances,
+            },
+            timeout=30,
+        )
+        return result

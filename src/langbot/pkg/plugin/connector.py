@@ -7,6 +7,7 @@ import typing
 import os
 import sys
 import httpx
+import traceback
 import sqlalchemy
 from async_lru import alru_cache
 from langbot_plugin.api.entities.builtin.pipeline.query import provider_session
@@ -101,6 +102,12 @@ class PluginRuntimeConnector:
             self.handler_task = asyncio.create_task(self.handler.run())
             _ = await self.handler.ping()
             self.ap.logger.info('Connected to plugin runtime.')
+            # Sync polymorphic component instances after connection
+            try:
+                await self.sync_polymorphic_component_instances()
+            except Exception as e:
+                traceback.print_exc()
+                self.ap.logger.error(f'Failed to sync polymorphic component instances: {e}')
             await self.handler_task
 
         task: asyncio.Task | None = None
@@ -485,3 +492,42 @@ class PluginRuntimeConnector:
         if self.heartbeat_task is not None:
             self.heartbeat_task.cancel()
             self.heartbeat_task = None
+
+    async def sync_polymorphic_component_instances(self) -> dict[str, Any]:
+        """Sync polymorphic component instances with runtime.
+
+        This collects all external knowledge bases from database and sends to runtime
+        to ensure instance integrity across restarts.
+        """
+        if not self.is_enable_plugin:
+            return {}
+
+        # ===== external knowledge bases =====
+
+        external_kbs = await self.ap.external_kb_service.get_external_knowledge_bases()
+
+        # Build required_instances list
+        required_instances = []
+        for kb in external_kbs:
+            required_instances.append(
+                {
+                    'instance_id': kb['uuid'],
+                    'plugin_author': kb['plugin_author'],
+                    'plugin_name': kb['plugin_name'],
+                    'component_kind': 'KnowledgeRetriever',
+                    'component_name': kb['retriever_name'],
+                    'config': kb['retriever_config'],
+                }
+            )
+
+        self.ap.logger.info(f'Syncing {len(required_instances)} polymorphic component instances to runtime')
+
+        # Send to runtime
+        sync_result = await self.handler.sync_polymorphic_component_instances(required_instances)
+
+        self.ap.logger.info(
+            f'Sync complete: {len(sync_result.get("success_instances", []))} succeeded, '
+            f'{len(sync_result.get("failed_instances", []))} failed'
+        )
+
+        return sync_result
