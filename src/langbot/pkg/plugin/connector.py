@@ -443,28 +443,6 @@ class PluginRuntimeConnector:
         retrievers_data = await self.handler.list_knowledge_retrievers(include_plugins=bound_plugins)
         return retrievers_data
 
-    async def create_knowledge_retriever_instance(
-        self, instance_id: str, plugin_author: str, plugin_name: str, retriever_name: str, config: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Create a KnowledgeRetriever instance."""
-        if not self.is_enable_plugin:
-            return {'error': 'Plugin system is disabled'}
-
-        return await self.handler.create_knowledge_retriever_instance(
-            instance_id, plugin_author, plugin_name, retriever_name, config
-        )
-
-    async def delete_knowledge_retriever_instance(
-        self, plugin_author: str, plugin_name: str, retriever_name: str, instance_id: str
-    ) -> dict[str, Any]:
-        """Delete a KnowledgeRetriever instance."""
-        if not self.is_enable_plugin:
-            return {'error': 'Plugin system is disabled'}
-
-        return await self.handler.delete_knowledge_retriever_instance(
-            plugin_author, plugin_name, retriever_name, instance_id
-        )
-
     async def retrieve_knowledge(
         self,
         plugin_author: str,

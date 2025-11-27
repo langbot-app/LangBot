@@ -726,39 +726,6 @@ class RuntimeConnectionHandler(handler.Handler):
         )
         return result['retrievers']
 
-    async def create_knowledge_retriever_instance(
-        self, instance_id: str, plugin_author: str, plugin_name: str, retriever_name: str, config: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Create knowledge retriever instance"""
-        result = await self.call_action(
-            LangBotToRuntimeAction.CREATE_KNOWLEDGE_RETRIEVER_INSTANCE,
-            {
-                'instance_id': instance_id,
-                'plugin_author': plugin_author,
-                'plugin_name': plugin_name,
-                'retriever_name': retriever_name,
-                'config': config,
-            },
-            timeout=30,
-        )
-        return result
-
-    async def delete_knowledge_retriever_instance(
-        self, plugin_author: str, plugin_name: str, retriever_name: str, instance_id: str
-    ) -> dict[str, Any]:
-        """Delete knowledge retriever instance"""
-        result = await self.call_action(
-            LangBotToRuntimeAction.DELETE_KNOWLEDGE_RETRIEVER_INSTANCE,
-            {
-                'plugin_author': plugin_author,
-                'plugin_name': plugin_name,
-                'retriever_name': retriever_name,
-                'instance_id': instance_id,
-            },
-            timeout=10,
-        )
-        return result
-
     async def retrieve_knowledge(
         self,
         plugin_author: str,
