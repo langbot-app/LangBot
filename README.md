@@ -141,6 +141,14 @@ docker compose up -d
 | [MCP](https://modelcontextprotocol.io/) | ✅ | 支持通过 MCP 协议获取工具 |
 | [百宝箱Tbox](https://www.tbox.cn/open) | ✅ | 蚂蚁百宝箱智能体平台，每月免费10亿大模型Token |
 
+### 向量数据库（知识库）
+
+| 数据库 | 状态 | 备注 |
+| --- | --- | --- |
+| [Chroma](https://www.trychroma.com/) | ✅ | 默认向量数据库，嵌入式部署 |
+| [Qdrant](https://qdrant.tech/) | ✅ | 支持本地和云端部署 |
+| [SeekDB](https://github.com/oceanbase/seekdb) | ✅ | OceanBase AI 原生搜索数据库，支持混合搜索 |
+
 ### TTS
 
 | 平台/模型 | 备注 |
