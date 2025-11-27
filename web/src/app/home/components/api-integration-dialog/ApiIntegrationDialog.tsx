@@ -241,7 +241,7 @@ export default function ApiIntegrationDialog({
           onOpenChange(newOpen);
         }}
       >
-        <DialogContent className="sm:max-w-[800px] max-h-[80vh] flex flex-col">
+        <DialogContent className="sm:max-w-[800px] h-[26rem] flex flex-col">
           <DialogHeader>
             <DialogTitle>{t('common.manageApiIntegration')}</DialogTitle>
           </DialogHeader>
