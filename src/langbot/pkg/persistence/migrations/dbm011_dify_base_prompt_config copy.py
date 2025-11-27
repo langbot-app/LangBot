@@ -7,7 +7,7 @@ from ...entity.persistence import pipeline as persistence_pipeline
 
 @migration.migration_class(11)
 class DBMigrateDifyApiConfig(migration.DBMigration):
-    """Langflow API config"""
+    """Dify base prompt config"""
 
     async def upgrade(self):
         """Upgrade"""
