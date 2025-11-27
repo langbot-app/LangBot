@@ -4,6 +4,7 @@ from . import base_service
 from ....core import app
 from ....provider.modelmgr.requester import RuntimeEmbeddingModel
 from langbot_plugin.api.entities.builtin.rag import context as rag_context
+from langbot_plugin.api.entities.builtin.provider.message import ContentElement
 
 
 class Retriever(base_service.BaseService):
@@ -40,6 +41,7 @@ class Retriever(base_service.BaseService):
         for i, id in enumerate(matched_vector_ids):
             entry = rag_context.RetrievalResultEntry(
                 id=id,
+                content=[ContentElement.from_text(vector_metadatas[i].get('text', ''))],
                 metadata=vector_metadatas[i],
                 distance=distances[i],
             )

@@ -9,7 +9,6 @@ import { ExternalKBCardVO } from '@/app/home/knowledge/components/external-kb-ca
 import KBCard from '@/app/home/knowledge/components/kb-card/KBCard';
 import ExternalKBCard from '@/app/home/knowledge/components/external-kb-card/ExternalKBCard';
 import KBDetailDialog from '@/app/home/knowledge/KBDetailDialog';
-import ExternalKBDetailDialog from '@/app/home/knowledge/components/external-kb-form/ExternalKBDetailDialog';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { KnowledgeBase, ExternalKnowledgeBase } from '@/app/infra/entities/api';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -22,9 +21,10 @@ export default function KnowledgePage() {
   );
   const [externalKBList, setExternalKBList] = useState<ExternalKBCardVO[]>([]);
   const [selectedKbId, setSelectedKbId] = useState<string>('');
+  const [selectedKbType, setSelectedKbType] = useState<'builtin' | 'external'>(
+    'builtin',
+  );
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-  const [externalKBDialogOpen, setExternalKBDialogOpen] = useState(false);
-  const [selectedExternalKbId, setSelectedExternalKbId] = useState<string>('');
 
   useEffect(() => {
     getKnowledgeBaseList();
@@ -99,11 +99,25 @@ export default function KnowledgePage() {
 
   const handleKBCardClick = (kbId: string) => {
     setSelectedKbId(kbId);
+    setSelectedKbType('builtin');
     setDetailDialogOpen(true);
   };
 
   const handleCreateKBClick = () => {
     setSelectedKbId('');
+    setSelectedKbType('builtin');
+    setDetailDialogOpen(true);
+  };
+
+  const handleExternalKBCardClick = (kbId: string) => {
+    setSelectedKbId(kbId);
+    setSelectedKbType('external');
+    setDetailDialogOpen(true);
+  };
+
+  const handleCreateExternalKB = () => {
+    setSelectedKbId('');
+    setSelectedKbType('external');
     setDetailDialogOpen(true);
   };
 
@@ -112,38 +126,30 @@ export default function KnowledgePage() {
   };
 
   const handleKbDeleted = () => {
-    getKnowledgeBaseList();
+    if (selectedKbType === 'builtin') {
+      getKnowledgeBaseList();
+    } else {
+      getExternalKBList();
+    }
     setDetailDialogOpen(false);
   };
 
   const handleNewKbCreated = (newKbId: string) => {
-    getKnowledgeBaseList();
+    if (selectedKbType === 'builtin') {
+      getKnowledgeBaseList();
+    } else {
+      getExternalKBList();
+    }
     setSelectedKbId(newKbId);
     setDetailDialogOpen(true);
   };
 
   const handleKbUpdated = () => {
-    getKnowledgeBaseList();
-  };
-
-  const handleExternalKBCardClick = (kbId: string) => {
-    setSelectedExternalKbId(kbId);
-    setExternalKBDialogOpen(true);
-  };
-
-  const handleCreateExternalKB = () => {
-    setSelectedExternalKbId('');
-    setExternalKBDialogOpen(true);
-  };
-
-  const handleExternalKBDeleted = () => {
-    getExternalKBList();
-    setExternalKBDialogOpen(false);
-  };
-
-  const handleNewExternalKBCreated = (newKbId: string) => {
-    getExternalKBList();
-    setSelectedExternalKbId(newKbId);
+    if (selectedKbType === 'builtin') {
+      getKnowledgeBaseList();
+    } else {
+      getExternalKBList();
+    }
   };
 
   return (
@@ -152,18 +158,11 @@ export default function KnowledgePage() {
         open={detailDialogOpen}
         onOpenChange={setDetailDialogOpen}
         kbId={selectedKbId || undefined}
+        kbType={selectedKbType}
         onFormCancel={handleFormCancel}
         onKbDeleted={handleKbDeleted}
         onNewKbCreated={handleNewKbCreated}
         onKbUpdated={handleKbUpdated}
-      />
-
-      <ExternalKBDetailDialog
-        open={externalKBDialogOpen}
-        onOpenChange={setExternalKBDialogOpen}
-        kbId={selectedExternalKbId || undefined}
-        onKBDeleted={handleExternalKBDeleted}
-        onNewKBCreated={handleNewExternalKBCreated}
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

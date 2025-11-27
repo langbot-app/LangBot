@@ -170,7 +170,7 @@ export interface ExternalKnowledgeBase {
   plugin_author: string;
   plugin_name: string;
   retriever_name: string;
-  retriever_config?: Record<string, any>;
+  retriever_config?: Record<string, unknown>;
 }
 
 export interface ApiRespExternalKnowledgeBases {

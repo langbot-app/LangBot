@@ -447,19 +447,32 @@ class PluginRuntimeConnector:
             instance_id, plugin_author, plugin_name, retriever_name, config
         )
 
-    async def delete_knowledge_retriever_instance(self, instance_id: str) -> dict[str, Any]:
+    async def delete_knowledge_retriever_instance(
+        self, plugin_author: str, plugin_name: str, retriever_name: str, instance_id: str
+    ) -> dict[str, Any]:
         """Delete a KnowledgeRetriever instance."""
         if not self.is_enable_plugin:
             return {'error': 'Plugin system is disabled'}
 
-        return await self.handler.delete_knowledge_retriever_instance(instance_id)
+        return await self.handler.delete_knowledge_retriever_instance(
+            plugin_author, plugin_name, retriever_name, instance_id
+        )
 
-    async def retrieve_knowledge(self, instance_id: str, query: str, top_k: int) -> list[dict[str, Any]]:
+    async def retrieve_knowledge(
+        self,
+        plugin_author: str,
+        plugin_name: str,
+        retriever_name: str,
+        instance_id: str,
+        retrieval_context: dict[str, Any],
+    ) -> list[dict[str, Any]]:
         """Retrieve knowledge using a KnowledgeRetriever instance."""
         if not self.is_enable_plugin:
             return []
 
-        return await self.handler.retrieve_knowledge(instance_id, query, top_k)
+        return await self.handler.retrieve_knowledge(
+            plugin_author, plugin_name, retriever_name, instance_id, retrieval_context
+        )
 
     def dispose(self):
         # No need to consider the shutdown on Windows

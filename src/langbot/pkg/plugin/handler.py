@@ -743,26 +743,40 @@ class RuntimeConnectionHandler(handler.Handler):
         )
         return result
 
-    async def delete_knowledge_retriever_instance(self, instance_id: str) -> dict[str, Any]:
+    async def delete_knowledge_retriever_instance(
+        self, plugin_author: str, plugin_name: str, retriever_name: str, instance_id: str
+    ) -> dict[str, Any]:
         """Delete knowledge retriever instance"""
         result = await self.call_action(
             LangBotToRuntimeAction.DELETE_KNOWLEDGE_RETRIEVER_INSTANCE,
             {
+                'plugin_author': plugin_author,
+                'plugin_name': plugin_name,
+                'retriever_name': retriever_name,
                 'instance_id': instance_id,
             },
             timeout=10,
         )
         return result
 
-    async def retrieve_knowledge(self, instance_id: str, query: str, top_k: int) -> list[dict[str, Any]]:
+    async def retrieve_knowledge(
+        self,
+        plugin_author: str,
+        plugin_name: str,
+        retriever_name: str,
+        instance_id: str,
+        retrieval_context: dict[str, Any],
+    ) -> list[dict[str, Any]]:
         """Retrieve knowledge"""
         result = await self.call_action(
             LangBotToRuntimeAction.RETRIEVE_KNOWLEDGE,
             {
+                'plugin_author': plugin_author,
+                'plugin_name': plugin_name,
+                'retriever_name': retriever_name,
                 'instance_id': instance_id,
-                'query': query,
-                'top_k': top_k,
+                'retrieval_context': retrieval_context,
             },
             timeout=30,
         )
-        return result['results']
+        return result['retrieval_results']

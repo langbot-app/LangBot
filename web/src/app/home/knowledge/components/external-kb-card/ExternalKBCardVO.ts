@@ -3,7 +3,7 @@ export class ExternalKBCardVO {
   name: string;
   description: string;
   retrieverName: string;
-  retrieverConfig: Record<string, any>;
+  retrieverConfig: Record<string, unknown>;
   lastUpdatedTimeAgo: string;
 
   constructor({
@@ -18,7 +18,7 @@ export class ExternalKBCardVO {
     name: string;
     description: string;
     retrieverName: string;
-    retrieverConfig: Record<string, any>;
+    retrieverConfig: Record<string, unknown>;
     lastUpdatedTimeAgo: string;
   }) {
     this.id = id;

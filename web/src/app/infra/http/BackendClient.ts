@@ -485,7 +485,7 @@ export class BackendClient extends BaseHttpClient {
     });
   }
 
-  public listKnowledgeRetrievers(): Promise<{ retrievers: any[] }> {
+  public listKnowledgeRetrievers(): Promise<{ retrievers: unknown[] }> {
     return this.get('/api/v1/knowledge/external-bases/retrievers');
   }
 

@@ -599,7 +599,8 @@ const jaJP = {
     externalApiUrlRequired: 'API URLは空にできません',
     externalApiKey: 'API キー（オプション）',
     externalApiKeyPlaceholder: '必要に応じてAPIキーを入力してください',
-    externalKbDescription: '外部ナレッジベースはHTTP APIを介してドキュメントを取得します',
+    externalKbDescription:
+      '外部ナレッジベースはHTTP APIを介してドキュメントを取得します',
     createExternalSuccess: '外部ナレッジベースが正常に作成されました',
     updateExternalSuccess: '外部ナレッジベースが正常に更新されました',
     deleteExternalSuccess: '外部ナレッジベースが正常に削除されました',

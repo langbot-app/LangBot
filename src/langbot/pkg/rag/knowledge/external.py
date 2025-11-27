@@ -45,28 +45,25 @@ class ExternalKnowledgeBase(KnowledgeBaseInterface):
             f'Created retriever instance {self.retriever_instance_id} for KB {self.external_kb_entity.uuid}'
         )
 
-    async def retrieve(self, query: str, top_k: int) -> list[rag_context.RetrievalResultEntry]:
+    async def retrieve(self, query: str, top_k: int = 5) -> list[rag_context.RetrievalResultEntry]:
         """Retrieve documents from external knowledge base via plugin retriever"""
         if not self.retriever_instance_id:
             self.ap.logger.error(f'No retriever instance for KB {self.external_kb_entity.uuid}')
             return []
 
         try:
-            results = await self.ap.plugin_connector.retrieve_knowledge(self.retriever_instance_id, query, top_k)
+            results = await self.ap.plugin_connector.retrieve_knowledge(
+                self.external_kb_entity.plugin_author,
+                self.external_kb_entity.plugin_name,
+                self.external_kb_entity.retriever_name,
+                self.retriever_instance_id,
+                {'query': query},
+            )
 
             # Convert plugin results to RetrievalResultEntry
             retrieval_entries = []
             for result in results:
-                # result is a dict with keys: id, metadata, distance
-                score = 1.0 - result.get('distance', 0.0)  # Convert distance to score
-                metadata = result.get('metadata', {})
-
-                # Add KB metadata
-                metadata['source'] = 'plugin_retriever'
-                metadata['kb_uuid'] = self.external_kb_entity.uuid
-                metadata['kb_name'] = self.external_kb_entity.name
-
-                retrieval_entries.append(rag_context.RetrievalResultEntry(score=score, metadata=metadata))
+                retrieval_entries.append(rag_context.RetrievalResultEntry(**result))
 
             return retrieval_entries
         except Exception as e:
@@ -93,7 +90,12 @@ class ExternalKnowledgeBase(KnowledgeBaseInterface):
         # Delete retriever instance if exists
         if self.retriever_instance_id:
             try:
-                await self.ap.plugin_connector.delete_knowledge_retriever_instance(self.retriever_instance_id)
+                await self.ap.plugin_connector.delete_knowledge_retriever_instance(
+                    self.external_kb_entity.plugin_author,
+                    self.external_kb_entity.plugin_name,
+                    self.external_kb_entity.retriever_name,
+                    self.retriever_instance_id,
+                )
                 self.ap.logger.info(f'Deleted retriever instance {self.retriever_instance_id}')
             except Exception as e:
                 self.ap.logger.error(f'Failed to delete retriever instance: {e}')

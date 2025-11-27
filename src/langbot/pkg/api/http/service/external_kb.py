@@ -46,6 +46,15 @@ class ExternalKBService:
 
         return kb_data['uuid']
 
+    async def retrieve_external_knowledge_base(self, kb_uuid: str, query: str) -> list[dict]:
+        """Retrieve external knowledge base"""
+        runtime_kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
+        if runtime_kb is None:
+            raise Exception('Knowledge base not found')
+        return [
+            result.model_dump() for result in await runtime_kb.retrieve(query, 5)
+        ]  # top_k is just a placeholder for external knowledge base
+
     async def update_external_knowledge_base(self, kb_uuid: str, kb_data: dict) -> None:
         if 'uuid' in kb_data:
             del kb_data['uuid']

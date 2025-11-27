@@ -57,5 +57,5 @@ class ExternalKnowledgeBaseRouterGroup(group.RouterGroup):
         async def retrieve_external_knowledge_base(kb_uuid: str) -> str:
             json_data = await quart.request.json
             query = json_data.get('query')
-            results = await self.ap.external_kb_service.retrieve_knowledge_base(kb_uuid, query)
+            results = await self.ap.external_kb_service.retrieve_external_knowledge_base(kb_uuid, query)
             return self.success(data={'results': results})
