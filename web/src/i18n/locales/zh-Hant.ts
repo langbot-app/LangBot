@@ -505,6 +505,8 @@ const zhHant = {
       connectionFailed: 'WebSocket連接失敗',
       notConnected: 'WebSocket未連接，請稍後重試',
       imageUploadFailed: '圖片上傳失敗',
+      reply: '回覆',
+      replyTo: '回覆給',
     },
   },
   knowledge: {

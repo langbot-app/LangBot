@@ -13,6 +13,8 @@ import {
   Plain,
   At,
   Quote,
+  Voice,
+  Source,
 } from '@/app/infra/entities/message';
 import { toast } from 'sonner';
 import AtBadge from './AtBadge';
@@ -441,8 +443,37 @@ export default function DebugDialog({
         );
       }
 
-      case 'Voice':
-        return <span key={index}>[语音]</span>;
+      case 'Voice': {
+        const voice = component as Voice;
+        const voiceUrl = voice.url || (voice.base64 ? voice.base64 : '');
+
+        if (!voiceUrl) {
+          return <span key={index}>[语音]</span>;
+        }
+
+        return (
+          <div key={index} className="my-2 flex items-center gap-2">
+            <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z" />
+              </svg>
+              <audio
+                controls
+                src={voiceUrl}
+                className="h-8"
+                style={{ maxWidth: '200px' }}
+              >
+                Your browser does not support the audio element.
+              </audio>
+              {voice.length && voice.length > 0 && (
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {voice.length}s
+                </span>
+              )}
+            </div>
+          </div>
+        );
+      }
 
       case 'Quote': {
         const quote = component as Quote;
@@ -467,6 +498,60 @@ export default function DebugDialog({
       default:
         return <span key={index}>[{component.type}]</span>;
     }
+  };
+
+  const getMessageTimestamp = (message: Message): number => {
+    // 首先尝试从message_chain中的Source组件获取时间戳
+    const sourceComponent = message.message_chain.find(
+      (c) => c.type === 'Source',
+    ) as Source | undefined;
+
+    if (sourceComponent && sourceComponent.timestamp) {
+      return sourceComponent.timestamp;
+    }
+
+    // 如果没有Source组件，使用message.timestamp
+    // 假设timestamp是ISO字符串，转换为Unix时间戳（秒）
+    if (message.timestamp) {
+      return Math.floor(new Date(message.timestamp).getTime() / 1000);
+    }
+
+    return 0;
+  };
+
+  const formatTimestamp = (timestamp: number): string => {
+    if (!timestamp) return '';
+
+    const date = new Date(timestamp * 1000);
+    const now = new Date();
+
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+
+    // 判断是否是今天
+    const isToday = now.toDateString() === date.toDateString();
+    if (isToday) {
+      return `${hours}:${minutes}`;
+    }
+
+    // 判断是否是昨天
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = yesterday.toDateString() === date.toDateString();
+    if (isYesterday) {
+      return `${t('bots.yesterday')} ${hours}:${minutes}`;
+    }
+
+    // 判断是否是今年
+    const isThisYear = now.getFullYear() === date.getFullYear();
+    if (isThisYear) {
+      const month = date.getMonth() + 1;
+      const day = date.getDate();
+      return t('bots.dateFormat', { month, day });
+    }
+
+    // 更早的日期
+    return t('bots.earlier');
   };
 
   const renderMessageContent = (message: Message) => {
@@ -552,15 +637,20 @@ export default function DebugDialog({
                       {renderMessageContent(message)}
                       <div
                         className={cn(
-                          'text-xs mt-2',
+                          'text-xs mt-2 flex items-center justify-between gap-2',
                           message.role === 'user'
                             ? 'text-white/70'
                             : 'text-gray-500 dark:text-gray-400',
                         )}
                       >
-                        {message.role === 'user'
-                          ? t('pipelines.debugDialog.userMessage')
-                          : t('pipelines.debugDialog.botMessage')}
+                        <span>
+                          {message.role === 'user'
+                            ? t('pipelines.debugDialog.userMessage')
+                            : t('pipelines.debugDialog.botMessage')}
+                        </span>
+                        <span className="text-[10px]">
+                          {formatTimestamp(getMessageTimestamp(message))}
+                        </span>
                       </div>
                     </div>
                     {hoveredMessageId === message.id && (
@@ -583,7 +673,7 @@ export default function DebugDialog({
                             d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
                           />
                         </svg>
-                        回复
+                        {t('pipelines.debugDialog.reply')}
                       </Button>
                     )}
                   </div>
@@ -600,7 +690,7 @@ export default function DebugDialog({
             <div className="flex items-start gap-2">
               <div className="flex-1 pl-3 border-l-2 border-[#2288ee]">
                 <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                  回复给{' '}
+                  {t('pipelines.debugDialog.replyTo')}{' '}
                   {quotedMessage.role === 'user'
                     ? t('pipelines.debugDialog.userMessage')
                     : t('pipelines.debugDialog.botMessage')}

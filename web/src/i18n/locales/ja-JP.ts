@@ -529,6 +529,8 @@ const jaJP = {
       notConnected:
         'WebSocketに接続されていません。しばらくしてからやり直してください',
       imageUploadFailed: '画像のアップロードに失敗しました',
+      reply: '返信',
+      replyTo: '返信先',
     },
   },
   knowledge: {

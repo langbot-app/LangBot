@@ -525,6 +525,8 @@ const enUS = {
       connectionFailed: 'WebSocket connection failed',
       notConnected: 'WebSocket not connected, please try again later',
       imageUploadFailed: 'Image upload failed',
+      reply: 'Reply',
+      replyTo: 'Reply to',
     },
   },
   knowledge: {

@@ -507,6 +507,8 @@ const zhHans = {
       connectionFailed: 'WebSocket连接失败',
       notConnected: 'WebSocket未连接，请稍后重试',
       imageUploadFailed: '图片上传失败',
+      reply: '回复',
+      replyTo: '回复给',
     },
   },
   knowledge: {
