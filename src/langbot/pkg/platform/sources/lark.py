@@ -143,7 +143,9 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
 
                         image_key = response.data.image_key
 
-                        message_elements.append(pending_paragraph)
+                        # Only append pending_paragraph if it has content
+                        if pending_paragraph:
+                            message_elements.append(pending_paragraph)
                         message_elements.append(
                             [
                                 {
