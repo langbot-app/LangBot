@@ -41,10 +41,9 @@ class LINEMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
             elif isinstance(component, platform_message.Plain):
                 content_list.append({'type': 'text', 'content': component.text})
             elif isinstance(component, platform_message.Image):
-                if not component.url:
-                    pass
-                content_list.append({'type': 'image', 'image': component.url})
-
+                # Only add image if it has a valid URL
+                if component.url:
+                    content_list.append({'type': 'image', 'image': component.url})
             elif isinstance(component, platform_message.Voice):
                 content_list.append({'type': 'voice', 'url': component.url, 'length': component.length})
 
@@ -207,10 +206,12 @@ class LINEAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     )
                 )
             elif content['type'] == 'image':
+                # LINE ImageMessage requires original_content_url and preview_image_url
+                image_url = content['image']
                 self.bot.reply_message_with_http_info(
                     ReplyMessageRequest(
                         reply_token=message_source.source_platform_object.reply_token,
-                        messages=[ImageMessage(text=content['content'])],
+                        messages=[ImageMessage(original_content_url=image_url, preview_image_url=image_url)],
                     )
                 )
 

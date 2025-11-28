@@ -24,9 +24,20 @@ class SlackMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
             if type(msg) is platform_message.Plain:
                 content_list.append(
                     {
+                        'type': 'text',
                         'content': msg.text,
                     }
                 )
+            elif type(msg) is platform_message.Image:
+                # Slack supports images via unfurling URLs
+                # Include image URL in the message so Slack can unfurl it
+                if msg.url:
+                    content_list.append(
+                        {
+                            'type': 'image',
+                            'content': msg.url,
+                        }
+                    )
 
         return content_list
 
@@ -116,18 +127,24 @@ class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         content_list = await SlackMessageConverter.yiri2target(message)
 
         for content in content_list:
+            # Both text and image (URL) are sent as text messages
+            # Slack will auto-unfurl image URLs
+            message_content = content['content']
             if slack_event.type == 'channel':
-                await self.bot.send_message_to_channel(content['content'], slack_event.channel_id)
+                await self.bot.send_message_to_channel(message_content, slack_event.channel_id)
             if slack_event.type == 'im':
-                await self.bot.send_message_to_one(content['content'], slack_event.user_id)
+                await self.bot.send_message_to_one(message_content, slack_event.user_id)
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         content_list = await SlackMessageConverter.yiri2target(message)
         for content in content_list:
+            # Both text and image (URL) are sent as text messages
+            # Slack will auto-unfurl image URLs
+            message_content = content['content']
             if target_type == 'person':
-                await self.bot.send_message_to_one(content['content'], target_id)
+                await self.bot.send_message_to_one(message_content, target_id)
             if target_type == 'group':
-                await self.bot.send_message_to_channel(content['content'], target_id)
+                await self.bot.send_message_to_channel(message_content, target_id)
 
     def register_listener(
         self,
