@@ -55,11 +55,104 @@ class AESCipher(object):
 
 class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
+    async def upload_image_to_lark(
+        msg: platform_message.Image, api_client: lark_oapi.Client
+    ) -> typing.Optional[str]:
+        """Upload an image to Lark and return the image_key, or None if upload fails."""
+        image_bytes = None
+
+        if msg.base64:
+            try:
+                # Remove data URL prefix if present
+                base64_data = msg.base64
+                if base64_data.startswith('data:'):
+                    base64_data = base64_data.split(',', 1)[1]
+                image_bytes = base64.b64decode(base64_data)
+            except Exception as e:
+                print(f'Failed to decode base64 image: {e}')
+                traceback.print_exc()
+                return None
+        elif msg.url:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(msg.url) as response:
+                        if response.status == 200:
+                            image_bytes = await response.read()
+                        else:
+                            print(f'Failed to download image from {msg.url}: HTTP {response.status}')
+                            return None
+            except Exception as e:
+                print(f'Failed to download image from {msg.url}: {e}')
+                traceback.print_exc()
+                return None
+        elif msg.path:
+            try:
+                with open(msg.path, 'rb') as f:
+                    image_bytes = f.read()
+            except Exception as e:
+                print(f'Failed to read image from path {msg.path}: {e}')
+                traceback.print_exc()
+                return None
+
+        if image_bytes is None:
+            print(f'No image data available for Image message (url={msg.url}, base64={bool(msg.base64)}, path={msg.path})')
+            return None
+
+        try:
+            # Create a temporary file to store the image bytes
+            import tempfile
+            import os
+
+            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                temp_file.write(image_bytes)
+                temp_file.flush()
+                temp_file_path = temp_file.name
+
+            try:
+                # Create image request using the temporary file
+                request = (
+                    CreateImageRequest.builder()
+                    .request_body(
+                        CreateImageRequestBody.builder()
+                        .image_type('message')
+                        .image(open(temp_file_path, 'rb'))
+                        .build()
+                    )
+                    .build()
+                )
+
+                response = await api_client.im.v1.image.acreate(request)
+
+                if not response.success():
+                    print(
+                        f'client.im.v1.image.create failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}'
+                    )
+                    return None
+
+                return response.data.image_key
+            finally:
+                # Clean up the temporary file
+                os.unlink(temp_file_path)
+        except Exception as e:
+            print(f'Failed to upload image to Lark: {e}')
+            traceback.print_exc()
+            return None
+
+    @staticmethod
     async def yiri2target(
         message_chain: platform_message.MessageChain, api_client: lark_oapi.Client
-    ) -> typing.Tuple[list]:
+    ) -> typing.Tuple[list, list]:
+        """Convert message chain to Lark format.
+        
+        Returns:
+            Tuple of (text_elements, image_keys):
+            - text_elements: List of paragraphs for post message format
+            - image_keys: List of image_key strings for separate image messages
+        """
         message_elements = []
+        image_keys = []
         pending_paragraph = []
+
         for msg in message_chain:
             if isinstance(msg, platform_message.Plain):
                 # Ensure text is valid UTF-8
@@ -80,106 +173,23 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
             elif isinstance(msg, platform_message.AtAll):
                 pending_paragraph.append({'tag': 'at', 'user_id': 'all', 'style': []})
             elif isinstance(msg, platform_message.Image):
-                image_bytes = None
-
-                if msg.base64:
-                    try:
-                        # Remove data URL prefix if present
-                        if msg.base64.startswith('data:'):
-                            msg.base64 = msg.base64.split(',', 1)[1]
-                        image_bytes = base64.b64decode(msg.base64)
-                    except Exception as e:
-                        print(f'Failed to decode base64 image: {e}')
-                        traceback.print_exc()
-                        continue
-                elif msg.url:
-                    try:
-                        async with aiohttp.ClientSession() as session:
-                            async with session.get(msg.url) as response:
-                                if response.status == 200:
-                                    image_bytes = await response.read()
-                                else:
-                                    print(f'Failed to download image from {msg.url}: HTTP {response.status}')
-                                    continue
-                    except Exception as e:
-                        print(f'Failed to download image from {msg.url}: {e}')
-                        traceback.print_exc()
-                        continue
-                elif msg.path:
-                    try:
-                        with open(msg.path, 'rb') as f:
-                            image_bytes = f.read()
-                    except Exception as e:
-                        print(f'Failed to read image from path {msg.path}: {e}')
-                        traceback.print_exc()
-                        continue
-
-                if image_bytes is None:
-                    print(f'No image data available for Image message (url={msg.url}, base64={bool(msg.base64)}, path={msg.path})')
-                    continue
-
-                try:
-                    # Create a temporary file to store the image bytes
-                    import tempfile
-
-                    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-                        temp_file.write(image_bytes)
-                        temp_file.flush()
-
-                        # Create image request using the temporary file
-                        request = (
-                            CreateImageRequest.builder()
-                            .request_body(
-                                CreateImageRequestBody.builder()
-                                .image_type('message')
-                                .image(open(temp_file.name, 'rb'))
-                                .build()
-                            )
-                            .build()
-                        )
-
-                        response = await api_client.im.v1.image.acreate(request)
-
-                        if not response.success():
-                            print(
-                                f'client.im.v1.image.create failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}'
-                            )
-                            raise Exception(
-                                f'client.im.v1.image.create failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
-                            )
-
-                        image_key = response.data.image_key
-
-                        # Only append pending_paragraph if it has content
-                        if pending_paragraph:
-                            message_elements.append(pending_paragraph)
-                        message_elements.append(
-                            [
-                                {
-                                    'tag': 'img',
-                                    'image_key': image_key,
-                                }
-                            ]
-                        )
-                        pending_paragraph = []
-                except Exception as e:
-                    print(f'Failed to upload image to Lark: {e}')
-                    traceback.print_exc()
-                    continue
-                finally:
-                    # Clean up the temporary file
-                    import os
-
-                    if 'temp_file' in locals():
-                        os.unlink(temp_file.name)
+                # Upload image and get image_key
+                image_key = await LarkMessageConverter.upload_image_to_lark(msg, api_client)
+                if image_key:
+                    # Store image_key for separate image message
+                    image_keys.append(image_key)
             elif isinstance(msg, platform_message.Forward):
                 for node in msg.node_list:
-                    message_elements.extend(await LarkMessageConverter.yiri2target(node.message_chain, api_client))
+                    sub_elements, sub_image_keys = await LarkMessageConverter.yiri2target(
+                        node.message_chain, api_client
+                    )
+                    message_elements.extend(sub_elements)
+                    image_keys.extend(sub_image_keys)
 
         if pending_paragraph:
             message_elements.append(pending_paragraph)
 
-        return message_elements
+        return message_elements, image_keys
 
     @staticmethod
     async def target2yiri(
@@ -677,35 +687,62 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     ):
         # 不再需要了，因为message_id已经被包含到message_chain中
         # lark_event = await self.event_converter.yiri2target(message_source)
-        lark_message = await self.message_converter.yiri2target(message, self.api_client)
+        text_elements, image_keys = await self.message_converter.yiri2target(message, self.api_client)
 
-        final_content = {
-            'zh_Hans': {
-                'title': '',
-                'content': lark_message,
-            },
-        }
+        # Send text message if there are text elements
+        if text_elements:
+            final_content = {
+                'zh_Hans': {
+                    'title': '',
+                    'content': text_elements,
+                },
+            }
 
-        request: ReplyMessageRequest = (
-            ReplyMessageRequest.builder()
-            .message_id(message_source.message_chain.message_id)
-            .request_body(
-                ReplyMessageRequestBody.builder()
-                .content(json.dumps(final_content))
-                .msg_type('post')
-                .reply_in_thread(False)
-                .uuid(str(uuid.uuid4()))
+            request: ReplyMessageRequest = (
+                ReplyMessageRequest.builder()
+                .message_id(message_source.message_chain.message_id)
+                .request_body(
+                    ReplyMessageRequestBody.builder()
+                    .content(json.dumps(final_content))
+                    .msg_type('post')
+                    .reply_in_thread(False)
+                    .uuid(str(uuid.uuid4()))
+                    .build()
+                )
                 .build()
             )
-            .build()
-        )
 
-        response: ReplyMessageResponse = await self.api_client.im.v1.message.areply(request)
+            response: ReplyMessageResponse = await self.api_client.im.v1.message.areply(request)
 
-        if not response.success():
-            raise Exception(
-                f'client.im.v1.message.reply failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
+            if not response.success():
+                raise Exception(
+                    f'client.im.v1.message.reply failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
+                )
+
+        # Send image messages separately using msg_type='image'
+        for image_key in image_keys:
+            image_content = json.dumps({'image_key': image_key})
+
+            request: ReplyMessageRequest = (
+                ReplyMessageRequest.builder()
+                .message_id(message_source.message_chain.message_id)
+                .request_body(
+                    ReplyMessageRequestBody.builder()
+                    .content(image_content)
+                    .msg_type('image')
+                    .reply_in_thread(False)
+                    .uuid(str(uuid.uuid4()))
+                    .build()
+                )
+                .build()
             )
+
+            response: ReplyMessageResponse = await self.api_client.im.v1.message.areply(request)
+
+            if not response.success():
+                raise Exception(
+                    f'client.im.v1.message.reply (image) failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
+                )
 
     async def reply_message_chunk(
         self,
@@ -722,14 +759,15 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         message_id = bot_message.resp_message_id
         msg_seq = bot_message.msg_sequence
         if msg_seq % 8 == 0 or is_final:
-            lark_message = await self.message_converter.yiri2target(message, self.api_client)
+            text_elements, image_keys = await self.message_converter.yiri2target(message, self.api_client)
 
             text_message = ''
-            for ele in lark_message[0]:
-                if ele['tag'] == 'text':
-                    text_message += ele['text']
-                elif ele['tag'] == 'md':
-                    text_message += ele['text']
+            if text_elements:
+                for ele in text_elements[0]:
+                    if ele['tag'] == 'text':
+                        text_message += ele['text']
+                    elif ele['tag'] == 'md':
+                        text_message += ele['text']
 
             # content = {
             #     'type': 'card_json',
