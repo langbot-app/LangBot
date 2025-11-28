@@ -12,6 +12,20 @@ from langbot.pkg.platform.logger import EventLogger
 
 class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
+    def _format_image_as_markdown(msg: platform_message.Image) -> str:
+        """Convert an Image message to Markdown format for DingTalk."""
+        if msg.url:
+            return f'\n![image]({msg.url})\n'
+        elif msg.base64:
+            # For base64 images, try to include them as data URIs
+            # DingTalk may have limited support for base64 in markdown
+            if msg.base64.startswith('data:'):
+                return f'\n![image]({msg.base64})\n'
+            else:
+                return f'\n![image](data:image/png;base64,{msg.base64})\n'
+        return ''
+
+    @staticmethod
     async def yiri2target(message_chain: platform_message.MessageChain, markdown_enabled: bool = True):
         content = ''
         at = False
@@ -22,18 +36,11 @@ class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverte
                 content += msg.text
             elif type(msg) is platform_message.Image:
                 # DingTalk supports markdown images when markdown_card is enabled
-                # Convert Image to markdown format: ![alt](url)
+                # When markdown is disabled, images cannot be rendered in plain text mode
                 if markdown_enabled:
-                    if msg.url:
-                        content += f'\n![image]({msg.url})\n'
-                    elif msg.base64:
-                        # For base64 images, we can try to include them as data URIs
-                        # However, DingTalk may not support base64 in markdown
-                        # We'll still try the markdown format for compatibility
-                        if msg.base64.startswith('data:'):
-                            content += f'\n![image]({msg.base64})\n'
-                        else:
-                            content += f'\n![image](data:image/png;base64,{msg.base64})\n'
+                    content += DingTalkMessageConverter._format_image_as_markdown(msg)
+                # Note: When markdown_enabled is False, images are not included
+                # as DingTalk plain text messages don't support image embedding
             elif type(msg) is platform_message.Forward:
                 for node in msg.node_list:
                     forwarded_content, _ = await DingTalkMessageConverter.yiri2target(
