@@ -500,6 +500,12 @@ const zhHans = {
       loadPipelinesFailed: '加载流水线失败',
       atTips: '提及机器人',
       streaming: '流式传输',
+      connected: 'WebSocket已连接',
+      disconnected: 'WebSocket未连接',
+      connectionError: 'WebSocket连接错误',
+      connectionFailed: 'WebSocket连接失败',
+      notConnected: 'WebSocket未连接，请稍后重试',
+      imageUploadFailed: '图片上传失败',
     },
   },
   knowledge: {

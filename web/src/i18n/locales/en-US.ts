@@ -518,6 +518,12 @@ const enUS = {
       loadPipelinesFailed: 'Failed to load pipelines',
       atTips: 'Mention the bot',
       streaming: 'Streaming',
+      connected: 'WebSocket connected',
+      disconnected: 'WebSocket disconnected',
+      connectionError: 'WebSocket connection error',
+      connectionFailed: 'WebSocket connection failed',
+      notConnected: 'WebSocket not connected, please try again later',
+      imageUploadFailed: 'Image upload failed',
     },
   },
   knowledge: {

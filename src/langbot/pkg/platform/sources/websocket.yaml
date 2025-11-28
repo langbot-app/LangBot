@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: websocket
+  label:
+    en_US: "WebSocket Chat"
+    zh_Hans: "WebSocket 聊天"
+  description:
+    en_US: "WebSocket adapter for bidirectional real-time communication"
+    zh_Hans: "用于双向实时通信的 WebSocket 适配器"
+  icon: ""
+spec:
+  config: []
+execution:
+  python:
+    path: "websocket_adapter.py"
+    attr: "WebSocketAdapter"

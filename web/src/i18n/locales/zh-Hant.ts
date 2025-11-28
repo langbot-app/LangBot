@@ -497,6 +497,13 @@ const zhHant = {
       loadMessagesFailed: '載入訊息失敗',
       loadPipelinesFailed: '載入流程線失敗',
       atTips: '提及機器人',
+      streaming: '串流傳輸',
+      connected: 'WebSocket已連接',
+      disconnected: 'WebSocket未連接',
+      connectionError: 'WebSocket連接錯誤',
+      connectionFailed: 'WebSocket連接失敗',
+      notConnected: 'WebSocket未連接，請稍後重試',
+      imageUploadFailed: '圖片上傳失敗',
     },
   },
   knowledge: {

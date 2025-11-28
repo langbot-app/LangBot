@@ -521,6 +521,13 @@ const jaJP = {
       loadPipelinesFailed: 'パイプラインの読み込みに失敗しました',
       atTips: 'ボットをメンション',
       streaming: 'ストリーミング',
+      connected: 'WebSocket接続済み',
+      disconnected: 'WebSocket未接続',
+      connectionError: 'WebSocket接続エラー',
+      connectionFailed: 'WebSocket接続に失敗しました',
+      notConnected:
+        'WebSocketに接続されていません。しばらくしてからやり直してください',
+      imageUploadFailed: '画像のアップロードに失敗しました',
     },
   },
   knowledge: {

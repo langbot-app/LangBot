@@ -4,30 +4,31 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 import { DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { Message } from '@/app/infra/entities/message';
+import {
+  Message,
+  MessageChainComponent,
+  Image,
+  Plain,
+  At,
+} from '@/app/infra/entities/message';
 import { toast } from 'sonner';
 import AtBadge from './AtBadge';
-import { Switch } from '@/components/ui/switch';
-
-interface MessageComponent {
-  type: 'At' | 'Plain';
-  target?: string;
-  text?: string;
-}
+import { WebSocketClient } from '@/app/infra/websocket/WebSocketClient';
 
 interface DebugDialogProps {
   open: boolean;
   pipelineId: string;
   isEmbedded?: boolean;
+  onConnectionStatusChange?: (isConnected: boolean) => void;
 }
 
 export default function DebugDialog({
   open,
   pipelineId,
   isEmbedded = false,
+  onConnectionStatusChange,
 }: DebugDialogProps) {
   const { t } = useTranslation();
   const [selectedPipelineId, setSelectedPipelineId] = useState(pipelineId);
@@ -37,10 +38,17 @@ export default function DebugDialog({
   const [showAtPopover, setShowAtPopover] = useState(false);
   const [hasAt, setHasAt] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(true);
+  const [isConnected, setIsConnected] = useState(false);
+  const [selectedImages, setSelectedImages] = useState<
+    Array<{ file: File; preview: string; fileKey?: string }>
+  >([]);
+  const [isUploading, setIsUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const wsClientRef = useRef<WebSocketClient | null>(null);
+  const isInitializingRef = useRef<boolean>(false);
 
   const scrollToBottom = useCallback(() => {
     // 使用setTimeout确保在DOM更新后执行滚动
@@ -60,7 +68,7 @@ export default function DebugDialog({
   const loadMessages = useCallback(
     async (pipelineId: string) => {
       try {
-        const response = await httpClient.getWebChatHistoryMessages(
+        const response = await httpClient.getWebSocketHistoryMessages(
           pipelineId,
           sessionType,
         );
@@ -71,23 +79,126 @@ export default function DebugDialog({
     },
     [sessionType],
   );
+
+  // 初始化WebSocket连接
+  const initWebSocket = useCallback(
+    async (pipelineId: string) => {
+      // 防止重复初始化
+      if (isInitializingRef.current) {
+        console.log('WebSocket正在初始化中，跳过重复调用');
+        return;
+      }
+
+      try {
+        isInitializingRef.current = true;
+
+        // 断开旧连接
+        if (wsClientRef.current) {
+          console.log('断开旧的WebSocket连接');
+          wsClientRef.current.disconnect();
+          wsClientRef.current = null;
+        }
+
+        // 创建新连接
+        const wsClient = new WebSocketClient(pipelineId, sessionType);
+
+        wsClient
+          .onConnected((data) => {
+            console.log('WebSocket已连接:', data.connection_id);
+            setIsConnected(true);
+            isInitializingRef.current = false;
+          })
+          .onMessage((message) => {
+            console.log('收到消息:', message);
+
+            setMessages((prevMessages) => {
+              // 查找是否已存在相同ID的消息
+              const existingIndex = prevMessages.findIndex(
+                (m) => m.id === message.id,
+              );
+
+              if (existingIndex >= 0) {
+                // 更新已存在的消息（流式输出）
+                const newMessages = [...prevMessages];
+                newMessages[existingIndex] = message;
+                return newMessages;
+              } else {
+                // 添加新消息
+                return [...prevMessages, message];
+              }
+            });
+          })
+          .onError((error) => {
+            console.error('WebSocket错误:', error);
+            setIsConnected(false);
+            isInitializingRef.current = false;
+            toast.error(t('pipelines.debugDialog.connectionError'));
+          })
+          .onClose(() => {
+            console.log('WebSocket连接已关闭');
+            setIsConnected(false);
+            isInitializingRef.current = false;
+          })
+          .onBroadcast((message) => {
+            console.log('收到广播:', message);
+            toast.info(message);
+          });
+
+        await wsClient.connect();
+        wsClientRef.current = wsClient;
+      } catch (error) {
+        console.error('WebSocket连接失败:', error);
+        setIsConnected(false);
+        isInitializingRef.current = false;
+        toast.error(t('pipelines.debugDialog.connectionFailed'));
+      }
+    },
+    [sessionType, t],
+  );
+
   // 在useEffect中监听messages变化时滚动
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
+  // 监听 open 和 pipelineId 变化，进入时连接，离开时断开
   useEffect(() => {
     if (open) {
       setSelectedPipelineId(pipelineId);
-      loadMessages(pipelineId);
+    } else {
+      // 关闭对话框时立即断开WebSocket
+      if (wsClientRef.current) {
+        console.log('对话框关闭，断开WebSocket连接');
+        wsClientRef.current.disconnect();
+        wsClientRef.current = null;
+        setIsConnected(false);
+        isInitializingRef.current = false;
+      }
     }
+
+    return () => {
+      // 组件卸载时断开WebSocket
+      if (wsClientRef.current) {
+        console.log('组件卸载，断开WebSocket连接');
+        wsClientRef.current.disconnect();
+        wsClientRef.current = null;
+        isInitializingRef.current = false;
+      }
+    };
   }, [open, pipelineId]);
 
+  // 监听 sessionType 和 selectedPipelineId 变化，重新加载消息和连接
   useEffect(() => {
     if (open) {
       loadMessages(selectedPipelineId);
+      initWebSocket(selectedPipelineId);
     }
-  }, [sessionType, selectedPipelineId, open, loadMessages]);
+  }, [sessionType, selectedPipelineId, open, loadMessages, initWebSocket]);
+
+  // 通知父组件连接状态变化
+  useEffect(() => {
+    onConnectionStatusChange?.(isConnected);
+  }, [isConnected, onConnectionStatusChange]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -147,10 +258,42 @@ export default function DebugDialog({
     }
   };
 
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const newImages: Array<{ file: File; preview: string }> = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type.startsWith('image/')) {
+        const preview = URL.createObjectURL(file);
+        newImages.push({ file, preview });
+      }
+    }
+
+    setSelectedImages((prev) => [...prev, ...newImages]);
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setSelectedImages((prev) => {
+      const newImages = [...prev];
+      URL.revokeObjectURL(newImages[index].preview);
+      newImages.splice(index, 1);
+      return newImages;
+    });
+  };
+
   const sendMessage = async () => {
-    if (!inputValue.trim() && !hasAt) return;
+    if (!inputValue.trim() && !hasAt && selectedImages.length === 0) return;
+    if (!isConnected || !wsClientRef.current) {
+      toast.error(t('pipelines.debugDialog.notConnected'));
+      return;
+    }
 
     try {
+      setIsUploading(true);
+
       const messageChain = [];
 
       let text_content = inputValue.trim();
@@ -161,142 +304,133 @@ export default function DebugDialog({
       if (hasAt) {
         messageChain.push({
           type: 'At',
-          target: 'webchatbot',
+          target: 'websocketbot',
+          display: 'websocketbot',
         });
       }
-      messageChain.push({
-        type: 'Plain',
-        text: text_content,
-      });
 
-      if (hasAt) {
-        // for showing
-        text_content = '@webchatbot' + text_content;
+      // 添加文本
+      if (text_content) {
+        messageChain.push({
+          type: 'Plain',
+          text: text_content,
+        });
       }
 
-      const userMessage: Message = {
-        id: -1,
-        role: 'user',
-        content: text_content,
-        timestamp: new Date().toISOString(),
-        message_chain: messageChain,
-      };
-      // 根据isStreaming状态决定使用哪种传输方式
-      if (isStreaming) {
-        // streaming
-        // 创建初始bot消息
-        const placeholderRandomId = Math.floor(Math.random() * 1000000);
-        const botMessagePlaceholder: Message = {
-          id: placeholderRandomId,
-          role: 'assistant',
-          content: 'Generating...',
-          timestamp: new Date().toISOString(),
-          message_chain: [{ type: 'Plain', text: 'Generating...' }],
-        };
-
-        // 添加用户消息和初始bot消息到状态
-
-        setMessages((prevMessages) => [
-          ...prevMessages,
-          userMessage,
-          botMessagePlaceholder,
-        ]);
-        setInputValue('');
-        setHasAt(false);
+      // 上传图片并添加到消息链
+      for (const image of selectedImages) {
         try {
-          await httpClient.sendStreamingWebChatMessage(
-            sessionType,
-            messageChain,
+          const result = await httpClient.uploadWebSocketImage(
             selectedPipelineId,
-            (data) => {
-              // 处理流式响应数据
-              console.log('data', data);
-              if (data.message) {
-                // 更新完整内容
-
-                setMessages((prevMessages) => {
-                  const updatedMessages = [...prevMessages];
-                  const botMessageIndex = updatedMessages.findIndex(
-                    (message) => message.id === placeholderRandomId,
-                  );
-                  if (botMessageIndex !== -1) {
-                    updatedMessages[botMessageIndex] = {
-                      ...updatedMessages[botMessageIndex],
-                      content: data.message.content,
-                      message_chain: [
-                        { type: 'Plain', text: data.message.content },
-                      ],
-                    };
-                  }
-                  return updatedMessages;
-                });
-              }
-            },
-            () => {},
-            (error) => {
-              // 处理错误
-              console.error('Streaming error:', error);
-              if (sessionType === 'person') {
-                toast.error(t('pipelines.debugDialog.sendFailed'));
-              }
-            },
+            image.file,
           );
+          messageChain.push({
+            type: 'Image',
+            path: result.file_key,
+          });
         } catch (error) {
-          console.error('Failed to send streaming message:', error);
-          if (sessionType === 'person') {
-            toast.error(t('pipelines.debugDialog.sendFailed'));
-          }
+          console.error('图片上传失败:', error);
+          toast.error(t('pipelines.debugDialog.imageUploadFailed'));
         }
-      } else {
-        // non-streaming
-        setMessages((prevMessages) => [...prevMessages, userMessage]);
-        setInputValue('');
-        setHasAt(false);
+      }
 
-        const response = await httpClient.sendWebChatMessage(
-          sessionType,
-          messageChain,
-          selectedPipelineId,
-          180000,
+      // 清空输入框和图片
+      setInputValue('');
+      setHasAt(false);
+      selectedImages.forEach((img) => URL.revokeObjectURL(img.preview));
+      setSelectedImages([]);
+
+      // 通过WebSocket发送消息
+      // 不在本地添加消息，等待后端广播回来（带有正确的ID）
+      wsClientRef.current.sendMessage(messageChain);
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      toast.error(t('pipelines.debugDialog.sendFailed'));
+    } finally {
+      setIsUploading(false);
+      inputRef.current?.focus();
+    }
+  };
+
+  const renderMessageComponent = (
+    component: MessageChainComponent,
+    index: number,
+  ) => {
+    switch (component.type) {
+      case 'Plain':
+        return <span key={index}>{(component as Plain).text}</span>;
+
+      case 'At': {
+        const atComponent = component as At;
+        // 优先使用 display，如果没有则使用 target
+        const displayName =
+          atComponent.display || atComponent.target?.toString() || '';
+        return (
+          <span key={index} className="inline-flex align-middle mx-1">
+            <AtBadge targetName={displayName} readonly={true} />
+          </span>
+        );
+      }
+
+      case 'AtAll':
+        return (
+          <span key={index} className="inline-flex align-middle mx-1">
+            <AtBadge targetName="全体成员" readonly={true} />
+          </span>
         );
 
-        setMessages((prevMessages) => [...prevMessages, response.message]);
-      }
-    } catch (
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      error: any
-    ) {
-      console.log(error, 'type of error', typeof error);
-      console.error('Failed to send message:', error);
+      case 'Image': {
+        const img = component as Image;
+        const imageUrl = img.url || (img.base64 ? img.base64 : '');
 
-      if (!error.message.includes('timeout') && sessionType === 'person') {
-        toast.error(t('pipelines.debugDialog.sendFailed'));
+        if (!imageUrl) return null;
+
+        return (
+          <div key={index} className="my-2">
+            <img
+              src={imageUrl}
+              alt="Image"
+              className="max-w-full max-h-96 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+              onClick={() => {
+                // 点击图片放大预览
+                window.open(imageUrl, '_blank');
+              }}
+            />
+          </div>
+        );
       }
-    } finally {
-      inputRef.current?.focus();
+
+      case 'File': {
+        const file = component as MessageChainComponent & { name?: string };
+        return (
+          <div key={index} className="my-2 flex items-center gap-2 text-sm">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" />
+            </svg>
+            <span>[文件] {file.name || 'Unknown'}</span>
+          </div>
+        );
+      }
+
+      case 'Voice':
+        return <span key={index}>[语音]</span>;
+
+      case 'Source':
+        // Source 不显示
+        return null;
+
+      default:
+        return <span key={index}>[{component.type}]</span>;
     }
   };
 
   const renderMessageContent = (message: Message) => {
     return (
-      <span className="text-base leading-relaxed align-middle whitespace-pre-wrap">
-        {(message.message_chain as MessageComponent[]).map(
-          (component, index) => {
-            if (component.type === 'At') {
-              return (
-                <AtBadge
-                  key={index}
-                  targetName={component.target || ''}
-                  readonly={true}
-                />
-              );
-            } else if (component.type === 'Plain') {
-              return <span key={index}>{component.text}</span>;
-            }
-            return null;
-          },
+      <div className="text-base leading-relaxed align-middle whitespace-pre-wrap">
+        {message.message_chain.map((component, index) =>
+          renderMessageComponent(component, index),
         )}
-      </span>
+      </div>
     );
   };
 
@@ -341,11 +475,10 @@ export default function DebugDialog({
             <path d="M2 22C2 17.5817 5.58172 14 10 14C14.4183 14 18 17.5817 18 22H16C16 18.6863 13.3137 16 10 16C6.68629 16 4 18.6863 4 22H2ZM10 13C6.685 13 4 10.315 4 7C4 3.685 6.685 1 10 1C13.315 1 16 3.685 16 7C16 10.315 13.315 13 10 13ZM10 11C12.21 11 14 9.21 14 7C14 4.79 12.21 3 10 3C7.79 3 6 4.79 6 7C6 9.21 7.79 11 10 11ZM18.2837 14.7028C21.0644 15.9561 23 18.752 23 22H21C21 19.564 19.5483 17.4671 17.4628 16.5271L18.2837 14.7028ZM17.5962 3.41321C19.5944 4.23703 21 6.20361 21 8.5C21 11.3702 18.8042 13.7252 16 13.9776V11.9646C17.6967 11.7222 19 10.264 19 8.5C19 7.11935 18.2016 5.92603 17.041 5.35635L17.5962 3.41321Z"></path>
           </svg>
         </Button>
-        <div className="flex-1" />
       </div>
 
       <div className="flex-1 flex flex-col w-[10rem] h-full min-h-0">
-        <ScrollArea className="flex-1 p-6 overflow-y-auto min-h-0 bg-white dark:bg-black">
+        <ScrollArea className="flex-1 p-6 overflow-y-auto min-h-0 bg-white dark:bg-black scroll-area">
           <div className="space-y-6">
             {messages.length === 0 ? (
               <div className="text-center text-muted-foreground py-12 text-lg">
@@ -389,16 +522,65 @@ export default function DebugDialog({
           </div>
         </ScrollArea>
 
+        {/* 图片预览区域 */}
+        {selectedImages.length > 0 && (
+          <div className="px-4 pb-2 bg-white dark:bg-black">
+            <div className="flex gap-2 flex-wrap">
+              {selectedImages.map((image, index) => (
+                <div key={index} className="relative group">
+                  <img
+                    src={image.preview}
+                    alt={`preview-${index}`}
+                    className="w-20 h-20 object-cover rounded-lg border border-gray-300 dark:border-gray-600"
+                  />
+                  <button
+                    onClick={() => handleRemoveImage(index)}
+                    className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="p-4 pb-0 bg-white dark:bg-black flex gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">
-              {t('pipelines.debugDialog.streaming')}
-            </span>
-            <Switch checked={isStreaming} onCheckedChange={setIsStreaming} />
+          <div className="flex gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleImageSelect}
+              className="hidden"
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!isConnected || isUploading}
+              className="w-10 h-10 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
+              title="上传图片"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                />
+              </svg>
+            </Button>
           </div>
           <div className="flex-1 flex items-center gap-2">
             {hasAt && (
-              <AtBadge targetName="webchatbot" onRemove={handleAtRemove} />
+              <AtBadge targetName="websocketbot" onRemove={handleAtRemove} />
             )}
             <div className="relative flex-1">
               <Input
@@ -412,7 +594,8 @@ export default function DebugDialog({
                       ? t('pipelines.debugDialog.privateChat')
                       : t('pipelines.debugDialog.groupChat'),
                 })}
-                className="flex-1 rounded-md px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 focus:border-[#2288ee] transition-none text-base"
+                disabled={!isConnected || isUploading}
+                className="flex-1 rounded-md px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 focus:border-[#2288ee] transition-none text-base disabled:opacity-50"
               />
               {showAtPopover && (
                 <div
@@ -431,7 +614,7 @@ export default function DebugDialog({
                     onMouseLeave={() => setIsHovering(false)}
                   >
                     <span className="text-gray-800 dark:text-gray-200">
-                      @webchatbot - {t('pipelines.debugDialog.atTips')}
+                      @websocketbot - {t('pipelines.debugDialog.atTips')}
                     </span>
                   </div>
                 </div>
@@ -440,10 +623,14 @@ export default function DebugDialog({
           </div>
           <Button
             onClick={sendMessage}
-            disabled={!inputValue.trim() && !hasAt}
-            className="rounded-md bg-[#2288ee] hover:bg-[#2288ee] w-20 text-white px-6 py-2 text-base font-medium transition-none flex items-center gap-2 shadow-none"
+            disabled={
+              (!inputValue.trim() && !hasAt && selectedImages.length === 0) ||
+              !isConnected ||
+              isUploading
+            }
+            className="rounded-md bg-[#2288ee] hover:bg-[#2288ee] w-20 text-white px-6 py-2 text-base font-medium transition-none flex items-center gap-2 shadow-none disabled:opacity-50"
           >
-            <>{t('pipelines.debugDialog.send')}</>
+            {isUploading ? '上传中...' : t('pipelines.debugDialog.send')}
           </Button>
         </div>
       </div>

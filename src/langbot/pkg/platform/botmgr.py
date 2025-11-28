@@ -156,7 +156,7 @@ class PlatformManager:
 
     bots: list[RuntimeBot]
 
-    webchat_proxy_bot: RuntimeBot
+    websocket_proxy_bot: RuntimeBot
 
     adapter_components: list[engine.Component]
 
@@ -178,31 +178,29 @@ class PlatformManager:
             adapter_dict[component.metadata.name] = component.get_python_component_class()
         self.adapter_dict = adapter_dict
 
-        webchat_adapter_class = self.adapter_dict['webchat']
-
-        # initialize webchat adapter
-        webchat_logger = EventLogger(name='webchat-adapter', ap=self.ap)
-        webchat_adapter_inst = webchat_adapter_class(
+        # initialize websocket adapter
+        websocket_adapter_class = self.adapter_dict['websocket']
+        websocket_logger = EventLogger(name='websocket-adapter', ap=self.ap)
+        websocket_adapter_inst = websocket_adapter_class(
             {},
-            webchat_logger,
+            websocket_logger,
             ap=self.ap,
-            is_stream=False,
         )
 
-        self.webchat_proxy_bot = RuntimeBot(
+        self.websocket_proxy_bot = RuntimeBot(
             ap=self.ap,
             bot_entity=persistence_bot.Bot(
-                uuid='webchat-proxy-bot',
-                name='WebChat',
+                uuid='websocket-proxy-bot',
+                name='WebSocket',
                 description='',
-                adapter='webchat',
+                adapter='websocket',
                 adapter_config={},
                 enable=True,
             ),
-            adapter=webchat_adapter_inst,
-            logger=webchat_logger,
+            adapter=websocket_adapter_inst,
+            logger=websocket_logger,
         )
-        await self.webchat_proxy_bot.initialize()
+        await self.websocket_proxy_bot.initialize()
 
         await self.load_bots_from_db()
 
@@ -271,7 +269,7 @@ class PlatformManager:
 
     def get_available_adapters_info(self) -> list[dict]:
         return [
-            component.to_plain_dict() for component in self.adapter_components if component.metadata.name != 'webchat'
+            component.to_plain_dict() for component in self.adapter_components if component.metadata.name != 'websocket'
         ]
 
     def get_available_adapter_info_by_name(self, name: str) -> dict | None:
@@ -288,7 +286,7 @@ class PlatformManager:
 
     async def run(self):
         # This method will only be called when the application launching
-        await self.webchat_proxy_bot.run()
+        await self.websocket_proxy_bot.run()
 
         for bot in self.bots:
             if bot.enable:
