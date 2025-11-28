@@ -153,21 +153,58 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
         image_keys = []
         pending_paragraph = []
 
+        # Regex pattern to match Markdown image syntax: ![alt](url)
+        markdown_image_pattern = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
+
+        async def process_text_with_images(text: str) -> typing.Tuple[str, list]:
+            """Extract Markdown images from text and return cleaned text + image URLs."""
+            extracted_urls = []
+            
+            # Find all Markdown images
+            matches = list(markdown_image_pattern.finditer(text))
+            if not matches:
+                return text, []
+            
+            # Extract URLs and remove image syntax from text
+            cleaned_text = text
+            for match in reversed(matches):  # Reverse to maintain correct positions
+                url = match.group(2)
+                extracted_urls.insert(0, url)  # Insert at beginning since we're going in reverse
+                # Replace image syntax with empty string or a placeholder
+                cleaned_text = cleaned_text[:match.start()] + cleaned_text[match.end():]
+            
+            # Clean up multiple consecutive newlines that might result from removing images
+            cleaned_text = re.sub(r'\n{3,}', '\n\n', cleaned_text)
+            cleaned_text = cleaned_text.strip()
+            
+            return cleaned_text, extracted_urls
+
         for msg in message_chain:
             if isinstance(msg, platform_message.Plain):
                 # Ensure text is valid UTF-8
                 try:
                     text = msg.text.encode('utf-8').decode('utf-8')
-                    pending_paragraph.append({'tag': 'md', 'text': text})
                 except UnicodeError:
-                    # If text is not valid UTF-8, try to decode with other encodings
                     try:
                         text = msg.text.encode('latin1').decode('utf-8')
-                        pending_paragraph.append({'tag': 'md', 'text': text})
                     except UnicodeError:
-                        # If still fails, replace invalid characters
                         text = msg.text.encode('utf-8', errors='replace').decode('utf-8')
-                        pending_paragraph.append({'tag': 'md', 'text': text})
+                
+                # Check for and extract Markdown images from text
+                cleaned_text, extracted_urls = await process_text_with_images(text)
+                
+                # Add cleaned text if not empty
+                if cleaned_text:
+                    pending_paragraph.append({'tag': 'md', 'text': cleaned_text})
+                
+                # Process extracted image URLs
+                for url in extracted_urls:
+                    # Create a temporary Image message to upload
+                    temp_image = platform_message.Image(url=url)
+                    image_key = await LarkMessageConverter.upload_image_to_lark(temp_image, api_client)
+                    if image_key:
+                        image_keys.append(image_key)
+                        
             elif isinstance(msg, platform_message.At):
                 pending_paragraph.append({'tag': 'at', 'user_id': msg.target, 'style': []})
             elif isinstance(msg, platform_message.AtAll):
