@@ -129,7 +129,6 @@ export default function BotForm({
             form.setValue('adapter_config', val.adapter_config);
             form.setValue('enable', val.enable);
             form.setValue('use_pipeline_uuid', val.use_pipeline_uuid || '');
-            console.log('form', form.getValues());
             handleAdapterSelect(val.adapter);
             // dynamicForm.setFieldsValue(val.adapter_config);
           })
@@ -145,7 +144,6 @@ export default function BotForm({
   async function initBotFormComponent() {
     // 初始化流水线列表
     const pipelinesRes = await httpClient.getPipelines();
-    console.log('rawPipelineList', pipelinesRes);
     setPipelineNameList(
       pipelinesRes.pipelines.map((item) => {
         return {
@@ -157,7 +155,6 @@ export default function BotForm({
 
     // 拉取adapter
     const adaptersRes = await httpClient.getAdapters();
-    console.log('rawAdapterList', adaptersRes);
     setAdapterNameList(
       adaptersRes.adapters.map((item) => {
         return {
@@ -253,12 +250,10 @@ export default function BotForm({
   }
 
   // 只有通过外层固定表单验证才会走到这里，真正的提交逻辑在这里
-  function onDynamicFormSubmit(value: object) {
+  function onDynamicFormSubmit() {
     setIsLoading(true);
-    console.log('set loading', true);
     if (initBotId) {
       // 编辑提交
-      // console.log('submit edit', form.getFieldsValue(), value);
       const updateBot: Bot = {
         uuid: initBotId,
         name: form.getValues().name,
@@ -270,8 +265,7 @@ export default function BotForm({
       };
       httpClient
         .updateBot(initBotId, updateBot)
-        .then((res) => {
-          console.log('update bot success', res);
+        .then(() => {
           onFormSubmit(form.getValues());
           toast.success(t('bots.saveSuccess'));
         })
@@ -285,7 +279,6 @@ export default function BotForm({
         });
     } else {
       // 创建提交
-      console.log('submit create', form.getValues(), value);
       const newBot: Bot = {
         name: form.getValues().name,
         description: form.getValues().description,
@@ -295,7 +288,6 @@ export default function BotForm({
       httpClient
         .createBot(newBot)
         .then((res) => {
-          console.log('create bot success', res);
           toast.success(t('bots.createSuccess'));
           initBotId = res.uuid;
 

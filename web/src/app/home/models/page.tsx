@@ -54,7 +54,6 @@ export default function LLMConfigPage() {
       .getProviderLLMModels()
       .then((resp) => {
         const llmModelList: LLMCardVO[] = resp.models.map((model: LLMModel) => {
-          console.log('model', model);
           return new LLMCardVO({
             id: model.uuid,
             iconURL: httpClient.getProviderRequesterIconURL(model.requester),
@@ -66,7 +65,6 @@ export default function LLMConfigPage() {
             abilities: model.abilities || [],
           });
         });
-        console.log('get llmModelList', llmModelList);
         setCardList(llmModelList);
       })
       .catch((err) => {
@@ -78,7 +76,6 @@ export default function LLMConfigPage() {
   function selectLLM(cardVO: LLMCardVO) {
     setIsEditForm(true);
     setNowSelectedLLM(cardVO);
-    console.log('set now vo', cardVO);
     setModalOpen(true);
   }
   function handleCreateModelClick() {

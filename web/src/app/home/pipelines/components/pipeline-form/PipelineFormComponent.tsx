@@ -159,7 +159,6 @@ export default function PipelineFormComponent({
   }, [form, isEditMode]);
 
   function handleFormSubmit(values: FormValues) {
-    console.log('handleFormSubmit', values);
     if (isEditMode) {
       handleModify(values);
     } else {
@@ -168,7 +167,6 @@ export default function PipelineFormComponent({
   }
 
   function handleCreate(values: FormValues) {
-    console.log('handleCreate', values);
     const pipeline: Pipeline = {
       config: {},
       description: values.basic.description,

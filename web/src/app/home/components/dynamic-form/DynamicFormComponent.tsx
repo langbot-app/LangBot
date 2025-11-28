@@ -110,8 +110,6 @@ export default function DynamicFormComponent({
   // 当 initialValues 变化时更新表单值
   // 但要避免因为内部表单更新触发的 onSubmit 导致的 initialValues 变化而重新设置表单
   useEffect(() => {
-    console.log('initialValues', initialValues);
-
     // 首次挂载时，使用 initialValues 初始化表单
     if (isInitialMount.current) {
       isInitialMount.current = false;
@@ -148,7 +146,6 @@ export default function DynamicFormComponent({
     const subscription = form.watch(() => {
       // 获取完整的表单值，确保包含所有默认值
       const formValues = form.getValues();
-      console.log('formValues', formValues);
       const finalValues = itemConfigList.reduce(
         (acc, item) => {
           acc[item.name] = formValues[item.name] ?? item.default;
@@ -156,7 +153,6 @@ export default function DynamicFormComponent({
         },
         {} as Record<string, object>,
       );
-      console.log('finalValues', finalValues);
       onSubmit?.(finalValues);
     });
     return () => subscription.unsubscribe();

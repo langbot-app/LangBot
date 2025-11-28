@@ -326,8 +326,7 @@ export default function EmbeddingForm({
         api_keys: apiKey ? [apiKey] : [],
         extra_args: extraArgsObj,
       })
-      .then((res) => {
-        console.log(res);
+      .then(() => {
         toast.success(t('models.testSuccess'));
       })
       .catch(() => {

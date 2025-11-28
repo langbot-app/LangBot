@@ -329,7 +329,6 @@ function MarketPageContent({
 
   // 安装插件
   // const handleInstallPlugin = (plugin: PluginV4) => {
-  //   console.log('install plugin', plugin);
   // };
 
   return (

@@ -61,9 +61,7 @@ export default function Login() {
           router.push('/register');
         }
       })
-      .catch((err) => {
-        console.log('error at getIsInitialized: ', err);
-      });
+      .catch(() => {});
   }
 
   function checkIfAlreadyLoggedIn() {
@@ -75,9 +73,7 @@ export default function Login() {
           router.push('/home');
         }
       })
-      .catch((err) => {
-        console.log('error at checkIfAlreadyLoggedIn: ', err);
-      });
+      .catch(() => {});
   }
   function onSubmit(values: z.infer<ReturnType<typeof formSchema>>) {
     handleLogin(values.email, values.password);
@@ -89,13 +85,10 @@ export default function Login() {
       .then((res) => {
         localStorage.setItem('token', res.token);
         localStorage.setItem('userEmail', username);
-        console.log('login success: ', res);
         router.push('/home');
         toast.success(t('common.loginSuccess'));
       })
-      .catch((err) => {
-        console.log('login error: ', err);
-
+      .catch(() => {
         toast.error(t('common.loginFailed'));
       });
   }

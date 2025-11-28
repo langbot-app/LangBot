@@ -66,7 +66,6 @@ export default function HomeSidebar({
       .catch((error) => {
         console.error('Failed to fetch GitHub star count:', error);
       });
-    return () => console.log('sidebar.unmounted');
   }, []);
 
   function handleChildClick(child: SidebarChildVO) {
@@ -90,7 +89,6 @@ export default function HomeSidebar({
   }
 
   function handleRoute(child: SidebarChildVO) {
-    console.log(child);
     router.push(`${child.route}`);
   }
 
@@ -102,7 +100,6 @@ export default function HomeSidebar({
       routeList[1] === 'home' &&
       sidebarConfigList.find((childConfig) => childConfig.route === pathname)
     ) {
-      console.log('find success');
       const routeSelectChild = sidebarConfigList.find(
         (childConfig) => childConfig.route === pathname,
       );
@@ -144,7 +141,6 @@ export default function HomeSidebar({
               <div
                 key={config.id}
                 onClick={() => {
-                  console.log('click:', config.id);
                   handleChildClick(config);
                 }}
               >

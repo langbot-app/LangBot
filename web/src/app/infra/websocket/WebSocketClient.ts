@@ -87,7 +87,6 @@ export class WebSocketClient {
 
         // 连接打开
         this.ws.onopen = () => {
-          console.log('WebSocket连接已建立');
           this.reconnectAttempts = 0;
           this.isConnecting = false;
           this.startHeartbeat();
@@ -112,7 +111,6 @@ export class WebSocketClient {
 
         // 连接关闭
         this.ws.onclose = () => {
-          console.log('WebSocket连接已关闭');
           this.isConnecting = false;
           this.stopHeartbeat();
           this.onCloseCallback?.();
@@ -121,9 +119,6 @@ export class WebSocketClient {
           if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
             setTimeout(() => {
-              console.log(
-                `尝试重新连接 (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`,
-              );
               this.connect().catch(console.error);
             }, this.reconnectDelay * this.reconnectAttempts);
           }
@@ -168,7 +163,6 @@ export class WebSocketClient {
 
       case 'pong':
         // 心跳响应
-        console.log('收到心跳响应');
         break;
 
       case 'broadcast':

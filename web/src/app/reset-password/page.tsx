@@ -70,13 +70,11 @@ export default function ResetPassword() {
     setIsResetting(true);
     httpClient
       .resetPassword(email, recoveryKey, newPassword)
-      .then((res) => {
-        console.log('reset password success: ', res);
+      .then(() => {
         toast.success(t('resetPassword.resetSuccess'));
         router.push('/login');
       })
-      .catch((err) => {
-        console.log('reset password error: ', err);
+      .catch(() => {
         toast.error(t('resetPassword.resetFailed'));
       })
       .finally(() => {

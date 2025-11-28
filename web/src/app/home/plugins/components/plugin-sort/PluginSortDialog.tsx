@@ -123,7 +123,6 @@
 
 //   function handleDragEnd(event: DragEndEvent) {
 //     const { active, over } = event;
-//     console.log('Drag end event:', { active, over });
 
 //     if (over && active.id !== over.id) {
 //       setSortedPlugins((items) => {

@@ -88,7 +88,6 @@ export default function DebugDialog({
     async (pipelineId: string) => {
       // 防止重复初始化
       if (isInitializingRef.current) {
-        console.log('WebSocket正在初始化中，跳过重复调用');
         return;
       }
 
@@ -97,7 +96,6 @@ export default function DebugDialog({
 
         // 断开旧连接
         if (wsClientRef.current) {
-          console.log('断开旧的WebSocket连接');
           wsClientRef.current.disconnect();
           wsClientRef.current = null;
         }
@@ -106,14 +104,11 @@ export default function DebugDialog({
         const wsClient = new WebSocketClient(pipelineId, sessionType);
 
         wsClient
-          .onConnected((data) => {
-            console.log('WebSocket已连接:', data.connection_id);
+          .onConnected(() => {
             setIsConnected(true);
             isInitializingRef.current = false;
           })
           .onMessage((wsMessage) => {
-            console.log('收到消息:', wsMessage);
-
             // 将 WebSocketMessage 转换为 Message 类型
             const message: Message = {
               ...wsMessage,
@@ -144,12 +139,10 @@ export default function DebugDialog({
             toast.error(t('pipelines.debugDialog.connectionError'));
           })
           .onClose(() => {
-            console.log('WebSocket连接已关闭');
             setIsConnected(false);
             isInitializingRef.current = false;
           })
           .onBroadcast((message) => {
-            console.log('收到广播:', message);
             toast.info(message);
           });
 
@@ -177,7 +170,6 @@ export default function DebugDialog({
     } else {
       // 关闭对话框时立即断开WebSocket
       if (wsClientRef.current) {
-        console.log('对话框关闭，断开WebSocket连接');
         wsClientRef.current.disconnect();
         wsClientRef.current = null;
         setIsConnected(false);
@@ -188,7 +180,6 @@ export default function DebugDialog({
     return () => {
       // 组件卸载时断开WebSocket
       if (wsClientRef.current) {
-        console.log('组件卸载，断开WebSocket连接');
         wsClientRef.current.disconnect();
         wsClientRef.current = null;
         isInitializingRef.current = false;

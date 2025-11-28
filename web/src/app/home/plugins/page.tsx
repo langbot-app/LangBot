@@ -266,7 +266,6 @@ export default function PluginConfigPage() {
           watchTask(taskId);
         })
         .catch((err) => {
-          console.log('error when install plugin:', err);
           setInstallError(err.message);
           setPluginInstallStatus(PluginInstallStatus.ERROR);
         });
@@ -278,7 +277,6 @@ export default function PluginConfigPage() {
           watchTask(taskId);
         })
         .catch((err) => {
-          console.log('error when install plugin:', err);
           setInstallError(err.message);
           setPluginInstallStatus(PluginInstallStatus.ERROR);
         });
@@ -431,7 +429,9 @@ export default function PluginConfigPage() {
 
   return (
     <div
-      className={`${styles.pageContainer} h-full flex flex-col ${isDragOver ? 'bg-blue-50' : ''}`}
+      className={`${styles.pageContainer} h-full flex flex-col ${
+        isDragOver ? 'bg-blue-50' : ''
+      }`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
