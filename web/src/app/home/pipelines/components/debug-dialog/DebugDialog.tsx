@@ -16,6 +16,7 @@ import {
 import { toast } from 'sonner';
 import AtBadge from './AtBadge';
 import { WebSocketClient } from '@/app/infra/websocket/WebSocketClient';
+import ImagePreviewDialog from './ImagePreviewDialog';
 
 interface DebugDialogProps {
   open: boolean;
@@ -43,6 +44,8 @@ export default function DebugDialog({
     Array<{ file: File; preview: string; fileKey?: string }>
   >([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string>('');
+  const [showImagePreview, setShowImagePreview] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -108,8 +111,14 @@ export default function DebugDialog({
             setIsConnected(true);
             isInitializingRef.current = false;
           })
-          .onMessage((message) => {
-            console.log('收到消息:', message);
+          .onMessage((wsMessage) => {
+            console.log('收到消息:', wsMessage);
+
+            // 将 WebSocketMessage 转换为 Message 类型
+            const message: Message = {
+              ...wsMessage,
+              message_chain: wsMessage.message_chain as MessageChainComponent[],
+            };
 
             setMessages((prevMessages) => {
               // 查找是否已存在相同ID的消息
@@ -392,8 +401,8 @@ export default function DebugDialog({
               alt="Image"
               className="max-w-full max-h-96 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
               onClick={() => {
-                // 点击图片放大预览
-                window.open(imageUrl, '_blank');
+                setPreviewImageUrl(imageUrl);
+                setShowImagePreview(true);
               }}
             />
           </div>
@@ -640,16 +649,30 @@ export default function DebugDialog({
   // 如果是嵌入模式，直接返回内容
   if (isEmbedded) {
     return (
-      <div className="flex flex-col h-full min-h-0">
-        <div className="flex-1 min-h-0 flex flex-col">{renderContent()}</div>
-      </div>
+      <>
+        <div className="flex flex-col h-full min-h-0">
+          <div className="flex-1 min-h-0 flex flex-col">{renderContent()}</div>
+        </div>
+        <ImagePreviewDialog
+          open={showImagePreview}
+          imageUrl={previewImageUrl}
+          onClose={() => setShowImagePreview(false)}
+        />
+      </>
     );
   }
 
   // 原有的Dialog包装
   return (
-    <DialogContent className="!max-w-[70vw] max-w-6xl h-[70vh] p-6 flex flex-col rounded-2xl shadow-2xl bg-white dark:bg-black">
-      {renderContent()}
-    </DialogContent>
+    <>
+      <DialogContent className="!max-w-[70vw] max-w-6xl h-[70vh] p-6 flex flex-col rounded-2xl shadow-2xl bg-white dark:bg-black">
+        {renderContent()}
+      </DialogContent>
+      <ImagePreviewDialog
+        open={showImagePreview}
+        imageUrl={previewImageUrl}
+        onClose={() => setShowImagePreview(false)}
+      />
+    </>
   );
 }

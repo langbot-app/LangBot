@@ -64,8 +64,8 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                     )
                 )
 
-                logger.info(
-                    f'WebSocket连接建立: {connection.connection_id} '
+                logger.debug(
+                    f'WebSocket connection established: {connection.connection_id} '
                     f'(pipeline={pipeline_uuid}, session_type={session_type})'
                 )
 
@@ -77,14 +77,14 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                 try:
                     await asyncio.gather(receive_task, send_task)
                 except Exception as e:
-                    logger.error(f'WebSocket任务执行出错: {e}')
+                    logger.error(f'WebSocket task execution error: {e}')
                 finally:
                     # 清理连接
                     await ws_connection_manager.remove_connection(connection.connection_id)
-                    logger.info(f'WebSocket连接已清理: {connection.connection_id}')
+                    logger.debug(f'WebSocket connection cleaned: {connection.connection_id}')
 
             except Exception as e:
-                logger.error(f'WebSocket连接错误: {e}', exc_info=True)
+                logger.error(f'WebSocket connection error: {e}', exc_info=True)
                 try:
                     await quart.websocket.send(json.dumps({'type': 'error', 'message': str(e)}))
                 except:
@@ -207,18 +207,18 @@ class WebSocketChatRouterGroup(group.RouterGroup):
 
                     elif message_type == 'disconnect':
                         # 客户端主动断开
-                        logger.info(f'客户端主动断开: {connection.connection_id}')
+                        logger.debug(f'Client disconnected: {connection.connection_id}')
                         break
 
                     else:
-                        logger.warning(f'未知消息类型: {message_type}')
+                        logger.warning(f'Unknown message type: {message_type}')
 
                 except json.JSONDecodeError:
-                    logger.error(f'无效的JSON消息: {message}')
+                    logger.error(f'Invalid JSON message: {message}')
                     await connection.send_queue.put({'type': 'error', 'message': 'Invalid JSON format'})
 
         except Exception as e:
-            logger.error(f'接收消息错误: {e}', exc_info=True)
+            logger.error(f'Receive message error: {e}', exc_info=True)
         finally:
             connection.is_active = False
 
@@ -238,6 +238,6 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                     continue
 
         except Exception as e:
-            logger.error(f'发送消息错误: {e}', exc_info=True)
+            logger.error(f'Send message error: {e}', exc_info=True)
         finally:
             connection.is_active = False

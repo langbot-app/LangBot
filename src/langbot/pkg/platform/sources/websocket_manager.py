@@ -88,8 +88,8 @@ class WebSocketConnectionManager:
                 self.session_connections[session_type] = set()
             self.session_connections[session_type].add(connection.connection_id)
 
-            logger.info(
-                f'WebSocket连接已建立: {connection.connection_id} '
+            logger.debug(
+                f'WebSocket connection established: {connection.connection_id} '
                 f'(pipeline={pipeline_uuid}, session_type={session_type})'
             )
 
@@ -118,7 +118,7 @@ class WebSocketConnectionManager:
 
             del self.connections[connection_id]
 
-            logger.info(f'WebSocket连接已断开: {connection_id}')
+            logger.debug(f'WebSocket connection disconnected: {connection_id}')
 
     async def get_connection(self, connection_id: str) -> typing.Optional[WebSocketConnection]:
         """获取指定连接"""
@@ -147,14 +147,14 @@ class WebSocketConnectionManager:
         """向指定连接发送消息"""
         connection = await self.get_connection(connection_id)
         if not connection or not connection.is_active:
-            logger.warning(f'尝试向无效连接发送消息: {connection_id}')
+            logger.warning(f'Attempt to send message to invalid connection: {connection_id}')
             return
 
         try:
             await connection.send_queue.put(message)
             connection.last_active = datetime.now()
         except Exception as e:
-            logger.error(f'向连接{connection_id}发送消息失败: {e}')
+            logger.error(f'Failed to send message to connection {connection_id}: {e}')
             await self.remove_connection(connection_id)
 
     async def update_activity(self, connection_id: str):
