@@ -88,7 +88,8 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                         if msg.base64.startswith('data:'):
                             msg.base64 = msg.base64.split(',', 1)[1]
                         image_bytes = base64.b64decode(msg.base64)
-                    except Exception:
+                    except Exception as e:
+                        print(f'Failed to decode base64 image: {e}')
                         traceback.print_exc()
                         continue
                 elif msg.url:
@@ -98,20 +99,23 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                                 if response.status == 200:
                                     image_bytes = await response.read()
                                 else:
-                                    traceback.print_exc()
+                                    print(f'Failed to download image from {msg.url}: HTTP {response.status}')
                                     continue
-                    except Exception:
+                    except Exception as e:
+                        print(f'Failed to download image from {msg.url}: {e}')
                         traceback.print_exc()
                         continue
                 elif msg.path:
                     try:
                         with open(msg.path, 'rb') as f:
                             image_bytes = f.read()
-                    except Exception:
+                    except Exception as e:
+                        print(f'Failed to read image from path {msg.path}: {e}')
                         traceback.print_exc()
                         continue
 
                 if image_bytes is None:
+                    print(f'No image data available for Image message (url={msg.url}, base64={bool(msg.base64)}, path={msg.path})')
                     continue
 
                 try:
@@ -137,6 +141,9 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                         response = await api_client.im.v1.image.acreate(request)
 
                         if not response.success():
+                            print(
+                                f'client.im.v1.image.create failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}'
+                            )
                             raise Exception(
                                 f'client.im.v1.image.create failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
                             )
@@ -155,7 +162,8 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                             ]
                         )
                         pending_paragraph = []
-                except Exception:
+                except Exception as e:
+                    print(f'Failed to upload image to Lark: {e}')
                     traceback.print_exc()
                     continue
                 finally:
