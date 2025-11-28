@@ -307,14 +307,14 @@ export default function DebugDialog({
 
       const messageChain = [];
 
-      // 添加引用消息（如果有）
+      // 添加引用消息(如果有)
       if (quotedMessage) {
         // 获取被引用消息的Source组件以获取message_id
         const sourceComponent = quotedMessage.message_chain.find(
           (c) => c.type === 'Source',
-        );
+        ) as Source | undefined;
         const messageId = sourceComponent
-          ? (sourceComponent as any).id
+          ? sourceComponent.id
           : quotedMessage.id;
 
         messageChain.push({
@@ -625,7 +625,12 @@ export default function DebugDialog({
                   onMouseEnter={() => setHoveredMessageId(message.id)}
                   onMouseLeave={() => setHoveredMessageId(null)}
                 >
-                  <div className="relative">
+                  <div
+                    className={cn(
+                      'relative flex items-end gap-2',
+                      message.role === 'user' ? 'flex-row-reverse' : 'flex-row',
+                    )}
+                  >
                     <div
                       className={cn(
                         'max-w-md px-5 py-3 rounded-2xl',
@@ -657,7 +662,7 @@ export default function DebugDialog({
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="absolute -bottom-8 right-0 h-6 px-2 text-xs opacity-0 group-hover:opacity-100 transition-opacity bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
+                        className="h-6 px-2 text-xs opacity-0 group-hover:opacity-100 transition-opacity bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 whitespace-nowrap"
                         onClick={() => setQuotedMessage(message)}
                       >
                         <svg
