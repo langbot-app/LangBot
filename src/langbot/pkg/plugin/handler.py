@@ -708,7 +708,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 'command_context': command_context,
                 'include_plugins': include_plugins,
             },
-            timeout=60,
+            timeout=180,
         )
 
         async for ret in gen:
