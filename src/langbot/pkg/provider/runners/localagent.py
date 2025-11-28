@@ -123,6 +123,10 @@ class LocalAgentRunner(runner.RequestRunner):
 
         use_llm_model = await self.ap.model_mgr.get_model_by_uuid(query.use_llm_model_uuid)
 
+        self.ap.logger.debug(
+            f'localagent req: query={query.query_id} req_messages={req_messages} use_llm_model={query.use_llm_model_uuid}'
+        )
+
         if not is_stream:
             # 非流式输出，直接请求
 
@@ -234,6 +238,10 @@ class LocalAgentRunner(runner.RequestRunner):
                     yield err_msg
 
                     req_messages.append(err_msg)
+
+            self.ap.logger.debug(
+                f'localagent req: query={query.query_id} req_messages={req_messages} use_llm_model={query.use_llm_model_uuid}'
+            )
 
             if is_stream:
                 tool_calls_map = {}
