@@ -374,7 +374,7 @@ class PluginRuntimeConnector:
 
         # Pass include_plugins to runtime for filtering
         event_ctx_result = await self.handler.emit_event(
-            event_ctx.model_dump(serialize_as_any=False), include_plugins=bound_plugins
+            event_ctx.model_dump(), include_plugins=bound_plugins
         )
 
         event_ctx = context.EventContext.model_validate(event_ctx_result['event_context'])
