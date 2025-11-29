@@ -2,6 +2,12 @@
 Unit tests for SeekDB vector database adapter.
 
 Tests the SeekDB integration with LangBot's knowledge base system.
+
+Note: These tests use a test adapter that mirrors the SeekDBVectorDatabase
+implementation. This is necessary because LangBot's module structure has
+circular imports that prevent direct import of the real adapter in test
+context. The test adapter implementation is kept in sync with the real
+adapter to ensure test accuracy.
 """
 
 import asyncio
@@ -34,7 +40,12 @@ class MockApplication:
 
 
 class SeekDBTestAdapter:
-    """Test adapter that mirrors SeekDBVectorDatabase implementation."""
+    """Test adapter that mirrors SeekDBVectorDatabase implementation.
+
+    This adapter replicates the logic from langbot.pkg.vector.vdbs.seekdb.SeekDBVectorDatabase
+    to enable testing without triggering LangBot's circular import chain.
+    Any changes to the real adapter should be reflected here to maintain test accuracy.
+    """
 
     def __init__(self, ap):
         self.ap = ap
@@ -47,11 +58,14 @@ class SeekDBTestAdapter:
             database = config.get('database', 'langbot')
 
             # Create database if it doesn't exist
+            # Note: create_database is idempotent in SeekDB, but we wrap in try/except
+            # as a safety net for any unexpected filesystem or permission errors
             temp_client = pyseekdb.Client(path=path)
             if hasattr(temp_client, '_server') and hasattr(temp_client._server, 'create_database'):
                 try:
                     temp_client._server.create_database(database)
                 except Exception:
+                    # Database creation may fail for various reasons
                     pass
 
             self.client = pyseekdb.Client(path=path, database=database)

@@ -42,11 +42,14 @@ class SeekDBVectorDatabase(VectorDatabase):
             # First create client without specifying database to ensure database exists
             temp_client = pyseekdb.Client(path=path)
             # Create the database if it doesn't exist
+            # Note: create_database is idempotent in SeekDB, but we wrap in try/except
+            # as a safety net for any unexpected filesystem or permission errors
             if hasattr(temp_client, '_server') and hasattr(temp_client._server, 'create_database'):
                 try:
                     temp_client._server.create_database(database)
                 except Exception:
-                    # Database may already exist, which is fine
+                    # Database creation may fail for various reasons (e.g., permissions)
+                    # but it's often because it already exists, which is fine
                     pass
 
             # Now create the actual client with the specified database
