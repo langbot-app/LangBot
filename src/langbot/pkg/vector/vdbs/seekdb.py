@@ -38,6 +38,18 @@ class SeekDBVectorDatabase(VectorDatabase):
             # Embedded mode: local database
             path = config.get('path', './data/seekdb')
             database = config.get('database', 'langbot')
+
+            # First create client without specifying database to ensure database exists
+            temp_client = pyseekdb.Client(path=path)
+            # Create the database if it doesn't exist
+            if hasattr(temp_client, '_server') and hasattr(temp_client._server, 'create_database'):
+                try:
+                    temp_client._server.create_database(database)
+                except Exception:
+                    # Database may already exist, which is fine
+                    pass
+
+            # Now create the actual client with the specified database
             self.client = pyseekdb.Client(path=path, database=database)
             self.ap.logger.info(f"Initialized SeekDB in embedded mode at '{path}', database '{database}'")
         elif mode == 'server':
