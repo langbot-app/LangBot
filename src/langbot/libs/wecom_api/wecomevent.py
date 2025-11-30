@@ -37,7 +37,7 @@ class WecomEvent(dict):
         return self.get('MsgType', '')
 
     @property
-    def picurl(self) -> str:
+    def picurl(self) -> str | None:
         """
         图片链接
         """

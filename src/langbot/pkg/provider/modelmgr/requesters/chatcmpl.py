@@ -78,7 +78,7 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
     async def _process_thinking_content(
         self,
         content: str,
-        reasoning_content: str = None,
+        reasoning_content: str | None = None,
         remove_think: bool = False,
     ) -> tuple[str, str]:
         """处理思维链内容
@@ -126,7 +126,7 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
         query: pipeline_query.Query,
         req_messages: list[dict],
         use_model: requester.RuntimeLLMModel,
-        use_funcs: list[resource_tool.LLMTool] = None,
+        use_funcs: list[resource_tool.LLMTool] | None = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
     ) -> provider_message.MessageChunk:
@@ -247,7 +247,7 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
         query: pipeline_query.Query,
         req_messages: list[dict],
         use_model: requester.RuntimeLLMModel,
-        use_funcs: list[resource_tool.LLMTool] = None,
+        use_funcs: list[resource_tool.LLMTool] | None = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
     ) -> provider_message.Message:

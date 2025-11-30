@@ -180,7 +180,7 @@ class RuntimeConnectionHandler(handler.Handler):
 
             query = self.ap.query_pool.cached_queries[query_id]
 
-            query.variables[key] = value
+            query.set_variable(key, value)
 
             return handler.ActionResponse.success(
                 data={},

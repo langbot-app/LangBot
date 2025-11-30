@@ -14,7 +14,7 @@ def get_platform() -> str:
     return sys.platform
 
 
-standalone_runtime = False
+standalone_runtime: bool = False
 
 
 def use_websocket_to_connect_plugin_runtime() -> bool:

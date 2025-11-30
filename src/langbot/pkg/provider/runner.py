@@ -23,7 +23,7 @@ def runner_class(name: str):
 class RequestRunner(abc.ABC):
     """请求运行器"""
 
-    name: str = None
+    name: str | None = None
 
     ap: app.Application
 

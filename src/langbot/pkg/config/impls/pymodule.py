@@ -9,10 +9,10 @@ from .. import model as file_model
 class PythonModuleConfigFile(file_model.ConfigFile):
     """Python module config file"""
 
-    config_file_name: str = None
+    config_file_name: str | None = None
     """Config file name"""
 
-    template_file_name: str = None
+    template_file_name: str | None = None
     """Template file name"""
 
     def __init__(self, config_file_name: str, template_file_name: str) -> None:

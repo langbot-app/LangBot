@@ -37,7 +37,7 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
         launcher_id: typing.Union[int, str],
     ) -> bool:
         # 加锁，找容器
-        container: SessionContainer = None
+        container: SessionContainer | None = None
 
         session_name = f'{launcher_type}_{launcher_id}'
 

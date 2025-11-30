@@ -112,7 +112,7 @@ class Component(pydantic.BaseModel):
     _spec: typing.Dict[str, typing.Any]
     """组件规格"""
 
-    _execution: Execution
+    _execution: Execution | None
     """组件执行"""
 
     def __init__(self, owner: str, manifest: typing.Dict[str, typing.Any], rel_path: str):

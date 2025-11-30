@@ -65,7 +65,7 @@ class WebSocketConnectionManager:
         websocket: typing.Any,
         pipeline_uuid: str,
         session_type: str,
-        metadata: dict = None,
+        metadata: dict | None = None,
     ) -> WebSocketConnection:
         """添加新的WebSocket连接"""
         async with self._lock:

@@ -26,7 +26,7 @@ def loader_class(name: str):
 class ToolLoader(abc.ABC):
     """工具加载器"""
 
-    name: str = None
+    name: str | None = None
 
     ap: app.Application
 

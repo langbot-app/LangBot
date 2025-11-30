@@ -4,13 +4,13 @@ import abc
 class ConfigFile(metaclass=abc.ABCMeta):
     """Config file abstract class"""
 
-    config_file_name: str = None
+    config_file_name: str | None = None
     """Config file name"""
 
-    template_file_name: str = None
+    template_file_name: str | None = None
     """Template file name"""
 
-    template_data: dict = None
+    template_data: dict | None = None
     """Template data"""
 
     @abc.abstractmethod

@@ -16,7 +16,7 @@ log_colors_config = {
 }
 
 
-async def init_logging(extra_handlers: list[logging.Handler] = None) -> logging.Logger:
+async def init_logging(extra_handlers: list[logging.Handler] | None = None) -> logging.Logger:
     # Remove all existing loggers
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)

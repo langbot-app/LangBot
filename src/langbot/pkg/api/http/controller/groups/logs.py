@@ -10,7 +10,7 @@ from .. import group
 class LogsRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
-        async def _() -> str:
+        async def _():
             start_page_number = int(quart.request.args.get('start_page_number', 0))
             start_offset = int(quart.request.args.get('start_offset', 0))
 

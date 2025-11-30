@@ -7,7 +7,7 @@ from ... import group
 class BotsRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('', methods=['GET', 'POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _() -> str:
+        async def _():
             if quart.request.method == 'GET':
                 return self.success(data={'bots': await self.ap.bot_service.get_bots()})
             elif quart.request.method == 'POST':
@@ -16,7 +16,7 @@ class BotsRouterGroup(group.RouterGroup):
                 return self.success(data={'uuid': bot_uuid})
 
         @self.route('/<bot_uuid>', methods=['GET', 'PUT', 'DELETE'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _(bot_uuid: str) -> str:
+        async def _():
             if quart.request.method == 'GET':
                 bot = await self.ap.bot_service.get_bot(bot_uuid)
                 if bot is None:
@@ -31,7 +31,7 @@ class BotsRouterGroup(group.RouterGroup):
                 return self.success()
 
         @self.route('/<bot_uuid>/logs', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _(bot_uuid: str) -> str:
+        async def _():
             json_data = await quart.request.json
             from_index = json_data.get('from_index', -1)
             max_count = json_data.get('max_count', 10)
@@ -44,7 +44,7 @@ class BotsRouterGroup(group.RouterGroup):
             )
 
         @self.route('/<bot_uuid>/send_message', methods=['POST'], auth_type=group.AuthType.API_KEY)
-        async def _(bot_uuid: str) -> str:
+        async def _():
             """Send message to a specific target via bot"""
             json_data = await quart.request.json
             target_type = json_data.get('target_type')

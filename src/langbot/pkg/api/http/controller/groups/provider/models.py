@@ -7,7 +7,7 @@ from ... import group
 class LLMModelsRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('', methods=['GET', 'POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _() -> str:
+        async def _():
             if quart.request.method == 'GET':
                 return self.success(data={'models': await self.ap.llm_model_service.get_llm_models()})
             elif quart.request.method == 'POST':
@@ -18,7 +18,7 @@ class LLMModelsRouterGroup(group.RouterGroup):
                 return self.success(data={'uuid': model_uuid})
 
         @self.route('/<model_uuid>', methods=['GET', 'PUT', 'DELETE'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _(model_uuid: str) -> str:
+        async def _(model_uuid: str):
             if quart.request.method == 'GET':
                 model = await self.ap.llm_model_service.get_llm_model(model_uuid)
 
@@ -38,7 +38,7 @@ class LLMModelsRouterGroup(group.RouterGroup):
                 return self.success()
 
         @self.route('/<model_uuid>/test', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _(model_uuid: str) -> str:
+        async def _(model_uuid: str):
             json_data = await quart.request.json
 
             await self.ap.llm_model_service.test_llm_model(model_uuid, json_data)
@@ -50,7 +50,7 @@ class LLMModelsRouterGroup(group.RouterGroup):
 class EmbeddingModelsRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('', methods=['GET', 'POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _() -> str:
+        async def _():
             if quart.request.method == 'GET':
                 return self.success(data={'models': await self.ap.embedding_models_service.get_embedding_models()})
             elif quart.request.method == 'POST':
@@ -61,7 +61,7 @@ class EmbeddingModelsRouterGroup(group.RouterGroup):
                 return self.success(data={'uuid': model_uuid})
 
         @self.route('/<model_uuid>', methods=['GET', 'PUT', 'DELETE'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _(model_uuid: str) -> str:
+        async def _(model_uuid: str):
             if quart.request.method == 'GET':
                 model = await self.ap.embedding_models_service.get_embedding_model(model_uuid)
 
@@ -81,7 +81,7 @@ class EmbeddingModelsRouterGroup(group.RouterGroup):
                 return self.success()
 
         @self.route('/<model_uuid>/test', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _(model_uuid: str) -> str:
+        async def _(model_uuid: str):
             json_data = await quart.request.json
 
             await self.ap.embedding_models_service.test_embedding_model(model_uuid, json_data)

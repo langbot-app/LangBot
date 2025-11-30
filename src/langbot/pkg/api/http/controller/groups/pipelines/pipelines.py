@@ -9,7 +9,7 @@ from ... import group
 class PipelinesRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('', methods=['GET', 'POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _() -> str:
+        async def _():
             if quart.request.method == 'GET':
                 sort_by = quart.request.args.get('sort_by', 'created_at')
                 sort_order = quart.request.args.get('sort_order', 'DESC')
@@ -24,13 +24,13 @@ class PipelinesRouterGroup(group.RouterGroup):
                 return self.success(data={'uuid': pipeline_uuid})
 
         @self.route('/_/metadata', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _() -> str:
+        async def _():
             return self.success(data={'configs': await self.ap.pipeline_service.get_pipeline_metadata()})
 
         @self.route(
             '/<pipeline_uuid>', methods=['GET', 'PUT', 'DELETE'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
         )
-        async def _(pipeline_uuid: str) -> str:
+        async def _(pipeline_uuid: str):
             if quart.request.method == 'GET':
                 pipeline = await self.ap.pipeline_service.get_pipeline(pipeline_uuid)
 
@@ -52,7 +52,7 @@ class PipelinesRouterGroup(group.RouterGroup):
         @self.route(
             '/<pipeline_uuid>/extensions', methods=['GET', 'PUT'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
         )
-        async def _(pipeline_uuid: str) -> str:
+        async def _(pipeline_uuid: str):
             if quart.request.method == 'GET':
                 # Get current extensions and available plugins
                 pipeline = await self.ap.pipeline_service.get_pipeline(pipeline_uuid)

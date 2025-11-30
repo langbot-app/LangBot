@@ -39,98 +39,98 @@ from ..vector import mgr as vectordb_mgr
 class Application:
     """Runtime application object and context"""
 
-    event_loop: asyncio.AbstractEventLoop = None
+    event_loop: asyncio.AbstractEventLoop | None = None
 
     # asyncio_tasks: list[asyncio.Task] = []
-    task_mgr: taskmgr.AsyncTaskManager = None
+    task_mgr: taskmgr.AsyncTaskManager | None = None
 
-    discover: discover_engine.ComponentDiscoveryEngine = None
+    discover: discover_engine.ComponentDiscoveryEngine | None = None
 
-    platform_mgr: im_mgr.PlatformManager = None
+    platform_mgr: im_mgr.PlatformManager | None = None
 
-    webhook_pusher: WebhookPusher = None
+    webhook_pusher: WebhookPusher | None = None
 
-    cmd_mgr: cmdmgr.CommandManager = None
+    cmd_mgr: cmdmgr.CommandManager | None = None
 
-    sess_mgr: llm_session_mgr.SessionManager = None
+    sess_mgr: llm_session_mgr.SessionManager | None = None
 
-    model_mgr: llm_model_mgr.ModelManager = None
+    model_mgr: llm_model_mgr.ModelManager | None = None
 
-    rag_mgr: rag_mgr.RAGManager = None
+    rag_mgr: rag_mgr.RAGManager | None = None
 
     # TODO move to pipeline
-    tool_mgr: llm_tool_mgr.ToolManager = None
+    tool_mgr: llm_tool_mgr.ToolManager | None = None
 
     # ======= Config manager =======
 
-    command_cfg: config_mgr.ConfigManager = None  # deprecated
+    command_cfg: config_mgr.ConfigManager | None = None  # deprecated
 
-    pipeline_cfg: config_mgr.ConfigManager = None  # deprecated
+    pipeline_cfg: config_mgr.ConfigManager | None = None  # deprecated
 
-    platform_cfg: config_mgr.ConfigManager = None  # deprecated
+    platform_cfg: config_mgr.ConfigManager | None = None  # deprecated
 
-    provider_cfg: config_mgr.ConfigManager = None  # deprecated
+    provider_cfg: config_mgr.ConfigManager | None = None  # deprecated
 
-    system_cfg: config_mgr.ConfigManager = None  # deprecated
+    system_cfg: config_mgr.ConfigManager | None = None  # deprecated
 
-    instance_config: config_mgr.ConfigManager = None
+    instance_config: config_mgr.ConfigManager | None = None
 
     # ======= Metadata config manager =======
 
-    sensitive_meta: config_mgr.ConfigManager = None
+    sensitive_meta: config_mgr.ConfigManager | None = None
 
-    pipeline_config_meta_trigger: config_mgr.ConfigManager = None
-    pipeline_config_meta_safety: config_mgr.ConfigManager = None
-    pipeline_config_meta_ai: config_mgr.ConfigManager = None
-    pipeline_config_meta_output: config_mgr.ConfigManager = None
+    pipeline_config_meta_trigger: dict | None = None
+    pipeline_config_meta_safety: dict | None = None
+    pipeline_config_meta_ai: dict | None = None
+    pipeline_config_meta_output: dict | None = None
 
     # =========================
 
-    plugin_connector: plugin_connector.PluginRuntimeConnector = None
+    plugin_connector: plugin_connector.PluginRuntimeConnector | None = None
 
-    query_pool: pool.QueryPool = None
+    query_pool: pool.QueryPool | None = None
 
-    ctrl: controller.Controller = None
+    ctrl: controller.Controller | None = None
 
-    pipeline_mgr: pipelinemgr.PipelineManager = None
+    pipeline_mgr: pipelinemgr.PipelineManager | None = None
 
-    ver_mgr: version_mgr.VersionManager = None
+    ver_mgr: version_mgr.VersionManager | None = None
 
-    proxy_mgr: proxy_mgr.ProxyManager = None
+    proxy_mgr: proxy_mgr.ProxyManager | None = None
 
-    logger: logging.Logger = None
+    logger: logging.Logger | None = None
 
-    persistence_mgr: persistencemgr.PersistenceManager = None
+    persistence_mgr: persistencemgr.PersistenceManager | None = None
 
-    vector_db_mgr: vectordb_mgr.VectorDBManager = None
+    vector_db_mgr: vectordb_mgr.VectorDBManager | None = None
 
-    http_ctrl: http_controller.HTTPController = None
+    http_ctrl: http_controller.HTTPController | None = None
 
-    log_cache: logcache.LogCache = None
+    log_cache: logcache.LogCache | None = None
 
-    storage_mgr: storagemgr.StorageMgr = None
+    storage_mgr: storagemgr.StorageMgr | None = None
 
     # ========= HTTP Services =========
 
-    user_service: user_service.UserService = None
+    user_service: user_service.UserService | None = None
 
-    llm_model_service: model_service.LLMModelsService = None
+    llm_model_service: model_service.LLMModelsService | None = None
 
-    embedding_models_service: model_service.EmbeddingModelsService = None
+    embedding_models_service: model_service.EmbeddingModelsService | None = None
 
-    pipeline_service: pipeline_service.PipelineService = None
+    pipeline_service: pipeline_service.PipelineService | None = None
 
-    bot_service: bot_service.BotService = None
+    bot_service: bot_service.BotService | None = None
 
-    knowledge_service: knowledge_service.KnowledgeService = None
+    knowledge_service: knowledge_service.KnowledgeService | None = None
 
-    external_kb_service: external_kb_service.ExternalKBService = None
+    external_kb_service: external_kb_service.ExternalKBService | None = None
 
-    mcp_service: mcp_service.MCPService = None
+    mcp_service: mcp_service.MCPService | None = None
 
-    apikey_service: apikey_service.ApiKeyService = None
+    apikey_service: apikey_service.ApiKeyService | None = None
 
-    webhook_service: webhook_service.WebhookService = None
+    webhook_service: webhook_service.WebhookService | None = None
 
     def __init__(self):
         pass

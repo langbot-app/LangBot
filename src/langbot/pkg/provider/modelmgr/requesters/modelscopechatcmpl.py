@@ -127,7 +127,7 @@ class ModelScopeChatCompletions(requester.ProviderAPIRequester):
         query: pipeline_query.Query,
         req_messages: list[dict],
         use_model: requester.RuntimeLLMModel,
-        use_funcs: list[resource_tool.LLMTool] = None,
+        use_funcs: list[resource_tool.LLMTool] | None = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
     ) -> provider_message.Message:
@@ -177,7 +177,7 @@ class ModelScopeChatCompletions(requester.ProviderAPIRequester):
         query: pipeline_query.Query,
         req_messages: list[dict],
         use_model: requester.RuntimeLLMModel,
-        use_funcs: list[resource_tool.LLMTool] = None,
+        use_funcs: list[resource_tool.LLMTool] | None = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
     ) -> provider_message.Message | typing.AsyncGenerator[provider_message.MessageChunk, None]:

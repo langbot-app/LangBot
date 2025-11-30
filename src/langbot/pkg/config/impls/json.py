@@ -11,8 +11,8 @@ class JSONConfigFile(file_model.ConfigFile):
     def __init__(
         self,
         config_file_name: str,
-        template_resource_name: str = None,
-        template_data: dict = None,
+        template_resource_name: str | None = None,
+        template_data: dict | None = None,
     ) -> None:
         self.config_file_name = config_file_name
         self.template_resource_name = template_resource_name

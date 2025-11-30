@@ -21,7 +21,7 @@ def algo_class(name: str):
 class ReteLimitAlgo(metaclass=abc.ABCMeta):
     """限流算法抽象类"""
 
-    name: str = None
+    name: str | None = None
 
     ap: app.Application
 

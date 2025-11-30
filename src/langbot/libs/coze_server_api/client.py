@@ -158,6 +158,8 @@ class AsyncCozeAPIClient:
                 if response.status != 200:
                     raise Exception(f'Coze API 流式请求失败，状态码: {response.status}')
 
+                chunk_type = ''
+                chunk_data = ''
                 async for chunk in response.content:
                     chunk = chunk.decode('utf-8')
                     if chunk != '\n':

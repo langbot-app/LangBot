@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 import sqlalchemy
 
 from ....core import app
@@ -47,7 +48,12 @@ class WebhookService:
         return self.ap.persistence_mgr.serialize_model(webhook.Webhook, wh)
 
     async def update_webhook(
-        self, webhook_id: int, name: str = None, url: str = None, description: str = None, enabled: bool = None
+        self,
+        webhook_id: int,
+        name: str | None = None,
+        url: str | None = None,
+        description: str | None = None,
+        enabled: bool | None = None,
     ) -> None:
         """Update a webhook's metadata"""
         update_data = {}

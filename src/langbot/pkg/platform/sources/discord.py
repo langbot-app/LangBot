@@ -26,7 +26,7 @@ from ..logger import EventLogger
 class VoiceConnectionError(Exception):
     """语音连接基础异常"""
 
-    def __init__(self, message: str, error_code: str = None, guild_id: int = None):
+    def __init__(self, message: str, error_code: str | None = None, guild_id: int | None = None):
         super().__init__(message)
         self.error_code = error_code
         self.guild_id = guild_id
@@ -36,7 +36,13 @@ class VoiceConnectionError(Exception):
 class VoicePermissionError(VoiceConnectionError):
     """语音权限异常"""
 
-    def __init__(self, message: str, missing_permissions: list = None, user_id: int = None, channel_id: int = None):
+    def __init__(
+        self,
+        message: str,
+        missing_permissions: list | None = None,
+        user_id: int | None = None,
+        channel_id: int | None = None,
+    ):
         super().__init__(message, 'PERMISSION_ERROR')
         self.missing_permissions = missing_permissions or []
         self.user_id = user_id
@@ -75,7 +81,7 @@ class VoiceConnectionInfo:
     @since: 2025-07-04
     """
 
-    def __init__(self, guild_id: int, channel_id: int, channel_name: str = None):
+    def __init__(self, guild_id: int, channel_id: int, channel_name: str | None = None):
         """
         初始化语音连接信息
 
@@ -171,7 +177,9 @@ class VoiceConnectionManager:
         self._cleanup_task = None
         self._monitoring_enabled = True
 
-    async def join_voice_channel(self, guild_id: int, channel_id: int, user_id: int = None) -> discord.VoiceClient:
+    async def join_voice_channel(
+        self, guild_id: int, channel_id: int, user_id: int | None = None
+    ) -> discord.VoiceClient:
         """
         加入语音频道
 
@@ -798,7 +806,7 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         listeners = {}
 
         # 初始化语音连接管理器
-        # self.voice_manager: VoiceConnectionManager = None
+        # self.voice_manager: VoiceConnectionManager | None = None
 
         adapter_self = self
 
@@ -831,7 +839,9 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         )
 
     # Voice functionality methods
-    async def join_voice_channel(self, guild_id: int, channel_id: int, user_id: int = None) -> discord.VoiceClient:
+    async def join_voice_channel(
+        self, guild_id: int, channel_id: int, user_id: int | None = None
+    ) -> discord.VoiceClient:
         """
         加入语音频道
 

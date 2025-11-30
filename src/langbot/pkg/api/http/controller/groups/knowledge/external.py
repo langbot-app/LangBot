@@ -6,13 +6,13 @@ from ... import group
 class ExternalKnowledgeBaseRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('/retrievers', methods=['GET'])
-        async def list_knowledge_retrievers() -> quart.Response:
+        async def list_knowledge_retrievers():
             """List all available knowledge retrievers from plugins."""
             retrievers = await self.ap.plugin_connector.list_knowledge_retrievers()
             return self.success(data={'retrievers': retrievers})
 
         @self.route('', methods=['POST', 'GET'])
-        async def handle_external_knowledge_bases() -> quart.Response:
+        async def handle_external_knowledge_bases():
             if quart.request.method == 'GET':
                 external_kbs = await self.ap.external_kb_service.get_external_knowledge_bases()
                 return self.success(data={'bases': external_kbs})
@@ -28,7 +28,7 @@ class ExternalKnowledgeBaseRouterGroup(group.RouterGroup):
             '/<kb_uuid>',
             methods=['GET', 'DELETE', 'PUT'],
         )
-        async def handle_specific_external_knowledge_base(kb_uuid: str) -> quart.Response:
+        async def handle_specific_external_knowledge_base(kb_uuid: str):
             if quart.request.method == 'GET':
                 external_kb = await self.ap.external_kb_service.get_external_knowledge_base(kb_uuid)
 
@@ -54,7 +54,7 @@ class ExternalKnowledgeBaseRouterGroup(group.RouterGroup):
             '/<kb_uuid>/retrieve',
             methods=['POST'],
         )
-        async def retrieve_external_knowledge_base(kb_uuid: str) -> str:
+        async def retrieve_external_knowledge_base(kb_uuid: str):
             json_data = await quart.request.json
             query = json_data.get('query')
             results = await self.ap.external_kb_service.retrieve_external_knowledge_base(kb_uuid, query)

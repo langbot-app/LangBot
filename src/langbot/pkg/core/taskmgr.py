@@ -30,7 +30,7 @@ class TaskContext:
     def trace(
         self,
         msg: str,
-        action: str = None,
+        action: str | None = None,
     ):
         if action is not None:
             self.set_current_action(action)
@@ -84,7 +84,7 @@ class TaskWrapper:
     task: asyncio.Task
     """Task"""
 
-    task_stack: list = None
+    task_stack: list | None = None
     """Task stack"""
 
     ap: app.Application
@@ -101,7 +101,7 @@ class TaskWrapper:
         kind: str = 'system_task',
         name: str = '',
         label: str = '',
-        context: TaskContext = None,
+        context: TaskContext | None = None,
         scopes: list[core_entities.LifecycleControlScope] = [core_entities.LifecycleControlScope.APPLICATION],
     ):
         self.id = TaskWrapper._id_index
@@ -184,7 +184,7 @@ class AsyncTaskManager:
         kind: str = 'system-task',
         name: str = '',
         label: str = '',
-        context: TaskContext = None,
+        context: TaskContext | None = None,
         scopes: list[core_entities.LifecycleControlScope] = [core_entities.LifecycleControlScope.APPLICATION],
     ) -> TaskWrapper:
         wrapper = TaskWrapper(self.ap, coro, task_type, kind, name, label, context, scopes)
@@ -197,7 +197,7 @@ class AsyncTaskManager:
         kind: str = 'user-task',
         name: str = '',
         label: str = '',
-        context: TaskContext = None,
+        context: TaskContext | None = None,
         scopes: list[core_entities.LifecycleControlScope] = [core_entities.LifecycleControlScope.APPLICATION],
     ) -> TaskWrapper:
         return self.create_task(coro, 'user', kind, name, label, context, scopes)
@@ -210,7 +210,7 @@ class AsyncTaskManager:
 
     def get_tasks_dict(
         self,
-        type: str = None,
+        type: str | None = None,
     ) -> dict:
         return {
             'tasks': [t.to_dict() for t in self.tasks if type is None or t.task_type == type],

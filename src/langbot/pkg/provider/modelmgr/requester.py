@@ -60,7 +60,7 @@ class RuntimeEmbeddingModel:
 class ProviderAPIRequester(metaclass=abc.ABCMeta):
     """Provider API请求器"""
 
-    name: str = None
+    name: str | None = None
 
     ap: app.Application
 

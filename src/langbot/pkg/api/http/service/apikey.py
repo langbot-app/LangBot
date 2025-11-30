@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 import secrets
 import sqlalchemy
 
@@ -63,7 +64,7 @@ class ApiKeyService:
         """Delete an API key"""
         await self.ap.persistence_mgr.execute_async(sqlalchemy.delete(apikey.ApiKey).where(apikey.ApiKey.id == key_id))
 
-    async def update_api_key(self, key_id: int, name: str = None, description: str = None) -> None:
+    async def update_api_key(self, key_id: int, name: str | None = None, description: str | None = None) -> None:
         """Update an API key's metadata (name, description)"""
         update_data = {}
         if name is not None:

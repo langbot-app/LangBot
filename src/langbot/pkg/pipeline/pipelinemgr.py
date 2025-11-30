@@ -113,8 +113,8 @@ class RuntimePipeline:
     async def run(self, query: pipeline_query.Query):
         query.pipeline_config = self.pipeline_entity.config
         # Store bound plugins and MCP servers in query for filtering
-        query.variables['_pipeline_bound_plugins'] = self.bound_plugins
-        query.variables['_pipeline_bound_mcp_servers'] = self.bound_mcp_servers
+        query.set_variable('_pipeline_bound_plugins', self.bound_plugins)
+        query.set_variable('_pipeline_bound_mcp_servers', self.bound_mcp_servers)
         await self.process_query(query)
 
     async def _check_output(self, query: pipeline_query.Query, result: pipeline_entities.StageProcessResult):

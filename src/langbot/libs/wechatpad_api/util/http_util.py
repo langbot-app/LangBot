@@ -44,10 +44,10 @@ async def async_request(
     base_url: str,
     token_key: str,
     method: str = 'POST',
-    params: dict = None,
-    # headers: dict = None,
-    data: dict = None,
-    json: dict = None,
+    params: dict | None = None,
+    # headers: dict | None = None,
+    data: dict | None = None,
+    json: dict | None = None,
 ):
     """
     通用异步请求函数

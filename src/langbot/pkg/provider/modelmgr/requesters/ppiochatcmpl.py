@@ -54,7 +54,7 @@ class PPIOChatCompletions(chatcmpl.OpenAIChatCompletions):
     async def _process_thinking_content(
         self,
         content: str,
-        reasoning_content: str = None,
+        reasoning_content: str | None = None,
         remove_think: bool = False,
     ) -> tuple[str, str]:
         """处理思维链内容
@@ -105,7 +105,7 @@ class PPIOChatCompletions(chatcmpl.OpenAIChatCompletions):
         query: pipeline_query.Query,
         req_messages: list[dict],
         use_model: requester.RuntimeLLMModel,
-        use_funcs: list[resource_tool.LLMTool] = None,
+        use_funcs: list[resource_tool.LLMTool] | None = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
     ) -> provider_message.Message | typing.AsyncGenerator[provider_message.MessageChunk, None]:

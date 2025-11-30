@@ -125,7 +125,7 @@ class PreProcessor(stage.PipelineStage):
                             if msg.base64 is not None:
                                 content_list.append(provider_message.ContentElement.from_image_base64(msg.base64))
 
-        query.variables['user_message_text'] = plain_text
+        query.set_variable('user_message_text', plain_text)
 
         query.user_message = provider_message.Message(role='user', content=content_list)
         # =========== 触发事件 PromptPreProcessing

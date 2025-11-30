@@ -199,7 +199,7 @@ class VersionManager:
 
         return 0
 
-    async def show_version_update(self) -> typing.Tuple[str, int]:
+    async def show_version_update(self) -> typing.Tuple[str, int] | None:
         try:
             if await self.ap.ver_mgr.is_new_version_available():
                 return (
@@ -209,3 +209,5 @@ class VersionManager:
 
         except Exception as e:
             return f'Error checking version update: {e}', logging.WARNING
+
+        return None
