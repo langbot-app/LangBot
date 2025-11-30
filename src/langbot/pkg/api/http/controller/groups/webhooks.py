@@ -7,7 +7,7 @@ from .. import group
 class WebhooksRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('', methods=['GET', 'POST'])
-        async def _() -> str:
+        async def _():
             if quart.request.method == 'GET':
                 webhooks = await self.ap.webhook_service.get_webhooks()
                 return self.success(data={'webhooks': webhooks})
@@ -27,7 +27,7 @@ class WebhooksRouterGroup(group.RouterGroup):
                 return self.success(data={'webhook': webhook})
 
         @self.route('/<int:webhook_id>', methods=['GET', 'PUT', 'DELETE'])
-        async def _(webhook_id: int) -> str:
+        async def _(webhook_id: int):
             if quart.request.method == 'GET':
                 webhook = await self.ap.webhook_service.get_webhook(webhook_id)
                 if webhook is None:

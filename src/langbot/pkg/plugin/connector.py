@@ -120,7 +120,7 @@ class PluginRuntimeConnector:
 
             async def make_connection_failed_callback(
                 ctrl: ws_client_controller.WebSocketClientController,
-                exc: Exception = None,
+                exc: Exception | None = None,
             ) -> None:
                 if exc is not None:
                     self.ap.logger.error(f'Failed to connect to plugin runtime({ws_url}): {exc}')
@@ -157,7 +157,7 @@ class PluginRuntimeConnector:
 
             async def make_connection_failed_callback(
                 ctrl: ws_client_controller.WebSocketClientController,
-                exc: Exception = None,
+                exc: Exception | None = None,
             ) -> None:
                 if exc is not None:
                     self.ap.logger.error(f'(windows) Failed to connect to plugin runtime({ws_url}): {exc}')

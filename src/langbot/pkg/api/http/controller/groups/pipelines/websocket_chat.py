@@ -91,7 +91,7 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                     pass
 
         @self.route('/messages/<session_type>', methods=['GET'])
-        async def get_messages(pipeline_uuid: str, session_type: str) -> str:
+        async def get_messages(pipeline_uuid: str, session_type: str):
             """获取消息历史"""
             try:
                 if session_type not in ['person', 'group']:
@@ -110,7 +110,7 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                 return self.http_status(500, -1, f'Internal server error: {str(e)}')
 
         @self.route('/reset/<session_type>', methods=['POST'])
-        async def reset_session(pipeline_uuid: str, session_type: str) -> str:
+        async def reset_session(pipeline_uuid: str, session_type: str):
             """重置会话"""
             try:
                 if session_type not in ['person', 'group']:
@@ -129,7 +129,7 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                 return self.http_status(500, -1, f'Internal server error: {str(e)}')
 
         @self.route('/connections', methods=['GET'])
-        async def get_connections(pipeline_uuid: str) -> str:
+        async def get_connections(pipeline_uuid: str):
             """获取当前连接统计"""
             try:
                 stats = ws_connection_manager.get_stats()
@@ -155,7 +155,7 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                 return self.http_status(500, -1, f'Internal server error: {str(e)}')
 
         @self.route('/broadcast', methods=['POST'])
-        async def broadcast_message(pipeline_uuid: str) -> str:
+        async def broadcast_message(pipeline_uuid: str):
             """向所有连接广播消息（后端主动推送）"""
             try:
                 data = await quart.request.get_json()

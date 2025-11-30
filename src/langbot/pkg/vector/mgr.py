@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 from ..core import app
 from .vdb import VectorDatabase
 from .vdbs.chroma import ChromaVectorDatabase
@@ -8,7 +9,7 @@ from .vdbs.qdrant import QdrantVectorDatabase
 
 class VectorDBManager:
     ap: app.Application
-    vector_db: VectorDatabase = None
+    vector_db: VectorDatabase | None = None
 
     def __init__(self, ap: app.Application):
         self.ap = ap

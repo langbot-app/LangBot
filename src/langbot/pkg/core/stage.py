@@ -24,7 +24,7 @@ def stage_class(name: str):
 class BootingStage(abc.ABC):
     """Booting stage"""
 
-    name: str = None
+    name: str | None = None
 
     @abc.abstractmethod
     async def run(self, ap: app.Application):

@@ -48,6 +48,8 @@ class SlackEvent(dict):
 
             return message_text
 
+        return ''
+
     @property
     def user_id(self) -> Optional[str]:
         return self.get('event', {}).get('user', '')
@@ -66,7 +68,7 @@ class SlackEvent(dict):
         return self.get('event_id', '')
 
     @property
-    def pic_url(self) -> str:
+    def pic_url(self) -> str | None:
         """提取 Slack 事件中的图片 URL"""
         files = self.get('event', {}).get('files', [])
         if files:

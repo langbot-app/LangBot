@@ -76,8 +76,8 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
         return msg_list, msg_id, msg_time
 
     @staticmethod
-    async def target2yiri(message: str, message_id: int = -1, bot: aiocqhttp.CQHttp = None):
-        message = aiocqhttp.Message(message)
+    async def target2yiri(message: str, message_id: int = -1, bot: aiocqhttp.CQHttp | None = None):
+        parsed_message = aiocqhttp.Message(message)
 
         def get_face_name(face_id):
             face_code_dict = {
@@ -228,7 +228,7 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
 
         yiri_msg_list.append(platform_message.Source(id=message_id, time=datetime.datetime.now()))
 
-        for msg in message:
+        for msg in parsed_message:
             reply_list = []
             if msg.type == 'at':
                 if msg.data['qq'] == 'all':

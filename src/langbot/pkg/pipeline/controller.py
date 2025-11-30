@@ -14,7 +14,7 @@ class Controller:
 
     ap: app.Application
 
-    semaphore: asyncio.Semaphore = None
+    semaphore: asyncio.Semaphore | None = None
     """请求并发控制信号量"""
 
     def __init__(self, ap: app.Application):
@@ -25,7 +25,7 @@ class Controller:
         """事件处理循环"""
         try:
             while True:
-                selected_query: pipeline_query.Query = None
+                selected_query: pipeline_query.Query | None = None
 
                 # 取请求
                 async with self.ap.query_pool:

@@ -60,7 +60,9 @@ class ContentFilter(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    async def process(self, query: pipeline_query.Query, message: str = None, image_url=None) -> entities.FilterResult:
+    async def process(
+        self, query: pipeline_query.Query, message: str | None = None, image_url=None
+    ) -> entities.FilterResult:
         """处理消息
 
         It is divided into two stages, depending on the value of enable_stages.

@@ -11,7 +11,7 @@ from ... import group
 class MCPRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('/servers', methods=['GET', 'POST'], auth_type=group.AuthType.USER_TOKEN)
-        async def _() -> str:
+        async def _():
             """获取MCP服务器列表"""
             if quart.request.method == 'GET':
                 servers = await self.ap.mcp_service.get_mcp_servers(contain_runtime_info=True)
@@ -29,7 +29,7 @@ class MCPRouterGroup(group.RouterGroup):
                     return self.http_status(500, -1, f'Failed to create MCP server: {str(e)}')
 
         @self.route('/servers/<server_name>', methods=['GET', 'PUT', 'DELETE'], auth_type=group.AuthType.USER_TOKEN)
-        async def _(server_name: str) -> str:
+        async def _(server_name: str):
             """获取、更新或删除MCP服务器配置"""
 
             server_data = await self.ap.mcp_service.get_mcp_server_by_name(server_name)
@@ -55,7 +55,7 @@ class MCPRouterGroup(group.RouterGroup):
                     return self.http_status(500, -1, f'Failed to delete MCP server: {str(e)}')
 
         @self.route('/servers/<server_name>/test', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
-        async def _(server_name: str) -> str:
+        async def _(server_name: str):
             """测试MCP服务器连接"""
             server_data = await quart.request.json
             task_id = await self.ap.mcp_service.test_mcp_server(server_name=server_name, server_data=server_data)

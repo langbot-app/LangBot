@@ -7,7 +7,7 @@ from .. import group
 class ApiKeysRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('', methods=['GET', 'POST'])
-        async def _() -> str:
+        async def _():
             if quart.request.method == 'GET':
                 keys = await self.ap.apikey_service.get_api_keys()
                 return self.success(data={'keys': keys})
@@ -23,7 +23,7 @@ class ApiKeysRouterGroup(group.RouterGroup):
                 return self.success(data={'key': key})
 
         @self.route('/<int:key_id>', methods=['GET', 'PUT', 'DELETE'])
-        async def _(key_id: int) -> str:
+        async def _(key_id: int):
             if quart.request.method == 'GET':
                 key = await self.ap.apikey_service.get_api_key(key_id)
                 if key is None:

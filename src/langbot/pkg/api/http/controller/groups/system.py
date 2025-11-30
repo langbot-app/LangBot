@@ -8,7 +8,7 @@ from .....utils import constants
 class SystemRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('/info', methods=['GET'], auth_type=group.AuthType.NONE)
-        async def _() -> str:
+        async def _():
             return self.success(
                 data={
                     'version': constants.semantic_version,
@@ -27,7 +27,7 @@ class SystemRouterGroup(group.RouterGroup):
             )
 
         @self.route('/tasks', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
-        async def _() -> str:
+        async def _():
             task_type = quart.request.args.get('type')
 
             if task_type == '':
@@ -36,7 +36,7 @@ class SystemRouterGroup(group.RouterGroup):
             return self.success(data=self.ap.task_mgr.get_tasks_dict(task_type))
 
         @self.route('/tasks/<task_id>', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
-        async def _(task_id: str) -> str:
+        async def _(task_id: str):
             task = self.ap.task_mgr.get_task_by_id(int(task_id))
 
             if task is None:
@@ -45,7 +45,7 @@ class SystemRouterGroup(group.RouterGroup):
             return self.success(data=task.to_dict())
 
         @self.route('/debug/exec', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
-        async def _() -> str:
+        async def _():
             if not constants.debug_mode:
                 return self.http_status(403, 403, 'Forbidden')
 
@@ -60,7 +60,7 @@ class SystemRouterGroup(group.RouterGroup):
             methods=['POST'],
             auth_type=group.AuthType.USER_TOKEN,
         )
-        async def _() -> str:
+        async def _():
             if not constants.debug_mode:
                 return self.http_status(403, 403, 'Forbidden')
 
@@ -85,7 +85,7 @@ class SystemRouterGroup(group.RouterGroup):
             methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN,
         )
-        async def _() -> str:
+        async def _():
             plugin_connector_error = 'ok'
             is_connected = True
 

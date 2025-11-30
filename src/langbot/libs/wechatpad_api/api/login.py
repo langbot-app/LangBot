@@ -2,7 +2,7 @@ from langbot.libs.wechatpad_api.util.http_util import post_json, get_json
 
 
 class LoginApi:
-    def __init__(self, base_url: str, token: str = None, admin_key: str = None):
+    def __init__(self, base_url: str, token: str | None = None, admin_key: str | None = None):
         """
 
         Args:

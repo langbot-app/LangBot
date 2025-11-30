@@ -14,7 +14,7 @@ from .. import group
 class FilesRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('/image/<image_key>', methods=['GET'], auth_type=group.AuthType.NONE)
-        async def _(image_key: str) -> quart.Response:
+        async def _():
             if '/' in image_key or '\\' in image_key:
                 return quart.Response(status=404)
 
@@ -29,7 +29,7 @@ class FilesRouterGroup(group.RouterGroup):
             return quart.Response(image_bytes, mimetype=mime_type)
 
         @self.route('/images', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def upload_image() -> quart.Response:
+        async def _():
             request = quart.request
 
             # Check file size limit before reading the file
@@ -77,7 +77,7 @@ class FilesRouterGroup(group.RouterGroup):
             )
 
         @self.route('/documents', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def upload_document() -> quart.Response:
+        async def upload_document():
             request = quart.request
 
             # Check file size limit before reading the file

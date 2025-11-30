@@ -6,7 +6,7 @@ from ... import group
 class KnowledgeBaseRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('', methods=['POST', 'GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def handle_knowledge_bases() -> quart.Response:
+        async def handle_knowledge_bases():
             if quart.request.method == 'GET':
                 knowledge_bases = await self.ap.knowledge_service.get_knowledge_bases()
                 return self.success(data={'bases': knowledge_bases})
@@ -23,7 +23,7 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
             methods=['GET', 'DELETE', 'PUT'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
-        async def handle_specific_knowledge_base(knowledge_base_uuid: str) -> quart.Response:
+        async def handle_specific_knowledge_base(knowledge_base_uuid: str):
             if quart.request.method == 'GET':
                 knowledge_base = await self.ap.knowledge_service.get_knowledge_base(knowledge_base_uuid)
 
@@ -50,7 +50,7 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
             methods=['GET', 'POST'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
-        async def get_knowledge_base_files(knowledge_base_uuid: str) -> str:
+        async def get_knowledge_base_files(knowledge_base_uuid: str):
             if quart.request.method == 'GET':
                 files = await self.ap.knowledge_service.get_files_by_knowledge_base(knowledge_base_uuid)
                 return self.success(
@@ -78,7 +78,7 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
             methods=['DELETE'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
-        async def delete_specific_file_in_kb(file_id: str, knowledge_base_uuid: str) -> str:
+        async def delete_specific_file_in_kb(file_id: str, knowledge_base_uuid: str):
             await self.ap.knowledge_service.delete_file(knowledge_base_uuid, file_id)
             return self.success({})
 
@@ -87,7 +87,7 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
             methods=['POST'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
-        async def retrieve_knowledge_base(knowledge_base_uuid: str) -> str:
+        async def retrieve_knowledge_base(knowledge_base_uuid: str):
             json_data = await quart.request.json
             query = json_data.get('query')
             results = await self.ap.knowledge_service.retrieve_knowledge_base(knowledge_base_uuid, query)

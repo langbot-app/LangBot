@@ -16,7 +16,7 @@ from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 class PluginsRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _() -> str:
+        async def _():
             plugins = await self.ap.plugin_connector.list_plugins()
 
             return self.success(data={'plugins': plugins})
@@ -26,7 +26,7 @@ class PluginsRouterGroup(group.RouterGroup):
             methods=['POST'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
-        async def _(author: str, plugin_name: str) -> str:
+        async def _(author: str, plugin_name: str):
             ctx = taskmgr.TaskContext.new()
             wrapper = self.ap.task_mgr.create_user_task(
                 self.ap.plugin_connector.upgrade_plugin(author, plugin_name, task_context=ctx),
@@ -42,7 +42,7 @@ class PluginsRouterGroup(group.RouterGroup):
             methods=['GET', 'DELETE'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
-        async def _(author: str, plugin_name: str) -> str:
+        async def _(author: str, plugin_name: str):
             if quart.request.method == 'GET':
                 plugin = await self.ap.plugin_connector.get_plugin_info(author, plugin_name)
                 if plugin is None:
@@ -68,7 +68,7 @@ class PluginsRouterGroup(group.RouterGroup):
             methods=['GET', 'PUT'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
-        async def _(author: str, plugin_name: str) -> quart.Response:
+        async def _(author: str, plugin_name: str):
             plugin = await self.ap.plugin_connector.get_plugin_info(author, plugin_name)
             if plugin is None:
                 return self.http_status(404, -1, 'plugin not found')
@@ -87,7 +87,7 @@ class PluginsRouterGroup(group.RouterGroup):
             methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
-        async def _(author: str, plugin_name: str) -> quart.Response:
+        async def _(author: str, plugin_name: str):
             language = quart.request.args.get('language', 'en')
             readme = await self.ap.plugin_connector.get_plugin_readme(author, plugin_name, language=language)
             return self.success(data={'readme': readme})
@@ -97,7 +97,7 @@ class PluginsRouterGroup(group.RouterGroup):
             methods=['GET'],
             auth_type=group.AuthType.NONE,
         )
-        async def _(author: str, plugin_name: str) -> quart.Response:
+        async def _(author: str, plugin_name: str):
             icon_data = await self.ap.plugin_connector.get_plugin_icon(author, plugin_name)
             icon_base64 = icon_data['plugin_icon_base64']
             mime_type = icon_data['mime_type']
@@ -111,14 +111,14 @@ class PluginsRouterGroup(group.RouterGroup):
             methods=['GET'],
             auth_type=group.AuthType.NONE,
         )
-        async def _(author: str, plugin_name: str, filepath: str) -> quart.Response:
+        async def _(author: str, plugin_name: str, filepath: str):
             asset_data = await self.ap.plugin_connector.get_plugin_assets(author, plugin_name, filepath)
             asset_bytes = base64.b64decode(asset_data['asset_base64'])
             mime_type = asset_data['mime_type']
             return quart.Response(asset_bytes, mimetype=mime_type)
 
         @self.route('/github/releases', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _() -> str:
+        async def _():
             """Get releases from a GitHub repository URL"""
             data = await quart.request.json
             repo_url = data.get('repo_url', '')
@@ -168,7 +168,7 @@ class PluginsRouterGroup(group.RouterGroup):
             methods=['POST'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
-        async def _() -> str:
+        async def _():
             """Get assets from a specific GitHub release"""
             data = await quart.request.json
             owner = data.get('owner', '')
@@ -221,7 +221,7 @@ class PluginsRouterGroup(group.RouterGroup):
                 return self.http_status(500, -1, f'Failed to fetch release assets: {str(e)}')
 
         @self.route('/install/github', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _() -> str:
+        async def _():
             """Install plugin from GitHub release asset"""
             data = await quart.request.json
             asset_url = data.get('asset_url', '')
@@ -256,7 +256,7 @@ class PluginsRouterGroup(group.RouterGroup):
             methods=['POST'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
-        async def _() -> str:
+        async def _():
             data = await quart.request.json
 
             ctx = taskmgr.TaskContext.new()
@@ -271,7 +271,7 @@ class PluginsRouterGroup(group.RouterGroup):
             return self.success(data={'task_id': wrapper.id})
 
         @self.route('/install/local', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _() -> str:
+        async def _():
             file = (await quart.request.files).get('file')
             if file is None:
                 return self.http_status(400, -1, 'file is required')
@@ -294,7 +294,7 @@ class PluginsRouterGroup(group.RouterGroup):
             return self.success(data={'task_id': wrapper.id})
 
         @self.route('/config-files', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
-        async def _() -> str:
+        async def _():
             """Upload a file for plugin configuration"""
             file = (await quart.request.files).get('file')
             if file is None:
@@ -317,7 +317,7 @@ class PluginsRouterGroup(group.RouterGroup):
             return self.success(data={'file_key': file_key})
 
         @self.route('/config-files/<file_key>', methods=['DELETE'], auth_type=group.AuthType.USER_TOKEN)
-        async def _(file_key: str) -> str:
+        async def _(file_key: str):
             """Delete a plugin configuration file"""
             # Only allow deletion of files with plugin_config_ prefix for security
             if not file_key.startswith('plugin_config_'):

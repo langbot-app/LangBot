@@ -14,10 +14,10 @@ preregistered_operators: list[typing.Type[CommandOperator]] = []
 def operator_class(
     name: str,
     help: str = '',
-    usage: str = None,
-    alias: list[str] = [],
+    usage: typing.Optional[str] = None,
+    alias: list[str] | None = None,
     privilege: int = 1,  # 1为普通用户，2为管理员
-    parent_class: typing.Type[CommandOperator] = None,
+    parent_class: typing.Optional[typing.Type[CommandOperator]] = None,
 ) -> typing.Callable[[typing.Type[CommandOperator]], typing.Type[CommandOperator]]:
     """命令类装饰器
 
@@ -37,7 +37,7 @@ def operator_class(
         assert issubclass(cls, CommandOperator)
 
         cls.name = name
-        cls.alias = alias
+        cls.alias = alias if alias is not None else []
         cls.help = help
         cls.usage = usage
         cls.parent_class = parent_class
@@ -74,10 +74,10 @@ class CommandOperator(metaclass=abc.ABCMeta):
     help: str
     """此节点的帮助信息"""
 
-    usage: str = None
+    usage: typing.Optional[str] = None
     """用法"""
 
-    parent_class: typing.Union[typing.Type[CommandOperator], None] = None
+    parent_class: typing.Optional[typing.Type[CommandOperator]] = None
     """父节点类。标记以供管理器在初始化时编织父子关系。"""
 
     lowest_privilege: int = 0

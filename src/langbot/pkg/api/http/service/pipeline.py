@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 import uuid
 import json
 import sqlalchemy
@@ -155,7 +156,7 @@ class PipelineService:
         self,
         pipeline_uuid: str,
         bound_plugins: list[dict],
-        bound_mcp_servers: list[str] = None,
+        bound_mcp_servers: list[str] | None = None,
         enable_all_plugins: bool = True,
         enable_all_mcp_servers: bool = True,
     ) -> None:

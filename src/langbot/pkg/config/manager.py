@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 from . import model as file_model
 from .impls import pymodule, json as json_file, yaml as yaml_file
 
@@ -7,29 +8,29 @@ from .impls import pymodule, json as json_file, yaml as yaml_file
 class ConfigManager:
     """Config file manager"""
 
-    name: str = None
+    name: str | None = None
     """Config manager name"""
 
-    description: str = None
+    description: str | None = None
     """Config manager description"""
 
-    schema: dict = None
+    schema: dict | None = None
     """Config file schema
     Must conform to JSON Schema Draft 7 specification
     """
 
-    file: file_model.ConfigFile = None
+    file: file_model.ConfigFile | None = None
     """Config file instance"""
 
-    data: dict = None
+    data: dict = {}
     """Config data"""
 
-    doc_link: str = None
+    doc_link: str | None = None
     """Config file documentation link"""
 
     def __init__(self, cfg_file: file_model.ConfigFile) -> None:
         self.file = cfg_file
-        self.data = {}
+        self.data: dict = {}
 
     async def load_config(self, completion: bool = True):
         self.data = await self.file.load(completion=completion)
@@ -62,8 +63,8 @@ async def load_python_module_config(config_name: str, template_name: str, comple
 
 async def load_json_config(
     config_name: str,
-    template_resource_name: str = None,
-    template_data: dict = None,
+    template_resource_name: str | None = None,
+    template_data: dict | None = None,
     completion: bool = True,
 ) -> ConfigManager:
     """Load JSON config file
@@ -84,8 +85,8 @@ async def load_json_config(
 
 async def load_yaml_config(
     config_name: str,
-    template_resource_name: str = None,
-    template_data: dict = None,
+    template_resource_name: str | None = None,
+    template_data: dict | None = None,
     completion: bool = True,
 ) -> ConfigManager:
     """Load YAML config file

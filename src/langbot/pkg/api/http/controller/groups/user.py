@@ -9,7 +9,7 @@ from .. import group
 class UserRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('/init', methods=['GET', 'POST'], auth_type=group.AuthType.NONE)
-        async def _() -> str:
+        async def _():
             if quart.request.method == 'GET':
                 return self.success(data={'initialized': await self.ap.user_service.is_initialized()})
 
@@ -26,7 +26,7 @@ class UserRouterGroup(group.RouterGroup):
             return self.success()
 
         @self.route('/auth', methods=['POST'], auth_type=group.AuthType.NONE)
-        async def _() -> str:
+        async def _():
             json_data = await quart.request.json
 
             try:
@@ -37,13 +37,13 @@ class UserRouterGroup(group.RouterGroup):
             return self.success(data={'token': token})
 
         @self.route('/check-token', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
-        async def _(user_email: str) -> str:
+        async def _(user_email: str):
             token = await self.ap.user_service.generate_jwt_token(user_email)
 
             return self.success(data={'token': token})
 
         @self.route('/reset-password', methods=['POST'], auth_type=group.AuthType.NONE)
-        async def _() -> str:
+        async def _():
             json_data = await quart.request.json
 
             user_email = json_data['user']
@@ -69,7 +69,7 @@ class UserRouterGroup(group.RouterGroup):
             return self.success(data={'user': user_email})
 
         @self.route('/change-password', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
-        async def _(user_email: str) -> str:
+        async def _(user_email: str):
             json_data = await quart.request.json
 
             current_password = json_data['current_password']

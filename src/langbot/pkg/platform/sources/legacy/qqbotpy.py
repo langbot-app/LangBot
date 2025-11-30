@@ -204,7 +204,7 @@ class OfficialMessageConverter(abstract_platform_adapter.AbstractMessageConverte
             botpy_message.GroupMessage,
             botpy_message.C2CMessage,
         ],
-        message_id: str = None,
+        message_id: str | None = None,
         bot_account_id: int = 0,
     ) -> platform_message.MessageChain:
         yiri_msg_list = []
@@ -343,7 +343,7 @@ class OfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     message_converter: OfficialMessageConverter
     event_converter: OfficialEventConverter
 
-    cfg: dict = None
+    cfg: dict | None = None
 
     cached_official_messages: dict = {}
     """缓存的 qq-botpy 框架消息对象
