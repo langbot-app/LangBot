@@ -122,6 +122,7 @@ class LINEEventConverter(abstract_platform_adapter.AbstractEventConverter):
 class LINEAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot: MessagingApi
     api_client: ApiClient
+    parser: WebhookParser
 
     bot_account_id: str  # 用于在流水线中识别at是否是本bot，直接以bot_name作为标识
     message_converter: LINEMessageConverter
@@ -133,7 +134,7 @@ class LINEAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     ]
 
     config: dict
-    quart_app: quart.Quart
+    bot_uuid: str = None
 
     card_id_dict: dict[str, str]  # 消息id到卡片id的映射，便于创建卡片后的发送消息到指定卡片
 
@@ -150,7 +151,6 @@ class LINEAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         super().__init__(
             config=config,
             logger=logger,
-            quart_app=quart.Quart(__name__),
             listeners={},
             card_id_dict={},
             seq=1,
@@ -163,29 +163,6 @@ class LINEAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             bot=MessagingApi(api_client),
             bot_account_id=bot_account_id,
         )
-
-        @self.quart_app.route('/line/callback', methods=['POST'])
-        async def line_callback():
-            try:
-                signature = quart.request.headers.get('X-Line-Signature')
-                body = await quart.request.get_data(as_text=True)
-                events = parser.parse(body, signature)  # 解密解析消息
-
-                try:
-                    # print(events)
-                    lb_event = await self.event_converter.target2yiri(events[0], self.api_client)
-                    if lb_event.__class__ in self.listeners:
-                        await self.listeners[lb_event.__class__](lb_event, self)
-                except InvalidSignatureError:
-                    self.logger.info(
-                        f'Invalid signature. Please check your channel access token/channel secret.{traceback.format_exc()}'
-                    )
-                    return quart.Response('Invalid signature', status=400)
-
-                return {'code': 200, 'message': 'ok'}
-            except Exception:
-                await self.logger.error(f'Error in LINE callback: {traceback.format_exc()}')
-                return {'code': 500, 'message': 'error'}
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         pass
@@ -235,18 +212,73 @@ class LINEAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     ):
         self.listeners.pop(event_type)
 
-    async def run_async(self):
-        port = self.config['port']
+    def set_bot_uuid(self, bot_uuid: str):
+        """设置 bot UUID（用于生成 webhook URL）"""
+        self.bot_uuid = bot_uuid
 
-        async def shutdown_trigger_placeholder():
+    async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
+        """处理统一 webhook 请求。
+
+        Args:
+            bot_uuid: Bot 的 UUID
+            path: 子路径（如果有的话）
+            request: Quart Request 对象
+
+        Returns:
+            响应数据
+        """
+        try:
+            signature = request.headers.get('X-Line-Signature')
+            body = await request.get_data(as_text=True)
+
+            # Check if signature header exists
+            if not signature:
+                await self.logger.warning('Missing X-Line-Signature header')
+                return quart.Response('Missing X-Line-Signature header', status=400)
+
+            try:
+                events = self.parser.parse(body, signature)  # 解密解析消息
+            except InvalidSignatureError:
+                await self.logger.info(
+                    f'Invalid signature. Please check your channel access token/channel secret.{traceback.format_exc()}'
+                )
+                return quart.Response('Invalid signature', status=400)
+
+            # 处理事件
+            if events and len(events) > 0:
+                lb_event = await self.event_converter.target2yiri(events[0], self.api_client)
+                if lb_event.__class__ in self.listeners:
+                    await self.listeners[lb_event.__class__](lb_event, self)
+
+            return {'code': 200, 'message': 'ok'}
+        except Exception:
+            await self.logger.error(f'Error in LINE callback: {traceback.format_exc()}')
+            print(traceback.format_exc())
+            return {'code': 500, 'message': 'error'}
+
+    async def run_async(self):
+        # 统一 webhook 模式下，不启动独立的 Quart 应用
+        # 保持运行但不启动独立端口
+
+        # 打印 webhook 回调地址
+        if self.bot_uuid and hasattr(self.logger, 'ap'):
+            try:
+                api_port = self.logger.ap.instance_config.data['api']['port']
+                webhook_url = f'http://127.0.0.1:{api_port}/bots/{self.bot_uuid}'
+                webhook_url_public = f'http://<Your-Public-IP>:{api_port}/bots/{self.bot_uuid}'
+
+                await self.logger.info('LINE Webhook 回调地址:')
+                await self.logger.info(f'  本地地址: {webhook_url}')
+                await self.logger.info(f'  公网地址: {webhook_url_public}')
+                await self.logger.info('请在 LINE 后台配置此回调地址')
+            except Exception as e:
+                await self.logger.warning(f'无法生成 webhook URL: {e}')
+
+        async def keep_alive():
             while True:
                 await asyncio.sleep(1)
 
-        await self.quart_app.run_task(
-            host='0.0.0.0',
-            port=port,
-            shutdown_trigger=shutdown_trigger_placeholder,
-        )
+        await keep_alive()
 
     async def kill(self) -> bool:
         pass
