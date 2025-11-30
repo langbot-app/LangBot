@@ -42,6 +42,7 @@ const jaJP = {
     addRound: 'ラウンドを追加',
     copy: 'コピー',
     copySuccess: 'コピーに成功しました',
+    copyFailed: 'コピーに失敗しました',
     test: 'テスト',
     forgotPassword: 'パスワードを忘れた？',
     loading: '読み込み中...',
@@ -189,6 +190,10 @@ const jaJP = {
     log: 'ログ',
     configuration: '設定',
     logs: 'ログ',
+    webhookUrl: 'Webhook コールバック URL',
+    webhookUrlCopied: 'Webhook URL をコピーしました',
+    webhookUrlHint:
+      '入力ボックスをクリックして全選択し、Ctrl+C (Mac: Cmd+C) でコピーするか、右側のボタンをクリックしてください',
   },
   plugins: {
     title: '拡張機能',

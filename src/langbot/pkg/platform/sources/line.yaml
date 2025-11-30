@@ -22,18 +22,6 @@ spec:
       type: string
       required: true
       default: ""
-    - name: port
-      label:
-        en_US: Webhook Port
-        zh_Hans: Webhook端口
-      description:
-        en_US: Only valid when webhook mode is enabled, please fill in the webhook port
-        zh_Hans: 请填写 Webhook 端口
-        ja_JP: Webhookポートを入力してください
-        zh_Hant: 請填寫 Webhook 端口
-      type: integer
-      required: true
-      default: 2287
     - name: channel_secret
       label:
         en_US: Channel secret

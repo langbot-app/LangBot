@@ -25,13 +25,6 @@ spec:
       type: string
       required: true
       default: ""
-    - name: port
-      label:
-        en_US: Port
-        zh_Hans: 监听端口
-      type: int
-      required: true
-      default: 2288
 execution:
   python:
     path: ./slack.py

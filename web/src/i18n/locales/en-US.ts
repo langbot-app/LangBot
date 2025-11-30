@@ -41,6 +41,7 @@ const enUS = {
     addRound: 'Add Round',
     copy: 'Copy',
     copySuccess: 'Copy Successfully',
+    copyFailed: 'Copy Failed',
     test: 'Test',
     forgotPassword: 'Forgot Password?',
     loading: 'Loading...',
@@ -187,6 +188,10 @@ const enUS = {
     log: 'Log',
     configuration: 'Configuration',
     logs: 'Logs',
+    webhookUrl: 'Webhook Callback URL',
+    webhookUrlCopied: 'Webhook URL copied',
+    webhookUrlHint:
+      'Click the input to select all, then press Ctrl+C (Mac: Cmd+C) to copy, or click the button',
   },
   plugins: {
     title: 'Extensions',

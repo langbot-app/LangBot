@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   IChooseAdapterEntity,
   IPipelineEntity,
@@ -112,10 +112,85 @@ export default function BotForm({
     IDynamicFormItemSchema[]
   >([]);
   const [, setIsLoading] = useState<boolean>(false);
+  const [webhookUrl, setWebhookUrl] = useState<string>('');
+  const webhookInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setBotFormValues();
   }, []);
+
+  // 复制到剪贴板的辅助函数 - 使用页面上的真实input元素
+  const copyToClipboard = () => {
+    console.log('[Copy] Attempting to copy from input element');
+
+    const inputElement = webhookInputRef.current;
+    if (!inputElement) {
+      console.error('[Copy] Input element not found');
+      toast.error(t('common.copyFailed'));
+      return;
+    }
+
+    try {
+      // 确保input元素可见且未被禁用
+      inputElement.disabled = false;
+      inputElement.readOnly = false;
+
+      // 聚焦并选中所有文本
+      inputElement.focus();
+      inputElement.select();
+
+      // 尝试使用现代API
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        console.log(
+          '[Copy] Using Clipboard API with input value:',
+          inputElement.value,
+        );
+        navigator.clipboard
+          .writeText(inputElement.value)
+          .then(() => {
+            console.log('[Copy] Clipboard API success');
+            inputElement.blur(); // 取消选中
+            inputElement.readOnly = true;
+            toast.success(t('bots.webhookUrlCopied'));
+          })
+          .catch((err) => {
+            console.error(
+              '[Copy] Clipboard API failed, trying execCommand:',
+              err,
+            );
+            // 降级到execCommand
+            const successful = document.execCommand('copy');
+            console.log('[Copy] execCommand result:', successful);
+            inputElement.blur();
+            inputElement.readOnly = true;
+            if (successful) {
+              toast.success(t('bots.webhookUrlCopied'));
+            } else {
+              toast.error(t('common.copyFailed'));
+            }
+          });
+      } else {
+        // 直接使用execCommand
+        console.log(
+          '[Copy] Using execCommand with input value:',
+          inputElement.value,
+        );
+        const successful = document.execCommand('copy');
+        console.log('[Copy] execCommand result:', successful);
+        inputElement.blur();
+        inputElement.readOnly = true;
+        if (successful) {
+          toast.success(t('bots.webhookUrlCopied'));
+        } else {
+          toast.error(t('common.copyFailed'));
+        }
+      }
+    } catch (err) {
+      console.error('[Copy] Copy failed:', err);
+      inputElement.readOnly = true;
+      toast.error(t('common.copyFailed'));
+    }
+  };
 
   function setBotFormValues() {
     initBotFormComponent().then(() => {
@@ -131,12 +206,20 @@ export default function BotForm({
             form.setValue('use_pipeline_uuid', val.use_pipeline_uuid || '');
             handleAdapterSelect(val.adapter);
             // dynamicForm.setFieldsValue(val.adapter_config);
+
+            // 设置 webhook 地址（如果有）
+            if (val.webhook_full_url) {
+              setWebhookUrl(val.webhook_full_url);
+            } else {
+              setWebhookUrl('');
+            }
           })
           .catch((err) => {
             toast.error(t('bots.getBotConfigError') + err.message);
           });
       } else {
         form.reset();
+        setWebhookUrl('');
       }
     });
   }
@@ -209,7 +292,7 @@ export default function BotForm({
 
   async function getBotConfig(
     botId: string,
-  ): Promise<z.infer<typeof formSchema>> {
+  ): Promise<z.infer<typeof formSchema> & { webhook_full_url?: string }> {
     return new Promise((resolve, reject) => {
       httpClient
         .getBot(botId)
@@ -222,6 +305,10 @@ export default function BotForm({
             adapter_config: bot.adapter_config,
             enable: bot.enable ?? true,
             use_pipeline_uuid: bot.use_pipeline_uuid ?? '',
+            webhook_full_url: bot.adapter_runtime_values
+              ? ((bot.adapter_runtime_values as Record<string, unknown>)
+                  .webhook_full_url as string)
+              : undefined,
           });
         })
         .catch((err) => {
@@ -360,51 +447,86 @@ export default function BotForm({
           <div className="space-y-4">
             {/* 是否启用 & 绑定流水线  仅在编辑模式 */}
             {initBotId && (
-              <div className="flex items-center gap-6">
-                <FormField
-                  control={form.control}
-                  name="enable"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col justify-start gap-[0.8rem] h-[3.8rem]">
-                      <FormLabel>{t('common.enable')}</FormLabel>
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
+              <>
+                <div className="flex items-center gap-6">
+                  <FormField
+                    control={form.control}
+                    name="enable"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col justify-start gap-[0.8rem] h-[3.8rem]">
+                        <FormLabel>{t('common.enable')}</FormLabel>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
 
-                <FormField
-                  control={form.control}
-                  name="use_pipeline_uuid"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col justify-start gap-[0.8rem] h-[3.8rem]">
-                      <FormLabel>{t('bots.bindPipeline')}</FormLabel>
-                      <FormControl>
-                        <Select onValueChange={field.onChange} {...field}>
-                          <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
-                            <SelectValue
-                              placeholder={t('bots.selectPipeline')}
-                            />
-                          </SelectTrigger>
-                          <SelectContent className="fixed z-[1000]">
-                            <SelectGroup>
-                              {pipelineNameList.map((item) => (
-                                <SelectItem key={item.value} value={item.value}>
-                                  {item.label}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-              </div>
+                  <FormField
+                    control={form.control}
+                    name="use_pipeline_uuid"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col justify-start gap-[0.8rem] h-[3.8rem]">
+                        <FormLabel>{t('bots.bindPipeline')}</FormLabel>
+                        <FormControl>
+                          <Select onValueChange={field.onChange} {...field}>
+                            <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+                              <SelectValue
+                                placeholder={t('bots.selectPipeline')}
+                              />
+                            </SelectTrigger>
+                            <SelectContent className="fixed z-[1000]">
+                              <SelectGroup>
+                                {pipelineNameList.map((item) => (
+                                  <SelectItem
+                                    key={item.value}
+                                    value={item.value}
+                                  >
+                                    {item.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {/* Webhook 地址显示（统一 Webhook 模式） */}
+                {webhookUrl && (
+                  <FormItem>
+                    <FormLabel>{t('bots.webhookUrl')}</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        ref={webhookInputRef}
+                        value={webhookUrl}
+                        readOnly
+                        className="flex-1 bg-gray-50 dark:bg-gray-900"
+                        onClick={(e) => {
+                          // 点击输入框时自动全选
+                          (e.target as HTMLInputElement).select();
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={copyToClipboard}
+                      >
+                        {t('common.copy')}
+                      </Button>
+                    </div>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {t('bots.webhookUrlHint')}
+                    </p>
+                  </FormItem>
+                )}
+              </>
             )}
 
             <FormField
