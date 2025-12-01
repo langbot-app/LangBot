@@ -298,6 +298,8 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             'langbot_session_id': query.variables['session_id'],
             'langbot_conversation_id': query.variables['conversation_id'],
             'langbot_msg_create_time': query.variables['msg_create_time'],
+            'langbot_sender_id': query.variables.get('sender_id', ''),
+            'langbot_sender_name': query.variables.get('sender_name', ''),
         }
 
         inputs.update(query.variables)
@@ -576,6 +578,8 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             'langbot_session_id': query.variables['session_id'],
             'langbot_conversation_id': query.variables['conversation_id'],
             'langbot_msg_create_time': query.variables['msg_create_time'],
+            'langbot_sender_id': query.variables.get('sender_id', ''),
+            'langbot_sender_name': query.variables.get('sender_name', ''),
         }
 
         inputs.update(query.variables)
