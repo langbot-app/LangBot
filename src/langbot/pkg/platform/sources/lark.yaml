@@ -11,6 +11,16 @@ metadata:
   icon: lark.svg
 spec:
   config:
+    - name: enable-webhook
+      label:
+        en_US: Enable Webhook Mode
+        zh_Hans: 启用Webhook模式
+      description:
+        en_US: If enabled, the bot will use webhook mode to receive messages. Otherwise, it will use WS long connection mode
+        zh_Hans: 如果启用，机器人将使用 Webhook 模式接收消息。否则，将使用 WS 长连接模式
+      type: boolean
+      required: true
+      default: false
     - name: app_id
       label:
         en_US: App ID
@@ -35,26 +45,6 @@ spec:
       type: string
       required: true
       default: ""
-    - name: enable-webhook
-      label:
-        en_US: Enable Webhook Mode
-        zh_Hans: 启用Webhook模式
-      description:
-        en_US: If enabled, the bot will use webhook mode to receive messages. Otherwise, it will use WS long connection mode
-        zh_Hans: 如果启用，机器人将使用 Webhook 模式接收消息。否则，将使用 WS 长连接模式
-      type: boolean
-      required: true
-      default: false
-    - name: port
-      label:
-        en_US: Webhook Port
-        zh_Hans: Webhook端口
-      description:
-        en_US: Only valid when webhook mode is enabled, please fill in the webhook port
-        zh_Hans: 仅在启用 Webhook 模式时有效，请填写 Webhook 端口
-      type: integer
-      required: true
-      default: 2285
     - name: encrypt-key
       label:
         en_US: Encrypt Key
