@@ -154,7 +154,7 @@ export default function PipelineDialog({
   // 编辑流水线时的对话框
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="overflow-hidden p-0 !max-w-[50rem] h-[75vh] flex">
+      <DialogContent className="overflow-hidden p-0 !max-w-[80vw] h-[75vh] flex">
         <SidebarProvider className="items-start w-full flex h-full min-h-0">
           <Sidebar
             collapsible="none"

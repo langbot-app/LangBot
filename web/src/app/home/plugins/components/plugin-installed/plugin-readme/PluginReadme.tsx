@@ -8,7 +8,7 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeSlug from 'rehype-slug';
 import rehypeAutolinkHeadings from 'rehype-autolink-headings';
 import { getAPILanguageCode } from '@/i18n/I18nProvider';
-import './github-markdown.css';
+import '@/styles/github-markdown.css';
 
 export default function PluginReadme({
   pluginAuthor,
