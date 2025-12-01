@@ -180,6 +180,14 @@
   padding-left: 1.5em;
 }
 
+.markdown-message ul {
+  list-style-type: disc;
+}
+
+.markdown-message ol {
+  list-style-type: decimal;
+}
+
 .markdown-message li {
   margin: 0.25em 0;
 }

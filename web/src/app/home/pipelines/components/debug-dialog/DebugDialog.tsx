@@ -23,7 +23,6 @@ import ImagePreviewDialog from './ImagePreviewDialog';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import '@/app/home/plugins/components/plugin-installed/plugin-readme/github-markdown.css';
 
 interface DebugDialogProps {
   open: boolean;
@@ -611,17 +610,10 @@ export default function DebugDialog({
             renderMessageComponent(component, index),
           )}
           {/* Render Plain text as markdown */}
-          <div className="markdown-body markdown-message">
+          <div className="markdown-message">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeHighlight]}
-              components={{
-                ul: ({ children }) => <ul className="list-disc">{children}</ul>,
-                ol: ({ children }) => (
-                  <ol className="list-decimal">{children}</ol>
-                ),
-                li: ({ children }) => <li className="ml-4">{children}</li>,
-              }}
             >
               {plainText}
             </ReactMarkdown>
