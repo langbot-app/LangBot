@@ -149,12 +149,28 @@ export class WebSocketClient {
         break;
 
       case 'response':
+        // 检查 session_type 是否匹配 - 如果消息没有 session_type 或者不匹配当前session，都忽略
+        if (!data.session_type || data.session_type !== this.sessionType) {
+          // 忽略不匹配的 session_type 消息
+          console.debug(
+            `忽略不匹配的消息: 当前session=${this.sessionType}, 消息session=${data.session_type}`,
+          );
+          break;
+        }
         if (data.data) {
           this.onMessageCallback?.(data.data);
         }
         break;
 
       case 'user_message':
+        // 检查 session_type 是否匹配 - 如果消息没有 session_type 或者不匹配当前session，都忽略
+        if (!data.session_type || data.session_type !== this.sessionType) {
+          // 忽略不匹配的 session_type 消息
+          console.debug(
+            `忽略不匹配的用户消息: 当前session=${this.sessionType}, 消息session=${data.session_type}`,
+          );
+          break;
+        }
         // 用户消息广播（包括自己发送的消息）
         if (data.data) {
           this.onMessageCallback?.(data.data);

@@ -117,7 +117,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
 
         # 从message_source获取pipeline_uuid和connection_id
         pipeline_uuid = self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid
-        # session_type = 'group' if isinstance(message_source, platform_events.GroupMessage) else 'person'
+        session_type = 'group' if isinstance(message_source, platform_events.GroupMessage) else 'person'
 
         # 生成新的消息ID
         msg_id = len(session.get_message_list(pipeline_uuid)) + 1
@@ -134,13 +134,15 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         # 保存到历史记录
         session.get_message_list(pipeline_uuid).append(message_data)
 
-        # 直接广播到所有该pipeline的连接
+        # 直接广播到所有该pipeline的连接，包含session_type信息
         await ws_connection_manager.broadcast_to_pipeline(
             pipeline_uuid,
             {
                 'type': 'response',
+                'session_type': session_type,
                 'data': message_data.model_dump(),
             },
+            session_type=session_type,
         )
 
         return message_data.model_dump()
@@ -162,6 +164,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         )
 
         pipeline_uuid = self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid
+        session_type = 'group' if isinstance(message_source, platform_events.GroupMessage) else 'person'
         message_list = session.get_message_list(pipeline_uuid)
 
         # 检查是否是新的流式消息（通过bot_message对象判断）
@@ -197,13 +200,15 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             if is_final and bot_message.tool_calls is None:
                 message_list[-1] = message_data
 
-        # 直接广播到所有该pipeline的连接
+        # 直接广播到所有该pipeline的连接，包含session_type信息
         await ws_connection_manager.broadcast_to_pipeline(
             pipeline_uuid,
             {
                 'type': 'response',
+                'session_type': session_type,
                 'data': message_data.model_dump(),
             },
+            session_type=session_type,
         )
 
         return message_data.model_dump()
@@ -344,13 +349,15 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         )
         use_session.get_message_list(pipeline_uuid).append(user_message)
 
-        # 广播用户消息到所有连接（包括发送者）
+        # 广播用户消息到所有连接（包括发送者），包含session_type信息
         await ws_connection_manager.broadcast_to_pipeline(
             pipeline_uuid,
             {
                 'type': 'user_message',
+                'session_type': session_type,
                 'data': user_message.model_dump(),
             },
+            session_type=session_type,
         )
 
         # 添加消息源

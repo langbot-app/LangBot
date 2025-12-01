@@ -134,9 +134,20 @@ class WebSocketConnectionManager:
         connection_ids = self.session_connections.get(session_type, set())
         return [self.connections[cid] for cid in connection_ids if cid in self.connections]
 
-    async def broadcast_to_pipeline(self, pipeline_uuid: str, message: dict):
-        """向指定流水线的所有连接广播消息"""
+    async def broadcast_to_pipeline(self, pipeline_uuid: str, message: dict, session_type: str = None):
+        """向指定流水线的所有连接广播消息
+
+        Args:
+            pipeline_uuid: 流水线UUID
+            message: 要广播的消息
+            session_type: 可选的会话类型过滤器，如果提供则只向匹配的session_type连接广播
+        """
         connections = await self.get_connections_by_pipeline(pipeline_uuid)
+
+        # 如果指定了session_type，只向匹配的连接广播
+        if session_type is not None:
+            connections = [conn for conn in connections if conn.session_type == session_type]
+
         tasks = []
         for conn in connections:
             tasks.append(self.send_to_connection(conn.connection_id, message))

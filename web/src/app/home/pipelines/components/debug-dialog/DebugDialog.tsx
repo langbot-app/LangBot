@@ -204,6 +204,8 @@ export default function DebugDialog({
   // 监听 sessionType 和 selectedPipelineId 变化，重新加载消息和连接
   useEffect(() => {
     if (open) {
+      // 清空当前消息，避免显示旧的消息
+      setMessages([]);
       loadMessages(selectedPipelineId);
       initWebSocket(selectedPipelineId);
     }
