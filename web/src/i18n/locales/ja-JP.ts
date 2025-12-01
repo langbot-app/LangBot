@@ -529,6 +529,8 @@ const jaJP = {
       imageUploadFailed: '画像のアップロードに失敗しました',
       reply: '返信',
       replyTo: '返信先',
+      showMarkdown: 'Markdownで表示',
+      showRaw: '原文で表示',
     },
   },
   knowledge: {

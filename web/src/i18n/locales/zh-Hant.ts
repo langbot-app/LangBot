@@ -506,6 +506,8 @@ const zhHant = {
       imageUploadFailed: '圖片上傳失敗',
       reply: '回覆',
       replyTo: '回覆給',
+      showMarkdown: '渲染',
+      showRaw: '原文',
     },
   },
   knowledge: {

@@ -525,6 +525,8 @@ const enUS = {
       imageUploadFailed: 'Image upload failed',
       reply: 'Reply',
       replyTo: 'Reply to',
+      showMarkdown: 'Show Markdown',
+      showRaw: 'Show Raw',
     },
   },
   knowledge: {

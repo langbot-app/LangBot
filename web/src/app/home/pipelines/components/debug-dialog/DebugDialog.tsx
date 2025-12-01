@@ -20,6 +20,10 @@ import { toast } from 'sonner';
 import AtBadge from './AtBadge';
 import { WebSocketClient } from '@/app/infra/websocket/WebSocketClient';
 import ImagePreviewDialog from './ImagePreviewDialog';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
+import '@/app/home/plugins/components/plugin-installed/plugin-readme/github-markdown.css';
 
 interface DebugDialogProps {
   open: boolean;
@@ -51,6 +55,9 @@ export default function DebugDialog({
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [quotedMessage, setQuotedMessage] = useState<Message | null>(null);
   const [hoveredMessageId, setHoveredMessageId] = useState<number | null>(null);
+  const [markdownModeMessages, setMarkdownModeMessages] = useState<Set<string>>(
+    new Set(),
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -554,7 +561,75 @@ export default function DebugDialog({
     return t('bots.earlier');
   };
 
+  // Generate a unique key for a message
+  const getMessageKey = (message: Message): string => {
+    return `${message.id}-${message.timestamp}`;
+  };
+
+  // Toggle markdown mode for a message
+  const toggleMarkdownMode = (message: Message) => {
+    const key = getMessageKey(message);
+    setMarkdownModeMessages((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(key)) {
+        newSet.delete(key);
+      } else {
+        newSet.add(key);
+      }
+      return newSet;
+    });
+  };
+
+  // Check if message has any Plain text content
+  const hasPlainText = (message: Message): boolean => {
+    return message.message_chain.some((c) => c.type === 'Plain');
+  };
+
+  // Extract plain text from message chain
+  const getPlainText = (message: Message): string => {
+    return message.message_chain
+      .filter((c) => c.type === 'Plain')
+      .map((c) => (c as Plain).text)
+      .join('');
+  };
+
   const renderMessageContent = (message: Message) => {
+    const key = getMessageKey(message);
+    const isMarkdownMode = markdownModeMessages.has(key);
+
+    // If markdown mode is enabled and there's plain text, render with markdown
+    if (isMarkdownMode && hasPlainText(message)) {
+      const plainText = getPlainText(message);
+      const nonPlainComponents = message.message_chain.filter(
+        (c) => c.type !== 'Plain' && c.type !== 'Source',
+      );
+
+      return (
+        <div className="text-base leading-relaxed align-middle">
+          {/* Render non-Plain components first */}
+          {nonPlainComponents.map((component, index) =>
+            renderMessageComponent(component, index),
+          )}
+          {/* Render Plain text as markdown */}
+          <div className="markdown-body markdown-message">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeHighlight]}
+              components={{
+                ul: ({ children }) => <ul className="list-disc">{children}</ul>,
+                ol: ({ children }) => (
+                  <ol className="list-decimal">{children}</ol>
+                ),
+                li: ({ children }) => <li className="ml-4">{children}</li>,
+              }}
+            >
+              {plainText}
+            </ReactMarkdown>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="text-base leading-relaxed align-middle whitespace-pre-wrap">
         {message.message_chain.map((component, index) =>
@@ -635,7 +710,7 @@ export default function DebugDialog({
                       className={cn(
                         'max-w-md px-5 py-3 rounded-2xl',
                         message.role === 'user'
-                          ? 'bg-[#2288ee] text-white rounded-br-none'
+                          ? 'user-message-bubble bg-[#2288ee] text-white rounded-br-none'
                           : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-none',
                       )}
                     >
@@ -648,11 +723,61 @@ export default function DebugDialog({
                             : 'text-gray-500 dark:text-gray-400',
                         )}
                       >
-                        <span>
-                          {message.role === 'user'
-                            ? t('pipelines.debugDialog.userMessage')
-                            : t('pipelines.debugDialog.botMessage')}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span>
+                            {message.role === 'user'
+                              ? t('pipelines.debugDialog.userMessage')
+                              : t('pipelines.debugDialog.botMessage')}
+                          </span>
+                          {hasPlainText(message) && (
+                            <button
+                              onClick={() => toggleMarkdownMode(message)}
+                              className={cn(
+                                'px-1.5 py-0.5 rounded text-[10px] transition-colors',
+                                message.role === 'user'
+                                  ? 'hover:bg-white/20'
+                                  : 'hover:bg-gray-200 dark:hover:bg-gray-700',
+                              )}
+                              title={
+                                markdownModeMessages.has(getMessageKey(message))
+                                  ? t('pipelines.debugDialog.showRaw')
+                                  : t('pipelines.debugDialog.showMarkdown')
+                              }
+                            >
+                              {markdownModeMessages.has(
+                                getMessageKey(message),
+                              ) ? (
+                                <span className="flex items-center gap-0.5">
+                                  <svg
+                                    className="w-3 h-3"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M4 6h16M4 12h16M4 18h7"
+                                    />
+                                  </svg>
+                                  {t('pipelines.debugDialog.showRaw')}
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-0.5">
+                                  <svg
+                                    className="w-3 h-3"
+                                    viewBox="0 0 16 16"
+                                    fill="currentColor"
+                                  >
+                                    <path d="M14.85 3H1.15C.52 3 0 3.52 0 4.15v7.69C0 12.48.52 13 1.15 13h13.69c.64 0 1.15-.52 1.15-1.15v-7.7C16 3.52 15.48 3 14.85 3zM9 11H7V8L5.5 9.92 4 8v3H2V5h2l1.5 2L7 5h2v6zm2.99.5L9.5 8H11V5h2v3h1.5l-2.51 3.5z" />
+                                  </svg>
+                                  MD
+                                </span>
+                              )}
+                            </button>
+                          )}
+                        </div>
                         <span className="text-[10px]">
                           {formatTimestamp(getMessageTimestamp(message))}
                         </span>

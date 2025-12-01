@@ -508,6 +508,8 @@ const zhHans = {
       imageUploadFailed: '图片上传失败',
       reply: '回复',
       replyTo: '回复给',
+      showMarkdown: '渲染',
+      showRaw: '原文',
     },
   },
   knowledge: {
