@@ -342,6 +342,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     quart_app: quart.Quart = pydantic.Field(exclude=True)
 
+    bot_uuid: str = None
+
     card_id_dict: dict[str, str]  # 消息id到卡片id的映射，便于创建卡片后的发送消息到指定卡片
 
     seq: int  # 用于在发送卡片消息中识别消息顺序，直接以seq作为标识
@@ -349,46 +351,6 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
         quart_app = quart.Quart(__name__)
 
-        @quart_app.route('/lark/callback', methods=['POST'])
-        async def lark_callback():
-            try:
-                data = await quart.request.json
-
-                if 'encrypt' in data:
-                    cipher = AESCipher(config['encrypt-key'])
-                    data = cipher.decrypt_string(data['encrypt'])
-                    data = json.loads(data)
-
-                type = data.get('type')
-                if type is None:
-                    context = EventContext(data)
-                    type = context.header.event_type
-
-                if 'url_verification' == type:
-                    # todo 验证verification token
-                    return {'challenge': data.get('challenge')}
-                context = EventContext(data)
-                type = context.header.event_type
-                p2v1 = P2ImMessageReceiveV1()
-                p2v1.header = context.header
-                event = P2ImMessageReceiveV1Data()
-                event.message = EventMessage(context.event['message'])
-                event.sender = EventSender(context.event['sender'])
-                p2v1.event = event
-                p2v1.schema = context.schema
-                if 'im.message.receive_v1' == type:
-                    try:
-                        event = await self.event_converter.target2yiri(p2v1, self.api_client)
-                    except Exception:
-                        await self.logger.error(f'Error in lark callback: {traceback.format_exc()}')
-
-                    if event.__class__ in self.listeners:
-                        await self.listeners[event.__class__](event, self)
-
-                return {'code': 200, 'message': 'ok'}
-            except Exception:
-                await self.logger.error(f'Error in lark callback: {traceback.format_exc()}')
-                return {'code': 500, 'message': 'error'}
 
         async def on_message(event: lark_oapi.im.v1.P2ImMessageReceiveV1):
             lb_event = await self.event_converter.target2yiri(event, self.api_client)
@@ -774,8 +736,65 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     ):
         self.listeners.pop(event_type)
 
+
+
+    def set_bot_uuid(self, bot_uuid: str):
+        """设置 bot UUID（用于生成 webhook URL）"""
+        self.bot_uuid = bot_uuid
+
+    async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
+        """处理统一 webhook 请求。
+
+        Args:
+            bot_uuid: Bot 的 UUID
+            path: 子路径（如果有的话）
+            request: Quart Request 对象
+
+        Returns:
+            响应数据
+        """
+        try:
+            data = await quart.request.json
+
+            if 'encrypt' in data:
+                cipher = AESCipher(config['encrypt-key'])
+                data = cipher.decrypt_string(data['encrypt'])
+                data = json.loads(data)
+
+            type = data.get('type')
+            if type is None:
+                context = EventContext(data)
+                type = context.header.event_type
+
+            if 'url_verification' == type:
+                # todo 验证verification token
+                return {'challenge': data.get('challenge')}
+            context = EventContext(data)
+            type = context.header.event_type
+            p2v1 = P2ImMessageReceiveV1()
+            p2v1.header = context.header
+            event = P2ImMessageReceiveV1Data()
+            event.message = EventMessage(context.event['message'])
+            event.sender = EventSender(context.event['sender'])
+            p2v1.event = event
+            p2v1.schema = context.schema
+            if 'im.message.receive_v1' == type:
+                try:
+                    event = await self.event_converter.target2yiri(p2v1, self.api_client)
+                except Exception:
+                    await self.logger.error(f'Error in lark callback: {traceback.format_exc()}')
+
+                if event.__class__ in self.listeners:
+                    await self.listeners[event.__class__](event, self)
+
+            return {'code': 200, 'message': 'ok'}
+        except Exception:
+            await self.logger.error(f'Error in lark callback: {traceback.format_exc()}')
+            return {'code': 500, 'message': 'error'}
+
+
+
     async def run_async(self):
-        port = self.config['port']
         enable_webhook = self.config['enable-webhook']
 
         if not enable_webhook:
@@ -791,16 +810,28 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     raise e
         else:
 
-            async def shutdown_trigger_placeholder():
-                while True:
-                    await asyncio.sleep(1)
+            # 统一 webhook 模式下，不启动独立的 Quart 应用
+            # 保持运行但不启动独立端口
 
-            await self.quart_app.run_task(
-                host='0.0.0.0',
-                port=port,
-                shutdown_trigger=shutdown_trigger_placeholder,
-            )
+            # 打印 webhook 回调地址
+            if self.bot_uuid and hasattr(self.logger, 'ap'):
+                try:
+                    api_port = self.logger.ap.instance_config.data['api']['port']
+                    webhook_url = f'http://127.0.0.1:{api_port}/bots/{self.bot_uuid}'
+                    webhook_url_public = f'http://<Your-Public-IP>:{api_port}/bots/{self.bot_uuid}'
 
+                    await self.logger.info('Lark 机器人 Webhook 回调地址:')
+                    await self.logger.info(f'  本地地址: {webhook_url}')
+                    await self.logger.info(f'  公网地址: {webhook_url_public}')
+                    await self.logger.info('请在 Lark 机器人后台配置此回调地址')
+                except Exception as e:
+                    await self.logger.warning(f'无法生成 webhook URL: {e}')
+
+        async def keep_alive():
+            while True:
+                await asyncio.sleep(1)
+
+        await keep_alive()
     async def kill(self) -> bool:
         # 需要断开连接，不然旧的连接会继续运行，导致飞书消息来时会随机选择一个连接
         # 断开时lark.ws.Client的_receive_message_loop会打印error日志: receive message loop exit。然后进行重连，

@@ -361,6 +361,20 @@ export default function BotForm({
           console.log('update bot success', res);
           onFormSubmit(form.getValues());
           toast.success(t('bots.saveSuccess'));
+
+          // 保存成功后重新拉取机器人配置，更新 webhook 地址（依赖后端 runtime 计算）
+          httpClient
+            .getBot(initBotId)
+            .then((getRes) => {
+              const runtimeValues = getRes.bot.adapter_runtime_values as Record<string, unknown> | undefined;
+              const newWebhookUrl = runtimeValues
+                ? ((runtimeValues.webhook_full_url as string) || '')
+                : '';
+              setWebhookUrl(newWebhookUrl);
+            })
+            .catch((err) => {
+              console.warn('refresh webhook url failed', err);
+            });
         })
         .catch((err) => {
           toast.error(t('bots.saveError') + err.message);
@@ -414,6 +428,18 @@ export default function BotForm({
         });
     }
   }
+
+  // 计算动态表单渲染列表：启用 Lark 的 Webhook 时隐藏 app_id 与 app_secret
+  const dynamicFormConfigListToRender = (() => {
+    const isLark = form.watch('adapter') === 'lark';
+    const enableWebhook = !!form.watch('adapter_config')?.['enable-webhook'];
+    if (isLark && enableWebhook) {
+      return dynamicFormConfigList.filter(
+        (item) => item.name !== 'app_id' && item.name !== 'app_secret',
+      );
+    }
+    return dynamicFormConfigList;
+  })();
 
   return (
     <div>
@@ -506,7 +532,9 @@ export default function BotForm({
                 </div>
 
                 {/* Webhook 地址显示（统一 Webhook 模式） */}
-                {webhookUrl && (
+                {form.watch('adapter') === 'lark' &&
+                  !!form.watch('adapter_config')?.['enable-webhook'] &&
+                  webhookUrl && (
                   <FormItem>
                     <FormLabel>{t('bots.webhookUrl')}</FormLabel>
                     <div className="flex items-center gap-2">
@@ -630,16 +658,17 @@ export default function BotForm({
               </div>
             )}
 
-            {showDynamicForm && dynamicFormConfigList.length > 0 && (
+            {showDynamicForm && dynamicFormConfigListToRender.length > 0 && (
               <div className="space-y-4">
                 <div className="text-lg font-medium">
                   {t('bots.adapterConfig')}
                 </div>
                 <DynamicFormComponent
-                  itemConfigList={dynamicFormConfigList}
+                  itemConfigList={dynamicFormConfigListToRender}
                   initialValues={form.watch('adapter_config')}
                   onSubmit={(values) => {
-                    form.setValue('adapter_config', values);
+                    const prev = form.getValues('adapter_config') || {};
+                    form.setValue('adapter_config', { ...prev, ...values });
                   }}
                 />
               </div>

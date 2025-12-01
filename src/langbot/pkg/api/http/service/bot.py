@@ -59,7 +59,7 @@ class BotService:
             adapter_runtime_values['bot_account_id'] = runtime_bot.adapter.bot_account_id
 
         # Webhook URL for unified webhook adapters (independent of bot running state)
-        if persistence_bot['adapter'] in ['wecom', 'wecombot', 'officialaccount', 'qqofficial', 'slack', 'wecomcs', 'LINE']:
+        if persistence_bot['adapter'] in ['wecom', 'wecombot', 'officialaccount', 'qqofficial', 'slack', 'wecomcs', 'LINE', "lark"]:
             webhook_prefix = self.ap.instance_config.data['api'].get('webhook_prefix', 'http://127.0.0.1:5300')
             webhook_url = f'/bots/{bot_uuid}'
             adapter_runtime_values['webhook_url'] = webhook_url
