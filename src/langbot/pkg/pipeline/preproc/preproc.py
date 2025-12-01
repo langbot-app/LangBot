@@ -77,9 +77,7 @@ class PreProcessor(stage.PipelineStage):
 
         # Extract sender name from message event
         sender_name = ''
-        if isinstance(query.message_event, platform_events.FriendMessage):
-            sender_name = query.message_event.sender.get_name()
-        elif isinstance(query.message_event, platform_events.GroupMessage):
+        if isinstance(query.message_event, (platform_events.FriendMessage, platform_events.GroupMessage)):
             sender_name = query.message_event.sender.get_name()
 
         variables = {
