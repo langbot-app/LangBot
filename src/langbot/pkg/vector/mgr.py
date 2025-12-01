@@ -4,6 +4,7 @@ from ..core import app
 from .vdb import VectorDatabase
 from .vdbs.chroma import ChromaVectorDatabase
 from .vdbs.qdrant import QdrantVectorDatabase
+from .vdbs.seekdb import SeekDBVectorDatabase
 
 
 class VectorDBManager:
@@ -22,6 +23,9 @@ class VectorDBManager:
             elif kb_config.get('use') == 'qdrant':
                 self.vector_db = QdrantVectorDatabase(self.ap)
                 self.ap.logger.info('Initialized Qdrant vector database backend.')
+            elif kb_config.get('use') == 'seekdb':
+                self.vector_db = SeekDBVectorDatabase(self.ap)
+                self.ap.logger.info('Initialized SeekDB vector database backend.')
             else:
                 self.vector_db = ChromaVectorDatabase(self.ap)
                 self.ap.logger.warning('No valid vector database backend configured, defaulting to Chroma.')
