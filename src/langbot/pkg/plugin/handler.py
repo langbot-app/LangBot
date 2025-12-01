@@ -758,3 +758,12 @@ class RuntimeConnectionHandler(handler.Handler):
             timeout=30,
         )
         return result
+
+    async def get_debug_info(self) -> dict[str, Any]:
+        """Get debug information including debug key and WS URL"""
+        result = await self.call_action(
+            LangBotToRuntimeAction.GET_DEBUG_INFO,
+            {},
+            timeout=10,
+        )
+        return result

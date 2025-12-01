@@ -639,6 +639,13 @@ export class BackendClient extends BaseHttpClient {
     return this.get('/api/v1/system/status/plugin-system');
   }
 
+  public getPluginDebugInfo(): Promise<{
+    debug_url: string;
+    plugin_debug_key: string;
+  }> {
+    return this.get('/api/v1/plugins/debug-info');
+  }
+
   // ============ User API ============
   public checkIfInited(): Promise<{ initialized: boolean }> {
     return this.get('/api/v1/user/init');

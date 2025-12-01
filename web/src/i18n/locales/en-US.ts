@@ -231,6 +231,15 @@ const enUS = {
     failedToGetStatus: 'Failed to get plugin system status',
     pluginSystemNotReady:
       'Plugin system is not ready, cannot perform this operation',
+    debugInfo: 'Debug Info',
+    debugInfoTitle: 'Plugin Debug Information',
+    debugUrl: 'Debug URL',
+    debugKey: 'Debug Key',
+    noDebugKey: '(Not Set)',
+    debugKeyDisabled:
+      'Debug key is not set, plugin debugging does not require authentication',
+    failedToGetDebugInfo: 'Failed to get debug information',
+    copiedToClipboard: 'Copied to clipboard',
     deleting: 'Deleting...',
     deletePlugin: 'Delete Plugin',
     cancel: 'Cancel',

@@ -21,6 +21,22 @@ class PluginsRouterGroup(group.RouterGroup):
 
             return self.success(data={'plugins': plugins})
 
+        @self.route('/debug-info', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def _() -> str:
+            """Get plugin debug information including debug URL and key"""
+            debug_info = await self.ap.plugin_connector.get_debug_info()
+
+            # Get debug URL from config
+            plugin_config = self.ap.instance_config.data.get('plugin', {})
+            debug_url = plugin_config.get('display_plugin_debug_url', 'http://localhost:5401')
+
+            return self.success(
+                data={
+                    'debug_url': debug_url,
+                    'plugin_debug_key': debug_info.get('plugin_debug_key', ''),
+                }
+            )
+
         @self.route(
             '/<author>/<plugin_name>/upgrade',
             methods=['POST'],

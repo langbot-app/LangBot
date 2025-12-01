@@ -233,6 +233,15 @@ const jaJP = {
     failedToGetStatus: 'プラグインシステム状態の取得に失敗しました',
     pluginSystemNotReady:
       'プラグインシステムが準備されていません。この操作を実行できません',
+    debugInfo: 'デバッグ情報',
+    debugInfoTitle: 'プラグインデバッグ情報',
+    debugUrl: 'デバッグURL',
+    debugKey: 'デバッグキー',
+    noDebugKey: '(未設定)',
+    debugKeyDisabled:
+      'デバッグキーが設定されていません。プラグインデバッグには認証が不要です',
+    failedToGetDebugInfo: 'デバッグ情報の取得に失敗しました',
+    copiedToClipboard: 'クリップボードにコピーしました',
     deleting: '削除中...',
     deletePlugin: 'プラグインを削除',
     cancel: 'キャンセル',

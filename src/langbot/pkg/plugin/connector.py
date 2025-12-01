@@ -385,6 +385,12 @@ class PluginRuntimeConnector:
     async def get_plugin_assets(self, plugin_author: str, plugin_name: str, filepath: str) -> dict[str, Any]:
         return await self.handler.get_plugin_assets(plugin_author, plugin_name, filepath)
 
+    async def get_debug_info(self) -> dict[str, Any]:
+        """Get debug information including debug key and WS URL"""
+        if not self.is_enable_plugin:
+            return {}
+        return await self.handler.get_debug_info()
+
     async def emit_event(
         self,
         event: events.BaseEventModel,
