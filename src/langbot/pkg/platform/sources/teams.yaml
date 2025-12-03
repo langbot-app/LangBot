@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: teams
+  label:
+    en_US: Microsoft Teams
+    zh_Hans: 微软 Teams
+  description:
+    en_US: Microsoft Teams Adapter - supports personal and channel/group chats
+    zh_Hans: 微软 Teams 适配器，支持个人聊天和频道/群组聊天
+  icon: teams.svg
+spec:
+  config:
+    - name: app_id
+      label:
+        en_US: App ID
+        zh_Hans: 应用 ID
+      description:
+        en_US: Microsoft App ID from Azure Bot registration
+        zh_Hans: Azure Bot 注册的 Microsoft 应用 ID
+      type: string
+      required: true
+      default: ""
+    - name: app_password
+      label:
+        en_US: App Password
+        zh_Hans: 应用密码
+      description:
+        en_US: Microsoft App Password (Client Secret) from Azure Bot registration
+        zh_Hans: Azure Bot 注册的 Microsoft 应用密码（客户端密钥）
+      type: string
+      required: true
+      default: ""
+execution:
+  python:
+    path: ./teams.py
+    attr: TeamsAdapter
