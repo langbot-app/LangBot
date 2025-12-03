@@ -62,12 +62,13 @@ class KookMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
         return content, message_type
 
     @staticmethod
-    async def target2yiri(kook_message: dict) -> platform_message.MessageChain:
+    async def target2yiri(kook_message: dict, bot_account_id: str = '') -> platform_message.MessageChain:
         """
         Convert KOOK message format to LangBot MessageChain
 
         Args:
             kook_message: KOOK message event data dict
+            bot_account_id: Bot's account ID for handling role mentions
         """
         components = []
 
@@ -78,12 +79,37 @@ class KookMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
         # Handle mentions
         mentions = extra.get('mention', [])
         mention_all = extra.get('mention_all', False)
+        mention_roles = extra.get('mention_roles', [])
 
         if mention_all:
             components.append(platform_message.AtAll())
 
         for mention_id in mentions:
             components.append(platform_message.At(target=str(mention_id)))
+
+        # Handle role mentions (when bot is mentioned via role)
+        # In KOOK, when a role that the bot has is mentioned, we receive it as a role mention
+        # We need to convert this to an At with the bot's account ID for the pipeline to recognize it
+        if mention_roles and bot_account_id:
+            # Add an At component with the bot's account ID when any role is mentioned
+            # This is because KOOK bots are often assigned roles and @role mentions should trigger responses
+            components.append(platform_message.At(target=bot_account_id))
+
+        # Strip mention patterns from content
+        # Remove user mention patterns: (met)USER_ID(met)
+        for mention_id in mentions:
+            content = content.replace(f'(met){mention_id}(met)', '')
+
+        # Remove @all pattern
+        if mention_all:
+            content = content.replace('(met)all(met)', '')
+
+        # Remove role mention patterns: (rol)ROLE_ID(rol)
+        for role_id in mention_roles:
+            content = content.replace(f'(rol){role_id}(rol)', '')
+
+        # Clean up extra whitespace
+        content = content.strip()
 
         # Handle different message types
         if msg_type == 1:  # Text message
@@ -113,6 +139,7 @@ class KookMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
             file_name = attachments.get('name', 'file')
             components.append(platform_message.Plain(text=f'[File: {file_name}]'))
         elif msg_type == 9:  # KMarkdown message
+            # Note: content is already stripped of mention patterns above
             if content:
                 components.append(platform_message.Plain(text=content))
         elif msg_type == 10:  # Card message
@@ -135,12 +162,13 @@ class KookEventConverter(abstract_platform_adapter.AbstractEventConverter):
         pass
 
     @staticmethod
-    async def target2yiri(kook_event: dict) -> platform_events.MessageEvent:
+    async def target2yiri(kook_event: dict, bot_account_id: str = '') -> platform_events.MessageEvent:
         """
         Convert KOOK event to LangBot MessageEvent
 
         Args:
             kook_event: KOOK event data dict containing channel_type, type, etc.
+            bot_account_id: Bot's account ID for handling role mentions
 
         Returns:
             FriendMessage or GroupMessage depending on channel_type
@@ -152,7 +180,7 @@ class KookEventConverter(abstract_platform_adapter.AbstractEventConverter):
         extra = kook_event.get('extra', {})
 
         # Convert message to MessageChain
-        message_chain = await KookMessageConverter.target2yiri(kook_event)
+        message_chain = await KookMessageConverter.target2yiri(kook_event, bot_account_id)
 
         # Convert timestamp from milliseconds to seconds
         event_time = msg_timestamp / 1000.0
@@ -177,7 +205,7 @@ class KookEventConverter(abstract_platform_adapter.AbstractEventConverter):
             author = extra.get('author', {})
             author_name = author.get('nickname', author.get('username', str(author_id)))
 
-            guild_id = extra.get('guild_id', '')
+            # guild_id = extra.get('guild_id', '')
             channel_name = extra.get('channel_name', str(target_id))
 
             return platform_events.GroupMessage(
@@ -258,11 +286,9 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     async def _get_gateway_url(self) -> str:
         """Get WebSocket gateway URL from KOOK API"""
         base_url = 'https://www.kookapp.cn/api/v3/gateway/index'
-        compress = self.config.get('compress', True)
 
-        params = {}
-        if compress:
-            params['compress'] = 1
+        # Always use compression for better performance
+        params = {'compress': 1}
 
         headers = {
             'Authorization': f'Bot {self.config["token"]}',
@@ -274,12 +300,34 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     data = await response.json()
                     if data.get('code') == 0:
                         gateway_url = data['data']['url']
-                        await self.logger.info(f'Retrieved KOOK gateway URL: {gateway_url}')
                         return gateway_url
                     else:
                         raise Exception(f'Failed to get gateway URL: {data.get("message")}')
                 else:
                     raise Exception(f'Failed to get gateway URL: HTTP {response.status}')
+
+    async def _get_bot_user_info(self) -> dict:
+        """Get bot's own user information from KOOK API"""
+        base_url = 'https://www.kookapp.cn/api/v3/user/me'
+
+        headers = {
+            'Authorization': f'Bot {self.config["token"]}',
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(base_url, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if data.get('code') == 0:
+                        user_info = data['data']
+                        await self.logger.info(
+                            f'Retrieved bot user info: {user_info.get("username")} (ID: {user_info.get("id")})'
+                        )
+                        return user_info
+                    else:
+                        raise Exception(f'Failed to get bot user info: {data.get("message")}')
+                else:
+                    raise Exception(f'Failed to get bot user info: HTTP {response.status}')
 
     async def _handle_hello(self, data: dict):
         """Handle HELLO signal (signal 1)"""
@@ -294,12 +342,18 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         # Check if this is a message event
         event_type = data.get('type')
         channel_type = data.get('channel_type')
+        author_id = data.get('author_id')
+
+        # Ignore messages from bot itself to prevent infinite loops
+        if self.bot_account_id and str(author_id) == self.bot_account_id:
+            await self.logger.debug(f'Ignoring message from bot itself (author_id: {author_id})')
+            return
 
         # Only process text messages (type 1, 2, 4, 9, 10) in GROUP or PERSON channels
         if event_type in [1, 2, 4, 9, 10] and channel_type in ['GROUP', 'PERSON']:
             try:
                 # Convert to LangBot event
-                lb_event = await self.event_converter.target2yiri(data)
+                lb_event = await self.event_converter.target2yiri(data, self.bot_account_id)
 
                 # Call registered listener
                 event_class = type(lb_event)
@@ -319,13 +373,17 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             while self.running and self.ws:
                 await asyncio.sleep(30)
 
-                if self.ws and not self.ws.closed:
-                    ping_msg = {
-                        's': 2,  # PING signal
-                        'sn': self.current_sn,
-                    }
-                    await self.ws.send(json.dumps(ping_msg))
-                    await self.logger.debug(f'Sent PING with sn={self.current_sn}')
+                if self.ws:
+                    try:
+                        ping_msg = {
+                            's': 2,  # PING signal
+                            'sn': self.current_sn,
+                        }
+                        await self.ws.send(json.dumps(ping_msg))
+                        await self.logger.debug(f'Sent PING with sn={self.current_sn}')
+                    except Exception:
+                        # Connection closed or send failed, exit loop
+                        break
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -354,6 +412,16 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     # Wait for HELLO within 6 seconds
                     try:
                         hello_msg = await asyncio.wait_for(ws.recv(), timeout=6.0)
+
+                        # Handle compressed messages (same as main message loop)
+                        if isinstance(hello_msg, bytes):
+                            # Decompress if compressed
+                            try:
+                                hello_msg = zlib.decompress(hello_msg).decode('utf-8')
+                            except Exception:
+                                # Not compressed or decompression failed
+                                hello_msg = hello_msg.decode('utf-8')
+
                         hello_data = json.loads(hello_msg)
 
                         if hello_data.get('s') == 1:  # HELLO signal
@@ -399,11 +467,11 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             except websockets.exceptions.ConnectionClosed:
                 await self.logger.warning('KOOK WebSocket connection closed, reconnecting...')
                 retry_count += 1
-                await asyncio.sleep(2 ** retry_count)  # Exponential backoff
+                await asyncio.sleep(2**retry_count)  # Exponential backoff
             except Exception as e:
                 await self.logger.error(f'KOOK WebSocket error: {e}\n{traceback.format_exc()}')
                 retry_count += 1
-                await asyncio.sleep(2 ** retry_count)
+                await asyncio.sleep(2**retry_count)
             finally:
                 # Stop heartbeat
                 if self.heartbeat_task:
@@ -562,6 +630,14 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
             await self.logger.info('Starting KOOK adapter')
 
+            # Get bot's user information and set bot_account_id
+            try:
+                bot_info = await self._get_bot_user_info()
+                self.bot_account_id = str(bot_info.get('id', ''))
+            except Exception as e:
+                await self.logger.error(f'Failed to get bot user info: {e}')
+                # Continue anyway, but bot will process its own messages
+
             # Start WebSocket connection
             self.ws_task = asyncio.create_task(self._websocket_loop())
 
@@ -592,8 +668,11 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 pass
 
         # Close WebSocket
-        if self.ws and not self.ws.closed:
-            await self.ws.close()
+        if self.ws:
+            try:
+                await self.ws.close()
+            except Exception:
+                pass  # Already closed or error during close
 
         # Close HTTP session
         if self.http_session:

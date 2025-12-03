@@ -8,7 +8,7 @@ metadata:
   description:
     en_US: KOOK Adapter (formerly KaiHeiLa)
     zh_Hans: KOOK 适配器(原开黑啦)，支持频道消息和私聊消息
-  icon: kook.svg
+  icon: kook.png
 spec:
   config:
     - name: token
@@ -18,13 +18,6 @@ spec:
       type: string
       required: true
       default: ""
-    - name: compress
-      label:
-        en_US: Enable Compression
-        zh_Hans: 启用压缩
-      type: boolean
-      required: false
-      default: true
 execution:
   python:
     path: ./kook.py
