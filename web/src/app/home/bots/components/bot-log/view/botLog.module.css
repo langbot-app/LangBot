@@ -1,26 +1,42 @@
 .botLogListContainer {
   width: 100%;
+  max-width: 100%;
   min-height: 10rem;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  overflow-y: scroll;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 .botLogCardContainer {
   width: 100%;
+  max-width: 100%;
   background-color: #fff;
-  border-radius: 10px;
-  border: 1px solid #cbd5e1;
-  padding: 1.2rem;
-  margin-bottom: 1rem;
-  cursor: pointer;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  transition: all 0.2s ease;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.botLogCardContainer:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 :global(.dark) .botLogCardContainer {
   background-color: #1f1f22;
   border: 1px solid #2a2a2e;
+}
+
+:global(.dark) .botLogCardContainer:hover {
+  border-color: #3a3a3e;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .listHeader {
@@ -29,34 +45,63 @@
   display: flex;
   flex-direction: row;
   align-items: center;
+  margin-bottom: 0.5rem;
 }
 
 .tag {
-  display: flex;
+  display: inline-flex;
   flex-direction: row;
   align-items: center;
-  justify-content: flex-start;
-  gap: 0.2rem;
-  height: 1.5rem;
-  padding: 0.5rem;
-  border-radius: 0.4rem;
-  background-color: #a5d8ff;
-  color: #ffffff;
+  justify-content: center;
+  gap: 0.25rem;
+  height: auto;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  background-color: #dbeafe;
+  color: #1e40af;
+  font-size: 0.75rem;
+  font-weight: 500;
   max-width: 16rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+:global(.dark) .tag {
+  background-color: #1e3a8a;
+  color: #93c5fd;
 }
 
 .chatTag {
-  color: #626262;
-  background-color: #d1d1d1;
+  color: #4b5563;
+  background-color: #f3f4f6;
+  text-transform: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.chatTag:hover {
+  background-color: #e5e7eb;
+}
+
+:global(.dark) .chatTag {
+  color: #9ca3af;
+  background-color: #374151;
+}
+
+:global(.dark) .chatTag:hover {
+  background-color: #4b5563;
 }
 
 .chatId {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas,
+    'Courier New', monospace;
+  font-size: 0.7rem;
 }
 
 .cardTitleContainer {
@@ -65,9 +110,33 @@
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 0.5rem;
 }
 
 .cardText {
-  margin-top: 0.4rem;
+  color: #1e293b;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+  max-width: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', sans-serif;
+}
+
+:global(.dark) .cardText {
+  color: #e2e8f0;
+}
+
+.timestamp {
+  color: #64748b;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+:global(.dark) .timestamp {
   color: #64748b;
 }
