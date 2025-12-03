@@ -100,6 +100,7 @@ class PreProcessor(stage.PipelineStage):
 
         plain_text = ''
         quote_msg = query.pipeline_config['trigger'].get('misc', '').get('combine-quote-message')
+        quoted_text = ''  # Store quoted message text
 
         for me in query.message_chain:
             if isinstance(me, platform_message.Plain):
@@ -117,6 +118,7 @@ class PreProcessor(stage.PipelineStage):
             elif isinstance(me, platform_message.Quote) and quote_msg:
                 for msg in me.origin:
                     if isinstance(msg, platform_message.Plain):
+                        quoted_text += msg.text
                         content_list.append(provider_message.ContentElement.from_text(msg.text))
                     elif isinstance(msg, platform_message.Image):
                         if selected_runner != 'local-agent' or (
@@ -126,6 +128,7 @@ class PreProcessor(stage.PipelineStage):
                                 content_list.append(provider_message.ContentElement.from_image_base64(msg.base64))
 
         query.variables['user_message_text'] = plain_text
+        query.variables['quoted_message_text'] = quoted_text  # Add quoted text as variable
 
         query.user_message = provider_message.Message(role='user', content=content_list)
         # =========== 触发事件 PromptPreProcessing

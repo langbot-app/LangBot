@@ -16,6 +16,9 @@ from ..logger import EventLogger
 
 
 class QQOfficialMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
+    def __init__(self, bot: QQOfficialClient = None):
+        self.bot = bot
+
     @staticmethod
     async def yiri2target(message_chain: platform_message.MessageChain):
         content_list = []
@@ -31,10 +34,64 @@ class QQOfficialMessageConverter(abstract_platform_adapter.AbstractMessageConver
 
         return content_list
 
-    @staticmethod
-    async def target2yiri(message: str, message_id: str, pic_url: str, content_type):
+    async def target2yiri(self, message: str, message_id: str, pic_url: str, content_type, message_reference: dict = None, event_type: str = None, channel_id: str = None, group_openid: str = None, user_openid: str = None):
         yiri_msg_list = []
         yiri_msg_list.append(platform_message.Source(id=message_id, time=datetime.datetime.now()))
+        
+        # Handle quoted message if message_reference exists
+        if message_reference and message_reference.get('message_id') and self.bot:
+            referenced_msg_id = message_reference.get('message_id')
+            try:
+                # Fetch the referenced message
+                referenced_msg = await self.bot.get_message_by_id(
+                    referenced_msg_id,
+                    channel_id=channel_id,
+                    group_openid=group_openid,
+                    user_openid=user_openid
+                )
+                
+                if referenced_msg:
+                    # Create message chain for the quoted content
+                    quoted_content = referenced_msg.get('content', '')
+                    quoted_chain = platform_message.MessageChain()
+                    
+                    if quoted_content:
+                        quoted_chain.append(platform_message.Plain(text=quoted_content))
+                    
+                    # Add images if present in quoted message
+                    quoted_attachments = referenced_msg.get('attachments', [])
+                    for attachment in quoted_attachments:
+                        if attachment.get('content_type', '').startswith('image/'):
+                            img_url = attachment.get('url', '')
+                            if img_url:
+                                try:
+                                    img_base64 = await image.get_qq_official_image_base64(
+                                        pic_url=img_url if img_url.startswith('https://') else 'https://' + img_url,
+                                        content_type=attachment.get('content_type', '')
+                                    )
+                                    quoted_chain.append(platform_message.Image(base64=img_base64))
+                                except Exception as e:
+                                    # If image fetch fails, just skip it
+                                    pass
+                    
+                    # Get sender info from referenced message
+                    quoted_sender_id = referenced_msg.get('author', {}).get('id', '') or \
+                                     referenced_msg.get('author', {}).get('user_openid', '') or \
+                                     referenced_msg.get('author', {}).get('member_openid', '')
+                    
+                    # Add Quote component
+                    yiri_msg_list.append(
+                        platform_message.Quote(
+                            id=referenced_msg_id,
+                            sender_id=quoted_sender_id,
+                            origin=quoted_chain,
+                        )
+                    )
+            except Exception as e:
+                # If fetching quoted message fails, log and continue
+                if self.bot and hasattr(self.bot, 'logger'):
+                    await self.bot.logger.warning(f'Failed to fetch quoted message {referenced_msg_id}: {e}')
+        
         if pic_url is not None:
             base64_url = await image.get_qq_official_image_base64(pic_url=pic_url, content_type=content_type)
             yiri_msg_list.append(platform_message.Image(base64=base64_url))
@@ -45,20 +102,35 @@ class QQOfficialMessageConverter(abstract_platform_adapter.AbstractMessageConver
 
 
 class QQOfficialEventConverter(abstract_platform_adapter.AbstractEventConverter):
+    def __init__(self, message_converter: QQOfficialMessageConverter):
+        self.message_converter = message_converter
+
     @staticmethod
     async def yiri2target(event: platform_events.MessageEvent) -> QQOfficialEvent:
         return event.source_platform_object
 
-    @staticmethod
-    async def target2yiri(event: QQOfficialEvent):
+    async def target2yiri(self, event: QQOfficialEvent):
         """
         QQ官方消息转换为LB对象
         """
-        yiri_chain = await QQOfficialMessageConverter.target2yiri(
+        # Get message reference if present
+        message_reference = event.message_reference
+        
+        # Determine context based on event type
+        channel_id = event.channel_id if event.t in ['AT_MESSAGE_CREATE', 'DIRECT_MESSAGE_CREATE'] else None
+        group_openid = event.group_openid if event.t == 'GROUP_AT_MESSAGE_CREATE' else None
+        user_openid = event.user_openid if event.t == 'C2C_MESSAGE_CREATE' else None
+        
+        yiri_chain = await self.message_converter.target2yiri(
             message=event.content,
             message_id=event.d_id,
             pic_url=event.attachments,
             content_type=event.content_type,
+            message_reference=message_reference,
+            event_type=event.t,
+            channel_id=channel_id,
+            group_openid=group_openid,
+            user_openid=user_openid,
         )
 
         if event.t == 'C2C_MESSAGE_CREATE':
@@ -135,13 +207,17 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
     config: dict
     bot_account_id: str
     bot_uuid: str = None
-    message_converter: QQOfficialMessageConverter = QQOfficialMessageConverter()
-    event_converter: QQOfficialEventConverter = QQOfficialEventConverter()
+    message_converter: QQOfficialMessageConverter
+    event_converter: QQOfficialEventConverter
 
     def __init__(self, config: dict, logger: EventLogger):
         bot = QQOfficialClient(
             app_id=config['appid'], secret=config['secret'], token=config['token'], logger=logger, unified_mode=True
         )
+
+        # Initialize converters with bot reference
+        message_converter = QQOfficialMessageConverter(bot=bot)
+        event_converter = QQOfficialEventConverter(message_converter=message_converter)
 
         super().__init__(
             config=config,
@@ -149,6 +225,9 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
             bot=bot,
             bot_account_id=config['appid'],
         )
+        
+        self.message_converter = message_converter
+        self.event_converter = event_converter
 
     async def reply_message(
         self,
