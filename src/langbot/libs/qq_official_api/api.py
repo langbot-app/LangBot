@@ -291,6 +291,15 @@ class QQOfficialClient:
         """
         if not await self.check_access_token():
             await self.get_access_token()
+        
+        # Validate that exactly one context parameter is provided
+        provided_contexts = sum([bool(channel_id), bool(group_openid), bool(user_openid)])
+        if provided_contexts == 0:
+            await self.logger.warning(f'Cannot fetch message {message_id}: no context provided')
+            return {}
+        if provided_contexts > 1:
+            await self.logger.warning(f'Cannot fetch message {message_id}: multiple contexts provided')
+            return {}
             
         # Determine which API endpoint to use based on provided parameters
         if channel_id:
@@ -302,9 +311,6 @@ class QQOfficialClient:
         elif user_openid:
             # Private message
             url = f'{self.base_url}/v2/users/{user_openid}/messages/{message_id}'
-        else:
-            await self.logger.warning(f'Cannot fetch message {message_id}: no valid context provided')
-            return {}
             
         async with httpx.AsyncClient() as client:
             headers = {

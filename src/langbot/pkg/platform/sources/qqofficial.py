@@ -70,7 +70,7 @@ class QQOfficialMessageConverter(abstract_platform_adapter.AbstractMessageConver
                                         content_type=attachment.get('content_type', '')
                                     )
                                     quoted_chain.append(platform_message.Image(base64=img_base64))
-                                except Exception as e:
+                                except Exception:
                                     # If image fetch fails, just skip it
                                     pass
                     
@@ -89,8 +89,7 @@ class QQOfficialMessageConverter(abstract_platform_adapter.AbstractMessageConver
                     )
             except Exception as e:
                 # If fetching quoted message fails, log and continue
-                if self.bot and hasattr(self.bot, 'logger'):
-                    await self.bot.logger.warning(f'Failed to fetch quoted message {referenced_msg_id}: {e}')
+                await self.bot.logger.warning(f'Failed to fetch quoted message {referenced_msg_id}: {e}')
         
         if pic_url is not None:
             base64_url = await image.get_qq_official_image_base64(pic_url=pic_url, content_type=content_type)
