@@ -30,36 +30,18 @@ database:
         password: 'postgres'
         database: 'postgres'
 vdb:
-    # Vector database for knowledge base embeddings
-    # Supported: chroma, qdrant, milvus, pgvector
     use: chroma
-
-    # Chroma (Default - Embedded, no setup required)
-    # Best for: Development, small-scale deployments
-    # No additional configuration needed
-
-    # Qdrant (High-performance vector search)
-    # Best for: Production, large-scale deployments
     qdrant:
-        url: ''  # Full URL (e.g., 'https://xyz.cloud.qdrant.io')
-        host: localhost  # Host if not using url
-        port: 6333  # Port if not using url
-        api_key: ''  # API key for authentication
-
-    # Milvus (Scalable vector database)
-    # Best for: Very large-scale deployments (>10M vectors)
-    # Deploy with: docker compose -f docker/vector-databases-compose.yml up -d
+        url: ''
+        host: localhost
+        port: 6333
+        api_key: ''
     milvus:
-        uri: 'http://127.0.0.1:19530'  # Milvus server URI (or './data/milvus.db' for local)
-        token: ''  # Optional authentication token
-
-    # pgvector (PostgreSQL extension)
-    # Best for: <10M vectors, PostgreSQL-based deployments
-    # Deploy with: docker compose -f docker/vector-databases-compose.yml up -d
-    # Features: ACID compliance, familiar SQL tooling
+        uri: 'http://127.0.0.1:19530'
+        token: ''
     pgvector:
         host: '127.0.0.1'
-        port: 5433  # Default deployment uses 5433 to avoid conflicts
+        port: 5433
         database: 'langbot'
         user: 'postgres'
         password: 'postgres'
