@@ -92,7 +92,11 @@ class HTTPController:
 
         @self.quart_app.route('/')
         async def index():
-            return await quart.send_from_directory(frontend_path, 'index.html', mimetype='text/html')
+            response = await quart.send_from_directory(frontend_path, 'index.html', mimetype='text/html')
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+            return response
 
         @self.quart_app.route('/<path:path>')
         async def static_file(path: str):
