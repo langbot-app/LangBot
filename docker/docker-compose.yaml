@@ -11,7 +11,7 @@ services:
     volumes:
       - ./data/plugins:/app/data/plugins
     ports:
-      - 5402:5401
+      - 5401:5401
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
@@ -32,9 +32,6 @@ services:
     ports:
       - 5300:5300  # For web ui and webhook callback
       - 2280-2285:2280-2285  # For platform reverse connection
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
     networks:
       - langbot_network
 
