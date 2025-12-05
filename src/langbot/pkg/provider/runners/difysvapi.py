@@ -91,18 +91,13 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         async def download_file(file_url: str) -> tuple[bytes, str]:
             """Download file from url (supports data url)."""
-            if not file_url:
-                raise ValueError('empty file_url')
-            if file_url.startswith('data:'):
-                header, b64_data = file_url.split(',', 1)
-                content_type = 'application/octet-stream'
-                if ';' in header:
-                    content_type = header.split(';')[0][5:] or content_type
-                return base64.b64decode(b64_data), content_type
+
             async with httpx.AsyncClient() as client_session:
                 resp = await client_session.get(file_url)
                 resp.raise_for_status()
-                content_type = resp.headers.get('content-type') or mimetypes.guess_type(file_url)[0] or 'application/octet-stream'
+                content_type = (
+                    resp.headers.get('content-type') or mimetypes.guess_type(file_url)[0] or 'application/octet-stream'
+                )
                 return resp.content, content_type
 
         def _detect_file_type(content_type: str) -> str:
@@ -134,6 +129,18 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                         upload_files.append({'type': file_type, 'id': file_id})
                     except Exception as e:
                         self.ap.logger.warning(f'dify file upload failed: {e}')
+                elif ce.type == 'file_base64':
+                    file_name = getattr(ce, 'file_name', None) or 'file'
+
+                    header, b64_data = ce.file_base64.split(',', 1)
+                    content_type = 'application/octet-stream'
+                    if ';' in header:
+                        content_type = header.split(';')[0][5:] or content_type
+                    file_bytes = base64.b64decode(b64_data)
+                    file_id = await upload_file_bytes(file_name, file_bytes, content_type)
+                    file_type = _detect_file_type(content_type)
+                    upload_files.append({'type': file_type, 'id': file_id})
+
         elif isinstance(query.user_message.content, str):
             plain_text = query.user_message.content
 

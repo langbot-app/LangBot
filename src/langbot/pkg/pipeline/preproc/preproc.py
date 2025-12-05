@@ -114,7 +114,7 @@ class PreProcessor(stage.PipelineStage):
             elif isinstance(me, platform_message.Voice):
                 # 转成文件链接，让下游 runner 上传到目标模型
                 if me.base64:
-                    content_list.append(provider_message.ContentElement.from_file_url(me.base64, 'voice.silk'))
+                    content_list.append(provider_message.ContentElement.from_file_base64(me.base64, 'voice.silk'))
                 elif me.url:
                     content_list.append(provider_message.ContentElement.from_file_url(me.url, 'voice'))
             elif isinstance(me, platform_message.File):
