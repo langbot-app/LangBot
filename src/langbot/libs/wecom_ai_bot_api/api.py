@@ -607,7 +607,7 @@ class WecomBotClient:
                     links.append(item.get('link', {}))
 
             if texts:
-                message_data['content'] = ''.join(texts)  # 拼接所有 text
+                message_data['content'] = ' '.join(texts)  # 拼接所有 text
             if images:
                 message_data['images'] = images
                 message_data['picurl'] = images[0]  # 只保留第一个 image
