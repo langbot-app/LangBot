@@ -28,9 +28,102 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
         if event.type == 'group':
             yiri_msg_list.append(platform_message.At(target=event.ai_bot_id))
         yiri_msg_list.append(platform_message.Source(id=event.message_id, time=datetime.datetime.now()))
-        yiri_msg_list.append(platform_message.Plain(text=event.content))
-        if event.picurl != '':
-            yiri_msg_list.append(platform_message.Image(base64=event.picurl))
+
+        if event.content:
+            yiri_msg_list.append(platform_message.Plain(text=event.content))
+
+        images = []
+        if event.images:
+            images.extend([img for img in event.images if img])
+        if not images and event.picurl:
+            images.append(event.picurl)
+        for image_base64 in images:
+            if image_base64:
+                yiri_msg_list.append(platform_message.Image(base64=image_base64))
+
+        file_info = event.file or {}
+        if file_info:
+            file_url = (
+                file_info.get('download_url')
+                or file_info.get('url')
+                or file_info.get('fileurl')
+                or file_info.get('path')
+            )
+            file_base64 = file_info.get('base64')
+            file_name = file_info.get('filename') or file_info.get('name')
+            file_size = file_info.get('filesize') or file_info.get('size')
+            resolved_url = file_url or file_base64
+            if resolved_url or file_name:
+                file_kwargs = {}
+                if resolved_url:
+                    file_kwargs['url'] = resolved_url
+                if file_name:
+                    file_kwargs['name'] = file_name
+                if file_size is not None:
+                    file_kwargs['size'] = file_size
+                try:
+                    yiri_msg_list.append(platform_message.File(**file_kwargs))
+                except Exception:
+                    # 保底兜底
+                    yiri_msg_list.append(platform_message.Unknown(text='[file message unsupported]'))
+
+        voice_info = event.voice or {}
+        if voice_info:
+            voice_payload = voice_info.get('base64') or voice_info.get('url')
+            if voice_payload:
+                if voice_info.get('base64') and not voice_payload.startswith('data:'):
+                    voice_payload = f"data:audio/mpeg;base64,{voice_info.get('base64')}"
+                try:
+                    yiri_msg_list.append(platform_message.Voice(base64=voice_payload))
+                except Exception:
+                    try:
+                        voice_kwargs = {'url': voice_payload}
+                        voice_name = voice_info.get('filename') or voice_info.get('name')
+                        voice_size = voice_info.get('filesize') or voice_info.get('size')
+                        if voice_name:
+                            voice_kwargs['name'] = voice_name
+                        if voice_size is not None:
+                            voice_kwargs['size'] = voice_size
+                        yiri_msg_list.append(platform_message.File(**voice_kwargs))
+                    except Exception:
+                        yiri_msg_list.append(platform_message.Unknown(text='[voice message unsupported]'))
+
+        video_info = event.video or {}
+        if video_info:
+            video_payload = (
+                video_info.get('base64')
+                or video_info.get('url')
+                or video_info.get('download_url')
+                or video_info.get('fileurl')
+            )
+            if video_payload:
+                video_kwargs = {'url': video_payload}
+                video_name = video_info.get('filename') or video_info.get('name')
+                video_size = video_info.get('filesize') or video_info.get('size')
+                if video_name:
+                    video_kwargs['name'] = video_name
+                if video_size is not None:
+                    video_kwargs['size'] = video_size
+                try:
+                    # 没有专门的视频类型，沿用 File 传递给上层
+                    yiri_msg_list.append(platform_message.File(**video_kwargs))
+                except Exception:
+                    yiri_msg_list.append(platform_message.Unknown(text='[video message unsupported]'))
+
+        if event.msgtype == 'link' and event.link:
+            link = event.link
+            summary = '\n'.join(
+                filter(None, [link.get('title', ''), link.get('description') or link.get('digest', ''), link.get('url', '')])
+            )
+            if summary:
+                yiri_msg_list.append(platform_message.Plain(text=summary))
+
+        has_content_element = any(
+            not isinstance(element, (platform_message.Source, platform_message.At)) for element in yiri_msg_list
+        )
+        if not has_content_element:
+            fallback_type = event.msgtype or 'unknown'
+            yiri_msg_list.append(platform_message.Unknown(text=f'[unsupported wecom msgtype: {fallback_type}]'))
         chain = platform_message.MessageChain(yiri_msg_list)
 
         return chain
