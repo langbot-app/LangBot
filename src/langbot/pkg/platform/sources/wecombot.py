@@ -52,11 +52,11 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
             file_base64 = file_info.get('base64')
             file_name = file_info.get('filename') or file_info.get('name')
             file_size = file_info.get('filesize') or file_info.get('size')
-            resolved_url = file_url or file_base64
-            if resolved_url or file_name:
+            file_data = file_url or file_base64
+            if file_data or file_name:
                 file_kwargs = {}
-                if resolved_url:
-                    file_kwargs['url'] = resolved_url
+                if file_data:
+                    file_kwargs['url'] = file_data
                 if file_name:
                     file_kwargs['name'] = file_name
                 if file_size is not None:
