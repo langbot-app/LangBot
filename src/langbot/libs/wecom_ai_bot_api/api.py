@@ -458,32 +458,174 @@ class WecomBotClient:
     async def get_message(self, msg_json):
         message_data = {}
 
+        msg_type = msg_json.get('msgtype', '')
+        if msg_type:
+            message_data['msgtype'] = msg_type
+
         if msg_json.get('chattype', '') == 'single':
             message_data['type'] = 'single'
         elif msg_json.get('chattype', '') == 'group':
             message_data['type'] = 'group'
 
-        if msg_json.get('msgtype') == 'text':
+        max_inline_file_size = 5 * 1024 * 1024  # avoid decoding very large payloads by default
+
+        async def _safe_download(url: str):
+            if not url:
+                return None
+            return await self.download_url_to_base64(url, self.EnCodingAESKey)
+
+        if msg_type == 'text':
             message_data['content'] = msg_json.get('text', {}).get('content')
-        elif msg_json.get('msgtype') == 'image':
+        elif msg_type == 'markdown':
+            message_data['content'] = msg_json.get('markdown', {}).get('content') or msg_json.get('text', {}).get(
+                'content', ''
+            )
+        elif msg_type == 'image':
             picurl = msg_json.get('image', {}).get('url', '')
-            base64 = await self.download_url_to_base64(picurl, self.EnCodingAESKey)
-            message_data['picurl'] = base64
-        elif msg_json.get('msgtype') == 'mixed':
+            base64_data = await _safe_download(picurl)
+            if base64_data:
+                message_data['picurl'] = base64_data
+                message_data['images'] = [base64_data]
+        elif msg_type == 'voice':
+            voice_info = msg_json.get('voice', {}) or {}
+            download_url = voice_info.get('url')
+            message_data['voice'] = {
+                'url': download_url,
+                'md5sum': voice_info.get('md5sum') or voice_info.get('md5'),
+                'filesize': voice_info.get('filesize') or voice_info.get('size'),
+                'sdkfileid': voice_info.get('sdkfileid') or voice_info.get('fileid'),
+            }
+            # 企业微信智能转写文本（如果已有）直接复用，避免重复转写
+            if voice_info.get('content'):
+                message_data['content'] = voice_info.get('content')
+            if (message_data['voice'].get('filesize') or 0) <= max_inline_file_size:
+                voice_base64 = await _safe_download(download_url)
+                if voice_base64:
+                    message_data['voice']['base64'] = voice_base64
+        elif msg_type == 'video':
+            video_info = msg_json.get('video', {}) or {}
+            download_url = video_info.get('url')
+            video_data = {
+                'url': download_url,
+                'filesize': video_info.get('filesize') or video_info.get('size'),
+                'sdkfileid': video_info.get('sdkfileid') or video_info.get('fileid'),
+                'md5sum': video_info.get('md5sum') or video_info.get('md5'),
+                'filename': video_info.get('filename') or video_info.get('name'),
+            }
+            if (video_data.get('filesize') or 0) <= max_inline_file_size:
+                video_base64 = await _safe_download(download_url)
+                if video_base64:
+                    video_data['base64'] = video_base64
+            message_data['video'] = video_data
+        elif msg_type == 'file':
+            file_info = msg_json.get('file', {}) or {}
+            download_url = file_info.get('url') or file_info.get('fileurl')
+            file_data = {
+                'filename': file_info.get('filename') or file_info.get('name'),
+                'filesize': file_info.get('filesize') or file_info.get('size'),
+                'md5sum': file_info.get('md5sum') or file_info.get('md5'),
+                'sdkfileid': file_info.get('sdkfileid') or file_info.get('fileid'),
+                'download_url': download_url,
+                'extra': file_info,
+            }
+            if (file_data.get('filesize') or 0) <= max_inline_file_size:
+                file_base64 = await _safe_download(download_url)
+                if file_base64:
+                    file_data['base64'] = file_base64
+            message_data['file'] = file_data
+        elif msg_type == 'link':
+            message_data['link'] = msg_json.get('link', {})
+            if not message_data.get('content'):
+                title = message_data['link'].get('title', '')
+                desc = message_data['link'].get('description') or message_data['link'].get('digest', '')
+                message_data['content'] = '\n'.join(filter(None, [title, desc]))
+        elif msg_type == 'mixed':
             items = msg_json.get('mixed', {}).get('msg_item', [])
             texts = []
-            picurl = None
+            images = []
+            files = []
+            voices = []
+            videos = []
+            links = []
             for item in items:
-                if item.get('msgtype') == 'text':
+                item_type = item.get('msgtype')
+                if item_type == 'text':
                     texts.append(item.get('text', {}).get('content', ''))
-                elif item.get('msgtype') == 'image' and picurl is None:
-                    picurl = item.get('image', {}).get('url')
+                elif item_type == 'image':
+                    img_url = item.get('image', {}).get('url')
+                    base64_data = await _safe_download(img_url)
+                    if base64_data:
+                        images.append(base64_data)
+                elif item_type == 'file':
+                    file_info = item.get('file', {}) or {}
+                    download_url = file_info.get('url') or file_info.get('fileurl')
+                    file_data = {
+                        'filename': file_info.get('filename') or file_info.get('name'),
+                        'filesize': file_info.get('filesize') or file_info.get('size'),
+                        'md5sum': file_info.get('md5sum') or file_info.get('md5'),
+                        'sdkfileid': file_info.get('sdkfileid') or file_info.get('fileid'),
+                        'download_url': download_url,
+                        'extra': file_info,
+                    }
+                    if (file_data.get('filesize') or 0) <= max_inline_file_size:
+                        file_base64 = await _safe_download(download_url)
+                        if file_base64:
+                            file_data['base64'] = file_base64
+                    files.append(file_data)
+                elif item_type == 'voice':
+                    voice_info = item.get('voice', {}) or {}
+                    download_url = voice_info.get('url')
+                    voice_data = {
+                        'url': download_url,
+                        'md5sum': voice_info.get('md5sum') or voice_info.get('md5'),
+                        'filesize': voice_info.get('filesize') or voice_info.get('size'),
+                        'sdkfileid': voice_info.get('sdkfileid') or voice_info.get('fileid'),
+                    }
+                    if voice_info.get('content'):
+                        texts.append(voice_info.get('content'))
+                    if (voice_data.get('filesize') or 0) <= max_inline_file_size:
+                        voice_base64 = await _safe_download(download_url)
+                        if voice_base64:
+                            voice_data['base64'] = voice_base64
+                    voices.append(voice_data)
+                elif item_type == 'video':
+                    video_info = item.get('video', {}) or {}
+                    download_url = video_info.get('url')
+                    video_data = {
+                        'url': download_url,
+                        'filesize': video_info.get('filesize') or video_info.get('size'),
+                        'sdkfileid': video_info.get('sdkfileid') or video_info.get('fileid'),
+                        'md5sum': video_info.get('md5sum') or video_info.get('md5'),
+                        'filename': video_info.get('filename') or video_info.get('name'),
+                    }
+                    if (video_data.get('filesize') or 0) <= max_inline_file_size:
+                        video_base64 = await _safe_download(download_url)
+                        if video_base64:
+                            video_data['base64'] = video_base64
+                    videos.append(video_data)
+                elif item_type == 'link':
+                    links.append(item.get('link', {}))
 
             if texts:
                 message_data['content'] = ''.join(texts)  # 拼接所有 text
-            if picurl:
-                base64 = await self.download_url_to_base64(picurl, self.EnCodingAESKey)
-                message_data['picurl'] = base64  # 只保留第一个 image
+            if images:
+                message_data['images'] = images
+                message_data['picurl'] = images[0]  # 只保留第一个 image
+            if files:
+                message_data['files'] = files
+                message_data['file'] = files[0]
+            if voices:
+                message_data['voices'] = voices
+                message_data['voice'] = voices[0]
+            if videos:
+                message_data['videos'] = videos
+                message_data['video'] = videos[0]
+            if links:
+                message_data['link'] = links[0]
+            if items:
+                message_data['attachments'] = items
+        else:
+            message_data['raw_msg'] = msg_json
 
         # Extract user information
         from_info = msg_json.get('from', {})

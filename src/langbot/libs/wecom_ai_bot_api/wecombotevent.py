@@ -18,6 +18,13 @@ class WecomBotEvent(dict):
         return self.get('type', '')
 
     @property
+    def msgtype(self) -> str:
+        """
+        消息 msgtype
+        """
+        return self.get('msgtype', '')
+
+    @property
     def userid(self) -> str:
         """
         用户id
@@ -51,6 +58,55 @@ class WecomBotEvent(dict):
         图片url
         """
         return self.get('picurl', '')
+
+    @property
+    def images(self):
+        """
+        图片列表（兼容 mixed）
+        """
+        return self.get('images', [])
+
+    @property
+    def file(self):
+        """
+        文件信息
+        """
+        return self.get('file', {})
+
+    @property
+    def voice(self):
+        """
+        语音信息
+        """
+        return self.get('voice', {})
+
+    @property
+    def video(self):
+        """
+        视频信息
+        """
+        return self.get('video', {})
+
+    @property
+    def link(self):
+        """
+        链接消息信息
+        """
+        return self.get('link', {})
+
+    @property
+    def location(self):
+        """
+        位置信息
+        """
+        return self.get('location', {})
+
+    @property
+    def attachments(self):
+        """
+        原始 mixed 中的附件项
+        """
+        return self.get('attachments', [])
 
     @property
     def chatid(self) -> str:

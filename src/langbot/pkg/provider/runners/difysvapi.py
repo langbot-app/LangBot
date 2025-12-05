@@ -4,6 +4,7 @@ import typing
 import json
 import uuid
 import base64
+import mimetypes
 
 
 from langbot.pkg.provider import runner
@@ -12,6 +13,7 @@ import langbot_plugin.api.entities.builtin.provider.message as provider_message
 from langbot.pkg.utils import image
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 from langbot.libs.dify_service_api.v1 import client, errors
+import httpx
 
 
 @runner.runner_class('dify-service-api')
@@ -70,14 +72,48 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 content = f'<think>\n{thinking_content}\n</think>\n{content}'.strip()
             return content, thinking_content
 
-    async def _preprocess_user_message(self, query: pipeline_query.Query) -> tuple[str, list[str]]:
-        """预处理用户消息，提取纯文本，并将图片上传到 Dify 服务
+    async def _preprocess_user_message(self, query: pipeline_query.Query) -> tuple[str, list[dict]]:
+        """预处理用户消息，提取纯文本，并将图片/文件上传到 Dify 服务
 
         Returns:
-            tuple[str, list[str]]: 纯文本和图片的 Dify 服务图片 ID
+            tuple[str, list[dict]]: 纯文本和上传后的文件描述（包含 type 与 id）
         """
         plain_text = ''
-        file_ids = []
+        upload_files: list[dict] = []
+        user_tag = f'{query.session.launcher_type.value}_{query.session.launcher_id}'
+
+        async def upload_file_bytes(file_name: str, file_bytes: bytes, content_type: str) -> str:
+            file_name = file_name or 'file'
+            content_type = content_type or 'application/octet-stream'
+            file = (file_name, file_bytes, content_type)
+            resp = await self.dify_client.upload_file(file, user_tag)
+            return resp['id']
+
+        async def download_file(file_url: str) -> tuple[bytes, str]:
+            """Download file from url (supports data url)."""
+            if not file_url:
+                raise ValueError('empty file_url')
+            if file_url.startswith('data:'):
+                header, b64_data = file_url.split(',', 1)
+                content_type = 'application/octet-stream'
+                if ';' in header:
+                    content_type = header.split(';')[0][5:] or content_type
+                return base64.b64decode(b64_data), content_type
+            async with httpx.AsyncClient() as client_session:
+                resp = await client_session.get(file_url)
+                resp.raise_for_status()
+                content_type = resp.headers.get('content-type') or mimetypes.guess_type(file_url)[0] or 'application/octet-stream'
+                return resp.content, content_type
+
+        def _detect_file_type(content_type: str) -> str:
+            """Map MIME to dify file type."""
+            if content_type and content_type.startswith('image/'):
+                return 'image'
+            if content_type and content_type.startswith('audio/'):
+                return 'audio'
+            if content_type and content_type.startswith('video/'):
+                return 'video'
+            return 'document'
 
         if isinstance(query.user_message.content, list):
             for ce in query.user_message.content:
@@ -86,30 +122,24 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 elif ce.type == 'image_base64':
                     image_b64, image_format = await image.extract_b64_and_format(ce.image_base64)
                     file_bytes = base64.b64decode(image_b64)
-                    file = ('img.png', file_bytes, f'image/{image_format}')
-                    file_upload_resp = await self.dify_client.upload_file(
-                        file,
-                        f'{query.session.launcher_type.value}_{query.session.launcher_id}',
-                    )
-                    image_id = file_upload_resp['id']
-                    file_ids.append(image_id)
-                # elif ce.type == "file_url":
-                #     file_bytes = base64.b64decode(ce.file_url)
-                #     file_upload_resp = await self.dify_client.upload_file(
-                #         file_bytes,
-                #         f'{query.session.launcher_type.value}_{query.session.launcher_id}',
-                #     )
-                #     file_id = file_upload_resp['id']
-                #     file_ids.append(file_id)
+                    image_id = await upload_file_bytes(f'img.{image_format}', file_bytes, f'image/{image_format}')
+                    upload_files.append({'type': 'image', 'id': image_id})
+                elif ce.type == 'file_url':
+                    file_url = getattr(ce, 'file_url', None)
+                    file_name = getattr(ce, 'file_name', None) or 'file'
+                    try:
+                        file_bytes, content_type = await download_file(file_url)
+                        file_id = await upload_file_bytes(file_name, file_bytes, content_type)
+                        file_type = _detect_file_type(content_type)
+                        upload_files.append({'type': file_type, 'id': file_id})
+                    except Exception as e:
+                        self.ap.logger.warning(f'dify file upload failed: {e}')
         elif isinstance(query.user_message.content, str):
             plain_text = query.user_message.content
-        # plain_text = "When the file content is readable, please read the content of this file. When the file is an image, describe the content of this image." if file_ids and not plain_text else plain_text
-        # plain_text = "The user message type cannot be parsed." if not file_ids and not plain_text else plain_text
-        # plain_text = plain_text if plain_text else "When the file content is readable, please read the content of this file. When the file is an image, describe the content of this image."
-        # print(self.pipeline_config['ai'])
+
         plain_text = plain_text if plain_text else self.pipeline_config['ai']['dify-service-api']['base-prompt']
 
-        return plain_text, file_ids
+        return plain_text, upload_files
 
     async def _chat_messages(
         self, query: pipeline_query.Query
@@ -118,14 +148,15 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         cov_id = query.session.using_conversation.uuid or ''
         query.variables['conversation_id'] = cov_id
 
-        plain_text, image_ids = await self._preprocess_user_message(query)
+        plain_text, upload_files = await self._preprocess_user_message(query)
 
         files = [
             {
-                'type': 'image',
-                'upload_file_id': image_id,
+                'type': f['type'],
+                'transfer_method': 'local_file',
+                'upload_file_id': f['id'],
             }
-            for image_id in image_ids
+            for f in upload_files
         ]
 
         mode = 'basic'  # 标记是基础编排还是工作流编排
@@ -183,15 +214,15 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         cov_id = query.session.using_conversation.uuid or ''
         query.variables['conversation_id'] = cov_id
 
-        plain_text, image_ids = await self._preprocess_user_message(query)
+        plain_text, upload_files = await self._preprocess_user_message(query)
 
         files = [
             {
-                'type': 'image',
+                'type': f['type'],
                 'transfer_method': 'local_file',
-                'upload_file_id': image_id,
+                'upload_file_id': f['id'],
             }
-            for image_id in image_ids
+            for f in upload_files
         ]
 
         ignored_events = []
@@ -280,15 +311,15 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         query.variables['conversation_id'] = query.session.using_conversation.uuid
 
-        plain_text, image_ids = await self._preprocess_user_message(query)
+        plain_text, upload_files = await self._preprocess_user_message(query)
 
         files = [
             {
-                'type': 'image',
+                'type': f['type'],
                 'transfer_method': 'local_file',
-                'upload_file_id': image_id,
+                'upload_file_id': f['id'],
             }
-            for image_id in image_ids
+            for f in upload_files
         ]
 
         ignored_events = ['text_chunk', 'workflow_started']
@@ -352,15 +383,15 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         cov_id = query.session.using_conversation.uuid or ''
         query.variables['conversation_id'] = cov_id
 
-        plain_text, image_ids = await self._preprocess_user_message(query)
+        plain_text, upload_files = await self._preprocess_user_message(query)
 
         files = [
             {
-                'type': 'image',
+                'type': f['type'],
                 'transfer_method': 'local_file',
-                'upload_file_id': image_id,
+                'upload_file_id': f['id'],
             }
-            for image_id in image_ids
+            for f in upload_files
         ]
 
         basic_mode_pending_chunk = ''
@@ -436,15 +467,15 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         cov_id = query.session.using_conversation.uuid or ''
         query.variables['conversation_id'] = cov_id
 
-        plain_text, image_ids = await self._preprocess_user_message(query)
+        plain_text, upload_files = await self._preprocess_user_message(query)
 
         files = [
             {
-                'type': 'image',
+                'type': f['type'],
                 'transfer_method': 'local_file',
-                'upload_file_id': image_id,
+                'upload_file_id': f['id'],
             }
-            for image_id in image_ids
+            for f in upload_files
         ]
 
         ignored_events = []
@@ -558,15 +589,15 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         query.variables['conversation_id'] = query.session.using_conversation.uuid
 
-        plain_text, image_ids = await self._preprocess_user_message(query)
+        plain_text, upload_files = await self._preprocess_user_message(query)
 
         files = [
             {
-                'type': 'image',
+                'type': f['type'],
                 'transfer_method': 'local_file',
-                'upload_file_id': image_id,
+                'upload_file_id': f['id'],
             }
-            for image_id in image_ids
+            for f in upload_files
         ]
 
         ignored_events = ['workflow_started']
