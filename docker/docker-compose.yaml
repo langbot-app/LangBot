@@ -25,7 +25,6 @@ services:
     platform: linux/amd64 # For Apple Silicon compatibility
     volumes:
       - ./data:/app/data
-      - ./plugins:/app/plugins
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai

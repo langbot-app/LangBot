@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.6.1"
+version = "4.6.2"
 description = "Easy-to-use global IM bot platform designed for LLM era"
 readme = "README.md"
 license-files = ["LICENSE"]
@@ -68,6 +68,8 @@ dependencies = [
     "line-bot-sdk>=3.19.0",
     "tboxsdk>=0.0.10",
     "boto3>=1.35.0",
+    "pymilvus>=2.6.4",
+    "pgvector>=0.4.1",
 ]
 keywords = [
     "bot",
