@@ -64,7 +64,7 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
                 try:
                     yiri_msg_list.append(platform_message.File(**file_kwargs))
                 except Exception:
-                    # 保底兜底
+                    # 兜底
                     yiri_msg_list.append(platform_message.Unknown(text='[file message unsupported]'))
 
         voice_info = event.voice or {}
