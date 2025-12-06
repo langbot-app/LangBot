@@ -297,6 +297,10 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
             message_content['content'] = new_list
         elif message.message_type == 'image':
             message_content['content'] = [{'tag': 'img', 'image_key': message_content['image_key'], 'style': []}]
+        elif message.message_type == 'file':
+            message_content['content'] = [
+                {'tag': 'file', 'file_key': message_content['file_key'], 'file_name': message_content['file_name']}
+            ]
 
         for ele in message_content['content']:
             if ele['tag'] == 'text':
@@ -327,6 +331,33 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                 image_format = response.raw.headers['content-type']
 
                 lb_msg_list.append(platform_message.Image(base64=f'data:{image_format};base64,{image_base64}'))
+            elif ele['tag'] == 'file':
+                file_key = ele['file_key']
+                file_name = ele['file_name']
+
+                request: GetMessageResourceRequest = (
+                    GetMessageResourceRequest.builder()
+                    .message_id(message.message_id)
+                    .file_key(file_key)
+                    .type('file')
+                    .build()
+                )
+
+                response: GetMessageResourceResponse = await api_client.im.v1.message_resource.aget(request)
+
+                if not response.success():
+                    raise Exception(
+                        f'client.im.v1.message_resource.get failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
+                    )
+
+                file_bytes = response.file.read()
+                file_base64 = base64.b64encode(file_bytes).decode()
+
+                file_format = response.raw.headers['content-type']
+
+                lb_msg_list.append(
+                    platform_message.File(base64=f'data:{file_format};base64,{file_base64}', name=file_name)
+                )
 
         return platform_message.MessageChain(lb_msg_list)
 
