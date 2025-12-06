@@ -394,7 +394,6 @@ class WecomBotClient:
         """
         try:
             self.wxcpt = WXBizMsgCrypt(self.Token, self.EnCodingAESKey, '')
-            await self.logger.info(f'{req.method} {req.url} {str(req.args)}')
 
             if req.method == 'GET':
                 return await self._handle_get_callback(req)

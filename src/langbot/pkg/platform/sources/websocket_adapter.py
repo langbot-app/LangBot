@@ -97,8 +97,6 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         # 推送到所有相关连接
         await self.outbound_message_queue.put(message_data)
 
-        await self.logger.info(f'Send message to {target_id}: {message}')
-
         return message_data
 
     async def reply_message(
@@ -242,7 +240,6 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
 
     async def run_async(self):
         """运行适配器"""
-        await self.logger.info('WebSocket适配器已启动')
 
         try:
             while True:
@@ -258,12 +255,11 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
 
                 await asyncio.sleep(0.1)
         except asyncio.CancelledError:
-            await self.logger.info('WebSocket适配器已停止')
             raise
 
     async def kill(self):
         """停止适配器"""
-        await self.logger.info('WebSocket适配器正在停止')
+        pass
 
     async def _process_image_components(self, message_chain_obj: list):
         """

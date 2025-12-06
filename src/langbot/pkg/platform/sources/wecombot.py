@@ -72,7 +72,7 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
             voice_payload = voice_info.get('base64') or voice_info.get('url')
             if voice_payload:
                 if voice_info.get('base64') and not voice_payload.startswith('data:'):
-                    voice_payload = f"data:audio/mpeg;base64,{voice_info.get('base64')}"
+                    voice_payload = f'data:audio/mpeg;base64,{voice_info.get("base64")}'
                 try:
                     yiri_msg_list.append(platform_message.Voice(base64=voice_payload))
                 except Exception:
@@ -113,7 +113,10 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
         if event.msgtype == 'link' and event.link:
             link = event.link
             summary = '\n'.join(
-                filter(None, [link.get('title', ''), link.get('description') or link.get('digest', ''), link.get('url', '')])
+                filter(
+                    None,
+                    [link.get('title', ''), link.get('description') or link.get('digest', ''), link.get('url', '')],
+                )
             )
             if summary:
                 yiri_msg_list.append(platform_message.Plain(text=summary))
@@ -300,20 +303,6 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     async def run_async(self):
         # 统一 webhook 模式下，不启动独立的 Quart 应用
         # 保持运行但不启动独立端口
-
-        # 打印 webhook 回调地址
-        if self.bot_uuid and hasattr(self.logger, 'ap'):
-            try:
-                api_port = self.logger.ap.instance_config.data['api']['port']
-                webhook_url = f'http://127.0.0.1:{api_port}/bots/{self.bot_uuid}'
-                webhook_url_public = f'http://<Your-Public-IP>:{api_port}/bots/{self.bot_uuid}'
-
-                await self.logger.info('企业微信机器人 Webhook 回调地址:')
-                await self.logger.info(f'  本地地址: {webhook_url}')
-                await self.logger.info(f'  公网地址: {webhook_url_public}')
-                await self.logger.info('请在企业微信后台配置此回调地址')
-            except Exception as e:
-                await self.logger.warning(f'无法生成 webhook URL: {e}')
 
         async def keep_alive():
             while True:
