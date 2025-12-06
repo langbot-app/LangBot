@@ -1066,14 +1066,9 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         message: platform_message.MessageChain,
         quote_origin: bool = False,
     ):
-        print('converting msg')
-        try:
-            msg_to_send, files = await self.message_converter.yiri2target(message)
+        msg_to_send, files = await self.message_converter.yiri2target(message)
 
-            assert isinstance(message_source.source_platform_object, discord.Message)
-        except Exception as e:
-            await self.logger.error(f'Discord reply_message failed: {e}')
-            raise e
+        assert isinstance(message_source.source_platform_object, discord.Message)
 
         args = {
             'content': msg_to_send,
@@ -1095,11 +1090,7 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if has_at:
             args['mention_author'] = True
 
-        print('sending msg')
-
         await message_source.source_platform_object.channel.send(**args)
-
-        print('msg sent')
 
     async def is_muted(self, group_id: int) -> bool:
         return False
