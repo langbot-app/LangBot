@@ -75,6 +75,9 @@ class PreProcessor(stage.PipelineStage):
                 self.ap.logger.debug(f'Use funcs: {query.use_funcs}')
 
         variables = {
+            'launcher_type': query.session.launcher_type.value,
+            'launcher_id': query.session.launcher_id,
+            'sender_id': query.sender_id,
             'session_id': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
             'conversation_id': conversation.uuid,
             'msg_create_time': (
