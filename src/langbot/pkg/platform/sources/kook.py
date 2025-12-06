@@ -137,7 +137,11 @@ class KookMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
             # For file messages, content is typically the file URL
             attachments = extra.get('attachments', {})
             file_name = attachments.get('name', 'file')
-            components.append(platform_message.Plain(text=f'[File: {file_name}]'))
+            components.append(platform_message.File(url=content, name=file_name))
+        elif msg_type == 8:  # Audio message
+            # For audio messages, content is typically the audio URL
+            attachments = extra.get('attachments', {})
+            components.append(platform_message.Voice(url=content))
         elif msg_type == 9:  # KMarkdown message
             # Note: content is already stripped of mention patterns above
             if content:
@@ -346,8 +350,8 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             await self.logger.debug(f'Ignoring message from bot itself (author_id: {author_id})')
             return
 
-        # Only process text messages (type 1, 2, 4, 9, 10) in GROUP or PERSON channels
-        if event_type in [1, 2, 4, 9, 10] and channel_type in ['GROUP', 'PERSON']:
+        # Only process text messages (type 1, 2, 4, 8, 9, 10) in GROUP or PERSON channels
+        if event_type in [1, 2, 4, 8, 9, 10] and channel_type in ['GROUP', 'PERSON']:
             try:
                 # Convert to LangBot event
                 lb_event = await self.event_converter.target2yiri(data, self.bot_account_id)
@@ -377,7 +381,6 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                             'sn': self.current_sn,
                         }
                         await self.ws.send(json.dumps(ping_msg))
-                        await self.logger.debug(f'Sent PING with sn={self.current_sn}')
                     except Exception:
                         # Connection closed or send failed, exit loop
                         break
@@ -567,6 +570,8 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         # Add quote if requested
         if quote_origin and msg_id:
             payload['quote'] = msg_id
+
+        payload['reply_msg_id'] = msg_id
 
         headers = {
             'Authorization': f'Bot {self.config["token"]}',
