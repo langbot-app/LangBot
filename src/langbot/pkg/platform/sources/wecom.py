@@ -35,6 +35,20 @@ class WecomMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                         'media_id': await bot.get_media_id(msg),
                     }
                 )
+            elif type(msg) is platform_message.Voice:
+                content_list.append(
+                    {
+                        'type': 'voice',
+                        'media_id': await bot.get_media_id(msg),
+                    }
+                )
+            elif type(msg) is platform_message.File:
+                content_list.append(
+                    {
+                        'type': 'file',
+                        'media_id': await bot.get_media_id(msg),
+                    }
+                )
             elif type(msg) is platform_message.Forward:
                 for node in msg.node_list:
                     content_list.extend((await WecomMessageConverter.yiri2target(node.message_chain, bot)))
@@ -185,6 +199,10 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 await self.bot.send_private_msg(fixed_user_id, Wecom_event.agent_id, content['content'])
             elif content['type'] == 'image':
                 await self.bot.send_image(fixed_user_id, Wecom_event.agent_id, content['media_id'])
+            elif content['type'] == 'voice':
+                await self.bot.send_voice(fixed_user_id, Wecom_event.agent_id, content['media_id'])
+            elif content['type'] == 'file':
+                await self.bot.send_file(fixed_user_id, Wecom_event.agent_id, content['media_id'])
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         content_list = await WecomMessageConverter.yiri2target(message, self.bot)
@@ -197,6 +215,10 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     await self.bot.send_private_msg(user_id, agent_id, content['content'])
                 if content['type'] == 'image':
                     await self.bot.send_image(user_id, agent_id, content['media'])
+                if content['type'] == 'voice':
+                    await self.bot.send_voice(user_id, agent_id, content['media'])
+                if content['type'] == 'file':
+                    await self.bot.send_file(user_id, agent_id, content['media'])
 
     def register_listener(
         self,
