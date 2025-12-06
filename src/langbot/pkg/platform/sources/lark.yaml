@@ -45,16 +45,6 @@ spec:
       type: boolean
       required: true
       default: false
-    - name: port
-      label:
-        en_US: Webhook Port
-        zh_Hans: Webhook端口
-      description:
-        en_US: Only valid when webhook mode is enabled, please fill in the webhook port
-        zh_Hans: 仅在启用 Webhook 模式时有效，请填写 Webhook 端口
-      type: integer
-      required: true
-      default: 2285
     - name: encrypt-key
       label:
         en_US: Encrypt Key
