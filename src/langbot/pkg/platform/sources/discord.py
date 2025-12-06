@@ -8,6 +8,9 @@ import base64
 import uuid
 import os
 import datetime
+
+# 使用BytesIO创建文件对象，避免路径问题
+import io
 import asyncio
 from enum import Enum
 
@@ -594,7 +597,7 @@ class DiscordMessageConverter(abstract_platform_adapter.AbstractMessageConverter
                 break
 
         text_string = ''
-        image_files = []
+        files = []
 
         for ele in message_chain:
             if isinstance(ele, platform_message.Image):
@@ -668,22 +671,67 @@ class DiscordMessageConverter(abstract_platform_adapter.AbstractMessageConverter
                         continue  # 跳过读取失败的文件
 
                 if image_bytes:
-                    # 使用BytesIO创建文件对象，避免路径问题
-                    import io
-
-                    image_files.append(discord.File(fp=io.BytesIO(image_bytes), filename=filename))
+                    files.append(discord.File(fp=io.BytesIO(image_bytes), filename=filename))
             elif isinstance(ele, platform_message.Plain):
                 text_string += ele.text
+            elif isinstance(ele, platform_message.Voice):
+                file_bytes = None
+                filename = f'{uuid.uuid4()}.mp3'
+                if ele.base64:
+                    if ele.base64.startswith('data:'):
+                        data_header = ele.base64.split(',')[0]
+                        if 'wav' in data_header:
+                            filename = f'{uuid.uuid4()}.wav'
+                        elif 'mp3' in data_header:
+                            filename = f'{uuid.uuid4()}.mp3'
+                        elif 'ogg' in data_header:
+                            filename = f'{uuid.uuid4()}.ogg'
+                        elif 'm4a' in data_header:
+                            filename = f'{uuid.uuid4()}.m4a'
+                        elif 'aac' in data_header:
+                            filename = f'{uuid.uuid4()}.aac'
+                        elif 'flac' in data_header:
+                            filename = f'{uuid.uuid4()}.flac'
+                        elif 'alac' in data_header:
+                            filename = f'{uuid.uuid4()}.alac'
+                        elif 'opus' in data_header:
+                            filename = f'{uuid.uuid4()}.opus'
+                        elif 'webm' in data_header:
+                            filename = f'{uuid.uuid4()}.webm'
+
+                    file_base64 = ele.base64.split(',')[-1]
+                    file_bytes = base64.b64decode(file_base64)
+                elif ele.url:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(ele.url) as response:
+                            file_bytes = await response.read()
+                if file_bytes:
+                    files.append(discord.File(fp=io.BytesIO(file_bytes), filename=filename))
+            elif isinstance(ele, platform_message.File):
+                file_bytes = None
+                filename = f'{uuid.uuid4()}.{ele.name.split(".")[-1]}'
+                if ele.base64:
+                    if ele.base64.startswith('data:'):
+                        file_base64 = ele.base64.split(',')[1]
+                        file_bytes = base64.b64decode(file_base64)
+                    else:
+                        file_bytes = base64.b64decode(ele.base64)
+                elif ele.url:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(ele.url) as response:
+                            file_bytes = await response.read()
+                if file_bytes:
+                    files.append(discord.File(fp=io.BytesIO(file_bytes), filename=filename))
             elif isinstance(ele, platform_message.Forward):
                 for node in ele.node_list:
                     (
                         node_text,
-                        node_images,
+                        node_files,
                     ) = await DiscordMessageConverter.yiri2target(node.message_chain)
                     text_string += node_text
-                    image_files.extend(node_images)
+                    files.extend(node_files)
 
-        return text_string, image_files
+        return text_string, files
 
     @staticmethod
     async def target2yiri(message: discord.Message) -> platform_message.MessageChain:
@@ -990,7 +1038,7 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             await self.voice_manager.cleanup_inactive_connections()
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
-        msg_to_send, image_files = await self.message_converter.yiri2target(message)
+        msg_to_send, files = await self.message_converter.yiri2target(message)
 
         try:
             # 获取频道对象
@@ -1003,8 +1051,8 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 'content': msg_to_send,
             }
 
-            if len(image_files) > 0:
-                args['files'] = image_files
+            if len(files) > 0:
+                args['files'] = files
 
             await channel.send(**args)
 
@@ -1018,15 +1066,21 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         message: platform_message.MessageChain,
         quote_origin: bool = False,
     ):
-        msg_to_send, image_files = await self.message_converter.yiri2target(message)
-        assert isinstance(message_source.source_platform_object, discord.Message)
+        print('converting msg')
+        try:
+            msg_to_send, files = await self.message_converter.yiri2target(message)
+
+            assert isinstance(message_source.source_platform_object, discord.Message)
+        except Exception as e:
+            await self.logger.error(f'Discord reply_message failed: {e}')
+            raise e
 
         args = {
             'content': msg_to_send,
         }
 
-        if len(image_files) > 0:
-            args['files'] = image_files
+        if len(files) > 0:
+            args['files'] = files
 
         if quote_origin:
             args['reference'] = message_source.source_platform_object
@@ -1041,7 +1095,11 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if has_at:
             args['mention_author'] = True
 
+        print('sending msg')
+
         await message_source.source_platform_object.channel.send(**args)
+
+        print('msg sent')
 
     async def is_muted(self, group_id: int) -> bool:
         return False
