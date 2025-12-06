@@ -194,6 +194,10 @@ const jaJP = {
     webhookUrlCopied: 'Webhook URL をコピーしました',
     webhookUrlHint:
       '入力ボックスをクリックして全選択し、Ctrl+C (Mac: Cmd+C) でコピーするか、右側のボタンをクリックしてください',
+    logLevel: 'ログレベル',
+    allLevels: 'すべてのレベル',
+    selectLevel: 'レベルを選択',
+    levelsSelected: 'レベル選択済み',
   },
   plugins: {
     title: '拡張機能',

@@ -187,6 +187,10 @@ const zhHans = {
     webhookUrlCopied: 'Webhook 地址已复制',
     webhookUrlHint:
       '点击输入框自动全选，然后按 Ctrl+C (Mac: Cmd+C) 复制，或点击右侧按钮',
+    logLevel: '日志级别',
+    allLevels: '全部级别',
+    selectLevel: '选择级别',
+    levelsSelected: '个级别已选',
   },
   plugins: {
     title: '插件扩展',

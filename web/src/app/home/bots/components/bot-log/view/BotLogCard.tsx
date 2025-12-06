@@ -44,12 +44,35 @@ export function BotLogCard({ botLog }: { botLog: BotLog }) {
     const strArr = str.split('');
     return strArr;
   }
+
+  // 根据日志级别返回对应的样式类
+  function getLevelStyles(level: string) {
+    switch (level.toLowerCase()) {
+      case 'error':
+        return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
+      case 'warning':
+        return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400';
+      case 'info':
+        return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
+      case 'debug':
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400';
+      default:
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400';
+    }
+  }
+
   return (
     <div className={`${styles.botLogCardContainer}`}>
       {/* 头部标签，时间 */}
       <div className={`${styles.cardTitleContainer}`}>
         <div className={`flex flex-row gap-2 items-center`}>
-          <div className={`${styles.tag}`}>{botLog.level}</div>
+          <div
+            className={`px-2 py-1 rounded text-xs font-medium uppercase ${getLevelStyles(
+              botLog.level,
+            )}`}
+          >
+            {botLog.level}
+          </div>
           {botLog.message_session_id && (
             <div
               className={`${styles.tag} ${styles.chatTag}`}

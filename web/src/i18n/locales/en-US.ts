@@ -192,6 +192,10 @@ const enUS = {
     webhookUrlCopied: 'Webhook URL copied',
     webhookUrlHint:
       'Click the input to select all, then press Ctrl+C (Mac: Cmd+C) to copy, or click the button',
+    logLevel: 'Log Level',
+    allLevels: 'All Levels',
+    selectLevel: 'Select Level',
+    levelsSelected: 'levels selected',
   },
   plugins: {
     title: 'Extensions',
