@@ -111,13 +111,40 @@ export default function BotForm({
   const [dynamicFormConfigList, setDynamicFormConfigList] = useState<
     IDynamicFormItemSchema[]
   >([]);
+  const [filteredDynamicFormConfigList, setFilteredDynamicFormConfigList] =
+    useState<IDynamicFormItemSchema[]>([]);
   const [, setIsLoading] = useState<boolean>(false);
   const [webhookUrl, setWebhookUrl] = useState<string>('');
   const webhookInputRef = React.useRef<HTMLInputElement>(null);
 
+  // Watch adapter and adapter_config for filtering
+  const currentAdapter = form.watch('adapter');
+  const currentAdapterConfig = form.watch('adapter_config');
+
   useEffect(() => {
     setBotFormValues();
   }, []);
+
+  // Filter dynamic form config list based on enable-webhook status for Lark adapter
+  useEffect(() => {
+    if (currentAdapter === 'lark') {
+      const enableWebhook = currentAdapterConfig?.['enable-webhook'];
+      if (enableWebhook === false) {
+        // Hide encrypt-key field when webhook is disabled
+        setFilteredDynamicFormConfigList(
+          dynamicFormConfigList.filter(
+            (config) => config.name !== 'encrypt-key',
+          ),
+        );
+      } else {
+        // Show all fields when webhook is enabled or undefined
+        setFilteredDynamicFormConfigList(dynamicFormConfigList);
+      }
+    } else {
+      // For non-Lark adapters, show all fields
+      setFilteredDynamicFormConfigList(dynamicFormConfigList);
+    }
+  }, [currentAdapter, currentAdapterConfig, dynamicFormConfigList]);
 
   // 复制到剪贴板的辅助函数 - 使用页面上的真实input元素
   const copyToClipboard = () => {
@@ -498,34 +525,36 @@ export default function BotForm({
                 </div>
 
                 {/* Webhook 地址显示（统一 Webhook 模式） */}
-                {webhookUrl && (
-                  <FormItem>
-                    <FormLabel>{t('bots.webhookUrl')}</FormLabel>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        ref={webhookInputRef}
-                        value={webhookUrl}
-                        readOnly
-                        className="flex-1 bg-gray-50 dark:bg-gray-900"
-                        onClick={(e) => {
-                          // 点击输入框时自动全选
-                          (e.target as HTMLInputElement).select();
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={copyToClipboard}
-                      >
-                        {t('common.copy')}
-                      </Button>
-                    </div>
-                    <p className="text-sm text-gray-500 mt-1">
-                      {t('bots.webhookUrlHint')}
-                    </p>
-                  </FormItem>
-                )}
+                {webhookUrl &&
+                  (currentAdapter !== 'lark' ||
+                    currentAdapterConfig?.['enable-webhook'] !== false) && (
+                    <FormItem>
+                      <FormLabel>{t('bots.webhookUrl')}</FormLabel>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          ref={webhookInputRef}
+                          value={webhookUrl}
+                          readOnly
+                          className="flex-1 bg-gray-50 dark:bg-gray-900"
+                          onClick={(e) => {
+                            // 点击输入框时自动全选
+                            (e.target as HTMLInputElement).select();
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={copyToClipboard}
+                        >
+                          {t('common.copy')}
+                        </Button>
+                      </div>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {t('bots.webhookUrlHint')}
+                      </p>
+                    </FormItem>
+                  )}
               </>
             )}
 
@@ -622,13 +651,13 @@ export default function BotForm({
               </div>
             )}
 
-            {showDynamicForm && dynamicFormConfigList.length > 0 && (
+            {showDynamicForm && filteredDynamicFormConfigList.length > 0 && (
               <div className="space-y-4">
                 <div className="text-lg font-medium">
                   {t('bots.adapterConfig')}
                 </div>
                 <DynamicFormComponent
-                  itemConfigList={dynamicFormConfigList}
+                  itemConfigList={filteredDynamicFormConfigList}
                   initialValues={form.watch('adapter_config')}
                   onSubmit={(values) => {
                     form.setValue('adapter_config', values);
