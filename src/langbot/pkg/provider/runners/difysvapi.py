@@ -134,6 +134,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                         upload_files.append({'type': file_type, 'id': file_id})
                     except Exception as e:
                         self.ap.logger.warning(f'dify file upload failed: {e}')
+                        plain_text += f'\n[File upload failed and you can Remind users: {file_name}]'
         elif isinstance(query.user_message.content, str):
             plain_text = query.user_message.content
 

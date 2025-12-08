@@ -69,24 +69,27 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
 
         voice_info = event.voice or {}
         if voice_info:
-            voice_payload = voice_info.get('base64') or voice_info.get('url')
+            # WeCom voice payloads are delivered via media_id/sdkfileid (no base64 in payload per API spec),
+            # so treat them as files and let downstream decide how to download/handle.
+            voice_payload = voice_info.get('url') or voice_info.get('sdkfileid') or voice_info.get('fileid')
+            voice_name = voice_info.get('filename') or voice_info.get('name')
+            voice_size = voice_info.get('filesize') or voice_info.get('size')
             if voice_payload:
-                if voice_info.get('base64') and not voice_payload.startswith('data:'):
-                    voice_payload = f"data:audio/mpeg;base64,{voice_info.get('base64')}"
                 try:
-                    yiri_msg_list.append(platform_message.Voice(base64=voice_payload))
+                    voice_kwargs = {'url': voice_payload}
+                    if voice_name:
+                        voice_kwargs['name'] = voice_name
+                    if voice_size is not None:
+                        voice_kwargs['size'] = voice_size
+                    yiri_msg_list.append(platform_message.File(**voice_kwargs))
                 except Exception:
-                    try:
-                        voice_kwargs = {'url': voice_payload}
-                        voice_name = voice_info.get('filename') or voice_info.get('name')
-                        voice_size = voice_info.get('filesize') or voice_info.get('size')
-                        if voice_name:
-                            voice_kwargs['name'] = voice_name
-                        if voice_size is not None:
-                            voice_kwargs['size'] = voice_size
-                        yiri_msg_list.append(platform_message.File(**voice_kwargs))
-                    except Exception:
-                        yiri_msg_list.append(platform_message.Unknown(text='[voice message unsupported]'))
+                    yiri_msg_list.append(platform_message.Unknown(text='[voice message unsupported]'))
+            elif voice_info.get('base64'):
+                # Legacy fallback for gateways that still provide base64.
+                try:
+                    yiri_msg_list.append(platform_message.Voice(base64=voice_info.get('base64')))
+                except Exception:
+                    yiri_msg_list.append(platform_message.Unknown(text='[voice message unsupported]'))
 
         video_info = event.video or {}
         if video_info:
