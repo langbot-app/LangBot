@@ -163,9 +163,6 @@ class WecomBotEventConverter(abstract_platform_adapter.AbstractEventConverter):
                         permission=platform_entities.Permission.Member,
                     ),
                     special_title='',
-                    join_timestamp=0,
-                    last_speak_timestamp=0,
-                    mute_time_remaining=0,
                 )
                 time = datetime.datetime.now().timestamp()
                 return platform_events.GroupMessage(

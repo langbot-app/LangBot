@@ -40,6 +40,7 @@ class ChatMessageHandler(handler.MessageHandler):
             launcher_id=query.launcher_id,
             sender_id=query.sender_id,
             text_message=str(query.message_chain),
+            message_event=query.message_event,
             message_chain=query.message_chain,
             query=query,
         )

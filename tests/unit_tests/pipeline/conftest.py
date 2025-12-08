@@ -164,6 +164,7 @@ def sample_message_event(sample_message_chain):
     event.sender = Mock()
     event.sender.id = 12345
     event.time = 1609459200  # 2021-01-01 00:00:00
+    event.message_chain = sample_message_chain
     return event
 
 

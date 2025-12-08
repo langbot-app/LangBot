@@ -21,14 +21,14 @@ spec:
     - name: Token
       label:
         en_US: Token
-        zh_Hans: 令牌
+        zh_Hans: 令牌 (Token)
       type: string
       required: true
       default: ""
     - name: EncodingAESKey
       label:
         en_US: EncodingAESKey
-        zh_Hans: 消息加解密密钥
+        zh_Hans: 消息加解密密钥 (EncodingAESKey)
       type: string
       required: true
       default: ""

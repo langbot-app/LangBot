@@ -119,9 +119,6 @@ class DingTalkEventConverter(abstract_platform_adapter.AbstractEventConverter):
                     permission=platform_entities.Permission.Member,
                 ),
                 special_title='',
-                join_timestamp=0,
-                last_speak_timestamp=0,
-                mute_time_remaining=0,
             )
             time = event.incoming_message.create_at
             return platform_events.GroupMessage(

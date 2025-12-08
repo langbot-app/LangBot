@@ -94,9 +94,6 @@ class QQOfficialEventConverter(abstract_platform_adapter.AbstractEventConverter)
                     permission=platform_entities.Permission.Member,
                 ),
                 special_title='',
-                join_timestamp=0,
-                last_speak_timestamp=0,
-                mute_time_remaining=0,
             )
             time = int(datetime.datetime.strptime(event.timestamp, '%Y-%m-%dT%H:%M:%S%z').timestamp())
             return platform_events.GroupMessage(
@@ -117,9 +114,6 @@ class QQOfficialEventConverter(abstract_platform_adapter.AbstractEventConverter)
                     permission=platform_entities.Permission.Member,
                 ),
                 special_title='',
-                join_timestamp=0,
-                last_speak_timestamp=0,
-                mute_time_remaining=0,
             )
             time = int(datetime.datetime.strptime(event.timestamp, '%Y-%m-%dT%H:%M:%S%z').timestamp())
             return platform_events.GroupMessage(

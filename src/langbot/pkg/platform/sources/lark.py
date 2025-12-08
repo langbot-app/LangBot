@@ -55,9 +55,7 @@ class AESCipher(object):
 
 class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
-    async def upload_image_to_lark(
-        msg: platform_message.Image, api_client: lark_oapi.Client
-    ) -> typing.Optional[str]:
+    async def upload_image_to_lark(msg: platform_message.Image, api_client: lark_oapi.Client) -> typing.Optional[str]:
         """Upload an image to Lark and return the image_key, or None if upload fails."""
         image_bytes = None
 
@@ -95,7 +93,9 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                 return None
 
         if image_bytes is None:
-            print(f'No image data available for Image message (url={msg.url}, base64={bool(msg.base64)}, path={msg.path})')
+            print(
+                f'No image data available for Image message (url={msg.url}, base64={bool(msg.base64)}, path={msg.path})'
+            )
             return None
 
         try:
@@ -113,10 +113,7 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                 request = (
                     CreateImageRequest.builder()
                     .request_body(
-                        CreateImageRequestBody.builder()
-                        .image_type('message')
-                        .image(open(temp_file_path, 'rb'))
-                        .build()
+                        CreateImageRequestBody.builder().image_type('message').image(open(temp_file_path, 'rb')).build()
                     )
                     .build()
                 )
@@ -143,7 +140,7 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
         message_chain: platform_message.MessageChain, api_client: lark_oapi.Client
     ) -> typing.Tuple[list, list]:
         """Convert message chain to Lark format.
-        
+
         Returns:
             Tuple of (text_elements, image_keys):
             - text_elements: List of paragraphs for post message format
@@ -159,24 +156,24 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
         async def process_text_with_images(text: str) -> typing.Tuple[str, list]:
             """Extract Markdown images from text and return cleaned text + image URLs."""
             extracted_urls = []
-            
+
             # Find all Markdown images
             matches = list(markdown_image_pattern.finditer(text))
             if not matches:
                 return text, []
-            
+
             # Extract URLs and remove image syntax from text
             cleaned_text = text
             for match in reversed(matches):  # Reverse to maintain correct positions
                 url = match.group(2)
                 extracted_urls.insert(0, url)  # Insert at beginning since we're going in reverse
                 # Replace image syntax with empty string or a placeholder
-                cleaned_text = cleaned_text[:match.start()] + cleaned_text[match.end():]
-            
+                cleaned_text = cleaned_text[: match.start()] + cleaned_text[match.end() :]
+
             # Clean up multiple consecutive newlines that might result from removing images
             cleaned_text = re.sub(r'\n{3,}', '\n\n', cleaned_text)
             cleaned_text = cleaned_text.strip()
-            
+
             return cleaned_text, extracted_urls
 
         for msg in message_chain:
@@ -189,14 +186,14 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                         text = msg.text.encode('latin1').decode('utf-8')
                     except UnicodeError:
                         text = msg.text.encode('utf-8', errors='replace').decode('utf-8')
-                
+
                 # Check for and extract Markdown images from text
                 cleaned_text, extracted_urls = await process_text_with_images(text)
-                
+
                 # Add cleaned text if not empty
                 if cleaned_text:
                     pending_paragraph.append({'tag': 'md', 'text': cleaned_text})
-                
+
                 # Process extracted image URLs
                 for url in extracted_urls:
                     # Create a temporary Image message to upload
@@ -204,7 +201,7 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                     image_key = await LarkMessageConverter.upload_image_to_lark(temp_image, api_client)
                     if image_key:
                         image_keys.append(image_key)
-                        
+
             elif isinstance(msg, platform_message.At):
                 pending_paragraph.append({'tag': 'at', 'user_id': msg.target, 'style': []})
             elif isinstance(msg, platform_message.AtAll):
@@ -369,9 +366,6 @@ class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
                         permission=platform_entities.Permission.Member,
                     ),
                     special_title='',
-                    join_timestamp=0,
-                    last_speak_timestamp=0,
-                    mute_time_remaining=0,
                 ),
                 message_chain=message_chain,
                 time=event.event.message.create_time,

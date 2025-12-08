@@ -237,6 +237,7 @@ class RuntimePipeline:
                 launcher_type=query.launcher_type.value,
                 launcher_id=query.launcher_id,
                 sender_id=query.sender_id,
+                message_event=query.message_event,
                 message_chain=query.message_chain,
             )
 

@@ -1,8 +1,7 @@
 from .. import migration
 
 import sqlalchemy
-
-from ...entity.persistence import pipeline as persistence_pipeline
+import json
 
 
 @migration.migration_class(3)
@@ -11,14 +10,23 @@ class DBMigrateN8nConfig(migration.DBMigration):
 
     async def upgrade(self):
         """Upgrade"""
-        # read all pipelines
-        pipelines = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_pipeline.LegacyPipeline))
+        # Read all pipelines using raw SQL
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.text('SELECT uuid, config FROM legacy_pipelines')
+        )
+        pipelines = result.fetchall()
 
-        for pipeline in pipelines:
-            serialized_pipeline = self.ap.persistence_mgr.serialize_model(persistence_pipeline.LegacyPipeline, pipeline)
+        current_version = self.ap.ver_mgr.get_current_version()
 
-            config = serialized_pipeline['config']
+        for pipeline_row in pipelines:
+            uuid = pipeline_row[0]
+            config = json.loads(pipeline_row[1]) if isinstance(pipeline_row[1], str) else pipeline_row[1]
 
+            # Ensure 'ai' exists
+            if 'ai' not in config:
+                config['ai'] = {}
+
+            # Add 'n8n-service-api' if not exists
             if 'n8n-service-api' not in config['ai']:
                 config['ai']['n8n-service-api'] = {
                     'webhook-url': 'http://your-n8n-webhook-url',
@@ -33,16 +41,21 @@ class DBMigrateN8nConfig(migration.DBMigration):
                     'output-key': 'response',
                 }
 
-            await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.update(persistence_pipeline.LegacyPipeline)
-                .where(persistence_pipeline.LegacyPipeline.uuid == serialized_pipeline['uuid'])
-                .values(
-                    {
-                        'config': config,
-                        'for_version': self.ap.ver_mgr.get_current_version(),
-                    }
+            # Update using raw SQL with compatibility for both SQLite and PostgreSQL
+            if self.ap.persistence_mgr.db.name == 'postgresql':
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.text(
+                        'UPDATE legacy_pipelines SET config = :config::jsonb, for_version = :for_version WHERE uuid = :uuid'
+                    ),
+                    {'config': json.dumps(config), 'for_version': current_version, 'uuid': uuid},
                 )
-            )
+            else:
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.text(
+                        'UPDATE legacy_pipelines SET config = :config, for_version = :for_version WHERE uuid = :uuid'
+                    ),
+                    {'config': json.dumps(config), 'for_version': current_version, 'uuid': uuid},
+                )
 
     async def downgrade(self):
         """Downgrade"""
