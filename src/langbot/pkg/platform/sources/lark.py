@@ -880,18 +880,50 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             p2v1 = P2ImMessageReceiveV1()
             p2v1.header = context.header
             event = P2ImMessageReceiveV1Data()
-            event.message = EventMessage(context.event['message'])
-            event.sender = EventSender(context.event['sender'])
-            p2v1.event = event
-            p2v1.schema = context.schema
             if 'im.message.receive_v1' == type:
                 try:
+                    event.message = EventMessage(context.event['message'])
+                    event.sender = EventSender(context.event['sender'])
+                    p2v1.event = event
+                    p2v1.schema = context.schema
                     event = await self.event_converter.target2yiri(p2v1, self.api_client)
                 except Exception:
                     await self.logger.error(f'Error in lark callback: {traceback.format_exc()}')
 
                 if event.__class__ in self.listeners:
                     await self.listeners[event.__class__](event, self)
+            elif 'im.chat.member.bot.added_v1' == type:
+                    try:
+                        bot_added_welcome_msg = self.config['bot_added_welcome']
+                        if bot_added_welcome_msg:
+                            final_content = {
+                                'zh_Hans': {
+                                    'title': '',
+                                    'content': bot_added_welcome_msg,
+                                },
+                            }
+                            chat_id = context.event['chat_id']
+                            request: CreateMessageRequest = (
+                                CreateMessageRequest.builder()
+                                .receive_id_type('chat_id')
+                                .request_body(
+                                    CreateMessageRequestBody.builder()
+                                    .receive_id(chat_id)
+                                    .content(json.dumps(final_content))
+                                    .msg_type('post')
+                                    .uuid(str(uuid.uuid4()))
+                                    .build()
+                                )
+                                .build()
+                            )
+                            response: CreateMessageResponse = self.api_client.im.v1.message.create(request)
+
+                            if not response.success():
+                                raise Exception(
+                                    f'client.im.v1.message.create failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
+                                )
+                    except Exception:
+                        await self.logger.error(f'Error in lark callback: {traceback.format_exc()}')
 
             return {'code': 200, 'message': 'ok'}
         except Exception:
