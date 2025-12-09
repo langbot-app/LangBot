@@ -67,7 +67,7 @@ spec:
       default: false
     - name: bot_added_welcome
       label:
-        en_US: Bot Added Welcome Message
+        en_US: Bot Welcome Message
         zh_Hans: 机器人进群欢迎语
       description:
         en_US: Welcome message when the bot is added to a group, supports Markdown format

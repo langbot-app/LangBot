@@ -428,12 +428,11 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     card_id_dict: dict[str, str]  # 消息id到卡片id的映射，便于创建卡片后的发送消息到指定卡片
 
     seq: int  # 用于在发送卡片消息中识别消息顺序，直接以seq作为标识
-    bot_uuid: str = None # 机器人UUID
+    bot_uuid: str = None  # 机器人UUID
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
         quart_app = quart.Quart(__name__)
 
-        
         async def on_message(event: lark_oapi.im.v1.P2ImMessageReceiveV1):
             lb_event = await self.event_converter.target2yiri(event, self.api_client)
 
@@ -893,46 +892,44 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 if event.__class__ in self.listeners:
                     await self.listeners[event.__class__](event, self)
             elif 'im.chat.member.bot.added_v1' == type:
-                    try:
-                        bot_added_welcome_msg = self.config['bot_added_welcome']
-                        if bot_added_welcome_msg:
-                            final_content = {
-                                'zh_Hans': {
-                                    'title': '',
-                                    'content': bot_added_welcome_msg,
-                                },
-                            }
-                            chat_id = context.event['chat_id']
-                            request: CreateMessageRequest = (
-                                CreateMessageRequest.builder()
-                                .receive_id_type('chat_id')
-                                .request_body(
-                                    CreateMessageRequestBody.builder()
-                                    .receive_id(chat_id)
-                                    .content(json.dumps(final_content))
-                                    .msg_type('post')
-                                    .uuid(str(uuid.uuid4()))
-                                    .build()
-                                )
+                try:
+                    bot_added_welcome_msg = self.config.get('bot_added_welcome', '')
+                    if bot_added_welcome_msg:
+                        final_content = {
+                            'zh_Hans': {
+                                'title': '',
+                                'content': bot_added_welcome_msg,
+                            },
+                        }
+                        chat_id = context.event['chat_id']
+                        request: CreateMessageRequest = (
+                            CreateMessageRequest.builder()
+                            .receive_id_type('chat_id')
+                            .request_body(
+                                CreateMessageRequestBody.builder()
+                                .receive_id(chat_id)
+                                .content(json.dumps(final_content))
+                                .msg_type('post')
+                                .uuid(str(uuid.uuid4()))
                                 .build()
                             )
-                            response: CreateMessageResponse = self.api_client.im.v1.message.create(request)
+                            .build()
+                        )
+                        response: CreateMessageResponse = self.api_client.im.v1.message.create(request)
 
-                            if not response.success():
-                                raise Exception(
-                                    f'client.im.v1.message.create failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
-                                )
-                    except Exception:
-                        await self.logger.error(f'Error in lark callback: {traceback.format_exc()}')
+                        if not response.success():
+                            raise Exception(
+                                f'client.im.v1.message.create failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
+                            )
+                except Exception:
+                    await self.logger.error(f'Error in lark callback: {traceback.format_exc()}')
 
             return {'code': 200, 'message': 'ok'}
         except Exception:
             await self.logger.error(f'Error in lark callback: {traceback.format_exc()}')
             return {'code': 500, 'message': 'error'}
 
-
     async def run_async(self):
-        port = self.config['port']
         enable_webhook = self.config['enable-webhook']
 
         if not enable_webhook:
@@ -947,23 +944,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 else:
                     raise e
         else:
-
             # 统一 webhook 模式下，不启动独立的 Quart 应用
             # 保持运行但不启动独立端口
-
-            # 打印 webhook 回调地址
-            if self.bot_uuid and hasattr(self.logger, 'ap'):
-                try:
-                    api_port = self.logger.ap.instance_config.data['api']['port']
-                    webhook_url = f'http://127.0.0.1:{api_port}/bots/{self.bot_uuid}'
-                    webhook_url_public = f'http://<Your-Public-IP>:{api_port}/bots/{self.bot_uuid}'
-
-                    await self.logger.info('Lark 机器人 Webhook 回调地址:')
-                    await self.logger.info(f'  本地地址: {webhook_url}')
-                    await self.logger.info(f'  公网地址: {webhook_url_public}')
-                    await self.logger.info('请在 Lark 机器人后台配置此回调地址')
-                except Exception as e:
-                    await self.logger.warning(f'无法生成 webhook URL: {e}')
 
             async def keep_alive():
                 while True:
