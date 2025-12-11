@@ -434,8 +434,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     seq: int  # 用于在发送卡片消息中识别消息顺序，直接以seq作为标识
     bot_uuid: str = None  # 机器人UUID
-    app_ticket: str = None # 商店应用用到
-    app_access_token: str = None # 商店应用用到
+    app_ticket: str = None  # 商店应用用到
+    app_access_token: str = None  # 商店应用用到
     app_access_token_expire_at: int = None
     tenant_access_tokens: dict[str, dict[str, str]] = {}  # 租户access_token映射
 
@@ -479,85 +479,97 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     def request_app_ticket(self, api_client, config):
         app_id = config['app_id']
         app_secret = config['app_secret']
-        print(f"Requesting app ticket for app_id: {app_id[:3]}***{app_id[-3:]}")
-        if 'isv' == config['app_type']:
-            request: ResendAppTicketRequest = ResendAppTicketRequest.builder() \
-                .request_body(ResendAppTicketRequestBody.builder()
-                    .app_id(app_id)
-                    .app_secret(app_secret)
-                    .build()) \
+        print(f'Requesting app ticket for app_id: {app_id[:3]}***{app_id[-3:]}')
+        if 'isv' == config.get('app_type', 'self'):
+            request: ResendAppTicketRequest = (
+                ResendAppTicketRequest.builder()
+                .request_body(ResendAppTicketRequestBody.builder().app_id(app_id).app_secret(app_secret).build())
                 .build()
+            )
             response: ResendAppTicketResponse = api_client.auth.v3.app_ticket.resend(request)
             if not response.success():
                 raise Exception(
-                    f"client.auth.v3.auth.app_ticket_resend failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}"
-                    )
+                    f'client.auth.v3.auth.app_ticket_resend failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
+                )
 
     def request_app_access_token(self):
         app_id = self.config['app_id']
         app_secret = self.config['app_secret']
-        if 'isv' == self.config['app_type']:
-            request: CreateAppAccessTokenRequest = CreateAppAccessTokenRequest.builder() \
-                .request_body(CreateAppAccessTokenRequestBody.builder()
+        if 'isv' == self.config.get('app_type', 'self'):
+            request: CreateAppAccessTokenRequest = (
+                CreateAppAccessTokenRequest.builder()
+                .request_body(
+                    CreateAppAccessTokenRequestBody.builder()
                     .app_id(app_id)
                     .app_secret(app_secret)
                     .app_ticket(self.app_ticket)
-                    .build()) \
+                    .build()
+                )
                 .build()
+            )
             response: CreateAppAccessTokenResponse = self.api_client.auth.v3.app_access_token.create(request)
             if not response.success():
                 raise Exception(
-                    f"client.auth.v3.auth.app_access_token failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}"
-                    )
+                    f'client.auth.v3.auth.app_access_token failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
+                )
             content = json.loads(response.raw.content)
             self.app_access_token = content['app_access_token']
-            self.app_access_token_expire_at = int(time.time()) +content['expire'] - 300
+            self.app_access_token_expire_at = int(time.time()) + content['expire'] - 300
 
     def get_app_access_token(self):
-        if 'isv' != self.config['app_type']:
+        if 'isv' != self.config.get('app_type', 'self'):
             return None
-        if self.app_access_token is None or self.app_access_token_expire_at is None or int(time.time()) >= self.app_access_token_expire_at:
+        if (
+            self.app_access_token is None
+            or self.app_access_token_expire_at is None
+            or int(time.time()) >= self.app_access_token_expire_at
+        ):
             self.request_app_access_token()
         return self.app_access_token
 
     def request_tenant_access_token(self, tenant_key: str):
         app_access_token = self.get_app_access_token()
-        if 'isv' == self.config['app_type']:
-            request: CreateTenantAccessTokenRequest = CreateTenantAccessTokenRequest.builder() \
-                .request_body(CreateTenantAccessTokenRequestBody.builder()
+        if 'isv' == self.config.get('app_type', 'self'):
+            request: CreateTenantAccessTokenRequest = (
+                CreateTenantAccessTokenRequest.builder()
+                .request_body(
+                    CreateTenantAccessTokenRequestBody.builder()
                     .app_access_token(app_access_token)
                     .tenant_key(tenant_key)
-                    .build()) \
+                    .build()
+                )
                 .build()
+            )
             response: CreateTenantAccessTokenResponse = self.api_client.auth.v3.tenant_access_token.create(request)
             if not response.success():
                 raise Exception(
-                    f"client.auth.v3.auth.tenant_access_token failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}"
-                    )
+                    f'client.auth.v3.auth.tenant_access_token failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
+                )
             content = json.loads(response.raw.content)
             tenant_access_token = content['tenant_access_token']
             expire = content['expire']
             self.tenant_access_tokens[tenant_key] = {
                 'token': tenant_access_token,
-                'expire_at': int(time.time()) + expire - 300
+                'expire_at': int(time.time()) + expire - 300,
             }
 
     def get_tenant_access_token(self, tenant_key: str):
-        if tenant_key is None or 'isv' != self.config['app_type']:
+        if tenant_key is None or 'isv' != self.config.get('app_type', 'self'):
             return None
         tenant_access_token = self.tenant_access_tokens.get(tenant_key)
         if tenant_access_token is None or int(time.time()) >= tenant_access_token['expire_at']:
             self.request_tenant_access_token(tenant_key)
         return self.tenant_access_tokens.get(tenant_key)['token'] if self.tenant_access_tokens.get(tenant_key) else None
- 
+
     def build_api_client(self, config):
         app_id = config['app_id']
         app_secret = config['app_secret']
         api_client = lark_oapi.Client.builder().app_id(app_id).app_secret(app_secret).build()
-        if 'isv' == config['app_type']:
-            api_client = lark_oapi.Client.builder().app_id(app_id).app_secret(app_secret).app_type(lark_oapi.AppType.ISV).build()
+        if 'isv' == config.get('app_type', 'self'):
+            api_client = (
+                lark_oapi.Client.builder().app_id(app_id).app_secret(app_secret).app_type(lark_oapi.AppType.ISV).build()
+            )
         return api_client
-             
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         pass
@@ -789,7 +801,14 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         tenant_key = event.source_platform_object.header.tenant_key if event.source_platform_object else None
         app_access_token = self.get_app_access_token()
         tenant_access_token = self.get_tenant_access_token(tenant_key)
-        req_opt: RequestOption = RequestOption.builder().app_ticket(self.app_ticket).tenant_key(tenant_key).app_access_token(app_access_token).tenant_access_token(tenant_access_token).build()  
+        req_opt: RequestOption = (
+            RequestOption.builder()
+            .app_ticket(self.app_ticket)
+            .tenant_key(tenant_key)
+            .app_access_token(app_access_token)
+            .tenant_access_token(tenant_access_token)
+            .build()
+        )
         # 发起请求
         response: ReplyMessageResponse = await self.api_client.im.v1.message.areply(request, req_opt)
 
@@ -832,10 +851,21 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 .build()
             )
 
-            tenant_key = message_source.source_platform_object.header.tenant_key if message_source.source_platform_object else None
+            tenant_key = (
+                message_source.source_platform_object.header.tenant_key
+                if message_source.source_platform_object
+                else None
+            )
             app_access_token = self.get_app_access_token()
             tenant_access_token = self.get_tenant_access_token(tenant_key)
-            req_opt: RequestOption = RequestOption.builder().app_ticket(self.app_ticket).tenant_key(tenant_key).app_access_token(app_access_token).tenant_access_token(tenant_access_token).build()            
+            req_opt: RequestOption = (
+                RequestOption.builder()
+                .app_ticket(self.app_ticket)
+                .tenant_key(tenant_key)
+                .app_access_token(app_access_token)
+                .tenant_access_token(tenant_access_token)
+                .build()
+            )
             response: ReplyMessageResponse = await self.api_client.im.v1.message.areply(request, req_opt)
 
             if not response.success():
@@ -861,10 +891,21 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 .build()
             )
 
-            tenant_key = message_source.source_platform_object.header.tenant_key if message_source.source_platform_object else None
+            tenant_key = (
+                message_source.source_platform_object.header.tenant_key
+                if message_source.source_platform_object
+                else None
+            )
             app_access_token = self.get_app_access_token()
             tenant_access_token = self.get_tenant_access_token(tenant_key)
-            req_opt: RequestOption = RequestOption.builder().app_ticket(self.app_ticket).tenant_key(tenant_key).app_access_token(app_access_token).tenant_access_token(tenant_access_token).build()            
+            req_opt: RequestOption = (
+                RequestOption.builder()
+                .app_ticket(self.app_ticket)
+                .tenant_key(tenant_key)
+                .app_access_token(app_access_token)
+                .tenant_access_token(tenant_access_token)
+                .build()
+            )
             response: ReplyMessageResponse = await self.api_client.im.v1.message.areply(request, req_opt)
 
             if not response.success():
@@ -919,11 +960,22 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             if is_final and bot_message.tool_calls is None:
                 # self.seq = 1  # 消息回复结束之后重置seq
                 self.card_id_dict.pop(message_id)  # 清理已经使用过的卡片
-            
-            tenant_key = message_source.source_platform_object.header.tenant_key if message_source.source_platform_object else None
+
+            tenant_key = (
+                message_source.source_platform_object.header.tenant_key
+                if message_source.source_platform_object
+                else None
+            )
             app_access_token = self.get_app_access_token()
             tenant_access_token = self.get_tenant_access_token(tenant_key)
-            req_opt: RequestOption = RequestOption.builder().app_ticket(self.app_ticket).tenant_key(tenant_key).app_access_token(app_access_token).tenant_access_token(tenant_access_token).build()            
+            req_opt: RequestOption = (
+                RequestOption.builder()
+                .app_ticket(self.app_ticket)
+                .tenant_key(tenant_key)
+                .app_access_token(app_access_token)
+                .tenant_access_token(tenant_access_token)
+                .build()
+            )
             # 发起请求
             response: ContentCardElementResponse = self.api_client.cardkit.v1.card_element.content(request, req_opt)
 
@@ -1014,10 +1066,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         final_content = {
                             'zh_Hans': {
                                 'title': '',
-                                'content': [[{
-                                    'tag': 'md',
-                                    'text': bot_added_welcome_msg
-                                }]],
+                                'content': [[{'tag': 'md', 'text': bot_added_welcome_msg}]],
                             },
                         }
                         chat_id = context.event['chat_id']
@@ -1037,7 +1086,14 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         tenant_key = context.header.tenant_key if context.header else None
                         app_access_token = self.get_app_access_token()
                         tenant_access_token = self.get_tenant_access_token(tenant_key)
-                        req_opt: RequestOption = RequestOption.builder().app_ticket(self.app_ticket).tenant_key(tenant_key).app_access_token(app_access_token).tenant_access_token(tenant_access_token).build()
+                        req_opt: RequestOption = (
+                            RequestOption.builder()
+                            .app_ticket(self.app_ticket)
+                            .tenant_key(tenant_key)
+                            .app_access_token(app_access_token)
+                            .tenant_access_token(tenant_access_token)
+                            .build()
+                        )
                         response: CreateMessageResponse = self.api_client.im.v1.message.create(request, req_opt)
 
                         if not response.success():
