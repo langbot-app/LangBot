@@ -25,16 +25,6 @@ spec:
       type: string
       required: true
       default: ""
-    - name: app_type
-      label:
-        en_US: App Type
-        zh_Hans: 应用类型
-      description:
-        en_US: Default to self-built application, fill in isv for store application
-        zh_Hans: 默认为企业自建应用，填写isv则为商店应用
-      type: string
-      required: false
-      default: ""
     - name: bot_name
       label:
         en_US: Bot Name
@@ -75,6 +65,25 @@ spec:
       type: boolean
       required: true
       default: false
+    - name: app_type
+      label:
+        en_US: App Type
+        zh_Hans: 应用类型
+      description:
+        en_US: Default to self-built application, refer to https://open.feishu.cn/document/platform-overveiw/overview
+        zh_Hans: 默认为企业自建应用，参考 https://open.feishu.cn/document/platform-overveiw/overview
+      type: select
+      options:
+        - name: self
+          label:
+            en_US: Self-built Application
+            zh_Hans: 自建应用
+        - name: isv
+          label:
+            en_US: Store Application
+            zh_Hans: 商店应用
+      required: false
+      default: self
     - name: bot_added_welcome
       label:
         en_US: Bot Welcome Message

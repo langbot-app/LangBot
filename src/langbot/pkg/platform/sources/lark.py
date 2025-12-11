@@ -459,6 +459,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         bot = lark_oapi.ws.Client(config['app_id'], config['app_secret'], event_handler=event_handler)
         api_client = self.build_api_client(config)
         cipher = AESCipher(config.get('encrypt-key', ''))
+        self.request_app_ticket(api_client, config)
 
         super().__init__(
             config=config,
@@ -478,7 +479,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     def request_app_ticket(self, api_client, config):
         app_id = config['app_id']
         app_secret = config['app_secret']
-        print(f"Requesting app ticket for app_id: {app_id}")
+        print(f"Requesting app ticket for app_id: {app_id[:3]}***{app_id[-3:]}")
         if 'isv' == config['app_type']:
             request: ResendAppTicketRequest = ResendAppTicketRequest.builder() \
                 .request_body(ResendAppTicketRequestBody.builder()
