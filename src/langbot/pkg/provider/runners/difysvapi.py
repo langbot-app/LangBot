@@ -152,7 +152,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         self, query: pipeline_query.Query
     ) -> typing.AsyncGenerator[provider_message.Message, None]:
         """调用聊天助手"""
-        cov_id = query.session.using_conversation.uuid or ''
+        cov_id = query.session.using_conversation.uuid or None
         query.variables['conversation_id'] = cov_id
 
         plain_text, upload_files = await self._preprocess_user_message(query)
@@ -218,7 +218,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         self, query: pipeline_query.Query
     ) -> typing.AsyncGenerator[provider_message.Message, None]:
         """调用聊天助手"""
-        cov_id = query.session.using_conversation.uuid or ''
+        cov_id = query.session.using_conversation.uuid or None
         query.variables['conversation_id'] = cov_id
 
         plain_text, upload_files = await self._preprocess_user_message(query)
@@ -387,7 +387,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         self, query: pipeline_query.Query
     ) -> typing.AsyncGenerator[provider_message.MessageChunk, None]:
         """调用聊天助手"""
-        cov_id = query.session.using_conversation.uuid or ''
+        cov_id = query.session.using_conversation.uuid or None
         query.variables['conversation_id'] = cov_id
 
         plain_text, upload_files = await self._preprocess_user_message(query)
@@ -471,7 +471,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         self, query: pipeline_query.Query
     ) -> typing.AsyncGenerator[provider_message.MessageChunk, None]:
         """调用聊天助手"""
-        cov_id = query.session.using_conversation.uuid or ''
+        cov_id = query.session.using_conversation.uuid or None
         query.variables['conversation_id'] = cov_id
 
         plain_text, upload_files = await self._preprocess_user_message(query)
