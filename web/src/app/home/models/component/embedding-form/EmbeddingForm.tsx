@@ -474,24 +474,25 @@ export default function EmbeddingForm({
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="url"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    {t('models.requestURL')}
-                    <span className="text-red-500">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {!['seekdb-embedding'].includes(currentModelProvider) && (
+              <FormField
+                control={form.control}
+                name="url"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {t('models.requestURL')}
+                    </FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
-            {!['ollama-chat'].includes(currentModelProvider) && (
+            {!['ollama-chat', 'seekdb-embedding'].includes(currentModelProvider) && (
               <FormField
                 control={form.control}
                 name="api_key"
