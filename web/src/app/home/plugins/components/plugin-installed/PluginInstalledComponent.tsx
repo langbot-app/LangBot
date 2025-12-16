@@ -7,6 +7,8 @@ import PluginForm from '@/app/home/plugins/components/plugin-installed/plugin-fo
 import PluginReadme from '@/app/home/plugins/components/plugin-installed/plugin-readme/PluginReadme';
 import styles from '@/app/home/plugins/plugins.module.css';
 import { httpClient } from '@/app/infra/http/HttpClient';
+import { getCloudServiceClientSync } from '@/app/infra/http';
+import { isNewerVersion } from '@/app/utils/versionCompare';
 import {
   Dialog,
   DialogContent,
@@ -72,10 +74,68 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
       getPluginList();
     }
 
-    function getPluginList() {
-      httpClient.getPlugins().then((value) => {
+    async function getPluginList() {
+      try {
+        // 获取已安装插件列表
+        const installedPluginsResp = await httpClient.getPlugins();
+        const installedPlugins = installedPluginsResp.plugins;
+
+        // 获取市场插件列表
+        const client = getCloudServiceClientSync();
+        const marketplaceResp = await client.getMarketplacePlugins(1, 100);
+        const marketplacePlugins = marketplaceResp.plugins;
+
+        // 创建市场插件映射，便于快速查找
+        const marketplacePluginMap = new Map();
+        marketplacePlugins.forEach((plugin) => {
+          const key = `${plugin.author}/${plugin.name}`;
+          marketplacePluginMap.set(key, plugin);
+        });
+
+        // 转换并比较版本号
+        const pluginCards = installedPlugins.map((plugin) => {
+          const cardVO = new PluginCardVO({
+            author: plugin.manifest.manifest.metadata.author ?? '',
+            label: extractI18nObject(plugin.manifest.manifest.metadata.label),
+            description: extractI18nObject(
+              plugin.manifest.manifest.metadata.description ?? {
+                en_US: '',
+                zh_Hans: '',
+              },
+            ),
+            debug: plugin.debug,
+            enabled: plugin.enabled,
+            name: plugin.manifest.manifest.metadata.name,
+            version: plugin.manifest.manifest.metadata.version ?? '',
+            status: plugin.status,
+            components: plugin.components,
+            priority: plugin.priority,
+            install_source: plugin.install_source,
+            install_info: plugin.install_info,
+          });
+
+          // 检查是否来自市场且有更新
+          if (cardVO.install_source === 'marketplace') {
+            const marketplaceKey = `${cardVO.author}/${cardVO.name}`;
+            const marketplacePlugin = marketplacePluginMap.get(marketplaceKey);
+            if (marketplacePlugin && marketplacePlugin.latest_version) {
+              cardVO.hasUpdate = isNewerVersion(
+                marketplacePlugin.latest_version,
+                cardVO.version,
+              );
+            }
+          }
+
+          return cardVO;
+        });
+
+        setPluginList(pluginCards);
+      } catch (error) {
+        console.error('获取插件列表失败:', error);
+        // 失败时仍显示已安装插件，不影响用户体验
+        const installedPluginsResp = await httpClient.getPlugins();
         setPluginList(
-          value.plugins.map((plugin) => {
+          installedPluginsResp.plugins.map((plugin) => {
             return new PluginCardVO({
               author: plugin.manifest.manifest.metadata.author ?? '',
               label: extractI18nObject(plugin.manifest.manifest.metadata.label),
@@ -97,7 +157,7 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
             });
           }),
         );
-      });
+      }
     }
 
     useImperativeHandle(ref, () => ({

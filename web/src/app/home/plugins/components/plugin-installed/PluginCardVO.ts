@@ -13,6 +13,7 @@ export interface IPluginCardVO {
   status: string;
   components: PluginComponent[];
   debug: boolean;
+  hasUpdate?: boolean;
 }
 
 export class PluginCardVO implements IPluginCardVO {
@@ -28,6 +29,7 @@ export class PluginCardVO implements IPluginCardVO {
   install_info: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   status: string;
   components: PluginComponent[];
+  hasUpdate?: boolean;
 
   constructor(prop: IPluginCardVO) {
     this.author = prop.author;
@@ -42,5 +44,6 @@ export class PluginCardVO implements IPluginCardVO {
     this.debug = prop.debug;
     this.install_source = prop.install_source;
     this.install_info = prop.install_info;
+    this.hasUpdate = prop.hasUpdate;
   }
 }

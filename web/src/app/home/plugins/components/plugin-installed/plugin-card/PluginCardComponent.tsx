@@ -70,12 +70,17 @@ export default function PluginCardComponent({
                   <div className="text-[1.2rem] text-black dark:text-[#f0f0f0] truncate max-w-[10rem]">
                     {cardVO.label}
                   </div>
-                  <Badge
-                    variant="outline"
-                    className="text-[0.7rem] flex-shrink-0"
-                  >
-                    v{cardVO.version}
-                  </Badge>
+                  <div className="relative">
+                    <Badge
+                      variant="outline"
+                      className="text-[0.7rem] flex-shrink-0"
+                    >
+                      v{cardVO.version}
+                    </Badge>
+                    {cardVO.hasUpdate && (
+                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-[#1f1f22]"></div>
+                    )}
+                  </div>
                   {cardVO.debug && (
                     <Badge
                       variant="outline"
