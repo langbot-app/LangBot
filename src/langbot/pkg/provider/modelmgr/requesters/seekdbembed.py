@@ -46,7 +46,14 @@ class SeekDBEmbedding(requester.ProviderAPIRequester):
         extra_args: dict[str, typing.Any] = {},
     ) -> typing.List[typing.List[float]]:
         """Generate embeddings using SeekDB's built-in embedding function."""
-        if self._embedding_function is None:
-            await self.initialize()
+        try:
+            if self._embedding_function is None:
+                await self.initialize()
 
-        return self._embedding_function(input_text)
+            if self._embedding_function is None:
+                raise RuntimeError("SeekDB embedding function initialization failed")
+
+            return self._embedding_function(input_text)
+        except Exception as e:
+            from .. import errors
+            raise errors.RequesterError(f'SeekDB embedding failed: {str(e)}')
