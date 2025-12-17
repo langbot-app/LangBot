@@ -7,7 +7,7 @@ metadata:
     zh_Hans: SeekDB 嵌入
   icon: seekdb.svg
 spec:
-  config:
+  config: []
   support_type:
   - text-embedding
   provider_category: self-hosted
