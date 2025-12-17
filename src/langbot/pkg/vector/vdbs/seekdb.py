@@ -45,11 +45,13 @@ class SeekDBVectorDatabase(VectorDatabase):
             path = config.get('path', './data/seekdb')
             database = config.get('database', 'langbot')
 
-            temp_client = pyseekdb.Client(path=path)
-            # seekdb default database 'oceanbase' 'information_schema' 'mysql' 'sys_external_tbs'
-            existing_dbs = [db.name for db in temp_client._server.list_databases()]
+            # Use AdminClient for database management operations
+            admin_client = pyseekdb.AdminClient(path=path)
+            # Check if database exists using public API
+            existing_dbs = [db.name for db in admin_client.list_databases()]
             if database not in existing_dbs:
-                temp_client._server.create_database(database)
+                # Use public API to create database
+                admin_client.create_database(database)
                 self.ap.logger.info(f"Created SeekDB database '{database}'")
 
             self.client = pyseekdb.Client(path=path, database=database)
