@@ -96,7 +96,10 @@ class SeekDBVectorDatabase(VectorDatabase):
             '\t': '\\t',
         })
 
-        asyncio.create_task(self._ensure_embedding_model())
+        self.ap.task_mgr.create_task(
+            self._ensure_embedding_model(),
+            name='seekdb_embedding_model_init'
+        )
 
     async def _ensure_embedding_model(self) -> None:
         result = await self.ap.persistence_mgr.execute_async(
