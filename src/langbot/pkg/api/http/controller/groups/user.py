@@ -70,6 +70,13 @@ class UserRouterGroup(group.RouterGroup):
 
         @self.route('/change-password', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _(user_email: str) -> str:
+            # Check if password change is allowed
+            allow_change_password = self.ap.instance_config.data.get('system', {}).get(
+                'allow_change_password', True
+            )
+            if not allow_change_password:
+                return self.http_status(403, -1, 'Password change is disabled')
+
             json_data = await quart.request.json
 
             current_password = json_data['current_password']
