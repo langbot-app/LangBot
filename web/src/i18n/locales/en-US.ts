@@ -288,6 +288,7 @@ const enUS = {
     noComponents: 'No components',
     delete: 'Delete Plugin',
     update: 'Update Plugin',
+    new: 'New',
     updateConfirm: 'Update Confirmation',
     confirmUpdatePlugin:
       'Are you sure you want to update the plugin ({{author}}/{{name}})?',

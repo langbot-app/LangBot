@@ -274,6 +274,7 @@ const zhHant = {
     noComponents: '無組件',
     delete: '刪除插件',
     update: '更新插件',
+    new: '新',
     updateConfirm: '更新確認',
     confirmUpdatePlugin: '您確定要更新插件（{{author}}/{{name}}）嗎？',
     confirmUpdate: '確認更新',

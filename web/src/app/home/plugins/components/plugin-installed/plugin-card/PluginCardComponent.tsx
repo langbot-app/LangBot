@@ -70,17 +70,12 @@ export default function PluginCardComponent({
                   <div className="text-[1.2rem] text-black dark:text-[#f0f0f0] truncate max-w-[10rem]">
                     {cardVO.label}
                   </div>
-                  <div className="relative">
-                    <Badge
-                      variant="outline"
-                      className="text-[0.7rem] flex-shrink-0"
-                    >
-                      v{cardVO.version}
-                    </Badge>
-                    {cardVO.hasUpdate && (
-                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-[#1f1f22]"></div>
-                    )}
-                  </div>
+                  <Badge
+                    variant="outline"
+                    className="text-[0.7rem] flex-shrink-0"
+                  >
+                    v{cardVO.version}
+                  </Badge>
                   {cardVO.debug && (
                     <Badge
                       variant="outline"
@@ -164,12 +159,17 @@ export default function PluginCardComponent({
                 }}
               >
                 <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="bg-white dark:bg-[#1f1f22] hover:bg-gray-100 dark:hover:bg-[#2a2a2d]"
-                  >
-                    <Ellipsis className="w-4 h-4" />
-                  </Button>
+                  <div className="relative">
+                    <Button
+                      variant="ghost"
+                      className="bg-white dark:bg-[#1f1f22] hover:bg-gray-100 dark:hover:bg-[#2a2a2d]"
+                    >
+                      <Ellipsis className="w-4 h-4" />
+                    </Button>
+                    {cardVO.hasUpdate && (
+                      <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-[#1f1f22]"></div>
+                    )}
+                  </div>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
                   {/**upgrade */}
@@ -184,6 +184,11 @@ export default function PluginCardComponent({
                     >
                       <ArrowUp className="w-4 h-4" />
                       <span>{t('plugins.update')}</span>
+                      {cardVO.hasUpdate && (
+                        <Badge className="ml-auto bg-red-500 hover:bg-red-500 text-white text-[0.6rem] px-1.5 py-0 h-4">
+                          {t('plugins.new')}
+                        </Badge>
+                      )}
                     </DropdownMenuItem>
                   )}
                   {/**view source */}

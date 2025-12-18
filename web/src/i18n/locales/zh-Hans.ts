@@ -275,6 +275,7 @@ const zhHans = {
     noComponents: '无组件',
     delete: '删除插件',
     update: '更新插件',
+    new: '新',
     updateConfirm: '更新确认',
     confirmUpdatePlugin: '你确定要更新插件（{{author}}/{{name}}）吗？',
     confirmUpdate: '确认更新',

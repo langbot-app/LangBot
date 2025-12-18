@@ -289,6 +289,7 @@ const jaJP = {
     noComponents: '部品がありません',
     delete: 'プラグインを削除',
     update: 'プラグインを更新',
+    new: '新着',
     updateConfirm: '更新の確認',
     confirmUpdatePlugin:
       'プラグイン「{{author}}/{{name}}」を更新してもよろしいですか？',
