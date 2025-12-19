@@ -3,7 +3,10 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, List
 
+import sqlalchemy
+
 from langbot.pkg.core import app
+from langbot.pkg.entity.persistence import model as persistence_model
 from langbot.pkg.vector.vdb import VectorDatabase
 
 try:
@@ -13,6 +16,9 @@ try:
     SEEKDB_AVAILABLE = True
 except ImportError:
     SEEKDB_AVAILABLE = False
+
+SEEKDB_EMBEDDING_MODEL_UUID = 'seekdb-builtin-embedding'
+SEEKDB_EMBEDDING_REQUESTER = 'seekdb-embedding'
 
 
 class SeekDBVectorDatabase(VectorDatabase):
@@ -38,6 +44,16 @@ class SeekDBVectorDatabase(VectorDatabase):
             # Embedded mode: local database
             path = config.get('path', './data/seekdb')
             database = config.get('database', 'langbot')
+
+            # Use AdminClient for database management operations
+            admin_client = pyseekdb.AdminClient(path=path)
+            # Check if database exists using public API
+            existing_dbs = [db.name for db in admin_client.list_databases()]
+            if database not in existing_dbs:
+                # Use public API to create database
+                admin_client.create_database(database)
+                self.ap.logger.info(f"Created SeekDB database '{database}'")
+
             self.client = pyseekdb.Client(path=path, database=database)
             self.ap.logger.info(f"Initialized SeekDB in embedded mode at '{path}', database '{database}'")
         elif mode == 'server':
@@ -70,6 +86,44 @@ class SeekDBVectorDatabase(VectorDatabase):
 
         self._collections: Dict[str, Any] = {}
         self._collection_configs: Dict[str, HNSWConfiguration] = {}
+
+        self._escape_table = str.maketrans({
+            '\x00': '',
+            '\\': '\\\\',
+            '"': '\\"',
+            '\n': '\\n',
+            '\r': '\\r',
+            '\t': '\\t',
+        })
+
+        self.ap.task_mgr.create_task(
+            self._ensure_embedding_model(),
+            name='seekdb_embedding_model_init'
+        )
+
+    async def _ensure_embedding_model(self) -> None:
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_model.EmbeddingModel).where(
+                persistence_model.EmbeddingModel.uuid == SEEKDB_EMBEDDING_MODEL_UUID
+            )
+        )
+        if result.first() is not None:
+            return
+
+        model_data = {
+            'uuid': SEEKDB_EMBEDDING_MODEL_UUID,
+            'name': 'SeekDB Built-in Embedding',
+            'description': 'SeekDB built-in embedding model (all-MiniLM-L6-v2)',
+            'requester': SEEKDB_EMBEDDING_REQUESTER,
+            'requester_config': {},
+            'api_keys': [],
+            'extra_args': {},
+        }
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.insert(persistence_model.EmbeddingModel).values(**model_data)
+        )
+        await self.ap.model_mgr.load_embedding_model(model_data)
+        self.ap.logger.info('Auto-created SeekDB built-in embedding model.')
 
     async def _get_or_create_collection_internal(self, collection: str, vector_size: int = None) -> Any:
         """Internal method to get or create a collection with proper configuration."""
@@ -105,6 +159,16 @@ class SeekDBVectorDatabase(VectorDatabase):
         self.ap.logger.info(f"SeekDB collection '{collection}' created with dimension={vector_size}, distance='cosine'")
         return coll
 
+    def _clean_metadata(self, meta: Dict[str, Any]) -> Dict[str, Any]:
+        """SeekDB metadata doesn't support \\ and ", insert will error 3104"""
+        return {
+            k: v.translate(self._escape_table) if isinstance(v, str)
+            else v if v is None or isinstance(v, (int, float, bool))
+            else str(v)
+            for k, v in meta.items()
+            if v is not None
+        }
+
     async def get_or_create_collection(self, collection: str):
         """Get or create collection (without vector size - will use default)."""
         return await self._get_or_create_collection_internal(collection)
@@ -114,8 +178,7 @@ class SeekDBVectorDatabase(VectorDatabase):
         collection: str,
         ids: List[str],
         embeddings_list: List[List[float]],
-        metadatas: List[Dict[str, Any]],
-        documents: List[str] = None,
+        metadatas: List[Dict[str, Any]]
     ) -> None:
         """Add vector embeddings to the specified collection.
 
@@ -124,7 +187,6 @@ class SeekDBVectorDatabase(VectorDatabase):
             ids: List of document IDs
             embeddings_list: List of embedding vectors
             metadatas: List of metadata dictionaries
-            documents: Optional list of document texts (not used, for interface compatibility)
         """
         if not embeddings_list:
             return
@@ -133,9 +195,9 @@ class SeekDBVectorDatabase(VectorDatabase):
         vector_size = len(embeddings_list[0])
         coll = await self._get_or_create_collection_internal(collection, vector_size)
 
-        # Add embeddings to collection
-        # SeekDB's add() expects: ids, embeddings, metadatas (documents optional)
-        await asyncio.to_thread(coll.add, ids=ids, embeddings=embeddings_list, metadatas=metadatas)
+        cleaned_metadatas = [self._clean_metadata(meta) for meta in metadatas]
+
+        await asyncio.to_thread(coll.add, ids=ids, embeddings=embeddings_list, metadatas=cleaned_metadatas)
 
         self.ap.logger.info(f"Added {len(ids)} embeddings to SeekDB collection '{collection}'")
 
