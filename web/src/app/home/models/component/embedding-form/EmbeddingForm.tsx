@@ -75,7 +75,7 @@ const getFormSchema = (t: (key: string) => string) =>
     model_provider: z
       .string()
       .min(1, { message: t('models.modelProviderRequired') }),
-    url: z.string().min(1, { message: t('models.requestURLRequired') }),
+    url: z.string().optional(),
     api_key: z.string().optional(),
     extra_args: z.array(getExtraArgSchema(t)).optional(),
   });
@@ -188,6 +188,7 @@ export default function EmbeddingForm({
           label: extractI18nObject(item.label),
           value: item.name,
           provider_category: item.spec.provider_category || 'manufacturer',
+          description: extractI18nObject(item.description) || undefined,
         };
       }),
     );
@@ -243,7 +244,7 @@ export default function EmbeddingForm({
       description: '',
       requester: value.model_provider,
       requester_config: {
-        base_url: value.url,
+        base_url: value.url || '',
         timeout: 120,
       },
       extra_args: extraArgsObj,
@@ -320,7 +321,7 @@ export default function EmbeddingForm({
         description: '',
         requester: form.getValues('model_provider'),
         requester_config: {
-          base_url: form.getValues('url'),
+          base_url: form.getValues('url') ?? '',
           timeout: 120,
         },
         api_keys: apiKey ? [apiKey] : [],
@@ -426,6 +427,19 @@ export default function EmbeddingForm({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
+                          <SelectLabel>{t('models.builtin')}</SelectLabel>
+                          {requesterNameList
+                            .filter(
+                              (item) =>
+                                item.provider_category === 'builtin',
+                            )
+                            .map((item) => (
+                              <SelectItem key={item.value} value={item.value}>
+                                {item.label}
+                              </SelectItem>
+                            ))}
+                        </SelectGroup>
+                        <SelectGroup>
                           <SelectLabel>
                             {t('models.modelManufacturer')}
                           </SelectLabel>
@@ -468,6 +482,18 @@ export default function EmbeddingForm({
                       </SelectContent>
                     </Select>
                   </FormControl>
+                  {currentModelProvider &&
+                    requesterNameList.find(
+                      (item) => item.value === currentModelProvider,
+                    )?.description && (
+                      <FormDescription>
+                        {
+                          requesterNameList.find(
+                            (item) => item.value === currentModelProvider,
+                          )?.description
+                        }
+                      </FormDescription>
+                    )}
                   <FormMessage />
                 </FormItem>
               )}

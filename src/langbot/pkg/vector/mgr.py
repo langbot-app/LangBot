@@ -28,7 +28,7 @@ class VectorDBManager:
             elif vdb_type == 'qdrant':
                 self.vector_db = QdrantVectorDatabase(self.ap)
                 self.ap.logger.info('Initialized Qdrant vector database backend.')
-            elif kb_config.get('use') == 'seekdb':
+            elif vdb_type == 'seekdb':
                 self.vector_db = SeekDBVectorDatabase(self.ap)
                 self.ap.logger.info('Initialized SeekDB vector database backend.')
 

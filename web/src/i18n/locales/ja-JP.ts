@@ -148,6 +148,7 @@ const jaJP = {
     modelManufacturer: 'モデルメーカー',
     aggregationPlatform: 'アグリゲーションプラットフォーム',
     selfDeployed: 'セルフデプロイ',
+    builtin: 'ビルトイン',
     selectModel: 'モデルを選択してください',
     testSuccess: 'テストに成功しました',
     testError: 'テストに失敗しました。モデル設定を確認してください',

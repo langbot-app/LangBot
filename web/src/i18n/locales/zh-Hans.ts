@@ -142,6 +142,7 @@ const zhHans = {
     modelManufacturer: '模型厂商',
     aggregationPlatform: '中转平台',
     selfDeployed: '自部署',
+    builtin: '内置',
     selectModel: '请选择模型',
     testSuccess: '测试成功',
     testError: '测试失败，请检查模型配置',

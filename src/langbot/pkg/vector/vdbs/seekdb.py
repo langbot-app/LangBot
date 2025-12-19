@@ -96,35 +96,6 @@ class SeekDBVectorDatabase(VectorDatabase):
             '\t': '\\t',
         })
 
-        self.ap.task_mgr.create_task(
-            self._ensure_embedding_model(),
-            name='seekdb_embedding_model_init'
-        )
-
-    async def _ensure_embedding_model(self) -> None:
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_model.EmbeddingModel).where(
-                persistence_model.EmbeddingModel.uuid == SEEKDB_EMBEDDING_MODEL_UUID
-            )
-        )
-        if result.first() is not None:
-            return
-
-        model_data = {
-            'uuid': SEEKDB_EMBEDDING_MODEL_UUID,
-            'name': 'SeekDB Built-in Embedding',
-            'description': 'SeekDB built-in embedding model (all-MiniLM-L6-v2)',
-            'requester': SEEKDB_EMBEDDING_REQUESTER,
-            'requester_config': {},
-            'api_keys': [],
-            'extra_args': {},
-        }
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.insert(persistence_model.EmbeddingModel).values(**model_data)
-        )
-        await self.ap.model_mgr.load_embedding_model(model_data)
-        self.ap.logger.info('Auto-created SeekDB built-in embedding model.')
-
     async def _get_or_create_collection_internal(self, collection: str, vector_size: int = None) -> Any:
         """Internal method to get or create a collection with proper configuration."""
         if collection in self._collections:
