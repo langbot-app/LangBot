@@ -3,7 +3,6 @@ on:
   ## 发布release的时候会自动构建
   release:
     types: [published]
-  workflow_dispatch:
 jobs:
   publish-docker-image:
     runs-on: ubuntu-latest
@@ -42,7 +41,7 @@ jobs:
         run: docker buildx create --name mybuilder --use
       - name: Build for Release # only relase, exlude pre-release
         if: ${{ github.event.release.prerelease == false }}
-        run: docker buildx build --platform linux/amd64 -t rockchin/langbot:${{ steps.check_version.outputs.version }} -t rockchin/langbot:latest . --push
+        run: docker buildx build --platform linux/arm64,linux/amd64 -t rockchin/langbot:${{ steps.check_version.outputs.version }} -t rockchin/langbot:latest . --push
       - name: Build for Pre-release # no update for latest tag
         if: ${{ github.event.release.prerelease == true }}
-        run: docker buildx build --platform linux/amd64 -t rockchin/langbot:${{ steps.check_version.outputs.version }} . --push
+        run: docker buildx build --platform linux/arm64,linux/amd64 -t rockchin/langbot:${{ steps.check_version.outputs.version }} . --push
