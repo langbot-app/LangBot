@@ -72,8 +72,9 @@ class N8nServiceAPIRunner(runner.RequestRunner):
         provider_message.Message, None]:
         """处理流式响应"""
         full_content = ""
-        message_idx = 0
+        chunk_idx = 0
         is_final = False
+        message_idx = 0
         async for chunk in response.content.iter_chunked(1024):
             if not chunk:
                 continue
@@ -81,16 +82,18 @@ class N8nServiceAPIRunner(runner.RequestRunner):
             try:
                 data = json.loads(chunk)
                 if data.get('type') == 'item' and 'content' in data:
-                    message_idx += 1
+                    chunk_idx += 1
                     content = data['content']
                     full_content += content
                 elif data.get('type') == 'end':
                     is_final = True
-                if is_final or message_idx % 8 == 0:
+                if is_final or chunk_idx % 8 == 0:
+                    message_idx += 1
                     yield provider_message.MessageChunk(
                         role='assistant',
                         content=full_content,
                         is_final=is_final,
+                        msg_sequence=message_idx,
                     )
             except json.JSONDecodeError:
                 self.ap.logger.warning(f"Failed to parse final JSON line: {response.text()}")
