@@ -49,6 +49,14 @@ class PipelinesRouterGroup(group.RouterGroup):
 
                 return self.success()
 
+        @self.route('/<pipeline_uuid>/copy', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def _(pipeline_uuid: str) -> str:
+            try:
+                new_uuid = await self.ap.pipeline_service.copy_pipeline(pipeline_uuid)
+                return self.success(data={'uuid': new_uuid})
+            except ValueError as e:
+                return self.http_status(404, -1, str(e))
+
         @self.route(
             '/<pipeline_uuid>/extensions', methods=['GET', 'PUT'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
         )

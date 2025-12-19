@@ -493,6 +493,9 @@ const enUS = {
     defaultPipelineCannotDelete: 'Default pipeline cannot be deleted',
     deleteSuccess: 'Deleted successfully',
     deleteError: 'Delete failed: ',
+    copyConfirmTitle: 'Confirm Copy',
+    copyConfirmation:
+      'Are you sure you want to copy this pipeline? This will create a new pipeline with all configurations.',
     extensions: {
       title: 'Extensions',
       loadError: 'Failed to load plugins',

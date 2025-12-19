@@ -151,6 +151,52 @@ class PipelineService:
         )
         await self.ap.pipeline_mgr.remove_pipeline(pipeline_uuid)
 
+    async def copy_pipeline(self, pipeline_uuid: str) -> str:
+        """Copy a pipeline with all its configurations"""
+        # Get the original pipeline
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
+                persistence_pipeline.LegacyPipeline.uuid == pipeline_uuid
+            )
+        )
+
+        original_pipeline = result.first()
+        if original_pipeline is None:
+            raise ValueError(f'Pipeline {pipeline_uuid} not found')
+
+        # Create new pipeline data
+        new_uuid = str(uuid.uuid4())
+        new_pipeline_data = {
+            'uuid': new_uuid,
+            'name': f'{original_pipeline.name} (Copy)',
+            'description': original_pipeline.description,
+            'for_version': self.ap.ver_mgr.get_current_version(),
+            'stages': original_pipeline.stages.copy() if original_pipeline.stages else default_stage_order.copy(),
+            'config': original_pipeline.config.copy() if original_pipeline.config else {},
+            'is_default': False,
+            'extensions_preferences': (
+                original_pipeline.extensions_preferences.copy()
+                if original_pipeline.extensions_preferences
+                else {
+                    'enable_all_plugins': True,
+                    'enable_all_mcp_servers': True,
+                    'plugins': [],
+                    'mcp_servers': [],
+                }
+            ),
+        }
+
+        # Insert the new pipeline
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.insert(persistence_pipeline.LegacyPipeline).values(**new_pipeline_data)
+        )
+
+        # Load the new pipeline
+        pipeline = await self.get_pipeline(new_uuid)
+        await self.ap.pipeline_mgr.load_pipeline(pipeline)
+
+        return new_uuid
+
     async def update_pipeline_extensions(
         self,
         pipeline_uuid: str,

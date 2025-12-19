@@ -172,6 +172,10 @@ export class BackendClient extends BaseHttpClient {
     return this.delete(`/api/v1/pipelines/${uuid}`);
   }
 
+  public copyPipeline(uuid: string): Promise<{ uuid: string }> {
+    return this.post(`/api/v1/pipelines/${uuid}/copy`);
+  }
+
   public getPipelineExtensions(uuid: string): Promise<{
     enable_all_plugins: boolean;
     enable_all_mcp_servers: boolean;

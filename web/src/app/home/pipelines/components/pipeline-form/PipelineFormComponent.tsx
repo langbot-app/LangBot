@@ -52,6 +52,7 @@ export default function PipelineFormComponent({
 }) {
   const { t } = useTranslation();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showCopyConfirm, setShowCopyConfirm] = useState(false);
   const [isDefaultPipeline, setIsDefaultPipeline] = useState<boolean>(false);
 
   const formSchema = isEditMode
@@ -345,25 +346,17 @@ export default function PipelineFormComponent({
   };
 
   const handleCopy = () => {
+    setShowCopyConfirm(true);
+  };
+
+  const confirmCopy = () => {
     if (pipelineId) {
-      let newPipelineName = '';
       httpClient
-        .getPipeline(pipelineId)
-        .then((resp) => {
-          const originalPipeline = resp.pipeline;
-          newPipelineName = `${originalPipeline.name}${t(
-            'pipelines.copySuffix',
-          )}`;
-          const newPipeline: Pipeline = {
-            name: newPipelineName,
-            description: originalPipeline.description,
-            config: originalPipeline.config,
-          };
-          return httpClient.createPipeline(newPipeline);
-        })
+        .copyPipeline(pipelineId)
         .then(() => {
           onFinish();
-          toast.success(`${t('common.copySuccess')}: ${newPipelineName}`);
+          toast.success(t('common.copySuccess'));
+          setShowCopyConfirm(false);
           onCancel();
         })
         .catch((err) => {
@@ -544,6 +537,22 @@ export default function PipelineFormComponent({
             <Button variant="destructive" onClick={confirmDelete}>
               {t('common.confirmDelete')}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 复制确认对话框 */}
+      <Dialog open={showCopyConfirm} onOpenChange={setShowCopyConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('pipelines.copyConfirmTitle')}</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">{t('pipelines.copyConfirmation')}</div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCopyConfirm(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button onClick={confirmCopy}>{t('common.confirm')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -473,6 +473,9 @@ const zhHant = {
     defaultPipelineCannotDelete: '預設流程線不可刪除',
     deleteSuccess: '刪除成功',
     deleteError: '刪除失敗：',
+    copyConfirmTitle: '確認複製',
+    copyConfirmation:
+      '確定要複製這個流程線嗎？複製將創建一個包含完整配置的新流程線。',
     extensions: {
       title: '擴展集成',
       loadError: '載入插件清單失敗',

@@ -496,6 +496,9 @@ const jaJP = {
     defaultPipelineCannotDelete: 'デフォルトパイプラインは削除できません',
     deleteSuccess: '削除に成功しました',
     deleteError: '削除に失敗しました：',
+    copyConfirmTitle: 'コピーの確認',
+    copyConfirmation:
+      'このパイプラインをコピーしますか？すべての設定を含む新しいパイプラインが作成されます。',
     extensions: {
       title: 'プラグイン統合',
       loadError: 'プラグインリストの読み込みに失敗しました',
