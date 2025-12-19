@@ -1,11 +1,13 @@
 <p align="center">
 <a href="https://langbot.app">
-<img src="https://docs.langbot.app/social_en.png" alt="LangBot"/>
+<img width="130" src="https://docs.langbot.app/langbot-logo.png" alt="LangBot"/>
 </a>
 
 <div align="center">
 
 <a href="https://www.producthunt.com/products/langbot?utm_source=badge-follow&utm_medium=badge&utm_source=badge-langbot" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/follow.svg?product_id=1077185&theme=light" alt="LangBot - Production&#0045;grade&#0032;IM&#0032;bot&#0032;made&#0032;easy&#0046; | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
+
+<h3>Cree, depure y despliegue bots de mensajería instantánea rápidamente con LangBot.</h3>
 
 [English](README_EN.md) / [简体中文](README.md) / [繁體中文](README_TW.md) / [日本語](README_JP.md) / Español / [Français](README_FR.md) / [한국어](README_KO.md) / [Русский](README_RU.md) / [Tiếng Việt](README_VI.md)
 
@@ -23,7 +25,6 @@
 
 </p>
 
-LangBot es una plataforma de desarrollo de robots de mensajería instantánea nativa de LLM de código abierto, con el objetivo de proporcionar una experiencia de desarrollo de robots de mensajería instantánea lista para usar, con funciones de aplicación LLM como Agent, RAG, MCP, adaptándose a plataformas de mensajería instantánea globales y proporcionando interfaces API ricas, compatible con desarrollo personalizado.
 
 ## 📦 Comenzar
 
@@ -79,8 +80,11 @@ Haga clic en los botones Star y Watch en la esquina superior derecha del reposit
 
 ## ✨ Características
 
+<img width="500" src="https://docs.langbot.app/ui/bot-page-en-rounded.png" />
+
+
 - 💬 Chat con LLM / Agent: Compatible con múltiples LLMs, adaptado para chats grupales y privados; Admite conversaciones de múltiples rondas, llamadas a herramientas, capacidades multimodales y de salida en streaming. Implementación RAG (base de conocimientos) incorporada, e integración profunda con [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io) etc. LLMOps platforms.
-- 🤖 Soporte Multiplataforma: Actualmente compatible con QQ, QQ Channel, WeCom, WeChat personal, Lark, DingTalk, Discord, Telegram, etc.
+- 🤖 Soporte Multiplataforma: Actualmente compatible con QQ, QQ Channel, WeCom, WeChat personal, Lark, DingTalk, Discord, Telegram, KOOK, Slack, LINE, etc.
 - 🛠️ Alta Estabilidad, Rico en Funciones: Control de acceso nativo, limitación de velocidad, filtrado de palabras sensibles, etc.; Fácil de usar, admite múltiples métodos de despliegue. Compatible con múltiples configuraciones de pipeline, diferentes bots para diferentes escenarios.
 - 🧩 Extensión de Plugin, Comunidad Activa: Sistema de plugin de alta estabilidad, alta seguridad de nivel de producción; Compatible con mecanismos de plugin impulsados por eventos, extensión de componentes, etc.; Integración del protocolo [MCP](https://modelcontextprotocol.io/) de Anthropic; Actualmente cuenta con cientos de plugins.
 - 😻 Interfaz Web: Admite la gestión de instancias de LangBot a través del navegador. No es necesario escribir archivos de configuración manualmente.
@@ -107,6 +111,7 @@ O visite el entorno de demostración: https://demo.langbot.dev/
 | WeChat Personal | ✅ |  |
 | Lark | ✅ |  |
 | DingTalk | ✅ |  |
+| KOOK | ✅ |  |
 
 ### LLMs
 

@@ -94,7 +94,6 @@ class LangflowAPIRunner(runner.RequestRunner):
             if is_stream:
                 # 流式请求
                 async with client.stream('POST', url, json=payload, headers=headers, timeout=120.0) as response:
-                    print(response)
                     response.raise_for_status()
 
                     accumulated_content = ''

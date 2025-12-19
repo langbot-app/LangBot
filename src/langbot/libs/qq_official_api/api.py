@@ -10,38 +10,20 @@ import traceback
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
 
-def handle_validation(body: dict, bot_secret: str):
-    # bot正确的secert是32位的，此处仅为了适配演示demo
-    while len(bot_secret) < 32:
-        bot_secret = bot_secret * 2
-    bot_secret = bot_secret[:32]
-    # 实际使用场景中以上三行内容可清除
-
-    seed_bytes = bot_secret.encode()
-
-    signing_key = ed25519.Ed25519PrivateKey.from_private_bytes(seed_bytes)
-
-    msg = body['d']['event_ts'] + body['d']['plain_token']
-    msg_bytes = msg.encode()
-
-    signature = signing_key.sign(msg_bytes)
-
-    signature_hex = signature.hex()
-
-    response = {'plain_token': body['d']['plain_token'], 'signature': signature_hex}
-
-    return response
-
-
 class QQOfficialClient:
-    def __init__(self, secret: str, token: str, app_id: str, logger: None):
+    def __init__(self, secret: str, token: str, app_id: str, logger: None, unified_mode: bool = False):
+        self.unified_mode = unified_mode
         self.app = Quart(__name__)
-        self.app.add_url_rule(
-            '/callback/command',
-            'handle_callback',
-            self.handle_callback_request,
-            methods=['GET', 'POST'],
-        )
+
+        # 只有在非统一模式下才注册独立路由
+        if not self.unified_mode:
+            self.app.add_url_rule(
+                '/callback/command',
+                'handle_callback',
+                self.handle_callback_request,
+                methods=['GET', 'POST'],
+            )
+
         self.secret = secret
         self.token = token
         self.app_id = app_id
@@ -82,18 +64,45 @@ class QQOfficialClient:
                 raise Exception(f'获取access_token失败: {e}')
 
     async def handle_callback_request(self):
-        """处理回调请求"""
+        """处理回调请求（独立端口模式，使用全局 request）"""
+        return await self._handle_callback_internal(request)
+
+    async def handle_unified_webhook(self, req):
+        """处理回调请求（统一 webhook 模式，显式传递 request）。
+
+        Args:
+            req: Quart Request 对象
+
+        Returns:
+            响应数据
+        """
+        return await self._handle_callback_internal(req)
+
+    async def _handle_callback_internal(self, req):
+        """处理回调请求的内部实现。
+
+        Args:
+            req: Quart Request 对象
+        """
         try:
-            # 读取请求数据
-            body = await request.get_data()
+            
+            body = await req.get_data()
+
+            print(f'[QQ Official] Received request, body length: {len(body)}')
+
+            if not body or len(body) == 0:
+                print('[QQ Official] Received empty body, might be health check or GET request')
+                return {'code': 0, 'message': 'ok'}, 200
+
             payload = json.loads(body)
 
-            # 验证是否为回调验证请求
+            
             if payload.get('op') == 13:
-                # 生成签名
-                response = handle_validation(payload, self.secret)
-
-                return response
+                validation_data = payload.get('d')
+                if not validation_data:
+                    return {'error': "missing 'd' field"}, 400
+                response = await self.verify(validation_data)
+                return response, 200
 
             if payload.get('op') == 0:
                 message_data = await self.get_message(payload)
@@ -104,6 +113,7 @@ class QQOfficialClient:
             return {'code': 0, 'message': 'success'}
 
         except Exception as e:
+            print(f'[QQ Official] ERROR: {traceback.format_exc()}')
             await self.logger.error(f'Error in handle_callback_request: {traceback.format_exc()}')
             return {'error': str(e)}, 400
 
@@ -261,3 +271,26 @@ class QQOfficialClient:
         if self.access_token_expiry_time is None:
             return True
         return time.time() > self.access_token_expiry_time
+
+    async def repeat_seed(self, bot_secret: str, target_size: int = 32) -> bytes:
+        seed = bot_secret
+        while len(seed) < target_size:
+            seed *= 2
+        return seed[:target_size].encode("utf-8")
+
+    async def verify(self, validation_payload: dict):
+        seed = await self.repeat_seed(self.secret)
+        private_key = ed25519.Ed25519PrivateKey.from_private_bytes(seed)
+
+        event_ts = validation_payload.get("event_ts", "")
+        plain_token = validation_payload.get("plain_token", "")
+        msg = event_ts + plain_token
+
+        # sign
+        signature = private_key.sign(msg.encode()).hex()
+
+        response = {
+            "plain_token": plain_token,
+            "signature": signature,
+        }
+        return response

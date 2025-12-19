@@ -200,7 +200,7 @@ class StreamSessionManager:
 
 
 class WecomBotClient:
-    def __init__(self, Token: str, EnCodingAESKey: str, Corpid: str, logger: EventLogger):
+    def __init__(self, Token: str, EnCodingAESKey: str, Corpid: str, logger: EventLogger, unified_mode: bool = False):
         """企业微信智能机器人客户端。
 
         Args:
@@ -208,6 +208,7 @@ class WecomBotClient:
             EnCodingAESKey: 企业微信消息加解密密钥。
             Corpid: 企业 ID。
             logger: 日志记录器。
+            unified_mode: 是否使用统一 webhook 模式（默认 False）。
 
         Example:
             >>> client = WecomBotClient(Token='token', EnCodingAESKey='aeskey', Corpid='corp', logger=logger)
@@ -217,10 +218,15 @@ class WecomBotClient:
         self.EnCodingAESKey = EnCodingAESKey
         self.Corpid = Corpid
         self.ReceiveId = ''
+        self.unified_mode = unified_mode
         self.app = Quart(__name__)
-        self.app.add_url_rule(
-            '/callback/command', 'handle_callback', self.handle_callback_request, methods=['POST', 'GET']
-        )
+
+        # 只有在非统一模式下才注册独立路由
+        if not self.unified_mode:
+            self.app.add_url_rule(
+                '/callback/command', 'handle_callback', self.handle_callback_request, methods=['POST', 'GET']
+            )
+
         self._message_handlers = {
             'example': [],
         }
@@ -359,7 +365,7 @@ class WecomBotClient:
         return await self._encrypt_and_reply(payload, nonce)
 
     async def handle_callback_request(self):
-        """企业微信回调入口。
+        """企业微信回调入口（独立端口模式，使用全局 request）。
 
         Returns:
             Quart Response: 根据请求类型返回验证、首包或刷新结果。
@@ -367,15 +373,33 @@ class WecomBotClient:
         Example:
             作为 Quart 路由处理函数直接注册并使用。
         """
+        return await self._handle_callback_internal(request)
+
+    async def handle_unified_webhook(self, req):
+        """处理回调请求（统一 webhook 模式，显式传递 request）。
+
+        Args:
+            req: Quart Request 对象
+
+        Returns:
+            响应数据
+        """
+        return await self._handle_callback_internal(req)
+
+    async def _handle_callback_internal(self, req):
+        """处理回调请求的内部实现，包括 GET 验证和 POST 消息接收。
+
+        Args:
+            req: Quart Request 对象
+        """
         try:
             self.wxcpt = WXBizMsgCrypt(self.Token, self.EnCodingAESKey, '')
-            await self.logger.info(f'{request.method} {request.url} {str(request.args)}')
 
-            if request.method == 'GET':
-                return await self._handle_get_callback()
+            if req.method == 'GET':
+                return await self._handle_get_callback(req)
 
-            if request.method == 'POST':
-                return await self._handle_post_callback()
+            if req.method == 'POST':
+                return await self._handle_post_callback(req)
 
             return Response('', status=405)
 
@@ -383,13 +407,13 @@ class WecomBotClient:
             await self.logger.error(traceback.format_exc())
             return Response('Internal Server Error', status=500)
 
-    async def _handle_get_callback(self) -> tuple[Response, int] | Response:
+    async def _handle_get_callback(self, req) -> tuple[Response, int] | Response:
         """处理企业微信的 GET 验证请求。"""
 
-        msg_signature = unquote(request.args.get('msg_signature', ''))
-        timestamp = unquote(request.args.get('timestamp', ''))
-        nonce = unquote(request.args.get('nonce', ''))
-        echostr = unquote(request.args.get('echostr', ''))
+        msg_signature = unquote(req.args.get('msg_signature', ''))
+        timestamp = unquote(req.args.get('timestamp', ''))
+        nonce = unquote(req.args.get('nonce', ''))
+        echostr = unquote(req.args.get('echostr', ''))
 
         if not all([msg_signature, timestamp, nonce, echostr]):
             await self.logger.error('请求参数缺失')
@@ -402,16 +426,16 @@ class WecomBotClient:
 
         return Response(decrypted_str, mimetype='text/plain')
 
-    async def _handle_post_callback(self) -> tuple[Response, int] | Response:
+    async def _handle_post_callback(self, req) -> tuple[Response, int] | Response:
         """处理企业微信的 POST 回调请求。"""
 
         self.stream_sessions.cleanup()
 
-        msg_signature = unquote(request.args.get('msg_signature', ''))
-        timestamp = unquote(request.args.get('timestamp', ''))
-        nonce = unquote(request.args.get('nonce', ''))
+        msg_signature = unquote(req.args.get('msg_signature', ''))
+        timestamp = unquote(req.args.get('timestamp', ''))
+        nonce = unquote(req.args.get('nonce', ''))
 
-        encrypted_json = await request.get_json()
+        encrypted_json = await req.get_json()
         encrypted_msg = (encrypted_json or {}).get('encrypt', '')
         if not encrypted_msg:
             await self.logger.error("请求体中缺少 'encrypt' 字段")
@@ -433,32 +457,174 @@ class WecomBotClient:
     async def get_message(self, msg_json):
         message_data = {}
 
+        msg_type = msg_json.get('msgtype', '')
+        if msg_type:
+            message_data['msgtype'] = msg_type
+
         if msg_json.get('chattype', '') == 'single':
             message_data['type'] = 'single'
         elif msg_json.get('chattype', '') == 'group':
             message_data['type'] = 'group'
 
-        if msg_json.get('msgtype') == 'text':
+        max_inline_file_size = 5 * 1024 * 1024  # avoid decoding very large payloads by default
+
+        async def _safe_download(url: str):
+            if not url:
+                return None
+            return await self.download_url_to_base64(url, self.EnCodingAESKey)
+
+        if msg_type == 'text':
             message_data['content'] = msg_json.get('text', {}).get('content')
-        elif msg_json.get('msgtype') == 'image':
+        elif msg_type == 'markdown':
+            message_data['content'] = msg_json.get('markdown', {}).get('content') or msg_json.get('text', {}).get(
+                'content', ''
+            )
+        elif msg_type == 'image':
             picurl = msg_json.get('image', {}).get('url', '')
-            base64 = await self.download_url_to_base64(picurl, self.EnCodingAESKey)
-            message_data['picurl'] = base64
-        elif msg_json.get('msgtype') == 'mixed':
+            base64_data = await _safe_download(picurl)
+            if base64_data:
+                message_data['picurl'] = base64_data
+                message_data['images'] = [base64_data]
+        elif msg_type == 'voice':
+            voice_info = msg_json.get('voice', {}) or {}
+            download_url = voice_info.get('url')
+            message_data['voice'] = {
+                'url': download_url,
+                'md5sum': voice_info.get('md5sum') or voice_info.get('md5'),
+                'filesize': voice_info.get('filesize') or voice_info.get('size'),
+                'sdkfileid': voice_info.get('sdkfileid') or voice_info.get('fileid'),
+            }
+            # 企业微信智能转写文本（如果已有）直接复用，避免重复转写
+            if voice_info.get('content'):
+                message_data['content'] = voice_info.get('content')
+            if (message_data['voice'].get('filesize') or 0) <= max_inline_file_size:
+                voice_base64 = await _safe_download(download_url)
+                if voice_base64:
+                    message_data['voice']['base64'] = voice_base64
+        elif msg_type == 'video':
+            video_info = msg_json.get('video', {}) or {}
+            download_url = video_info.get('url')
+            video_data = {
+                'url': download_url,
+                'filesize': video_info.get('filesize') or video_info.get('size'),
+                'sdkfileid': video_info.get('sdkfileid') or video_info.get('fileid'),
+                'md5sum': video_info.get('md5sum') or video_info.get('md5'),
+                'filename': video_info.get('filename') or video_info.get('name'),
+            }
+            if (video_data.get('filesize') or 0) <= max_inline_file_size:
+                video_base64 = await _safe_download(download_url)
+                if video_base64:
+                    video_data['base64'] = video_base64
+            message_data['video'] = video_data
+        elif msg_type == 'file':
+            file_info = msg_json.get('file', {}) or {}
+            download_url = file_info.get('url') or file_info.get('fileurl')
+            file_data = {
+                'filename': file_info.get('filename') or file_info.get('name'),
+                'filesize': file_info.get('filesize') or file_info.get('size'),
+                'md5sum': file_info.get('md5sum') or file_info.get('md5'),
+                'sdkfileid': file_info.get('sdkfileid') or file_info.get('fileid'),
+                'download_url': download_url,
+                'extra': file_info,
+            }
+            if (file_data.get('filesize') or 0) <= max_inline_file_size:
+                file_base64 = await _safe_download(download_url)
+                if file_base64:
+                    file_data['base64'] = file_base64
+            message_data['file'] = file_data
+        elif msg_type == 'link':
+            message_data['link'] = msg_json.get('link', {})
+            if not message_data.get('content'):
+                title = message_data['link'].get('title', '')
+                desc = message_data['link'].get('description') or message_data['link'].get('digest', '')
+                message_data['content'] = '\n'.join(filter(None, [title, desc]))
+        elif msg_type == 'mixed':
             items = msg_json.get('mixed', {}).get('msg_item', [])
             texts = []
-            picurl = None
+            images = []
+            files = []
+            voices = []
+            videos = []
+            links = []
             for item in items:
-                if item.get('msgtype') == 'text':
+                item_type = item.get('msgtype')
+                if item_type == 'text':
                     texts.append(item.get('text', {}).get('content', ''))
-                elif item.get('msgtype') == 'image' and picurl is None:
-                    picurl = item.get('image', {}).get('url')
+                elif item_type == 'image':
+                    img_url = item.get('image', {}).get('url')
+                    base64_data = await _safe_download(img_url)
+                    if base64_data:
+                        images.append(base64_data)
+                elif item_type == 'file':
+                    file_info = item.get('file', {}) or {}
+                    download_url = file_info.get('url') or file_info.get('fileurl')
+                    file_data = {
+                        'filename': file_info.get('filename') or file_info.get('name'),
+                        'filesize': file_info.get('filesize') or file_info.get('size'),
+                        'md5sum': file_info.get('md5sum') or file_info.get('md5'),
+                        'sdkfileid': file_info.get('sdkfileid') or file_info.get('fileid'),
+                        'download_url': download_url,
+                        'extra': file_info,
+                    }
+                    if (file_data.get('filesize') or 0) <= max_inline_file_size:
+                        file_base64 = await _safe_download(download_url)
+                        if file_base64:
+                            file_data['base64'] = file_base64
+                    files.append(file_data)
+                elif item_type == 'voice':
+                    voice_info = item.get('voice', {}) or {}
+                    download_url = voice_info.get('url')
+                    voice_data = {
+                        'url': download_url,
+                        'md5sum': voice_info.get('md5sum') or voice_info.get('md5'),
+                        'filesize': voice_info.get('filesize') or voice_info.get('size'),
+                        'sdkfileid': voice_info.get('sdkfileid') or voice_info.get('fileid'),
+                    }
+                    if voice_info.get('content'):
+                        texts.append(voice_info.get('content'))
+                    if (voice_data.get('filesize') or 0) <= max_inline_file_size:
+                        voice_base64 = await _safe_download(download_url)
+                        if voice_base64:
+                            voice_data['base64'] = voice_base64
+                    voices.append(voice_data)
+                elif item_type == 'video':
+                    video_info = item.get('video', {}) or {}
+                    download_url = video_info.get('url')
+                    video_data = {
+                        'url': download_url,
+                        'filesize': video_info.get('filesize') or video_info.get('size'),
+                        'sdkfileid': video_info.get('sdkfileid') or video_info.get('fileid'),
+                        'md5sum': video_info.get('md5sum') or video_info.get('md5'),
+                        'filename': video_info.get('filename') or video_info.get('name'),
+                    }
+                    if (video_data.get('filesize') or 0) <= max_inline_file_size:
+                        video_base64 = await _safe_download(download_url)
+                        if video_base64:
+                            video_data['base64'] = video_base64
+                    videos.append(video_data)
+                elif item_type == 'link':
+                    links.append(item.get('link', {}))
 
             if texts:
-                message_data['content'] = ''.join(texts)  # 拼接所有 text
-            if picurl:
-                base64 = await self.download_url_to_base64(picurl, self.EnCodingAESKey)
-                message_data['picurl'] = base64  # 只保留第一个 image
+                message_data['content'] = ' '.join(texts)  # 拼接所有 text
+            if images:
+                message_data['images'] = images
+                message_data['picurl'] = images[0]  # 只保留第一个 image
+            if files:
+                message_data['files'] = files
+                message_data['file'] = files[0]
+            if voices:
+                message_data['voices'] = voices
+                message_data['voice'] = voices[0]
+            if videos:
+                message_data['videos'] = videos
+                message_data['video'] = videos[0]
+            if links:
+                message_data['link'] = links[0]
+            if items:
+                message_data['attachments'] = items
+        else:
+            message_data['raw_msg'] = msg_json
 
         # Extract user information
         from_info = msg_json.get('from', {})

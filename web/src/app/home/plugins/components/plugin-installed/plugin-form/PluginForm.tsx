@@ -63,7 +63,6 @@ export default function PluginForm({
 
   const handleSubmit = async () => {
     setIsLoading(true);
-    const isDebugPlugin = pluginInfo?.debug;
 
     try {
       // 保存配置
@@ -122,11 +121,7 @@ export default function PluginForm({
 
       await Promise.all(deletePromises);
 
-      toast.success(
-        isDebugPlugin
-          ? t('plugins.saveConfigSuccessDebugPlugin')
-          : t('plugins.saveConfigSuccessNormal'),
-      );
+      toast.success(t('plugins.saveConfigSuccessNormal'));
       onFormSubmit(1000);
     } catch (error) {
       toast.error(t('plugins.saveConfigError') + (error as Error).message);

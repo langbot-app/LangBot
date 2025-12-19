@@ -509,6 +509,17 @@ export default function ExternalKBForm({
                     </Select>
                   </FormControl>
                   <FormMessage />
+                  <p className="text-sm text-muted-foreground">
+                    {t('knowledge.retrieverInstallInfo')}{' '}
+                    <a
+                      href="https://space.langbot.app/market?category=KnowledgeRetriever"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline hover:no-underline"
+                    >
+                      {t('knowledge.retrieverMarketLink')}
+                    </a>
+                  </p>
                 </FormItem>
               )}
             />

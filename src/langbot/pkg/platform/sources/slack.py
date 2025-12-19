@@ -24,9 +24,20 @@ class SlackMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
             if type(msg) is platform_message.Plain:
                 content_list.append(
                     {
+                        'type': 'text',
                         'content': msg.text,
                     }
                 )
+            elif type(msg) is platform_message.Image:
+                # Slack supports images via unfurling URLs
+                # Include image URL in the message so Slack can unfurl it
+                if msg.url:
+                    content_list.append(
+                        {
+                            'type': 'image',
+                            'content': msg.url,
+                        }
+                    )
 
         return content_list
 
@@ -65,9 +76,6 @@ class SlackEventConverter(abstract_platform_adapter.AbstractEventConverter):
                     id=event.channel_id, name='MEMBER', permission=platform_entities.Permission.Member
                 ),
                 special_title='',
-                join_timestamp=0,
-                last_speak_timestamp=0,
-                mute_time_remaining=0,
             )
             time = int(datetime.datetime.utcnow().timestamp())
             return platform_events.GroupMessage(
@@ -86,13 +94,12 @@ class SlackEventConverter(abstract_platform_adapter.AbstractEventConverter):
 class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot: SlackClient
     bot_account_id: str
+    bot_uuid: str = None
     message_converter: SlackMessageConverter = SlackMessageConverter()
     event_converter: SlackEventConverter = SlackEventConverter()
     config: dict
 
     def __init__(self, config: dict, logger: EventLogger):
-        self.config = config
-        self.logger = logger
         required_keys = [
             'bot_token',
             'signing_secret',
@@ -101,8 +108,15 @@ class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if missing_keys:
             raise command_errors.ParamNotEnoughError('Slack机器人缺少相关配置项，请查看文档或联系管理员')
 
-        self.bot = SlackClient(
-            bot_token=self.config['bot_token'], signing_secret=self.config['signing_secret'], logger=self.logger
+        bot = SlackClient(
+            bot_token=config['bot_token'], signing_secret=config['signing_secret'], logger=logger, unified_mode=True
+        )
+
+        super().__init__(
+            config=config,
+            logger=logger,
+            bot=bot,
+            bot_account_id=config['bot_token'],
         )
 
     async def reply_message(
@@ -116,18 +130,24 @@ class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         content_list = await SlackMessageConverter.yiri2target(message)
 
         for content in content_list:
+            # Both text and image (URL) are sent as text messages
+            # Slack will auto-unfurl image URLs
+            message_content = content['content']
             if slack_event.type == 'channel':
-                await self.bot.send_message_to_channel(content['content'], slack_event.channel_id)
+                await self.bot.send_message_to_channel(message_content, slack_event.channel_id)
             if slack_event.type == 'im':
-                await self.bot.send_message_to_one(content['content'], slack_event.user_id)
+                await self.bot.send_message_to_one(message_content, slack_event.user_id)
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         content_list = await SlackMessageConverter.yiri2target(message)
         for content in content_list:
+            # Both text and image (URL) are sent as text messages
+            # Slack will auto-unfurl image URLs
+            message_content = content['content']
             if target_type == 'person':
-                await self.bot.send_message_to_one(content['content'], target_id)
+                await self.bot.send_message_to_one(message_content, target_id)
             if target_type == 'group':
-                await self.bot.send_message_to_channel(content['content'], target_id)
+                await self.bot.send_message_to_channel(message_content, target_id)
 
     def register_listener(
         self,
@@ -148,16 +168,31 @@ class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         elif event_type == platform_events.GroupMessage:
             self.bot.on_message('channel')(on_message)
 
+    def set_bot_uuid(self, bot_uuid: str):
+        """设置 bot UUID（用于生成 webhook URL）"""
+        self.bot_uuid = bot_uuid
+
+    async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
+        """处理统一 webhook 请求。
+
+        Args:
+            bot_uuid: Bot 的 UUID
+            path: 子路径（如果有的话）
+            request: Quart Request 对象
+
+        Returns:
+            响应数据
+        """
+        return await self.bot.handle_unified_webhook(request)
+
     async def run_async(self):
-        async def shutdown_trigger_placeholder():
+        # 统一 webhook 模式下，不启动独立的 Quart 应用
+        # 保持运行但不启动独立端口
+        async def keep_alive():
             while True:
                 await asyncio.sleep(1)
 
-        await self.bot.run_task(
-            host='0.0.0.0',
-            port=self.config['port'],
-            shutdown_trigger=shutdown_trigger_placeholder,
-        )
+        await keep_alive()
 
     async def kill(self) -> bool:
         return False

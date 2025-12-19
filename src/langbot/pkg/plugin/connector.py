@@ -284,11 +284,34 @@ class PluginRuntimeConnector:
                 task_context.trace('Cleaning up plugin configuration and storage...')
             await self.handler.cleanup_plugin_data(plugin_author, plugin_name)
 
-    async def list_plugins(self) -> list[dict[str, Any]]:
+    async def list_plugins(self, component_kinds: list[str] | None = None) -> list[dict[str, Any]]:
+        """List plugins, optionally filtered by component kinds.
+
+        Args:
+            component_kinds: Optional list of component kinds to filter by.
+                           If provided, only plugins that contain at least one
+                           component of the specified kinds will be returned.
+                           E.g., ['Command', 'EventListener', 'Tool'] for pipeline-related plugins.
+        """
         if not self.is_enable_plugin:
             return []
 
         plugins = await self.handler.list_plugins()
+
+        # Filter plugins by component kinds if specified
+        if component_kinds is not None:
+            filtered_plugins = []
+            for plugin in plugins:
+                components = plugin.get('components', [])
+                has_matching_component = False
+                for component in components:
+                    component_kind = component.get('manifest', {}).get('manifest', {}).get('kind', '')
+                    if component_kind in component_kinds:
+                        has_matching_component = True
+                        break
+                if has_matching_component:
+                    filtered_plugins.append(plugin)
+            plugins = filtered_plugins
 
         # Sort plugins: debug plugins first, then by installation time (newest first)
         # Get installation timestamps from database in a single query
@@ -361,6 +384,12 @@ class PluginRuntimeConnector:
     @alru_cache(ttl=5 * 60)
     async def get_plugin_assets(self, plugin_author: str, plugin_name: str, filepath: str) -> dict[str, Any]:
         return await self.handler.get_plugin_assets(plugin_author, plugin_name, filepath)
+
+    async def get_debug_info(self) -> dict[str, Any]:
+        """Get debug information including debug key and WS URL"""
+        if not self.is_enable_plugin:
+            return {}
+        return await self.handler.get_debug_info()
 
     async def emit_event(
         self,

@@ -1,9 +1,11 @@
 <p align="center">
 <a href="https://langbot.app">
-<img src="https://docs.langbot.app/social_zh.png" alt="LangBot"/>
+<img width="130" src="https://docs.langbot.app/langbot-logo.png" alt="LangBot"/>
 </a>
 
 <div align="center"><a href="https://hellogithub.com/repository/langbot-app/LangBot" target="_blank"><img src="https://abroad.hellogithub.com/v1/widgets/recommend.svg?rid=5ce8ae2aa4f74316bf393b57b952433c&claim_uid=gtmc6YWjMZkT21R" alt="Featured｜HelloGitHub" style="width: 250px; height: 54px;" width="250" height="54" /></a>
+
+<h3>使用 LangBot 快速建構、除錯和部署 IM 機器人。</h3>
 
 [English](README_EN.md) / [简体中文](README.md) / 繁體中文 / [日本語](README_JP.md) / [Español](README_ES.md) / [Français](README_FR.md) / [한국어](README_KO.md) / [Русский](README_RU.md) / [Tiếng Việt](README_VI.md)
 
@@ -22,8 +24,6 @@
 </div>
 
 </p>
-
-LangBot 是一個開源的大語言模型原生即時通訊機器人開發平台，旨在提供開箱即用的 IM 機器人開發體驗，具有 Agent、RAG、MCP 等多種 LLM 應用功能，適配全球主流即時通訊平台，並提供豐富的 API 介面，支援自定義開發。
 
 ## 📦 開始使用
 
@@ -79,8 +79,11 @@ docker compose up -d
 
 ## ✨ 特性
 
+<img width="500" src="https://docs.langbot.app/ui/bot-page-en-rounded.png" />
+
+
 - 💬 大模型對話、Agent：支援多種大模型，適配群聊和私聊；具有多輪對話、工具調用、多模態、流式輸出能力，自帶 RAG（知識庫）實現，並深度適配 [Dify](https://dify.ai)、[Coze](https://coze.com)、[n8n](https://n8n.io) 等 LLMOps 平台。
-- 🤖 多平台支援：目前支援 QQ、QQ頻道、企業微信、個人微信、飛書、Discord、Telegram 等平台。
+- 🤖 多平台支援：目前支援 QQ、QQ頻道、企業微信、個人微信、飛書、Discord、Telegram、KOOK、Slack、LINE 等平台。
 - 🛠️ 高穩定性、功能完備：原生支援訪問控制、限速、敏感詞過濾等機制；配置簡單，支援多種部署方式。支援多流水線配置，不同機器人用於不同應用場景。
 - 🧩 外掛擴展、活躍社群：高穩定性、高安全性的生產級外掛系統；支援事件驅動、組件擴展等外掛機制；適配 Anthropic [MCP 協議](https://modelcontextprotocol.io/)；目前已有數百個外掛。
 - 😻 Web 管理面板：支援通過瀏覽器管理 LangBot 實例，不再需要手動編寫配置文件。
@@ -105,6 +108,7 @@ docker compose up -d
 | 企微對外客服 | ✅ |  |
 | 企微智能機器人 | ✅ |  |
 | 微信公眾號 | ✅ |  |
+| KOOK | ✅ |  |
 | Lark | ✅ |  |
 | DingTalk | ✅ |  |
 

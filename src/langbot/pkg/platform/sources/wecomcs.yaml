@@ -11,13 +11,6 @@ metadata:
   icon: wecom.png
 spec:
   config:
-    - name: port
-      label:
-        en_US: Port
-        zh_Hans: 监听端口
-      type: int
-      required: true
-      default: 2289
     - name: corpid
       label:
         en_US: Corpid

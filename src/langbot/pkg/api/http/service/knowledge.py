@@ -74,7 +74,16 @@ class KnowledgeService:
         # Only internal KBs support file storage
         if runtime_kb.get_type() != 'internal':
             raise Exception('Only internal knowledge bases support file storage')
-        return await runtime_kb.store_file(file_id)
+        result = await runtime_kb.store_file(file_id)
+
+        # Update the KB's updated_at timestamp
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.update(persistence_rag.KnowledgeBase)
+            .values(updated_at=sqlalchemy.func.now())
+            .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+        )
+
+        return result
 
     async def retrieve_knowledge_base(self, kb_uuid: str, query: str) -> list[dict]:
         """检索知识库"""
@@ -102,6 +111,13 @@ class KnowledgeService:
         if runtime_kb.get_type() != 'internal':
             raise Exception('Only internal knowledge bases support file deletion')
         await runtime_kb.delete_file(file_id)
+
+        # Update the KB's updated_at timestamp
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.update(persistence_rag.KnowledgeBase)
+            .values(updated_at=sqlalchemy.func.now())
+            .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+        )
 
     async def delete_knowledge_base(self, kb_uuid: str) -> None:
         """删除知识库"""

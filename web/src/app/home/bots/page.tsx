@@ -86,7 +86,6 @@ export default function BotConfigPage() {
   }
 
   function handleNewBotCreated(botId: string) {
-    console.log('new bot created', botId);
     getBotList();
     setSelectedBotId(botId);
   }

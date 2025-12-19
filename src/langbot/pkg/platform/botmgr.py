@@ -66,22 +66,27 @@ class RuntimeBot:
                 message_session_id=f'person_{event.sender.id}',
             )
 
-            # Push to webhooks
+            # Push to webhooks and check if pipeline should be skipped
+            skip_pipeline = False
             if hasattr(self.ap, 'webhook_pusher') and self.ap.webhook_pusher:
-                asyncio.create_task(
-                    self.ap.webhook_pusher.push_person_message(event, self.bot_entity.uuid, adapter.__class__.__name__)
+                skip_pipeline = await self.ap.webhook_pusher.push_person_message(
+                    event, self.bot_entity.uuid, adapter.__class__.__name__
                 )
 
-            await self.ap.query_pool.add_query(
-                bot_uuid=self.bot_entity.uuid,
-                launcher_type=provider_session.LauncherTypes.PERSON,
-                launcher_id=event.sender.id,
-                sender_id=event.sender.id,
-                message_event=event,
-                message_chain=event.message_chain,
-                adapter=adapter,
-                pipeline_uuid=self.bot_entity.use_pipeline_uuid,
-            )
+            # Only add to query pool if no webhook requested to skip pipeline
+            if not skip_pipeline:
+                await self.ap.query_pool.add_query(
+                    bot_uuid=self.bot_entity.uuid,
+                    launcher_type=provider_session.LauncherTypes.PERSON,
+                    launcher_id=event.sender.id,
+                    sender_id=event.sender.id,
+                    message_event=event,
+                    message_chain=event.message_chain,
+                    adapter=adapter,
+                    pipeline_uuid=self.bot_entity.use_pipeline_uuid,
+                )
+            else:
+                await self.logger.info(f'Pipeline skipped for person message due to webhook response')
 
         async def on_group_message(
             event: platform_events.GroupMessage,
@@ -97,22 +102,27 @@ class RuntimeBot:
                 message_session_id=f'group_{event.group.id}',
             )
 
-            # Push to webhooks
+            # Push to webhooks and check if pipeline should be skipped
+            skip_pipeline = False
             if hasattr(self.ap, 'webhook_pusher') and self.ap.webhook_pusher:
-                asyncio.create_task(
-                    self.ap.webhook_pusher.push_group_message(event, self.bot_entity.uuid, adapter.__class__.__name__)
+                skip_pipeline = await self.ap.webhook_pusher.push_group_message(
+                    event, self.bot_entity.uuid, adapter.__class__.__name__
                 )
 
-            await self.ap.query_pool.add_query(
-                bot_uuid=self.bot_entity.uuid,
-                launcher_type=provider_session.LauncherTypes.GROUP,
-                launcher_id=event.group.id,
-                sender_id=event.sender.id,
-                message_event=event,
-                message_chain=event.message_chain,
-                adapter=adapter,
-                pipeline_uuid=self.bot_entity.use_pipeline_uuid,
-            )
+            # Only add to query pool if no webhook requested to skip pipeline
+            if not skip_pipeline:
+                await self.ap.query_pool.add_query(
+                    bot_uuid=self.bot_entity.uuid,
+                    launcher_type=provider_session.LauncherTypes.GROUP,
+                    launcher_id=event.group.id,
+                    sender_id=event.sender.id,
+                    message_event=event,
+                    message_chain=event.message_chain,
+                    adapter=adapter,
+                    pipeline_uuid=self.bot_entity.use_pipeline_uuid,
+                )
+            else:
+                await self.logger.info(f'Pipeline skipped for group message due to webhook response')
 
         self.adapter.register_listener(platform_events.FriendMessage, on_friend_message)
         self.adapter.register_listener(platform_events.GroupMessage, on_group_message)
@@ -156,7 +166,7 @@ class PlatformManager:
 
     bots: list[RuntimeBot]
 
-    webchat_proxy_bot: RuntimeBot
+    websocket_proxy_bot: RuntimeBot
 
     adapter_components: list[engine.Component]
 
@@ -178,31 +188,29 @@ class PlatformManager:
             adapter_dict[component.metadata.name] = component.get_python_component_class()
         self.adapter_dict = adapter_dict
 
-        webchat_adapter_class = self.adapter_dict['webchat']
-
-        # initialize webchat adapter
-        webchat_logger = EventLogger(name='webchat-adapter', ap=self.ap)
-        webchat_adapter_inst = webchat_adapter_class(
+        # initialize websocket adapter
+        websocket_adapter_class = self.adapter_dict['websocket']
+        websocket_logger = EventLogger(name='websocket-adapter', ap=self.ap)
+        websocket_adapter_inst = websocket_adapter_class(
             {},
-            webchat_logger,
+            websocket_logger,
             ap=self.ap,
-            is_stream=False,
         )
 
-        self.webchat_proxy_bot = RuntimeBot(
+        self.websocket_proxy_bot = RuntimeBot(
             ap=self.ap,
             bot_entity=persistence_bot.Bot(
-                uuid='webchat-proxy-bot',
-                name='WebChat',
+                uuid='websocket-proxy-bot',
+                name='WebSocket',
                 description='',
-                adapter='webchat',
+                adapter='websocket',
                 adapter_config={},
                 enable=True,
             ),
-            adapter=webchat_adapter_inst,
-            logger=webchat_logger,
+            adapter=websocket_adapter_inst,
+            logger=websocket_logger,
         )
-        await self.webchat_proxy_bot.initialize()
+        await self.websocket_proxy_bot.initialize()
 
         await self.load_bots_from_db()
 
@@ -247,6 +255,10 @@ class PlatformManager:
             logger,
         )
 
+        # 如果 adapter 支持 set_bot_uuid 方法，设置 bot_uuid（用于统一 webhook）
+        if hasattr(adapter_inst, 'set_bot_uuid'):
+            adapter_inst.set_bot_uuid(bot_entity.uuid)
+
         runtime_bot = RuntimeBot(ap=self.ap, bot_entity=bot_entity, adapter=adapter_inst, logger=logger)
 
         await runtime_bot.initialize()
@@ -271,7 +283,7 @@ class PlatformManager:
 
     def get_available_adapters_info(self) -> list[dict]:
         return [
-            component.to_plain_dict() for component in self.adapter_components if component.metadata.name != 'webchat'
+            component.to_plain_dict() for component in self.adapter_components if component.metadata.name != 'websocket'
         ]
 
     def get_available_adapter_info_by_name(self, name: str) -> dict | None:
@@ -288,7 +300,7 @@ class PlatformManager:
 
     async def run(self):
         # This method will only be called when the application launching
-        await self.webchat_proxy_bot.run()
+        await self.websocket_proxy_bot.run()
 
         for bot in self.bots:
             if bot.enable:

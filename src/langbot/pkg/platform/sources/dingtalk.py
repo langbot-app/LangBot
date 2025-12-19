@@ -12,17 +12,41 @@ from langbot.pkg.platform.logger import EventLogger
 
 class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
-    async def yiri2target(message_chain: platform_message.MessageChain):
+    def _format_image_as_markdown(msg: platform_message.Image) -> str:
+        """Convert an Image message to Markdown format for DingTalk."""
+        if msg.url:
+            return f'\n![image]({msg.url})\n'
+        elif msg.base64:
+            # For base64 images, try to include them as data URIs
+            # DingTalk may have limited support for base64 in markdown
+            if msg.base64.startswith('data:'):
+                return f'\n![image]({msg.base64})\n'
+            else:
+                return f'\n![image](data:image/png;base64,{msg.base64})\n'
+        return ''
+
+    @staticmethod
+    async def yiri2target(message_chain: platform_message.MessageChain, markdown_enabled: bool = True):
         content = ''
         at = False
         for msg in message_chain:
             if type(msg) is platform_message.At:
                 at = True
-            if type(msg) is platform_message.Plain:
+            elif type(msg) is platform_message.Plain:
                 content += msg.text
-            if type(msg) is platform_message.Forward:
+            elif type(msg) is platform_message.Image:
+                # DingTalk supports markdown images when markdown_card is enabled
+                # When markdown is disabled, images cannot be rendered in plain text mode
+                if markdown_enabled:
+                    content += DingTalkMessageConverter._format_image_as_markdown(msg)
+                # Note: When markdown_enabled is False, images are not included
+                # as DingTalk plain text messages don't support image embedding
+            elif type(msg) is platform_message.Forward:
                 for node in msg.node_list:
-                    content += (await DingTalkMessageConverter.yiri2target(node.message_chain))[0]
+                    forwarded_content, _ = await DingTalkMessageConverter.yiri2target(
+                        node.message_chain, markdown_enabled
+                    )
+                    content += forwarded_content
         return content, at
 
     @staticmethod
@@ -95,9 +119,6 @@ class DingTalkEventConverter(abstract_platform_adapter.AbstractEventConverter):
                     permission=platform_entities.Permission.Member,
                 ),
                 special_title='',
-                join_timestamp=0,
-                last_speak_timestamp=0,
-                mute_time_remaining=0,
             )
             time = event.incoming_message.create_at
             return platform_events.GroupMessage(
@@ -157,7 +178,8 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         )
         incoming_message = event.incoming_message
 
-        content, at = await DingTalkMessageConverter.yiri2target(message)
+        markdown_enabled = self.config.get('markdown_card', False)
+        content, at = await DingTalkMessageConverter.yiri2target(message, markdown_enabled)
         await self.bot.send_message(content, incoming_message, at)
 
     async def reply_message_chunk(
@@ -178,7 +200,8 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         msg_seq = bot_message.msg_sequence
 
         if (msg_seq - 1) % 8 == 0 or is_final:
-            content, at = await DingTalkMessageConverter.yiri2target(message)
+            markdown_enabled = self.config.get('markdown_card', False)
+            content, at = await DingTalkMessageConverter.yiri2target(message, markdown_enabled)
 
             card_instance, card_instance_id = self.card_instance_id_dict[message_id]
             if not content and bot_message.content:
@@ -191,7 +214,8 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 self.card_instance_id_dict.pop(message_id)  # 消息回复结束之后删除卡片实例id
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
-        content = await DingTalkMessageConverter.yiri2target(message)
+        markdown_enabled = self.config.get('markdown_card', False)
+        content, _ = await DingTalkMessageConverter.yiri2target(message, markdown_enabled)
         if target_type == 'person':
             await self.bot.send_proactive_message_to_one(target_id, content)
         if target_type == 'group':

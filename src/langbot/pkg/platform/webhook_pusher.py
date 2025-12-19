@@ -22,12 +22,16 @@ class WebhookPusher:
         self.ap = ap
         self.logger = self.ap.logger
 
-    async def push_person_message(self, event: platform_events.FriendMessage, bot_uuid: str, adapter_name: str) -> None:
-        """Push person message event to webhooks"""
+    async def push_person_message(self, event: platform_events.FriendMessage, bot_uuid: str, adapter_name: str) -> bool:
+        """Push person message event to webhooks
+
+        Returns:
+            bool: True if any webhook responded with skip_pipeline=true, False otherwise
+        """
         try:
             webhooks = await self.ap.webhook_service.get_enabled_webhooks()
             if not webhooks:
-                return
+                return False
 
             # Build payload
             payload = {
@@ -47,17 +51,30 @@ class WebhookPusher:
 
             # Push to all webhooks asynchronously
             tasks = [self._push_to_webhook(webhook['url'], payload) for webhook in webhooks]
-            await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Check if any webhook responded with skip_pipeline=true
+            for result in results:
+                if isinstance(result, dict) and result.get('skip_pipeline') is True:
+                    self.logger.info(f'Webhook responded with skip_pipeline=true, skipping pipeline for person message')
+                    return True
+
+            return False
 
         except Exception as e:
             self.logger.error(f'Failed to push person message to webhooks: {e}')
+            return False
 
-    async def push_group_message(self, event: platform_events.GroupMessage, bot_uuid: str, adapter_name: str) -> None:
-        """Push group message event to webhooks"""
+    async def push_group_message(self, event: platform_events.GroupMessage, bot_uuid: str, adapter_name: str) -> bool:
+        """Push group message event to webhooks
+
+        Returns:
+            bool: True if any webhook responded with skip_pipeline=true, False otherwise
+        """
         try:
             webhooks = await self.ap.webhook_service.get_enabled_webhooks()
             if not webhooks:
-                return
+                return False
 
             # Build payload
             payload = {
@@ -81,13 +98,26 @@ class WebhookPusher:
 
             # Push to all webhooks asynchronously
             tasks = [self._push_to_webhook(webhook['url'], payload) for webhook in webhooks]
-            await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Check if any webhook responded with skip_pipeline=true
+            for result in results:
+                if isinstance(result, dict) and result.get('skip_pipeline') is True:
+                    self.logger.info(f'Webhook responded with skip_pipeline=true, skipping pipeline for group message')
+                    return True
+
+            return False
 
         except Exception as e:
             self.logger.error(f'Failed to push group message to webhooks: {e}')
+            return False
 
-    async def _push_to_webhook(self, url: str, payload: dict) -> None:
-        """Push payload to a single webhook URL"""
+    async def _push_to_webhook(self, url: str, payload: dict) -> dict | None:
+        """Push payload to a single webhook URL
+
+        Returns:
+            dict | None: The response JSON if successful, None otherwise
+        """
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
@@ -98,9 +128,17 @@ class WebhookPusher:
                 ) as response:
                     if response.status >= 400:
                         self.logger.warning(f'Webhook {url} returned status {response.status}')
+                        return None
                     else:
                         self.logger.debug(f'Successfully pushed to webhook {url}')
+                        try:
+                            return await response.json()
+                        except Exception as json_error:
+                            self.logger.debug(f'Failed to parse JSON response from webhook {url}: {json_error}')
+                            return None
         except asyncio.TimeoutError:
             self.logger.warning(f'Timeout pushing to webhook {url}')
+            return None
         except Exception as e:
             self.logger.warning(f'Error pushing to webhook {url}: {e}')
+            return None

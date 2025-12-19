@@ -279,11 +279,6 @@ class OfficialEventConverter(abstract_platform_adapter.AbstractEventConverter):
                         permission=platform_entities.Permission.Member,
                     ),
                     special_title='',
-                    join_timestamp=int(
-                        datetime.datetime.strptime(event.member.joined_at, '%Y-%m-%dT%H:%M:%S%z').timestamp()
-                    ),
-                    last_speak_timestamp=datetime.datetime.now().timestamp(),
-                    mute_time_remaining=0,
                 ),
                 message_chain=OfficialMessageConverter.extract_message_chain_from_obj(event, event.id),
                 time=int(datetime.datetime.strptime(event.timestamp, '%Y-%m-%dT%H:%M:%S%z').timestamp()),
@@ -312,9 +307,6 @@ class OfficialEventConverter(abstract_platform_adapter.AbstractEventConverter):
                         permission=platform_entities.Permission.Member,
                     ),
                     special_title='',
-                    join_timestamp=int(0),
-                    last_speak_timestamp=datetime.datetime.now().timestamp(),
-                    mute_time_remaining=0,
                 ),
                 message_chain=OfficialMessageConverter.extract_message_chain_from_obj(event, event.id),
                 time=int(datetime.datetime.strptime(event.timestamp, '%Y-%m-%dT%H:%M:%S%z').timestamp()),

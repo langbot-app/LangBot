@@ -18,7 +18,8 @@ class BotsRouterGroup(group.RouterGroup):
         @self.route('/<bot_uuid>', methods=['GET', 'PUT', 'DELETE'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def _(bot_uuid: str) -> str:
             if quart.request.method == 'GET':
-                bot = await self.ap.bot_service.get_bot(bot_uuid)
+                # 返回运行时信息，包括webhook地址等
+                bot = await self.ap.bot_service.get_runtime_bot_info(bot_uuid)
                 if bot is None:
                     return self.http_status(404, -1, 'bot not found')
                 return self.success(data={'bot': bot})
@@ -42,3 +43,32 @@ class BotsRouterGroup(group.RouterGroup):
                     'total_count': total_count,
                 }
             )
+
+        @self.route('/<bot_uuid>/send_message', methods=['POST'], auth_type=group.AuthType.API_KEY)
+        async def _(bot_uuid: str) -> str:
+            """Send message to a specific target via bot"""
+            json_data = await quart.request.json
+            target_type = json_data.get('target_type')
+            target_id = json_data.get('target_id')
+            message_chain_data = json_data.get('message_chain')
+
+            # Validate required fields
+            if not target_type:
+                return self.http_status(400, -1, 'target_type is required')
+            if not target_id:
+                return self.http_status(400, -1, 'target_id is required')
+            if not message_chain_data:
+                return self.http_status(400, -1, 'message_chain is required')
+
+            # Validate target_type
+            if target_type not in ['person', 'group']:
+                return self.http_status(400, -1, 'target_type must be either "person" or "group"')
+
+            try:
+                await self.ap.bot_service.send_message(bot_uuid, target_type, target_id, message_chain_data)
+                return self.success(data={'sent': True})
+            except Exception as e:
+                import traceback
+
+                traceback.print_exc()
+                return self.http_status(500, -1, f'Failed to send message: {str(e)}')

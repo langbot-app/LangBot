@@ -8,8 +8,8 @@ import datetime
 from langbot.libs.wecom_api.api import WecomClient
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 from langbot.libs.wecom_api.wecomevent import WecomEvent
-from langbot.pkg.utils import image
-from langbot.pkg.platform.logger import EventLogger
+from ...utils import image
+from ..logger import EventLogger
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
@@ -32,6 +32,20 @@ class WecomMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                 content_list.append(
                     {
                         'type': 'image',
+                        'media_id': await bot.get_media_id(msg),
+                    }
+                )
+            elif type(msg) is platform_message.Voice:
+                content_list.append(
+                    {
+                        'type': 'voice',
+                        'media_id': await bot.get_media_id(msg),
+                    }
+                )
+            elif type(msg) is platform_message.File:
+                content_list.append(
+                    {
+                        'type': 'file',
                         'media_id': await bot.get_media_id(msg),
                     }
                 )
@@ -131,6 +145,7 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     message_converter: WecomMessageConverter = WecomMessageConverter()
     event_converter: WecomEventConverter = WecomEventConverter()
     config: dict
+    bot_uuid: str = None
 
     def __init__(self, config: dict, logger: EventLogger):
         # 校验必填项
@@ -141,11 +156,12 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             'EncodingAESKey',
             'contacts_secret',
         ]
+
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
             raise Exception(f'Wecom 缺少配置项: {missing_keys}')
 
-        # 创建运行时 bot 对象
+        # 创建运行时 bot 对象，始终使用统一 webhook 模式
         bot = WecomClient(
             corpid=config['corpid'],
             secret=config['secret'],
@@ -153,6 +169,7 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             EncodingAESKey=config['EncodingAESKey'],
             contacts_secret=config['contacts_secret'],
             logger=logger,
+            unified_mode=True,
         )
 
         super().__init__(
@@ -161,6 +178,10 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             bot=bot,
             bot_account_id='',
         )
+
+    def set_bot_uuid(self, bot_uuid: str):
+        """设置 bot UUID（用于生成 webhook URL）"""
+        self.bot_uuid = bot_uuid
 
     async def reply_message(
         self,
@@ -178,11 +199,12 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 await self.bot.send_private_msg(fixed_user_id, Wecom_event.agent_id, content['content'])
             elif content['type'] == 'image':
                 await self.bot.send_image(fixed_user_id, Wecom_event.agent_id, content['media_id'])
+            elif content['type'] == 'voice':
+                await self.bot.send_voice(fixed_user_id, Wecom_event.agent_id, content['media_id'])
+            elif content['type'] == 'file':
+                await self.bot.send_file(fixed_user_id, Wecom_event.agent_id, content['media_id'])
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
-        """企业微信目前只有发送给个人的方法，
-        构造target_id的方式为前半部分为账户id，后半部分为agent_id,中间使用“|”符号隔开。
-        """
         content_list = await WecomMessageConverter.yiri2target(message, self.bot)
         parts = target_id.split('|')
         user_id = parts[0]
@@ -193,6 +215,10 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     await self.bot.send_private_msg(user_id, agent_id, content['content'])
                 if content['type'] == 'image':
                     await self.bot.send_image(user_id, agent_id, content['media'])
+                if content['type'] == 'voice':
+                    await self.bot.send_voice(user_id, agent_id, content['media'])
+                if content['type'] == 'file':
+                    await self.bot.send_file(user_id, agent_id, content['media'])
 
     def register_listener(
         self,
@@ -214,16 +240,25 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         elif event_type == platform_events.GroupMessage:
             pass
 
+    async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
+        """处理统一 webhook 请求。
+
+        Args:
+            bot_uuid: Bot 的 UUID
+            path: 子路径（如果有的话）
+            request: Quart Request 对象
+
+        Returns:
+            响应数据
+        """
+        return await self.bot.handle_unified_webhook(request)
+
     async def run_async(self):
-        async def shutdown_trigger_placeholder():
+        async def keep_alive():
             while True:
                 await asyncio.sleep(1)
 
-        await self.bot.run_task(
-            host=self.config['host'],
-            port=self.config['port'],
-            shutdown_trigger=shutdown_trigger_placeholder,
-        )
+        await keep_alive()
 
     async def kill(self) -> bool:
         return False

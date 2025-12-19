@@ -8,6 +8,7 @@ export let systemInfo: ApiRespSystemInfo = {
   version: '',
   enable_marketplace: true,
   cloud_service_url: '',
+  allow_change_password: true,
 };
 
 /**

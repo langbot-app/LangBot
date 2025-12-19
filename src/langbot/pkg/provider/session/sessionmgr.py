@@ -33,6 +33,7 @@ class SessionManager:
         session = provider_session.Session(
             launcher_type=query.launcher_type,
             launcher_id=query.launcher_id,
+            sender_id=query.sender_id,
         )
         session._semaphore = asyncio.Semaphore(session_concurrency)
         self.session_list.append(session)

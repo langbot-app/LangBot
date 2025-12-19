@@ -1,11 +1,13 @@
 <p align="center">
 <a href="https://langbot.app">
-<img src="https://docs.langbot.app/social_en.png" alt="LangBot"/>
+<img width="130" src="https://docs.langbot.app/langbot-logo.png" alt="LangBot"/>
 </a>
 
 <div align="center">
 
 <a href="https://www.producthunt.com/products/langbot?utm_source=badge-follow&utm_medium=badge&utm_source=badge-langbot" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/follow.svg?product_id=1077185&theme=light" alt="LangBot - Production&#0045;grade&#0032;IM&#0032;bot&#0032;made&#0032;easy&#0046; | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
+
+<h3>Xây dựng, gỡ lỗi và triển khai bot IM nhanh chóng với LangBot.</h3>
 
 [English](README_EN.md) / [简体中文](README.md) / [繁體中文](README_TW.md) / [日本語](README_JP.md) / [Español](README_ES.md) / [Français](README_FR.md) / [한국어](README_KO.md) / [Русский](README_RU.md) / Tiếng Việt
 
@@ -22,8 +24,6 @@
 </div>
 
 </p>
-
-LangBot là một nền tảng phát triển robot nhắn tin tức thời gốc LLM mã nguồn mở, nhằm mục đích cung cấp trải nghiệm phát triển robot IM sẵn sàng sử dụng, với các chức năng ứng dụng LLM như Agent, RAG, MCP, thích ứng với các nền tảng nhắn tin tức thời toàn cầu và cung cấp giao diện API phong phú, hỗ trợ phát triển tùy chỉnh.
 
 ## 📦 Bắt đầu
 
@@ -79,8 +79,11 @@ Nhấp vào các nút Star và Watch ở góc trên bên phải của kho lưu t
 
 ## ✨ Tính năng
 
+<img width="500" src="https://docs.langbot.app/ui/bot-page-en-rounded.png" />
+
+
 - 💬 Chat với LLM / Agent: Hỗ trợ nhiều LLM, thích ứng với chat nhóm và chat riêng tư; Hỗ trợ các cuộc trò chuyện nhiều vòng, gọi công cụ, khả năng đa phương thức và đầu ra streaming. Triển khai RAG (cơ sở kiến thức) tích hợp sẵn và tích hợp sâu với [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io) v.v. LLMOps platforms.
-- 🤖 Hỗ trợ Đa nền tảng: Hiện hỗ trợ QQ, QQ Channel, WeCom, WeChat cá nhân, Lark, DingTalk, Discord, Telegram, v.v.
+- 🤖 Hỗ trợ Đa nền tảng: Hiện hỗ trợ QQ, QQ Channel, WeCom, WeChat cá nhân, Lark, DingTalk, Discord, Telegram, KOOK, Slack, LINE, v.v.
 - 🛠️ Độ ổn định Cao, Tính năng Phong phú: Kiểm soát truy cập gốc, giới hạn tốc độ, lọc từ nhạy cảm, v.v.; Dễ sử dụng, hỗ trợ nhiều phương pháp triển khai. Hỗ trợ nhiều cấu hình pipeline, các bot khác nhau cho các kịch bản khác nhau.
 - 🧩 Mở rộng Plugin, Cộng đồng Hoạt động: Hỗ trợ các cơ chế plugin hướng sự kiện, mở rộng thành phần, v.v.; Tích hợp giao thức [MCP](https://modelcontextprotocol.io/) của Anthropic; Hiện có hàng trăng plugin.
 - 😻 Giao diện Web: Hỗ trợ quản lý các phiên bản LangBot thông qua trình duyệt. Không cần viết tệp cấu hình thủ công.
@@ -105,6 +108,7 @@ Hoặc truy cập môi trường demo: https://demo.langbot.dev/
 | WeComCS | ✅ |  |
 | WeCom AI Bot | ✅ |  |
 | WeChat Cá nhân | ✅ |  |
+| KOOK | ✅ |  |
 | Lark | ✅ |  |
 | DingTalk | ✅ |  |
 

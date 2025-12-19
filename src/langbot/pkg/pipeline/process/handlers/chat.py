@@ -40,6 +40,7 @@ class ChatMessageHandler(handler.MessageHandler):
             launcher_id=query.launcher_id,
             sender_id=query.sender_id,
             text_message=str(query.message_chain),
+            message_event=query.message_event,
             message_chain=query.message_chain,
             query=query,
         )
@@ -75,7 +76,7 @@ class ChatMessageHandler(handler.MessageHandler):
                         runner = r(self.ap, query.pipeline_config)
                         break
                 else:
-                    raise ValueError(f'未找到请求运行器: {query.pipeline_config["ai"]["runner"]["runner"]}')
+                    raise ValueError(f'Request Runner not found: {query.pipeline_config["ai"]["runner"]["runner"]}')
                 if is_stream:
                     resp_message_id = uuid.uuid4()
 
@@ -90,7 +91,9 @@ class ChatMessageHandler(handler.MessageHandler):
                             await query.adapter.create_message_card(str(resp_message_id), query.message_event)
                             is_create_card = True
                         query.resp_messages.append(result)
-                        self.ap.logger.info(f'对话({query.query_id})流式响应: {self.cut_str(result.readable_str())}')
+                        self.ap.logger.info(
+                            f'Conversation({query.query_id}) Streaming Response: {self.cut_str(result.readable_str())}'
+                        )
 
                         if result.content is not None:
                             text_length += len(result.content)
@@ -101,7 +104,9 @@ class ChatMessageHandler(handler.MessageHandler):
                     async for result in runner.run(query):
                         query.resp_messages.append(result)
 
-                        self.ap.logger.info(f'对话({query.query_id})响应: {self.cut_str(result.readable_str())}')
+                        self.ap.logger.info(
+                            f'Conversation({query.query_id}) Response: {self.cut_str(result.readable_str())}'
+                        )
 
                         if result.content is not None:
                             text_length += len(result.content)
@@ -112,7 +117,7 @@ class ChatMessageHandler(handler.MessageHandler):
 
                 query.session.using_conversation.messages.extend(query.resp_messages)
             except Exception as e:
-                self.ap.logger.error(f'对话({query.query_id})请求失败: {type(e).__name__} {str(e)}')
+                self.ap.logger.error(f'Conversation({query.query_id}) Request Failed: {type(e).__name__} {str(e)}')
                 traceback.print_exc()
 
                 hide_exception_info = query.pipeline_config['output']['misc']['hide-exception']

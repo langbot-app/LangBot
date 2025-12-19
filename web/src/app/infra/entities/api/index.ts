@@ -63,6 +63,7 @@ export interface KnowledgeBase {
   description: string;
   embedding_model_uuid: string;
   created_at?: string;
+  updated_at?: string;
   top_k: number;
 }
 
@@ -142,6 +143,7 @@ export interface Bot {
   use_pipeline_uuid?: string;
   created_at?: string;
   updated_at?: string;
+  adapter_runtime_values?: object;
 }
 
 export interface ApiRespKnowledgeBases {
@@ -233,6 +235,7 @@ export interface ApiRespSystemInfo {
   version: string;
   cloud_service_url: string;
   enable_marketplace: boolean;
+  allow_change_password: boolean;
 }
 
 export interface ApiRespPluginSystemStatus {

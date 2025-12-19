@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.5.4"
+version = "4.6.4"
 description = "Easy-to-use global IM bot platform designed for LLM era"
 readme = "README.md"
 license-files = ["LICENSE"]
@@ -64,11 +64,13 @@ dependencies = [
     "chromadb>=0.4.24",
     "qdrant-client (>=1.15.1,<2.0.0)",
     "pyseekdb>=0.1.0",
-    "langbot-plugin==0.2.0b1",
+    "langbot-plugin==0.2.3",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "tboxsdk>=0.0.10",
     "boto3>=1.35.0",
+    "pymilvus>=2.6.4",
+    "pgvector>=0.4.1",
 ]
 keywords = [
     "bot",

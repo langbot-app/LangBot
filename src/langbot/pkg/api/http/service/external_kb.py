@@ -71,10 +71,10 @@ class ExternalKBService:
         await self.ap.rag_mgr.load_external_knowledge_base(kb)
 
     async def delete_external_knowledge_base(self, kb_uuid: str) -> None:
-        await self.ap.rag_mgr.delete_knowledge_base(kb_uuid)
-
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.delete(persistence_rag.ExternalKnowledgeBase).where(
                 persistence_rag.ExternalKnowledgeBase.uuid == kb_uuid
             )
         )
+
+        await self.ap.rag_mgr.delete_knowledge_base(kb_uuid)

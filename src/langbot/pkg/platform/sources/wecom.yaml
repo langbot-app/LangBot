@@ -11,23 +11,6 @@ metadata:
   icon: wecom.png
 spec:
   config:
-    - name: host
-      label:
-        en_US: Host
-        zh_Hans: 监听主机
-      description:
-        en_US: Webhook host, unless you know what you're doing, please write 0.0.0.0
-        zh_Hans: Webhook 监听主机，除非你知道自己在做什么，否则请写 0.0.0.0
-      type: string
-      required: true
-      default: "0.0.0.0"
-    - name: port
-      label:
-        en_US: Port
-        zh_Hans: 监听端口
-      type: integer
-      required: true
-      default: 2290
     - name: corpid
       label:
         en_US: Corpid
@@ -38,21 +21,21 @@ spec:
     - name: secret
       label:
         en_US: Secret
-        zh_Hans: 密钥
+        zh_Hans: 密钥 (Secret)
       type: string
       required: true
       default: ""
     - name: token
       label:
         en_US: Token
-        zh_Hans: 令牌
+        zh_Hans: 令牌 (Token)
       type: string
       required: true
       default: ""
     - name: EncodingAESKey
       label:
         en_US: EncodingAESKey
-        zh_Hans: 消息加解密密钥
+        zh_Hans: 消息加解密密钥 (EncodingAESKey)
       type: string
       required: true
       default: ""

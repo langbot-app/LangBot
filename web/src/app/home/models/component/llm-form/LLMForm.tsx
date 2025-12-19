@@ -341,8 +341,7 @@ export default function LLMForm({
         abilities: form.getValues('abilities'),
         extra_args: extraArgsObj,
       })
-      .then((res) => {
-        console.log(res);
+      .then(() => {
         toast.success(t('models.testSuccess'));
       })
       .catch(() => {

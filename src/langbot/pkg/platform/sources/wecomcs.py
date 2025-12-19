@@ -121,6 +121,7 @@ class WecomCSAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot: WecomCSClient = pydantic.Field(exclude=True)
     message_converter: WecomMessageConverter = WecomMessageConverter()
     event_converter: WecomEventConverter = WecomEventConverter()
+    bot_uuid: str = None
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger):
         required_keys = [
@@ -139,6 +140,7 @@ class WecomCSAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             token=config['token'],
             EncodingAESKey=config['EncodingAESKey'],
             logger=logger,
+            unified_mode=True,
         )
 
         super().__init__(
@@ -170,6 +172,10 @@ class WecomCSAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         pass
 
+    def set_bot_uuid(self, bot_uuid: str):
+        """设置 bot UUID（用于生成 webhook URL）"""
+        self.bot_uuid = bot_uuid
+
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
@@ -190,16 +196,28 @@ class WecomCSAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         elif event_type == platform_events.GroupMessage:
             pass
 
+    async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
+        """处理统一 webhook 请求。
+
+        Args:
+            bot_uuid: Bot 的 UUID
+            path: 子路径（如果有的话）
+            request: Quart Request 对象
+
+        Returns:
+            响应数据
+        """
+        return await self.bot.handle_unified_webhook(request)
+
     async def run_async(self):
-        async def shutdown_trigger_placeholder():
+        # 统一 webhook 模式下，不启动独立的 Quart 应用
+        # 保持运行但不启动独立端口
+
+        async def keep_alive():
             while True:
                 await asyncio.sleep(1)
 
-        await self.bot.run_task(
-            host='0.0.0.0',
-            port=self.config['port'],
-            shutdown_trigger=shutdown_trigger_placeholder,
-        )
+        await keep_alive()
 
     async def kill(self) -> bool:
         return False

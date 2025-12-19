@@ -139,6 +139,8 @@ class RuntimeConnectionHandler(handler.Handler):
 
             message_chain_obj = platform_message.MessageChain.model_validate(message_chain)
 
+            self.ap.logger.debug(f'Reply message: {message_chain_obj.model_dump(serialize_as_any=False)}')
+
             await query.adapter.reply_message(
                 query.message_event,
                 message_chain_obj,
@@ -563,7 +565,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 'event_context': event_context,
                 'include_plugins': include_plugins,
             },
-            timeout=60,
+            timeout=180,
         )
 
         return result
@@ -708,7 +710,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 'command_context': command_context,
                 'include_plugins': include_plugins,
             },
-            timeout=60,
+            timeout=180,
         )
 
         async for ret in gen:
@@ -756,5 +758,14 @@ class RuntimeConnectionHandler(handler.Handler):
                 'required_instances': required_instances,
             },
             timeout=30,
+        )
+        return result
+
+    async def get_debug_info(self) -> dict[str, Any]:
+        """Get debug information including debug key and WS URL"""
+        result = await self.call_action(
+            LangBotToRuntimeAction.GET_DEBUG_INFO,
+            {},
+            timeout=10,
         )
         return result

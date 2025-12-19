@@ -23,8 +23,6 @@ export default function I18nProvider({ children }: I18nProviderProps) {
 export const extractI18nObject = (i18nObject: I18nObject): string => {
   // 根据当前语言返回对应的值, fallback优先级：en_US、zh_Hans、zh_Hant、ja_JP
   const language = i18n.language.replace('-', '_');
-  console.log('language:', language);
-  console.log('i18nObject:', i18nObject);
   if (language === 'en_US' && i18nObject.en_US) return i18nObject.en_US;
   if (language === 'zh_Hans' && i18nObject.zh_Hans) return i18nObject.zh_Hans;
   if (language === 'zh_Hant' && i18nObject.zh_Hant) return i18nObject.zh_Hant;

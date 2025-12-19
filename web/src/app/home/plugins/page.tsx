@@ -24,6 +24,9 @@ import {
   Power,
   Github,
   ChevronLeft,
+  Code,
+  Copy,
+  Bug,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -38,6 +41,11 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
@@ -105,6 +113,11 @@ export default function PluginConfigPage() {
   );
   const [isEditMode, setIsEditMode] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [debugInfo, setDebugInfo] = useState<{
+    debug_url: string;
+    plugin_debug_key: string;
+  } | null>(null);
+  const [debugPopoverOpen, setDebugPopoverOpen] = useState(false);
 
   useEffect(() => {
     const fetchPluginSystemStatus = async () => {
@@ -266,7 +279,6 @@ export default function PluginConfigPage() {
           watchTask(taskId);
         })
         .catch((err) => {
-          console.log('error when install plugin:', err);
           setInstallError(err.message);
           setPluginInstallStatus(PluginInstallStatus.ERROR);
         });
@@ -278,7 +290,6 @@ export default function PluginConfigPage() {
           watchTask(taskId);
         })
         .catch((err) => {
-          console.log('error when install plugin:', err);
           setInstallError(err.message);
           setPluginInstallStatus(PluginInstallStatus.ERROR);
         });
@@ -376,6 +387,22 @@ export default function PluginConfigPage() {
     [uploadPluginFile, isPluginSystemReady, t],
   );
 
+  const handleShowDebugInfo = async () => {
+    try {
+      const info = await httpClient.getPluginDebugInfo();
+      setDebugInfo(info);
+      setDebugPopoverOpen(true);
+    } catch (error) {
+      console.error('Failed to fetch debug info:', error);
+      toast.error(t('plugins.failedToGetDebugInfo'));
+    }
+  };
+
+  const handleCopyDebugInfo = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success(t('plugins.copiedToClipboard'));
+  };
+
   const renderPluginDisabledState = () => (
     <div className="flex flex-col items-center justify-center h-[60vh] text-center pt-[10vh]">
       <Power className="w-16 h-16 text-gray-400 mb-4" />
@@ -431,7 +458,9 @@ export default function PluginConfigPage() {
 
   return (
     <div
-      className={`${styles.pageContainer} h-full flex flex-col ${isDragOver ? 'bg-blue-50' : ''}`}
+      className={`${styles.pageContainer} h-full flex flex-col ${
+        isDragOver ? 'bg-blue-50' : ''
+      }`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -466,7 +495,92 @@ export default function PluginConfigPage() {
             </TabsTrigger>
           </TabsList>
 
-          <div className="flex flex-row justify-end items-center">
+          <div className="flex flex-row justify-end items-center gap-2">
+            {activeTab === 'installed' && (
+              <Popover
+                open={debugPopoverOpen}
+                onOpenChange={setDebugPopoverOpen}
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="px-4 py-5 cursor-pointer"
+                    onClick={handleShowDebugInfo}
+                  >
+                    <Code className="w-4 h-4 mr-2" />
+                    {t('plugins.debugInfo')}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[380px]" align="end">
+                  <div className="space-y-3">
+                    {/* Header with icon and title */}
+                    <div className="flex items-center gap-2 pb-2 border-b">
+                      <Bug className="w-4 h-4" />
+                      <h4 className="font-semibold text-sm">
+                        {t('plugins.debugInfoTitle')}
+                      </h4>
+                    </div>
+
+                    {/* Debug URL row */}
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium whitespace-nowrap min-w-[50px]">
+                        {t('plugins.debugUrl')}:
+                      </label>
+                      <Input
+                        value={debugInfo?.debug_url || ''}
+                        readOnly
+                        className="w-[220px] font-mono text-xs h-8"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0"
+                        onClick={() =>
+                          handleCopyDebugInfo(debugInfo?.debug_url || '')
+                        }
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+
+                    {/* Debug Key row */}
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm font-medium whitespace-nowrap min-w-[50px]">
+                          {t('plugins.debugKey')}:
+                        </label>
+                        <Input
+                          value={
+                            debugInfo?.plugin_debug_key ||
+                            t('plugins.noDebugKey')
+                          }
+                          readOnly
+                          className="w-[220px] font-mono text-xs h-8"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0"
+                          onClick={() =>
+                            handleCopyDebugInfo(
+                              debugInfo?.plugin_debug_key || '',
+                            )
+                          }
+                          disabled={!debugInfo?.plugin_debug_key}
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                      {!debugInfo?.plugin_debug_key && (
+                        <p className="text-xs text-muted-foreground ml-[58px]">
+                          {t('plugins.debugKeyDisabled')}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="default" className="px-6 py-4 cursor-pointer">

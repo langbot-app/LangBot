@@ -7,6 +7,7 @@ from langbot_plugin.api.entities.builtin.provider import message as provider_mes
 import langbot_plugin.api.entities.events as events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
 
 
 @stage.stage_class('PreProcessor')
@@ -74,12 +75,26 @@ class PreProcessor(stage.PipelineStage):
                 self.ap.logger.debug(f'Bound MCP servers: {bound_mcp_servers}')
                 self.ap.logger.debug(f'Use funcs: {query.use_funcs}')
 
+        sender_name = ''
+
+        if isinstance(query.message_event, platform_events.GroupMessage):
+            sender_name = query.message_event.sender.member_name
+        elif isinstance(query.message_event, platform_events.FriendMessage):
+            sender_name = query.message_event.sender.nickname
+
         variables = {
+            'launcher_type': query.session.launcher_type.value,
+            'launcher_id': query.session.launcher_id,
+            'sender_id': query.sender_id,
             'session_id': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
             'conversation_id': conversation.uuid,
             'msg_create_time': (
                 int(query.message_event.time) if query.message_event.time else int(datetime.datetime.now().timestamp())
             ),
+            'group_name': query.message_event.group.name
+            if isinstance(query.message_event, platform_events.GroupMessage)
+            else '',
+            'sender_name': sender_name,
         }
         query.variables.update(variables)
 
@@ -111,6 +126,12 @@ class PreProcessor(stage.PipelineStage):
                 ):
                     if me.base64 is not None:
                         content_list.append(provider_message.ContentElement.from_image_base64(me.base64))
+            elif isinstance(me, platform_message.Voice):
+                # 转成文件链接，让下游 runner 上传到目标模型
+                if me.base64:
+                    content_list.append(provider_message.ContentElement.from_file_base64(me.base64, 'voice.silk'))
+                elif me.url:
+                    content_list.append(provider_message.ContentElement.from_file_url(me.url, 'voice'))
             elif isinstance(me, platform_message.File):
                 # if me.url is not None:
                 content_list.append(provider_message.ContentElement.from_file_url(me.url, me.name))

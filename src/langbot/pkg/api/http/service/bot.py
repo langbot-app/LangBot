@@ -58,6 +58,16 @@ class BotService:
         if runtime_bot is not None:
             adapter_runtime_values['bot_account_id'] = runtime_bot.adapter.bot_account_id
 
+        # Webhook URL for unified webhook adapters (independent of bot running state)
+        if persistence_bot['adapter'] in ['wecom', 'wecombot', 'officialaccount', 'qqofficial', 'slack', 'wecomcs', 'LINE', 'lark']:
+            webhook_prefix = self.ap.instance_config.data['api'].get('webhook_prefix', 'http://127.0.0.1:5300')
+            webhook_url = f'/bots/{bot_uuid}'
+            adapter_runtime_values['webhook_url'] = webhook_url
+            adapter_runtime_values['webhook_full_url'] = f'{webhook_prefix}{webhook_url}'
+        else:
+            adapter_runtime_values['webhook_url'] = None
+            adapter_runtime_values['webhook_full_url'] = None
+
         persistence_bot['adapter_runtime_values'] = adapter_runtime_values
 
         return persistence_bot
@@ -139,3 +149,29 @@ class BotService:
         logs, total_count = await runtime_bot.logger.get_logs(from_index, max_count)
 
         return [log.to_json() for log in logs], total_count
+
+    async def send_message(self, bot_uuid: str, target_type: str, target_id: str, message_chain_data: dict) -> None:
+        """Send message to a specific target via bot
+
+        Args:
+            bot_uuid: The UUID of the bot
+            target_type: The type of the target, can be "group", "person"
+            target_id: The ID of the target
+            message_chain_data: The message chain data in dict format
+        """
+        # Import here to avoid circular imports
+        import langbot_plugin.api.entities.builtin.platform.message as platform_message
+
+        # Get runtime bot
+        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
+        if runtime_bot is None:
+            raise Exception(f'Bot not found: {bot_uuid}')
+
+        # Validate and convert message chain
+        try:
+            message_chain = platform_message.MessageChain.model_validate(message_chain_data)
+        except Exception as e:
+            raise Exception(f'Invalid message_chain format: {str(e)}')
+
+        # Send message via adapter
+        await runtime_bot.adapter.send_message(target_type, str(target_id), message_chain)

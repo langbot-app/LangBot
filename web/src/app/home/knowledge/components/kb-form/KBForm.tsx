@@ -103,8 +103,6 @@ export default function KBForm({
   };
 
   const onSubmit = (data: z.infer<typeof formSchema>) => {
-    console.log('data', data);
-
     if (initKbId) {
       // update knowledge base
       const updateKb: KnowledgeBase = {
@@ -116,7 +114,6 @@ export default function KBForm({
       httpClient
         .updateKnowledgeBase(initKbId, updateKb)
         .then((res) => {
-          console.log('update knowledge base success', res);
           onKbUpdated(res.uuid);
           toast.success(t('knowledge.updateKnowledgeBaseSuccess'));
         })
@@ -135,7 +132,6 @@ export default function KBForm({
       httpClient
         .createKnowledgeBase(newKb)
         .then((res) => {
-          console.log('create knowledge base success', res);
           onNewKbCreated(res.uuid);
         })
         .catch((err) => {
@@ -200,7 +196,6 @@ export default function KBForm({
                         disabled={!!initKbId}
                         onValueChange={(value) => {
                           field.onChange(value);
-                          console.log('value', value);
                         }}
                         value={field.value}
                       >

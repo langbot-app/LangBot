@@ -21,6 +21,7 @@ class WecomClient:
         EncodingAESKey: str,
         contacts_secret: str,
         logger: None,
+        unified_mode: bool = False,
     ):
         self.corpid = corpid
         self.secret = secret
@@ -31,13 +32,18 @@ class WecomClient:
         self.access_token = ''
         self.secret_for_contacts = contacts_secret
         self.logger = logger
+        self.unified_mode = unified_mode
         self.app = Quart(__name__)
-        self.app.add_url_rule(
-            '/callback/command',
-            'handle_callback',
-            self.handle_callback_request,
-            methods=['GET', 'POST'],
-        )
+
+        # 只有在非统一模式下才注册独立路由
+        if not self.unified_mode:
+            self.app.add_url_rule(
+                '/callback/command',
+                'handle_callback',
+                self.handle_callback_request,
+                methods=['GET', 'POST'],
+            )
+
         self._message_handlers = {
             'example': [],
         }
@@ -133,6 +139,58 @@ class WecomClient:
                 await self.logger.error(f'发送图片失败:{data}')
                 raise Exception('Failed to send image: ' + str(data))
 
+    async def send_voice(self, user_id: str, agent_id: int, media_id: str):
+        if not await self.check_access_token():
+            self.access_token = await self.get_access_token(self.secret)
+        url = self.base_url + '/message/send?access_token=' + self.access_token
+        async with httpx.AsyncClient() as client:
+            params = {
+                'touser': user_id,
+                'msgtype': 'voice',
+                'agentid': agent_id,
+                'voice': {
+                    'media_id': media_id,
+                },
+                'safe': 0,
+                'enable_id_trans': 0,
+                'enable_duplicate_check': 0,
+                'duplicate_check_interval': 1800,
+            }
+            response = await client.post(url, json=params)
+            data = response.json()
+            if data['errcode'] == 40014 or data['errcode'] == 42001:
+                self.access_token = await self.get_access_token(self.secret)
+                return await self.send_voice(user_id, agent_id, media_id)
+            if data['errcode'] != 0:
+                await self.logger.error(f'发送语音失败:{data}')
+                raise Exception('Failed to send voice: ' + str(data))
+
+    async def send_file(self, user_id: str, agent_id: int, media_id: str):
+        if not await self.check_access_token():
+            self.access_token = await self.get_access_token(self.secret)
+        url = self.base_url + '/message/send?access_token=' + self.access_token
+        async with httpx.AsyncClient() as client:
+            params = {
+                'touser': user_id,
+                'msgtype': 'file',
+                'agentid': agent_id,
+                'file': {
+                    'media_id': media_id,
+                },
+                'safe': 0,
+                'enable_id_trans': 0,
+                'enable_duplicate_check': 0,
+                'duplicate_check_interval': 1800,
+            }
+            response = await client.post(url, json=params)
+            data = response.json()
+            if data['errcode'] == 40014 or data['errcode'] == 42001:
+                self.access_token = await self.get_access_token(self.secret)
+                return await self.send_file(user_id, agent_id, media_id)
+            if data['errcode'] != 0:
+                await self.logger.error(f'发送文件失败:{data}')
+                raise Exception('Failed to send file: ' + str(data))
+
     async def send_private_msg(self, user_id: str, agent_id: int, content: str):
         if not await self.check_access_token():
             self.access_token = await self.get_access_token(self.secret)
@@ -161,25 +219,43 @@ class WecomClient:
                 raise Exception('Failed to send message: ' + str(data))
 
     async def handle_callback_request(self):
+        """处理回调请求（独立端口模式，使用全局 request）。"""
+        return await self._handle_callback_internal(request)
+
+    async def handle_unified_webhook(self, req):
+        """处理回调请求（统一 webhook 模式，显式传递 request）。
+
+        Args:
+            req: Quart Request 对象
+
+        Returns:
+            响应数据
         """
-        处理回调请求，包括 GET 验证和 POST 消息接收。
+        return await self._handle_callback_internal(req)
+
+    async def _handle_callback_internal(self, req):
+        """
+        处理回调请求的内部实现，包括 GET 验证和 POST 消息接收。
+
+        Args:
+            req: Quart Request 对象
         """
         try:
-            msg_signature = request.args.get('msg_signature')
-            timestamp = request.args.get('timestamp')
-            nonce = request.args.get('nonce')
+            msg_signature = req.args.get('msg_signature')
+            timestamp = req.args.get('timestamp')
+            nonce = req.args.get('nonce')
 
             wxcpt = WXBizMsgCrypt(self.token, self.aes, self.corpid)
-            if request.method == 'GET':
-                echostr = request.args.get('echostr')
+            if req.method == 'GET':
+                echostr = req.args.get('echostr')
                 ret, reply_echo_str = wxcpt.VerifyURL(msg_signature, timestamp, nonce, echostr)
                 if ret != 0:
                     await self.logger.error('验证失败')
                     raise Exception(f'验证失败，错误码: {ret}')
                 return reply_echo_str
 
-            elif request.method == 'POST':
-                encrypt_msg = await request.data
+            elif req.method == 'POST':
+                encrypt_msg = await req.data
                 ret, xml_msg = wxcpt.DecryptMsg(encrypt_msg, msg_signature, timestamp, nonce)
                 if ret != 0:
                     await self.logger.error('消息解密失败')
@@ -263,7 +339,7 @@ class WecomClient:
                 return ext
         return 'jpg'  # 默认返回jpg
 
-    async def upload_to_work(self, image: platform_message.Image):
+    async def upload_image_to_work(self, image: platform_message.Image):
         """
         获取 media_id
         """
@@ -280,7 +356,7 @@ class WecomClient:
                 file_bytes = await f.read()
                 file_name = image.path.split('/')[-1]
         elif image.url:
-            file_bytes = await self.download_image_to_bytes(image.url)
+            file_bytes = await self.download_media_to_bytes(image.url)
             file_name = image.url.split('/')[-1]
         elif image.base64:
             try:
@@ -315,7 +391,7 @@ class WecomClient:
             data = response.json()
             if data['errcode'] == 40014 or data['errcode'] == 42001:
                 self.access_token = await self.get_access_token(self.secret)
-                media_id = await self.upload_to_work(image)
+                media_id = await self.upload_image_to_work(image)
             if data.get('errcode', 0) != 0:
                 await self.logger.error(f'上传图片失败:{data}')
                 raise Exception('failed to upload file')
@@ -323,13 +399,128 @@ class WecomClient:
             media_id = data.get('media_id')
             return media_id
 
-    async def download_image_to_bytes(self, url: str) -> bytes:
+    async def upload_voice_to_work(self, voice: platform_message.Voice):
+        """
+        上传语音文件到企业微信
+        """
+        if not await self.check_access_token():
+            self.access_token = await self.get_access_token(self.secret)
+        url = self.base_url + '/media/upload?access_token=' + self.access_token + '&type=file'
+        file_bytes = None
+        file_name = 'voice.mp3'
+
+        if voice.path:
+            async with aiofiles.open(voice.path, 'rb') as f:
+                file_bytes = await f.read()
+                file_name = voice.path.split('/')[-1]
+        elif voice.url:
+            file_bytes = await self.download_media_to_bytes(voice.url)
+            file_name = voice.url.split('/')[-1]
+        elif voice.base64:
+            try:
+                base64_data = voice.base64
+                if ',' in base64_data:
+                    base64_data = base64_data.split(',', 1)[1]
+                padding = 4 - (len(base64_data) % 4) if len(base64_data) % 4 else 0
+                padded_base64 = base64_data + '=' * padding
+                file_bytes = base64.b64decode(padded_base64)
+            except binascii.Error as e:
+                raise ValueError(f'Invalid base64 string: {str(e)}')
+        else:
+            await self.logger.error('Voice对象出错')
+            raise ValueError('voice对象出错')
+
+        boundary = '-------------------------acebdf13572468'
+        headers = {'Content-Type': f'multipart/form-data; boundary={boundary}'}
+        body = (
+            (
+                f'--{boundary}\r\n'
+                f'Content-Disposition: form-data; name="media"; filename="{file_name}"; filelength={len(file_bytes)}\r\n'
+                f'Content-Type: application/octet-stream\r\n\r\n'
+            ).encode('utf-8')
+            + file_bytes
+            + f'\r\n--{boundary}--\r\n'.encode('utf-8')
+        )
+
+        # print(body)
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, headers=headers, content=body)
+            data = response.json()
+            if data['errcode'] == 40014 or data['errcode'] == 42001:
+                self.access_token = await self.get_access_token(self.secret)
+                media_id = await self.upload_voice_to_work(voice)
+            if data.get('errcode', 0) != 0:
+                await self.logger.error(f'上传语音文件失败:{data}')
+                raise Exception('failed to upload file')
+            media_id = data.get('media_id')
+            return media_id
+
+    async def upload_file_to_work(self, file: platform_message.File):
+        """
+        上传文件到企业微信
+        """
+        if not await self.check_access_token():
+            self.access_token = await self.get_access_token(self.secret)
+        url = self.base_url + '/media/upload?access_token=' + self.access_token + '&type=file'
+        file_bytes = None
+        file_name = 'file.txt'
+        if file.path:
+            async with aiofiles.open(file.path, 'rb') as f:
+                file_bytes = await f.read()
+                file_name = file.path.split('/')[-1]
+        elif file.url:
+            file_bytes = await self.download_media_to_bytes(file.url)
+            file_name = file.url.split('/')[-1]
+        elif file.base64:
+            try:
+                base64_data = file.base64
+                if ',' in base64_data:
+                    base64_data = base64_data.split(',', 1)[1]
+                padding = 4 - (len(base64_data) % 4) if len(base64_data) % 4 else 0
+                padded_base64 = base64_data + '=' * padding
+                file_bytes = base64.b64decode(padded_base64)
+            except binascii.Error as e:
+                raise ValueError(f'Invalid base64 string: {str(e)}')
+        else:
+            await self.logger.error('File对象出错')
+            raise ValueError('file对象出错')
+        boundary = '-------------------------acebdf13572468'
+        headers = {'Content-Type': f'multipart/form-data; boundary={boundary}'}
+        body = (
+            (
+                f'--{boundary}\r\n'
+                f'Content-Disposition: form-data; name="media"; filename="{file_name}"; filelength={len(file_bytes)}\r\n'
+                f'Content-Type: application/octet-stream\r\n\r\n'
+            ).encode('utf-8')
+            + file_bytes
+            + f'\r\n--{boundary}--\r\n'.encode('utf-8')
+        )
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, headers=headers, content=body)
+            data = response.json()
+            if data['errcode'] == 40014 or data['errcode'] == 42001:
+                self.access_token = await self.get_access_token(self.secret)
+                media_id = await self.upload_file_to_work(file)
+            if data.get('errcode', 0) != 0:
+                await self.logger.error(f'上传文件失败:{data}')
+                raise Exception('failed to upload file')
+            media_id = data.get('media_id')
+            return media_id
+
+    async def download_media_to_bytes(self, url: str) -> bytes:
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
             response.raise_for_status()
             return response.content
 
     # 进行media_id的获取
-    async def get_media_id(self, image: platform_message.Image):
-        media_id = await self.upload_to_work(image=image)
+    async def get_media_id(self, media: platform_message.Image | platform_message.Voice | platform_message.File):
+        if isinstance(media, platform_message.Image):
+            media_id = await self.upload_image_to_work(image=media)
+        elif isinstance(media, platform_message.Voice):
+            media_id = await self.upload_voice_to_work(voice=media)
+        elif isinstance(media, platform_message.File):
+            media_id = await self.upload_file_to_work(file=media)
+        else:
+            raise ValueError('Unsupported media type')
         return media_id

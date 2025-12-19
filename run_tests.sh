@@ -22,7 +22,7 @@ echo "Running all unit tests..."
 
 # Run tests with coverage
 pytest tests/unit_tests/ -v --tb=short \
-    --cov=pkg \
+    --cov=langbot \
     --cov-report=xml \
     "$@"
 

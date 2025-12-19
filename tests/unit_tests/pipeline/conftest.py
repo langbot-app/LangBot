@@ -14,6 +14,8 @@ from unittest.mock import AsyncMock, Mock
 
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
 from langbot.pkg.pipeline import entities as pipeline_entities
@@ -159,12 +161,18 @@ def sample_message_chain():
 
 @pytest.fixture
 def sample_message_event(sample_message_chain):
-    """Provides sample message event"""
-    event = Mock()
-    event.sender = Mock()
-    event.sender.id = 12345
-    event.time = 1609459200  # 2021-01-01 00:00:00
-    return event
+    """Provides sample message event (FriendMessage)"""
+    sender = platform_entities.Friend(
+        id=12345,
+        nickname='TestUser',
+        remark=None,
+    )
+    return platform_events.FriendMessage(
+        type='FriendMessage',
+        sender=sender,
+        message_chain=sample_message_chain,
+        time=1609459200,  # 2021-01-01 00:00:00
+    )
 
 
 @pytest.fixture

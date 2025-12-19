@@ -1,11 +1,13 @@
 <p align="center">
 <a href="https://langbot.app">
-<img src="https://docs.langbot.app/social_en.png" alt="LangBot"/>
+<img width="130" src="https://docs.langbot.app/langbot-logo.png" alt="LangBot"/>
 </a>
 
 <div align="center">
 
 <a href="https://www.producthunt.com/products/langbot?utm_source=badge-follow&utm_medium=badge&utm_source=badge-langbot" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/follow.svg?product_id=1077185&theme=light" alt="LangBot - Production&#0045;grade&#0032;IM&#0032;bot&#0032;made&#0032;easy&#0046; | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
+
+<h3>LangBot으로 IM 봇을 빠르게 구축, 디버그 및 배포하세요.</h3>
 
 [English](README_EN.md) / [简体中文](README.md) / [繁體中文](README_TW.md) / [日本語](README_JP.md) / [Español](README_ES.md) / [Français](README_FR.md) / 한국어 / [Русский](README_RU.md) / [Tiếng Việt](README_VI.md)
 
@@ -22,8 +24,6 @@
 </div>
 
 </p>
-
-LangBot은 오픈 소스 LLM 네이티브 인스턴트 메시징 로봇 개발 플랫폼으로, Agent, RAG, MCP 등 다양한 LLM 애플리케이션 기능을 갖춘 즉시 사용 가능한 IM 로봇 개발 경험을 제공하며, 글로벌 인스턴트 메시징 플랫폼에 적응하고 풍부한 API 인터페이스를 제공하여 맞춤형 개발을 지원합니다.
 
 ## 📦 시작하기
 
@@ -79,8 +79,11 @@ LangBot은 BTPanel에 등록되어 있습니다. BTPanel을 설치한 경우 [�
 
 ## ✨ 기능
 
+<img width="500" src="https://docs.langbot.app/ui/bot-page-en-rounded.png" />
+
+
 - 💬 LLM / Agent와 채팅: 여러 LLM을 지원하며 그룹 채팅 및 개인 채팅에 적응; 멀티 라운드 대화, 도구 호출, 멀티모달, 스트리밍 출력 기능을 지원합니다. 내장된 RAG(지식 베이스) 구현 및 [Dify](https://dify.ai)、[Coze](https://coze.com)、[n8n](https://n8n.io) 등의 LLMOps 플랫폼과 깊이 통합됩니다.
-- 🤖 다중 플랫폼 지원: 현재 QQ, QQ Channel, WeCom, 개인 WeChat, Lark, DingTalk, Discord, Telegram 등을 지원합니다.
+- 🤖 다중 플랫폼 지원: 현재 QQ, QQ Channel, WeCom, 개인 WeChat, Lark, DingTalk, Discord, Telegram, KOOK, Slack, LINE 등을 지원합니다.
 - 🛠️ 높은 안정성, 풍부한 기능: 네이티브 액세스 제어, 속도 제한, 민감한 단어 필터링 등의 메커니즘; 사용하기 쉽고 여러 배포 방법을 지원합니다. 여러 파이프라인 구성을 지원하며 다양한 시나리오에 대해 다른 봇을 사용할 수 있습니다.
 - 🧩 플러그인 확장, 활발한 커뮤니티: 고안정성, 고보안 생산 수준의 플러그인 시스템; 이벤트 기반, 컴포넌트 확장 등의 플러그인 메커니즘을 지원; Anthropic [MCP 프로토콜](https://modelcontextprotocol.io/) 통합; 현재 수백 개의 플러그인이 있습니다.
 - 😻 웹 UI: 브라우저를 통해 LangBot 인스턴스 관리를 지원합니다. 구성 파일을 수동으로 작성할 필요가 없습니다.
@@ -105,6 +108,7 @@ LangBot은 BTPanel에 등록되어 있습니다. BTPanel을 설치한 경우 [�
 | WeComCS | ✅ |  |
 | WeCom AI Bot | ✅ |  |
 | 개인 WeChat | ✅ |  |
+| KOOK | ✅ |  |
 | Lark | ✅ |  |
 | DingTalk | ✅ |  |
 

@@ -45,16 +45,6 @@ spec:
       type: boolean
       required: true
       default: false
-    - name: port
-      label:
-        en_US: Webhook Port
-        zh_Hans: Webhook端口
-      description:
-        en_US: Only valid when webhook mode is enabled, please fill in the webhook port
-        zh_Hans: 仅在启用 Webhook 模式时有效，请填写 Webhook 端口
-      type: integer
-      required: true
-      default: 2285
     - name: encrypt-key
       label:
         en_US: Encrypt Key
@@ -75,6 +65,35 @@ spec:
       type: boolean
       required: true
       default: false
+    - name: app_type
+      label:
+        en_US: App Type
+        zh_Hans: 应用类型
+      description:
+        en_US: Default to self-built application, refer to https://open.feishu.cn/document/platform-overveiw/overview
+        zh_Hans: 默认为企业自建应用，参考 https://open.feishu.cn/document/platform-overveiw/overview
+      type: select
+      options:
+        - name: self
+          label:
+            en_US: Self-built Application
+            zh_Hans: 自建应用
+        - name: isv
+          label:
+            en_US: Store Application
+            zh_Hans: 商店应用
+      required: false
+      default: self
+    - name: bot_added_welcome
+      label:
+        en_US: Bot Welcome Message
+        zh_Hans: 机器人进群欢迎语
+      description:
+        en_US: Welcome message when the bot is added to a group, supports Markdown format
+        zh_Hans: 机器人进群欢迎语，支持 Markdown 格式
+      type: text
+      required: false
+      default: ""
 execution:
   python:
     path: ./lark.py

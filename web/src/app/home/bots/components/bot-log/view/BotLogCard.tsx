@@ -44,12 +44,35 @@ export function BotLogCard({ botLog }: { botLog: BotLog }) {
     const strArr = str.split('');
     return strArr;
   }
+
+  // 根据日志级别返回对应的样式类
+  function getLevelStyles(level: string) {
+    switch (level.toLowerCase()) {
+      case 'error':
+        return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
+      case 'warning':
+        return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400';
+      case 'info':
+        return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
+      case 'debug':
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400';
+      default:
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400';
+    }
+  }
+
   return (
     <div className={`${styles.botLogCardContainer}`}>
       {/* 头部标签，时间 */}
       <div className={`${styles.cardTitleContainer}`}>
-        <div className={`flex flex-row gap-4`}>
-          <div className={`${styles.tag}`}>{botLog.level}</div>
+        <div className={`flex flex-row gap-2 items-center`}>
+          <div
+            className={`px-2 py-1 rounded text-xs font-medium uppercase ${getLevelStyles(
+              botLog.level,
+            )}`}
+          >
+            {botLog.level}
+          </div>
           {botLog.message_session_id && (
             <div
               className={`${styles.tag} ${styles.chatTag}`}
@@ -60,6 +83,7 @@ export function BotLogCard({ botLog }: { botLog: BotLog }) {
                     toast.success(t('common.copySuccess'));
                   });
               }}
+              title={t('common.clickToCopy')}
             >
               <svg
                 className="icon"
@@ -67,8 +91,8 @@ export function BotLogCard({ botLog }: { botLog: BotLog }) {
                 version="1.1"
                 xmlns="http://www.w3.org/2000/svg"
                 p-id="1664"
-                width="20"
-                height="20"
+                width="16"
+                height="16"
                 fill="currentColor"
               >
                 <path
@@ -87,7 +111,6 @@ export function BotLogCard({ botLog }: { botLog: BotLog }) {
                   fill="currentColor"
                 ></path>
               </svg>
-              {/* 会话ID */}
 
               <span className={`${styles.chatId}`}>
                 {getSubChatId(botLog.message_session_id)}
@@ -95,22 +118,25 @@ export function BotLogCard({ botLog }: { botLog: BotLog }) {
             </div>
           )}
         </div>
-        <div>{formatTime(botLog.timestamp)}</div>
-      </div>
-      <div className={`${styles.cardTitleContainer} ${styles.cardText}`}>
-        {botLog.text}
-      </div>
-      <PhotoProvider className={``}>
-        <div className={`w-50 mt-2`}>
-          {botLog.images.map((item) => (
-            <img
-              key={item}
-              src={`${baseURL}/api/v1/files/image/${item}`}
-              alt=""
-            />
-          ))}
+        <div className={`${styles.timestamp}`}>
+          {formatTime(botLog.timestamp)}
         </div>
-      </PhotoProvider>
+      </div>
+      <div className={`${styles.cardText}`}>{botLog.text}</div>
+      {botLog.images.length > 0 && (
+        <PhotoProvider>
+          <div className={`flex flex-wrap gap-2 mt-3`}>
+            {botLog.images.map((item) => (
+              <img
+                key={item}
+                src={`${baseURL}/api/v1/files/image/${item}`}
+                alt=""
+                className="max-w-xs rounded cursor-pointer hover:opacity-90 transition-opacity"
+              />
+            ))}
+          </div>
+        </PhotoProvider>
+      )}
     </div>
   );
 }

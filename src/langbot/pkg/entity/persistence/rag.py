@@ -8,6 +8,7 @@ class KnowledgeBase(Base):
     name = sqlalchemy.Column(sqlalchemy.String, index=True)
     description = sqlalchemy.Column(sqlalchemy.Text)
     created_at = sqlalchemy.Column(sqlalchemy.DateTime, default=sqlalchemy.func.now())
+    updated_at = sqlalchemy.Column(sqlalchemy.DateTime, default=sqlalchemy.func.now(), onupdate=sqlalchemy.func.now())
     embedding_model_uuid = sqlalchemy.Column(sqlalchemy.String, default='')
     top_k = sqlalchemy.Column(sqlalchemy.Integer, default=5)
 

@@ -8,16 +8,17 @@ LangBot is a open-source LLM native instant messaging bot development platform, 
 
 LangBot has a comprehensive frontend, all operations can be performed through the frontend. The project splited into these major parts:
 
-- `./pkg`: The core python package of the project backend.
-    - `./pkg/platform`: The platform module of the project, containing the logic of message platform adapters, bot managers, message session managers, etc.
-    - `./pkg/provider`: The provider module of the project, containing the logic of LLM providers, tool providers, etc.
-    - `./pkg/pipeline`: The pipeline module of the project, containing the logic of pipelines, stages, query pool, etc.
-    - `./pkg/api`: The api module of the project, containing the http api controllers and services.
-    - `./pkg/plugin`: LangBot bridge for connecting with plugin system.
-- `./libs`: Some SDKs we previously developed for the project, such as `qq_official_api`, `wecom_api`, etc.
-- `./templates`: Templates of config files, components, etc.
-- `./web`: Frontend codebase, built with Next.js + **shadcn** + **Tailwind CSS**.
-- `./docker`: docker-compose deployment files.
+- `./src/langbot`: The main python package of the project, below are the main modules in this package:
+    - `./pkg`: The core python package of the project backend.
+        - `./pkg/platform`: The platform module of the project, containing the logic of message platform adapters, bot managers, message session managers, etc.
+        - `./pkg/provider`: The provider module of the project, containing the logic of LLM providers, tool providers, etc.
+        - `./pkg/pipeline`: The pipeline module of the project, containing the logic of pipelines, stages, query pool, etc.
+        - `./pkg/api`: The api module of the project, containing the http api controllers and services.
+        - `./pkg/plugin`: LangBot bridge for connecting with plugin system.
+    - `./libs`: Some SDKs we previously developed for the project, such as `qq_official_api`, `wecom_api`, etc.
+    - `./templates`: Templates of config files, components, etc.
+    - `./web`: Frontend codebase, built with Next.js + **shadcn** + **Tailwind CSS**.
+    - `./docker`: docker-compose deployment files.
 
 ## Backend Development
 

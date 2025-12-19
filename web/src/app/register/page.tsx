@@ -59,9 +59,7 @@ export default function Register() {
           router.push('/login');
         }
       })
-      .catch((err) => {
-        console.log('error at getIsInitialized: ', err);
-      });
+      .catch(() => {});
   }
 
   function onSubmit(values: z.infer<ReturnType<typeof formSchema>>) {
@@ -71,13 +69,11 @@ export default function Register() {
   function handleRegister(username: string, password: string) {
     httpClient
       .initUser(username, password)
-      .then((res) => {
-        console.log('init user success: ', res);
+      .then(() => {
         toast.success(t('register.initSuccess'));
         router.push('/login');
       })
-      .catch((err) => {
-        console.log('init user error: ', err);
+      .catch((err: Error) => {
         toast.error(t('register.initFailed') + err.message);
       });
   }

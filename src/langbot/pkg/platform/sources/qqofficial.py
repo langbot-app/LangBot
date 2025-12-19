@@ -11,8 +11,8 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 from langbot.libs.qq_official_api.api import QQOfficialClient
 from langbot.libs.qq_official_api.qqofficialevent import QQOfficialEvent
-from langbot.pkg.utils import image
-from langbot.pkg.platform.logger import EventLogger
+from ...utils import image
+from ..logger import EventLogger
 
 
 class QQOfficialMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -94,9 +94,6 @@ class QQOfficialEventConverter(abstract_platform_adapter.AbstractEventConverter)
                     permission=platform_entities.Permission.Member,
                 ),
                 special_title='',
-                join_timestamp=0,
-                last_speak_timestamp=0,
-                mute_time_remaining=0,
             )
             time = int(datetime.datetime.strptime(event.timestamp, '%Y-%m-%dT%H:%M:%S%z').timestamp())
             return platform_events.GroupMessage(
@@ -117,9 +114,6 @@ class QQOfficialEventConverter(abstract_platform_adapter.AbstractEventConverter)
                     permission=platform_entities.Permission.Member,
                 ),
                 special_title='',
-                join_timestamp=0,
-                last_speak_timestamp=0,
-                mute_time_remaining=0,
             )
             time = int(datetime.datetime.strptime(event.timestamp, '%Y-%m-%dT%H:%M:%S%z').timestamp())
             return platform_events.GroupMessage(
@@ -134,11 +128,14 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
     bot: QQOfficialClient
     config: dict
     bot_account_id: str
+    bot_uuid: str = None
     message_converter: QQOfficialMessageConverter = QQOfficialMessageConverter()
     event_converter: QQOfficialEventConverter = QQOfficialEventConverter()
 
     def __init__(self, config: dict, logger: EventLogger):
-        bot = QQOfficialClient(app_id=config['appid'], secret=config['secret'], token=config['token'], logger=logger)
+        bot = QQOfficialClient(
+            app_id=config['appid'], secret=config['secret'], token=config['token'], logger=logger, unified_mode=True
+        )
 
         super().__init__(
             config=config,
@@ -223,16 +220,32 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
             self.bot.on_message('GROUP_AT_MESSAGE_CREATE')(on_message)
             self.bot.on_message('AT_MESSAGE_CREATE')(on_message)
 
+    def set_bot_uuid(self, bot_uuid: str):
+        """设置 bot UUID（用于生成 webhook URL）"""
+        self.bot_uuid = bot_uuid
+
+    async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
+        """处理统一 webhook 请求。
+
+        Args:
+            bot_uuid: Bot 的 UUID
+            path: 子路径（如果有的话）
+            request: Quart Request 对象
+
+        Returns:
+            响应数据
+        """
+        return await self.bot.handle_unified_webhook(request)
+
     async def run_async(self):
-        async def shutdown_trigger_placeholder():
+        # 统一 webhook 模式下，不启动独立的 Quart 应用
+        # 保持运行但不启动独立端口
+
+        async def keep_alive():
             while True:
                 await asyncio.sleep(1)
 
-        await self.bot.run_task(
-            host='0.0.0.0',
-            port=self.config['port'],
-            shutdown_trigger=shutdown_trigger_placeholder,
-        )
+        await keep_alive()
 
     async def kill(self) -> bool:
         return False

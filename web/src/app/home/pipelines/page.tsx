@@ -75,7 +75,6 @@ export default function PluginConfigPage() {
         setPipelineList(pipelineList);
       })
       .catch((error) => {
-        console.log(error);
         toast.error(t('pipelines.getPipelineListError') + error.message);
       });
   }

@@ -49,6 +49,7 @@ export default function PipelineDialog({
     propPipelineId,
   );
   const [currentMode, setCurrentMode] = useState<DialogMode>('config');
+  const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
 
   useEffect(() => {
     setPipelineId(propPipelineId);
@@ -153,7 +154,7 @@ export default function PipelineDialog({
   // 编辑流水线时的对话框
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="overflow-hidden p-0 !max-w-[50rem] h-[75vh] flex">
+      <DialogContent className="overflow-hidden p-0 !max-w-[80vw] h-[75vh] flex">
         <SidebarProvider className="items-start w-full flex h-full min-h-0">
           <Sidebar
             collapsible="none"
@@ -184,10 +185,29 @@ export default function PipelineDialog({
           </Sidebar>
           <main className="flex flex-1 flex-col h-full min-h-0">
             <DialogHeader
-              className="px-6 pt-6 pb-4 shrink-0"
+              className="px-6 pt-6 pb-4 shrink-0 flex flex-row items-center justify-start"
               style={{ height: '4rem' }}
             >
               <DialogTitle>{getDialogTitle()}</DialogTitle>
+              {currentMode === 'debug' && (
+                <div className="flex items-center gap-2 ml-2">
+                  <div
+                    className={`w-2.5 h-2.5 rounded-full ${
+                      isWebSocketConnected ? 'bg-green-500' : 'bg-red-500'
+                    }`}
+                    title={
+                      isWebSocketConnected
+                        ? t('pipelines.debugDialog.connected')
+                        : t('pipelines.debugDialog.disconnected')
+                    }
+                  />
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                    {isWebSocketConnected
+                      ? t('pipelines.debugDialog.connected')
+                      : t('pipelines.debugDialog.disconnected')}
+                  </span>
+                </div>
+              )}
             </DialogHeader>
             <div
               className="flex-1 overflow-y-auto px-6 pb-4 w-full"
@@ -217,6 +237,7 @@ export default function PipelineDialog({
                   open={true}
                   pipelineId={pipelineId}
                   isEmbedded={true}
+                  onConnectionStatusChange={setIsWebSocketConnected}
                 />
               )}
             </div>

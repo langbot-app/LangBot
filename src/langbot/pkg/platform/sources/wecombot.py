@@ -8,7 +8,7 @@ import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platf
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
-from langbot.pkg.platform.logger import EventLogger
+from ..logger import EventLogger
 from langbot.libs.wecom_ai_bot_api.wecombotevent import WecomBotEvent
 from langbot.libs.wecom_ai_bot_api.api import WecomBotClient
 
@@ -28,9 +28,105 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
         if event.type == 'group':
             yiri_msg_list.append(platform_message.At(target=event.ai_bot_id))
         yiri_msg_list.append(platform_message.Source(id=event.message_id, time=datetime.datetime.now()))
-        yiri_msg_list.append(platform_message.Plain(text=event.content))
-        if event.picurl != '':
-            yiri_msg_list.append(platform_message.Image(base64=event.picurl))
+
+        if event.content:
+            yiri_msg_list.append(platform_message.Plain(text=event.content))
+
+        images = []
+        if event.images:
+            images.extend([img for img in event.images if img])
+        if not images and event.picurl:
+            images.append(event.picurl)
+        for image_base64 in images:
+            if image_base64:
+                yiri_msg_list.append(platform_message.Image(base64=image_base64))
+
+        file_info = event.file or {}
+        if file_info:
+            file_url = (
+                file_info.get('download_url')
+                or file_info.get('url')
+                or file_info.get('fileurl')
+                or file_info.get('path')
+            )
+            file_base64 = file_info.get('base64')
+            file_name = file_info.get('filename') or file_info.get('name')
+            file_size = file_info.get('filesize') or file_info.get('size')
+            file_data = file_url or file_base64
+            if file_data or file_name:
+                file_kwargs = {}
+                if file_data:
+                    file_kwargs['url'] = file_data
+                if file_name:
+                    file_kwargs['name'] = file_name
+                if file_size is not None:
+                    file_kwargs['size'] = file_size
+                try:
+                    yiri_msg_list.append(platform_message.File(**file_kwargs))
+                except Exception:
+                    # 兜底
+                    yiri_msg_list.append(platform_message.Unknown(text='[file message unsupported]'))
+
+        voice_info = event.voice or {}
+        if voice_info:
+            voice_payload = voice_info.get('base64') or voice_info.get('url')
+            if voice_payload:
+                if voice_info.get('base64') and not voice_payload.startswith('data:'):
+                    voice_payload = f'data:audio/mpeg;base64,{voice_info.get("base64")}'
+                try:
+                    yiri_msg_list.append(platform_message.Voice(base64=voice_payload))
+                except Exception:
+                    try:
+                        voice_kwargs = {'url': voice_payload}
+                        voice_name = voice_info.get('filename') or voice_info.get('name')
+                        voice_size = voice_info.get('filesize') or voice_info.get('size')
+                        if voice_name:
+                            voice_kwargs['name'] = voice_name
+                        if voice_size is not None:
+                            voice_kwargs['size'] = voice_size
+                        yiri_msg_list.append(platform_message.File(**voice_kwargs))
+                    except Exception:
+                        yiri_msg_list.append(platform_message.Unknown(text='[voice message unsupported]'))
+
+        video_info = event.video or {}
+        if video_info:
+            video_payload = (
+                video_info.get('base64')
+                or video_info.get('url')
+                or video_info.get('download_url')
+                or video_info.get('fileurl')
+            )
+            if video_payload:
+                video_kwargs = {'url': video_payload}
+                video_name = video_info.get('filename') or video_info.get('name')
+                video_size = video_info.get('filesize') or video_info.get('size')
+                if video_name:
+                    video_kwargs['name'] = video_name
+                if video_size is not None:
+                    video_kwargs['size'] = video_size
+                try:
+                    # 没有专门的视频类型，沿用 File 传递给上层
+                    yiri_msg_list.append(platform_message.File(**video_kwargs))
+                except Exception:
+                    yiri_msg_list.append(platform_message.Unknown(text='[video message unsupported]'))
+
+        if event.msgtype == 'link' and event.link:
+            link = event.link
+            summary = '\n'.join(
+                filter(
+                    None,
+                    [link.get('title', ''), link.get('description') or link.get('digest', ''), link.get('url', '')],
+                )
+            )
+            if summary:
+                yiri_msg_list.append(platform_message.Plain(text=summary))
+
+        has_content_element = any(
+            not isinstance(element, (platform_message.Source, platform_message.At)) for element in yiri_msg_list
+        )
+        if not has_content_element:
+            fallback_type = event.msgtype or 'unknown'
+            yiri_msg_list.append(platform_message.Unknown(text=f'[unsupported wecom msgtype: {fallback_type}]'))
         chain = platform_message.MessageChain(yiri_msg_list)
 
         return chain
@@ -67,9 +163,6 @@ class WecomBotEventConverter(abstract_platform_adapter.AbstractEventConverter):
                         permission=platform_entities.Permission.Member,
                     ),
                     special_title='',
-                    join_timestamp=0,
-                    last_speak_timestamp=0,
-                    mute_time_remaining=0,
                 )
                 time = datetime.datetime.now().timestamp()
                 return platform_events.GroupMessage(
@@ -88,19 +181,20 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     message_converter: WecomBotMessageConverter = WecomBotMessageConverter()
     event_converter: WecomBotEventConverter = WecomBotEventConverter()
     config: dict
+    bot_uuid: str = None
 
     def __init__(self, config: dict, logger: EventLogger):
-        required_keys = ['Token', 'EncodingAESKey', 'Corpid', 'BotId', 'port']
+        required_keys = ['Token', 'EncodingAESKey', 'Corpid', 'BotId']
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
             raise Exception(f'WecomBot 缺少配置项: {missing_keys}')
 
-        # 创建运行时 bot 对象
         bot = WecomBotClient(
             Token=config['Token'],
             EnCodingAESKey=config['EncodingAESKey'],
             Corpid=config['Corpid'],
             logger=logger,
+            unified_mode=True,
         )
         bot_account_id = config['BotId']
 
@@ -189,16 +283,32 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         except Exception:
             print(traceback.format_exc())
 
+    def set_bot_uuid(self, bot_uuid: str):
+        """设置 bot UUID（用于生成 webhook URL）"""
+        self.bot_uuid = bot_uuid
+
+    async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
+        """处理统一 webhook 请求。
+
+        Args:
+            bot_uuid: Bot 的 UUID
+            path: 子路径（如果有的话）
+            request: Quart Request 对象
+
+        Returns:
+            响应数据
+        """
+        return await self.bot.handle_unified_webhook(request)
+
     async def run_async(self):
-        async def shutdown_trigger_placeholder():
+        # 统一 webhook 模式下，不启动独立的 Quart 应用
+        # 保持运行但不启动独立端口
+
+        async def keep_alive():
             while True:
                 await asyncio.sleep(1)
 
-        await self.bot.run_task(
-            host='0.0.0.0',
-            port=self.config['port'],
-            shutdown_trigger=shutdown_trigger_placeholder,
-        )
+        await keep_alive()
 
     async def kill(self) -> bool:
         return False

@@ -5,7 +5,7 @@ from ... import group
 @group.group_class('knowledge_base', '/api/v1/knowledge/bases')
 class KnowledgeBaseRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
-        @self.route('', methods=['POST', 'GET'])
+        @self.route('', methods=['POST', 'GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def handle_knowledge_bases() -> quart.Response:
             if quart.request.method == 'GET':
                 knowledge_bases = await self.ap.knowledge_service.get_knowledge_bases()
@@ -21,6 +21,7 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
         @self.route(
             '/<knowledge_base_uuid>',
             methods=['GET', 'DELETE', 'PUT'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
         async def handle_specific_knowledge_base(knowledge_base_uuid: str) -> quart.Response:
             if quart.request.method == 'GET':
@@ -47,6 +48,7 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
         @self.route(
             '/<knowledge_base_uuid>/files',
             methods=['GET', 'POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
         async def get_knowledge_base_files(knowledge_base_uuid: str) -> str:
             if quart.request.method == 'GET':
@@ -74,6 +76,7 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
         @self.route(
             '/<knowledge_base_uuid>/files/<file_id>',
             methods=['DELETE'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
         async def delete_specific_file_in_kb(file_id: str, knowledge_base_uuid: str) -> str:
             await self.ap.knowledge_service.delete_file(knowledge_base_uuid, file_id)
@@ -82,6 +85,7 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
         @self.route(
             '/<knowledge_base_uuid>/retrieve',
             methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
         async def retrieve_knowledge_base(knowledge_base_uuid: str) -> str:
             json_data = await quart.request.json

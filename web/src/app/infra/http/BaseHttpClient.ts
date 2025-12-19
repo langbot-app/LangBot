@@ -97,8 +97,6 @@ export abstract class BaseHttpClient {
 
           switch (status) {
             case 401:
-              console.log('401 error: ', errMessage, error.request);
-              console.log('responseURL', error.request.responseURL);
               if (typeof window !== 'undefined') {
                 localStorage.removeItem('token');
                 if (!error.request.responseURL.includes('/check-token')) {

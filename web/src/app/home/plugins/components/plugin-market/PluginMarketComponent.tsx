@@ -11,7 +11,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { Search, Loader2, Wrench, AudioWaveform, Hash } from 'lucide-react';
+import {
+  Search,
+  Loader2,
+  Wrench,
+  AudioWaveform,
+  Hash,
+  Book,
+} from 'lucide-react';
 import PluginMarketCardComponent from './plugin-market-card/PluginMarketCardComponent';
 import { PluginMarketCardVO } from './plugin-market-card/PluginMarketCardVO';
 import { getCloudServiceClientSync } from '@/app/infra/http';
@@ -329,7 +336,6 @@ function MarketPageContent({
 
   // 安装插件
   // const handleInstallPlugin = (plugin: PluginV4) => {
-  //   console.log('install plugin', plugin);
   // };
 
   return (
@@ -378,14 +384,14 @@ function MarketPageContent({
               <ToggleGroupItem
                 value="all"
                 aria-label="All components"
-                className="text-xs sm:text-sm"
+                className="text-xs sm:text-sm cursor-pointer"
               >
                 {t('market.allComponents')}
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="Tool"
                 aria-label="Tool"
-                className="text-xs sm:text-sm"
+                className="text-xs sm:text-sm cursor-pointer"
               >
                 <Wrench className="h-4 w-4 mr-1" />
                 {t('plugins.componentName.Tool')}
@@ -393,7 +399,7 @@ function MarketPageContent({
               <ToggleGroupItem
                 value="Command"
                 aria-label="Command"
-                className="text-xs sm:text-sm"
+                className="text-xs sm:text-sm cursor-pointer"
               >
                 <Hash className="h-4 w-4 mr-1" />
                 {t('plugins.componentName.Command')}
@@ -401,10 +407,18 @@ function MarketPageContent({
               <ToggleGroupItem
                 value="EventListener"
                 aria-label="EventListener"
-                className="text-xs sm:text-sm"
+                className="text-xs sm:text-sm cursor-pointer"
               >
                 <AudioWaveform className="h-4 w-4 mr-1" />
                 {t('plugins.componentName.EventListener')}
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="KnowledgeRetriever"
+                aria-label="KnowledgeRetriever"
+                className="text-xs sm:text-sm cursor-pointer"
+              >
+                <Book className="h-4 w-4 mr-1" />
+                {t('plugins.componentName.KnowledgeRetriever')}
               </ToggleGroupItem>
             </ToggleGroup>
           </div>
