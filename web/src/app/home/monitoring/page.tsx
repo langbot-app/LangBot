@@ -5,12 +5,14 @@ import { useTranslation } from 'react-i18next';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import OverviewCards from './components/overview-cards/OverviewCards';
+import MonitoringFilters from './components/filters/MonitoringFilters';
 import { useMonitoringFilters } from './hooks/useMonitoringFilters';
 import { useMonitoringData } from './hooks/useMonitoringData';
 
 function MonitoringPageContent() {
   const { t } = useTranslation();
-  const { filterState, resetFilters } = useMonitoringFilters();
+  const { filterState, setSelectedBots, setSelectedPipelines, setTimeRange } =
+    useMonitoringFilters();
   const { data, loading, refetch } = useMonitoringData(filterState);
 
   return (
@@ -40,6 +42,17 @@ function MonitoringPageContent() {
             </Button>
           </div>
         </div>
+
+        {/* Filters */}
+        <MonitoringFilters
+          selectedBots={filterState.selectedBots}
+          selectedPipelines={filterState.selectedPipelines}
+          timeRange={filterState.timeRange}
+          onBotsChange={setSelectedBots}
+          onPipelinesChange={setSelectedPipelines}
+          onTimeRangeChange={setTimeRange}
+        />
+
         <OverviewCards metrics={data?.overview || null} loading={loading} />
       </div>
 
@@ -73,53 +86,58 @@ function MonitoringPageContent() {
                 {loading && (
                   <div className="mt-4">
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-white"></div>
-                    <p className="mt-2 text-sm">{t('monitoring.messageList.loading')}</p>
+                    <p className="mt-2 text-sm">
+                      {t('monitoring.messageList.loading')}
+                    </p>
                   </div>
                 )}
-                {!loading && data && data.messages && data.messages.length > 0 && (
-                  <div className="mt-4 space-y-2">
-                    {data.messages.slice(0, 5).map((msg) => (
-                      <div
-                        key={msg.id}
-                        className="text-left border border-gray-200 dark:border-gray-700 rounded-lg p-4"
-                      >
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <span className="font-medium text-sm text-gray-700 dark:text-gray-300">
-                              {msg.botName}
-                            </span>
-                            <span className="mx-2 text-gray-400">→</span>
-                            <span className="text-sm text-gray-600 dark:text-gray-400">
-                              {msg.pipelineName}
+                {!loading &&
+                  data &&
+                  data.messages &&
+                  data.messages.length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      {data.messages.slice(0, 5).map((msg) => (
+                        <div
+                          key={msg.id}
+                          className="text-left border border-gray-200 dark:border-gray-700 rounded-lg p-4"
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <span className="font-medium text-sm text-gray-700 dark:text-gray-300">
+                                {msg.botName}
+                              </span>
+                              <span className="mx-2 text-gray-400">→</span>
+                              <span className="text-sm text-gray-600 dark:text-gray-400">
+                                {msg.pipelineName}
+                              </span>
+                            </div>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              {msg.timestamp.toLocaleString()}
                             </span>
                           </div>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            {msg.timestamp.toLocaleString()}
-                          </span>
+                          <p className="text-sm text-gray-600 dark:text-gray-300">
+                            {msg.messageContent}
+                          </p>
+                          <div className="mt-2 flex gap-2">
+                            <span
+                              className={`text-xs px-2 py-1 rounded ${
+                                msg.status === 'success'
+                                  ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                  : msg.status === 'error'
+                                    ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                                    : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                              }`}
+                            >
+                              {msg.status}
+                            </span>
+                            <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+                              {msg.level}
+                            </span>
+                          </div>
                         </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-300">
-                          {msg.messageContent}
-                        </p>
-                        <div className="mt-2 flex gap-2">
-                          <span
-                            className={`text-xs px-2 py-1 rounded ${
-                              msg.status === 'success'
-                                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                                : msg.status === 'error'
-                                ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                                : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                            }`}
-                          >
-                            {msg.status}
-                          </span>
-                          <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
-                            {msg.level}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
               </div>
             </div>
           </TabsContent>
@@ -127,32 +145,37 @@ function MonitoringPageContent() {
           <TabsContent value="llmCalls" className="mt-4">
             <div className="bg-white dark:bg-[#2a2a2e] rounded-lg border border-gray-200 dark:border-gray-700 p-6">
               <div className="text-center text-gray-500 dark:text-gray-400">
-                <p className="text-lg font-medium">{t('monitoring.llmCalls.noData')}</p>
-                {!loading && data && data.llmCalls && data.llmCalls.length > 0 && (
-                  <div className="mt-4 space-y-2">
-                    {data.llmCalls.slice(0, 5).map((call) => (
-                      <div
-                        key={call.id}
-                        className="text-left border border-gray-200 dark:border-gray-700 rounded-lg p-4"
-                      >
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <span className="font-medium text-sm">
-                              {call.modelName}
+                <p className="text-lg font-medium">
+                  {t('monitoring.llmCalls.noData')}
+                </p>
+                {!loading &&
+                  data &&
+                  data.llmCalls &&
+                  data.llmCalls.length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      {data.llmCalls.slice(0, 5).map((call) => (
+                        <div
+                          key={call.id}
+                          className="text-left border border-gray-200 dark:border-gray-700 rounded-lg p-4"
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <span className="font-medium text-sm">
+                                {call.modelName}
+                              </span>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                {call.tokens.total} tokens • {call.duration}ms
+                                {call.cost && ` • $${call.cost.toFixed(4)}`}
+                              </p>
+                            </div>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              {call.timestamp.toLocaleString()}
                             </span>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                              {call.tokens.total} tokens • {call.duration}ms
-                              {call.cost && ` • $${call.cost.toFixed(4)}`}
-                            </p>
                           </div>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            {call.timestamp.toLocaleString()}
-                          </span>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
               </div>
             </div>
           </TabsContent>
@@ -160,7 +183,9 @@ function MonitoringPageContent() {
           <TabsContent value="sessions" className="mt-4">
             <div className="bg-white dark:bg-[#2a2a2e] rounded-lg border border-gray-200 dark:border-gray-700 p-6">
               <div className="text-center text-gray-500 dark:text-gray-400">
-                <p className="text-lg font-medium">{t('monitoring.sessions.noSessions')}</p>
+                <p className="text-lg font-medium">
+                  {t('monitoring.sessions.noSessions')}
+                </p>
               </div>
             </div>
           </TabsContent>
@@ -168,7 +193,9 @@ function MonitoringPageContent() {
           <TabsContent value="errors" className="mt-4">
             <div className="bg-white dark:bg-[#2a2a2e] rounded-lg border border-gray-200 dark:border-gray-700 p-6">
               <div className="text-center text-gray-500 dark:text-gray-400">
-                <p className="text-lg font-medium">{t('monitoring.errors.noErrors')}</p>
+                <p className="text-lg font-medium">
+                  {t('monitoring.errors.noErrors')}
+                </p>
               </div>
             </div>
           </TabsContent>

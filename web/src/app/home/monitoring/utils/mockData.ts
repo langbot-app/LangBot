@@ -7,7 +7,6 @@ import {
   FilterState,
   DateRange,
 } from '../types/monitoring';
-import { isDateInRange } from './dateUtils';
 
 // Sample data for generating realistic mocks
 const BOT_NAMES = [
@@ -91,7 +90,8 @@ export function generateMockMessages(
     const botId = `bot-${Math.floor(Math.random() * BOT_NAMES.length)}`;
     const botName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
     const pipelineId = `pipeline-${Math.floor(Math.random() * PIPELINE_NAMES.length)}`;
-    const pipelineName = PIPELINE_NAMES[Math.floor(Math.random() * PIPELINE_NAMES.length)];
+    const pipelineName =
+      PIPELINE_NAMES[Math.floor(Math.random() * PIPELINE_NAMES.length)];
 
     // Apply bot filter
     if (filters?.selectedBots && filters.selectedBots.length > 0) {
@@ -104,8 +104,20 @@ export function generateMockMessages(
     }
 
     const timestamp = generateTimestamp(dateRange);
-    const statuses: ('success' | 'error' | 'pending')[] = ['success', 'success', 'success', 'error', 'pending'];
-    const levels: ('info' | 'warning' | 'error' | 'debug')[] = ['info', 'info', 'warning', 'error', 'debug'];
+    const statuses: ('success' | 'error' | 'pending')[] = [
+      'success',
+      'success',
+      'success',
+      'error',
+      'pending',
+    ];
+    const levels: ('info' | 'warning' | 'error' | 'debug')[] = [
+      'info',
+      'info',
+      'warning',
+      'error',
+      'debug',
+    ];
 
     messages.push({
       id: generateId(),
@@ -114,7 +126,8 @@ export function generateMockMessages(
       botName,
       pipelineId,
       pipelineName,
-      messageContent: MESSAGE_TEMPLATES[Math.floor(Math.random() * MESSAGE_TEMPLATES.length)],
+      messageContent:
+        MESSAGE_TEMPLATES[Math.floor(Math.random() * MESSAGE_TEMPLATES.length)],
       sessionId: `session-${Math.floor(Math.random() * 100)}`,
       status: statuses[Math.floor(Math.random() * statuses.length)],
       level: levels[Math.floor(Math.random() * levels.length)],
@@ -140,7 +153,8 @@ export function generateMockLLMCalls(
     const botId = `bot-${Math.floor(Math.random() * BOT_NAMES.length)}`;
     const botName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
     const pipelineId = `pipeline-${Math.floor(Math.random() * PIPELINE_NAMES.length)}`;
-    const pipelineName = PIPELINE_NAMES[Math.floor(Math.random() * PIPELINE_NAMES.length)];
+    const pipelineName =
+      PIPELINE_NAMES[Math.floor(Math.random() * PIPELINE_NAMES.length)];
 
     if (filters?.selectedBots && filters.selectedBots.length > 0) {
       if (!filters.selectedBots.includes(botId)) continue;
@@ -165,7 +179,9 @@ export function generateMockLLMCalls(
         total: inputTokens + outputTokens,
       },
       duration: Math.floor(Math.random() * 5000) + 500,
-      cost: ((inputTokens * 0.00001 + outputTokens * 0.00003) * (Math.random() * 0.5 + 0.75)),
+      cost:
+        (inputTokens * 0.00001 + outputTokens * 0.00003) *
+        (Math.random() * 0.5 + 0.75),
       status,
       botId,
       botName,
@@ -192,7 +208,8 @@ export function generateMockSessions(
     const botId = `bot-${Math.floor(Math.random() * BOT_NAMES.length)}`;
     const botName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
     const pipelineId = `pipeline-${Math.floor(Math.random() * PIPELINE_NAMES.length)}`;
-    const pipelineName = PIPELINE_NAMES[Math.floor(Math.random() * PIPELINE_NAMES.length)];
+    const pipelineName =
+      PIPELINE_NAMES[Math.floor(Math.random() * PIPELINE_NAMES.length)];
 
     if (filters?.selectedBots && filters.selectedBots.length > 0) {
       if (!filters.selectedBots.includes(botId)) continue;
@@ -221,7 +238,9 @@ export function generateMockSessions(
     });
   }
 
-  return sessions.sort((a, b) => b.lastActivity.getTime() - a.lastActivity.getTime());
+  return sessions.sort(
+    (a, b) => b.lastActivity.getTime() - a.lastActivity.getTime(),
+  );
 }
 
 /**
@@ -238,7 +257,8 @@ export function generateMockErrors(
     const botId = `bot-${Math.floor(Math.random() * BOT_NAMES.length)}`;
     const botName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
     const pipelineId = `pipeline-${Math.floor(Math.random() * PIPELINE_NAMES.length)}`;
-    const pipelineName = PIPELINE_NAMES[Math.floor(Math.random() * PIPELINE_NAMES.length)];
+    const pipelineName =
+      PIPELINE_NAMES[Math.floor(Math.random() * PIPELINE_NAMES.length)];
 
     if (filters?.selectedBots && filters.selectedBots.length > 0) {
       if (!filters.selectedBots.includes(botId)) continue;
@@ -249,7 +269,8 @@ export function generateMockErrors(
     }
 
     const timestamp = generateTimestamp(dateRange);
-    const errorType = ERROR_TYPES[Math.floor(Math.random() * ERROR_TYPES.length)];
+    const errorType =
+      ERROR_TYPES[Math.floor(Math.random() * ERROR_TYPES.length)];
 
     errors.push({
       id: generateId(),
@@ -260,7 +281,10 @@ export function generateMockErrors(
       botName,
       pipelineId,
       pipelineName,
-      sessionId: Math.random() > 0.5 ? `session-${Math.floor(Math.random() * 100)}` : undefined,
+      sessionId:
+        Math.random() > 0.5
+          ? `session-${Math.floor(Math.random() * 100)}`
+          : undefined,
       stackTrace: Math.random() > 0.7 ? 'Stack trace...' : undefined,
     });
   }
@@ -271,9 +295,7 @@ export function generateMockErrors(
 /**
  * Generate mock overview metrics
  */
-export function generateMockMetrics(
-  filters?: Partial<FilterState>,
-): OverviewMetrics {
+export function generateMockMetrics(): OverviewMetrics {
   const totalMessages = Math.floor(Math.random() * 10000) + 1000;
   const llmCalls = Math.floor(Math.random() * 5000) + 500;
   const successRate = Math.floor(Math.random() * 20) + 80;
