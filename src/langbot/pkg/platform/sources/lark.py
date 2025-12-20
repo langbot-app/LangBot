@@ -13,6 +13,9 @@ import time
 import datetime
 import hashlib
 from Crypto.Cipher import AES
+import tempfile
+import os
+import mimetypes
 
 import aiohttp
 import lark_oapi.ws.exception
@@ -241,6 +244,8 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
 
         lb_msg_list.append(platform_message.Source(id=message.message_id, time=msg_create_time))
 
+        print(message.message_type,message)
+
         if message.message_type == 'text':
             element_list = []
 
@@ -304,6 +309,10 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
             message_content['content'] = [
                 {'tag': 'file', 'file_key': message_content['file_key'], 'file_name': message_content['file_name']}
             ]
+        elif message.message_type == 'audio':
+            message_content['content'] = [
+                {'tag': 'audio', 'file_key': message_content['file_key'], "duration": message_content.get('duration',0)}
+            ]
 
         for ele in message_content['content']:
             if ele['tag'] == 'text':
@@ -334,6 +343,60 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                 image_format = response.raw.headers['content-type']
 
                 lb_msg_list.append(platform_message.Image(base64=f'data:{image_format};base64,{image_base64}'))
+            elif ele['tag'] == 'audio':
+                file_key = ele['file_key']
+                duration = ele['duration']
+
+                # Download audio file
+                request: GetMessageResourceRequest = (
+                    GetMessageResourceRequest.builder()
+                    .message_id(message.message_id)
+                    .file_key(file_key)
+                    .type('file')
+                    .build()
+                )
+
+                try:
+                    response: GetMessageResourceResponse = await api_client.im.v1.message_resource.aget(request)
+
+                    if not response.success():
+                        print(f'Failed to download audio: code: {response.code}, msg: {response.msg}')
+                        lb_msg_list.append(platform_message.Plain(text='[Audio file download failed]'))
+                        return platform_message.MessageChain(lb_msg_list)
+
+                    # Read audio bytes
+                    audio_bytes = response.file.read()
+                    audio_base64 = base64.b64encode(audio_bytes).decode()
+
+
+                    # Get content type from response headers
+                    content_type = response.raw.headers.get('content-type', 'audio/mpeg')
+
+
+
+                    mime_main = content_type.split(';')[0].strip()
+                    ext = mimetypes.guess_extension(mime_main) or '.bin'
+                    temp_dir = tempfile.gettempdir()
+                    temp_file_path = os.path.join(temp_dir, f'lark_audio_{file_key}{ext}')
+
+                    with open(temp_file_path, 'wb') as f:
+                        f.write(audio_bytes)
+
+                    # Create Voice message: prefer path/url + length, include base64 as optional data URI
+                    lb_msg_list.append(
+                        platform_message.Voice(
+                            voice_id=file_key,
+                            url=f'file://{temp_file_path}',
+                            path=temp_file_path,
+                            base64=f'data:{content_type};base64,{audio_base64}',
+                            length=(duration // 1000) if duration else None,
+                        )
+                    )
+                except Exception as e:
+                    print(f'Error downloading audio: {e}')
+                    traceback.print_exc()
+                    lb_msg_list.append(platform_message.Plain(text='[Audio file download error]'))
+
             elif ele['tag'] == 'file':
                 file_key = ele['file_key']
                 file_name = ele['file_name']
@@ -356,11 +419,41 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                 file_bytes = response.file.read()
                 file_base64 = base64.b64encode(file_bytes).decode()
 
+
                 file_format = response.raw.headers['content-type']
 
+                file_size = len(file_bytes)
+
+                # Determine extension from content-type if possible
+                content_type = response.raw.headers.get('content-type', '')
+                mime_main = content_type.split(';')[0].strip() if content_type else ''
+                ext = mimetypes.guess_extension(mime_main) or ''
+
+                # Ensure a safe filename (avoid path components)
+                safe_name = os.path.basename(file_name).replace('/', '_').replace('\\', '_')
+                if ext and not safe_name.lower().endswith(ext.lower()):
+                    filename_with_ext = f'{safe_name}{ext}'
+                else:
+                    filename_with_ext = safe_name
+
+                temp_dir = tempfile.gettempdir()
+                temp_file_path = os.path.join(temp_dir, f'lark_{file_key}_{filename_with_ext}')
+
+                with open(temp_file_path, 'wb') as f:
+                    f.write(file_bytes)
+
+                # Create File message with local path and file:// URL
                 lb_msg_list.append(
-                    platform_message.File(base64=f'data:{file_format};base64,{file_base64}', name=file_name)
+                    platform_message.File(
+                        id=file_key,
+                        name=file_name,
+                        size=file_size,
+                        url=f'file://{temp_file_path}',
+                        path=temp_file_path,
+                        base64=f'data:{file_format};base64,{file_base64}',  # not including base64 by default to save memory; can be added if needed
+                    )
                 )
+
 
         return platform_message.MessageChain(lb_msg_list)
 
@@ -1127,6 +1220,20 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         else:
             # 统一 webhook 模式下，不启动独立的 Quart 应用
             # 保持运行但不启动独立端口
+
+            # 打印 webhook 回调地址
+            if self.bot_uuid and hasattr(self.logger, 'ap'):
+                try:
+                    api_port = self.logger.ap.instance_config.data['api']['port']
+                    webhook_url = f'http://127.0.0.1:{api_port}/bots/{self.bot_uuid}'
+                    webhook_url_public = f'http://<Your-Public-IP>:{api_port}/bots/{self.bot_uuid}'
+
+                    await self.logger.info('Lark 机器人 Webhook 回调地址:')
+                    await self.logger.info(f'  本地地址: {webhook_url}')
+                    await self.logger.info(f'  公网地址: {webhook_url_public}')
+                    await self.logger.info('请在 Lark 机器人后台配置此回调地址')
+                except Exception as e:
+                    await self.logger.warning(f'无法生成 webhook URL: {e}')
 
             async def keep_alive():
                 while True:
