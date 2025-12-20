@@ -80,9 +80,7 @@ class N8nServiceAPIRunner(runner.RequestRunner):
                 continue
 
             try:
-                print(chunk)
                 data = json.loads(chunk)
-                # print(data)
                 if data.get('type') == 'item' and 'content' in data:
                     chunk_idx += 1
                     content = data['content']

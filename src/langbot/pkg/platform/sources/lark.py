@@ -244,7 +244,6 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
 
         lb_msg_list.append(platform_message.Source(id=message.message_id, time=msg_create_time))
 
-        print(message.message_type,message)
 
         if message.message_type == 'text':
             element_list = []
@@ -1220,20 +1219,6 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         else:
             # 统一 webhook 模式下，不启动独立的 Quart 应用
             # 保持运行但不启动独立端口
-
-            # 打印 webhook 回调地址
-            if self.bot_uuid and hasattr(self.logger, 'ap'):
-                try:
-                    api_port = self.logger.ap.instance_config.data['api']['port']
-                    webhook_url = f'http://127.0.0.1:{api_port}/bots/{self.bot_uuid}'
-                    webhook_url_public = f'http://<Your-Public-IP>:{api_port}/bots/{self.bot_uuid}'
-
-                    await self.logger.info('Lark 机器人 Webhook 回调地址:')
-                    await self.logger.info(f'  本地地址: {webhook_url}')
-                    await self.logger.info(f'  公网地址: {webhook_url_public}')
-                    await self.logger.info('请在 Lark 机器人后台配置此回调地址')
-                except Exception as e:
-                    await self.logger.warning(f'无法生成 webhook URL: {e}')
 
             async def keep_alive():
                 while True:
