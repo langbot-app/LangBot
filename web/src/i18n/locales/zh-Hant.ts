@@ -764,7 +764,7 @@ const zhHant = {
     description: '監控機器人活動、LLM調用和系統效能',
     overview: '概覽',
     totalMessages: '總訊息數',
-    llmCallsLabel: 'LLM調用',
+    llmCallsCount: 'LLM調用',
     successRate: '成功率',
     activeSessions: '活躍會話',
     last24Hours: '最近24小時',

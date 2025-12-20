@@ -37,7 +37,7 @@ export default function OverviewCards({
         : undefined,
     },
     {
-      title: t('monitoring.llmCalls'),
+      title: t('monitoring.llmCallsCount'),
       value: metrics?.llmCalls || 0,
       icon: (
         <svg

@@ -805,7 +805,7 @@ const enUS = {
     description: 'Monitor bot activities, LLM calls, and system performance',
     overview: 'Overview',
     totalMessages: 'Total Messages',
-    llmCallsLabel: 'LLM Calls',
+    llmCallsCount: 'LLM Calls',
     successRate: 'Success Rate',
     activeSessions: 'Active Sessions',
     last24Hours: 'Last 24 hours',

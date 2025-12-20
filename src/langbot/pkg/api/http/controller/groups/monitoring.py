@@ -6,6 +6,21 @@ import quart
 from .. import group
 
 
+def parse_iso_datetime(datetime_str: str | None) -> datetime.datetime | None:
+    """Parse ISO 8601 datetime string, handling 'Z' suffix for UTC timezone"""
+    if not datetime_str:
+        return None
+    # Replace 'Z' with '+00:00' for Python 3.10 compatibility
+    if datetime_str.endswith('Z'):
+        datetime_str = datetime_str[:-1] + '+00:00'
+    dt = datetime.datetime.fromisoformat(datetime_str)
+    # Convert to UTC and remove timezone info to match database storage (which stores UTC as naive datetime)
+    if dt.tzinfo is not None:
+        # Convert to UTC and remove timezone info
+        dt = dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    return dt
+
+
 @group.group_class('monitoring', '/api/v1/monitoring')
 class MonitoringRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
@@ -19,8 +34,8 @@ class MonitoringRouterGroup(group.RouterGroup):
             end_time_str = quart.request.args.get('endTime')
 
             # Parse datetime
-            start_time = datetime.datetime.fromisoformat(start_time_str) if start_time_str else None
-            end_time = datetime.datetime.fromisoformat(end_time_str) if end_time_str else None
+            start_time = parse_iso_datetime(start_time_str)
+            end_time = parse_iso_datetime(end_time_str)
 
             metrics = await self.ap.monitoring_service.get_overview_metrics(
                 bot_ids=bot_ids if bot_ids else None,
@@ -43,8 +58,8 @@ class MonitoringRouterGroup(group.RouterGroup):
             offset = int(quart.request.args.get('offset', 0))
 
             # Parse datetime
-            start_time = datetime.datetime.fromisoformat(start_time_str) if start_time_str else None
-            end_time = datetime.datetime.fromisoformat(end_time_str) if end_time_str else None
+            start_time = parse_iso_datetime(start_time_str)
+            end_time = parse_iso_datetime(end_time_str)
 
             messages, total = await self.ap.monitoring_service.get_messages(
                 bot_ids=bot_ids if bot_ids else None,
@@ -76,8 +91,8 @@ class MonitoringRouterGroup(group.RouterGroup):
             offset = int(quart.request.args.get('offset', 0))
 
             # Parse datetime
-            start_time = datetime.datetime.fromisoformat(start_time_str) if start_time_str else None
-            end_time = datetime.datetime.fromisoformat(end_time_str) if end_time_str else None
+            start_time = parse_iso_datetime(start_time_str)
+            end_time = parse_iso_datetime(end_time_str)
 
             llm_calls, total = await self.ap.monitoring_service.get_llm_calls(
                 bot_ids=bot_ids if bot_ids else None,
@@ -110,8 +125,8 @@ class MonitoringRouterGroup(group.RouterGroup):
             offset = int(quart.request.args.get('offset', 0))
 
             # Parse datetime
-            start_time = datetime.datetime.fromisoformat(start_time_str) if start_time_str else None
-            end_time = datetime.datetime.fromisoformat(end_time_str) if end_time_str else None
+            start_time = parse_iso_datetime(start_time_str)
+            end_time = parse_iso_datetime(end_time_str)
 
             # Parse is_active
             is_active = None
@@ -149,8 +164,8 @@ class MonitoringRouterGroup(group.RouterGroup):
             offset = int(quart.request.args.get('offset', 0))
 
             # Parse datetime
-            start_time = datetime.datetime.fromisoformat(start_time_str) if start_time_str else None
-            end_time = datetime.datetime.fromisoformat(end_time_str) if end_time_str else None
+            start_time = parse_iso_datetime(start_time_str)
+            end_time = parse_iso_datetime(end_time_str)
 
             errors, total = await self.ap.monitoring_service.get_errors(
                 bot_ids=bot_ids if bot_ids else None,
@@ -181,8 +196,8 @@ class MonitoringRouterGroup(group.RouterGroup):
             limit = int(quart.request.args.get('limit', 50))
 
             # Parse datetime
-            start_time = datetime.datetime.fromisoformat(start_time_str) if start_time_str else None
-            end_time = datetime.datetime.fromisoformat(end_time_str) if end_time_str else None
+            start_time = parse_iso_datetime(start_time_str)
+            end_time = parse_iso_datetime(end_time_str)
 
             # Get overview metrics
             overview = await self.ap.monitoring_service.get_overview_metrics(

@@ -815,7 +815,7 @@ const jaJP = {
       'ボットアクティビティ、LLM呼び出し、システムパフォーマンスを監視',
     overview: '概要',
     totalMessages: '総メッセージ数',
-    llmCallsLabel: 'LLM呼び出し',
+    llmCallsCount: 'LLM呼び出し',
     successRate: '成功率',
     activeSessions: 'アクティブセッション',
     last24Hours: '過去24時間',
