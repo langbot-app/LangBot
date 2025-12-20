@@ -36,7 +36,7 @@ class MonitoringService:
         message_id = str(uuid.uuid4())
         message_data = {
             'id': message_id,
-            'timestamp': datetime.datetime.now(),
+            'timestamp': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
             'bot_id': bot_id,
             'bot_name': bot_name,
             'pipeline_id': pipeline_id,
@@ -74,7 +74,7 @@ class MonitoringService:
         call_id = str(uuid.uuid4())
         call_data = {
             'id': call_id,
-            'timestamp': datetime.datetime.now(),
+            'timestamp': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
             'model_name': model_name,
             'input_tokens': input_tokens,
             'output_tokens': output_tokens,
@@ -114,8 +114,8 @@ class MonitoringService:
             'pipeline_id': pipeline_id,
             'pipeline_name': pipeline_name,
             'message_count': 0,
-            'start_time': datetime.datetime.now(),
-            'last_activity': datetime.datetime.now(),
+            'start_time': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
+            'last_activity': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
             'is_active': True,
             'platform': platform,
             'user_id': user_id,
@@ -131,7 +131,7 @@ class MonitoringService:
             sqlalchemy.update(persistence_monitoring.MonitoringSession)
             .where(persistence_monitoring.MonitoringSession.session_id == session_id)
             .values({
-                'last_activity': datetime.datetime.now(),
+                'last_activity': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
                 'message_count': persistence_monitoring.MonitoringSession.message_count + 1,
             })
         )
@@ -151,7 +151,7 @@ class MonitoringService:
         error_id = str(uuid.uuid4())
         error_data = {
             'id': error_id,
-            'timestamp': datetime.datetime.now(),
+            'timestamp': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
             'error_type': error_type,
             'error_message': error_message,
             'bot_id': bot_id,
@@ -286,12 +286,16 @@ class MonitoringService:
         query = query.limit(limit).offset(offset)
 
         result = await self.ap.persistence_mgr.execute_async(query)
-        messages = result.all()
+        messages_rows = result.all()
 
-        return (
-            [self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringMessage, msg) for msg in messages],
-            total,
-        )
+        serialized = []
+        for row in messages_rows:
+            # Extract model instance from Row (SQLAlchemy returns Row objects)
+            msg = row[0] if isinstance(row, tuple) else row
+            serialized_msg = self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringMessage, msg)
+            serialized.append(serialized_msg)
+
+        return (serialized, total)
 
     async def get_llm_calls(
         self,
@@ -332,10 +336,10 @@ class MonitoringService:
         query = query.limit(limit).offset(offset)
 
         result = await self.ap.persistence_mgr.execute_async(query)
-        llm_calls = result.all()
+        llm_calls_rows = result.all()
 
         return (
-            [self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringLLMCall, call) for call in llm_calls],
+            [self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringLLMCall, row[0] if isinstance(row, tuple) else row) for row in llm_calls_rows],
             total,
         )
 
@@ -381,10 +385,10 @@ class MonitoringService:
         query = query.limit(limit).offset(offset)
 
         result = await self.ap.persistence_mgr.execute_async(query)
-        sessions = result.all()
+        sessions_rows = result.all()
 
         return (
-            [self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringSession, session) for session in sessions],
+            [self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringSession, row[0] if isinstance(row, tuple) else row) for row in sessions_rows],
             total,
         )
 
@@ -427,9 +431,9 @@ class MonitoringService:
         query = query.limit(limit).offset(offset)
 
         result = await self.ap.persistence_mgr.execute_async(query)
-        errors = result.all()
+        errors_rows = result.all()
 
         return (
-            [self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringError, error) for error in errors],
+            [self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringError, row[0] if isinstance(row, tuple) else row) for row in errors_rows],
             total,
         )

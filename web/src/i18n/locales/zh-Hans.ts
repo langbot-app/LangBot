@@ -650,7 +650,7 @@ const zhHans = {
     description: '监控机器人活动、LLM调用和系统性能',
     overview: '概览',
     totalMessages: '总消息数',
-    llmCalls: 'LLM调用',
+    llmCallsCount: 'LLM调用',
     successRate: '成功率',
     activeSessions: '活跃会话',
     last24Hours: '最近24小时',
