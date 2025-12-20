@@ -139,14 +139,6 @@ Or visit the demo environment: https://demo.langbot.dev/
 | [ModelScope](https://modelscope.cn/docs/model-service/API-Inference/intro) | ✅ | LLM gateway(MaaS) |
 | [MCP](https://modelcontextprotocol.io/) | ✅ | Support tool access through MCP protocol |
 
-### Vector Database (Knowledge Base)
-
-| Database | Status | Remarks |
-| --- | --- | --- |
-| [Chroma](https://www.trychroma.com/) | ✅ | Default vector database, embedded deployment |
-| [Qdrant](https://qdrant.tech/) | ✅ | Support local and cloud deployment |
-| [SeekDB](https://github.com/oceanbase/seekdb) | ✅ | OceanBase AI-native search database, hybrid search support |
-
 ## 🤝 Community Contribution
 
 Thank you for the following [code contributors](https://github.com/langbot-app/LangBot/graphs/contributors) and other members in the community for their contributions to LangBot:
