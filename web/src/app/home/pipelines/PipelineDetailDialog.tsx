@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useRouter } from 'next/navigation';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import {
   Sidebar,
   SidebarContent,
@@ -45,6 +47,7 @@ export default function PipelineDialog({
   onCancel,
 }: PipelineDialogProps) {
   const { t } = useTranslation();
+  const router = useRouter();
   const [pipelineId, setPipelineId] = useState<string | undefined>(
     propPipelineId,
   );
@@ -190,23 +193,46 @@ export default function PipelineDialog({
             >
               <DialogTitle>{getDialogTitle()}</DialogTitle>
               {currentMode === 'debug' && (
-                <div className="flex items-center gap-2 ml-2">
-                  <div
-                    className={`w-2.5 h-2.5 rounded-full ${
-                      isWebSocketConnected ? 'bg-green-500' : 'bg-red-500'
-                    }`}
-                    title={
-                      isWebSocketConnected
+                <>
+                  <div className="flex items-center gap-2 ml-2">
+                    <div
+                      className={`w-2.5 h-2.5 rounded-full ${
+                        isWebSocketConnected ? 'bg-green-500' : 'bg-red-500'
+                      }`}
+                      title={
+                        isWebSocketConnected
+                          ? t('pipelines.debugDialog.connected')
+                          : t('pipelines.debugDialog.disconnected')
+                      }
+                    />
+                    <span className="text-sm text-gray-600 dark:text-gray-400">
+                      {isWebSocketConnected
                         ? t('pipelines.debugDialog.connected')
-                        : t('pipelines.debugDialog.disconnected')
-                    }
-                  />
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                    {isWebSocketConnected
-                      ? t('pipelines.debugDialog.connected')
-                      : t('pipelines.debugDialog.disconnected')}
-                  </span>
-                </div>
+                        : t('pipelines.debugDialog.disconnected')}
+                    </span>
+                  </div>
+                  <div className="ml-auto">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        router.push(`/home/monitoring?pipelineId=${pipelineId}`);
+                        onOpenChange(false);
+                      }}
+                      className="bg-white dark:bg-[#2a2a2e]"
+                    >
+                      <svg
+                        className="w-4 h-4 mr-2"
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
+                        <path d="M2 3.9934C2 3.44476 2.45531 3 2.9918 3H21.0082C21.556 3 22 3.44495 22 3.9934V20.0066C22 20.5552 21.5447 21 21.0082 21H2.9918C2.44405 21 2 20.5551 2 20.0066V3.9934ZM4 5V19H20V5H4ZM6 7H18V9H6V7ZM6 11H18V13H6V11ZM6 15H12V17H6V15Z"></path>
+                      </svg>
+                      {t('monitoring.viewMonitoring')}
+                    </Button>
+                  </div>
+                </>
               )}
             </DialogHeader>
             <div

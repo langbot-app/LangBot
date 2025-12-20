@@ -803,4 +803,77 @@ export class BackendClient extends BaseHttpClient {
     }
     return response.data.data;
   }
+
+  // ============ Monitoring API ============
+  public getMonitoringData(params: {
+    botId?: string[];
+    pipelineId?: string[];
+    startTime?: string;
+    endTime?: string;
+    limit?: number;
+  }): Promise<{
+    overview: {
+      total_messages: number;
+      llm_calls: number;
+      success_rate: number;
+      active_sessions: number;
+    };
+    messages: any[];
+    llmCalls: any[];
+    sessions: any[];
+    errors: any[];
+    totalCount: {
+      messages: number;
+      llmCalls: number;
+      sessions: number;
+      errors: number;
+    };
+  }> {
+    const queryParams = new URLSearchParams();
+    if (params.botId) {
+      params.botId.forEach((id) => queryParams.append('botId', id));
+    }
+    if (params.pipelineId) {
+      params.pipelineId.forEach((id) => queryParams.append('pipelineId', id));
+    }
+    if (params.startTime) {
+      queryParams.append('startTime', params.startTime);
+    }
+    if (params.endTime) {
+      queryParams.append('endTime', params.endTime);
+    }
+    if (params.limit) {
+      queryParams.append('limit', params.limit.toString());
+    }
+
+    return this.get(`/api/v1/monitoring/data?${queryParams.toString()}`);
+  }
+
+  public getMonitoringOverview(params: {
+    botId?: string[];
+    pipelineId?: string[];
+    startTime?: string;
+    endTime?: string;
+  }): Promise<{
+    total_messages: number;
+    llm_calls: number;
+    success_rate: number;
+    active_sessions: number;
+  }> {
+    const queryParams = new URLSearchParams();
+    if (params.botId) {
+      params.botId.forEach((id) => queryParams.append('botId', id));
+    }
+    if (params.pipelineId) {
+      params.pipelineId.forEach((id) => queryParams.append('pipelineId', id));
+    }
+    if (params.startTime) {
+      queryParams.append('startTime', params.startTime);
+    }
+    if (params.endTime) {
+      queryParams.append('endTime', params.endTime);
+    }
+
+    return this.get(`/api/v1/monitoring/overview?${queryParams.toString()}`);
+  }
 }

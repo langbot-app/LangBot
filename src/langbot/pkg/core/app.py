@@ -29,6 +29,7 @@ from ..api.http.service import mcp as mcp_service
 from ..api.http.service import apikey as apikey_service
 from ..api.http.service import webhook as webhook_service
 from ..api.http.service import external_kb as external_kb_service
+from ..api.http.service import monitoring as monitoring_service
 from ..discover import engine as discover_engine
 from ..storage import mgr as storagemgr
 from ..utils import logcache
@@ -142,6 +143,8 @@ class Application:
     webhook_service: webhook_service.WebhookService = None
 
     telemetry: telemetry_module.TelemetryManager = None
+
+    monitoring_service: monitoring_service.MonitoringService = None
 
     def __init__(self):
         pass

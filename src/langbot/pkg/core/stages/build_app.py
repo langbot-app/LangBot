@@ -26,6 +26,7 @@ from ...api.http.service import mcp as mcp_service
 from ...api.http.service import apikey as apikey_service
 from ...api.http.service import webhook as webhook_service
 from ...api.http.service import external_kb as external_kb_service
+from ...api.http.service import monitoring as monitoring_service
 from ...discover import engine as discover_engine
 from ...storage import mgr as storagemgr
 from ...utils import logcache
@@ -149,6 +150,9 @@ class BuildAppStage(stage.BootingStage):
         http_ctrl = http_controller.HTTPController(ap)
         await http_ctrl.initialize()
         ap.http_ctrl = http_ctrl
+
+        monitoring_service_inst = monitoring_service.MonitoringService(ap)
+        ap.monitoring_service = monitoring_service_inst
 
         async def runtime_disconnect_callback(connector: plugin_connector.PluginRuntimeConnector) -> None:
             await asyncio.sleep(3)
