@@ -430,8 +430,7 @@ export default function EmbeddingForm({
                           <SelectLabel>{t('models.builtin')}</SelectLabel>
                           {requesterNameList
                             .filter(
-                              (item) =>
-                                item.provider_category === 'builtin',
+                              (item) => item.provider_category === 'builtin',
                             )
                             .map((item) => (
                               <SelectItem key={item.value} value={item.value}>
@@ -505,9 +504,7 @@ export default function EmbeddingForm({
                 name="url"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>
-                      {t('models.requestURL')}
-                    </FormLabel>
+                    <FormLabel>{t('models.requestURL')}</FormLabel>
                     <FormControl>
                       <Input {...field} />
                     </FormControl>
@@ -517,7 +514,9 @@ export default function EmbeddingForm({
               />
             )}
 
-            {!['ollama-chat', 'seekdb-embedding'].includes(currentModelProvider) && (
+            {!['ollama-chat', 'seekdb-embedding'].includes(
+              currentModelProvider,
+            ) && (
               <FormField
                 control={form.control}
                 name="api_key"
