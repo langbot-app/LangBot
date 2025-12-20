@@ -811,7 +811,8 @@ const jaJP = {
   },
   monitoring: {
     title: 'モニタリング',
-    description: 'ボットアクティビティ、LLM呼び出し、システムパフォーマンスを監視',
+    description:
+      'ボットアクティビティ、LLM呼び出し、システムパフォーマンスを監視',
     overview: '概要',
     totalMessages: '総メッセージ数',
     llmCallsLabel: 'LLM呼び出し',
@@ -820,10 +821,13 @@ const jaJP = {
     last24Hours: '過去24時間',
     filters: {
       title: 'フィルター',
+      bot: 'ボット',
+      pipeline: 'パイプライン',
       allBots: 'すべてのボット',
       selectBot: 'ボットを選択',
       allPipelines: 'すべてのパイプライン',
       selectPipeline: 'パイプラインを選択',
+      loading: '読み込み中...',
       timeRange: '時間範囲',
       customRange: 'カスタム範囲',
       from: '開始',

@@ -811,10 +811,13 @@ const enUS = {
     last24Hours: 'Last 24 hours',
     filters: {
       title: 'Filters',
+      bot: 'Bot',
+      pipeline: 'Pipeline',
       allBots: 'All Bots',
       selectBot: 'Select Bot',
       allPipelines: 'All Pipelines',
       selectPipeline: 'Select Pipeline',
+      loading: 'Loading...',
       timeRange: 'Time Range',
       customRange: 'Custom Range',
       from: 'From',

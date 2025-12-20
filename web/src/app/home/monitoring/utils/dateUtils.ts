@@ -86,10 +86,7 @@ export function formatDuration(seconds: number): string {
 /**
  * Check if date is within range
  */
-export function isDateInRange(
-  date: Date,
-  range: DateRange | null,
-): boolean {
+export function isDateInRange(date: Date, range: DateRange | null): boolean {
   if (!range) return true;
   return date >= range.from && date <= range.to;
 }

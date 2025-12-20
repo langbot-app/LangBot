@@ -770,10 +770,13 @@ const zhHant = {
     last24Hours: '最近24小時',
     filters: {
       title: '篩選',
+      bot: '機器人',
+      pipeline: '流水線',
       allBots: '全部機器人',
       selectBot: '選擇機器人',
       allPipelines: '全部流水線',
       selectPipeline: '選擇流水線',
+      loading: '載入中...',
       timeRange: '時間範圍',
       customRange: '自訂範圍',
       from: '從',

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { FilterState, TimeRangeOption, DateRange } from '../types/monitoring';
 import { getPresetDateRange } from '../utils/dateUtils';
@@ -21,7 +21,9 @@ export function useMonitoringFilters() {
   });
 
   const [timeRange, setTimeRange] = useState<TimeRangeOption>('last24Hours');
-  const [customDateRange, setCustomDateRange] = useState<DateRange | null>(null);
+  const [customDateRange, setCustomDateRange] = useState<DateRange | null>(
+    null,
+  );
 
   // Get the active date range (either preset or custom)
   const getActiveDateRange = (): DateRange | null => {

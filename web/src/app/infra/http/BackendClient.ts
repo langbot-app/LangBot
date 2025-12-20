@@ -818,10 +818,60 @@ export class BackendClient extends BaseHttpClient {
       success_rate: number;
       active_sessions: number;
     };
-    messages: any[];
-    llmCalls: any[];
-    sessions: any[];
-    errors: any[];
+    messages: Array<{
+      id: string;
+      timestamp: string;
+      bot_id: string;
+      bot_name: string;
+      pipeline_id: string;
+      pipeline_name: string;
+      message_content: string;
+      session_id: string;
+      status: string;
+      level: string;
+      platform?: string;
+      user_id?: string;
+    }>;
+    llmCalls: Array<{
+      id: string;
+      timestamp: string;
+      model_name: string;
+      input_tokens: number;
+      output_tokens: number;
+      total_tokens: number;
+      duration: number;
+      cost?: number;
+      status: string;
+      bot_id: string;
+      bot_name: string;
+      pipeline_id: string;
+      pipeline_name: string;
+      error_message?: string;
+    }>;
+    sessions: Array<{
+      session_id: string;
+      bot_id: string;
+      bot_name: string;
+      pipeline_id: string;
+      pipeline_name: string;
+      message_count: number;
+      last_activity: string;
+      start_time: string;
+      platform?: string;
+      user_id?: string;
+    }>;
+    errors: Array<{
+      id: string;
+      timestamp: string;
+      error_type: string;
+      error_message: string;
+      bot_id: string;
+      bot_name: string;
+      pipeline_id: string;
+      pipeline_name: string;
+      session_id?: string;
+      stack_trace?: string;
+    }>;
     totalCount: {
       messages: number;
       llmCalls: number;

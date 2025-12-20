@@ -773,10 +773,13 @@ const zhHans = {
     last24Hours: '最近24小时',
     filters: {
       title: '筛选',
+      bot: '机器人',
+      pipeline: '流水线',
       allBots: '全部机器人',
       selectBot: '选择机器人',
       allPipelines: '全部流水线',
       selectPipeline: '选择流水线',
+      loading: '加载中...',
       timeRange: '时间范围',
       customRange: '自定义范围',
       from: '从',

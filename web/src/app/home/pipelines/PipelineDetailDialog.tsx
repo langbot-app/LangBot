@@ -216,7 +216,9 @@ export default function PipelineDialog({
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        router.push(`/home/monitoring?pipelineId=${pipelineId}`);
+                        router.push(
+                          `/home/monitoring?pipelineId=${pipelineId}`,
+                        );
                         onOpenChange(false);
                       }}
                       className="bg-white dark:bg-[#2a2a2e]"
