@@ -92,7 +92,7 @@ class ChatMessageHandler(handler.MessageHandler):
                             await query.adapter.create_message_card(str(resp_message_id), query.message_event)
                             is_create_card = True
                         query.resp_messages.append(result)
-                        
+
                         chunk_count += 1
                         # Only log every 10th chunk to reduce excessive logging during streaming
                         # This prevents memory overflow from thousands of log entries per conversation
@@ -110,7 +110,7 @@ class ChatMessageHandler(handler.MessageHandler):
                             text_length += len(result.content)
 
                         yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
-                    
+
                     # Log final summary after streaming completes
                     self.ap.logger.info(
                         f'Conversation({query.query_id}) Streaming completed: {chunk_count} chunks, {text_length} chars'
