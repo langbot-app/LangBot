@@ -31,4 +31,8 @@ class AtBotRule(rule_model.GroupRespondRule):
         remove_at(message_chain)
         remove_at(message_chain)  # 回复消息时会at两次，检查并删除重复的
 
+        should_respond_at = rule_dict.get('at', None)
+        if should_respond_at is not None:
+            return entities.RuleJudgeResult(matching=found and bool(should_respond_at), replacement=message_chain)
+
         return entities.RuleJudgeResult(matching=found, replacement=message_chain)
