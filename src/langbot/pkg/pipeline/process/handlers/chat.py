@@ -96,9 +96,14 @@ class ChatMessageHandler(handler.MessageHandler):
                         chunk_count += 1
                         # Only log every 10th chunk to reduce excessive logging during streaming
                         # This prevents memory overflow from thousands of log entries per conversation
-                        if chunk_count == 1 or chunk_count % 10 == 0:
+                        # First chunk uses INFO level to confirm connection establishment
+                        if chunk_count == 1:
+                            self.ap.logger.info(
+                                f'Conversation({query.query_id}) Streaming started: {self.cut_str(result.readable_str())}'
+                            )
+                        elif chunk_count % 10 == 0:
                             self.ap.logger.debug(
-                                f'Conversation({query.query_id}) Streaming Response (chunk {chunk_count}): {self.cut_str(result.readable_str())}'
+                                f'Conversation({query.query_id}) Streaming chunk {chunk_count}: {self.cut_str(result.readable_str())}'
                             )
 
                         if result.content is not None:
