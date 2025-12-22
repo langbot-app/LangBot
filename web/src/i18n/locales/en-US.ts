@@ -141,10 +141,11 @@ const enUS = {
     boolean: 'Boolean',
     selectModelProvider: 'Select Model Provider',
     modelProviderDescription:
-      'Please fill in the model name provided by the supplier',
+      'Please fill in the model name provided by the provider',
     modelManufacturer: 'Model Manufacturer',
     aggregationPlatform: 'Aggregation Platform',
     selfDeployed: 'Self-deployed',
+    builtin: 'Built-in',
     selectModel: 'Select Model',
     testSuccess: 'Test successful',
     testError: 'Test failed, please check your model configuration',

@@ -4,7 +4,7 @@ version = "4.6.4"
 description = "Easy-to-use global IM bot platform designed for LLM era"
 readme = "README.md"
 license-files = ["LICENSE"]
-requires-python = ">=3.10.1,<4.0"
+requires-python = ">=3.11,<4.0"
 dependencies = [
     "aiocqhttp>=1.4.4",
     "aiofiles>=24.1.0",
@@ -63,6 +63,7 @@ dependencies = [
     "langchain-text-splitters>=0.0.1",
     "chromadb>=0.4.24",
     "qdrant-client (>=1.15.1,<2.0.0)",
+    "pyseekdb>=0.1.0",
     "langbot-plugin==0.2.3",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",

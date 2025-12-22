@@ -142,6 +142,7 @@ const zhHant = {
     modelManufacturer: '模型廠商',
     aggregationPlatform: '中轉平台',
     selfDeployed: '自部署',
+    builtin: '內建',
     selectModel: '請選擇模型',
     testSuccess: '測試成功',
     testError: '測試失敗，請檢查模型設定',

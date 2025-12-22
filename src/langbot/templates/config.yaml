@@ -37,6 +37,17 @@ vdb:
         host: localhost
         port: 6333
         api_key: ''
+    seekdb:
+        mode: embedded  # 'embedded' or 'server'
+        # Embedded mode options:
+        path: './data/seekdb'
+        database: 'langbot'
+        # Server mode options (used when mode='server'):
+        host: 'localhost'
+        port: 2881
+        user: 'root'
+        password: ''
+        tenant: ''  # Optional, for OceanBase server
     milvus:
         uri: 'http://127.0.0.1:19530'
         token: ''

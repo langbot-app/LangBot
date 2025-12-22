@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: LLMAPIRequester
+metadata:
+  name: seekdb-embedding
+  label:
+    en_US: SeekDB Embedding
+    zh_Hans: SeekDB 嵌入
+  description:
+    en_US: SeekDB Python library built-in embedding model (all-MiniLM-L6-v2), it will take time to download the model file for the first time
+    zh_Hans: 使用来自 SeekDB Python 库的内置嵌入模型 (all-MiniLM-L6-v2)，首次使用时将会花费时间自动下载模型文件
+    ja_JP: SeekDB Python ライブラリの組み込み埋め込みモデル (all-MiniLM-L6-v2) を使用します。初回使用時にモデルファイルのダウンロードに時間がかかります。
+  icon: seekdb.svg
+spec:
+  config: []
+  support_type:
+  - text-embedding
+  provider_category: builtin
+execution:
+  python:
+    path: ./seekdbembed.py
+    attr: SeekDBEmbedding

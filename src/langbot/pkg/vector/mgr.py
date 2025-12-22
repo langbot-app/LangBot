@@ -4,6 +4,7 @@ from ..core import app
 from .vdb import VectorDatabase
 from .vdbs.chroma import ChromaVectorDatabase
 from .vdbs.qdrant import QdrantVectorDatabase
+from .vdbs.seekdb import SeekDBVectorDatabase
 from .vdbs.milvus import MilvusVectorDatabase
 from .vdbs.pgvector_db import PgVectorDatabase
 
@@ -27,6 +28,9 @@ class VectorDBManager:
             elif vdb_type == 'qdrant':
                 self.vector_db = QdrantVectorDatabase(self.ap)
                 self.ap.logger.info('Initialized Qdrant vector database backend.')
+            elif vdb_type == 'seekdb':
+                self.vector_db = SeekDBVectorDatabase(self.ap)
+                self.ap.logger.info('Initialized SeekDB vector database backend.')
 
             elif vdb_type == 'milvus':
                 # Get Milvus configuration

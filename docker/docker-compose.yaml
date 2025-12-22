@@ -7,7 +7,6 @@ services:
   langbot_plugin_runtime:
     image: rockchin/langbot:latest
     container_name: langbot_plugin_runtime
-    platform: linux/amd64 # For Apple Silicon compatibility
     volumes:
       - ./data/plugins:/app/data/plugins
     ports:
@@ -22,7 +21,6 @@ services:
   langbot:
     image: rockchin/langbot:latest
     container_name: langbot
-    platform: linux/amd64 # For Apple Silicon compatibility
     volumes:
       - ./data:/app/data
     restart: on-failure
