@@ -1,4 +1,5 @@
 import logging
+import logging.handlers
 import sys
 import time
 
@@ -43,9 +44,18 @@ async def init_logging(extra_handlers: list[logging.Handler] = None) -> logging.
     # stream_handler.setFormatter(color_formatter)
     stream_handler.stream = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
 
+    # Use RotatingFileHandler to prevent unbounded log file growth
+    # Max 10MB per file, keep 5 backup files (total ~50MB max)
+    rotating_file_handler = logging.handlers.RotatingFileHandler(
+        log_file_name,
+        encoding='utf-8',
+        maxBytes=10 * 1024 * 1024,  # 10MB
+        backupCount=5,
+    )
+
     log_handlers: list[logging.Handler] = [
         stream_handler,
-        logging.FileHandler(log_file_name, encoding='utf-8'),
+        rotating_file_handler,
     ]
     log_handlers += extra_handlers if extra_handlers is not None else []
 

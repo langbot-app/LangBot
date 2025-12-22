@@ -79,6 +79,7 @@ class ChatMessageHandler(handler.MessageHandler):
                     raise ValueError(f'Request Runner not found: {query.pipeline_config["ai"]["runner"]["runner"]}')
                 if is_stream:
                     resp_message_id = uuid.uuid4()
+                    chunk_count = 0  # Track streaming chunks to reduce excessive logging
 
                     async for result in runner.run(query):
                         result.resp_message_id = str(resp_message_id)
@@ -91,14 +92,24 @@ class ChatMessageHandler(handler.MessageHandler):
                             await query.adapter.create_message_card(str(resp_message_id), query.message_event)
                             is_create_card = True
                         query.resp_messages.append(result)
-                        self.ap.logger.info(
-                            f'Conversation({query.query_id}) Streaming Response: {self.cut_str(result.readable_str())}'
-                        )
+                        
+                        chunk_count += 1
+                        # Only log every 10th chunk to reduce excessive logging during streaming
+                        # This prevents memory overflow from thousands of log entries per conversation
+                        if chunk_count == 1 or chunk_count % 10 == 0:
+                            self.ap.logger.debug(
+                                f'Conversation({query.query_id}) Streaming Response (chunk {chunk_count}): {self.cut_str(result.readable_str())}'
+                            )
 
                         if result.content is not None:
                             text_length += len(result.content)
 
                         yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
+                    
+                    # Log final summary after streaming completes
+                    self.ap.logger.info(
+                        f'Conversation({query.query_id}) Streaming completed: {chunk_count} chunks, {text_length} chars'
+                    )
 
                 else:
                     async for result in runner.run(query):

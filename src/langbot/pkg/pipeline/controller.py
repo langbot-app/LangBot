@@ -33,11 +33,14 @@ class Controller:
 
                     for query in queries:
                         session = await self.ap.sess_mgr.get_session(query)
-                        self.ap.logger.debug(f'Checking query {query} session {session}')
+                        # Debug logging removed from tight loop to prevent excessive log generation
+                        # that can cause memory overflow in high-traffic scenarios
 
                         if not session._semaphore.locked():
                             selected_query = query
                             await session._semaphore.acquire()
+                            # Only log when actually selecting a query
+                            self.ap.logger.debug(f'Selected query {query.query_id} for processing')
 
                             break
 
