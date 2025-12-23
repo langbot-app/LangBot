@@ -24,11 +24,7 @@ class VectorDBManager:
         elif vdb_type == 'qdrant':
             return QdrantVectorDatabase(self.ap)
         elif vdb_type == 'seekdb':
-            # Extract fulltext configuration if present
-            # We look for a 'fulltext' section in the database config or top-level vdb config
-            # But here `config` is the specific instance config.
-            fulltext_config = config.get('fulltext', {})
-            return SeekDBVectorDatabase(self.ap, config_override=config, fulltext_config=fulltext_config)
+            return SeekDBVectorDatabase(self.ap, config_override=config)
         elif vdb_type == 'milvus':
             milvus_config = config.get('milvus', {})
             uri = milvus_config.get('uri', './data/milvus.db')

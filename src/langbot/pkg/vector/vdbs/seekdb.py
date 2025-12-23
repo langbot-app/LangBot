@@ -28,13 +28,12 @@ class SeekDBVectorDatabase(VectorDatabase):
     handled if the SDK exposes tokenization control on the client side or during index creation.
     """
 
-    def __init__(self, ap: app.Application, config_override: dict = None, fulltext_config: dict = None):
+    def __init__(self, ap: app.Application, config_override: dict = None):
         """SeekDB Vector Database Adapter.
-        
+
         Args:
             ap: Application instance
             config_override: Optional configuration dictionary
-            fulltext_config: Optional configuration for fulltext indexing (parser, language)
         """
         if not SEEKDB_AVAILABLE:
             raise ImportError('pyseekdb is not installed. Install it with: pip install pyseekdb')
@@ -46,7 +45,6 @@ class SeekDBVectorDatabase(VectorDatabase):
         else:
             config = self.ap.instance_config.data['vdb']['seekdb']
 
-        self.fulltext_config = fulltext_config or {}
         
         # Determine connection mode based on config
         mode = config.get('mode', 'embedded')  # 'embedded' or 'server'
@@ -63,18 +61,14 @@ class SeekDBVectorDatabase(VectorDatabase):
                 self.ap.logger.debug(f"Creating AdminClient for path: {path}")
                 admin_client = pyseekdb.AdminClient(path=path)
 
-                self.ap.logger.debug("Listing existing databases...")
                 # Check if database exists using public API
                 existing_dbs = [db.name for db in admin_client.list_databases()]
-                self.ap.logger.debug(f"Found databases: {existing_dbs}")
 
                 if database not in existing_dbs:
                     self.ap.logger.info(f"Database '{database}' not found, creating...")
                     # Use public API to create database
                     admin_client.create_database(database)
                     self.ap.logger.info(f"Created SeekDB database '{database}'")
-                else:
-                    self.ap.logger.debug(f"Database '{database}' already exists")
             except Exception as e:
                 self.ap.logger.error(f"Failed to initialize SeekDB AdminClient or list databases: {e}")
                 self.ap.logger.warning(
@@ -83,7 +77,6 @@ class SeekDBVectorDatabase(VectorDatabase):
                 raise
 
             try:
-                self.ap.logger.debug(f"Connecting to database '{database}'...")
                 self.client = pyseekdb.Client(path=path, database=database)
                 self.ap.logger.info(f"Successfully initialized SeekDB in embedded mode at '{path}', database '{database}'")
             except Exception as e:
@@ -136,21 +129,35 @@ class SeekDBVectorDatabase(VectorDatabase):
         # For documents, we keep the text as-is since pyseekdb should handle fulltext indexing
         # If there are SQL injection issues, the SDK should handle them
 
-    def _sanitize_collection_name(self, collection: str) -> str:
-        """Sanitize collection name to avoid SQL syntax errors.
 
-        pyseekdb SDK has issues with hyphens in collection names when generating SQL.
-        We convert hyphens to underscores to work around this limitation.
+    async def _get_collection_if_exists(self, collection: str) -> Any:
+        """Get collection object if it exists, None otherwise.
+
+        This method handles caching and retrieval logic for existing collections.
 
         Args:
-            collection: Original collection name (e.g., UUID with hyphens)
+            collection: Collection name
 
         Returns:
-            Sanitized collection name safe for SQL (e.g., UUID with underscores)
+            Collection object if exists, None otherwise
         """
-        # Replace hyphens with underscores to avoid SQL syntax errors
-        # e.g., "6b648b14-b34a-4393-8fed-230af9d1fe52" -> "6b648b14_b34a_4393_8fed_230af9d1fe52"
-        return collection.replace('-', '_')
+        # Check cache first
+        if collection in self._collections:
+            return self._collections[collection]
+
+        # Check if collection exists in database
+        try:
+            exists = await asyncio.to_thread(self.client.has_collection, collection)
+            if not exists:
+                return None
+
+            # Collection exists, get it
+            coll = await asyncio.to_thread(self.client.get_collection, collection, embedding_function=None)
+            self._collections[collection] = coll
+            return coll
+        except Exception as e:
+            self.ap.logger.error(f"Failed to get collection '{collection}': {e}")
+            return None
 
     def get_capabilities(self) -> set[str]:
         """
@@ -171,68 +178,42 @@ class SeekDBVectorDatabase(VectorDatabase):
 
     async def _get_or_create_collection_internal(self, collection: str, vector_size: int = None) -> Any:
         """Internal method to get or create a collection with proper configuration."""
-        # Sanitize collection name to avoid SQL syntax errors
-        safe_collection = self._sanitize_collection_name(collection)
+        if collection in self._collections:
+            self.ap.logger.debug(f"SeekDB collection '{collection}' found in cache")
+            return self._collections[collection]
 
-        if safe_collection in self._collections:
-            self.ap.logger.debug(f"SeekDB collection '{safe_collection}' found in cache")
-            return self._collections[safe_collection]
-
-        # Check if collection exists
-        self.ap.logger.info(f"Checking if SeekDB collection '{safe_collection}' exists...")
-        try:
-            exists = await asyncio.to_thread(self.client.has_collection, safe_collection)
-            if exists:
-                # Collection exists, get it
-                self.ap.logger.info(f"SeekDB collection '{safe_collection}' exists, retrieving...")
-                coll = await asyncio.to_thread(self.client.get_collection, safe_collection, embedding_function=None)
-                self._collections[safe_collection] = coll
-                self.ap.logger.info(f"SeekDB collection '{safe_collection}' retrieved successfully.")
-                return coll
-        except Exception as e:
-            self.ap.logger.error(f"Failed to check/retrieve collection '{safe_collection}': {e}")
-            raise
-
-        # Collection doesn't exist, create it
+        # Use default dimension if not specified
         if vector_size is None:
-            # Default dimension if not specified
             vector_size = 384
 
-        self.ap.logger.info(f"SeekDB collection '{safe_collection}' does not exist, creating with dimension={vector_size}...")
+        self.ap.logger.info(f"Getting or creating SeekDB collection '{collection}' with dimension={vector_size}...")
 
         # Create HNSW configuration
         config = HNSWConfiguration(dimension=vector_size, distance='cosine')
-        self._collection_configs[safe_collection] = config
+        self._collection_configs[collection] = config
 
-        # Prepare kwargs for create_collection
+        # Prepare kwargs for get_or_create_collection
         create_kwargs = {
-            'name': safe_collection,
             'configuration': config,
             'embedding_function': None,  # Disable automatic embedding
         }
 
-        # Inject fulltext-related creation params if configured
-        # E.g. user wants to specify tokenizer/parser for fulltext index at creation time
-        # pyseekdb likely supports `create_collection_params` or similar in next versions or via specific kwargs
-        # Assuming we can pass extra params or check `self.fulltext_config` for relevant keys
-        # For now, we assume simple creation. If `fulltext_config` has `create_options`, we spread them.
-        if self.fulltext_config and 'create_options' in self.fulltext_config:
-             create_kwargs.update(self.fulltext_config['create_options'])
-
-        # Create collection without embedding function (we manage embeddings externally)
         try:
             import time
             start_time = time.time()
-            self.ap.logger.info(f"Starting collection creation for '{safe_collection}'...")
-            coll = await asyncio.to_thread(self.client.create_collection, **create_kwargs)
+            self.ap.logger.info(f"Starting collection get/create for '{collection}'...")
+
+            # Use SeekDB's built-in get_or_create_collection method
+            coll = await asyncio.to_thread(self.client.get_or_create_collection, collection, **create_kwargs)
+
             elapsed = time.time() - start_time
-            self.ap.logger.info(f"Collection '{safe_collection}' created successfully in {elapsed:.2f}s")
+            self.ap.logger.info(f"Collection '{collection}' ready in {elapsed:.2f}s")
         except Exception as e:
-            self.ap.logger.error(f"Failed to create collection '{safe_collection}' (dimension={vector_size}): {e}")
+            self.ap.logger.error(f"Failed to get/create collection '{collection}' (dimension={vector_size}): {e}")
             raise
 
-        self._collections[safe_collection] = coll
-        self.ap.logger.info(f"SeekDB collection '{safe_collection}' created with dimension={vector_size}, distance='cosine'")
+        self._collections[collection] = coll
+        self.ap.logger.info(f"SeekDB collection '{collection}' ready with dimension={vector_size}, distance='cosine'")
         return coll
 
     def _clean_metadata(self, meta: Dict[str, Any]) -> Dict[str, Any]:
@@ -302,7 +283,7 @@ class SeekDBVectorDatabase(VectorDatabase):
             ids: List of document IDs
             embeddings_list: List of embedding vectors
             metadatas: List of metadata dictionaries
-            documents: List of document texts (required for fulltext search)
+            documents: List of document texts (optional, for fulltext search)
         """
         if not embeddings_list:
             self.ap.logger.warning(f"add_embeddings called with empty embeddings_list for collection '{collection}'")
@@ -319,116 +300,93 @@ class SeekDBVectorDatabase(VectorDatabase):
 
         coll = await self._get_or_create_collection_internal(collection, vector_size)
 
-        # Clean metadata and documents to avoid SQL syntax errors
+        # Prepare data: clean metadata and documents if provided
         cleaned_metadatas = [self._clean_metadata(meta) for meta in metadatas]
 
-        # Debug: Log first metadata to see what we're working with
+        # Debug: Log sample data
         if cleaned_metadatas:
             self.ap.logger.debug(f"Sample cleaned metadata (first item): {cleaned_metadatas[0]}")
 
-        cleaned_documents = None
+        # Build add parameters - SeekDB supports optional documents parameter
+        add_kwargs = {
+            'ids': ids,
+            'embeddings': embeddings_list,
+            'metadatas': cleaned_metadatas
+        }
+
         if documents:
             cleaned_documents = [self._clean_document(doc) for doc in documents]
+            add_kwargs['documents'] = cleaned_documents
             self.ap.logger.debug(f"Cleaned {len(documents)} document texts for SQL compatibility")
+
             # Debug: Log first document snippet
             if cleaned_documents:
                 sample_doc = cleaned_documents[0][:100] if len(cleaned_documents[0]) > 100 else cleaned_documents[0]
                 self.ap.logger.debug(f"Sample cleaned document (first 100 chars): {repr(sample_doc)}")
 
-        # Batch insert to avoid timeout on large datasets
-        # SeekDB embedded mode can timeout with large batches
-        batch_size = 20
-        successful_inserts = 0
+        # Insert embeddings - SeekDB handles batching internally
+        # If documents are provided, they're automatically indexed for fulltext search
+        try:
+            import time
+            start_time = time.time()
+            self.ap.logger.info(f"Inserting {total_items} embeddings...")
 
-        if total_items <= batch_size:
-            # Small batch, insert directly
-            add_kwargs = {
-                'ids': ids,
-                'embeddings': embeddings_list,
-                'metadatas': cleaned_metadatas
-            }
-            if cleaned_documents:
-                add_kwargs['documents'] = cleaned_documents
-
-            try:
-                import time
-                start_time = time.time()
-                self.ap.logger.info(f"Inserting {total_items} embeddings in single batch...")
-                await asyncio.to_thread(coll.add, **add_kwargs)
-                elapsed = time.time() - start_time
-                successful_inserts = len(ids)
-                self.ap.logger.info(
-                    f"Successfully added {successful_inserts} embeddings to SeekDB collection '{collection}' in {elapsed:.2f}s"
-                )
-            except Exception as e:
-                self.ap.logger.error(
-                    f"Failed to insert batch of {total_items} embeddings to collection '{collection}': {e}"
-                )
-                raise
-        else:
-            # Large batch, split into chunks
-            num_batches = (total_items + batch_size - 1) // batch_size
-            self.ap.logger.info(f"Inserting {total_items} embeddings in {num_batches} batches of {batch_size}...")
-
-            for i in range(0, total_items, batch_size):
-                end_idx = min(i + batch_size, total_items)
-                batch_num = i // batch_size + 1
-                batch_ids = ids[i:end_idx]
-                batch_embeddings = embeddings_list[i:end_idx]
-                batch_metadatas = cleaned_metadatas[i:end_idx]
-                batch_count = len(batch_ids)
-
-                add_kwargs = {
-                    'ids': batch_ids,
-                    'embeddings': batch_embeddings,
-                    'metadatas': batch_metadatas
-                }
-                if cleaned_documents:
-                    batch_documents = cleaned_documents[i:end_idx]
-                    add_kwargs['documents'] = batch_documents
-
-                try:
-                    import time
-                    start_time = time.time()
-                    self.ap.logger.info(
-                        f"Batch {batch_num}/{num_batches}: Inserting {batch_count} embeddings (items {i+1}-{end_idx}/{total_items})..."
-                    )
-                    await asyncio.to_thread(coll.add, **add_kwargs)
-                    elapsed = time.time() - start_time
-                    successful_inserts += batch_count
-                    self.ap.logger.info(
-                        f"Batch {batch_num}/{num_batches}: Successfully inserted {batch_count} embeddings in {elapsed:.2f}s "
-                        f"(total: {successful_inserts}/{total_items})"
-                    )
-                except Exception as e:
-                    self.ap.logger.error(
-                        f"Batch {batch_num}/{num_batches} FAILED: Could not insert {batch_count} embeddings "
-                        f"(items {i+1}-{end_idx}). Successfully inserted {successful_inserts}/{total_items} before failure. Error: {e}"
-                    )
-                    # Rollback: delete all successfully inserted items from this batch operation
-                    if successful_inserts > 0:
-                        self.ap.logger.warning(
-                            f"Attempting to rollback {successful_inserts} successfully inserted embeddings to maintain consistency..."
-                        )
-                        try:
-                            # Delete by IDs that were successfully inserted
-                            rollback_ids = ids[:successful_inserts]
-                            await asyncio.to_thread(coll.delete, ids=rollback_ids)
-                            self.ap.logger.info(f"Rollback successful: removed {successful_inserts} embeddings")
-                        except Exception as rollback_error:
-                            self.ap.logger.error(
-                                f"Rollback FAILED: Could not remove {successful_inserts} embeddings. "
-                                f"Database may be in inconsistent state. Error: {rollback_error}"
-                            )
-                            self.ap.logger.warning(
-                                f"Consider deleting the SeekDB data directory to fix: {self.ap.instance_config.data.get('vdb', {}).get('seekdb', {}).get('path', './data/seekdb')}"
-                            )
-                    raise
+            await asyncio.to_thread(coll.add, **add_kwargs)
+            elapsed = time.time() - start_time
 
             self.ap.logger.info(
-                f"Completed batch insertion: {successful_inserts}/{total_items} embeddings successfully added "
-                f"to SeekDB collection '{collection}' in {num_batches} batches"
+                f"Successfully added {total_items} embeddings to SeekDB collection '{collection}' in {elapsed:.2f}s"
             )
+        except Exception as e:
+            # If large batch fails, try smaller batches as fallback
+            if total_items > 20:
+                self.ap.logger.warning(f"Large batch insertion failed, falling back to smaller batches: {e}")
+                await self._batch_add_embeddings_fallback(coll, collection, add_kwargs, total_items)
+            else:
+                self.ap.logger.error(f"Failed to insert embeddings to collection '{collection}': {e}")
+                raise
+
+    async def _batch_add_embeddings_fallback(self, coll, collection_name: str, add_kwargs: dict, total_items: int) -> None:
+        """Fallback batch insertion when large batch fails."""
+        batch_size = 20
+        ids = add_kwargs['ids']
+        embeddings = add_kwargs['embeddings']
+        metadatas = add_kwargs['metadatas']
+        documents = add_kwargs.get('documents')
+
+        successful_inserts = 0
+        num_batches = (total_items + batch_size - 1) // batch_size
+
+        self.ap.logger.info(f"Fallback: Inserting {total_items} embeddings in {num_batches} smaller batches...")
+
+        for i in range(0, total_items, batch_size):
+            end_idx = min(i + batch_size, total_items)
+            batch_num = i // batch_size + 1
+
+            # Prepare batch data
+            batch_kwargs = {
+                'ids': ids[i:end_idx],
+                'embeddings': embeddings[i:end_idx],
+                'metadatas': metadatas[i:end_idx]
+            }
+            if documents:
+                batch_kwargs['documents'] = documents[i:end_idx]
+
+            batch_count = len(batch_kwargs['ids'])
+
+            try:
+                await asyncio.to_thread(coll.add, **batch_kwargs)
+                successful_inserts += batch_count
+                self.ap.logger.debug(f"Batch {batch_num}/{num_batches}: {batch_count} embeddings inserted")
+            except Exception as e:
+                self.ap.logger.error(f"Batch {batch_num} failed: {e}")
+                # Continue with other batches - partial success is acceptable
+                break
+
+        if successful_inserts > 0:
+            self.ap.logger.info(f"Fallback insertion completed: {successful_inserts}/{total_items} embeddings added")
+        else:
+            raise Exception("All fallback batches failed")
 
     async def search(self, collection: str, query_embedding: List[float], k: int = 5) -> Dict[str, Any]:
         """Search for the most similar vectors in the specified collection.
@@ -441,26 +399,16 @@ class SeekDBVectorDatabase(VectorDatabase):
         Returns:
             Dictionary with 'ids', 'metadatas', 'distances' keys
         """
-        # Sanitize collection name
-        safe_collection = self._sanitize_collection_name(collection)
-
-        # Check if collection exists
-        exists = await asyncio.to_thread(self.client.has_collection, safe_collection)
-        if not exists:
+        # Get collection if it exists
+        coll = await self._get_collection_if_exists(collection)
+        if coll is None:
             return {'ids': [[]], 'metadatas': [[]], 'distances': [[]]}
-
-        # Get collection
-        if safe_collection not in self._collections:
-            coll = await asyncio.to_thread(self.client.get_collection, safe_collection, embedding_function=None)
-            self._collections[safe_collection] = coll
-        else:
-            coll = self._collections[safe_collection]
 
         # Perform query
         # SeekDB's query() returns: {'ids': [[...]], 'metadatas': [[...]], 'distances': [[...]]}
         results = await asyncio.to_thread(coll.query, query_embeddings=query_embedding, n_results=k)
 
-        self.ap.logger.info(f"SeekDB search in '{safe_collection}' returned {len(results.get('ids', [[]])[0])} results")
+        self.ap.logger.info(f"SeekDB search in '{collection}' returned {len(results.get('ids', [[]])[0])} results")
 
         return results
 
@@ -471,20 +419,10 @@ class SeekDBVectorDatabase(VectorDatabase):
         Uses hybrid_search with only the 'query' parameter (no 'knn') to perform pure fulltext search.
         This leverages SeekDB's native fulltext indexing for better relevance ranking.
         """
-        # Sanitize collection name
-        safe_collection = self._sanitize_collection_name(collection)
-
-        # Check if collection exists
-        exists = await asyncio.to_thread(self.client.has_collection, safe_collection)
-        if not exists:
+        # Get collection if it exists
+        coll = await self._get_collection_if_exists(collection)
+        if coll is None:
             return {'ids': [[]], 'metadatas': [[]], 'distances': [[]]}
-
-        # Get collection
-        if safe_collection not in self._collections:
-            coll = await asyncio.to_thread(self.client.get_collection, safe_collection, embedding_function=None)
-            self._collections[safe_collection] = coll
-        else:
-            coll = self._collections[safe_collection]
 
         # Use hybrid_search with only query parameter (no knn) for pure fulltext search
         # This provides relevance-ranked results based on fulltext matching
@@ -508,7 +446,7 @@ class SeekDBVectorDatabase(VectorDatabase):
             # Provide dummy distances (0.0 for fulltext results)
             dists = [[0.0] * len(ids[0])] if ids and ids[0] else [[]]
 
-            self.ap.logger.info(f"SeekDB fulltext search in '{safe_collection}' returned {len(ids[0]) if ids else 0} results")
+            self.ap.logger.info(f"SeekDB fulltext search in '{collection}' returned {len(ids[0]) if ids else 0} results")
 
             return {
                 'ids': ids,
@@ -543,19 +481,10 @@ class SeekDBVectorDatabase(VectorDatabase):
         self, collection: str, query_embedding: List[float], query: str, k: int = 5, **kwargs
     ) -> Dict[str, Any]:
         """Search using native hybrid search via SDK."""
-        # Sanitize collection name
-        safe_collection = self._sanitize_collection_name(collection)
-
-        exists = await asyncio.to_thread(self.client.has_collection, safe_collection)
-        if not exists:
+        # Get collection if it exists
+        coll = await self._get_collection_if_exists(collection)
+        if coll is None:
              return {'ids': [[]], 'metadatas': [[]], 'distances': [[]]}
-
-        # Get collection
-        if safe_collection not in self._collections:
-            coll = await asyncio.to_thread(self.client.get_collection, safe_collection, embedding_function=None)
-            self._collections[safe_collection] = coll
-        else:
-            coll = self._collections[safe_collection]
             
         # Ref: hybrid_search(query={}, knn={}, rank={}, n_results=...)
         # query: {where_document: {$contains: ...}}
@@ -590,7 +519,7 @@ class SeekDBVectorDatabase(VectorDatabase):
 
         results = await asyncio.to_thread(coll.hybrid_search, **hybrid_args)
 
-        self.ap.logger.info(f"SeekDB hybrid search in '{safe_collection}' returned {len(results.get('ids', [[]])[0])} results")
+        self.ap.logger.info(f"SeekDB hybrid search in '{collection}' returned {len(results.get('ids', [[]])[0])} results")
         return results
 
     async def delete_by_file_id(self, collection: str, file_id: str) -> None:
@@ -600,27 +529,17 @@ class SeekDBVectorDatabase(VectorDatabase):
             collection: Collection name
             file_id: File ID to delete
         """
-        # Sanitize collection name
-        safe_collection = self._sanitize_collection_name(collection)
-
-        # Check if collection exists
-        exists = await asyncio.to_thread(self.client.has_collection, safe_collection)
-        if not exists:
-            self.ap.logger.warning(f"SeekDB collection '{safe_collection}' not found for deletion")
+        # Get collection if it exists
+        coll = await self._get_collection_if_exists(collection)
+        if coll is None:
+            self.ap.logger.warning(f"SeekDB collection '{collection}' not found for deletion")
             return
-
-        # Get collection
-        if safe_collection not in self._collections:
-            coll = await asyncio.to_thread(self.client.get_collection, safe_collection, embedding_function=None)
-            self._collections[safe_collection] = coll
-        else:
-            coll = self._collections[safe_collection]
 
         # SeekDB's delete() expects a where clause for filtering
         # Delete all records where metadata['file_id'] == file_id
         await asyncio.to_thread(coll.delete, where={'file_id': file_id})
 
-        self.ap.logger.info(f"Deleted embeddings from SeekDB collection '{safe_collection}' with file_id: {file_id}")
+        self.ap.logger.info(f"Deleted embeddings from SeekDB collection '{collection}' with file_id: {file_id}")
 
     async def delete_collection(self, collection: str):
         """Delete the entire collection.
@@ -628,21 +547,22 @@ class SeekDBVectorDatabase(VectorDatabase):
         Args:
             collection: Collection name
         """
-        # Sanitize collection name
-        safe_collection = self._sanitize_collection_name(collection)
-
         # Remove from cache
-        if safe_collection in self._collections:
-            del self._collections[safe_collection]
-        if safe_collection in self._collection_configs:
-            del self._collection_configs[safe_collection]
+        if collection in self._collections:
+            del self._collections[collection]
+        if collection in self._collection_configs:
+            del self._collection_configs[collection]
 
-        # Check if collection exists
-        exists = await asyncio.to_thread(self.client.has_collection, safe_collection)
-        if not exists:
-            self.ap.logger.warning(f"SeekDB collection '{safe_collection}' not found for deletion")
-            return
+        # Check if collection exists and delete it
+        try:
+            exists = await asyncio.to_thread(self.client.has_collection, collection)
+            if not exists:
+                self.ap.logger.warning(f"SeekDB collection '{collection}' not found for deletion")
+                return
 
-        # Delete collection
-        await asyncio.to_thread(self.client.delete_collection, safe_collection)
-        self.ap.logger.info(f"SeekDB collection '{safe_collection}' deleted")
+            # Delete collection
+            await asyncio.to_thread(self.client.delete_collection, collection)
+            self.ap.logger.info(f"SeekDB collection '{collection}' deleted")
+        except Exception as e:
+            self.ap.logger.error(f"Failed to delete SeekDB collection '{collection}': {e}")
+            raise
