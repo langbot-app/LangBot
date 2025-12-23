@@ -92,14 +92,13 @@ class BuildAppStage(stage.BootingStage):
         await pipeline_mgr.initialize()
         ap.pipeline_mgr = pipeline_mgr
 
-        rag_mgr_inst = rag_mgr.RAGManager(ap)
-        await rag_mgr_inst.initialize()
-        ap.rag_mgr = rag_mgr_inst
-
-        # 初始化向量数据库管理器
         vectordb_mgr_inst = vectordb_mgr.VectorDBManager(ap)
         await vectordb_mgr_inst.initialize()
         ap.vector_db_mgr = vectordb_mgr_inst
+
+        rag_mgr_inst = rag_mgr.RAGManager(ap)
+        await rag_mgr_inst.initialize()
+        ap.rag_mgr = rag_mgr_inst
 
         http_ctrl = http_controller.HTTPController(ap)
         await http_ctrl.initialize()
