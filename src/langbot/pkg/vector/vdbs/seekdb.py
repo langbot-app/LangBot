@@ -319,10 +319,7 @@ class SeekDBVectorDatabase(VectorDatabase):
             add_kwargs['documents'] = cleaned_documents
             self.ap.logger.debug(f"Cleaned {len(documents)} document texts for SQL compatibility")
 
-            # Debug: Log first document snippet
-            if cleaned_documents:
-                sample_doc = cleaned_documents[0][:100] if len(cleaned_documents[0]) > 100 else cleaned_documents[0]
-                self.ap.logger.debug(f"Sample cleaned document (first 100 chars): {repr(sample_doc)}")
+           
 
         # Insert embeddings - SeekDB handles batching internally
         # If documents are provided, they're automatically indexed for fulltext search
@@ -416,47 +413,16 @@ class SeekDBVectorDatabase(VectorDatabase):
         """
         Search for documents matching the keyword query using SeekDB's fulltext capabilities.
 
-        Uses hybrid_search with only the 'query' parameter (no 'knn') to perform pure fulltext search.
-        This leverages SeekDB's native fulltext indexing for better relevance ranking.
+        Uses collection.get() with where_document filter to perform pure fulltext search.
+        This leverages SeekDB's native fulltext indexing for keyword matching.
         """
         # Get collection if it exists
         coll = await self._get_collection_if_exists(collection)
         if coll is None:
             return {'ids': [[]], 'metadatas': [[]], 'distances': [[]]}
 
-        # Use hybrid_search with only query parameter (no knn) for pure fulltext search
-        # This provides relevance-ranked results based on fulltext matching
+        # Use collection.get() with where_document filter for fulltext search
         try:
-            results = await asyncio.to_thread(
-                coll.hybrid_search,
-                query={
-                    "where_document": {"$contains": query},
-                    "n_results": k
-                },
-                # No 'knn' parameter - pure fulltext search
-                n_results=k,
-                include=["documents", "metadatas"]
-            )
-
-            # hybrid_search returns format: {'ids': [[id1, id2]], 'metadatas': [[meta1, meta2]], ...}
-            # Add dummy distances for compatibility
-            ids = results.get('ids', [[]])
-            metas = results.get('metadatas', [[]])
-
-            # Provide dummy distances (0.0 for fulltext results)
-            dists = [[0.0] * len(ids[0])] if ids and ids[0] else [[]]
-
-            self.ap.logger.info(f"SeekDB fulltext search in '{collection}' returned {len(ids[0]) if ids else 0} results")
-
-            return {
-                'ids': ids,
-                'metadatas': metas,
-                'distances': dists,
-                'documents': results.get('documents', [[]])
-            }
-        except Exception as e:
-            # Fallback to .get() if hybrid_search is not available or fails
-            self.ap.logger.warning(f"SeekDB hybrid_search failed, falling back to .get(): {e}")
             results = await asyncio.to_thread(
                 coll.get,
                 where_document={"$contains": query},
@@ -464,11 +430,14 @@ class SeekDBVectorDatabase(VectorDatabase):
                 include=["documents", "metadatas"]
             )
 
-            # .get returns flat lists, wrap them for consistency
+            # .get() returns flat lists, wrap them for consistency with other search methods
             ids = [results.get('ids', [])]
             metas = [results.get('metadatas', [])]
             docs = [results.get('documents', [])]
+            # Provide dummy distances (0.0 for fulltext results)
             dists = [[0.0] * len(ids[0])]
+
+            self.ap.logger.info(f"SeekDB fulltext search in '{collection}' returned {len(ids[0])} results")
 
             return {
                 'ids': ids,
@@ -476,6 +445,9 @@ class SeekDBVectorDatabase(VectorDatabase):
                 'distances': dists,
                 'documents': docs
             }
+        except Exception as e:
+            self.ap.logger.error(f"SeekDB fulltext search failed: {e}")
+            return {'ids': [[]], 'metadatas': [[]], 'distances': [[]]}
 
     async def search_hybrid(
         self, collection: str, query_embedding: List[float], query: str, k: int = 5, **kwargs
