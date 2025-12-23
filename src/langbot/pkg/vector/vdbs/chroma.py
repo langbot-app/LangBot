@@ -28,9 +28,22 @@ class ChromaVectorDatabase(VectorDatabase):
         ids: list[str],
         embeddings_list: list[list[float]],
         metadatas: list[dict[str, Any]],
+        documents: list[str] = None,
     ) -> None:
+        """Add embeddings to Chroma collection.
+
+        Args:
+            documents: Optional document texts (Chroma can store these for reference)
+        """
         col = await self.get_or_create_collection(collection)
-        await asyncio.to_thread(col.add, embeddings=embeddings_list, ids=ids, metadatas=metadatas)
+        add_kwargs = {
+            'embeddings': embeddings_list,
+            'ids': ids,
+            'metadatas': metadatas
+        }
+        if documents:
+            add_kwargs['documents'] = documents
+        await asyncio.to_thread(col.add, **add_kwargs)
         self.ap.logger.info(f"Added {len(ids)} embeddings to Chroma collection '{collection}'.")
 
     async def search(self, collection: str, query_embedding: list[float], k: int = 5) -> dict[str, Any]:

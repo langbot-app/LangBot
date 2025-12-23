@@ -124,6 +124,7 @@ class PgVectorDatabase(VectorDatabase):
         ids: list[str],
         embeddings_list: list[list[float]],
         metadatas: list[dict[str, Any]],
+        documents: list[str] = None,
     ) -> None:
         """Add vector embeddings to pgvector
 
@@ -132,6 +133,7 @@ class PgVectorDatabase(VectorDatabase):
             ids: List of unique IDs for each vector
             embeddings_list: List of embedding vectors
             metadatas: List of metadata dictionaries
+            documents: Optional document texts (ignored by pgvector, kept for interface compatibility)
         """
         await self.get_or_create_collection(collection)
 
