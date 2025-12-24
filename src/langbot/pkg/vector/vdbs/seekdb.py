@@ -22,10 +22,6 @@ class SeekDBVectorDatabase(VectorDatabase):
     relational, vector, text, JSON and GIS in a single engine.
 
     Supports both embedded mode and remote server mode.
-    
-    If 'fulltext' config is provided, it can specify 'create_options' (passed to create_collection)
-    or other tokenizer settings (e.g. 'tokenizer': 'ik_max_word') which might be
-    handled if the SDK exposes tokenization control on the client side or during index creation.
     """
 
     def __init__(self, ap: app.Application, config_override: dict = None):

@@ -138,7 +138,7 @@ class Retriever:
             return
 
         # Get default VDB
-        vdb = ap.vector_db_mgr.vector_db
+        vdb = ap.vector_db_mgr.get_default_db()
         if not vdb:
             # Try to get first available VDB
             if ap.vector_db_mgr.databases:

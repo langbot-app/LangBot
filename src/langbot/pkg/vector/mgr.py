@@ -65,7 +65,6 @@ class VectorDBManager:
             vdb_type = vdb_config.get('use')
             vdb_instance = self._create_vdb_instance(vdb_type, vdb_config)
             self.databases['default'] = vdb_instance
-            self.vector_db = vdb_instance # Keep for backward compat
             created_instances[vdb_type] = ('default', vdb_instance)
 
         # New style: Multiple DBs config (can coexist with 'use')
@@ -116,22 +115,27 @@ class VectorDBManager:
                         except Exception as e:
                             self.ap.logger.error(f"Failed to initialize VDB '{name}': {e}")
 
-        # Set convenience accessor for default
-        if not self.vector_db:
-            self.vector_db = self.databases.get('default')
-            if not self.vector_db and self.databases:
-                # If no 'default' VDB configured, use the first available one
-                first_db_name = next(iter(self.databases.keys()))
-                self.vector_db = self.databases[first_db_name]
-                self.ap.logger.info(f"No 'default' VDB configured, using '{first_db_name}' as default")
-        
         # Fallback
         if not self.databases:
              self.ap.logger.warning('No vector database backend configured, defaulting to Chroma as default.')
              default_chroma = ChromaVectorDatabase(self.ap)
              self.databases['default'] = default_chroma
-             self.vector_db = default_chroma
 
     def get_db(self, name: str = 'default') -> VectorDatabase | None:
         """Get a specific vector database instance by name"""
         return self.databases.get(name)
+
+    def get_default_db(self) -> VectorDatabase | None:
+        """Get the default vector database instance"""
+        # First try to get the 'default' database
+        vdb = self.databases.get('default')
+        if vdb:
+            return vdb
+
+        # If no 'default' VDB configured, use the first available one
+        if self.databases:
+            first_db_name = next(iter(self.databases.keys()))
+            return self.databases[first_db_name]
+
+        # No databases available
+        return None

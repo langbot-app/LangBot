@@ -44,7 +44,7 @@ class BaseRetrievalProvider(ABC):
         vdb = self.ap.vector_db_mgr.get_db(self.vdb_name)
         if not vdb:
             # Fallback to default VDB if specific not found
-            vdb = self.ap.vector_db_mgr.vector_db
+            vdb = self.ap.vector_db_mgr.get_default_db()
 
         if not vdb:
             raise ValueError(f"VDB '{self.vdb_name}' not found in vector_db_mgr")
