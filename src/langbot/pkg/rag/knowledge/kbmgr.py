@@ -34,10 +34,18 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         self.parser = parser.FileParser(ap=self.ap)
         self.chunker = chunker.Chunker(ap=self.ap)
         self.embedder = Embedder(ap=self.ap)
+        # First get 'rag', then get 'retrieval'
+        rag_config = self.ap.instance_config.data.get('rag', {})
+        retrieval_config = rag_config.get('retrieval')
+        # Fallback: support legacy global 'retrieval'
+        if not retrieval_config:
+            retrieval_config = self.ap.instance_config.data.get('retrieval', {})
+
         self.retriever = Retriever(
             ap=self.ap,
             kb_id=self.knowledge_base_entity.uuid,
             embedding_model_uuid=self.knowledge_base_entity.embedding_model_uuid,
+            config=retrieval_config
         )
 
     async def initialize(self):

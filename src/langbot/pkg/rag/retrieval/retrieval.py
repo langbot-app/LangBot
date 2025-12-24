@@ -72,36 +72,50 @@ class Retriever:
         3. Fuse results (RRF)
         4. Rerank
         """
-        
-        # We fetch more candidates to allow effective reranking/fusion
-        # If top_k is small, we ensure we get enough candidates
-        candidate_k = max(top_k * 2, 20)
-        
         if not self.providers:
             self.ap.logger.warning(f"No retrieval providers configured for KB {self.kb_id}")
             return []
+        
+        candidate_k = self._calculate_candidate_count(top_k)
 
-        # 2. Parallel query
+        results_list_of_lists = await self._parallel_query_providers(query, candidate_k)
+
+        merged_results = self._fuse_results_with_rrf(results_list_of_lists)
+        
+        final_results = await self._rerank_results(query, merged_results, top_k)
+
+        return final_results
+
+    def _calculate_candidate_count(self, top_k: int) -> int:
+        """Calculate how many candidates to fetch from each provider."""
+        # We fetch more candidates to allow effective reranking/fusion
+        # If top_k is small, we ensure we get enough candidates
+        return max(top_k * 2, 20)
+
+    async def _parallel_query_providers(self, query: str, candidate_k: int) -> List[List[rag_context.RetrievalResultEntry]]:
+        """Query all providers in parallel."""
         tasks = [p.retrieve(query, candidate_k) for p in self.providers]
         results_list_of_lists = await asyncio.gather(*tasks)
-        
-        # 3. Fuse results (Reciprocal Rank Fusion)
+        return results_list_of_lists
+
+    def _fuse_results_with_rrf(self, results_list_of_lists: List[List[rag_context.RetrievalResultEntry]]) -> List[rag_context.RetrievalResultEntry]:
+        """Fuse results from multiple providers using Reciprocal Rank Fusion (RRF)."""
         # Score = sum(1 / (k + rank))
         rrf_constant = 60
         fused_scores: Dict[str, float] = defaultdict(float)
         id_to_entry: Dict[str, rag_context.RetrievalResultEntry] = {}
-        
+
         for results in results_list_of_lists:
             for rank, entry in enumerate(results):
                 if entry.id not in id_to_entry:
                     id_to_entry[entry.id] = entry
-                
-                # Rank is 0-indexed, so rank+1. 
+
+                # Rank is 0-indexed, so rank+1.
                 fused_scores[entry.id] += 1.0 / (rrf_constant + rank + 1)
-        
+
         # Sort by score descending
         sorted_ids = sorted(fused_scores.keys(), key=lambda x: fused_scores[x], reverse=True)
-        
+
         merged_results = []
         for _id in sorted_ids:
             entry = id_to_entry[_id]
@@ -109,11 +123,12 @@ class Retriever:
             # if entry.metadata:
             #     entry.metadata['rrf_score'] = fused_scores[_id]
             merged_results.append(entry)
-            
-        # 4. Rerank (and truncate to original top_k)
-        final_results = await self.reranker.rerank(query, merged_results, top_k)
 
-        return final_results
+        return merged_results
+
+    async def _rerank_results(self, query: str, merged_results: List[rag_context.RetrievalResultEntry], top_k: int) -> List[rag_context.RetrievalResultEntry]:
+        """Rerank results and truncate to final top_k."""
+        return await self.reranker.rerank(query, merged_results, top_k)
 
     def _auto_configure_default_provider(self, ap: app.Application, kb_id: str, embedding_model_uuid: str):
         """
