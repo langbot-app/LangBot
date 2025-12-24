@@ -115,6 +115,8 @@ class SeekDBVectorDatabase(VectorDatabase):
 
         self._collections: Dict[str, Any] = {}
         self._collection_configs: Dict[str, HNSWConfiguration] = {}
+        # Mapping from original collection names to safe SQL identifiers
+        self._collection_name_map: Dict[str, str] = {}
 
         # Escape table for metadata (stored as JSON in SeekDB)
         # We need to be careful not to break JSON format
@@ -129,6 +131,28 @@ class SeekDBVectorDatabase(VectorDatabase):
         # For documents, we keep the text as-is since pyseekdb should handle fulltext indexing
         # If there are SQL injection issues, the SDK should handle them
 
+    def _get_safe_collection_name(self, collection: str) -> str:
+        """Get a safe SQL identifier for the collection name.
+
+        SeekDB generates SQL queries that may not handle collection names with
+        hyphens (like in UUIDs) properly. This method simply replaces hyphens
+        with underscores to create safe SQL identifiers.
+
+        Args:
+            collection: Original collection name
+
+        Returns:
+            Safe SQL identifier for the collection
+        """
+        if collection in self._collection_name_map:
+            return self._collection_name_map[collection]
+
+        # Simply replace hyphens with underscores
+        safe_name = collection.replace('-', '_')
+
+        self._collection_name_map[collection] = safe_name
+        self.ap.logger.debug(f"Mapped collection name '{collection}' to safe SQL identifier '{safe_name}'")
+        return safe_name
 
     async def _get_collection_if_exists(self, collection: str) -> Any:
         """Get collection object if it exists, None otherwise.
@@ -145,18 +169,19 @@ class SeekDBVectorDatabase(VectorDatabase):
         if collection in self._collections:
             return self._collections[collection]
 
-        # Check if collection exists in database
+        # Check if collection exists in database using safe name
+        safe_collection_name = self._get_safe_collection_name(collection)
         try:
-            exists = await asyncio.to_thread(self.client.has_collection, collection)
+            exists = await asyncio.to_thread(self.client.has_collection, safe_collection_name)
             if not exists:
                 return None
 
             # Collection exists, get it
-            coll = await asyncio.to_thread(self.client.get_collection, collection, embedding_function=None)
+            coll = await asyncio.to_thread(self.client.get_collection, safe_collection_name, embedding_function=None)
             self._collections[collection] = coll
             return coll
         except Exception as e:
-            self.ap.logger.error(f"Failed to get collection '{collection}': {e}")
+            self.ap.logger.error(f"Failed to get collection '{collection}' (safe name: '{safe_collection_name}'): {e}")
             return None
 
     def get_capabilities(self) -> set[str]:
@@ -186,7 +211,10 @@ class SeekDBVectorDatabase(VectorDatabase):
         if vector_size is None:
             vector_size = 384
 
-        self.ap.logger.info(f"Getting or creating SeekDB collection '{collection}' with dimension={vector_size}...")
+        # Get the safe collection name for SQL operations
+        safe_collection_name = self._get_safe_collection_name(collection)
+
+        self.ap.logger.info(f"Getting or creating SeekDB collection '{collection}' (safe name: '{safe_collection_name}') with dimension={vector_size}...")
 
         # Create HNSW configuration
         config = HNSWConfiguration(dimension=vector_size, distance='cosine')
@@ -203,13 +231,13 @@ class SeekDBVectorDatabase(VectorDatabase):
             start_time = time.time()
             self.ap.logger.info(f"Starting collection get/create for '{collection}'...")
 
-            # Use SeekDB's built-in get_or_create_collection method
-            coll = await asyncio.to_thread(self.client.get_or_create_collection, collection, **create_kwargs)
+            # Use safe collection name for SeekDB operations
+            coll = await asyncio.to_thread(self.client.get_or_create_collection, safe_collection_name, **create_kwargs)
 
             elapsed = time.time() - start_time
             self.ap.logger.info(f"Collection '{collection}' ready in {elapsed:.2f}s")
         except Exception as e:
-            self.ap.logger.error(f"Failed to get/create collection '{collection}' (dimension={vector_size}): {e}")
+            self.ap.logger.error(f"Failed to get/create collection '{collection}' (safe name: '{safe_collection_name}', dimension={vector_size}): {e}")
             raise
 
         self._collections[collection] = coll
@@ -526,15 +554,16 @@ class SeekDBVectorDatabase(VectorDatabase):
             del self._collection_configs[collection]
 
         # Check if collection exists and delete it
+        safe_collection_name = self._get_safe_collection_name(collection)
         try:
-            exists = await asyncio.to_thread(self.client.has_collection, collection)
+            exists = await asyncio.to_thread(self.client.has_collection, safe_collection_name)
             if not exists:
-                self.ap.logger.warning(f"SeekDB collection '{collection}' not found for deletion")
+                self.ap.logger.warning(f"SeekDB collection '{collection}' (safe name: '{safe_collection_name}') not found for deletion")
                 return
 
             # Delete collection
-            await asyncio.to_thread(self.client.delete_collection, collection)
+            await asyncio.to_thread(self.client.delete_collection, safe_collection_name)
             self.ap.logger.info(f"SeekDB collection '{collection}' deleted")
         except Exception as e:
-            self.ap.logger.error(f"Failed to delete SeekDB collection '{collection}': {e}")
+            self.ap.logger.error(f"Failed to delete SeekDB collection '{collection}' (safe name: '{safe_collection_name}'): {e}")
             raise
