@@ -6,14 +6,14 @@ import io
 from .services import parser, chunker
 from langbot.pkg.core import app
 from langbot.pkg.rag.knowledge.services.embedder import Embedder
-from langbot.pkg.rag.knowledge.services.retriever import Retriever
+from langbot.pkg.rag.retrieval.retrieval import Retriever
 import sqlalchemy
 from langbot.pkg.entity.persistence import rag as persistence_rag
 from langbot.pkg.core import taskmgr
 from langbot_plugin.api.entities.builtin.rag import context as rag_context
 from .base import KnowledgeBaseInterface
 from .external import ExternalKnowledgeBase
-
+from ..rerank import RerankerManager
 
 class RuntimeKnowledgeBase(KnowledgeBaseInterface):
     ap: app.Application
@@ -34,9 +34,26 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         self.parser = parser.FileParser(ap=self.ap)
         self.chunker = chunker.Chunker(ap=self.ap)
         self.embedder = Embedder(ap=self.ap)
-        self.retriever = Retriever(ap=self.ap)
-        # 传递kb_id给retriever
-        self.retriever.kb_id = knowledge_base_entity.uuid
+
+        # Get RAG configuration
+        rag_config = self.ap.instance_config.data.get('rag', {})
+
+        # Initialize retrieval components
+        retrieval_config = rag_config.get('retrieval')
+        # Fallback: support legacy global 'retrieval'
+        if not retrieval_config:
+            retrieval_config = self.ap.instance_config.data.get('retrieval', {})
+
+        self.retriever = Retriever(
+            ap=self.ap,
+            kb_id=self.knowledge_base_entity.uuid,
+            embedding_model_uuid=self.knowledge_base_entity.embedding_model_uuid,
+            config=retrieval_config
+        )
+
+        # Initialize reranker
+        rerank_config = rag_config.get('rerank', {})
+        self.reranker = RerankerManager.create_reranker(self.ap, rerank_config)
 
     async def initialize(self):
         pass
@@ -190,14 +207,25 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         return stored_file_tasks[0] if stored_file_tasks else ''
 
     async def retrieve(self, query: str, top_k: int) -> list[rag_context.RetrievalResultEntry]:
-        embedding_model = await self.ap.model_mgr.get_embedding_model_by_uuid(
-            self.knowledge_base_entity.embedding_model_uuid
-        )
-        return await self.retriever.retrieve(self.knowledge_base_entity.uuid, query, embedding_model, top_k)
+        # First, perform retrieval with RRF fusion
+        retrieved_results = await self.retriever.retrieve(query, top_k)
+
+        # Then, apply reranking
+        final_results = await self.reranker.rerank(query, retrieved_results, top_k)
+
+        return final_results
 
     async def delete_file(self, file_id: str):
-        # delete vector
-        await self.ap.vector_db_mgr.vector_db.delete_by_file_id(self.knowledge_base_entity.uuid, file_id)
+        # delete vector from all VDBs
+        tasks = []
+        for db_name, vdb_instance in self.ap.vector_db_mgr.databases.items():
+             tasks.append(
+                 vdb_instance.delete_by_file_id(self.knowledge_base_entity.uuid, file_id)
+             )
+        
+        if tasks:
+            import asyncio
+            await asyncio.gather(*tasks)
 
         # delete chunk
         await self.ap.persistence_mgr.execute_async(
@@ -221,7 +249,14 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         return 'internal'
 
     async def dispose(self):
-        await self.ap.vector_db_mgr.vector_db.delete_collection(self.knowledge_base_entity.uuid)
+        tasks = []
+        for db_name, vdb_instance in self.ap.vector_db_mgr.databases.items():
+            tasks.append(
+                vdb_instance.delete_collection(self.knowledge_base_entity.uuid)
+            )
+        if tasks:
+            import asyncio
+            await asyncio.gather(*tasks)
 
 
 class RAGManager:

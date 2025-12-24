@@ -98,6 +98,7 @@ class MilvusVectorDatabase(VectorDatabase):
         ids: list[str],
         embeddings_list: list[list[float]],
         metadatas: list[dict[str, Any]],
+        documents: list[str] = None,
     ) -> None:
         """Add vector embeddings to Milvus collection
 
@@ -106,6 +107,7 @@ class MilvusVectorDatabase(VectorDatabase):
             ids: List of unique IDs for each vector
             embeddings_list: List of embedding vectors
             metadatas: List of metadata dictionaries for each vector
+            documents: Optional document texts (ignored by Milvus, kept for interface compatibility)
         """
         await self.get_or_create_collection(collection)
 

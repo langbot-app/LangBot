@@ -1,0 +1,21 @@
+# 多数据库融合（Chroma 向量 + SeekDB 全文）
+
+vdb:
+  databases: [chroma, seekdb]
+  chroma: {}
+  seekdb:
+    mode: embedded
+    path: ./data/seekdb
+    database: langbot
+
+rag:
+  retrieval:
+    providers:
+      - type: vector
+        vdb: chroma
+      - type: fulltext
+        vdb: seekdb
+  rerank:
+    type: qwen
+    key: sk-your-dashscope-api-key
+    model: qwen3-rerank

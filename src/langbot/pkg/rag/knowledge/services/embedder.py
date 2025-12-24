@@ -39,9 +39,24 @@ class Embedder(BaseService):
             extra_args={},  # TODO: add extra args
         )
 
-        # save embeddings to vdb
-        await self.ap.vector_db_mgr.vector_db.add_embeddings(kb_id, chunk_ids, embeddings_list, chunk_dicts)
+        # Write to all instantiated VDBs in parallel
+        # Since VDB manager already knows which VDBs are configured and instantiated,
+        # we simply write to all available VDBs
+        tasks = []
+        for vdb_name, vdb_instance in self.ap.vector_db_mgr.databases.items():
+            self.ap.logger.debug(f'Storing embeddings and documents to VDB: {vdb_name}')
+            tasks.append(
+                vdb_instance.add_embeddings(kb_id, chunk_ids, embeddings_list, chunk_dicts, chunks)
+            )
 
-        self.ap.logger.info(f'Successfully saved {len(chunk_entities)} embeddings to Knowledge Base.')
+        if tasks:
+            import asyncio
+            await asyncio.gather(*tasks)
+            self.ap.logger.info(
+                f'Successfully saved {len(chunk_entities)} chunks to {len(tasks)}'
+            )
+        else:
+            self.ap.logger.warning(f'No VDBs available to store embeddings for KB {kb_id}')
 
         return chunk_entities
+

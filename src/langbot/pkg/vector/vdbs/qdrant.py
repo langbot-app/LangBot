@@ -48,7 +48,13 @@ class QdrantVectorDatabase(VectorDatabase):
         ids: List[str],
         embeddings_list: List[List[float]],
         metadatas: List[Dict[str, Any]],
+        documents: List[str] = None,
     ) -> None:
+        """Add embeddings to Qdrant collection.
+
+        Args:
+            documents: Optional document texts (ignored by Qdrant, kept for interface compatibility)
+        """
         if not embeddings_list:
             return
 

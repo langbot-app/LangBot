@@ -1,0 +1,12 @@
+# SeekDB 自动检测（零配置）
+
+vdb:
+  use: seekdb
+  seekdb:
+    mode: embedded
+    path: ./data/seekdb
+    database: langbot
+
+# rag 部分留空，自动使用：
+# - 混合检索（SeekDB 支持）
+# - 简单重排序（去重）
