@@ -13,7 +13,7 @@ from langbot.pkg.core import taskmgr
 from langbot_plugin.api.entities.builtin.rag import context as rag_context
 from .base import KnowledgeBaseInterface
 from .external import ExternalKnowledgeBase
-
+from ..rerank import RerankerManager
 
 class RuntimeKnowledgeBase(KnowledgeBaseInterface):
     ap: app.Application
@@ -34,8 +34,11 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         self.parser = parser.FileParser(ap=self.ap)
         self.chunker = chunker.Chunker(ap=self.ap)
         self.embedder = Embedder(ap=self.ap)
-        # First get 'rag', then get 'retrieval'
+
+        # Get RAG configuration
         rag_config = self.ap.instance_config.data.get('rag', {})
+
+        # Initialize retrieval components
         retrieval_config = rag_config.get('retrieval')
         # Fallback: support legacy global 'retrieval'
         if not retrieval_config:
@@ -47,6 +50,10 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             embedding_model_uuid=self.knowledge_base_entity.embedding_model_uuid,
             config=retrieval_config
         )
+
+        # Initialize reranker
+        rerank_config = rag_config.get('rerank', {})
+        self.reranker = RerankerManager.create_reranker(self.ap, rerank_config)
 
     async def initialize(self):
         pass
@@ -200,7 +207,13 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         return stored_file_tasks[0] if stored_file_tasks else ''
 
     async def retrieve(self, query: str, top_k: int) -> list[rag_context.RetrievalResultEntry]:
-        return await self.retriever.retrieve(query, top_k)
+        # First, perform retrieval with RRF fusion
+        retrieved_results = await self.retriever.retrieve(query, top_k)
+
+        # Then, apply reranking
+        final_results = await self.reranker.rerank(query, retrieved_results, top_k)
+
+        return final_results
 
     async def delete_file(self, file_id: str):
         # delete vector from all VDBs

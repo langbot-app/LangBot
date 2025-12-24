@@ -7,22 +7,20 @@ from langbot.pkg.core import app
 from langbot_plugin.api.entities.builtin.rag import context as rag_context
 
 from .providers.base import BaseRetrievalProvider
-from .providers.vector import VectorSearchProvider
-from .rerank.base import BaseReranker
-from .rerank.simple import SimpleReranker
+
 
 
 class Retriever:
     """
-    Orchestrator for retrieval. 
-    Manages multiple retrieval providers and a reranking strategy.
+    Orchestrator for retrieval.
+    Manages multiple retrieval providers and performs RRF fusion.
     Supports both single-source and hybrid retrieval scenarios.
+    Reranking is handled separately at a higher level.
     """
 
     ap: app.Application
     kb_id: str
     providers: List[BaseRetrievalProvider]
-    reranker: BaseReranker
 
     def __init__(self, ap: app.Application, kb_id: str, embedding_model_uuid: str, config: Dict[str, Any] = None):
         self.ap = ap
@@ -32,6 +30,9 @@ class Retriever:
         # Initialize providers based on config
         self.providers = []
 
+        self._init_providers(ap, kb_id, embedding_model_uuid)
+
+    def _init_providers(self, ap: app.Application, kb_id: str, embedding_model_uuid: str):
         # If config provides explicit providers list, use it
         providers_config = self.config.get('providers')
         
@@ -59,10 +60,6 @@ class Retriever:
             # No explicit providers configured
             # Auto-detect VDB capabilities and choose the best provider
             self._auto_configure_default_provider(ap, kb_id, embedding_model_uuid)
-        
-        # Initialize Reranker
-        # In future: load from config
-        self.reranker = SimpleReranker(ap, self.config.get('rerank', {}))
 
     async def retrieve(self, query: str, top_k: int) -> List[rag_context.RetrievalResultEntry]:
         """
@@ -70,27 +67,23 @@ class Retriever:
         1. Setup candidates count (usually > top_k)
         2. Parallel query all providers
         3. Fuse results (RRF)
-        4. Rerank
         """
         if not self.providers:
             self.ap.logger.warning(f"No retrieval providers configured for KB {self.kb_id}")
             return []
-        
+
         candidate_k = self._calculate_candidate_count(top_k)
-
         results_list_of_lists = await self._parallel_query_providers(query, candidate_k)
-
         merged_results = self._fuse_results_with_rrf(results_list_of_lists)
-        
-        final_results = await self._rerank_results(query, merged_results, top_k)
 
-        return final_results
+        # Return fused results (reranking is done at a higher level)
+        return merged_results
 
     def _calculate_candidate_count(self, top_k: int) -> int:
         """Calculate how many candidates to fetch from each provider."""
         # We fetch more candidates to allow effective reranking/fusion
         # If top_k is small, we ensure we get enough candidates
-        return max(top_k * 2, 20)
+        return min(top_k * 2, 30)
 
     async def _parallel_query_providers(self, query: str, candidate_k: int) -> List[List[rag_context.RetrievalResultEntry]]:
         """Query all providers in parallel."""
@@ -125,10 +118,6 @@ class Retriever:
             merged_results.append(entry)
 
         return merged_results
-
-    async def _rerank_results(self, query: str, merged_results: List[rag_context.RetrievalResultEntry], top_k: int) -> List[rag_context.RetrievalResultEntry]:
-        """Rerank results and truncate to final top_k."""
-        return await self.reranker.rerank(query, merged_results, top_k)
 
     def _auto_configure_default_provider(self, ap: app.Application, kb_id: str, embedding_model_uuid: str):
         """
