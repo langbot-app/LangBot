@@ -435,10 +435,11 @@ class SeekDBVectorDatabase(VectorDatabase):
 
     async def search_fulltext(self, collection: str, query: str, k: int = 5) -> Dict[str, Any]:
         """
-        Search for documents matching the keyword query using SeekDB's fulltext capabilities.
+        Performs a keyword-based document search using SeekDB’s built-in full-text index.
 
-        Uses collection.get() with where_document filter to perform pure fulltext search.
-        This leverages SeekDB's native fulltext indexing for keyword matching.
+        Currently the function calls collection.get(where_document=...) which relies on SeekDB’s native full-text engine (BM25).
+        Limitation: the official PySeekDB SDK does not yet expose an API to create, tune or score against that BM25 index, so the call returns unordered hits without relevance scores.
+        When PySeekDB later exposes full BM25-management endpoints, this routine can be upgraded to retrieve scored results directly through the API.
         """
         # Get collection if it exists
         coll = await self._get_collection_if_exists(collection)
@@ -459,6 +460,7 @@ class SeekDBVectorDatabase(VectorDatabase):
             metas = [results.get('metadatas', [])]
             docs = [results.get('documents', [])]
             # Provide dummy distances (0.0 for fulltext results)
+            # TODO: Add relevance scores when PySeekDB exposes BM25-management endpoints
             dists = [[0.0] * len(ids[0])]
 
             self.ap.logger.info(f"SeekDB fulltext search in '{collection}' returned {len(ids[0])} results")

@@ -1,0 +1,18 @@
+# SeekDB 混合检索 + Qwen 重排序（推荐生产配置）
+
+vdb:
+  use: seekdb
+  seekdb:
+    mode: embedded
+    path: ./data/seekdb
+    database: langbot
+
+rag:
+  retrieval:
+    providers:
+      - type: hybrid
+        vdb: default
+  rerank:
+    type: qwen
+    key: sk-your-dashscope-api-key
+    model: qwen3-rerank
