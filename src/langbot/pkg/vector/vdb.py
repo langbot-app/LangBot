@@ -37,7 +37,7 @@ class VectorDatabase(abc.ABC):
         Return the set of capabilities this VDB supports.
 
         All VDBs support 'vector' search by default.
-        Override this method in subclasses to declare additional capabilities.
+        Subclasses SHOULD override this method to declare additional capabilities.
 
         Returns:
             Set of capability names: {'vector', 'fulltext', 'hybrid'}
@@ -46,31 +46,16 @@ class VectorDatabase(abc.ABC):
             # In SeekDB with fulltext enabled:
             return {'vector', 'fulltext', 'hybrid'}
 
-            # In basic Qdrant:
+            # In basic Chroma (only vector):
             return {'vector'}
+
+        Note:
+            The base implementation only returns {'vector'}. If your VDB supports
+            fulltext or hybrid search, you MUST override this method.
         """
-        capabilities = {'vector'}  # All VDBs support vector search
-
-        # Auto-detect fulltext capability
-        try:
-            # Check if search_fulltext is actually implemented (not just raising NotImplementedError)
-            import inspect
-            source = inspect.getsource(self.search_fulltext)
-            if 'raise NotImplementedError' not in source:
-                capabilities.add('fulltext')
-        except:
-            pass
-
-        # Auto-detect hybrid capability
-        try:
-            import inspect
-            source = inspect.getsource(self.search_hybrid)
-            if 'raise NotImplementedError' not in source:
-                capabilities.add('hybrid')
-        except:
-            pass
-
-        return capabilities
+        # Base implementation: only vector search is guaranteed
+        # Subclasses should explicitly declare their capabilities
+        return {'vector'}
 
     @abc.abstractmethod
     async def delete_by_file_id(self, collection: str, file_id: str) -> None:

@@ -122,16 +122,21 @@ class QwenReranker(BaseReranker):
             relevance_score = result_item.get('relevance_score', 0.0)
 
             if index is not None and 0 <= index < len(original_results):
-                # Create a new result entry with rerank score as distance
+                # Create a new result entry
                 original_entry = original_results[index]
+
+                # Convert relevance_score (higher is better, 0-1 range) to distance (lower is better)
+                # Use 1 - relevance_score to maintain distance semantics
+                distance = 1.0 - relevance_score
+
                 new_entry = rag_context.RetrievalResultEntry(
                     id=original_entry.id,
                     content=original_entry.content,
                     metadata=original_entry.metadata.copy() if original_entry.metadata else {},
-                    distance=relevance_score  # Use relevance_score as distance (higher is better)
+                    distance=distance  # Distance: lower is better
                 )
 
-                # Add rerank score to metadata for debugging
+                # Store original rerank score in metadata for debugging
                 new_entry.metadata['rerank_score'] = relevance_score
 
                 reranked_results.append(new_entry)

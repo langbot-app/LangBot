@@ -504,14 +504,17 @@ class SeekDBVectorDatabase(VectorDatabase):
             "n_results": k,
             "include": ["documents", "metadatas", "distances"] # 'distances' might not be standard in hybrid return?
         }
-        
-        # Handle batch vs single vector ambiguity
-        # query_embedding is typically [0.1, 0.2, ...] (one vector)
-        # sdk usually wants [[0.1, 0.2, ...]] for query_embeddings
-        if query_embedding and isinstance(query_embedding[0], float):
-             hybrid_args['knn']['query_embeddings'] = [query_embedding]
+
+        # Handle batch vs single vector format
+        # query_embedding is typically [0.1, 0.2, ...] (one vector) from the interface
+        # But SDK expects [[0.1, 0.2, ...]] (batch format) for query_embeddings
+        # Check if the first element is a scalar (not a list/array) to detect single vector
+        if query_embedding and not isinstance(query_embedding[0], (list, type(query_embedding))):
+            # Single vector format: wrap it in a list
+            hybrid_args['knn']['query_embeddings'] = [query_embedding]
         else:
-             hybrid_args['knn']['query_embeddings'] = query_embedding
+            # Already in batch format or empty
+            hybrid_args['knn']['query_embeddings'] = query_embedding
 
         results = await asyncio.to_thread(coll.hybrid_search, **hybrid_args)
 

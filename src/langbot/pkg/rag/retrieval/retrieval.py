@@ -82,8 +82,8 @@ class Retriever:
     def _calculate_candidate_count(self, top_k: int) -> int:
         """Calculate how many candidates to fetch from each provider."""
         # We fetch more candidates to allow effective reranking/fusion
-        # If top_k is small, we ensure we get enough candidates
-        return min(top_k * 2, 30)
+        # Use at least 20 candidates to ensure diversity, but scale up for larger top_k
+        return max(top_k * 2, 20)
 
     async def _parallel_query_providers(self, query: str, candidate_k: int) -> List[List[rag_context.RetrievalResultEntry]]:
         """Query all providers in parallel."""

@@ -117,9 +117,9 @@ class VectorDBManager:
 
         # Fallback
         if not self.databases:
-             self.ap.logger.warning('No vector database backend configured, defaulting to Chroma as default.')
-             default_chroma = ChromaVectorDatabase(self.ap)
-             self.databases['default'] = default_chroma
+            self.ap.logger.warning('No vector database backend configured, defaulting to Chroma as default.')
+            default_chroma = ChromaVectorDatabase(self.ap)
+            self.databases['default'] = default_chroma
 
     def get_db(self, name: str = 'default') -> VectorDatabase | None:
         """Get a specific vector database instance by name"""
