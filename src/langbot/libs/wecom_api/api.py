@@ -22,13 +22,14 @@ class WecomClient:
         contacts_secret: str,
         logger: None,
         unified_mode: bool = False,
+        api_base_url: str = 'https://qyapi.weixin.qq.com/cgi-bin',
     ):
         self.corpid = corpid
         self.secret = secret
         self.access_token_for_contacts = ''
         self.token = token
         self.aes = EncodingAESKey
-        self.base_url = 'https://qyapi.weixin.qq.com/cgi-bin'
+        self.base_url = api_base_url
         self.access_token = ''
         self.secret_for_contacts = contacts_secret
         self.logger = logger
@@ -56,7 +57,7 @@ class WecomClient:
         return bool(self.access_token_for_contacts and self.access_token_for_contacts.strip())
 
     async def get_access_token(self, secret):
-        url = f'https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={self.corpid}&corpsecret={secret}'
+        url = f'{self.base_url}/gettoken?corpid={self.corpid}&corpsecret={secret}'
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
             data = response.json()
