@@ -13,13 +13,22 @@ import aiofiles
 
 
 class WecomCSClient:
-    def __init__(self, corpid: str, secret: str, token: str, EncodingAESKey: str, logger: None, unified_mode: bool = False):
+    def __init__(
+        self,
+        corpid: str,
+        secret: str,
+        token: str,
+        EncodingAESKey: str,
+        logger: None,
+        unified_mode: bool = False,
+        api_base_url: str = 'https://qyapi.weixin.qq.com/cgi-bin',
+    ):
         self.corpid = corpid
         self.secret = secret
         self.access_token_for_contacts = ''
         self.token = token
         self.aes = EncodingAESKey
-        self.base_url = 'https://qyapi.weixin.qq.com/cgi-bin'
+        self.base_url = api_base_url
         self.access_token = ''
         self.logger = logger
         self.unified_mode = unified_mode
@@ -66,7 +75,7 @@ class WecomCSClient:
         return bool(self.access_token_for_contacts and self.access_token_for_contacts.strip())
 
     async def get_access_token(self, secret):
-        url = f'https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={self.corpid}&corpsecret={secret}'
+        url = f'{self.base_url}/gettoken?corpid={self.corpid}&corpsecret={secret}'
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
             data = response.json()
@@ -172,7 +181,7 @@ class WecomCSClient:
         if not await self.check_access_token():
             self.access_token = await self.get_access_token(self.secret)
 
-        url = f'https://qyapi.weixin.qq.com/cgi-bin/kf/send_msg?access_token={self.access_token}'
+        url = f'{self.base_url}/kf/send_msg?access_token={self.access_token}'
 
         payload = {
             'touser': external_userid,

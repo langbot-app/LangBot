@@ -141,6 +141,7 @@ class WecomCSAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             EncodingAESKey=config['EncodingAESKey'],
             logger=logger,
             unified_mode=True,
+            api_base_url=config.get('api_base_url', 'https://qyapi.weixin.qq.com/cgi-bin'),
         )
 
         super().__init__(
