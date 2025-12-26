@@ -38,6 +38,9 @@ import {
   ExternalKnowledgeBase,
   ApiRespExternalKnowledgeBases,
   ApiRespExternalKnowledgeBase,
+  ApiRespModelProviders,
+  ApiRespModelProvider,
+  ModelProvider,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
@@ -65,7 +68,6 @@ export class BackendClient extends BaseHttpClient {
 
   public getProviderRequesterIconURL(name: string): string {
     if (this.instance.defaults.baseURL === '/') {
-      // 获取用户访问的URL
       const url = window.location.href;
       const baseURL = url.split('/').slice(0, 3).join('/');
       return `${baseURL}/api/v1/provider/requesters/${name}/icon`;
@@ -76,9 +78,38 @@ export class BackendClient extends BaseHttpClient {
     );
   }
 
+  // ============ Model Providers ============
+  public getModelProviders(): Promise<ApiRespModelProviders> {
+    return this.get('/api/v1/provider/providers');
+  }
+
+  public getModelProvider(uuid: string): Promise<ApiRespModelProvider> {
+    return this.get(`/api/v1/provider/providers/${uuid}`);
+  }
+
+  public createModelProvider(
+    provider: Omit<ModelProvider, 'uuid'>,
+  ): Promise<{ uuid: string }> {
+    return this.post('/api/v1/provider/providers', provider);
+  }
+
+  public updateModelProvider(
+    uuid: string,
+    provider: Partial<ModelProvider>,
+  ): Promise<object> {
+    return this.put(`/api/v1/provider/providers/${uuid}`, provider);
+  }
+
+  public deleteModelProvider(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/provider/providers/${uuid}`);
+  }
+
   // ============ Provider Model LLM ============
-  public getProviderLLMModels(): Promise<ApiRespProviderLLMModels> {
-    return this.get('/api/v1/provider/models/llm');
+  public getProviderLLMModels(
+    providerUuid?: string,
+  ): Promise<ApiRespProviderLLMModels> {
+    const params = providerUuid ? { provider_uuid: providerUuid } : {};
+    return this.get('/api/v1/provider/models/llm', params);
   }
 
   public getProviderLLMModel(uuid: string): Promise<ApiRespProviderLLMModel> {
@@ -105,8 +136,11 @@ export class BackendClient extends BaseHttpClient {
   }
 
   // ============ Provider Model Embedding ============
-  public getProviderEmbeddingModels(): Promise<ApiRespProviderEmbeddingModels> {
-    return this.get('/api/v1/provider/models/embedding');
+  public getProviderEmbeddingModels(
+    providerUuid?: string,
+  ): Promise<ApiRespProviderEmbeddingModels> {
+    const params = providerUuid ? { provider_uuid: providerUuid } : {};
+    return this.get('/api/v1/provider/models/embedding', params);
   }
 
   public getProviderEmbeddingModel(
@@ -687,5 +721,63 @@ export class BackendClient extends BaseHttpClient {
       current_password: currentPassword,
       new_password: newPassword,
     });
+  }
+
+  public getUserInfo(): Promise<{
+    user: string;
+    account_type: 'local' | 'space';
+    has_password: boolean;
+  }> {
+    return this.get('/api/v1/user/info');
+  }
+
+  public getAccountInfo(): Promise<{
+    initialized: boolean;
+    account_type?: 'local' | 'space';
+    has_password?: boolean;
+  }> {
+    return this.get('/api/v1/user/account-info');
+  }
+
+  public setPassword(
+    newPassword: string,
+    currentPassword?: string,
+  ): Promise<{ user: string }> {
+    return this.post('/api/v1/user/set-password', {
+      new_password: newPassword,
+      current_password: currentPassword,
+    });
+  }
+
+  public bindSpaceAccount(
+    code: string,
+    state: string,
+  ): Promise<{
+    token: string;
+    user: string;
+    account_type: 'local' | 'space';
+  }> {
+    return this.post('/api/v1/user/bind-space', { code, state });
+  }
+
+  // ============ Space OAuth API (Redirect Flow) ============
+  public getSpaceAuthorizeUrl(
+    redirectUri: string,
+    state?: string,
+  ): Promise<{
+    authorize_url: string;
+  }> {
+    const params: Record<string, string> = { redirect_uri: redirectUri };
+    if (state) {
+      params.state = state;
+    }
+    return this.get('/api/v1/user/space/authorize-url', params);
+  }
+
+  public exchangeSpaceOAuthCode(code: string): Promise<{
+    token: string;
+    user: string;
+  }> {
+    return this.post('/api/v1/user/space/callback', { code });
   }
 }

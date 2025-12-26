@@ -17,6 +17,7 @@ from ...persistence import mgr as persistencemgr
 from ...api.http.controller import main as http_controller
 from ...api.http.service import user as user_service
 from ...api.http.service import model as model_service
+from ...api.http.service import provider as provider_service
 from ...api.http.service import pipeline as pipeline_service
 from ...api.http.service import bot as bot_service
 from ...api.http.service import knowledge as knowledge_service
@@ -113,6 +114,9 @@ class BuildAppStage(stage.BootingStage):
 
         embedding_models_service_inst = model_service.EmbeddingModelsService(ap)
         ap.embedding_models_service = embedding_models_service_inst
+
+        provider_service_inst = provider_service.ModelProviderService(ap)
+        ap.provider_service = provider_service_inst
 
         pipeline_service_inst = pipeline_service.PipelineService(ap)
         ap.pipeline_service = pipeline_service_inst

@@ -1,5 +1,5 @@
 import styles from './LLMCard.module.css';
-import { LLMCardVO } from '@/app/home/models/component/llm-card/LLMCardVO';
+import { LLMCardVO } from './LLMCardVO';
 import { useTranslation } from 'react-i18next';
 
 function AbilityBadges(abilities: string[]) {

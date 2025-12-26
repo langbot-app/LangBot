@@ -9,12 +9,15 @@ class LLMModelsRouterGroup(group.RouterGroup):
         @self.route('', methods=['GET', 'POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def _() -> str:
             if quart.request.method == 'GET':
+                provider_uuid = quart.request.args.get('provider_uuid')
+                if provider_uuid:
+                    return self.success(
+                        data={'models': await self.ap.llm_model_service.get_llm_models_by_provider(provider_uuid)}
+                    )
                 return self.success(data={'models': await self.ap.llm_model_service.get_llm_models()})
             elif quart.request.method == 'POST':
                 json_data = await quart.request.json
-
                 model_uuid = await self.ap.llm_model_service.create_llm_model(json_data)
-
                 return self.success(data={'uuid': model_uuid})
 
         @self.route('/<model_uuid>', methods=['GET', 'PUT', 'DELETE'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
@@ -52,12 +55,19 @@ class EmbeddingModelsRouterGroup(group.RouterGroup):
         @self.route('', methods=['GET', 'POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def _() -> str:
             if quart.request.method == 'GET':
+                provider_uuid = quart.request.args.get('provider_uuid')
+                if provider_uuid:
+                    return self.success(
+                        data={
+                            'models': await self.ap.embedding_models_service.get_embedding_models_by_provider(
+                                provider_uuid
+                            )
+                        }
+                    )
                 return self.success(data={'models': await self.ap.embedding_models_service.get_embedding_models()})
             elif quart.request.method == 'POST':
                 json_data = await quart.request.json
-
                 model_uuid = await self.ap.embedding_models_service.create_embedding_model(json_data)
-
                 return self.success(data={'uuid': model_uuid})
 
         @self.route('/<model_uuid>', methods=['GET', 'PUT', 'DELETE'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)

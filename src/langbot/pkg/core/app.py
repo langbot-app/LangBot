@@ -20,6 +20,7 @@ from ..persistence import mgr as persistencemgr
 from ..api.http.controller import main as http_controller
 from ..api.http.service import user as user_service
 from ..api.http.service import model as model_service
+from ..api.http.service import provider as provider_service
 from ..api.http.service import pipeline as pipeline_service
 from ..api.http.service import bot as bot_service
 from ..api.http.service import knowledge as knowledge_service
@@ -117,6 +118,8 @@ class Application:
     llm_model_service: model_service.LLMModelsService = None
 
     embedding_models_service: model_service.EmbeddingModelsService = None
+
+    provider_service: provider_service.ModelProviderService = None
 
     pipeline_service: pipeline_service.PipelineService = None
 

@@ -41,20 +41,33 @@ export interface ApiRespProviderLLMModel {
   model: LLMModel;
 }
 
-export interface LLMModel {
-  name: string;
-  description: string;
+export interface ModelProvider {
   uuid: string;
+  name: string;
   requester: string;
-  requester_config: {
-    base_url: string;
-    timeout: number;
-  };
-  extra_args?: object;
+  base_url: string;
   api_keys: string[];
+  llm_count?: number;
+  embedding_count?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ApiRespModelProviders {
+  providers: ModelProvider[];
+}
+
+export interface ApiRespModelProvider {
+  provider: ModelProvider;
+}
+
+export interface LLMModel {
+  uuid: string;
+  name: string;
+  provider_uuid: string;
+  provider?: ModelProvider;
   abilities?: string[];
-  // created_at: string;
-  // updated_at: string;
+  extra_args?: object;
 }
 
 export interface KnowledgeBase {
@@ -76,18 +89,11 @@ export interface ApiRespProviderEmbeddingModel {
 }
 
 export interface EmbeddingModel {
-  name: string;
-  description: string;
   uuid: string;
-  requester: string;
-  requester_config: {
-    base_url: string;
-    timeout: number;
-  };
+  name: string;
+  provider_uuid: string;
+  provider?: ModelProvider;
   extra_args?: object;
-  api_keys: string[];
-  // created_at: string;
-  // updated_at: string;
 }
 
 export interface ApiRespPipelines {

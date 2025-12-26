@@ -1,5 +1,5 @@
 import styles from './EmbeddingCard.module.css';
-import { EmbeddingCardVO } from '@/app/home/models/component/embedding-card/EmbeddingCardVO';
+import { EmbeddingCardVO } from './EmbeddingCardVO';
 
 export default function EmbeddingCard({ cardVO }: { cardVO: EmbeddingCardVO }) {
   return (

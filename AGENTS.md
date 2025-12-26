@@ -70,6 +70,7 @@ Plugin Runtime automatically starts each installed plugin and interacts through 
     - type: must be a specific type, such as feat (new feature), fix (bug fix), docs (documentation), style (code style), refactor (refactoring), perf (performance optimization), etc.
     - scope: the scope of the commit, such as the package name, the file name, the function name, the class name, the module name, etc.
     - subject: the subject of the commit, such as the description of the commit, the reason for the commit, the impact of the commit, etc.
+- If you changed the definition of database entities, please update the migration file in `src/langbot/pkg/persistence/migrations/` and update the constants.py file in `src/langbot/pkg/utils/constants.py` with the new migration number.
 
 ## Some Principles
 
