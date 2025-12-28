@@ -23,12 +23,21 @@ xml_template = """
 
 
 class OAClient:
-    def __init__(self, token: str, EncodingAESKey: str, AppID: str, Appsecret: str, logger: None, unified_mode: bool = False):
+    def __init__(
+        self,
+        token: str,
+        EncodingAESKey: str,
+        AppID: str,
+        Appsecret: str,
+        logger: None,
+        unified_mode: bool = False,
+        api_base_url: str = 'https://api.weixin.qq.com',
+    ):
         self.token = token
         self.aes = EncodingAESKey
         self.appid = AppID
         self.appsecret = Appsecret
-        self.base_url = 'https://api.weixin.qq.com'
+        self.base_url = api_base_url
         self.access_token = ''
         self.unified_mode = unified_mode
         self.app = Quart(__name__)
@@ -208,12 +217,13 @@ class OAClientForLongerResponse:
         LoadingMessage: str,
         logger: None,
         unified_mode: bool = False,
+        api_base_url: str = 'https://api.weixin.qq.com',
     ):
         self.token = token
         self.aes = EncodingAESKey
         self.appid = AppID
         self.appsecret = Appsecret
-        self.base_url = 'https://api.weixin.qq.com'
+        self.base_url = api_base_url
         self.access_token = ''
         self.unified_mode = unified_mode
         self.app = Quart(__name__)

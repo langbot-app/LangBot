@@ -39,6 +39,16 @@ spec:
       type: string
       required: true
       default: ""
+    - name: api_base_url
+      label:
+        en_US: API Base URL
+        zh_Hans: API 基础 URL
+      description:
+        en_US: API Base URL, used for accessing the WeCom API. If you are deploying in an internal network environment and accessing the WeCom Customer Service API through a reverse proxy, please fill in this item according to the documentation.
+        zh_Hans: 可选，若您部署在内网环境并通过反向代理访问企业微信 API，可根据文档修改此项
+      type: string
+      required: false
+      default: "https://qyapi.weixin.qq.com/cgi-bin"
 execution:
   python:
     path: ./wecomcs.py

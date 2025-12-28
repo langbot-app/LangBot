@@ -76,6 +76,7 @@ class OfficialAccountAdapter(abstract_platform_adapter.AbstractMessagePlatformAd
                 AppID=config['AppID'],
                 logger=logger,
                 unified_mode=True,
+                api_base_url=config.get('api_base_url', 'https://api.weixin.qq.com'),
             )
         elif config['Mode'] == 'passive':
             bot = OAClientForLongerResponse(
@@ -86,6 +87,7 @@ class OfficialAccountAdapter(abstract_platform_adapter.AbstractMessagePlatformAd
                 LoadingMessage=config.get('LoadingMessage', ''),
                 logger=logger,
                 unified_mode=True,
+                api_base_url=config.get('api_base_url', 'https://api.weixin.qq.com'),
             )
         else:
             raise KeyError('请设置微信公众号通信模式')

@@ -53,6 +53,16 @@ spec:
       type: string
       required: true
       default: "AI正在思考中，请发送任意内容获取回复。"
+    - name: api_base_url
+      label:
+        en_US: API Base URL
+        zh_Hans: API 基础 URL
+      description:
+        en_US: API Base URL, used for accessing the Official Account API. If you are deploying in an internal network environment and accessing the Official Account API through a reverse proxy, please fill in this item according to the documentation.
+        zh_Hans: 可选，若您部署在内网环境并通过反向代理访问微信公众号 API，可根据文档修改此项
+      type: string
+      required: false
+      default: "https://api.weixin.qq.com"
 execution:
   python:
     path: ./officialaccount.py
