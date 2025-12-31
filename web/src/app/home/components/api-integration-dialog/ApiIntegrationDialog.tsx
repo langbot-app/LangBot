@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Copy, Trash2, Plus } from 'lucide-react';
+import { Copy, Check, Trash2, Plus } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -83,6 +83,7 @@ export default function ApiIntegrationDialog({
   const [newWebhookDescription, setNewWebhookDescription] = useState('');
   const [newWebhookEnabled, setNewWebhookEnabled] = useState(true);
   const [deleteWebhookId, setDeleteWebhookId] = useState<number | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // 清理 body 样式，防止对话框关闭后页面无法交互
   useEffect(() => {
@@ -154,7 +155,8 @@ export default function ApiIntegrationDialog({
 
   const handleCopyKey = (key: string) => {
     navigator.clipboard.writeText(key);
-    toast.success(t('common.apiKeyCopied'));
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
   };
 
   const maskApiKey = (key: string) => {
@@ -333,7 +335,11 @@ export default function ApiIntegrationDialog({
                                 onClick={() => handleCopyKey(key.key)}
                                 title={t('common.copyApiKey')}
                               >
-                                <Copy className="h-4 w-4" />
+                                {copiedKey === key.key ? (
+                                  <Check className="h-4 w-4 text-green-600" />
+                                ) : (
+                                  <Copy className="h-4 w-4" />
+                                )}
                               </Button>
                               <Button
                                 variant="ghost"
@@ -524,7 +530,11 @@ export default function ApiIntegrationDialog({
                   variant="outline"
                   size="icon"
                 >
-                  <Copy className="h-4 w-4" />
+                  {copiedKey === createdKey?.key ? (
+                    <Check className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
                 </Button>
               </div>
             </div>
@@ -621,7 +631,11 @@ export default function ApiIntegrationDialog({
                   variant="outline"
                   size="icon"
                 >
-                  <Copy className="h-4 w-4" />
+                  {copiedKey === createdKey?.key ? (
+                    <Check className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
                 </Button>
               </div>
             </div>

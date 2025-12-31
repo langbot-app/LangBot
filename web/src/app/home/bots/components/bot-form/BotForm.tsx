@@ -19,6 +19,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
+import { Copy, Check } from 'lucide-react';
 
 import {
   Dialog,
@@ -116,6 +117,7 @@ export default function BotForm({
   const [, setIsLoading] = useState<boolean>(false);
   const [webhookUrl, setWebhookUrl] = useState<string>('');
   const webhookInputRef = React.useRef<HTMLInputElement>(null);
+  const [copied, setCopied] = useState<boolean>(false);
 
   // Watch adapter and adapter_config for filtering
   const currentAdapter = form.watch('adapter');
@@ -153,7 +155,6 @@ export default function BotForm({
     const inputElement = webhookInputRef.current;
     if (!inputElement) {
       console.error('[Copy] Input element not found');
-      toast.error(t('common.copyFailed'));
       return;
     }
 
@@ -178,7 +179,8 @@ export default function BotForm({
             console.log('[Copy] Clipboard API success');
             inputElement.blur(); // 取消选中
             inputElement.readOnly = true;
-            toast.success(t('bots.webhookUrlCopied'));
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
           })
           .catch((err) => {
             console.error(
@@ -191,9 +193,8 @@ export default function BotForm({
             inputElement.blur();
             inputElement.readOnly = true;
             if (successful) {
-              toast.success(t('bots.webhookUrlCopied'));
-            } else {
-              toast.error(t('common.copyFailed'));
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
             }
           });
       } else {
@@ -207,15 +208,13 @@ export default function BotForm({
         inputElement.blur();
         inputElement.readOnly = true;
         if (successful) {
-          toast.success(t('bots.webhookUrlCopied'));
-        } else {
-          toast.error(t('common.copyFailed'));
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
         }
       }
     } catch (err) {
       console.error('[Copy] Copy failed:', err);
       inputElement.readOnly = true;
-      toast.error(t('common.copyFailed'));
     }
   };
 
@@ -548,6 +547,11 @@ export default function BotForm({
                           size="sm"
                           onClick={copyToClipboard}
                         >
+                          {copied ? (
+                            <Check className="h-4 w-4 text-green-600 mr-2" />
+                          ) : (
+                            <Copy className="h-4 w-4 mr-2" />
+                          )}
                           {t('common.copy')}
                         </Button>
                       </div>

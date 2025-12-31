@@ -26,6 +26,7 @@ import {
   ChevronLeft,
   Code,
   Copy,
+  Check,
   Bug,
 } from 'lucide-react';
 import {
@@ -118,6 +119,8 @@ export default function PluginConfigPage() {
     plugin_debug_key: string;
   } | null>(null);
   const [debugPopoverOpen, setDebugPopoverOpen] = useState(false);
+  const [copiedDebugUrl, setCopiedDebugUrl] = useState(false);
+  const [copiedDebugKey, setCopiedDebugKey] = useState(false);
 
   useEffect(() => {
     const fetchPluginSystemStatus = async () => {
@@ -398,9 +401,15 @@ export default function PluginConfigPage() {
     }
   };
 
-  const handleCopyDebugInfo = (text: string) => {
+  const handleCopyDebugInfo = (text: string, type: 'url' | 'key') => {
     navigator.clipboard.writeText(text);
-    toast.success(t('plugins.copiedToClipboard'));
+    if (type === 'url') {
+      setCopiedDebugUrl(true);
+      setTimeout(() => setCopiedDebugUrl(false), 2000);
+    } else {
+      setCopiedDebugKey(true);
+      setTimeout(() => setCopiedDebugKey(false), 2000);
+    }
   };
 
   const renderPluginDisabledState = () => (
@@ -536,10 +545,14 @@ export default function PluginConfigPage() {
                         size="icon"
                         className="h-8 w-8 shrink-0"
                         onClick={() =>
-                          handleCopyDebugInfo(debugInfo?.debug_url || '')
+                          handleCopyDebugInfo(debugInfo?.debug_url || '', 'url')
                         }
                       >
-                        <Copy className="w-3.5 h-3.5" />
+                        {copiedDebugUrl ? (
+                          <Check className="w-3.5 h-3.5 text-green-600" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
                       </Button>
                     </div>
 
@@ -564,11 +577,16 @@ export default function PluginConfigPage() {
                           onClick={() =>
                             handleCopyDebugInfo(
                               debugInfo?.plugin_debug_key || '',
+                              'key',
                             )
                           }
                           disabled={!debugInfo?.plugin_debug_key}
                         >
-                          <Copy className="w-3.5 h-3.5" />
+                          {copiedDebugKey ? (
+                            <Check className="w-3.5 h-3.5 text-green-600" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
                         </Button>
                       </div>
                       {!debugInfo?.plugin_debug_key && (
