@@ -36,6 +36,7 @@ from . import taskmgr
 from . import entities as core_entities
 from ..rag.knowledge import kbmgr as rag_mgr
 from ..vector import mgr as vectordb_mgr
+from ..telemetry import telemetry as telemetry_module
 
 
 class Application:
@@ -139,6 +140,8 @@ class Application:
     apikey_service: apikey_service.ApiKeyService = None
 
     webhook_service: webhook_service.WebhookService = None
+
+    telemetry: telemetry_module.TelemetryManager = None
 
     def __init__(self):
         pass
