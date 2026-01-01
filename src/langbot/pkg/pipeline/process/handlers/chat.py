@@ -3,6 +3,9 @@ from __future__ import annotations
 import uuid
 import typing
 import traceback
+import time
+import asyncio
+from datetime import datetime
 
 
 from .. import handler
@@ -12,6 +15,7 @@ from ....provider import runner as runner_module
 import langbot_plugin.api.entities.events as events
 from ....utils import importutil
 from ....provider import runners
+from ....telemetry import telemetry as telemetry_module
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
@@ -84,6 +88,9 @@ class ChatMessageHandler(handler.MessageHandler):
                         break
                 else:
                     raise ValueError(f'Request Runner not found: {query.pipeline_config["ai"]["runner"]["runner"]}')
+                # Mark start time for telemetry
+                start_ts = time.time()
+
                 if is_stream:
                     resp_message_id = uuid.uuid4()
                     chunk_count = 0  # Track streaming chunks to reduce excessive logging
@@ -140,7 +147,8 @@ class ChatMessageHandler(handler.MessageHandler):
 
                 query.session.using_conversation.messages.extend(query.resp_messages)
             except Exception as e:
-                self.ap.logger.error(f'Conversation({query.query_id}) Request Failed: {type(e).__name__} {str(e)}')
+                error_info = f'{type(e).__name__} {str(e)}'
+                self.ap.logger.error(f'Conversation({query.query_id}) Request Failed: {error_info}')
                 traceback.print_exc()
 
                 hide_exception_info = query.pipeline_config['output']['misc']['hide-exception']
@@ -153,5 +161,44 @@ class ChatMessageHandler(handler.MessageHandler):
                     debug_notice=traceback.format_exc(),
                 )
             finally:
-                # TODO statistics
-                pass
+                # Telemetry reporting: collect minimal per-query execution info and send asynchronously
+                try:
+                    end_ts = time.time()
+                    duration_ms = None
+                    if 'start_ts' in locals():
+                        duration_ms = int((end_ts - start_ts) * 1000)
+
+                    adapter_name = query.adapter.__class__.__name__ if hasattr(query, 'adapter') else None
+                    runner_name = query.pipeline_config.get('ai', {}).get('runner', {}).get('runner') if query.pipeline_config else None
+
+                    # Model name if using localagent
+                    model_name = None
+                    try:
+                        if runner_name == 'local-agent' and getattr(query, 'use_llm_model_uuid', None):
+                            m = await self.ap.model_mgr.get_model_by_uuid(query.use_llm_model_uuid)
+                            if m and getattr(m, 'model_entity', None):
+                                model_name = getattr(m.model_entity, 'name', None)
+                    except Exception:
+                        model_name = None
+
+                    pipeline_plugins = query.variables.get('_pipeline_bound_plugins', None)
+
+                    from ....utils.constants import semantic_version
+
+                    payload = {
+                        'query_id': query.query_id,
+                        'adapter': adapter_name,
+                        'runner': runner_name,
+                        'duration_ms': duration_ms,
+                        'model_name': model_name,
+                        'version': semantic_version,
+                        'pipeline_plugins': pipeline_plugins,
+                        'error': locals().get('error_info', None),
+                        'timestamp': datetime.utcnow().isoformat(),
+                    }
+
+                    # Send telemetry asynchronously and do not block pipeline
+                    asyncio.create_task(telemetry_module.send_telemetry(self.ap, payload))
+                except Exception as ex:
+                    # Ensure telemetry issues do not affect normal flow
+                    self.ap.logger.warning(f'Failed to send telemetry: {ex}')
