@@ -71,3 +71,9 @@ plugin:
     enable_marketplace: true
     cloud_service_url: 'https://space.langbot.app'
     display_plugin_debug_url: 'ws://localhost:5401/plugin/debug/ws'
+
+telemetry:
+    # Whether to enable sending telemetry data to a remote Space server
+    enabled: false
+    # Remote telemetry server address (e.g. https://space.example.com). LangBot will POST /telemetry
+    server: ''
