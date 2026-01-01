@@ -34,6 +34,7 @@ class TelemetryManager:
         Posts to {server.rstrip('/')}/api/v1/telemetry as JSON. Failures are logged but do not raise.
         """
 
+        ap = self.ap
         try:
             cfg = self.telemetry_config
             if not cfg:
@@ -113,5 +114,3 @@ class TelemetryManager:
             print('Unexpected telemetry error:')
             import traceback
             traceback.print_exc()
-
-
