@@ -74,6 +74,6 @@ plugin:
 
 telemetry:
     # Whether to enable sending telemetry data to a remote Space server
-    enabled: false
+    enabled: true
     # Remote telemetry server address (e.g. https://space.example.com). LangBot will POST /telemetry
-    server: ''
+    server: 'https://space.langbot.app'
