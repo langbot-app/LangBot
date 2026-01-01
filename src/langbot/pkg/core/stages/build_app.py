@@ -102,6 +102,11 @@ class BuildAppStage(stage.BootingStage):
         ap.persistence_mgr = persistence_mgr_inst
         await persistence_mgr_inst.initialize()
 
+        # Telemetry manager: attach to app so other components can call via self.ap.telemetry
+        from ...telemetry import telemetry as telemetry_module
+        telemetry_inst = telemetry_module.TelemetryManager(ap)
+        ap.telemetry = telemetry_inst
+
         cmd_mgr_inst = cmdmgr.CommandManager(ap)
         await cmd_mgr_inst.initialize()
         ap.cmd_mgr = cmd_mgr_inst
