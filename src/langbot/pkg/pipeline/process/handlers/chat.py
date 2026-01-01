@@ -200,9 +200,8 @@ class ChatMessageHandler(handler.MessageHandler):
                     # Send telemetry asynchronously and do not block pipeline via app's telemetry manager
                     try:
                         asyncio.create_task(self.ap.telemetry.send(payload))
-                    except Exception:
-                        # Fallback to module-level helper if telemetry manager not present
-                        asyncio.create_task(telemetry_module.send_telemetry(self.ap, payload))
+                    except Exception as e:
+                        self.ap.logger.warning(f'Failed to create telemetry send task: {e}')
                 except Exception as ex:
                     # Ensure telemetry issues do not affect normal flow
                     self.ap.logger.warning(f'Failed to send telemetry: {ex}')
