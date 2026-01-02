@@ -15,6 +15,58 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 
 
+def split_string_by_bytes(text, limit=2048, encoding='utf-8'):
+    """
+    Splits a string into a list of strings, where each part is at most 'limit' bytes.
+    
+    Args:
+        text (str): The original string to split.
+        limit (int): The maximum byte size for each split part.
+        encoding (str): The encoding to use (default is 'utf-8').
+        
+    Returns:
+        list: A list of split strings.
+    """
+    # 1. Encode the entire string into bytes
+    bytes_data = text.encode(encoding)
+    total_len = len(bytes_data)
+    
+    parts = []
+    start = 0
+    
+    while start < total_len:
+        # 2. Determine the end index for the current chunk
+        # It shouldn't exceed the total length
+        end = min(start + limit, total_len)
+        
+        # 3. Slice the byte array
+        chunk = bytes_data[start:end]
+        
+        # 4. Attempt to decode the chunk
+        # Use errors='ignore' to drop any partial bytes at the end of the chunk
+        # (e.g., if a 3-byte character was cut after the 2nd byte)
+        part_str = chunk.decode(encoding, errors='ignore')
+        
+        # 5. Calculate the actual byte length of the successfully decoded string
+        # This tells us exactly where the valid character boundary ended
+        part_bytes = part_str.encode(encoding)
+        part_len = len(part_bytes)
+        
+        # Safety check: Prevent infinite loop if limit is too small (e.g., limit=1 for a Chinese char)
+        if part_len == 0 and end < total_len:
+            # Force advance by 1 byte to consume the un-decodable byte or raise error
+            # Here we just treat it as a part to avoid stuck loops, though it might be invalid
+            start += 1 
+            continue
+
+        parts.append(part_str)
+        
+        # 6. Move the start pointer by the actual length consumed
+        start += part_len
+        
+    return parts
+
+
 class WecomMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
     async def yiri2target(message_chain: platform_message.MessageChain, bot: WecomClient):
@@ -22,12 +74,14 @@ class WecomMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
 
         for msg in message_chain:
             if type(msg) is platform_message.Plain:
-                content_list.append(
+                chunks = split_string_by_bytes(msg.text)
+                content_list.extend([
                     {
                         'type': 'text',
-                        'content': msg.text,
+                        'content': chunk,
                     }
-                )
+                    for chunk in chunks
+                ])
             elif type(msg) is platform_message.Image:
                 content_list.append(
                     {
