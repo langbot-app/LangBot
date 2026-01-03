@@ -31,6 +31,8 @@ from ...storage import mgr as storagemgr
 from ...utils import logcache
 from ...vector import mgr as vectordb_mgr
 from .. import taskmgr
+from ...telemetry import telemetry as telemetry_module
+
 
 
 @stage.stage_class('BuildAppStage')
@@ -101,6 +103,11 @@ class BuildAppStage(stage.BootingStage):
         persistence_mgr_inst = persistencemgr.PersistenceManager(ap)
         ap.persistence_mgr = persistence_mgr_inst
         await persistence_mgr_inst.initialize()
+
+        # Telemetry manager: attach to app so other components can call via self.ap.telemetry
+        telemetry_inst = telemetry_module.TelemetryManager(ap)
+        await telemetry_inst.initialize()
+        ap.telemetry = telemetry_inst
 
         cmd_mgr_inst = cmdmgr.CommandManager(ap)
         await cmd_mgr_inst.initialize()
