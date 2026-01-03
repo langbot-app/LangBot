@@ -20,7 +20,7 @@ class TelemetryManager:
     
 
     async def initialize(self):
-        self.telemetry_config = self.ap.instance_config.data.get('telemetry', {})
+        self.telemetry_config = self.ap.instance_config.data.get('space', {})
 
 
     async def send(self, payload: dict):
@@ -38,9 +38,9 @@ class TelemetryManager:
             cfg = self.telemetry_config
             if not cfg:
                 return
-            if not cfg.get('enabled', False):
+            if not cfg.get('disable_telemetry', False):
                 return
-            server = cfg.get('server', '')
+            server = cfg.get('url', '')
             if not server:
                 return
 
