@@ -183,7 +183,7 @@ class ChatMessageHandler(handler.MessageHandler):
 
                     pipeline_plugins = query.variables.get('_pipeline_bound_plugins', None)
 
-                    from ....utils.constants import semantic_version
+                    from ....utils.constants import semantic_version, instance_id
 
                     payload = {
                         'query_id': query.query_id,
@@ -192,6 +192,7 @@ class ChatMessageHandler(handler.MessageHandler):
                         'duration_ms': duration_ms,
                         'model_name': model_name,
                         'version': semantic_version,
+                        'instance_id': instance_id,
                         'pipeline_plugins': pipeline_plugins,
                         'error': locals().get('error_info', None),
                         'timestamp': datetime.utcnow().isoformat(),
