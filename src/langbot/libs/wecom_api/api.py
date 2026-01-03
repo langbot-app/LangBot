@@ -197,7 +197,7 @@ class WecomClient:
             self.access_token = await self.get_access_token(self.secret)
 
         url = self.base_url + '/message/send?access_token=' + self.access_token
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=None) as client:
             params = {
                 'touser': user_id,
                 'msgtype': 'text',
