@@ -117,15 +117,24 @@ class BotService:
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_bot.Bot).values(bot_data).where(persistence_bot.Bot.uuid == bot_uuid)
         )
-        await self.ap.platform_mgr.remove_bot(bot_uuid)
 
         # select from db
         bot = await self.get_bot(bot_uuid)
 
-        runtime_bot = await self.ap.platform_mgr.load_bot(bot)
+        # Try to remove the old bot
+        removed = await self.ap.platform_mgr.remove_bot(bot_uuid)
 
-        if runtime_bot.enable:
-            await runtime_bot.run()
+        if removed:
+            # Bot was fully removed, load a new one
+            runtime_bot = await self.ap.platform_mgr.load_bot(bot)
+
+            if runtime_bot.enable:
+                await runtime_bot.run()
+        else:
+            # Adapter could not be fully stopped (e.g., aiocqhttp with existing connections)
+            # Update the existing bot_entity instead
+            bot_entity = persistence_bot.Bot(**bot)
+            await self.ap.platform_mgr.update_bot_entity(bot_uuid, bot_entity)
 
         # update all conversation that use this bot
         for session in self.ap.sess_mgr.session_list:

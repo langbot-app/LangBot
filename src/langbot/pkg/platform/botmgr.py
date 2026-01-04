@@ -51,6 +51,13 @@ class RuntimeBot:
         self.task_context = taskmgr.TaskContext()
         self.logger = logger
 
+    def update_bot_entity(self, bot_entity: persistence_bot.Bot):
+        """Update the bot entity without reinitializing the adapter.
+        This is useful when the adapter cannot be fully stopped (e.g., aiocqhttp).
+        """
+        self.bot_entity = bot_entity
+        self.enable = bot_entity.enable
+
     async def initialize(self):
         async def on_friend_message(
             event: platform_events.FriendMessage,
@@ -153,10 +160,17 @@ class RuntimeBot:
             ],
         )
 
-    async def shutdown(self):
-        await self.adapter.kill()
+    async def shutdown(self) -> bool:
+        """Shutdown the bot.
+
+        Returns:
+            True if the adapter was fully stopped, False otherwise.
+        """
+        kill_result = await self.adapter.kill()
 
         self.ap.task_mgr.cancel_task(self.task_wrapper.id)
+
+        return kill_result if kill_result is not None else True
 
 
 # 控制QQ消息输入输出的类
@@ -273,12 +287,30 @@ class PlatformManager:
                 return bot
         return None
 
-    async def remove_bot(self, bot_uuid: str):
+    async def remove_bot(self, bot_uuid: str) -> bool:
+        """Remove a bot from the manager.
+
+        Returns:
+            True if the bot was fully removed (adapter killed successfully).
+            False if the adapter could not be fully stopped (e.g., aiocqhttp with existing connections).
+        """
         for bot in self.bots:
             if bot.bot_entity.uuid == bot_uuid:
                 if bot.enable:
-                    await bot.shutdown()
+                    kill_result = await bot.shutdown()
+                    if not kill_result:
+                        # Adapter could not be fully stopped, don't remove from list
+                        # The caller should update the existing bot_entity instead
+                        return False
                 self.bots.remove(bot)
+                return True
+        return True  # Bot not found, consider it as successfully removed
+
+    async def update_bot_entity(self, bot_uuid: str, bot_entity: persistence_bot.Bot):
+        """Update an existing bot's entity without reinitializing the adapter."""
+        for bot in self.bots:
+            if bot.bot_entity.uuid == bot_uuid:
+                bot.update_bot_entity(bot_entity)
                 return
 
     def get_available_adapters_info(self) -> list[dict]:
