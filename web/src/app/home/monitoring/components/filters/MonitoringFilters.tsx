@@ -100,9 +100,9 @@ export default function MonitoringFilters({
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <div className="flex flex-wrap items-end gap-4 mb-6">
       {/* Bot Filter */}
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1.5 min-w-[180px]">
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
           {t('monitoring.filters.bot')}
         </label>
@@ -111,7 +111,7 @@ export default function MonitoringFilters({
           onValueChange={handleBotChange}
           disabled={loadingBots}
         >
-          <SelectTrigger className="bg-white dark:bg-[#2a2a2e]">
+          <SelectTrigger className="bg-white dark:bg-[#2a2a2e] h-9">
             <SelectValue
               placeholder={
                 loadingBots
@@ -134,7 +134,7 @@ export default function MonitoringFilters({
       </div>
 
       {/* Pipeline Filter */}
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1.5 min-w-[180px]">
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
           {t('monitoring.filters.pipeline')}
         </label>
@@ -143,7 +143,7 @@ export default function MonitoringFilters({
           onValueChange={handlePipelineChange}
           disabled={loadingPipelines}
         >
-          <SelectTrigger className="bg-white dark:bg-[#2a2a2e]">
+          <SelectTrigger className="bg-white dark:bg-[#2a2a2e] h-9">
             <SelectValue
               placeholder={
                 loadingPipelines
@@ -166,12 +166,12 @@ export default function MonitoringFilters({
       </div>
 
       {/* Time Range Filter */}
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1.5 min-w-[160px]">
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
           {t('monitoring.filters.timeRange')}
         </label>
         <Select value={timeRange} onValueChange={handleTimeRangeChange}>
-          <SelectTrigger className="bg-white dark:bg-[#2a2a2e]">
+          <SelectTrigger className="bg-white dark:bg-[#2a2a2e] h-9">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

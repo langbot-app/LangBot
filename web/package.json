@@ -63,6 +63,7 @@
     "react-markdown": "^10.1.0",
     "react-photo-view": "^1.2.7",
     "react-syntax-highlighter": "^16.1.0",
+    "recharts": "2.15.4",
     "rehype-autolink-headings": "^7.1.0",
     "rehype-highlight": "^7.0.2",
     "rehype-raw": "^7.0.0",

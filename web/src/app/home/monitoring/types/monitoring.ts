@@ -11,6 +11,7 @@ export interface MonitoringMessage {
   level: 'info' | 'warning' | 'error' | 'debug';
   platform?: string;
   userId?: string;
+  runnerName?: string;
 }
 
 export interface LLMCall {
@@ -30,6 +31,7 @@ export interface LLMCall {
   pipelineId: string;
   pipelineName: string;
   errorMessage?: string;
+  messageId?: string;
 }
 
 export interface SessionInfo {
@@ -57,6 +59,23 @@ export interface ErrorLog {
   pipelineName: string;
   sessionId?: string;
   stackTrace?: string;
+  messageId?: string;
+}
+
+export interface MessageDetails {
+  messageId: string;
+  found: boolean;
+  message?: MonitoringMessage;
+  llmCalls: LLMCall[];
+  llmStats: {
+    totalCalls: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    totalTokens: number;
+    totalDurationMs: number;
+    averageDurationMs: number;
+  };
+  errors: ErrorLog[];
 }
 
 export interface OverviewMetrics {

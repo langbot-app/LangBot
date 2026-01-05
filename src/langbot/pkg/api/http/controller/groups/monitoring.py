@@ -263,3 +263,22 @@ class MonitoringRouterGroup(group.RouterGroup):
                     },
                 }
             )
+
+        @self.route('/sessions/<session_id>/analysis', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        async def get_session_analysis(session_id: str) -> str:
+            """Get detailed analysis for a specific session"""
+            analysis = await self.ap.monitoring_service.get_session_analysis(session_id)
+
+            # Always return success with the analysis data
+            # The frontend will handle the 'found: false' case
+            return self.success(data=analysis)
+
+        @self.route('/messages/<message_id>/details', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        async def get_message_details(message_id: str) -> str:
+            """Get detailed information for a specific message"""
+            details = await self.ap.monitoring_service.get_message_details(message_id)
+
+            if not details.get('found'):
+                return self.error(message=f'Message {message_id} not found', code=404)
+
+            return self.success(data=details)

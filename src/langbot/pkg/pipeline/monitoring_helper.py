@@ -28,14 +28,15 @@ class MonitoringHelper:
         bot_name: str,
         pipeline_id: str,
         pipeline_name: str,
-    ):
-        """Record the start of query processing"""
+        runner_name: str | None = None,
+    ) -> str:
+        """Record the start of query processing, returns message_id"""
         try:
             # Check if session exists, if not, record session start
-            session_id = f"{query.launcher_type}_{query.launcher_id}"
+            session_id = f'{query.launcher_type}_{query.launcher_id}'
 
             # Try to record message
-            await ap.monitoring_service.record_message(
+            message_id = await ap.monitoring_service.record_message(
                 bot_id=bot_id,
                 bot_name=bot_name,
                 pipeline_id=pipeline_id,
@@ -44,14 +45,21 @@ class MonitoringHelper:
                 session_id=session_id,
                 status='pending',
                 level='info',
-                platform=query.launcher_type.value if hasattr(query.launcher_type, 'value') else str(query.launcher_type),
+                platform=query.launcher_type.value
+                if hasattr(query.launcher_type, 'value')
+                else str(query.launcher_type),
                 user_id=query.sender_id,
+                runner_name=runner_name,
             )
 
-            # Update session activity
-            try:
-                await ap.monitoring_service.update_session_activity(session_id)
-            except Exception:
+            # Update session activity or create new session if it doesn't exist
+            # Always pass pipeline info to handle pipeline switches
+            session_updated = await ap.monitoring_service.update_session_activity(
+                session_id,
+                pipeline_id=pipeline_id,
+                pipeline_name=pipeline_name,
+            )
+            if not session_updated:
                 # Session doesn't exist, create it
                 await ap.monitoring_service.record_session_start(
                     session_id=session_id,
@@ -59,39 +67,31 @@ class MonitoringHelper:
                     bot_name=bot_name,
                     pipeline_id=pipeline_id,
                     pipeline_name=pipeline_name,
-                    platform=query.launcher_type.value if hasattr(query.launcher_type, 'value') else str(query.launcher_type),
+                    platform=query.launcher_type.value
+                    if hasattr(query.launcher_type, 'value')
+                    else str(query.launcher_type),
                     user_id=query.sender_id,
                 )
+
+            return message_id
         except Exception as e:
-            ap.logger.error(f"Failed to record query start: {e}")
+            ap.logger.error(f'Failed to record query start: {e}')
+            return ''
 
     @staticmethod
     async def record_query_success(
         ap: app.Application,
-        query: pipeline_query.Query,
-        bot_id: str,
-        bot_name: str,
-        pipeline_id: str,
-        pipeline_name: str,
+        message_id: str,
     ):
-        """Record successful query processing"""
+        """Record successful query processing by updating message status"""
         try:
-            session_id = f"{query.launcher_type}_{query.launcher_id}"
-
-            await ap.monitoring_service.record_message(
-                bot_id=bot_id,
-                bot_name=bot_name,
-                pipeline_id=pipeline_id,
-                pipeline_name=pipeline_name,
-                message_content="Query processed successfully",
-                session_id=session_id,
-                status='success',
-                level='info',
-                platform=query.launcher_type.value if hasattr(query.launcher_type, 'value') else str(query.launcher_type),
-                user_id=query.sender_id,
-            )
+            if message_id:
+                await ap.monitoring_service.update_message_status(
+                    message_id=message_id,
+                    status='success',
+                )
         except Exception as e:
-            ap.logger.error(f"Failed to record query success: {e}")
+            ap.logger.error(f'Failed to record query success: {e}')
 
     @staticmethod
     async def record_query_error(
@@ -102,23 +102,27 @@ class MonitoringHelper:
         pipeline_id: str,
         pipeline_name: str,
         error: Exception,
-    ):
-        """Record query processing error"""
+        runner_name: str | None = None,
+    ) -> str:
+        """Record query processing error, returns message_id"""
         try:
-            session_id = f"{query.launcher_type}_{query.launcher_id}"
+            session_id = f'{query.launcher_type}_{query.launcher_id}'
 
             # Record error message
-            await ap.monitoring_service.record_message(
+            message_id = await ap.monitoring_service.record_message(
                 bot_id=bot_id,
                 bot_name=bot_name,
                 pipeline_id=pipeline_id,
                 pipeline_name=pipeline_name,
-                message_content=f"Error: {str(error)}",
+                message_content=f'Error: {str(error)}',
                 session_id=session_id,
                 status='error',
                 level='error',
-                platform=query.launcher_type.value if hasattr(query.launcher_type, 'value') else str(query.launcher_type),
+                platform=query.launcher_type.value
+                if hasattr(query.launcher_type, 'value')
+                else str(query.launcher_type),
                 user_id=query.sender_id,
+                runner_name=runner_name,
             )
 
             # Record error log
@@ -131,9 +135,13 @@ class MonitoringHelper:
                 error_message=str(error),
                 session_id=session_id,
                 stack_trace=traceback.format_exc(),
+                message_id=message_id,
             )
+
+            return message_id
         except Exception as e:
-            ap.logger.error(f"Failed to record query error: {e}")
+            ap.logger.error(f'Failed to record query error: {e}')
+            return ''
 
     @staticmethod
     async def record_llm_call(
@@ -150,10 +158,11 @@ class MonitoringHelper:
         status: str = 'success',
         cost: float | None = None,
         error_message: str | None = None,
+        message_id: str | None = None,
     ):
         """Record LLM call"""
         try:
-            session_id = f"{query.launcher_type}_{query.launcher_id}"
+            session_id = f'{query.launcher_type}_{query.launcher_id}'
 
             await ap.monitoring_service.record_llm_call(
                 bot_id=bot_id,
@@ -168,9 +177,10 @@ class MonitoringHelper:
                 status=status,
                 cost=cost,
                 error_message=error_message,
+                message_id=message_id,
             )
         except Exception as e:
-            ap.logger.error(f"Failed to record LLM call: {e}")
+            ap.logger.error(f'Failed to record LLM call: {e}')
 
 
 class LLMCallMonitor:
@@ -237,4 +247,3 @@ class LLMCallMonitor:
             )
 
         return False  # Don't suppress exceptions
-

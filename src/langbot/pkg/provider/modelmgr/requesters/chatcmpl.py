@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import typing
+import time
 
 import openai
 import openai.types.chat.chat_completion as chat_completion_module
@@ -253,7 +254,7 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
         use_funcs: list[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> provider_message.Message:
+    ) -> tuple[provider_message.Message, dict]:
         self.client.api_key = use_model.provider.token_mgr.get_token()
 
         args = {}
@@ -285,7 +286,14 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
         # 处理请求结果
         message = await self._make_msg(resp, remove_think)
 
-        return message
+        # Extract token usage from response
+        usage_info = {}
+        if hasattr(resp, 'usage') and resp.usage:
+            usage_info['input_tokens'] = resp.usage.prompt_tokens or 0
+            usage_info['output_tokens'] = resp.usage.completion_tokens or 0
+            usage_info['total_tokens'] = resp.usage.total_tokens or 0
+
+        return message, usage_info
 
     async def invoke_llm(
         self,
@@ -307,8 +315,15 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
                     msg_dict['content'] = '\n'.join(part['text'] for part in content)
             req_messages.append(msg_dict)
 
+        # Start timing for monitoring
+        start_time = time.time()
+        input_tokens = 0
+        output_tokens = 0
+        status = 'success'
+        error_message = None
+
         try:
-            msg = await self._closure(
+            msg, usage_info = await self._closure(
                 query=query,
                 req_messages=req_messages,
                 use_model=model,
@@ -316,22 +331,91 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
                 extra_args=extra_args,
                 remove_think=remove_think,
             )
+
+            # Get token usage from the usage_info returned by _closure
+            if usage_info:
+                input_tokens = usage_info.get('input_tokens', 0)
+                output_tokens = usage_info.get('output_tokens', 0)
+
             return msg
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as e:
+            status = 'error'
+            error_message = '请求超时'
             raise errors.RequesterError('请求超时')
         except openai.BadRequestError as e:
-            if 'context_length_exceeded' in e.message:
-                raise errors.RequesterError(f'上文过长，请重置会话: {e.message}')
+            status = 'error'
+            error_message = str(e.message) if hasattr(e, 'message') else str(e)
+            if 'context_length_exceeded' in str(e):
+                raise errors.RequesterError(f'上文过长，请重置会话: {error_message}')
             else:
-                raise errors.RequesterError(f'请求参数错误: {e.message}')
+                raise errors.RequesterError(f'请求参数错误: {error_message}')
         except openai.AuthenticationError as e:
-            raise errors.RequesterError(f'无效的 api-key: {e.message}')
+            status = 'error'
+            error_message = str(e.message) if hasattr(e, 'message') else str(e)
+            raise errors.RequesterError(f'无效的 api-key: {error_message}')
         except openai.NotFoundError as e:
-            raise errors.RequesterError(f'请求路径错误: {e.message}')
+            status = 'error'
+            error_message = str(e.message) if hasattr(e, 'message') else str(e)
+            raise errors.RequesterError(f'请求路径错误: {error_message}')
         except openai.RateLimitError as e:
-            raise errors.RequesterError(f'请求过于频繁或余额不足: {e.message}')
+            status = 'error'
+            error_message = str(e.message) if hasattr(e, 'message') else str(e)
+            raise errors.RequesterError(f'请求过于频繁或余额不足: {error_message}')
+        except openai.APIConnectionError as e:
+            status = 'error'
+            error_message = f'连接错误: {str(e)}'
+            raise errors.RequesterError(error_message)
         except openai.APIError as e:
-            raise errors.RequesterError(f'请求错误: {e.message}')
+            status = 'error'
+            error_message = str(e.message) if hasattr(e, 'message') else str(e)
+            raise errors.RequesterError(f'请求错误: {error_message}')
+        except Exception as e:
+            status = 'error'
+            error_message = str(e)
+            raise
+        finally:
+            # Record LLM call monitoring data
+            duration_ms = int((time.time() - start_time) * 1000)
+
+            # Import monitoring helper
+            try:
+                from ....pipeline import monitoring_helper
+
+                # Get monitoring metadata from query variables
+                if query.variables:
+                    bot_name = query.variables.get('_monitoring_bot_name', 'Unknown')
+                    pipeline_name = query.variables.get('_monitoring_pipeline_name', 'Unknown')
+                    message_id = query.variables.get('_monitoring_message_id')
+                else:
+                    bot_name = 'Unknown'
+                    pipeline_name = 'Unknown'
+                    message_id = None
+
+                self.ap.logger.info(
+                    f'[Monitoring] Recording LLM call: status={status}, input_tokens={input_tokens}, '
+                    f'output_tokens={output_tokens}, duration_ms={duration_ms}, error={error_message}'
+                )
+
+                await monitoring_helper.MonitoringHelper.record_llm_call(
+                    ap=self.ap,
+                    query=query,
+                    bot_id=query.bot_uuid or 'unknown',
+                    bot_name=bot_name,
+                    pipeline_id=query.pipeline_uuid or 'unknown',
+                    pipeline_name=pipeline_name,
+                    model_name=model.model_entity.name,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    duration_ms=duration_ms,
+                    status=status,
+                    error_message=error_message,
+                    message_id=message_id,
+                )
+                self.ap.logger.info('[Monitoring] LLM call recorded successfully')
+            except Exception as monitor_err:
+                self.ap.logger.error(f'[Monitoring] Failed to record LLM call: {monitor_err}')
+                import traceback
+                self.ap.logger.error(f'[Monitoring] Traceback: {traceback.format_exc()}')
 
     async def invoke_embedding(
         self,

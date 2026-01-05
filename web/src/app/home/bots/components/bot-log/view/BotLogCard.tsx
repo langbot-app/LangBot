@@ -6,12 +6,33 @@ import styles from './botLog.module.css';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { PhotoProvider } from 'react-photo-view';
 import { useTranslation } from 'react-i18next';
-import { Check } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight } from 'lucide-react';
+import { toast } from 'sonner';
 
 export function BotLogCard({ botLog }: { botLog: BotLog }) {
   const { t } = useTranslation();
   const baseURL = httpClient.getBaseUrl();
   const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  // Fallback 复制方法，用于不支持 clipboard API 的环境
+  function fallbackCopy(text: string) {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-9999px';
+    textArea.style.top = '-9999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      document.execCommand('copy');
+      toast.success(t('common.copySuccess'));
+    } catch {
+      toast.error(t('common.copyFailed'));
+    }
+    document.body.removeChild(textArea);
+  }
 
   function formatTime(timestamp: number) {
     const now = new Date();
@@ -63,6 +84,15 @@ export function BotLogCard({ botLog }: { botLog: BotLog }) {
     }
   }
 
+  // 截取文本的简短版本
+  function getShortText(text: string, maxLength: number = 100) {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '...';
+  }
+
+  // 判断是否需要展开按钮
+  const needsExpand = botLog.text.length > 100 || botLog.images.length > 0;
+
   return (
     <div className={`${styles.botLogCardContainer}`}>
       {/* 头部标签，时间 */}
@@ -78,13 +108,24 @@ export function BotLogCard({ botLog }: { botLog: BotLog }) {
           {botLog.message_session_id && (
             <div
               className={`${styles.tag} ${styles.chatTag} relative`}
-              onClick={() => {
-                navigator.clipboard
-                  .writeText(botLog.message_session_id)
-                  .then(() => {
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 2000);
-                  });
+              onClick={(e) => {
+                e.stopPropagation();
+                // 兼容性更好的复制方法
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                  navigator.clipboard
+                    .writeText(botLog.message_session_id)
+                    .then(() => {
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                      toast.success(t('common.copySuccess'));
+                    })
+                    .catch(() => {
+                      // fallback
+                      fallbackCopy(botLog.message_session_id);
+                    });
+                } else {
+                  fallbackCopy(botLog.message_session_id);
+                }
               }}
               title={t('common.clickToCopy')}
             >
@@ -125,12 +166,38 @@ export function BotLogCard({ botLog }: { botLog: BotLog }) {
             </div>
           )}
         </div>
-        <div className={`${styles.timestamp}`}>
-          {formatTime(botLog.timestamp)}
+        <div className="flex items-center gap-2">
+          {needsExpand && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
+            >
+              {expanded ? (
+                <>
+                  <ChevronDown className="w-3 h-3" />
+                  {t('bots.collapse')}
+                </>
+              ) : (
+                <>
+                  <ChevronRight className="w-3 h-3" />
+                  {t('bots.viewDetails')}
+                </>
+              )}
+            </button>
+          )}
+          <div className={`${styles.timestamp}`}>
+            {formatTime(botLog.timestamp)}
+          </div>
         </div>
       </div>
-      <div className={`${styles.cardText}`}>{botLog.text}</div>
-      {botLog.images.length > 0 && (
+
+      {/* 日志内容 - 简化显示 */}
+      <div className={`${styles.cardText}`}>
+        {expanded ? botLog.text : getShortText(botLog.text)}
+      </div>
+
+      {/* 图片 - 只在展开时显示 */}
+      {expanded && botLog.images.length > 0 && (
         <PhotoProvider>
           <div className={`flex flex-wrap gap-2 mt-3`}>
             {botLog.images.map((item) => (
@@ -143,6 +210,13 @@ export function BotLogCard({ botLog }: { botLog: BotLog }) {
             ))}
           </div>
         </PhotoProvider>
+      )}
+
+      {/* 图片数量提示 - 未展开时显示 */}
+      {!expanded && botLog.images.length > 0 && (
+        <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          📷 {botLog.images.length} {t('bots.imagesAttached')}
+        </div>
       )}
     </div>
   );

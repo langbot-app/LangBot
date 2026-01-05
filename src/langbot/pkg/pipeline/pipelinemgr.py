@@ -170,6 +170,37 @@ class RuntimePipeline:
             self.ap.logger.info(result.console_notice)
         if result.error_notice:
             self.ap.logger.error(result.error_notice)
+            # Mark query as having error
+            query.variables['_monitoring_has_error'] = True
+            # Record error to monitoring system
+            try:
+                bot_name = query.variables.get('_monitoring_bot_name', 'Unknown')
+                pipeline_name = query.variables.get('_monitoring_pipeline_name', 'Unknown')
+                message_id = query.variables.get('_monitoring_message_id', '')
+                session_id = f'{query.launcher_type}_{query.launcher_id}'
+
+                # Update message status to error
+                if message_id:
+                    await self.ap.monitoring_service.update_message_status(
+                        message_id=message_id,
+                        status='error',
+                        level='error',
+                    )
+
+                # Record error log
+                await self.ap.monitoring_service.record_error(
+                    bot_id=query.bot_uuid or 'unknown',
+                    bot_name=bot_name,
+                    pipeline_id=self.pipeline_entity.uuid,
+                    pipeline_name=pipeline_name,
+                    error_type='PipelineError',
+                    error_message=result.error_notice,
+                    session_id=session_id,
+                    stack_trace=result.debug_notice if result.debug_notice else None,
+                    message_id=message_id,
+                )
+            except Exception as e:
+                self.ap.logger.error(f'Failed to record error to monitoring: {e}')
 
     async def _execute_from_stage(
         self,
@@ -244,18 +275,27 @@ class RuntimePipeline:
         bot_name = query.variables.get('_monitoring_bot_name', 'Unknown')
         pipeline_name = query.variables.get('_monitoring_pipeline_name', 'Unknown')
 
-        # Record query start
+        # Get runner name from pipeline config
+        runner_name = None
+        if query.pipeline_config and 'runner' in query.pipeline_config:
+            runner_name = query.pipeline_config['runner'].get('type', 'unknown')
+
+        # Record query start and store message_id
+        message_id = ''
         try:
             from . import monitoring_helper
 
-            await monitoring_helper.MonitoringHelper.record_query_start(
+            message_id = await monitoring_helper.MonitoringHelper.record_query_start(
                 ap=self.ap,
                 query=query,
                 bot_id=query.bot_uuid or 'unknown',
                 bot_name=bot_name,
                 pipeline_id=self.pipeline_entity.uuid,
                 pipeline_name=pipeline_name,
+                runner_name=runner_name,
             )
+            # Store message_id in query variables for LLM call monitoring
+            query.variables['_monitoring_message_id'] = message_id
         except Exception as e:
             self.ap.logger.error(f'Failed to record query start: {e}')
 
@@ -288,18 +328,15 @@ class RuntimePipeline:
 
             await self._execute_from_stage(0, query)
 
-            # Record query success
-            try:
-                await monitoring_helper.MonitoringHelper.record_query_success(
-                    ap=self.ap,
-                    query=query,
-                    bot_id=query.bot_uuid or 'unknown',
-                    bot_name=bot_name,
-                    pipeline_id=self.pipeline_entity.uuid,
-                    pipeline_name=pipeline_name,
-                )
-            except Exception as e:
-                self.ap.logger.error(f'Failed to record query success: {e}')
+            # Record query success only if no error occurred during processing
+            if not query.variables.get('_monitoring_has_error', False):
+                try:
+                    await monitoring_helper.MonitoringHelper.record_query_success(
+                        ap=self.ap,
+                        message_id=message_id,
+                    )
+                except Exception as e:
+                    self.ap.logger.error(f'Failed to record query success: {e}')
 
         except Exception as e:
             inst_name = query.current_stage_name if query.current_stage_name else 'unknown'
@@ -318,6 +355,7 @@ class RuntimePipeline:
                     pipeline_id=self.pipeline_entity.uuid,
                     pipeline_name=pipeline_name,
                     error=e,
+                    runner_name=runner_name,
                 )
             except Exception as me:
                 self.ap.logger.error(f'Failed to record query error: {me}')

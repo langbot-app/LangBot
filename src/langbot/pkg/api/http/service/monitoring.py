@@ -31,6 +31,7 @@ class MonitoringService:
         level: str = 'info',
         platform: str | None = None,
         user_id: str | None = None,
+        runner_name: str | None = None,
     ) -> str:
         """Record a message"""
         message_id = str(uuid.uuid4())
@@ -47,6 +48,7 @@ class MonitoringService:
             'level': level,
             'platform': platform,
             'user_id': user_id,
+            'runner_name': runner_name,
         }
 
         await self.ap.persistence_mgr.execute_async(
@@ -69,6 +71,7 @@ class MonitoringService:
         status: str = 'success',
         cost: float | None = None,
         error_message: str | None = None,
+        message_id: str | None = None,
     ) -> str:
         """Record an LLM call"""
         call_id = str(uuid.uuid4())
@@ -88,6 +91,7 @@ class MonitoringService:
             'pipeline_name': pipeline_name,
             'session_id': session_id,
             'error_message': error_message,
+            'message_id': message_id,
         }
 
         await self.ap.persistence_mgr.execute_async(
@@ -125,16 +129,37 @@ class MonitoringService:
             sqlalchemy.insert(persistence_monitoring.MonitoringSession).values(session_data)
         )
 
-    async def update_session_activity(self, session_id: str) -> None:
-        """Update session last activity time and increment message count"""
-        await self.ap.persistence_mgr.execute_async(
+    async def update_session_activity(
+        self,
+        session_id: str,
+        pipeline_id: str | None = None,
+        pipeline_name: str | None = None,
+    ) -> bool:
+        """Update session last activity time and increment message count.
+
+        Also updates pipeline info if the bot's pipeline has changed.
+
+        Returns:
+            True if session was found and updated, False if session doesn't exist.
+        """
+        update_values = {
+            'last_activity': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
+            'message_count': persistence_monitoring.MonitoringSession.message_count + 1,
+        }
+
+        # Update pipeline info if provided (handles pipeline switch)
+        if pipeline_id is not None:
+            update_values['pipeline_id'] = pipeline_id
+        if pipeline_name is not None:
+            update_values['pipeline_name'] = pipeline_name
+
+        result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_monitoring.MonitoringSession)
             .where(persistence_monitoring.MonitoringSession.session_id == session_id)
-            .values({
-                'last_activity': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
-                'message_count': persistence_monitoring.MonitoringSession.message_count + 1,
-            })
+            .values(update_values)
         )
+        # Check if any rows were updated
+        return result.rowcount > 0
 
     async def record_error(
         self,
@@ -146,6 +171,7 @@ class MonitoringService:
         error_message: str,
         session_id: str | None = None,
         stack_trace: str | None = None,
+        message_id: str | None = None,
     ) -> str:
         """Record an error"""
         error_id = str(uuid.uuid4())
@@ -160,6 +186,7 @@ class MonitoringService:
             'pipeline_name': pipeline_name,
             'session_id': session_id,
             'stack_trace': stack_trace,
+            'message_id': message_id,
         }
 
         await self.ap.persistence_mgr.execute_async(
@@ -167,6 +194,23 @@ class MonitoringService:
         )
 
         return error_id
+
+    async def update_message_status(
+        self,
+        message_id: str,
+        status: str,
+        level: str | None = None,
+    ) -> None:
+        """Update message status"""
+        update_values = {'status': status}
+        if level is not None:
+            update_values['level'] = level
+
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.update(persistence_monitoring.MonitoringMessage)
+            .where(persistence_monitoring.MonitoringMessage.id == message_id)
+            .values(update_values)
+        )
 
     # ========== Query Methods ==========
 
@@ -228,7 +272,7 @@ class MonitoringService:
 
         success_result = await self.ap.persistence_mgr.execute_async(success_query)
         success_count = success_result.scalar() or 0
-        success_rate = (success_count / total_messages * 100) if total_messages > 0 else 0
+        success_rate = (success_count / total_messages * 100) if total_messages > 0 else 100
 
         # Active sessions
         active_session_query = sqlalchemy.select(
@@ -339,7 +383,12 @@ class MonitoringService:
         llm_calls_rows = result.all()
 
         return (
-            [self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringLLMCall, row[0] if isinstance(row, tuple) else row) for row in llm_calls_rows],
+            [
+                self.ap.persistence_mgr.serialize_model(
+                    persistence_monitoring.MonitoringLLMCall, row[0] if isinstance(row, tuple) else row
+                )
+                for row in llm_calls_rows
+            ],
             total,
         )
 
@@ -388,7 +437,12 @@ class MonitoringService:
         sessions_rows = result.all()
 
         return (
-            [self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringSession, row[0] if isinstance(row, tuple) else row) for row in sessions_rows],
+            [
+                self.ap.persistence_mgr.serialize_model(
+                    persistence_monitoring.MonitoringSession, row[0] if isinstance(row, tuple) else row
+                )
+                for row in sessions_rows
+            ],
             total,
         )
 
@@ -434,6 +488,201 @@ class MonitoringService:
         errors_rows = result.all()
 
         return (
-            [self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringError, row[0] if isinstance(row, tuple) else row) for row in errors_rows],
+            [
+                self.ap.persistence_mgr.serialize_model(
+                    persistence_monitoring.MonitoringError, row[0] if isinstance(row, tuple) else row
+                )
+                for row in errors_rows
+            ],
             total,
         )
+
+    async def get_session_analysis(
+        self,
+        session_id: str,
+    ) -> dict:
+        """Get detailed analysis for a specific session"""
+        # Get session info
+        session_query = sqlalchemy.select(persistence_monitoring.MonitoringSession).where(
+            persistence_monitoring.MonitoringSession.session_id == session_id
+        )
+        session_result = await self.ap.persistence_mgr.execute_async(session_query)
+        session_row = session_result.first()
+
+        if not session_row:
+            return {
+                'session_id': session_id,
+                'found': False,
+            }
+
+        session = session_row[0] if isinstance(session_row, tuple) else session_row
+
+        # Get messages for this session
+        messages_query = (
+            sqlalchemy.select(persistence_monitoring.MonitoringMessage)
+            .where(persistence_monitoring.MonitoringMessage.session_id == session_id)
+            .order_by(persistence_monitoring.MonitoringMessage.timestamp.asc())
+        )
+        messages_result = await self.ap.persistence_mgr.execute_async(messages_query)
+        messages_rows = messages_result.all()
+
+        # Count messages by status
+        success_messages = 0
+        error_messages = 0
+        pending_messages = 0
+        for row in messages_rows:
+            msg = row[0] if isinstance(row, tuple) else row
+            if msg.status == 'success':
+                success_messages += 1
+            elif msg.status == 'error':
+                error_messages += 1
+            elif msg.status == 'pending':
+                pending_messages += 1
+
+        # Get LLM calls for this session
+        llm_query = sqlalchemy.select(persistence_monitoring.MonitoringLLMCall).where(
+            persistence_monitoring.MonitoringLLMCall.session_id == session_id
+        )
+        llm_result = await self.ap.persistence_mgr.execute_async(llm_query)
+        llm_rows = llm_result.all()
+
+        # Calculate LLM statistics
+        total_llm_calls = len(llm_rows)
+        total_input_tokens = 0
+        total_output_tokens = 0
+        total_tokens = 0
+        total_duration = 0
+        success_llm_calls = 0
+        error_llm_calls = 0
+
+        for row in llm_rows:
+            llm_call = row[0] if isinstance(row, tuple) else row
+            total_input_tokens += llm_call.input_tokens
+            total_output_tokens += llm_call.output_tokens
+            total_tokens += llm_call.total_tokens
+            total_duration += llm_call.duration
+            if llm_call.status == 'success':
+                success_llm_calls += 1
+            else:
+                error_llm_calls += 1
+
+        # Get errors for this session
+        error_query = (
+            sqlalchemy.select(persistence_monitoring.MonitoringError)
+            .where(persistence_monitoring.MonitoringError.session_id == session_id)
+            .order_by(persistence_monitoring.MonitoringError.timestamp.desc())
+        )
+        error_result = await self.ap.persistence_mgr.execute_async(error_query)
+        error_rows = error_result.all()
+
+        errors = [
+            self.ap.persistence_mgr.serialize_model(
+                persistence_monitoring.MonitoringError, row[0] if isinstance(row, tuple) else row
+            )
+            for row in error_rows
+        ]
+
+        # Calculate session duration
+        if messages_rows:
+            first_msg = messages_rows[0][0] if isinstance(messages_rows[0], tuple) else messages_rows[0]
+            last_msg = messages_rows[-1][0] if isinstance(messages_rows[-1], tuple) else messages_rows[-1]
+            session_duration_seconds = int((last_msg.timestamp - first_msg.timestamp).total_seconds())
+        else:
+            session_duration_seconds = 0
+
+        return {
+            'session_id': session_id,
+            'found': True,
+            'session': self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringSession, session),
+            'message_stats': {
+                'total': len(messages_rows),
+                'success': success_messages,
+                'error': error_messages,
+                'pending': pending_messages,
+            },
+            'llm_stats': {
+                'total_calls': total_llm_calls,
+                'success_calls': success_llm_calls,
+                'error_calls': error_llm_calls,
+                'total_input_tokens': total_input_tokens,
+                'total_output_tokens': total_output_tokens,
+                'total_tokens': total_tokens,
+                'average_duration_ms': int(total_duration / total_llm_calls) if total_llm_calls > 0 else 0,
+            },
+            'errors': errors,
+            'session_duration_seconds': session_duration_seconds,
+        }
+
+    async def get_message_details(
+        self,
+        message_id: str,
+    ) -> dict:
+        """Get detailed information for a specific message including associated LLM calls and errors"""
+        # Get message info
+        message_query = sqlalchemy.select(persistence_monitoring.MonitoringMessage).where(
+            persistence_monitoring.MonitoringMessage.id == message_id
+        )
+        message_result = await self.ap.persistence_mgr.execute_async(message_query)
+        message_row = message_result.first()
+
+        if not message_row:
+            return {
+                'message_id': message_id,
+                'found': False,
+            }
+
+        message = message_row[0] if isinstance(message_row, tuple) else message_row
+
+        # Get LLM calls for this message
+        llm_query = (
+            sqlalchemy.select(persistence_monitoring.MonitoringLLMCall)
+            .where(persistence_monitoring.MonitoringLLMCall.message_id == message_id)
+            .order_by(persistence_monitoring.MonitoringLLMCall.timestamp.asc())
+        )
+        llm_result = await self.ap.persistence_mgr.execute_async(llm_query)
+        llm_rows = llm_result.all()
+
+        llm_calls = [
+            self.ap.persistence_mgr.serialize_model(
+                persistence_monitoring.MonitoringLLMCall, row[0] if isinstance(row, tuple) else row
+            )
+            for row in llm_rows
+        ]
+
+        # Calculate LLM statistics
+        total_input_tokens = sum(call.input_tokens for call in llm_rows)
+        total_output_tokens = sum(call.output_tokens for call in llm_rows)
+        total_tokens = sum(call.total_tokens for call in llm_rows)
+        total_duration = sum(call.duration for call in llm_rows)
+
+        # Get errors for this message
+        error_query = (
+            sqlalchemy.select(persistence_monitoring.MonitoringError)
+            .where(persistence_monitoring.MonitoringError.message_id == message_id)
+            .order_by(persistence_monitoring.MonitoringError.timestamp.asc())
+        )
+        error_result = await self.ap.persistence_mgr.execute_async(error_query)
+        error_rows = error_result.all()
+
+        errors = [
+            self.ap.persistence_mgr.serialize_model(
+                persistence_monitoring.MonitoringError, row[0] if isinstance(row, tuple) else row
+            )
+            for row in error_rows
+        ]
+
+        return {
+            'message_id': message_id,
+            'found': True,
+            'message': self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringMessage, message),
+            'llm_calls': llm_calls,
+            'llm_stats': {
+                'total_calls': len(llm_rows),
+                'total_input_tokens': total_input_tokens,
+                'total_output_tokens': total_output_tokens,
+                'total_tokens': total_tokens,
+                'total_duration_ms': total_duration,
+                'average_duration_ms': int(total_duration / len(llm_rows)) if len(llm_rows) > 0 else 0,
+            },
+            'errors': errors,
+        }
