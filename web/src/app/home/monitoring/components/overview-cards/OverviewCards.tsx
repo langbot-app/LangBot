@@ -3,15 +3,20 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import MetricCard from './MetricCard';
-import { OverviewMetrics } from '../../types/monitoring';
+import TrafficChart from './TrafficChart';
+import { OverviewMetrics, MonitoringMessage, LLMCall } from '../../types/monitoring';
 
 interface OverviewCardsProps {
   metrics: OverviewMetrics | null;
+  messages?: MonitoringMessage[];
+  llmCalls?: LLMCall[];
   loading?: boolean;
 }
 
 export default function OverviewCards({
   metrics,
+  messages = [],
+  llmCalls = [],
   loading,
 }: OverviewCardsProps) {
   const { t } = useTranslation();
@@ -96,17 +101,27 @@ export default function OverviewCards({
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-      {cards.map((card, index) => (
-        <MetricCard
-          key={index}
-          title={card.title}
-          value={card.value}
-          icon={card.icon}
-          trend={card.trend}
-          loading={loading}
-        />
-      ))}
+    <div className="space-y-4">
+      {/* Metric Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {cards.map((card, index) => (
+          <MetricCard
+            key={index}
+            title={card.title}
+            value={card.value}
+            icon={card.icon}
+            trend={card.trend}
+            loading={loading}
+          />
+        ))}
+      </div>
+
+      {/* Traffic Chart */}
+      <TrafficChart
+        messages={messages}
+        llmCalls={llmCalls}
+        loading={loading}
+      />
     </div>
   );
 }

@@ -20,6 +20,7 @@ class MonitoringMessage(Base):
     level = sqlalchemy.Column(sqlalchemy.String(50), nullable=False)  # info, warning, error, debug
     platform = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
     user_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
+    runner_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)  # Runner name for this query
 
 
 class MonitoringLLMCall(Base):
@@ -42,6 +43,7 @@ class MonitoringLLMCall(Base):
     pipeline_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     session_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     error_message = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)  # Associated message ID
 
 
 class MonitoringSession(Base):
@@ -77,3 +79,4 @@ class MonitoringError(Base):
     pipeline_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     session_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
     stack_trace = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)  # Associated message ID
