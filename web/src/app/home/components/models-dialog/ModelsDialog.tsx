@@ -206,8 +206,23 @@ export default function ModelsDialog({
     }
   }
 
-  function handleSpaceLogin() {
-    window.location.href = '/auth/space';
+  async function handleSpaceLogin() {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast.error(t('common.error'));
+        return;
+      }
+      const currentOrigin = window.location.origin;
+      const redirectUri = `${currentOrigin}/auth/space/callback?mode=bind`;
+      const response = await httpClient.getSpaceAuthorizeUrl(
+        redirectUri,
+        token,
+      );
+      window.location.href = response.authorize_url;
+    } catch {
+      toast.error(t('common.spaceLoginFailed'));
+    }
   }
 
   async function handleAddModel(
@@ -429,18 +444,16 @@ export default function ModelsDialog({
         }}
       >
         <DialogContent className="overflow-hidden p-0 h-[80vh] flex flex-col !max-w-[37rem]">
-          <DialogHeader className="px-6 pt-6 pb-0">
+          <DialogHeader className="px-6 pt-6 pb-0 flex-shrink-0">
             <DialogTitle>{t('models.title')}</DialogTitle>
           </DialogHeader>
 
-          <div className="flex-1 flex flex-col overflow-hidden px-6 pb-6 mt-0">
-            {/* Fixed LangBot Models Card */}
-            <div className="flex-shrink-0">
-              {langbotProvider && renderProviderCard(langbotProvider, true)}
-            </div>
+          <div className="flex-1 overflow-auto px-6 pb-6 mt-0">
+            {/* LangBot Models Card */}
+            {langbotProvider && renderProviderCard(langbotProvider, true)}
 
             {/* Add Provider Button */}
-            <div className="flex-shrink-0 mb-3 flex justify-between items-center">
+            <div className="mb-3 flex justify-between items-center sticky top-0 bg-background py-2 z-10">
               <span className="text-sm text-muted-foreground">
                 {otherProviders.length === 0
                   ? t(
@@ -460,17 +473,15 @@ export default function ModelsDialog({
               </Button>
             </div>
 
-            {/* Scrollable Provider List */}
-            <div className="flex-1 overflow-auto">
-              {otherProviders.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                  <Boxes className="h-12 w-12 mb-3 opacity-50" />
-                  <p className="text-sm">{t('models.noProviders')}</p>
-                </div>
-              ) : (
-                otherProviders.map((p) => renderProviderCard(p))
-              )}
-            </div>
+            {/* Provider List */}
+            {otherProviders.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                <Boxes className="h-12 w-12 mb-3 opacity-50" />
+                <p className="text-sm">{t('models.noProviders')}</p>
+              </div>
+            ) : (
+              otherProviders.map((p) => renderProviderCard(p))
+            )}
           </div>
         </DialogContent>
       </Dialog>

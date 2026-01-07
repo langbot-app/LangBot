@@ -10,7 +10,7 @@ class MoveCloudServiceUrl(migration.DBMigration):
         if 'space' not in self.ap.instance_config.data:
             self.ap.instance_config.data['space'] = {
                 'url': 'https://space.langbot.app',
-                'models_gateway_api_url': 'https://api.langbot.cloud',
+                'models_gateway_api_url': 'https://api.langbot.cloud/v1',
                 'oauth_authorize_url': 'https://space.langbot.app/auth/authorize',
                 'disable_models_service': False,
             }

@@ -75,7 +75,7 @@ space:
     # Space service URL for OAuth and API
     url: 'https://space.langbot.app'
     # Space API URL for model requests (MaaS)
-    models_gateway_api_url: 'https://api.langbot.cloud'
+    models_gateway_api_url: 'https://api.langbot.cloud/v1'
     # OAuth authorization page URL (user will be redirected here)
     oauth_authorize_url: 'https://space.langbot.app/auth/authorize'
     disable_models_service: false

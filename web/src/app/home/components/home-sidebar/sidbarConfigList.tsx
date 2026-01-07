@@ -23,8 +23,9 @@ export const sidebarConfigList = [
     route: '/home/bots',
     description: t('bots.description'),
     helpLink: {
-      en_US: 'https://docs.langbot.app/en/deploy/platforms/readme.html',
-      zh_Hans: 'https://docs.langbot.app/zh/deploy/platforms/readme.html',
+      en_US: 'https://docs.langbot.app/en/usage/platforms/readme.html',
+      zh_Hans: 'https://docs.langbot.app/zh/usage/platforms/readme.html',
+      ja_JP: 'https://docs.langbot.app/ja/usage/platforms/readme.html',
     },
   }),
   new SidebarChildVO({
@@ -43,8 +44,9 @@ export const sidebarConfigList = [
     route: '/home/pipelines',
     description: t('pipelines.description'),
     helpLink: {
-      en_US: 'https://docs.langbot.app/en/deploy/pipelines/readme.html',
-      zh_Hans: 'https://docs.langbot.app/zh/deploy/pipelines/readme.html',
+      en_US: 'https://docs.langbot.app/en/usage/pipelines/readme.html',
+      zh_Hans: 'https://docs.langbot.app/zh/usage/pipelines/readme.html',
+      ja_JP: 'https://docs.langbot.app/ja/usage/pipelines/readme.html',
     },
   }),
   new SidebarChildVO({
@@ -62,8 +64,9 @@ export const sidebarConfigList = [
     route: '/home/knowledge',
     description: t('knowledge.description'),
     helpLink: {
-      en_US: 'https://docs.langbot.app/en/deploy/knowledge/readme.html',
-      zh_Hans: 'https://docs.langbot.app/zh/deploy/knowledge/readme.html',
+      en_US: 'https://docs.langbot.app/en/usage/knowledge/readme.html',
+      zh_Hans: 'https://docs.langbot.app/zh/usage/knowledge/readme.html',
+      ja_JP: 'https://docs.langbot.app/ja/usage/knowledge/readme.html',
     },
   }),
   new SidebarChildVO({
@@ -82,8 +85,9 @@ export const sidebarConfigList = [
     route: '/home/plugins',
     description: t('plugins.description'),
     helpLink: {
-      en_US: 'https://docs.langbot.app/en/plugin/plugin-intro.html',
-      zh_Hans: 'https://docs.langbot.app/zh/plugin/plugin-intro.html',
+      en_US: 'https://docs.langbot.app/en/usage/plugin/plugin-intro.html',
+      zh_Hans: 'https://docs.langbot.app/zh/usage/plugin/plugin-intro.html',
+      ja_JP: 'https://docs.langbot.app/ja/usage/plugin/plugin-intro.html',
     },
   }),
 ];
