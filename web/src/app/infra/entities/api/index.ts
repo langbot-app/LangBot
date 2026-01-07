@@ -365,6 +365,18 @@ export interface MCPServerExtraArgsSSE {
   ssereadtimeout: number;
 }
 
+export interface MCPServerExtraArgsStdio {
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+}
+
+export interface MCPServerExtraArgsHttp {
+  url: string;
+  headers: Record<string, string>;
+  timeout: number;
+}
+
 export enum MCPSessionStatus {
   CONNECTING = 'connecting',
   CONNECTED = 'connected',
@@ -373,7 +385,7 @@ export enum MCPSessionStatus {
 
 export interface MCPServerRuntimeInfo {
   status: MCPSessionStatus;
-  error_message: string;
+  error_message?: string;
   tool_count: number;
   tools: MCPTool[];
 }
@@ -381,9 +393,12 @@ export interface MCPServerRuntimeInfo {
 export interface MCPServer {
   uuid?: string;
   name: string;
-  mode: 'stdio' | 'sse';
+  mode: 'stdio' | 'sse' | 'http';
   enable: boolean;
-  extra_args: MCPServerExtraArgsSSE;
+  extra_args:
+    | MCPServerExtraArgsSSE
+    | MCPServerExtraArgsStdio
+    | MCPServerExtraArgsHttp;
   runtime_info?: MCPServerRuntimeInfo;
   created_at?: string;
   updated_at?: string;

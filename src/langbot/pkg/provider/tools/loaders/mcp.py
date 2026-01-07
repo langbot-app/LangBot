@@ -7,10 +7,12 @@ import traceback
 from langbot_plugin.api.entities.events import pipeline_query
 import sqlalchemy
 import asyncio
+import httpx
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.sse import sse_client
+from mcp.client.streamable_http import streamable_http_client
 
 from .. import loader
 from ....core import app
@@ -24,6 +26,8 @@ class MCPSessionStatus(enum.Enum):
     ERROR = 'error'
 
 
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
+
 class RuntimeMCPSession:
     """运行时 MCP 会话"""
 
@@ -35,9 +39,10 @@ class RuntimeMCPSession:
 
     server_config: dict
 
-    session: ClientSession
+    session: ClientSession | None
 
     exit_stack: AsyncExitStack
+
 
     functions: list[resource_tool.LLMTool] = []
 
@@ -51,6 +56,8 @@ class RuntimeMCPSession:
     _shutdown_event: asyncio.Event
 
     _ready_event: asyncio.Event
+
+    error_message: str | None = None
 
     def __init__(self, server_name: str, server_config: dict, enable: bool, ap: app.Application):
         self.server_name = server_name
@@ -100,6 +107,24 @@ class RuntimeMCPSession:
 
         await self.session.initialize()
 
+    async def _init_streamable_http_server(self):
+        transport = await self.exit_stack.enter_async_context(
+            streamable_http_client(
+                self.server_config['url'],
+                http_client=httpx.AsyncClient(
+                    headers=self.server_config.get('headers', {}),
+                    timeout=self.server_config.get('timeout', 10),
+                    follow_redirects=True,
+                ),
+            )
+        )
+
+        read, write, _ = transport
+
+        self.session = await self.exit_stack.enter_async_context(ClientSession(read, write))
+
+        await self.session.initialize()
+
     async def _lifecycle_loop(self):
         """在后台任务中管理整个MCP会话的生命周期"""
         try:
@@ -107,6 +132,8 @@ class RuntimeMCPSession:
                 await self._init_stdio_python_server()
             elif self.server_config['mode'] == 'sse':
                 await self._init_sse_server()
+            elif self.server_config['mode'] == 'http':
+                await self._init_streamable_http_server()
             else:
                 raise ValueError(f'无法识别 MCP 服务器类型: {self.server_name}: {self.server_config}')
 
@@ -122,6 +149,7 @@ class RuntimeMCPSession:
 
         except Exception as e:
             self.status = MCPSessionStatus.ERROR
+            self.error_message = str(e)
             self.ap.logger.error(f'Error in MCP session lifecycle {self.server_name}: {e}\n{traceback.format_exc()}')
             # 即使出错也要设置ready事件，让start()方法知道初始化已完成
             self._ready_event.set()
@@ -154,6 +182,9 @@ class RuntimeMCPSession:
             raise Exception('Connection failed, please check URL')
 
     async def refresh(self):
+        if not self.session:
+            return
+
         self.functions.clear()
 
         tools = await self.session.list_tools()
@@ -163,18 +194,36 @@ class RuntimeMCPSession:
         for tool in tools.tools:
 
             async def func(*, _tool=tool, **kwargs):
+                if not self.session:
+                    raise Exception("MCP session is not connected")
+
                 result = await self.session.call_tool(_tool.name, kwargs)
                 if result.isError:
-                    raise Exception(result.content[0].text)
-                return result.content[0].text
+                    error_texts = []
+                    for content in result.content:
+                        if content.type == 'text':
+                            error_texts.append(content.text)
+                    raise Exception("\n".join(error_texts) if error_texts else "Unknown error from MCP tool")
+                
+                result_contents: list[provider_message.ContentElement] = []
+                for content in result.content:
+                    if content.type == 'text':
+                        result_contents.append(provider_message.ContentElement(type='text', text=content.text))
+                    elif content.type == 'image':
+                         result_contents.append(provider_message.ContentElement(type='image_base64', image_base64=content.data))
+                    elif content.type == 'resource':
+                         # TODO: Handle resource content
+                         pass
+                
+                return result_contents
 
             func.__name__ = tool.name
 
             self.functions.append(
                 resource_tool.LLMTool(
                     name=tool.name,
-                    human_desc=tool.description,
-                    description=tool.description,
+                    human_desc=tool.description or "",
+                    description=tool.description or "",
                     parameters=tool.inputSchema,
                     func=func,
                 )
@@ -186,6 +235,7 @@ class RuntimeMCPSession:
     def get_runtime_info_dict(self) -> dict:
         return {
             'status': self.status.value,
+            'error_message': self.error_message,
             'tool_count': len(self.get_tools()),
             'tools': [
                 {
@@ -306,13 +356,14 @@ class MCPLoader(loader.ToolLoader):
 
         return session
 
-    async def get_tools(self, bound_mcp_servers: list[str] | None = None) -> list[resource_tool.LLMTool]:
+    async def get_tools(self, bound_plugins: list[str] | None = None) -> list[resource_tool.LLMTool]:
         all_functions = []
 
         for session in self.sessions.values():
-            # If bound_mcp_servers is specified, only include tools from those servers
-            if bound_mcp_servers is not None:
-                if session.server_uuid in bound_mcp_servers:
+            # If bound_plugins is specified, only include tools from those servers
+            # bound_plugins contains the uuid of the MCP server
+            if bound_plugins is not None:
+                if session.server_uuid in bound_plugins:
                     all_functions.extend(session.get_tools())
             else:
                 # If no bound servers specified, include all tools

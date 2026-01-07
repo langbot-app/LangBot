@@ -133,11 +133,11 @@ function StatusDisplay({
         </svg>
         <span className="font-medium">{t('mcp.connectionFailed')}</span>
       </div>
-      {/* {runtimeInfo.error_message && (
+      {runtimeInfo.error_message && (
         <div className="text-sm text-red-500 pl-7">
           {runtimeInfo.error_message}
         </div>
-      )} */}
+      )}
     </div>
   );
 }
@@ -163,31 +163,52 @@ function ToolsList({ tools }: { tools: MCPTool[] }) {
 }
 
 const getFormSchema = (t: (key: string) => string) =>
-  z.object({
-    name: z
-      .string({ required_error: t('mcp.nameRequired') })
-      .min(1, { message: t('mcp.nameRequired') }),
-    timeout: z
-      .number({ invalid_type_error: t('mcp.timeoutMustBeNumber') })
-      .positive({ message: t('mcp.timeoutMustBePositive') })
-      .default(30),
-    ssereadtimeout: z
-      .number({ invalid_type_error: t('mcp.sseTimeoutMustBeNumber') })
-      .positive({ message: t('mcp.timeoutMustBePositive') })
-      .default(300),
-    url: z
-      .string({ required_error: t('mcp.urlRequired') })
-      .min(1, { message: t('mcp.urlRequired') }),
-    extra_args: z
-      .array(
-        z.object({
-          key: z.string(),
-          type: z.enum(['string', 'number', 'boolean']),
-          value: z.string(),
-        }),
-      )
-      .optional(),
-  });
+  z
+    .object({
+      name: z
+        .string({ required_error: t('mcp.nameRequired') })
+        .min(1, { message: t('mcp.nameRequired') }),
+      mode: z.enum(['sse', 'stdio', 'http']),
+      timeout: z
+        .number({ invalid_type_error: t('mcp.timeoutMustBeNumber') })
+        .positive({ message: t('mcp.timeoutMustBePositive') })
+        .default(30),
+      ssereadtimeout: z
+        .number({ invalid_type_error: t('mcp.sseTimeoutMustBeNumber') })
+        .positive({ message: t('mcp.timeoutMustBePositive') })
+        .default(300),
+      url: z.string().optional(),
+      command: z.string().optional(),
+      args: z.array(z.object({ value: z.string() })).optional(),
+      extra_args: z
+        .array(
+          z.object({
+            key: z.string(),
+            type: z.enum(['string', 'number', 'boolean']),
+            value: z.string(),
+          }),
+        )
+        .optional(),
+    })
+    .superRefine((data, ctx) => {
+      if (data.mode === 'sse' || data.mode === 'http') {
+        if (!data.url || data.url.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: t('mcp.urlRequired'),
+            path: ['url'],
+          });
+        }
+      } else if (data.mode === 'stdio') {
+        if (!data.command || data.command.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: t('mcp.commandRequired'),
+            path: ['command'],
+          });
+        }
+      }
+    });
 
 type FormValues = z.infer<ReturnType<typeof getFormSchema>> & {
   timeout: number;
@@ -218,7 +239,10 @@ export default function MCPFormDialog({
     resolver: zodResolver(formSchema) as unknown as Resolver<FormValues>,
     defaultValues: {
       name: '',
+      mode: 'sse',
       url: '',
+      command: '',
+      args: [],
       timeout: 30,
       ssereadtimeout: 300,
       extra_args: [],
@@ -228,11 +252,14 @@ export default function MCPFormDialog({
   const [extraArgs, setExtraArgs] = useState<
     { key: string; type: 'string' | 'number' | 'boolean'; value: string }[]
   >([]);
+  const [stdioArgs, setStdioArgs] = useState<{ value: string }[]>([]);
   const [mcpTesting, setMcpTesting] = useState(false);
   const [runtimeInfo, setRuntimeInfo] = useState<MCPServerRuntimeInfo | null>(
     null,
   );
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const watchMode = form.watch('mode');
 
   // Load server data when editing
   useEffect(() => {
@@ -240,8 +267,18 @@ export default function MCPFormDialog({
       loadServerForEdit(serverName);
     } else if (open && !isEditMode) {
       // Reset form when creating new server
-      form.reset();
+      form.reset({
+        name: '',
+        mode: 'sse',
+        url: '',
+        command: '',
+        args: [],
+        timeout: 30,
+        ssereadtimeout: 300,
+        extra_args: [],
+      });
       setExtraArgs([]);
+      setStdioArgs([]);
       setRuntimeInfo(null);
     }
 
@@ -291,22 +328,46 @@ export default function MCPFormDialog({
       const resp = await httpClient.getMCPServer(serverName);
       const server = resp.server ?? resp;
 
+      // @ts-ignore
       const extraArgs = server.extra_args;
       form.setValue('name', server.name);
-      form.setValue('url', extraArgs.url);
-      form.setValue('timeout', extraArgs.timeout);
-      form.setValue('ssereadtimeout', extraArgs.ssereadtimeout);
+      form.setValue('mode', server.mode);
 
-      if (extraArgs.headers) {
-        const headers = Object.entries(extraArgs.headers).map(
-          ([key, value]) => ({
+      if (server.mode === 'sse' || server.mode === 'http') {
+        form.setValue('url', extraArgs.url);
+        form.setValue('timeout', extraArgs.timeout);
+        if (server.mode === 'sse') {
+          form.setValue('ssereadtimeout', extraArgs.ssereadtimeout);
+        }
+
+        if (extraArgs.headers) {
+          const headers = Object.entries(extraArgs.headers).map(
+            ([key, value]) => ({
+              key,
+              type: 'string' as const,
+              value: String(value),
+            }),
+          );
+          setExtraArgs(headers);
+          form.setValue('extra_args', headers);
+        }
+      } else if (server.mode === 'stdio') {
+        form.setValue('command', extraArgs.command);
+        const args = (extraArgs.args || []).map((arg: string) => ({
+          value: arg,
+        }));
+        setStdioArgs(args);
+        form.setValue('args', args);
+
+        if (extraArgs.env) {
+          const envs = Object.entries(extraArgs.env).map(([key, value]) => ({
             key,
             type: 'string' as const,
             value: String(value),
-          }),
-        );
-        setExtraArgs(headers);
-        form.setValue('extra_args', headers);
+          }));
+          setExtraArgs(envs);
+          form.setValue('extra_args', envs);
+        }
       }
 
       // Set runtime_info from server data
@@ -322,28 +383,66 @@ export default function MCPFormDialog({
   }
 
   async function handleFormSubmit(value: z.infer<typeof formSchema>) {
-    // Convert extra_args to headers - all values must be strings according to MCPServerExtraArgsSSE
-    const headers: Record<string, string> = {};
-    value.extra_args?.forEach((arg) => {
-      // Convert all values to strings to match MCPServerExtraArgsSSE.headers type
-      headers[arg.key] = String(arg.value);
-    });
-
     try {
-      const serverConfig: Omit<
+      let serverConfig: Omit<
         MCPServer,
         'uuid' | 'created_at' | 'updated_at' | 'runtime_info'
-      > = {
-        name: value.name,
-        mode: 'sse' as const,
-        enable: true,
-        extra_args: {
-          url: value.url,
-          headers: headers,
-          timeout: value.timeout,
-          ssereadtimeout: value.ssereadtimeout,
-        },
-      };
+      >;
+
+      if (value.mode === 'sse' || value.mode === 'http') {
+        // Convert extra_args to headers
+        const headers: Record<string, string> = {};
+        value.extra_args?.forEach((arg) => {
+          headers[arg.key] = String(arg.value);
+        });
+
+        if (value.mode === 'sse') {
+          serverConfig = {
+            name: value.name,
+            mode: 'sse',
+            enable: true,
+            extra_args: {
+              url: value.url!,
+              headers: headers,
+              timeout: value.timeout,
+              ssereadtimeout: value.ssereadtimeout,
+            },
+          };
+        } else {
+          serverConfig = {
+            name: value.name,
+            mode: 'http',
+            enable: true,
+            // @ts-ignore
+            extra_args: {
+              url: value.url!,
+              headers: headers,
+              timeout: value.timeout,
+            },
+          };
+        }
+      } else {
+        // Convert extra_args to env
+        const env: Record<string, string> = {};
+        value.extra_args?.forEach((arg) => {
+          env[arg.key] = String(arg.value);
+        });
+
+        // Convert args object array to string array
+        const args = value.args?.map((arg) => arg.value) || [];
+
+        serverConfig = {
+          name: value.name,
+          mode: 'stdio',
+          enable: true,
+          // @ts-ignore
+          extra_args: {
+            command: value.command!,
+            args: args,
+            env: env,
+          },
+        };
+      }
 
       if (isEditMode && serverName) {
         await httpClient.updateMCPServer(serverName, serverConfig);
@@ -365,19 +464,35 @@ export default function MCPFormDialog({
     setMcpTesting(true);
 
     try {
-      const { task_id } = await httpClient.testMCPServer('_', {
-        name: form.getValues('name'),
-        mode: 'sse',
-        enable: true,
-        extra_args: {
+      let extraArgsData;
+      if (form.getValues('mode') === 'sse' || form.getValues('mode') === 'http') {
+        extraArgsData = {
           url: form.getValues('url'),
           timeout: form.getValues('timeout'),
-          ssereadtimeout: form.getValues('ssereadtimeout'),
           headers: Object.fromEntries(
             extraArgs.map((arg) => [arg.key, arg.value]),
           ),
-        },
+        };
+
+        if (form.getValues('mode') === 'sse') {
+          // @ts-ignore
+          extraArgsData.ssereadtimeout = form.getValues('ssereadtimeout');
+        }
+      } else {
+        extraArgsData = {
+          command: form.getValues('command'),
+          args: stdioArgs.map((arg) => arg.value),
+          env: Object.fromEntries(extraArgs.map((arg) => [arg.key, arg.value])),
+        };
+      }
+
+      const { task_id } = await httpClient.testMCPServer('_', {
+        name: form.getValues('name'),
+        mode: form.getValues('mode') as 'sse' | 'stdio' | 'http',
+        enable: true,
+        extra_args: extraArgsData,
       });
+
       if (!task_id) {
         throw new Error(t('mcp.noTaskId'));
       }
@@ -448,11 +563,31 @@ export default function MCPFormDialog({
     form.setValue('extra_args', newArgs);
   };
 
+  const addStdioArg = () => {
+    const newArgs = [...stdioArgs, { value: '' }];
+    setStdioArgs(newArgs);
+    form.setValue('args', newArgs);
+  };
+
+  const removeStdioArg = (index: number) => {
+    const newArgs = stdioArgs.filter((_, i) => i !== index);
+    setStdioArgs(newArgs);
+    form.setValue('args', newArgs);
+  };
+
+  const updateStdioArg = (index: number, value: string) => {
+    const newArgs = [...stdioArgs];
+    newArgs[index] = { value };
+    setStdioArgs(newArgs);
+    form.setValue('args', newArgs);
+  };
+
   const handleDialogClose = (open: boolean) => {
     onOpenChange(open);
     if (!open) {
       form.reset();
       setExtraArgs([]);
+      setStdioArgs([]);
       setRuntimeInfo(null);
     }
   };
@@ -518,58 +653,155 @@ export default function MCPFormDialog({
 
               <FormField
                 control={form.control}
-                name="url"
+                name="mode"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('mcp.url')}</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
+                    <FormLabel>{t('mcp.serverMode')}</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                      value={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={t('mcp.selectMode')} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="sse">{t('mcp.sse')}</SelectItem>
+                        <SelectItem value="stdio">{t('mcp.stdio')}</SelectItem>
+                        <SelectItem value="http">{t('mcp.http')}</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="timeout"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('mcp.timeout')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        placeholder={t('mcp.timeout')}
-                        {...field}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {(watchMode === 'sse' || watchMode === 'http') && (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="url"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('mcp.url')}</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name="ssereadtimeout"
-                render={({ field }) => (
+                  <FormField
+                    control={form.control}
+                    name="timeout"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('mcp.timeout')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            placeholder={t('mcp.timeout')}
+                            {...field}
+                            onChange={(e) =>
+                              field.onChange(Number(e.target.value))
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {watchMode === 'sse' && (
+                    <FormField
+                      control={form.control}
+                      name="ssereadtimeout"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('mcp.sseTimeout')}</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              placeholder={t('mcp.sseTimeoutDescription')}
+                              {...field}
+                              onChange={(e) =>
+                                field.onChange(Number(e.target.value))
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+                </>
+              )}
+
+              {watchMode === 'stdio' && (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="command"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('mcp.command')}</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
                   <FormItem>
-                    <FormLabel>{t('mcp.sseTimeout')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        placeholder={t('mcp.sseTimeoutDescription')}
-                        {...field}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
+                    <FormLabel>{t('mcp.args')}</FormLabel>
+                    <div className="space-y-2">
+                      {stdioArgs.map((arg, index) => (
+                        <div key={index} className="flex gap-2">
+                          <Input
+                            placeholder={t('mcp.args')}
+                            value={arg.value}
+                            onChange={(e) =>
+                              updateStdioArg(index, e.target.value)
+                            }
+                          />
+                          <button
+                            type="button"
+                            className="p-2 hover:bg-gray-100 rounded"
+                            onClick={() => removeStdioArg(index)}
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              className="w-5 h-5 text-red-500"
+                            >
+                              <path d="M7 4V2H17V4H22V6H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V6H2V4H7ZM6 6V20H18V6H6ZM9 9H11V17H9V9ZM13 9H15V17H13V9Z"></path>
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={addStdioArg}
+                      >
+                        {t('mcp.addArgument')}
+                      </Button>
+                    </div>
                   </FormItem>
-                )}
-              />
+                </>
+              )}
 
               <FormItem>
-                <FormLabel>{t('models.extraParameters')}</FormLabel>
+                <FormLabel>
+                  {watchMode === 'sse' || watchMode === 'http'
+                    ? t('mcp.headers')
+                    : t('mcp.env')}
+                </FormLabel>
                 <div className="space-y-2">
                   {extraArgs.map((arg, index) => (
                     <div key={index} className="flex gap-2">
@@ -580,7 +812,12 @@ export default function MCPFormDialog({
                           updateExtraArg(index, 'key', e.target.value)
                         }
                       />
-                      <Select
+                      {/* Only show type select for SSE headers if needed, but usually headers are strings. Env vars are definitely strings.
+                          The original code had type selector. Let's keep it for compatibility or remove if not needed.
+                          Headers are strings. Env vars are strings.
+                          Let's hide the type selector as it was confusing anyway, or force it to string.
+                       */}
+                      {/* <Select
                         value={arg.type}
                         onValueChange={(value) =>
                           updateExtraArg(index, 'type', value)
@@ -593,14 +830,8 @@ export default function MCPFormDialog({
                           <SelectItem value="string">
                             {t('models.string')}
                           </SelectItem>
-                          <SelectItem value="number">
-                            {t('models.number')}
-                          </SelectItem>
-                          <SelectItem value="boolean">
-                            {t('models.boolean')}
-                          </SelectItem>
                         </SelectContent>
-                      </Select>
+                      </Select> */}
                       <Input
                         placeholder={t('models.value')}
                         value={arg.value}
@@ -625,12 +856,14 @@ export default function MCPFormDialog({
                     </div>
                   ))}
                   <Button type="button" variant="outline" onClick={addExtraArg}>
-                    {t('models.addParameter')}
+                    {watchMode === 'sse' || watchMode === 'http'
+                      ? t('mcp.addHeader')
+                      : t('mcp.addEnvVar')}
                   </Button>
                 </div>
-                <FormDescription>
+                {/* <FormDescription>
                   {t('mcp.extraParametersDescription')}
-                </FormDescription>
+                </FormDescription> */}
                 <FormMessage />
               </FormItem>
 

@@ -448,6 +448,8 @@ const zhHans = {
     serverMode: '连接模式',
     stdio: 'Stdio模式',
     sse: 'SSE模式',
+    http: 'HTTP模式',
+    selectMode: '选择模式',
     noServerInstalled: '暂未配置任何 MCP 服务器',
     serverNameRequired: '服务器名称不能为空',
     commandRequired: '命令不能为空',

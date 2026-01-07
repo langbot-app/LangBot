@@ -215,16 +215,31 @@ class LocalAgentRunner(runner.RequestRunner):
                     parameters = json.loads(func.arguments)
 
                     func_ret = await self.ap.tool_mgr.execute_func_call(func.name, parameters, query=query)
+                    
+                    # Handle return value content
+                    tool_content = None
+                    if isinstance(func_ret, list) and len(func_ret) > 0 and isinstance(func_ret[0], provider_message.ContentElement):
+                        tool_content = func_ret
+                    else:
+                        tool_content = json.dumps(func_ret, ensure_ascii=False)
+
                     if is_stream:
-                        msg = provider_message.MessageChunk(
+                        yield provider_message.MessageChunk(
                             role='tool',
-                            content=json.dumps(func_ret, ensure_ascii=False),
+                            content=tool_content,
+                            tool_call_id=tool_call.id,
+                        )
+                        
+                        # Store as Message for history
+                        msg = provider_message.Message(
+                            role='tool',
+                            content=tool_content,
                             tool_call_id=tool_call.id,
                         )
                     else:
                         msg = provider_message.Message(
                             role='tool',
-                            content=json.dumps(func_ret, ensure_ascii=False),
+                            content=tool_content,
                             tool_call_id=tool_call.id,
                         )
 
