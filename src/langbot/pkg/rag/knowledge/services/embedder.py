@@ -32,12 +32,18 @@ class Embedder(BaseService):
 
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_rag.Chunk).values(chunk_dicts))
 
-        # get embeddings
-        embeddings_list: list[list[float]] = await embedding_model.provider.requester.invoke_embedding(
-            model=embedding_model,
-            input_text=chunks,
-            extra_args={},  # TODO: add extra args
-        )
+        # get embeddings (batch size limit: 64 for OpenAI)
+        MAX_BATCH_SIZE = 64
+        embeddings_list: list[list[float]] = []
+        
+        for i in range(0, len(chunks), MAX_BATCH_SIZE):
+            batch = chunks[i:i + MAX_BATCH_SIZE]
+            batch_embeddings = await embedding_model.provider.requester.invoke_embedding(
+                model=embedding_model,
+                input_text=batch,
+                extra_args={},  # TODO: add extra args
+            )
+            embeddings_list.extend(batch_embeddings)
 
         # save embeddings to vdb
         await self.ap.vector_db_mgr.vector_db.add_embeddings(kb_id, chunk_ids, embeddings_list, chunk_dicts)

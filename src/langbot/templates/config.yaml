@@ -51,6 +51,7 @@ vdb:
     milvus:
         uri: 'http://127.0.0.1:19530'
         token: ''
+        db_name: ''
     pgvector:
         host: '127.0.0.1'
         port: 5433
