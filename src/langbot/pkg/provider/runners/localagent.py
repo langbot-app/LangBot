@@ -224,13 +224,6 @@ class LocalAgentRunner(runner.RequestRunner):
                         tool_content = json.dumps(func_ret, ensure_ascii=False)
 
                     if is_stream:
-                        yield provider_message.MessageChunk(
-                            role='tool',
-                            content=tool_content,
-                            tool_call_id=tool_call.id,
-                        )
-                        
-                        # Store as Message for history
                         msg = provider_message.Message(
                             role='tool',
                             content=tool_content,

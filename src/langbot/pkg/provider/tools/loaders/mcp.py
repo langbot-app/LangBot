@@ -17,6 +17,7 @@ from mcp.client.streamable_http import streamable_http_client
 from .. import loader
 from ....core import app
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
 from ....entity.persistence import mcp as persistence_mcp
 
 
@@ -25,8 +26,6 @@ class MCPSessionStatus(enum.Enum):
     CONNECTED = 'connected'
     ERROR = 'error'
 
-
-import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 class RuntimeMCPSession:
     """运行时 MCP 会话"""
@@ -42,7 +41,6 @@ class RuntimeMCPSession:
     session: ClientSession | None
 
     exit_stack: AsyncExitStack
-
 
     functions: list[resource_tool.LLMTool] = []
 
@@ -208,9 +206,9 @@ class RuntimeMCPSession:
                 result_contents: list[provider_message.ContentElement] = []
                 for content in result.content:
                     if content.type == 'text':
-                        result_contents.append(provider_message.ContentElement(type='text', text=content.text))
+                        result_contents.append(provider_message.ContentElement.from_text(content.text))
                     elif content.type == 'image':
-                        result_contents.append(provider_message.ContentElement(type='image_base64', image_base64=content.data))
+                        result_contents.append(provider_message.ContentElement.from_image_base64(content.image_base64))
                     elif content.type == 'resource':
                         # TODO: Handle resource content
                         pass
@@ -356,17 +354,16 @@ class MCPLoader(loader.ToolLoader):
 
         return session
 
-    async def get_tools(self, bound_plugins: list[str] | None = None) -> list[resource_tool.LLMTool]:
+    async def get_tools(self, bound_mcp_servers: list[str] | None = None) -> list[resource_tool.LLMTool]:
         all_functions = []
 
         for session in self.sessions.values():
-            # If bound_plugins is specified, only include tools from those plugins
-            # bound_plugins contains the uuid of the MCP server
-            if bound_plugins is not None:
-                if session.server_uuid in bound_plugins:
+            # If bound_mcp_servers is specified, only include tools from those servers
+            if bound_mcp_servers is not None:
+                if session.server_uuid in bound_mcp_servers:
                     all_functions.extend(session.get_tools())
             else:
-                # If no bound plugins specified, include all tools
+                # If no bound servers specified, include all tools
                 all_functions.extend(session.get_tools())
 
         self._last_listed_functions = all_functions
