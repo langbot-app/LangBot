@@ -360,13 +360,13 @@ class MCPLoader(loader.ToolLoader):
         all_functions = []
 
         for session in self.sessions.values():
-            # If bound_plugins is specified, only include tools from those servers
+            # If bound_plugins is specified, only include tools from those plugins
             # bound_plugins contains the uuid of the MCP server
             if bound_plugins is not None:
                 if session.server_uuid in bound_plugins:
                     all_functions.extend(session.get_tools())
             else:
-                # If no bound servers specified, include all tools
+                # If no bound plugins specified, include all tools
                 all_functions.extend(session.get_tools())
 
         self._last_listed_functions = all_functions
