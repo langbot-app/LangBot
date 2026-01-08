@@ -210,10 +210,10 @@ class RuntimeMCPSession:
                     if content.type == 'text':
                         result_contents.append(provider_message.ContentElement(type='text', text=content.text))
                     elif content.type == 'image':
-                         result_contents.append(provider_message.ContentElement(type='image_base64', image_base64=content.data))
+                        result_contents.append(provider_message.ContentElement(type='image_base64', image_base64=content.data))
                     elif content.type == 'resource':
-                         # TODO: Handle resource content
-                         pass
+                        # TODO: Handle resource content
+                        pass
                 
                 return result_contents
 

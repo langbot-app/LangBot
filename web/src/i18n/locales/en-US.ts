@@ -467,7 +467,6 @@ const enUS = {
     getServerListError: 'Failed to get MCP server list: ',
     serverName: 'Server Name',
     serverMode: 'Connection Mode',
-    serverMode: 'Connection Mode',
     selectMode: 'Select Mode',
     stdio: 'Stdio Mode',
     sse: 'SSE Mode',

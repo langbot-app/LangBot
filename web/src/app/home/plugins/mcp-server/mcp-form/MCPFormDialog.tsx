@@ -43,6 +43,9 @@ import {
   MCPTool,
   MCPServer,
   MCPSessionStatus,
+  MCPServerExtraArgsSSE,
+  MCPServerExtraArgsHttp,
+  MCPServerExtraArgsStdio,
 } from '@/app/infra/entities/api';
 import { CustomApiError } from '@/app/infra/entities/common';
 
@@ -328,20 +331,19 @@ export default function MCPFormDialog({
       const resp = await httpClient.getMCPServer(serverName);
       const server = resp.server ?? resp;
 
-      // @ts-ignore
-      const extraArgs = server.extra_args;
       form.setValue('name', server.name);
       form.setValue('mode', server.mode);
 
       if (server.mode === 'sse' || server.mode === 'http') {
-        form.setValue('url', extraArgs.url);
-        form.setValue('timeout', extraArgs.timeout);
+        form.setValue('url', server.extra_args.url);
+        form.setValue('timeout', server.extra_args.timeout);
+        
         if (server.mode === 'sse') {
-          form.setValue('ssereadtimeout', extraArgs.ssereadtimeout);
+          form.setValue('ssereadtimeout', server.extra_args.ssereadtimeout);
         }
 
-        if (extraArgs.headers) {
-          const headers = Object.entries(extraArgs.headers).map(
+        if (server.extra_args.headers) {
+          const headers = Object.entries(server.extra_args.headers).map(
             ([key, value]) => ({
               key,
               type: 'string' as const,
@@ -352,15 +354,15 @@ export default function MCPFormDialog({
           form.setValue('extra_args', headers);
         }
       } else if (server.mode === 'stdio') {
-        form.setValue('command', extraArgs.command);
-        const args = (extraArgs.args || []).map((arg: string) => ({
+        form.setValue('command', server.extra_args.command);
+        const args = (server.extra_args.args || []).map((arg: string) => ({
           value: arg,
         }));
         setStdioArgs(args);
         form.setValue('args', args);
 
-        if (extraArgs.env) {
-          const envs = Object.entries(extraArgs.env).map(([key, value]) => ({
+        if (server.extra_args.env) {
+          const envs = Object.entries(server.extra_args.env).map(([key, value]) => ({
             key,
             type: 'string' as const,
             value: String(value),
@@ -370,7 +372,6 @@ export default function MCPFormDialog({
         }
       }
 
-      // Set runtime_info from server data
       if (server.runtime_info) {
         setRuntimeInfo(server.runtime_info);
       } else {
@@ -384,13 +385,9 @@ export default function MCPFormDialog({
 
   async function handleFormSubmit(value: z.infer<typeof formSchema>) {
     try {
-      let serverConfig: Omit<
-        MCPServer,
-        'uuid' | 'created_at' | 'updated_at' | 'runtime_info'
-      >;
+      let serverConfig: MCPServer;
 
       if (value.mode === 'sse' || value.mode === 'http') {
-        // Convert extra_args to headers
         const headers: Record<string, string> = {};
         value.extra_args?.forEach((arg) => {
           headers[arg.key] = String(arg.value);
@@ -413,7 +410,6 @@ export default function MCPFormDialog({
             name: value.name,
             mode: 'http',
             enable: true,
-            // @ts-ignore
             extra_args: {
               url: value.url!,
               headers: headers,
@@ -435,7 +431,6 @@ export default function MCPFormDialog({
           name: value.name,
           mode: 'stdio',
           enable: true,
-          // @ts-ignore
           extra_args: {
             command: value.command!,
             args: args,
@@ -464,23 +459,32 @@ export default function MCPFormDialog({
     setMcpTesting(true);
 
     try {
-      let extraArgsData;
-      if (form.getValues('mode') === 'sse' || form.getValues('mode') === 'http') {
+      const mode = form.getValues('mode');
+      let extraArgsData:
+        | MCPServerExtraArgsSSE
+        | MCPServerExtraArgsHttp
+        | MCPServerExtraArgsStdio;
+
+      if (mode === 'sse') {
         extraArgsData = {
-          url: form.getValues('url'),
+          url: form.getValues('url')!,
+          timeout: form.getValues('timeout'),
+          headers: Object.fromEntries(
+            extraArgs.map((arg) => [arg.key, arg.value]),
+          ),
+          ssereadtimeout: form.getValues('ssereadtimeout'),
+        };
+      } else if (mode === 'http') {
+        extraArgsData = {
+          url: form.getValues('url')!,
           timeout: form.getValues('timeout'),
           headers: Object.fromEntries(
             extraArgs.map((arg) => [arg.key, arg.value]),
           ),
         };
-
-        if (form.getValues('mode') === 'sse') {
-          // @ts-ignore
-          extraArgsData.ssereadtimeout = form.getValues('ssereadtimeout');
-        }
       } else {
         extraArgsData = {
-          command: form.getValues('command'),
+          command: form.getValues('command')!,
           args: stdioArgs.map((arg) => arg.value),
           env: Object.fromEntries(extraArgs.map((arg) => [arg.key, arg.value])),
         };
@@ -488,10 +492,10 @@ export default function MCPFormDialog({
 
       const { task_id } = await httpClient.testMCPServer('_', {
         name: form.getValues('name'),
-        mode: form.getValues('mode') as 'sse' | 'stdio' | 'http',
+        mode: mode,
         enable: true,
         extra_args: extraArgsData,
-      });
+      } as MCPServer);
 
       if (!task_id) {
         throw new Error(t('mcp.noTaskId'));
@@ -861,9 +865,9 @@ export default function MCPFormDialog({
                       : t('mcp.addEnvVar')}
                   </Button>
                 </div>
-                {/* <FormDescription>
+                <FormDescription>
                   {t('mcp.extraParametersDescription')}
-                </FormDescription> */}
+                </FormDescription>
                 <FormMessage />
               </FormItem>
 

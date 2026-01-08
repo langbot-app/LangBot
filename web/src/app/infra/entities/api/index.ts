@@ -390,19 +390,37 @@ export interface MCPServerRuntimeInfo {
   tools: MCPTool[];
 }
 
-export interface MCPServer {
-  uuid?: string;
-  name: string;
-  mode: 'stdio' | 'sse' | 'http';
-  enable: boolean;
-  extra_args:
-    | MCPServerExtraArgsSSE
-    | MCPServerExtraArgsStdio
-    | MCPServerExtraArgsHttp;
-  runtime_info?: MCPServerRuntimeInfo;
-  created_at?: string;
-  updated_at?: string;
-}
+export type MCPServer =
+  | {
+      uuid?: string;
+      name: string;
+      mode: 'sse';
+      enable: boolean;
+      extra_args: MCPServerExtraArgsSSE;
+      runtime_info?: MCPServerRuntimeInfo;
+      created_at?: string;
+      updated_at?: string;
+    }
+  | {
+      uuid?: string;
+      name: string;
+      mode: 'http';
+      enable: boolean;
+      extra_args: MCPServerExtraArgsHttp;
+      runtime_info?: MCPServerRuntimeInfo;
+      created_at?: string;
+      updated_at?: string;
+    }
+  | {
+      uuid?: string;
+      name: string;
+      mode: 'stdio';
+      enable: boolean;
+      extra_args: MCPServerExtraArgsStdio;
+      runtime_info?: MCPServerRuntimeInfo;
+      created_at?: string;
+      updated_at?: string;
+    };
 
 export interface MCPTool {
   name: string;
