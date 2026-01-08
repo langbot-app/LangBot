@@ -224,7 +224,7 @@ class LocalAgentRunner(runner.RequestRunner):
                         tool_content = json.dumps(func_ret, ensure_ascii=False)
 
                     if is_stream:
-                        msg = provider_message.Message(
+                        msg = provider_message.MessageChunk(
                             role='tool',
                             content=tool_content,
                             tool_call_id=tool_call.id,
