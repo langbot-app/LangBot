@@ -9,6 +9,7 @@ import sqlalchemy
 import asyncio
 import httpx
 
+import uuid as uuid_module
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.sse import sse_client
@@ -335,6 +336,14 @@ class MCPLoader(loader.ToolLoader):
                 - enable: 是否启用
                 - extra_args: 额外的配置参数 (可选)
         """
+        uuid_ = server_config.get('uuid')
+        if not uuid_:
+            self.ap.logger.warning(
+                'Server UUID is None for MCP server, maybe testing in the config page.'
+            )
+            uuid_ = str(uuid_module.uuid4())
+            server_config['uuid'] = uuid_
+
 
         name = server_config['name']
         uuid = server_config['uuid']

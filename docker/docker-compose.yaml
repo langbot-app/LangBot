@@ -14,7 +14,7 @@ services:
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
-    command: ["uv", "run", "-m", "langbot_plugin.cli.__init__", "rt"]
+    command: ["uv", "run", "--no-sync", "-m", "langbot_plugin.cli.__init__", "rt"]
     networks:
       - langbot_network
 

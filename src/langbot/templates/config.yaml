@@ -51,6 +51,7 @@ vdb:
     milvus:
         uri: 'http://127.0.0.1:19530'
         token: ''
+        db_name: ''
     pgvector:
         host: '127.0.0.1'
         port: 5433
@@ -78,3 +79,4 @@ space:
     # OAuth authorization page URL (user will be redirected here)
     oauth_authorize_url: 'https://space.langbot.app/auth/authorize'
     disable_models_service: false
+    disable_telemetry: false

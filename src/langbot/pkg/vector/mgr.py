@@ -37,7 +37,8 @@ class VectorDBManager:
                 milvus_config = kb_config.get('milvus', {})
                 uri = milvus_config.get('uri', './data/milvus.db')
                 token = milvus_config.get('token')
-                self.vector_db = MilvusVectorDatabase(self.ap, uri=uri, token=token)
+                db_name = milvus_config.get('db_name', 'default')
+                self.vector_db = MilvusVectorDatabase(self.ap, uri=uri, token=token, db_name=db_name)
                 self.ap.logger.info('Initialized Milvus vector database backend.')
 
             elif vdb_type == 'pgvector':
