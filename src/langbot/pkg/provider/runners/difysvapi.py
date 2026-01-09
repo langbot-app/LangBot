@@ -529,7 +529,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                         think_end = True
                     elif think_end or not think_start:
                         pending_agent_message += chunk['answer']
-                    if think_start:
+                    if think_start and not think_end:
                         continue
 
                 else:
