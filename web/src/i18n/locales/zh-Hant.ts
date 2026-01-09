@@ -445,6 +445,8 @@ const zhHant = {
     serverMode: '連接模式',
     stdio: 'Stdio模式',
     sse: 'SSE模式',
+    selectMode: '選擇連接模式',
+    http: 'HTTP模式',
     noServerInstalled: '暫未設定任何MCP伺服器',
     serverNameRequired: '伺服器名稱不能為空',
     commandRequired: '命令不能為空',

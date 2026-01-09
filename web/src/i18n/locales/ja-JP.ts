@@ -474,6 +474,8 @@ const jaJP = {
     serverMode: '接続モード',
     stdio: 'Stdioモード',
     sse: 'SSEモード',
+    http: 'HTTPモード',
+    selectMode: '接続モードを選択',
     noServerInstalled: 'MCPサーバーが設定されていません',
     serverNameRequired: 'サーバー名は必須です',
     commandRequired: 'コマンドは必須です',
