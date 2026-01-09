@@ -4,7 +4,6 @@ import uuid
 import typing
 import traceback
 import time
-import asyncio
 from datetime import datetime
 
 
@@ -13,9 +12,8 @@ from ... import entities
 from ....provider import runner as runner_module
 
 import langbot_plugin.api.entities.events as events
-from ....utils import importutil
+from ....utils import importutil, constants
 from ....provider import runners
-from ....telemetry import telemetry as telemetry_module
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
@@ -169,7 +167,11 @@ class ChatMessageHandler(handler.MessageHandler):
                         duration_ms = int((end_ts - start_ts) * 1000)
 
                     adapter_name = query.adapter.__class__.__name__ if hasattr(query, 'adapter') else None
-                    runner_name = query.pipeline_config.get('ai', {}).get('runner', {}).get('runner') if query.pipeline_config else None
+                    runner_name = (
+                        query.pipeline_config.get('ai', {}).get('runner', {}).get('runner')
+                        if query.pipeline_config
+                        else None
+                    )
 
                     # Model name if using localagent
                     model_name = None
@@ -183,26 +185,21 @@ class ChatMessageHandler(handler.MessageHandler):
 
                     pipeline_plugins = query.variables.get('_pipeline_bound_plugins', None)
 
-                    from ....utils.constants import semantic_version, instance_id
-
                     payload = {
                         'query_id': query.query_id,
                         'adapter': adapter_name,
                         'runner': runner_name,
                         'duration_ms': duration_ms,
                         'model_name': model_name,
-                        'version': semantic_version,
-                        'instance_id': instance_id,
+                        'version': constants.semantic_version,
+                        'instance_id': constants.instance_id,
                         'pipeline_plugins': pipeline_plugins,
                         'error': locals().get('error_info', None),
                         'timestamp': datetime.utcnow().isoformat(),
                     }
 
                     # Send telemetry asynchronously and do not block pipeline via app's telemetry manager
-                    try:
-                        asyncio.create_task(self.ap.telemetry.send(payload))
-                    except Exception as e:
-                        self.ap.logger.warning(f'Failed to create telemetry send task: {e}')
+                    await self.ap.telemetry.start_send_task(payload)
                 except Exception as ex:
                     # Ensure telemetry issues do not affect normal flow
                     self.ap.logger.warning(f'Failed to send telemetry: {ex}')

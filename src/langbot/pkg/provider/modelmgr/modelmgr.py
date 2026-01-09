@@ -9,6 +9,7 @@ from ...discover import engine
 from . import token
 from ...entity.persistence import model as persistence_model
 from ...entity.errors import provider as provider_errors
+from async_lru import alru_cache
 
 
 class ModelManager:
@@ -349,6 +350,7 @@ class ModelManager:
 
         await self.load_embedding_model_with_provider(model_entity, provider_entity)
 
+    @alru_cache(ttl=60 * 5)
     async def get_model_by_uuid(self, uuid: str) -> requester.RuntimeLLMModel:
         """Get LLM model by uuid"""
         for model in self.llm_models:
@@ -356,6 +358,7 @@ class ModelManager:
                 return model
         raise ValueError(f'LLM model {uuid} not found')
 
+    @alru_cache(ttl=60 * 5)
     async def get_embedding_model_by_uuid(self, uuid: str) -> requester.RuntimeEmbeddingModel:
         """Get embedding model by uuid"""
         for model in self.embedding_models:
