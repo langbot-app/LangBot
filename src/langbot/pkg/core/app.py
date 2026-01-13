@@ -29,6 +29,7 @@ from ..api.http.service import mcp as mcp_service
 from ..api.http.service import apikey as apikey_service
 from ..api.http.service import webhook as webhook_service
 from ..api.http.service import external_kb as external_kb_service
+from ..api.http.service import skill as skill_service
 from ..discover import engine as discover_engine
 from ..storage import mgr as storagemgr
 from ..utils import logcache
@@ -36,6 +37,7 @@ from . import taskmgr
 from . import entities as core_entities
 from ..rag.knowledge import kbmgr as rag_mgr
 from ..vector import mgr as vectordb_mgr
+from ..skill import manager as skill_mgr
 
 
 class Application:
@@ -139,6 +141,10 @@ class Application:
     apikey_service: apikey_service.ApiKeyService = None
 
     webhook_service: webhook_service.WebhookService = None
+
+    skill_service: skill_service.SkillService = None
+
+    skill_mgr: skill_mgr.SkillManager = None
 
     def __init__(self):
         pass

@@ -1,0 +1,202 @@
+.cardContainer {
+  width: 100%;
+  height: 10rem;
+  background-color: #fff;
+  border-radius: 10px;
+  box-shadow: 0px 2px 2px 0 rgba(0, 0, 0, 0.2);
+  padding: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+:global(.dark) .cardContainer {
+  background-color: #1f1f22;
+  box-shadow: 0;
+}
+
+.cardContainer:hover {
+  box-shadow: 0px 2px 8px 0 rgba(0, 0, 0, 0.1);
+}
+
+:global(.dark) .cardContainer:hover {
+  box-shadow: 0;
+}
+
+.basicInfoContainer {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.basicInfoNameContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.basicInfoHeader {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.basicInfoNameText {
+  font-size: 1.4rem;
+  font-weight: 500;
+  color: #1a1a1a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:global(.dark) .basicInfoNameText {
+  color: #f0f0f0;
+}
+
+.typeBadge {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.typeSkill {
+  background-color: #e0f2fe;
+  color: #0369a1;
+}
+
+:global(.dark) .typeSkill {
+  background-color: #0c4a6e;
+  color: #7dd3fc;
+}
+
+.typeWorkflow {
+  background-color: #f3e8ff;
+  color: #7c3aed;
+}
+
+:global(.dark) .typeWorkflow {
+  background-color: #4c1d95;
+  color: #c4b5fd;
+}
+
+.builtinBadge {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-weight: 500;
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+:global(.dark) .builtinBadge {
+  background-color: #78350f;
+  color: #fcd34d;
+}
+
+.statusBadge {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.statusEnabled {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+:global(.dark) .statusEnabled {
+  background-color: #064e3b;
+  color: #6ee7b7;
+}
+
+.statusDisabled {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+:global(.dark) .statusDisabled {
+  background-color: #7f1d1d;
+  color: #fca5a5;
+}
+
+.basicInfoDescriptionText {
+  font-size: 0.9rem;
+  font-weight: 400;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #b1b1b1;
+}
+
+:global(.dark) .basicInfoDescriptionText {
+  color: #888888;
+}
+
+.basicInfoFooter {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.basicInfoLastUpdatedTimeContainer {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.basicInfoUpdateTimeIcon {
+  width: 1rem;
+  height: 1rem;
+  color: #626262;
+}
+
+:global(.dark) .basicInfoUpdateTimeIcon {
+  color: #a0a0a0;
+}
+
+.basicInfoUpdateTimeText {
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: #626262;
+}
+
+:global(.dark) .basicInfoUpdateTimeText {
+  color: #a0a0a0;
+}
+
+.tagsContainer {
+  display: flex;
+  flex-direction: row;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.tag {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  background-color: #f3f4f6;
+  color: #4b5563;
+}
+
+:global(.dark) .tag {
+  background-color: #374151;
+  color: #d1d5db;
+}

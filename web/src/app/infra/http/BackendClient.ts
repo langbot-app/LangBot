@@ -41,6 +41,10 @@ import {
   ApiRespModelProviders,
   ApiRespModelProvider,
   ModelProvider,
+  Skill,
+  ApiRespSkills,
+  ApiRespSkill,
+  ApiRespPipelineSkills,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
@@ -802,5 +806,83 @@ export class BackendClient extends BaseHttpClient {
       };
     }
     return response.data.data;
+  }
+
+  // ============ Skills API ============
+  public getSkills(params?: {
+    skill_type?: string;
+    is_enabled?: boolean;
+    tags?: string[];
+  }): Promise<ApiRespSkills> {
+    return this.get('/api/v1/skills', params);
+  }
+
+  public getSkill(uuid: string): Promise<ApiRespSkill> {
+    return this.get(`/api/v1/skills/${uuid}`);
+  }
+
+  public createSkill(skill: Omit<Skill, 'uuid'>): Promise<{ uuid: string }> {
+    return this.post('/api/v1/skills', skill);
+  }
+
+  public updateSkill(uuid: string, skill: Partial<Skill>): Promise<object> {
+    return this.put(`/api/v1/skills/${uuid}`, skill);
+  }
+
+  public deleteSkill(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/skills/${uuid}`);
+  }
+
+  public toggleSkill(
+    uuid: string,
+    is_enabled: boolean,
+  ): Promise<{ is_enabled: boolean }> {
+    return this.post(`/api/v1/skills/${uuid}/toggle`, { is_enabled });
+  }
+
+  public previewSkill(uuid: string): Promise<{ instructions: string }> {
+    return this.get(`/api/v1/skills/${uuid}/preview`);
+  }
+
+  public getPipelineSkills(pipelineUuid: string): Promise<ApiRespPipelineSkills> {
+    return this.get(`/api/v1/skills/pipelines/${pipelineUuid}`);
+  }
+
+  public updatePipelineSkills(
+    pipelineUuid: string,
+    skillBindings: Array<{
+      skill_uuid: string;
+      priority?: number;
+      is_enabled?: boolean;
+    }>,
+  ): Promise<object> {
+    return this.put(`/api/v1/skills/pipelines/${pipelineUuid}`, {
+      skill_bindings: skillBindings,
+    });
+  }
+
+  public bindSkillToPipeline(
+    pipelineUuid: string,
+    skillUuid: string,
+    priority?: number,
+  ): Promise<object> {
+    return this.post(
+      `/api/v1/skills/pipelines/${pipelineUuid}/bind/${skillUuid}`,
+      { priority },
+    );
+  }
+
+  public unbindSkillFromPipeline(
+    pipelineUuid: string,
+    skillUuid: string,
+  ): Promise<object> {
+    return this.delete(
+      `/api/v1/skills/pipelines/${pipelineUuid}/unbind/${skillUuid}`,
+    );
+  }
+
+  public getSkillIndex(pipelineUuid?: string): Promise<{ index: string }> {
+    const params = pipelineUuid ? { pipeline_uuid: pipelineUuid } : {};
+    return this.get('/api/v1/skills/index', params);
   }
 }

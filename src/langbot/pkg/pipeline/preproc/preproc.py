@@ -165,4 +165,36 @@ class PreProcessor(stage.PipelineStage):
         query.prompt.messages = event_ctx.event.default_prompt
         query.messages = event_ctx.event.prompt
 
+        # =========== Inject skill index into system prompt ===========
+        if selected_runner == 'local-agent' and self.ap.skill_mgr:
+            # Get bound skills for this pipeline
+            bound_skills = await self.ap.skill_mgr.get_pipeline_bound_skills(query.pipeline_uuid)
+
+            # Build skill awareness addition
+            skill_addition = self.ap.skill_mgr.build_skill_aware_prompt_addition(
+                pipeline_uuid=query.pipeline_uuid,
+                bound_skills=bound_skills if bound_skills else None,
+            )
+
+            if skill_addition:
+                # Store bound skills in query variables for later use
+                query.variables['_pipeline_bound_skills'] = bound_skills
+
+                # Append skill instruction to the first system message
+                if query.prompt.messages and query.prompt.messages[0].role == 'system':
+                    if isinstance(query.prompt.messages[0].content, str):
+                        query.prompt.messages[0].content += skill_addition
+                    elif isinstance(query.prompt.messages[0].content, list):
+                        # Handle content as list of ContentElements
+                        for ce in query.prompt.messages[0].content:
+                            if ce.type == 'text':
+                                ce.text += skill_addition
+                                break
+                else:
+                    # Insert a new system message with skill instructions
+                    query.prompt.messages.insert(
+                        0,
+                        provider_message.Message(role='system', content=skill_addition.strip()),
+                    )
+
         return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)

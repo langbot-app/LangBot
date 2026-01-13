@@ -26,6 +26,8 @@ from ...api.http.service import mcp as mcp_service
 from ...api.http.service import apikey as apikey_service
 from ...api.http.service import webhook as webhook_service
 from ...api.http.service import external_kb as external_kb_service
+from ...api.http.service import skill as skill_service
+from ...skill import manager as skill_mgr
 from ...discover import engine as discover_engine
 from ...storage import mgr as storagemgr
 from ...utils import logcache
@@ -81,6 +83,9 @@ class BuildAppStage(stage.BootingStage):
         webhook_service_inst = webhook_service.WebhookService(ap)
         ap.webhook_service = webhook_service_inst
 
+        skill_service_inst = skill_service.SkillService(ap)
+        ap.skill_service = skill_service_inst
+
         proxy_mgr = proxy.ProxyManager(ap)
         await proxy_mgr.initialize()
         ap.proxy_mgr = proxy_mgr
@@ -129,6 +134,11 @@ class BuildAppStage(stage.BootingStage):
         pipeline_mgr = pipelinemgr.PipelineManager(ap)
         await pipeline_mgr.initialize()
         ap.pipeline_mgr = pipeline_mgr
+
+        # Initialize skill manager
+        skill_mgr_inst = skill_mgr.SkillManager(ap)
+        await skill_mgr_inst.initialize()
+        ap.skill_mgr = skill_mgr_inst
 
         rag_mgr_inst = rag_mgr.RAGManager(ap)
         await rag_mgr_inst.initialize()

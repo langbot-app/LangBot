@@ -394,3 +394,48 @@ export interface MCPTool {
   description: string;
   parameters?: object;
 }
+
+// Skills
+export interface Skill {
+  uuid?: string;
+  name: string;
+  description: string;
+  instructions: string;
+  type: 'skill' | 'workflow';
+  requires_tools?: string[];
+  requires_kbs?: string[];
+  requires_skills?: string[];
+  auto_activate?: boolean;
+  trigger_keywords?: string[];
+  is_enabled?: boolean;
+  is_builtin?: boolean;
+  author?: string;
+  version?: string;
+  tags?: string[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SkillPipelineBinding {
+  id?: number;
+  skill_uuid: string;
+  pipeline_uuid: string;
+  priority?: number;
+  is_enabled?: boolean;
+  created_at?: string;
+}
+
+export interface ApiRespSkills {
+  skills: Skill[];
+}
+
+export interface ApiRespSkill {
+  skill: Skill;
+}
+
+export interface ApiRespPipelineSkills {
+  skills: Array<{
+    skill: Skill;
+    binding: SkillPipelineBinding;
+  }>;
+}
