@@ -1,0 +1,21 @@
+.skillsListContainer {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(22rem, 1fr));
+  grid-gap: 1rem;
+  padding: 0.8rem;
+  width: 100%;
+}
+
+.filterContainer {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 1rem;
+  padding: 0 0.8rem;
+  margin-bottom: 0.5rem;
+}
+
+.searchInput {
+  flex: 1;
+  max-width: 20rem;
+}
