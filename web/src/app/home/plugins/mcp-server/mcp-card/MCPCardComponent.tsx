@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { RefreshCcw, Wrench, Ban, AlertCircle, Loader2 } from 'lucide-react';
@@ -98,9 +99,14 @@ export default function MCPCardComponent({
         </svg>
 
         <div className="w-full h-full flex flex-col items-start justify-between gap-[0.6rem]">
-          <div className="flex flex-col items-start justify-start">
-            <div className="text-[1.2rem] text-black dark:text-[#f0f0f0] font-medium">
-              {cardVO.name}
+          <div className="flex flex-col items-start justify-start gap-[0.3rem]">
+            <div className="flex flex-row items-center gap-[0.5rem]">
+              <div className="text-[1.2rem] text-black dark:text-[#f0f0f0] font-medium">
+                {cardVO.name}
+              </div>
+              <Badge variant="secondary" className="text-[0.65rem] px-1.5 py-0">
+                {cardVO.mode.toUpperCase()}
+              </Badge>
             </div>
           </div>
 

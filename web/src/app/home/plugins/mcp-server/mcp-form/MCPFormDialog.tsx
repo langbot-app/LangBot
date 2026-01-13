@@ -337,7 +337,7 @@ export default function MCPFormDialog({
       if (server.mode === 'sse' || server.mode === 'http') {
         form.setValue('url', server.extra_args.url);
         form.setValue('timeout', server.extra_args.timeout);
-        
+
         if (server.mode === 'sse') {
           form.setValue('ssereadtimeout', server.extra_args.ssereadtimeout);
         }
@@ -362,11 +362,13 @@ export default function MCPFormDialog({
         form.setValue('args', args);
 
         if (server.extra_args.env) {
-          const envs = Object.entries(server.extra_args.env).map(([key, value]) => ({
-            key,
-            type: 'string' as const,
-            value: String(value),
-          }));
+          const envs = Object.entries(server.extra_args.env).map(
+            ([key, value]) => ({
+              key,
+              type: 'string' as const,
+              value: String(value),
+            }),
+          );
           setExtraArgs(envs);
           form.setValue('extra_args', envs);
         }
@@ -672,9 +674,9 @@ export default function MCPFormDialog({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="sse">{t('mcp.sse')}</SelectItem>
-                        <SelectItem value="stdio">{t('mcp.stdio')}</SelectItem>
                         <SelectItem value="http">{t('mcp.http')}</SelectItem>
+                        <SelectItem value="stdio">{t('mcp.stdio')}</SelectItem>
+                        <SelectItem value="sse">{t('mcp.sse')}</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
