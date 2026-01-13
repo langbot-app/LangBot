@@ -100,10 +100,10 @@ export default function MonitoringFilters({
   };
 
   return (
-    <div className="flex flex-wrap items-end gap-4 mb-6">
+    <div className="flex flex-wrap items-center gap-6">
       {/* Bot Filter */}
-      <div className="flex flex-col gap-1.5 min-w-[180px]">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+      <div className="flex items-center gap-2">
+        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
           {t('monitoring.filters.bot')}
         </label>
         <Select
@@ -111,7 +111,7 @@ export default function MonitoringFilters({
           onValueChange={handleBotChange}
           disabled={loadingBots}
         >
-          <SelectTrigger className="bg-white dark:bg-[#2a2a2e] h-9">
+          <SelectTrigger className="bg-white dark:bg-[#2a2a2e] h-9 w-[140px]">
             <SelectValue
               placeholder={
                 loadingBots
@@ -134,8 +134,8 @@ export default function MonitoringFilters({
       </div>
 
       {/* Pipeline Filter */}
-      <div className="flex flex-col gap-1.5 min-w-[180px]">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+      <div className="flex items-center gap-2">
+        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
           {t('monitoring.filters.pipeline')}
         </label>
         <Select
@@ -143,7 +143,7 @@ export default function MonitoringFilters({
           onValueChange={handlePipelineChange}
           disabled={loadingPipelines}
         >
-          <SelectTrigger className="bg-white dark:bg-[#2a2a2e] h-9">
+          <SelectTrigger className="bg-white dark:bg-[#2a2a2e] h-9 w-[140px]">
             <SelectValue
               placeholder={
                 loadingPipelines
@@ -166,12 +166,12 @@ export default function MonitoringFilters({
       </div>
 
       {/* Time Range Filter */}
-      <div className="flex flex-col gap-1.5 min-w-[160px]">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+      <div className="flex items-center gap-2">
+        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
           {t('monitoring.filters.timeRange')}
         </label>
         <Select value={timeRange} onValueChange={handleTimeRangeChange}>
-          <SelectTrigger className="bg-white dark:bg-[#2a2a2e] h-9">
+          <SelectTrigger className="bg-white dark:bg-[#2a2a2e] h-9 w-[120px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

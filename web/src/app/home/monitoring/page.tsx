@@ -129,39 +129,33 @@ function MonitoringPageContent() {
     <div className="flex flex-col gap-6 p-6">
       {/* Overview Section */}
       <div>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-            {t('monitoring.overview')}
-          </h2>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={refetch}
-              className="bg-white dark:bg-[#2a2a2e]"
+        {/* Filters and Refresh Button in one row */}
+        <div className="flex items-center justify-between mb-4">
+          <MonitoringFilters
+            selectedBots={filterState.selectedBots}
+            selectedPipelines={filterState.selectedPipelines}
+            timeRange={filterState.timeRange}
+            onBotsChange={setSelectedBots}
+            onPipelinesChange={setSelectedPipelines}
+            onTimeRangeChange={setTimeRange}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={refetch}
+            className="bg-white dark:bg-[#2a2a2e] flex-shrink-0"
+          >
+            <svg
+              className="w-4 h-4 mr-2"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
             >
-              <svg
-                className="w-4 h-4 mr-2"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M5.46257 4.43262C7.21556 2.91688 9.5007 2 12 2C17.5228 2 22 6.47715 22 12C22 14.1361 21.3302 16.1158 20.1892 17.7406L17 12H20C20 7.58172 16.4183 4 12 4C9.84982 4 7.89777 4.84827 6.46023 6.22842L5.46257 4.43262ZM18.5374 19.5674C16.7844 21.0831 14.4993 22 12 22C6.47715 22 2 17.5228 2 12C2 9.86386 2.66979 7.88416 3.8108 6.25944L7 12H4C4 16.4183 7.58172 20 12 20C14.1502 20 16.1022 19.1517 17.5398 17.7716L18.5374 19.5674Z"></path>
-              </svg>
-              {t('monitoring.refreshData')}
-            </Button>
-          </div>
+              <path d="M5.46257 4.43262C7.21556 2.91688 9.5007 2 12 2C17.5228 2 22 6.47715 22 12C22 14.1361 21.3302 16.1158 20.1892 17.7406L17 12H20C20 7.58172 16.4183 4 12 4C9.84982 4 7.89777 4.84827 6.46023 6.22842L5.46257 4.43262ZM18.5374 19.5674C16.7844 21.0831 14.4993 22 12 22C6.47715 22 2 17.5228 2 12C2 9.86386 2.66979 7.88416 3.8108 6.25944L7 12H4C4 16.4183 7.58172 20 12 20C14.1502 20 16.1022 19.1517 17.5398 17.7716L18.5374 19.5674Z"></path>
+            </svg>
+            {t('monitoring.refreshData')}
+          </Button>
         </div>
-
-        {/* Filters */}
-        <MonitoringFilters
-          selectedBots={filterState.selectedBots}
-          selectedPipelines={filterState.selectedPipelines}
-          timeRange={filterState.timeRange}
-          onBotsChange={setSelectedBots}
-          onPipelinesChange={setSelectedPipelines}
-          onTimeRangeChange={setTimeRange}
-        />
 
         <OverviewCards
           metrics={data?.overview || null}
