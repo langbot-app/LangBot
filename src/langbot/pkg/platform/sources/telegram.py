@@ -216,8 +216,6 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             components = await TelegramMessageConverter.yiri2target(message, self.bot)
             args = {}
             message_id = message_source.source_platform_object.message.id
-            if quote_origin:
-                args['reply_to_message_id'] = message_source.source_platform_object.message.id
 
             component = components[0]
             if message_id not in self.msg_stream_id:  # 当消息回复第一次时，发送新消息
@@ -233,6 +231,8 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         'chat_id': message_source.source_platform_object.effective_chat.id,
                         'text': content,
                     }
+                    if quote_origin:
+                        args['reply_to_message_id'] = message_source.source_platform_object.message.id
                     if self.config['markdown_card'] is True:
                         args['parse_mode'] = 'MarkdownV2'
 
@@ -252,6 +252,8 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         'chat_id': message_source.source_platform_object.effective_chat.id,
                         'text': content,
                     }
+                    if quote_origin:
+                        args['reply_to_message_id'] = message_source.source_platform_object.message.id
                     if self.config['markdown_card'] is True:
                         args['parse_mode'] = 'MarkdownV2'
 
