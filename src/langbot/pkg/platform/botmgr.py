@@ -75,10 +75,17 @@ class RuntimeBot:
 
             # Only add to query pool if no webhook requested to skip pipeline
             if not skip_pipeline:
+                launcher_id = event.sender.id
+
+                if hasattr(adapter, 'get_launcher_id'):
+                    custom_launcher_id = adapter.get_launcher_id(event)
+                    if custom_launcher_id:
+                        launcher_id = custom_launcher_id
+
                 await self.ap.query_pool.add_query(
                     bot_uuid=self.bot_entity.uuid,
                     launcher_type=provider_session.LauncherTypes.PERSON,
-                    launcher_id=event.sender.id,
+                    launcher_id=launcher_id,
                     sender_id=event.sender.id,
                     message_event=event,
                     message_chain=event.message_chain,
@@ -111,10 +118,17 @@ class RuntimeBot:
 
             # Only add to query pool if no webhook requested to skip pipeline
             if not skip_pipeline:
+                launcher_id = event.group.id
+
+                if hasattr(adapter, 'get_launcher_id'):
+                    custom_launcher_id = adapter.get_launcher_id(event)
+                    if custom_launcher_id:
+                        launcher_id = custom_launcher_id
+
                 await self.ap.query_pool.add_query(
                     bot_uuid=self.bot_entity.uuid,
                     launcher_type=provider_session.LauncherTypes.GROUP,
-                    launcher_id=event.group.id,
+                    launcher_id=launcher_id,
                     sender_id=event.sender.id,
                     message_event=event,
                     message_chain=event.message_chain,

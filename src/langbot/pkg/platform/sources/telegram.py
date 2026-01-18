@@ -197,11 +197,12 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 }
                 if self.config['markdown_card'] is True:
                     args['parse_mode'] = 'MarkdownV2'
+
+        if message_source.source_platform_object.message.message_thread_id:
+            args['message_thread_id'] = message_source.source_platform_object.message.message_thread_id
+
         if quote_origin:
             args['reply_to_message_id'] = message_source.source_platform_object.message.id
-            
-            if message_source.source_platform_object.message.message_thread_id:
-                args['message_thread_id'] = message_source.source_platform_object.message.message_thread_id
 
         await self.bot.send_message(**args)
 
@@ -234,12 +235,12 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         'chat_id': message_source.source_platform_object.effective_chat.id,
                         'text': content,
                     }
+                    if message_source.source_platform_object.message.message_thread_id:
+                        args['message_thread_id'] = message_source.source_platform_object.message.message_thread_id
+
                     if quote_origin:
                         args['reply_to_message_id'] = message_source.source_platform_object.message.id
 
-                        if message_source.source_platform_object.message.message_thread_id:
-                            args['message_thread_id'] = message_source.source_platform_object.message.message_thread_id
-                    
                     if self.config['markdown_card'] is True:
                         args['parse_mode'] = 'MarkdownV2'
 
@@ -266,6 +267,24 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             if is_final and bot_message.tool_calls is None:
                 # self.seq = 1  # 消息回复结束之后重置seq
                 self.msg_stream_id.pop(message_id)  # 消息回复结束之后删除流式消息id
+
+    def get_launcher_id(self, event: platform_events.MessageEvent) -> str | None:
+        if not isinstance(event.source_platform_object, Update):
+            return None
+
+        message = event.source_platform_object.message
+        if not message:
+            return None
+
+        # specifically handle telegram forum topic and private thread(not supported by official client yet but supported by bot api)
+        if message.message_thread_id:
+            # check if it is a group
+            if isinstance(event, platform_events.GroupMessage):
+                return f'{event.group.id}#{message.message_thread_id}'
+            elif isinstance(event, platform_events.FriendMessage):
+                return f'{event.sender.id}#{message.message_thread_id}'
+
+        return None
 
     async def is_stream_output_supported(self) -> bool:
         is_stream = False
