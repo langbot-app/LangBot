@@ -13,7 +13,7 @@ import uuid as uuid_module
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.sse import sse_client
-from mcp.client.streamable_http import streamable_http_client
+from mcp.client.streamable_http import streamablehttp_client
 
 from .. import loader
 from ....core import app
@@ -108,7 +108,7 @@ class RuntimeMCPSession:
 
     async def _init_streamable_http_server(self):
         transport = await self.exit_stack.enter_async_context(
-            streamable_http_client(
+            streamablehttp_client(
                 self.server_config['url'],
                 http_client=httpx.AsyncClient(
                     headers=self.server_config.get('headers', {}),
