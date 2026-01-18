@@ -212,7 +212,10 @@ class LocalAgentRunner(runner.RequestRunner):
                 try:
                     func = tool_call.function
 
-                    parameters = json.loads(func.arguments)
+                    if func.arguments:
+                        parameters = json.loads(func.arguments)
+                    else:
+                        parameters = {}
 
                     func_ret = await self.ap.tool_mgr.execute_func_call(func.name, parameters, query=query)
                     
