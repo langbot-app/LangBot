@@ -820,6 +820,7 @@ const zhHans = {
       platform: '角色',
       user: '用户',
       level: '级别',
+      runner: '执行器',
     },
     llmCalls: {
       title: 'LLM调用',

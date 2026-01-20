@@ -11,6 +11,7 @@ import datetime
 import typing
 import uuid
 import time
+import json
 
 if typing.TYPE_CHECKING:
     from ..core import app
@@ -36,12 +37,18 @@ class MonitoringHelper:
             session_id = f'{query.launcher_type}_{query.launcher_id}'
 
             # Try to record message
+            # Use JSON serialization to preserve message chain structure (including image URLs, etc.)
+            if hasattr(query, 'message_chain') and hasattr(query.message_chain, 'model_dump'):
+                message_content = json.dumps(query.message_chain.model_dump(), ensure_ascii=False)
+            else:
+                message_content = str(query)
+
             message_id = await ap.monitoring_service.record_message(
                 bot_id=bot_id,
                 bot_name=bot_name,
                 pipeline_id=pipeline_id,
                 pipeline_name=pipeline_name,
-                message_content=str(query.message_chain) if hasattr(query, 'message_chain') else str(query),
+                message_content=message_content,
                 session_id=session_id,
                 status='pending',
                 level='info',

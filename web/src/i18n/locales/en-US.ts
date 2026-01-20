@@ -858,6 +858,7 @@ const enUS = {
       platform: 'Role',
       user: 'User',
       level: 'Level',
+      runner: 'Runner',
     },
     llmCalls: {
       title: 'LLM Calls',

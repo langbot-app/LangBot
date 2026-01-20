@@ -150,7 +150,7 @@ class RuntimePipeline:
                 query.message_event, platform_events.GroupMessage
             ):
                 result.user_notice.insert(0, platform_message.At(target=query.message_event.sender.id))
-            if await query.adapter.is_stream_output_supported():
+            if await query.adapter.is_stream_output_supported() and query.resp_messages:
                 await query.adapter.reply_message_chunk(
                     message_source=query.message_event,
                     bot_message=query.resp_messages[-1],
@@ -277,8 +277,8 @@ class RuntimePipeline:
 
         # Get runner name from pipeline config
         runner_name = None
-        if query.pipeline_config and 'runner' in query.pipeline_config:
-            runner_name = query.pipeline_config['runner'].get('type', 'unknown')
+        if query.pipeline_config and 'ai' in query.pipeline_config and 'runner' in query.pipeline_config['ai']:
+            runner_name = query.pipeline_config['ai']['runner'].get('runner')
 
         # Record query start and store message_id
         message_id = ''

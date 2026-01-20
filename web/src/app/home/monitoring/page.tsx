@@ -10,6 +10,7 @@ import MonitoringFilters from './components/filters/MonitoringFilters';
 import { useMonitoringFilters } from './hooks/useMonitoringFilters';
 import { useMonitoringData } from './hooks/useMonitoringData';
 import { MessageDetailsCard } from './components/MessageDetailsCard';
+import { MessageContentRenderer } from './components/MessageContentRenderer';
 import { MessageDetails } from './types/monitoring';
 import { httpClient } from '@/app/infra/http/HttpClient';
 
@@ -196,7 +197,13 @@ function MonitoringPageContent() {
                 data.messages &&
                 data.messages.length > 0 && (
                   <div className="space-y-3">
-                    {data.messages.map((msg) => (
+                    {data.messages
+                      .filter((msg) => {
+                        // Filter out messages with empty content
+                        const content = msg.messageContent?.trim();
+                        return content && content !== '[]' && content !== '""';
+                      })
+                      .map((msg) => (
                       <div
                         key={msg.id}
                         className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
@@ -230,15 +237,18 @@ function MonitoringPageContent() {
                                   {msg.runnerName && (
                                     <>
                                       <span className="text-gray-400">→</span>
-                                      <span className="text-sm text-purple-600 dark:text-purple-400">
+                                      <span className="text-sm text-gray-600 dark:text-gray-400">
                                         {msg.runnerName}
                                       </span>
                                     </>
                                   )}
                                 </div>
-                                <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">
-                                  {msg.messageContent}
-                                </p>
+                                <div className="text-base text-gray-800 dark:text-gray-200">
+                                  <MessageContentRenderer
+                                    content={msg.messageContent}
+                                    maxLines={3}
+                                  />
+                                </div>
                               </div>
                             </div>
 

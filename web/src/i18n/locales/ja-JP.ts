@@ -864,6 +864,7 @@ const jaJP = {
       platform: 'プラットフォーム',
       user: 'ユーザー',
       level: 'レベル',
+      runner: 'ランナー',
     },
     llmCalls: {
       model: 'モデル',

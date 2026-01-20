@@ -53,9 +53,9 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
             {details.message.runnerName && (
               <div className="bg-white dark:bg-gray-900 rounded p-2">
                 <div className="text-gray-500 dark:text-gray-400">
-                  Runner
+                  {t('monitoring.messageList.runner')}
                 </div>
-                <div className="font-medium text-purple-600 dark:text-purple-400">
+                <div className="font-medium text-gray-900 dark:text-white">
                   {details.message.runnerName}
                 </div>
               </div>
