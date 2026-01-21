@@ -82,8 +82,8 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
 
       {/* LLM Calls Section */}
       {details.llmCalls && details.llmCalls.length > 0 && (
-        <div>
-          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center">
+        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
             <svg
               className="w-4 h-4 mr-2"
               xmlns="http://www.w3.org/2000/svg"
@@ -97,7 +97,7 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
 
           {/* LLM Stats Summary */}
           <div className="grid grid-cols-3 gap-2 mb-3">
-            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-2">
+            <div className="bg-white dark:bg-gray-900 rounded p-2">
               <div className="text-xs text-blue-600 dark:text-blue-400">
                 {t('monitoring.llmCalls.totalTokens')}
               </div>
@@ -105,7 +105,7 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
                 {details.llmStats.totalTokens.toLocaleString()}
               </div>
             </div>
-            <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-2">
+            <div className="bg-white dark:bg-gray-900 rounded p-2">
               <div className="text-xs text-green-600 dark:text-green-400">
                 {t('monitoring.llmCalls.avgDuration')}
               </div>
@@ -113,7 +113,7 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
                 {details.llmStats.averageDurationMs}ms
               </div>
             </div>
-            <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-2">
+            <div className="bg-white dark:bg-gray-900 rounded p-2">
               <div className="text-xs text-purple-600 dark:text-purple-400">
                 {t('monitoring.llmCalls.calls')}
               </div>
@@ -128,7 +128,7 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
             {details.llmCalls.map((call, index) => (
               <div
                 key={call.id}
-                className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 text-sm"
+                className="bg-white dark:bg-gray-900 rounded p-2 text-sm"
               >
                 <div className="flex justify-between items-start mb-2">
                   <div>
@@ -182,8 +182,8 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
 
       {/* Errors Section */}
       {details.errors && details.errors.length > 0 && (
-        <div>
-          <h4 className="text-sm font-semibold text-red-700 dark:text-red-400 mb-2 flex items-center">
+        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+          <h4 className="text-sm font-semibold text-red-700 dark:text-red-400 mb-3 flex items-center">
             <svg
               className="w-4 h-4 mr-2"
               xmlns="http://www.w3.org/2000/svg"
@@ -198,7 +198,7 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
             {details.errors.map((error) => (
               <div
                 key={error.id}
-                className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3 text-sm"
+                className="bg-red-50 dark:bg-red-900/20 rounded p-2 text-sm"
               >
                 <div className="font-medium text-red-900 dark:text-red-300 mb-1">
                   {error.errorType}

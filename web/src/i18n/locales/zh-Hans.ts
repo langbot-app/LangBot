@@ -821,6 +821,7 @@ const zhHans = {
       user: '用户',
       level: '级别',
       runner: '执行器',
+      viewConversation: '显示对话详情',
     },
     llmCalls: {
       title: 'LLM调用',

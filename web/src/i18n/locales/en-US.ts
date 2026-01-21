@@ -859,6 +859,7 @@ const enUS = {
       user: 'User',
       level: 'Level',
       runner: 'Runner',
+      viewConversation: 'View Conversation',
     },
     llmCalls: {
       title: 'LLM Calls',

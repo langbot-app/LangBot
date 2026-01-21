@@ -171,7 +171,7 @@ export default function MonitoringFilters({
           {t('monitoring.filters.timeRange')}
         </label>
         <Select value={timeRange} onValueChange={handleTimeRangeChange}>
-          <SelectTrigger className="bg-white dark:bg-[#2a2a2e] h-9 w-[120px]">
+          <SelectTrigger className="bg-white dark:bg-[#2a2a2e] h-9 w-[150px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

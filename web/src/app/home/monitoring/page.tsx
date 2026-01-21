@@ -4,7 +4,7 @@ import React, { Suspense, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { ChevronRight, ChevronDown } from 'lucide-react';
+import { ChevronRight, ChevronDown, ExternalLink } from 'lucide-react';
 import OverviewCards from './components/overview-cards/OverviewCards';
 import MonitoringFilters from './components/filters/MonitoringFilters';
 import { useMonitoringFilters } from './hooks/useMonitoringFilters';
@@ -33,6 +33,18 @@ function MonitoringPageContent() {
   // State for expanded errors
   const [expandedErrorId, setExpandedErrorId] = useState<string | null>(null);
 
+  // State for controlled tabs
+  const [activeTab, setActiveTab] = useState<string>('messages');
+
+  // Function to jump to a message record
+  const jumpToMessage = async (messageId: string) => {
+    setActiveTab('messages');
+    // Small delay to ensure tab switch completes
+    setTimeout(() => {
+      toggleMessageExpand(messageId);
+    }, 100);
+  };
+
   const toggleMessageExpand = async (messageId: string) => {
     if (expandedMessageId === messageId) {
       // Collapse
@@ -56,8 +68,8 @@ function MonitoringPageContent() {
           }>(`/api/v1/monitoring/messages/${messageId}/details`);
 
           if (result) {
-            setMessageDetails({
-              ...messageDetails,
+            setMessageDetails((prev) => ({
+              ...prev,
               [messageId]: {
                 messageId: result.message_id,
                 found: result.found,
@@ -106,8 +118,8 @@ function MonitoringPageContent() {
                   totalDurationMs: result.llm_stats.total_duration_ms,
                   averageDurationMs: result.llm_stats.average_duration_ms,
                 },
-              },
-            });
+              } as MessageDetails,
+            }));
           }
         } catch (error) {
           console.error('Failed to fetch message details:', error);
@@ -168,7 +180,7 @@ function MonitoringPageContent() {
 
       {/* Tabs Section */}
       <div>
-        <Tabs defaultValue="messages" className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="bg-gray-100 dark:bg-[#2a2a2e]">
             <TabsTrigger value="messages">
               {t('monitoring.tabs.messages')}
@@ -226,6 +238,11 @@ function MonitoringPageContent() {
 
                               {/* Message Info */}
                               <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">
+                                    ID: {msg.id}
+                                  </span>
+                                </div>
                                 <div className="flex items-center gap-2 mb-2">
                                   <span className="font-medium text-sm text-gray-700 dark:text-gray-300">
                                     {msg.botName}
@@ -328,6 +345,23 @@ function MonitoringPageContent() {
                       >
                         <div className="flex justify-between items-start mb-3">
                           <div className="flex-1">
+                            {/* Query ID */}
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">
+                                Query ID: {call.messageId || '-'}
+                              </span>
+                              {call.messageId && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-5 px-1.5 text-xs"
+                                  onClick={() => jumpToMessage(call.messageId!)}
+                                >
+                                  <ExternalLink className="w-3 h-3 mr-1" />
+                                  {t('monitoring.messageList.viewConversation')}
+                                </Button>
+                              )}
+                            </div>
                             <div className="flex items-center gap-2 mb-2">
                               <span className="font-medium text-sm text-gray-700 dark:text-gray-300">
                                 {call.modelName}
@@ -432,6 +466,26 @@ function MonitoringPageContent() {
 
                             {/* Error Info */}
                             <div className="flex-1">
+                              {/* Query ID */}
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">
+                                  Query ID: {error.messageId || '-'}
+                                </span>
+                                {error.messageId && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-5 px-1.5 text-xs"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      jumpToMessage(error.messageId!);
+                                    }}
+                                  >
+                                    <ExternalLink className="w-3 h-3 mr-1" />
+                                    {t('monitoring.messageList.viewConversation')}
+                                  </Button>
+                                )}
+                              </div>
                               <div className="flex items-center gap-2 mb-2">
                                 <span className="font-medium text-sm text-red-700 dark:text-red-300">
                                   {error.errorType}

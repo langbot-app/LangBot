@@ -865,6 +865,7 @@ const jaJP = {
       user: 'ユーザー',
       level: 'レベル',
       runner: 'ランナー',
+      viewConversation: '会話詳細を表示',
     },
     llmCalls: {
       model: 'モデル',

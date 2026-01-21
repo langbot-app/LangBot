@@ -140,6 +140,7 @@ export function useMonitoringData(filterState: FilterState) {
             pipeline_id: string;
             pipeline_name: string;
             error_message?: string;
+            message_id?: string;
           }) => ({
             id: call.id,
             timestamp: new Date(call.timestamp),
@@ -157,6 +158,7 @@ export function useMonitoringData(filterState: FilterState) {
             pipelineId: call.pipeline_id,
             pipelineName: call.pipeline_name,
             errorMessage: call.error_message,
+            messageId: call.message_id,
           }),
         ),
         sessions: response.sessions.map(
@@ -199,6 +201,7 @@ export function useMonitoringData(filterState: FilterState) {
             pipeline_name: string;
             session_id?: string;
             stack_trace?: string;
+            message_id?: string;
           }) => ({
             id: error.id,
             timestamp: new Date(error.timestamp),
@@ -210,6 +213,7 @@ export function useMonitoringData(filterState: FilterState) {
             pipelineName: error.pipeline_name,
             sessionId: error.session_id,
             stackTrace: error.stack_trace,
+            messageId: error.message_id,
           }),
         ),
         totalCount: {

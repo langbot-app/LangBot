@@ -814,6 +814,7 @@ const zhHant = {
       user: '使用者',
       level: '級別',
       runner: '執行器',
+      viewConversation: '顯示對話詳情',
     },
     llmCalls: {
       model: '模型',
