@@ -32,6 +32,7 @@ class MonitoringService:
         platform: str | None = None,
         user_id: str | None = None,
         runner_name: str | None = None,
+        variables: str | None = None,
     ) -> str:
         """Record a message"""
         message_id = str(uuid.uuid4())
@@ -49,6 +50,7 @@ class MonitoringService:
             'platform': platform,
             'user_id': user_id,
             'runner_name': runner_name,
+            'variables': variables,
         }
 
         await self.ap.persistence_mgr.execute_async(
@@ -200,11 +202,14 @@ class MonitoringService:
         message_id: str,
         status: str,
         level: str | None = None,
+        variables: str | None = None,
     ) -> None:
-        """Update message status"""
+        """Update message status and optionally variables"""
         update_values = {'status': status}
         if level is not None:
             update_values['level'] = level
+        if variables is not None:
+            update_values['variables'] = variables
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_monitoring.MonitoringMessage)

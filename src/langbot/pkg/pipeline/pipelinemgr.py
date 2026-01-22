@@ -334,6 +334,7 @@ class RuntimePipeline:
                     await monitoring_helper.MonitoringHelper.record_query_success(
                         ap=self.ap,
                         message_id=message_id,
+                        query=query,
                     )
                 except Exception as e:
                     self.ap.logger.error(f'Failed to record query success: {e}')

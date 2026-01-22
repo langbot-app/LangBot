@@ -891,6 +891,13 @@ const jaJP = {
       occurredAt: '発生時刻',
       noErrors: 'エラーが見つかりません',
       stackTrace: 'スタックトレース',
+      title: 'エラー',
+    },
+    messageDetails: {
+      noData: 'このクエリにはLLM呼び出しやエラーがありません',
+    },
+    queryVariables: {
+      title: 'クエリ変数',
     },
     viewMonitoring: 'モニタリングを表示',
     refreshData: 'データを更新',

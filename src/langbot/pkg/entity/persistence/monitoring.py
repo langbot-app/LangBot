@@ -21,6 +21,7 @@ class MonitoringMessage(Base):
     platform = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
     user_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
     runner_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)  # Runner name for this query
+    variables = sqlalchemy.Column(sqlalchemy.Text, nullable=True)  # Query variables as JSON string
 
 
 class MonitoringLLMCall(Base):

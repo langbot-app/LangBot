@@ -840,6 +840,13 @@ const zhHant = {
       occurredAt: '發生時間',
       noErrors: '未找到錯誤',
       stackTrace: '堆疊追蹤',
+      title: '錯誤',
+    },
+    messageDetails: {
+      noData: '此查詢沒有LLM調用或錯誤記錄',
+    },
+    queryVariables: {
+      title: '查詢變數',
     },
     viewMonitoring: '查看監控',
     refreshData: '重新整理資料',

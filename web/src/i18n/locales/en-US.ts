@@ -902,6 +902,9 @@ const enUS = {
     messageDetails: {
       noData: 'No LLM calls or errors for this query',
     },
+    queryVariables: {
+      title: 'Query Variables',
+    },
     trafficChart: {
       title: 'Traffic Overview',
       messages: 'Messages',

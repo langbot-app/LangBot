@@ -108,6 +108,7 @@ export function useMonitoringData(filterState: FilterState) {
             platform?: string;
             user_id?: string;
             runner_name?: string;
+            variables?: string;
           }) => ({
             id: msg.id,
             timestamp: new Date(msg.timestamp),
@@ -122,6 +123,7 @@ export function useMonitoringData(filterState: FilterState) {
             platform: msg.platform,
             userId: msg.user_id,
             runnerName: msg.runner_name,
+            variables: msg.variables,
           }),
         ),
         llmCalls: response.llmCalls.map(

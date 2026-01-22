@@ -831,6 +831,8 @@ export class BackendClient extends BaseHttpClient {
       level: string;
       platform?: string;
       user_id?: string;
+      runner_name?: string;
+      variables?: string;
     }>;
     llmCalls: Array<{
       id: string;
@@ -847,6 +849,7 @@ export class BackendClient extends BaseHttpClient {
       pipeline_id: string;
       pipeline_name: string;
       error_message?: string;
+      message_id?: string;
     }>;
     sessions: Array<{
       session_id: string;
@@ -871,6 +874,7 @@ export class BackendClient extends BaseHttpClient {
       pipeline_name: string;
       session_id?: string;
       stack_trace?: string;
+      message_id?: string;
     }>;
     totalCount: {
       messages: number;

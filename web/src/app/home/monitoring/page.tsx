@@ -88,6 +88,7 @@ function MonitoringPageContent() {
                       platform: result.message.platform,
                       userId: result.message.user_id,
                       runnerName: result.message.runner_name,
+                      variables: result.message.variables,
                     }
                   : undefined,
                 llmCalls: result.llm_calls.map((call: any) => ({

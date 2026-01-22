@@ -864,6 +864,9 @@ const zhHans = {
     messageDetails: {
       noData: '此查询没有LLM调用或错误记录',
     },
+    queryVariables: {
+      title: '查询变量',
+    },
     trafficChart: {
       title: '流量概览',
       messages: '消息数',

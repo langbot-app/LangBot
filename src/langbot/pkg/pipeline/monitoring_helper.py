@@ -43,6 +43,9 @@ class MonitoringHelper:
             else:
                 message_content = str(query)
 
+            # Variables will be updated in record_query_success after preproc stage sets them
+            # Here we just record None, the full variables will be set when query completes
+
             message_id = await ap.monitoring_service.record_message(
                 bot_id=bot_id,
                 bot_name=bot_name,
@@ -57,6 +60,7 @@ class MonitoringHelper:
                 else str(query.launcher_type),
                 user_id=query.sender_id,
                 runner_name=runner_name,
+                variables=None,  # Will be updated in record_query_success
             )
 
             # Update session activity or create new session if it doesn't exist
@@ -89,13 +93,25 @@ class MonitoringHelper:
     async def record_query_success(
         ap: app.Application,
         message_id: str,
+        query: pipeline_query.Query | None = None,
     ):
-        """Record successful query processing by updating message status"""
+        """Record successful query processing by updating message status and variables"""
         try:
             if message_id:
+                # Serialize query.variables (filtering out internal variables)
+                query_variables_str = None
+                if query and hasattr(query, 'variables') and query.variables:
+                    filtered_vars = {k: v for k, v in query.variables.items() if not k.startswith('_')}
+                    if filtered_vars:
+                        try:
+                            query_variables_str = json.dumps(filtered_vars, ensure_ascii=False, default=str)
+                        except Exception:
+                            pass
+
                 await ap.monitoring_service.update_message_status(
                     message_id=message_id,
                     status='success',
+                    variables=query_variables_str,
                 )
         except Exception as e:
             ap.logger.error(f'Failed to record query success: {e}')

@@ -12,6 +12,7 @@ export interface MonitoringMessage {
   platform?: string;
   userId?: string;
   runnerName?: string;
+  variables?: string;
 }
 
 export interface LLMCall {
