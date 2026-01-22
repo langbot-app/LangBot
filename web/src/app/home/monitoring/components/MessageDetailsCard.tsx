@@ -232,8 +232,8 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
         </div>
       )}
 
-      {/* Query Variables Section */}
-      {queryVariables && Object.keys(queryVariables).length > 0 && (
+      {/* Query Variables Section - Only show for non-local-agent runners */}
+      {queryVariables && Object.keys(queryVariables).length > 0 && details.message?.runnerName !== 'local-agent' && (
         <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
           <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
             <svg
@@ -268,7 +268,7 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
       {/* No data message */}
       {(!details.llmCalls || details.llmCalls.length === 0) &&
         (!details.errors || details.errors.length === 0) &&
-        (!queryVariables || Object.keys(queryVariables).length === 0) && (
+        (details.message?.runnerName === 'local-agent' || !queryVariables || Object.keys(queryVariables).length === 0) && (
           <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
             {t('monitoring.messageDetails.noData')}
           </div>
