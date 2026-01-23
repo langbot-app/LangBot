@@ -1,4 +1,4 @@
-name: Lint
+name: Ruff Lint & Format
 
 on:
   push:
@@ -11,7 +11,7 @@ on:
 
 jobs:
   ruff:
-    name: Ruff Check
+    name: Ruff Lint & Format
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -30,3 +30,6 @@ jobs:
 
       - name: Run ruff check
         run: uv run ruff check src
+
+      - name: Run ruff format
+        run: uv run ruff format src --check
