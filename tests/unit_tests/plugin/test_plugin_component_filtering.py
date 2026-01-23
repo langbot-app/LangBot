@@ -1,6 +1,5 @@
 """Test plugin list filtering by component kinds."""
 
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 import pytest
 
@@ -31,16 +30,7 @@ async def test_plugin_list_filter_by_component_kinds():
                     }
                 }
             },
-            'components': [
-                {
-                    'manifest': {
-                        'manifest': {
-                            'kind': 'Tool',
-                            'metadata': {'name': 'tool1'}
-                        }
-                    }
-                }
-            ]
+            'components': [{'manifest': {'manifest': {'kind': 'Tool', 'metadata': {'name': 'tool1'}}}}],
         },
         {
             'debug': False,
@@ -53,15 +43,8 @@ async def test_plugin_list_filter_by_component_kinds():
                 }
             },
             'components': [
-                {
-                    'manifest': {
-                        'manifest': {
-                            'kind': 'KnowledgeRetriever',
-                            'metadata': {'name': 'retriever1'}
-                        }
-                    }
-                }
-            ]
+                {'manifest': {'manifest': {'kind': 'KnowledgeRetriever', 'metadata': {'name': 'retriever1'}}}}
+            ],
         },
         {
             'debug': False,
@@ -73,16 +56,7 @@ async def test_plugin_list_filter_by_component_kinds():
                     }
                 }
             },
-            'components': [
-                {
-                    'manifest': {
-                        'manifest': {
-                            'kind': 'Command',
-                            'metadata': {'name': 'cmd1'}
-                        }
-                    }
-                }
-            ]
+            'components': [{'manifest': {'manifest': {'kind': 'Command', 'metadata': {'name': 'cmd1'}}}}],
         },
         {
             'debug': False,
@@ -94,16 +68,7 @@ async def test_plugin_list_filter_by_component_kinds():
                     }
                 }
             },
-            'components': [
-                {
-                    'manifest': {
-                        'manifest': {
-                            'kind': 'EventListener',
-                            'metadata': {'name': 'listener1'}
-                        }
-                    }
-                }
-            ]
+            'components': [{'manifest': {'manifest': {'kind': 'EventListener', 'metadata': {'name': 'listener1'}}}}],
         },
         {
             'debug': False,
@@ -116,23 +81,9 @@ async def test_plugin_list_filter_by_component_kinds():
                 }
             },
             'components': [
-                {
-                    'manifest': {
-                        'manifest': {
-                            'kind': 'KnowledgeRetriever',
-                            'metadata': {'name': 'retriever2'}
-                        }
-                    }
-                },
-                {
-                    'manifest': {
-                        'manifest': {
-                            'kind': 'Tool',
-                            'metadata': {'name': 'tool2'}
-                        }
-                    }
-                }
-            ]
+                {'manifest': {'manifest': {'kind': 'KnowledgeRetriever', 'metadata': {'name': 'retriever2'}}}},
+                {'manifest': {'manifest': {'kind': 'Tool', 'metadata': {'name': 'tool2'}}}},
+            ],
         },
     ]
 
@@ -187,16 +138,7 @@ async def test_plugin_list_filter_no_filter():
                     }
                 }
             },
-            'components': [
-                {
-                    'manifest': {
-                        'manifest': {
-                            'kind': 'Tool',
-                            'metadata': {'name': 'tool1'}
-                        }
-                    }
-                }
-            ]
+            'components': [{'manifest': {'manifest': {'kind': 'Tool', 'metadata': {'name': 'tool1'}}}}],
         },
         {
             'debug': False,
@@ -209,15 +151,8 @@ async def test_plugin_list_filter_no_filter():
                 }
             },
             'components': [
-                {
-                    'manifest': {
-                        'manifest': {
-                            'kind': 'KnowledgeRetriever',
-                            'metadata': {'name': 'retriever1'}
-                        }
-                    }
-                }
-            ]
+                {'manifest': {'manifest': {'kind': 'KnowledgeRetriever', 'metadata': {'name': 'retriever1'}}}}
+            ],
         },
     ]
 
@@ -267,15 +202,8 @@ async def test_plugin_list_filter_empty_result():
                 }
             },
             'components': [
-                {
-                    'manifest': {
-                        'manifest': {
-                            'kind': 'KnowledgeRetriever',
-                            'metadata': {'name': 'retriever1'}
-                        }
-                    }
-                }
-            ]
+                {'manifest': {'manifest': {'kind': 'KnowledgeRetriever', 'metadata': {'name': 'retriever1'}}}}
+            ],
         },
     ]
 
@@ -321,16 +249,7 @@ async def test_plugin_list_filter_plugin_without_components():
                     }
                 }
             },
-            'components': [
-                {
-                    'manifest': {
-                        'manifest': {
-                            'kind': 'Tool',
-                            'metadata': {'name': 'tool1'}
-                        }
-                    }
-                }
-            ]
+            'components': [{'manifest': {'manifest': {'kind': 'Tool', 'metadata': {'name': 'tool1'}}}}],
         },
         {
             'debug': False,
@@ -342,7 +261,7 @@ async def test_plugin_list_filter_plugin_without_components():
                     }
                 }
             },
-            'components': []
+            'components': [],
         },
     ]
 

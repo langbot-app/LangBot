@@ -35,9 +35,9 @@ class Embedder(BaseService):
         # get embeddings (batch size limit: 64 for OpenAI)
         MAX_BATCH_SIZE = 64
         embeddings_list: list[list[float]] = []
-        
+
         for i in range(0, len(chunks), MAX_BATCH_SIZE):
-            batch = chunks[i:i + MAX_BATCH_SIZE]
+            batch = chunks[i : i + MAX_BATCH_SIZE]
             batch_embeddings = await embedding_model.provider.requester.invoke_embedding(
                 model=embedding_model,
                 input_text=batch,

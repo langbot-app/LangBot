@@ -85,7 +85,6 @@ class QQOfficialClient:
             req: Quart Request 对象
         """
         try:
-            
             body = await req.get_data()
 
             print(f'[QQ Official] Received request, body length: {len(body)}')
@@ -96,7 +95,6 @@ class QQOfficialClient:
 
             payload = json.loads(body)
 
-            
             if payload.get('op') == 13:
                 validation_data = payload.get('d')
                 if not validation_data:
@@ -276,21 +274,21 @@ class QQOfficialClient:
         seed = bot_secret
         while len(seed) < target_size:
             seed *= 2
-        return seed[:target_size].encode("utf-8")
+        return seed[:target_size].encode('utf-8')
 
     async def verify(self, validation_payload: dict):
         seed = await self.repeat_seed(self.secret)
         private_key = ed25519.Ed25519PrivateKey.from_private_bytes(seed)
 
-        event_ts = validation_payload.get("event_ts", "")
-        plain_token = validation_payload.get("plain_token", "")
+        event_ts = validation_payload.get('event_ts', '')
+        plain_token = validation_payload.get('plain_token', '')
         msg = event_ts + plain_token
 
         # sign
         signature = private_key.sign(msg.encode()).hex()
 
         response = {
-            "plain_token": plain_token,
-            "signature": signature,
+            'plain_token': plain_token,
+            'signature': signature,
         }
         return response

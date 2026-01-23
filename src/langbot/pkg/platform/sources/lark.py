@@ -244,7 +244,6 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
 
         lb_msg_list.append(platform_message.Source(id=message.message_id, time=msg_create_time))
 
-
         if message.message_type == 'text':
             element_list = []
 
@@ -310,7 +309,11 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
             ]
         elif message.message_type == 'audio':
             message_content['content'] = [
-                {'tag': 'audio', 'file_key': message_content['file_key'], "duration": message_content.get('duration',0)}
+                {
+                    'tag': 'audio',
+                    'file_key': message_content['file_key'],
+                    'duration': message_content.get('duration', 0),
+                }
             ]
 
         for ele in message_content['content']:
@@ -367,11 +370,8 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                     audio_bytes = response.file.read()
                     audio_base64 = base64.b64encode(audio_bytes).decode()
 
-
                     # Get content type from response headers
                     content_type = response.raw.headers.get('content-type', 'audio/mpeg')
-
-
 
                     mime_main = content_type.split(';')[0].strip()
                     ext = mimetypes.guess_extension(mime_main) or '.bin'
@@ -418,7 +418,6 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                 file_bytes = response.file.read()
                 file_base64 = base64.b64encode(file_bytes).decode()
 
-
                 file_format = response.raw.headers['content-type']
 
                 file_size = len(file_bytes)
@@ -452,7 +451,6 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                         base64=f'data:{file_format};base64,{file_base64}',  # not including base64 by default to save memory; can be added if needed
                     )
                 )
-
 
         return platform_message.MessageChain(lb_msg_list)
 

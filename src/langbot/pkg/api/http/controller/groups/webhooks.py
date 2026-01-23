@@ -30,7 +30,6 @@ class WebhookRouterGroup(group.RouterGroup):
             适配器返回的响应
         """
         try:
-            
             runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
 
             if not runtime_bot:
@@ -39,11 +38,9 @@ class WebhookRouterGroup(group.RouterGroup):
             if not runtime_bot.enable:
                 return quart.jsonify({'error': 'Bot is disabled'}), 403
 
-            
             if not hasattr(runtime_bot.adapter, 'handle_unified_webhook'):
                 return quart.jsonify({'error': 'Adapter does not support unified webhook'}), 501
 
-            
             response = await runtime_bot.adapter.handle_unified_webhook(
                 bot_uuid=bot_uuid,
                 path=path,

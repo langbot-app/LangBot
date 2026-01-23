@@ -55,12 +55,7 @@ class VectorDBManager:
                     user = pgvector_config.get('user', 'postgres')
                     password = pgvector_config.get('password', 'postgres')
                     self.vector_db = PgVectorDatabase(
-                        self.ap,
-                        host=host,
-                        port=port,
-                        database=database,
-                        user=user,
-                        password=password
+                        self.ap, host=host, port=port, database=database, user=user, password=password
                     )
                 self.ap.logger.info('Initialized pgvector database backend.')
 

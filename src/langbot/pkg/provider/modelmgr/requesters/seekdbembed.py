@@ -51,9 +51,10 @@ class SeekDBEmbedding(requester.ProviderAPIRequester):
                 await self.initialize()
 
             if self._embedding_function is None:
-                raise RuntimeError("SeekDB embedding function initialization failed")
+                raise RuntimeError('SeekDB embedding function initialization failed')
 
             return self._embedding_function(input_text)
         except Exception as e:
             from .. import errors
+
             raise errors.RequesterError(f'SeekDB embedding failed: {str(e)}')
