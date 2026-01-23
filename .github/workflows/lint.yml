@@ -1,4 +1,4 @@
-name: Ruff Lint & Format
+name: Lint
 
 on:
   push:
@@ -33,3 +33,28 @@ jobs:
 
       - name: Run ruff format
         run: uv run ruff format src --check
+
+  frontend:
+    name: Frontend Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '25'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        working-directory: web
+        run: pnpm install
+
+      - name: Run lint
+        working-directory: web
+        run: pnpm lint
