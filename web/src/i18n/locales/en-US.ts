@@ -121,7 +121,8 @@ const enUS = {
     webhookHint:
       'Webhooks allow LangBot to push person and group message events to external systems',
     actions: 'Actions',
-    apiKeyCreatedMessage: 'Please copy this API key.',
+    apiKeyCreatedMessage:
+      'Please copy this API key, if the button is invalid, please copy manually.',
     none: 'None',
   },
   notFound: {

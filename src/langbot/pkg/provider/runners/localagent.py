@@ -212,13 +212,20 @@ class LocalAgentRunner(runner.RequestRunner):
                 try:
                     func = tool_call.function
 
-                    parameters = json.loads(func.arguments)
+                    if func.arguments:
+                        parameters = json.loads(func.arguments)
+                    else:
+                        parameters = {}
 
                     func_ret = await self.ap.tool_mgr.execute_func_call(func.name, parameters, query=query)
-                    
+
                     # Handle return value content
                     tool_content = None
-                    if isinstance(func_ret, list) and len(func_ret) > 0 and isinstance(func_ret[0], provider_message.ContentElement):
+                    if (
+                        isinstance(func_ret, list)
+                        and len(func_ret) > 0
+                        and isinstance(func_ret[0], provider_message.ContentElement)
+                    ):
                         tool_content = func_ret
                     else:
                         tool_content = json.dumps(func_ret, ensure_ascii=False)

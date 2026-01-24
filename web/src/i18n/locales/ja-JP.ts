@@ -123,7 +123,8 @@ const jaJP = {
     webhookHint:
       'Webhook を使用すると、LangBot は個人メッセージとグループメッセージイベントを外部システムにプッシュできます',
     actions: 'アクション',
-    apiKeyCreatedMessage: 'この API キーをコピーしてください。',
+    apiKeyCreatedMessage:
+      'この API キーをコピーしてください。もしボタンが無効な場合は手動でコピーしてください。',
     none: 'なし',
   },
   notFound: {

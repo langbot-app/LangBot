@@ -35,7 +35,6 @@ from .. import taskmgr
 from ...telemetry import telemetry as telemetry_module
 
 
-
 @stage.stage_class('BuildAppStage')
 class BuildAppStage(stage.BootingStage):
     """Build LangBot application"""

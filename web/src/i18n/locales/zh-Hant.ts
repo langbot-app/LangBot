@@ -114,7 +114,7 @@ const zhHant = {
     noWebhooks: '暫無 Webhook',
     webhookHint: 'Webhook 允許 LangBot 將個人訊息和群組訊息事件推送到外部系統',
     actions: '操作',
-    apiKeyCreatedMessage: '請複製此 API 金鑰。',
+    apiKeyCreatedMessage: '請複製此 API 金鑰，若按鈕無效，請手動複製。',
     none: '無',
   },
   notFound: {

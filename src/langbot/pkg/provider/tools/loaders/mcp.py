@@ -194,7 +194,7 @@ class RuntimeMCPSession:
 
             async def func(*, _tool=tool, **kwargs):
                 if not self.session:
-                    raise Exception("MCP session is not connected")
+                    raise Exception('MCP session is not connected')
 
                 result = await self.session.call_tool(_tool.name, kwargs)
                 if result.isError:
@@ -202,8 +202,8 @@ class RuntimeMCPSession:
                     for content in result.content:
                         if content.type == 'text':
                             error_texts.append(content.text)
-                    raise Exception("\n".join(error_texts) if error_texts else "Unknown error from MCP tool")
-                
+                    raise Exception('\n'.join(error_texts) if error_texts else 'Unknown error from MCP tool')
+
                 result_contents: list[provider_message.ContentElement] = []
                 for content in result.content:
                     if content.type == 'text':
@@ -213,7 +213,7 @@ class RuntimeMCPSession:
                     elif content.type == 'resource':
                         # TODO: Handle resource content
                         pass
-                
+
                 return result_contents
 
             func.__name__ = tool.name
@@ -221,8 +221,8 @@ class RuntimeMCPSession:
             self.functions.append(
                 resource_tool.LLMTool(
                     name=tool.name,
-                    human_desc=tool.description or "",
-                    description=tool.description or "",
+                    human_desc=tool.description or '',
+                    description=tool.description or '',
                     parameters=tool.inputSchema,
                     func=func,
                 )
@@ -338,12 +338,9 @@ class MCPLoader(loader.ToolLoader):
         """
         uuid_ = server_config.get('uuid')
         if not uuid_:
-            self.ap.logger.warning(
-                'Server UUID is None for MCP server, maybe testing in the config page.'
-            )
+            self.ap.logger.warning('Server UUID is None for MCP server, maybe testing in the config page.')
             uuid_ = str(uuid_module.uuid4())
             server_config['uuid'] = uuid_
-
 
         name = server_config['name']
         uuid = server_config['uuid']
