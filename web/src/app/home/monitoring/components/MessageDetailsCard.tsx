@@ -233,42 +233,56 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
       )}
 
       {/* Query Variables Section - Only show for non-local-agent runners */}
-      {queryVariables && Object.keys(queryVariables).length > 0 && details.message?.runnerName !== 'local-agent' && (
-        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
-          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
-            <svg
-              className="w-4 h-4 mr-2"
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-            >
-              <path d="M4 18V14.3C4 13.4716 3.32843 12.8 2.5 12.8H2V11.2H2.5C3.32843 11.2 4 10.5284 4 9.7V6C4 4.34315 5.34315 3 7 3H8V5H7C6.44772 5 6 5.44772 6 6V9.7C6 10.7065 5.41099 11.5849 4.55132 12C5.41099 12.4151 6 13.2935 6 14.3V18C6 18.5523 6.44772 19 7 19H8V21H7C5.34315 21 4 19.6569 4 18ZM20 14.3V18C20 19.6569 18.6569 21 17 21H16V19H17C17.5523 19 18 18.5523 18 18V14.3C18 13.2935 18.589 12.4151 19.4487 12C18.589 11.5849 18 10.7065 18 9.7V6C18 5.44772 17.5523 5 17 5H16V3H17C18.6569 3 20 4.34315 20 6V9.7C20 10.5284 20.6716 11.2 21.5 11.2H22V12.8H21.5C20.6716 12.8 20 13.4716 20 14.3Z"></path>
-            </svg>
-            {t('monitoring.queryVariables.title')}
-          </h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-            {Object.entries(queryVariables).map(([key, value]) => (
-              <div key={key} className="bg-white dark:bg-gray-900 rounded p-2">
-                <div className="text-gray-500 dark:text-gray-400">
-                  {key}
+      {queryVariables &&
+        Object.keys(queryVariables).length > 0 &&
+        details.message?.runnerName !== 'local-agent' && (
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
+              <svg
+                className="w-4 h-4 mr-2"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M4 18V14.3C4 13.4716 3.32843 12.8 2.5 12.8H2V11.2H2.5C3.32843 11.2 4 10.5284 4 9.7V6C4 4.34315 5.34315 3 7 3H8V5H7C6.44772 5 6 5.44772 6 6V9.7C6 10.7065 5.41099 11.5849 4.55132 12C5.41099 12.4151 6 13.2935 6 14.3V18C6 18.5523 6.44772 19 7 19H8V21H7C5.34315 21 4 19.6569 4 18ZM20 14.3V18C20 19.6569 18.6569 21 17 21H16V19H17C17.5523 19 18 18.5523 18 18V14.3C18 13.2935 18.589 12.4151 19.4487 12C18.589 11.5849 18 10.7065 18 9.7V6C18 5.44772 17.5523 5 17 5H16V3H17C18.6569 3 20 4.34315 20 6V9.7C20 10.5284 20.6716 11.2 21.5 11.2H22V12.8H21.5C20.6716 12.8 20 13.4716 20 14.3Z"></path>
+              </svg>
+              {t('monitoring.queryVariables.title')}
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+              {Object.entries(queryVariables).map(([key, value]) => (
+                <div
+                  key={key}
+                  className="bg-white dark:bg-gray-900 rounded p-2"
+                >
+                  <div className="text-gray-500 dark:text-gray-400">{key}</div>
+                  <div
+                    className="font-medium text-gray-900 dark:text-white truncate"
+                    title={
+                      typeof value === 'string' ? value : JSON.stringify(value)
+                    }
+                  >
+                    {value === null || value === undefined ? (
+                      <span className="text-gray-400 italic">null</span>
+                    ) : typeof value === 'string' ? (
+                      value || (
+                        <span className="text-gray-400 italic">empty</span>
+                      )
+                    ) : (
+                      JSON.stringify(value)
+                    )}
+                  </div>
                 </div>
-                <div className="font-medium text-gray-900 dark:text-white truncate" title={typeof value === 'string' ? value : JSON.stringify(value)}>
-                  {value === null || value === undefined
-                    ? <span className="text-gray-400 italic">null</span>
-                    : typeof value === 'string'
-                      ? (value || <span className="text-gray-400 italic">empty</span>)
-                      : JSON.stringify(value)}
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* No data message */}
       {(!details.llmCalls || details.llmCalls.length === 0) &&
         (!details.errors || details.errors.length === 0) &&
-        (details.message?.runnerName === 'local-agent' || !queryVariables || Object.keys(queryVariables).length === 0) && (
+        (details.message?.runnerName === 'local-agent' ||
+          !queryVariables ||
+          Object.keys(queryVariables).length === 0) && (
           <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
             {t('monitoring.messageDetails.noData')}
           </div>

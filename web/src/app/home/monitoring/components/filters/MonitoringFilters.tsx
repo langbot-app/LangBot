@@ -51,7 +51,11 @@ export default function MonitoringFilters({
       setLoadingBots(true);
       try {
         const response = await backendClient.getBots();
-        setBots(response.bots || []);
+        // Filter out bots without uuid and map to local Bot interface
+        const validBots = (response.bots || [])
+          .filter((bot): bot is typeof bot & { uuid: string } => !!bot.uuid)
+          .map((bot) => ({ uuid: bot.uuid, name: bot.name }));
+        setBots(validBots);
       } catch (error) {
         console.error('Failed to fetch bots:', error);
       } finally {
@@ -68,7 +72,14 @@ export default function MonitoringFilters({
       setLoadingPipelines(true);
       try {
         const response = await backendClient.getPipelines();
-        setPipelines(response.pipelines || []);
+        // Filter out pipelines without uuid and map to local Pipeline interface
+        const validPipelines = (response.pipelines || [])
+          .filter(
+            (pipeline): pipeline is typeof pipeline & { uuid: string } =>
+              !!pipeline.uuid,
+          )
+          .map((pipeline) => ({ uuid: pipeline.uuid, name: pipeline.name }));
+        setPipelines(validPipelines);
       } catch (error) {
         console.error('Failed to fetch pipelines:', error);
       } finally {

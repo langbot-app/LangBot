@@ -3,7 +3,6 @@ from __future__ import annotations
 import uuid
 import datetime
 import sqlalchemy
-import typing
 
 from ....core import app
 from ....entity.persistence import monitoring as persistence_monitoring

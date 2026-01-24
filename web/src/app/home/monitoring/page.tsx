@@ -14,6 +14,52 @@ import { MessageContentRenderer } from './components/MessageContentRenderer';
 import { MessageDetails } from './types/monitoring';
 import { httpClient } from '@/app/infra/http/HttpClient';
 
+interface RawMessageData {
+  id: string;
+  timestamp: string;
+  bot_id: string;
+  bot_name: string;
+  pipeline_id: string;
+  pipeline_name: string;
+  message_content: string;
+  session_id: string;
+  status: string;
+  level: string;
+  platform: string;
+  user_id: string;
+  runner_name: string;
+  variables: Record<string, unknown>;
+}
+
+interface RawLLMCallData {
+  id: string;
+  timestamp: string;
+  model_name: string;
+  status: string;
+  duration: number;
+  error_message: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+}
+
+interface RawLLMStatsData {
+  total_calls: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_tokens: number;
+  total_duration_ms: number;
+  average_duration_ms: number;
+}
+
+interface RawErrorData {
+  id: string;
+  timestamp: string;
+  error_type: string;
+  error_message: string;
+  stack_trace: string | null;
+}
+
 function MonitoringPageContent() {
   const { t } = useTranslation();
   const { filterState, setSelectedBots, setSelectedPipelines, setTimeRange } =
@@ -61,10 +107,10 @@ function MonitoringPageContent() {
           const result = await httpClient.get<{
             message_id: string;
             found: boolean;
-            message: any;
-            llm_calls: any[];
-            llm_stats: any;
-            errors: any[];
+            message: RawMessageData | null;
+            llm_calls: RawLLMCallData[];
+            llm_stats: RawLLMStatsData;
+            errors: RawErrorData[];
           }>(`/api/v1/monitoring/messages/${messageId}/details`);
 
           if (result) {
@@ -91,7 +137,7 @@ function MonitoringPageContent() {
                       variables: result.message.variables,
                     }
                   : undefined,
-                llmCalls: result.llm_calls.map((call: any) => ({
+                llmCalls: result.llm_calls.map((call: RawLLMCallData) => ({
                   id: call.id,
                   timestamp: new Date(call.timestamp),
                   modelName: call.model_name,
@@ -104,7 +150,7 @@ function MonitoringPageContent() {
                     total: call.total_tokens || 0,
                   },
                 })),
-                errors: result.errors.map((error: any) => ({
+                errors: result.errors.map((error: RawErrorData) => ({
                   id: error.id,
                   timestamp: new Date(error.timestamp),
                   errorType: error.error_type,
@@ -217,97 +263,97 @@ function MonitoringPageContent() {
                         return content && content !== '[]' && content !== '""';
                       })
                       .map((msg) => (
-                      <div
-                        key={msg.id}
-                        className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
-                      >
-                        {/* Message Header - Always Visible */}
                         <div
-                          className="p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                          onClick={() => toggleMessageExpand(msg.id)}
+                          key={msg.id}
+                          className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
                         >
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-start flex-1">
-                              {/* Expand Icon */}
-                              <div className="mr-3 mt-0.5">
-                                {expandedMessageId === msg.id ? (
-                                  <ChevronDown className="w-5 h-5 text-gray-500" />
-                                ) : (
-                                  <ChevronRight className="w-5 h-5 text-gray-500" />
-                                )}
-                              </div>
-
-                              {/* Message Info */}
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">
-                                    ID: {msg.id}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="font-medium text-sm text-gray-700 dark:text-gray-300">
-                                    {msg.botName}
-                                  </span>
-                                  <span className="text-gray-400">→</span>
-                                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                                    {msg.pipelineName}
-                                  </span>
-                                  {msg.runnerName && (
-                                    <>
-                                      <span className="text-gray-400">→</span>
-                                      <span className="text-sm text-gray-600 dark:text-gray-400">
-                                        {msg.runnerName}
-                                      </span>
-                                    </>
+                          {/* Message Header - Always Visible */}
+                          <div
+                            className="p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                            onClick={() => toggleMessageExpand(msg.id)}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-start flex-1">
+                                {/* Expand Icon */}
+                                <div className="mr-3 mt-0.5">
+                                  {expandedMessageId === msg.id ? (
+                                    <ChevronDown className="w-5 h-5 text-gray-500" />
+                                  ) : (
+                                    <ChevronRight className="w-5 h-5 text-gray-500" />
                                   )}
                                 </div>
-                                <div className="text-base text-gray-800 dark:text-gray-200">
-                                  <MessageContentRenderer
-                                    content={msg.messageContent}
-                                    maxLines={3}
-                                  />
+
+                                {/* Message Info */}
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">
+                                      ID: {msg.id}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className="font-medium text-sm text-gray-700 dark:text-gray-300">
+                                      {msg.botName}
+                                    </span>
+                                    <span className="text-gray-400">→</span>
+                                    <span className="text-sm text-gray-600 dark:text-gray-400">
+                                      {msg.pipelineName}
+                                    </span>
+                                    {msg.runnerName && (
+                                      <>
+                                        <span className="text-gray-400">→</span>
+                                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                                          {msg.runnerName}
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                  <div className="text-base text-gray-800 dark:text-gray-200">
+                                    <MessageContentRenderer
+                                      content={msg.messageContent}
+                                      maxLines={3}
+                                    />
+                                  </div>
                                 </div>
                               </div>
-                            </div>
 
-                            {/* Status and Timestamp */}
-                            <div className="flex flex-col items-end gap-2 ml-4">
-                              <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                                {msg.timestamp.toLocaleString()}
-                              </span>
-                              <span
-                                className={`text-xs px-2 py-1 rounded ${
-                                  msg.level === 'error'
-                                    ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                                    : msg.level === 'warning'
-                                      ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                                      : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                                }`}
-                              >
-                                {msg.level}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Expanded Details */}
-                        {expandedMessageId === msg.id && (
-                          <div className="border-t border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-900">
-                            {loadingDetails[msg.id] && (
-                              <div className="text-center text-gray-500 dark:text-gray-400 py-4">
-                                <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900 dark:border-white"></div>
+                              {/* Status and Timestamp */}
+                              <div className="flex flex-col items-end gap-2 ml-4">
+                                <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                                  {msg.timestamp.toLocaleString()}
+                                </span>
+                                <span
+                                  className={`text-xs px-2 py-1 rounded ${
+                                    msg.level === 'error'
+                                      ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                                      : msg.level === 'warning'
+                                        ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                                        : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                  }`}
+                                >
+                                  {msg.level}
+                                </span>
                               </div>
-                            )}
-                            {!loadingDetails[msg.id] &&
-                              messageDetails[msg.id] && (
-                                <MessageDetailsCard
-                                  details={messageDetails[msg.id]}
-                                />
-                              )}
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    ))}
+
+                          {/* Expanded Details */}
+                          {expandedMessageId === msg.id && (
+                            <div className="border-t border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-900">
+                              {loadingDetails[msg.id] && (
+                                <div className="text-center text-gray-500 dark:text-gray-400 py-4">
+                                  <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900 dark:border-white"></div>
+                                </div>
+                              )}
+                              {!loadingDetails[msg.id] &&
+                                messageDetails[msg.id] && (
+                                  <MessageDetailsCard
+                                    details={messageDetails[msg.id]}
+                                  />
+                                )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
                   </div>
                 )}
 
@@ -483,7 +529,9 @@ function MonitoringPageContent() {
                                     }}
                                   >
                                     <ExternalLink className="w-3 h-3 mr-1" />
-                                    {t('monitoring.messageList.viewConversation')}
+                                    {t(
+                                      'monitoring.messageList.viewConversation',
+                                    )}
                                   </Button>
                                 )}
                               </div>

@@ -338,7 +338,7 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
                 output_tokens = usage_info.get('output_tokens', 0)
 
             return msg
-        except asyncio.TimeoutError as e:
+        except asyncio.TimeoutError:
             status = 'error'
             error_message = '请求超时'
             raise errors.RequesterError('请求超时')

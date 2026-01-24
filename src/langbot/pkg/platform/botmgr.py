@@ -86,7 +86,7 @@ class RuntimeBot:
                     pipeline_uuid=self.bot_entity.use_pipeline_uuid,
                 )
             else:
-                await self.logger.info(f'Pipeline skipped for person message due to webhook response')
+                await self.logger.info('Pipeline skipped for person message due to webhook response')
 
         async def on_group_message(
             event: platform_events.GroupMessage,
@@ -122,7 +122,7 @@ class RuntimeBot:
                     pipeline_uuid=self.bot_entity.use_pipeline_uuid,
                 )
             else:
-                await self.logger.info(f'Pipeline skipped for group message due to webhook response')
+                await self.logger.info('Pipeline skipped for group message due to webhook response')
 
         self.adapter.register_listener(platform_events.FriendMessage, on_friend_message)
         self.adapter.register_listener(platform_events.GroupMessage, on_group_message)

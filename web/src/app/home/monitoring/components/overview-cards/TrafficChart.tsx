@@ -116,7 +116,9 @@ export default function TrafficChart({
       }
     });
 
-    return Array.from(buckets.values()).sort((a, b) => a.timestamp - b.timestamp);
+    return Array.from(buckets.values()).sort(
+      (a, b) => a.timestamp - b.timestamp,
+    );
   }, [messages, llmCalls]);
 
   if (loading) {

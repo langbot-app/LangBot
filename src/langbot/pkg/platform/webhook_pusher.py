@@ -56,7 +56,7 @@ class WebhookPusher:
             # Check if any webhook responded with skip_pipeline=true
             for result in results:
                 if isinstance(result, dict) and result.get('skip_pipeline') is True:
-                    self.logger.info(f'Webhook responded with skip_pipeline=true, skipping pipeline for person message')
+                    self.logger.info('Webhook responded with skip_pipeline=true, skipping pipeline for person message')
                     return True
 
             return False
@@ -103,7 +103,7 @@ class WebhookPusher:
             # Check if any webhook responded with skip_pipeline=true
             for result in results:
                 if isinstance(result, dict) and result.get('skip_pipeline') is True:
-                    self.logger.info(f'Webhook responded with skip_pipeline=true, skipping pipeline for group message')
+                    self.logger.info('Webhook responded with skip_pipeline=true, skipping pipeline for group message')
                     return True
 
             return False

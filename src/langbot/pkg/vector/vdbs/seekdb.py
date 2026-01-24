@@ -3,10 +3,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, List
 
-import sqlalchemy
 
 from langbot.pkg.core import app
-from langbot.pkg.entity.persistence import model as persistence_model
 from langbot.pkg.vector.vdb import VectorDatabase
 
 try:

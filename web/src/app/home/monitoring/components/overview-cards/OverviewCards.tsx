@@ -4,7 +4,11 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import MetricCard from './MetricCard';
 import TrafficChart from './TrafficChart';
-import { OverviewMetrics, MonitoringMessage, LLMCall } from '../../types/monitoring';
+import {
+  OverviewMetrics,
+  MonitoringMessage,
+  LLMCall,
+} from '../../types/monitoring';
 
 interface OverviewCardsProps {
   metrics: OverviewMetrics | null;
@@ -37,7 +41,9 @@ export default function OverviewCards({
       trend: metrics?.trends
         ? {
             value: metrics.trends.messages,
-            direction: metrics.trends.messages >= 0 ? 'up' : 'down',
+            direction: (metrics.trends.messages >= 0 ? 'up' : 'down') as
+              | 'up'
+              | 'down',
           }
         : undefined,
     },
@@ -56,7 +62,9 @@ export default function OverviewCards({
       trend: metrics?.trends
         ? {
             value: metrics.trends.llmCalls,
-            direction: metrics.trends.llmCalls >= 0 ? 'up' : 'down',
+            direction: (metrics.trends.llmCalls >= 0 ? 'up' : 'down') as
+              | 'up'
+              | 'down',
           }
         : undefined,
     },
@@ -75,7 +83,9 @@ export default function OverviewCards({
       trend: metrics?.trends
         ? {
             value: metrics.trends.successRate,
-            direction: metrics.trends.successRate >= 0 ? 'up' : 'down',
+            direction: (metrics.trends.successRate >= 0 ? 'up' : 'down') as
+              | 'up'
+              | 'down',
           }
         : undefined,
     },
@@ -94,7 +104,9 @@ export default function OverviewCards({
       trend: metrics?.trends
         ? {
             value: metrics.trends.sessions,
-            direction: metrics.trends.sessions >= 0 ? 'up' : 'down',
+            direction: (metrics.trends.sessions >= 0 ? 'up' : 'down') as
+              | 'up'
+              | 'down',
           }
         : undefined,
     },
@@ -117,11 +129,7 @@ export default function OverviewCards({
       </div>
 
       {/* Traffic Chart */}
-      <TrafficChart
-        messages={messages}
-        llmCalls={llmCalls}
-        loading={loading}
-      />
+      <TrafficChart messages={messages} llmCalls={llmCalls} loading={loading} />
     </div>
   );
 }

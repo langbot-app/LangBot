@@ -212,7 +212,12 @@ export function MessageContentRenderer({
   }
 
   // Handle empty plain text
-  if (!content || content.trim() === '' || content === '[]' || content === '""') {
+  if (
+    !content ||
+    content.trim() === '' ||
+    content === '[]' ||
+    content === '""'
+  ) {
     return (
       <span className="text-gray-400 dark:text-gray-500 italic">
         [Empty message]

@@ -1,13 +1,11 @@
 from __future__ import annotations
-import asyncio
 from typing import Any, Dict
 from sqlalchemy import create_engine, text, Column, String, Text
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from pgvector.sqlalchemy import Vector
 from langbot.pkg.vector.vdb import VectorDatabase
 from langbot.pkg.core import app
-import uuid
 
 Base = declarative_base()
 
@@ -101,7 +99,7 @@ class PgVectorDatabase(VectorDatabase):
             # Create tables
             Base.metadata.create_all(self.engine)
 
-            self.ap.logger.info(f"Connected to PostgreSQL with pgvector")
+            self.ap.logger.info("Connected to PostgreSQL with pgvector")
         except Exception as e:
             self.ap.logger.error(f"Failed to connect to PostgreSQL: {e}")
             raise
@@ -177,7 +175,7 @@ class PgVectorDatabase(VectorDatabase):
         async with self.AsyncSessionLocal() as session:
             try:
                 # Use cosine distance for similarity search
-                from sqlalchemy import select, func
+                from sqlalchemy import select
 
                 # Query for similar vectors
                 stmt = (
