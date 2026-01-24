@@ -36,6 +36,18 @@ class KnowledgeService:
 
     async def create_knowledge_base(self, kb_data: dict) -> str:
         """创建知识库"""
+        # Check if plugin-based creation
+        if 'rag_engine_plugin_id' in kb_data and kb_data['rag_engine_plugin_id']:
+            # Use new manager method
+            kb = await self.ap.rag_mgr.create_knowledge_base(
+                name=kb_data.get('name', 'Untitled'),
+                rag_engine_plugin_id=kb_data['rag_engine_plugin_id'],
+                creation_settings=kb_data.get('creation_settings', {}),
+                description=kb_data.get('description', ''),
+                embedding_model_uuid=kb_data.get('embedding_model_uuid', '')
+            )
+            return kb.uuid
+
         kb_data['uuid'] = str(uuid.uuid4())
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_rag.KnowledgeBase).values(kb_data))
 
@@ -85,14 +97,23 @@ class KnowledgeService:
 
         return result
 
-    async def retrieve_knowledge_base(self, kb_uuid: str, query: str) -> list[dict]:
+    async def retrieve_knowledge_base(
+        self, kb_uuid: str, query: str, retrieval_settings: dict | None = None
+    ) -> list[dict]:
         """检索知识库"""
         runtime_kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
         if runtime_kb is None:
             raise Exception('Knowledge base not found')
-        return [
-            result.model_dump() for result in await runtime_kb.retrieve(query, runtime_kb.knowledge_base_entity.top_k)
-        ]
+        
+        # Pass retrieval_settings
+        results = await runtime_kb.retrieve(
+            query, 
+            runtime_kb.knowledge_base_entity.top_k, 
+            settings=retrieval_settings
+        )
+        
+        return [result.model_dump() for result in results]
+
 
     async def get_files_by_knowledge_base(self, kb_uuid: str) -> list[dict]:
         """获取知识库文件"""

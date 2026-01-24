@@ -3,16 +3,16 @@ import traceback
 import uuid
 import zipfile
 import io
-from .services import parser, chunker
 from langbot.pkg.core import app
-from langbot.pkg.rag.knowledge.services.embedder import Embedder
-from langbot.pkg.rag.knowledge.services.retriever import Retriever
 import sqlalchemy
+
+
 from langbot.pkg.entity.persistence import rag as persistence_rag
 from langbot.pkg.core import taskmgr
 from langbot_plugin.api.entities.builtin.rag import context as rag_context
 from .base import KnowledgeBaseInterface
 from .external import ExternalKnowledgeBase
+from .plugin_adapter import RAGPluginAdapter
 
 
 class RuntimeKnowledgeBase(KnowledgeBaseInterface):
@@ -20,23 +20,13 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
 
     knowledge_base_entity: persistence_rag.KnowledgeBase
 
-    parser: parser.FileParser
-
-    chunker: chunker.Chunker
-
-    embedder: Embedder
-
-    retriever: Retriever
+    # Plugin Adapter handles both plugin and legacy logic
+    rag_adapter: RAGPluginAdapter
 
     def __init__(self, ap: app.Application, knowledge_base_entity: persistence_rag.KnowledgeBase):
         super().__init__(ap)
         self.knowledge_base_entity = knowledge_base_entity
-        self.parser = parser.FileParser(ap=self.ap)
-        self.chunker = chunker.Chunker(ap=self.ap)
-        self.embedder = Embedder(ap=self.ap)
-        self.retriever = Retriever(ap=self.ap)
-        # 传递kb_id给retriever
-        self.retriever.kb_id = knowledge_base_entity.uuid
+        self.rag_adapter = RAGPluginAdapter(ap)
 
     async def initialize(self):
         pass
@@ -50,29 +40,19 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                 .values(status='processing')
             )
 
-            task_context.set_current_action('Parsing file')
-            # parse file
-            text = await self.parser.parse(file.file_name, file.extension)
-            if not text:
-                raise Exception(f'No text extracted from file {file.file_name}')
-
-            task_context.set_current_action('Chunking file')
-            # chunk file
-            chunks_texts = await self.chunker.chunk(text)
-            if not chunks_texts:
-                raise Exception(f'No chunks extracted from file {file.file_name}')
-
-            task_context.set_current_action('Embedding chunks')
-
-            embedding_model = await self.ap.model_mgr.get_embedding_model_by_uuid(
-                self.knowledge_base_entity.embedding_model_uuid
-            )
-            # embed chunks
-            await self.embedder.embed_and_store(
-                kb_id=self.knowledge_base_entity.uuid,
-                file_id=file.uuid,
-                chunks=chunks_texts,
-                embedding_model=embedding_model,
+            task_context.set_current_action('Processing file')
+            
+            # Delegate to adapter (which handles legacy logic internally if needed)
+            await self.rag_adapter.ingest_document(
+                self.knowledge_base_entity,
+                {
+                    "document_id": file.uuid,
+                    "filename": file.file_name,
+                    "extension": file.extension,
+                    "file_size": 0, # TODO: Get size
+                    "mime_type": "application/octet-stream" # TODO: Detect type
+                },
+                file.file_name # storage path
             )
 
             # set file status to completed
@@ -189,21 +169,31 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
 
         return stored_file_tasks[0] if stored_file_tasks else ''
 
-    async def retrieve(self, query: str, top_k: int) -> list[rag_context.RetrievalResultEntry]:
-        embedding_model = await self.ap.model_mgr.get_embedding_model_by_uuid(
-            self.knowledge_base_entity.embedding_model_uuid
+    async def retrieve(self, query: str, top_k: int, settings: dict | None = None) -> list[rag_context.RetrievalResultEntry]:
+        # Merge top_k into settings or use as default
+        retrieve_settings = {"top_k": top_k}
+        if settings:
+            retrieve_settings.update(settings)
+            
+        response = await self.rag_adapter.retrieve(
+            self.knowledge_base_entity,
+            query,
+            retrieve_settings
         )
-        return await self.retriever.retrieve(self.knowledge_base_entity.uuid, query, embedding_model, top_k)
+        
+        results_data = response.get("results", [])
+        entries = []
+        for r in results_data:
+            if isinstance(r, dict):
+                entries.append(rag_context.RetrievalResultEntry(**r))
+            elif isinstance(r, rag_context.RetrievalResultEntry):
+                entries.append(r)
+        return entries
 
     async def delete_file(self, file_id: str):
-        # delete vector
-        await self.ap.vector_db_mgr.vector_db.delete_by_file_id(self.knowledge_base_entity.uuid, file_id)
-
-        # delete chunk
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.delete(persistence_rag.Chunk).where(persistence_rag.Chunk.file_id == file_id)
-        )
-
+        await self.rag_adapter.delete_document(self.knowledge_base_entity, file_id)
+        
+        # Also cleanup DB record (Adapter handles chunk/vector deletion)
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.delete(persistence_rag.File).where(persistence_rag.File.uuid == file_id)
         )
@@ -221,7 +211,9 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         return 'internal'
 
     async def dispose(self):
+        await self.rag_adapter.on_kb_delete(self.knowledge_base_entity)
         await self.ap.vector_db_mgr.vector_db.delete_collection(self.knowledge_base_entity.uuid)
+
 
 
 class RAGManager:
@@ -235,6 +227,45 @@ class RAGManager:
 
     async def initialize(self):
         await self.load_knowledge_bases_from_db()
+        
+    async def create_knowledge_base(
+        self,
+        name: str,
+        rag_engine_plugin_id: str,
+        creation_settings: dict,
+        description: str = "",
+        embedding_model_uuid: str = ""
+    ) -> persistence_rag.KnowledgeBase:
+        """Create a new knowledge base using a RAG plugin."""
+        kb_uuid = str(uuid.uuid4())
+        # Use UUID as collection ID by default for isolation
+        collection_id = kb_uuid 
+        
+        kb_data = {
+           "uuid": kb_uuid,
+           "name": name,
+           "description": description,
+           "rag_engine_plugin_id": rag_engine_plugin_id,
+           "collection_id": collection_id,
+           "creation_settings": creation_settings,
+           "embedding_model_uuid": embedding_model_uuid
+        }
+        
+        # Create Entity
+        kb = persistence_rag.KnowledgeBase(**kb_data)
+        
+        # Persist
+        await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_rag.KnowledgeBase).values(kb_data))
+        
+        # Notify Plugin
+        adapter = RAGPluginAdapter(self.ap)
+        await adapter.on_kb_create(kb)
+        
+        # Load into Runtime
+        await self.load_knowledge_base(kb)
+        
+        self.ap.logger.info(f"Created new Knowledge Base {name} ({kb_uuid}) using plugin {rag_engine_plugin_id}")
+        return kb
 
     async def load_knowledge_bases_from_db(self):
         self.ap.logger.info('Loading knowledge bases from db...')
@@ -273,6 +304,7 @@ class RAGManager:
         knowledge_base_entity: persistence_rag.KnowledgeBase | sqlalchemy.Row | dict,
     ) -> RuntimeKnowledgeBase:
         if isinstance(knowledge_base_entity, sqlalchemy.Row):
+            # Safe access to _mapping for SQLAlchemy 1.4+
             knowledge_base_entity = persistence_rag.KnowledgeBase(**knowledge_base_entity._mapping)
         elif isinstance(knowledge_base_entity, dict):
             knowledge_base_entity = persistence_rag.KnowledgeBase(**knowledge_base_entity)

@@ -21,6 +21,9 @@ import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 from ..entity.persistence import plugin as persistence_plugin
 from ..entity.persistence import bstorage as persistence_bstorage
+from ..entity.persistence import rag as persistence_rag
+from ..storage.providers.localstorage import LocalStorageProvider, LOCAL_STORAGE_PATH
+import os
 
 from ..core import app
 from ..utils import constants
@@ -438,7 +441,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 },
             )
 
-        @self.action(RuntimeToLangBotAction.GET_CONFIG_FILE)
+        @self.action(PluginToRuntimeAction.GET_CONFIG_FILE)
         async def get_config_file(data: dict[str, Any]) -> handler.ActionResponse:
             """Get a config file by file key"""
             file_key = data['file_key']
@@ -456,6 +459,144 @@ class RuntimeConnectionHandler(handler.Handler):
                 return handler.ActionResponse.error(
                     message=f'Failed to load config file {file_key}: {e}',
                 )
+
+        # ================= RAG Capability Handlers =================
+
+        async def _get_kb_entity(kb_id: str):
+            stmt = sqlalchemy.select(persistence_rag.KnowledgeBase).where(persistence_rag.KnowledgeBase.uuid == kb_id)
+            result = await self.ap.persistence_mgr.execute_async(stmt)
+            kb = result.scalar_one_or_none()
+            if not kb:
+                 raise ValueError(f"Knowledge Base {kb_id} not found")
+            return kb
+
+        @self.action(PluginToRuntimeAction.RAG_EMBED_DOCUMENTS)
+        async def rag_embed_documents(data: dict[str, Any]) -> handler.ActionResponse:
+            kb_id = data['kb_id']
+            texts = data['texts']
+            try:
+                # 1. Get KB config to find embedding model
+                kb = await _get_kb_entity(kb_id)
+                embed_model_name = kb.embed_model or kb.embedding_model_uuid # Handle both cases if schema changed
+                
+                # 2. Get embedder instance
+                # Assuming model_mgr can get embedder model. 
+                # Note: Previous kbmgr used self.ap.model_mgr.get_embedding_model_by_uuid
+                # embed_model_name usually stores UUID in current system based on kbmgr code
+                
+                if not embed_model_name:
+                     # Fallback or error
+                     raise ValueError("Embedding model not configured for this Knowledge Base")
+
+                # If embed_model_name looks like a UUID
+                embedder_model = await self.ap.model_mgr.get_embedding_model_by_uuid(embed_model_name)
+                
+                if not embedder_model:
+                     # Try getting by name if needed, but uuid is standard
+                     raise ValueError(f"Embedding model {embed_model_name} not found")
+
+                # 3. Generate embeddings
+                # We need an Embedder wrapper or use model provider directly.
+                # In kbmgr.py: self.embedder.embed_and_store uses embedding_model.provider.embed_documents
+                
+                vectors = await embedder_model.provider.embed_documents(texts)
+                return handler.ActionResponse.success(data={'vectors': vectors})
+            except Exception as e:
+                return handler.ActionResponse.error(message=str(e))
+
+        @self.action(PluginToRuntimeAction.RAG_EMBED_QUERY)
+        async def rag_embed_query(data: dict[str, Any]) -> handler.ActionResponse:
+            kb_id = data['kb_id']
+            text = data['text']
+            try:
+                kb = await _get_kb_entity(kb_id)
+                embed_model_name = kb.embed_model or kb.embedding_model_uuid
+                
+                if not embed_model_name:
+                     raise ValueError("Embedding model not configured")
+
+                embedder_model = await self.ap.model_mgr.get_embedding_model_by_uuid(embed_model_name)
+                if not embedder_model:
+                     raise ValueError(f"Embedding model {embed_model_name} not found")
+
+                vector = await embedder_model.provider.embed_query(text)
+                return handler.ActionResponse.success(data={'vector': vector})
+            except Exception as e:
+                return handler.ActionResponse.error(message=str(e))
+
+        @self.action(PluginToRuntimeAction.RAG_VECTOR_UPSERT)
+        async def rag_vector_upsert(data: dict[str, Any]) -> handler.ActionResponse:
+            collection_id = data['collection_id']
+            vectors = data['vectors']
+            ids = data['ids']
+            metadata = data.get('metadata')
+            try:
+                metadatas = metadata if metadata else [{} for _ in vectors]
+                await self.ap.vector_db_mgr.upsert(
+                    collection_name=collection_id,
+                    vectors=vectors,
+                    ids=ids,
+                    metadata=metadatas
+                )
+                return handler.ActionResponse.success(data={})
+            except Exception as e:
+                return handler.ActionResponse.error(message=str(e))
+
+        @self.action(PluginToRuntimeAction.RAG_VECTOR_SEARCH)
+        async def rag_vector_search(data: dict[str, Any]) -> handler.ActionResponse:
+            collection_id = data['collection_id']
+            query_vector = data['query_vector']
+            top_k = data['top_k']
+            filters = data.get('filters')
+            try:
+                results = await self.ap.vector_db_mgr.search(
+                    collection_name=collection_id,
+                    query_vector=query_vector,
+                    limit=top_k,
+                    filter=filters
+                )
+                return handler.ActionResponse.success(data={'results': results})
+            except Exception as e:
+                return handler.ActionResponse.error(message=str(e))
+
+        @self.action(PluginToRuntimeAction.RAG_VECTOR_DELETE)
+        async def rag_vector_delete(data: dict[str, Any]) -> handler.ActionResponse:
+            collection_id = data['collection_id']
+            ids = data.get('ids')
+            filters = data.get('filters')
+            try:
+                count = 0
+                if ids:
+                    await self.ap.vector_db_mgr.delete(collection_name=collection_id, ids=ids)
+                    count = len(ids) 
+                elif filters:
+                     await self.ap.vector_db_mgr.delete_by_filter(collection_name=collection_id, filter=filters)
+                
+                return handler.ActionResponse.success(data={'count': count})
+            except Exception as e:
+                return handler.ActionResponse.error(message=str(e))
+
+        @self.action(PluginToRuntimeAction.RAG_GET_FILE_STREAM)
+        async def rag_get_file_stream(data: dict[str, Any]) -> handler.ActionResponse:
+            storage_path = data['storage_path']
+            try:
+                provider = self.ap.storage_mgr.storage_provider
+                content_bytes = b""
+                
+                if isinstance(provider, LocalStorageProvider):
+                    real_path = os.path.join(LOCAL_STORAGE_PATH, storage_path)
+                    if os.path.exists(real_path):
+                         with open(real_path, "rb") as f:
+                             content_bytes = f.read()
+                    else:
+                        content_bytes = await self.ap.storage_mgr.load(storage_path)
+                else:
+                    content_bytes = await self.ap.storage_mgr.load(storage_path)
+                    
+                content_base64 = base64.b64encode(content_bytes).decode('utf-8')
+                return handler.ActionResponse.success(data={'content_base64': content_base64})
+            except Exception as e:
+                return handler.ActionResponse.error(message=str(e))
 
     async def ping(self) -> dict[str, Any]:
         """Ping the runtime"""
@@ -769,3 +910,53 @@ class RuntimeConnectionHandler(handler.Handler):
             timeout=10,
         )
         return result
+
+    # ================= RAG Capability Callers (LangBot -> Runtime) =================
+
+    async def rag_ingest_document(self, plugin_author: str, plugin_name: str, context_data: dict[str, Any]) -> dict[str, Any]:
+        """Send INGEST_DOCUMENT action to runtime."""
+        # Note: We need to define text for this action in LangBotToRuntimeAction
+        # Assuming we added it.
+        result = await self.call_action(
+            "ingest_document", # Using string literal if enum missing, or update enum
+            {
+                "plugin_author": plugin_author,
+                "plugin_name": plugin_name,
+                "context": context_data
+            },
+            timeout=300 # Ingestion can be slow
+        )
+        return result
+
+    async def rag_delete_document(self, plugin_author: str, plugin_name: str, document_id: str, kb_id: str) -> bool:
+        result = await self.call_action(
+            "delete_document",
+            {
+                "plugin_author": plugin_author,
+                "plugin_name": plugin_name,
+                "document_id": document_id,
+                "kb_id": kb_id
+            },
+            timeout=30
+        )
+        return result["success"]
+
+    async def get_rag_creation_schema(self, plugin_author: str, plugin_name: str) -> dict[str, Any]:
+        return await self.call_action(
+            "get_rag_creation_settings_schema",
+            {
+                "plugin_author": plugin_author,
+                "plugin_name": plugin_name
+            },
+            timeout=10
+        )
+
+    async def get_rag_retrieval_schema(self, plugin_author: str, plugin_name: str) -> dict[str, Any]:
+        return await self.call_action(
+            "get_rag_retrieval_settings_schema",
+            {
+                "plugin_author": plugin_author,
+                "plugin_name": plugin_name
+            },
+            timeout=10
+        )

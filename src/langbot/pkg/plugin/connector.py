@@ -538,3 +538,39 @@ class PluginRuntimeConnector:
         )
 
         return sync_result
+
+    # ================= RAG Capability Callers =================
+
+    async def call_rag_ingest(self, plugin_id: str, context_data: dict[str, Any]) -> dict[str, Any]:
+        """Call plugin to ingest document.
+        
+        Args:
+            plugin_id: Target plugin ID (author/name).
+            context_data: IngestionContext data.
+        """
+        # Determine target from plugin_id
+        plugin_author, plugin_name = plugin_id.split('/', 1)
+        
+        # We need a new action type in RuntimeToPluginAction and LangBotToRuntimeAction
+        # Currently leveraging generic EXECUTE_COMMAND or need new specific actions
+        # Using a new action: INGEST_DOCUMENT which should be added to Handler first.
+        
+        # Since we modified enums in SDK, we should assume runtime supports it.
+        # But LangBot -> Runtime communication (LangBotToRuntimeAction) also needs update.
+        
+        # For now, let's assume we add specific methods to Handler or extended Action logic.
+        # Direct call to handler which sends Action to Runtime.
+        
+        return await self.handler.rag_ingest_document(plugin_author, plugin_name, context_data)
+
+    async def call_rag_delete_document(self, plugin_id: str, document_id: str, kb_id: str) -> bool:
+        plugin_author, plugin_name = plugin_id.split('/', 1)
+        return await self.handler.rag_delete_document(plugin_author, plugin_name, document_id, kb_id)
+
+    async def get_rag_creation_schema(self, plugin_id: str) -> dict[str, Any]:
+        plugin_author, plugin_name = plugin_id.split('/', 1)
+        return await self.handler.get_rag_creation_schema(plugin_author, plugin_name)
+
+    async def get_rag_retrieval_schema(self, plugin_id: str) -> dict[str, Any]:
+        plugin_author, plugin_name = plugin_id.split('/', 1)
+        return await self.handler.get_rag_retrieval_schema(plugin_author, plugin_name)

@@ -90,5 +90,9 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
         async def retrieve_knowledge_base(knowledge_base_uuid: str) -> str:
             json_data = await quart.request.json
             query = json_data.get('query')
-            results = await self.ap.knowledge_service.retrieve_knowledge_base(knowledge_base_uuid, query)
+            retrieval_settings = json_data.get('retrieval_settings', {})
+            results = await self.ap.knowledge_service.retrieve_knowledge_base(
+                knowledge_base_uuid, query, retrieval_settings
+            )
             return self.success(data={'results': results})
+

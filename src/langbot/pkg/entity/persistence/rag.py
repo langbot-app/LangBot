@@ -11,6 +11,11 @@ class KnowledgeBase(Base):
     updated_at = sqlalchemy.Column(sqlalchemy.DateTime, default=sqlalchemy.func.now(), onupdate=sqlalchemy.func.now())
     embedding_model_uuid = sqlalchemy.Column(sqlalchemy.String, default='')
     top_k = sqlalchemy.Column(sqlalchemy.Integer, default=5)
+    
+    # New fields for plugin-based RAG
+    rag_engine_plugin_id = sqlalchemy.Column(sqlalchemy.String, nullable=True)
+    collection_id = sqlalchemy.Column(sqlalchemy.String, nullable=True)
+    creation_settings = sqlalchemy.Column(sqlalchemy.JSON, nullable=True, default={})
 
 
 class File(Base):
