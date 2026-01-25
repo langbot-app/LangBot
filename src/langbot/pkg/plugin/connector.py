@@ -574,3 +574,13 @@ class PluginRuntimeConnector:
     async def get_rag_retrieval_schema(self, plugin_id: str) -> dict[str, Any]:
         plugin_author, plugin_name = plugin_id.split('/', 1)
         return await self.handler.get_rag_retrieval_schema(plugin_author, plugin_name)
+
+    async def rag_on_kb_create(self, plugin_id: str, kb_id: str, config: dict[str, Any]) -> dict[str, Any]:
+        """Notify plugin about KB creation."""
+        plugin_author, plugin_name = plugin_id.split('/', 1)
+        return await self.handler.rag_on_kb_create(plugin_author, plugin_name, kb_id, config)
+
+    async def rag_on_kb_delete(self, plugin_id: str, kb_id: str) -> dict[str, Any]:
+        """Notify plugin about KB deletion."""
+        plugin_author, plugin_name = plugin_id.split('/', 1)
+        return await self.handler.rag_on_kb_delete(plugin_author, plugin_name, kb_id)

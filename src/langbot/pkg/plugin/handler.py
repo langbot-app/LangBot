@@ -915,22 +915,20 @@ class RuntimeConnectionHandler(handler.Handler):
 
     async def rag_ingest_document(self, plugin_author: str, plugin_name: str, context_data: dict[str, Any]) -> dict[str, Any]:
         """Send INGEST_DOCUMENT action to runtime."""
-        # Note: We need to define text for this action in LangBotToRuntimeAction
-        # Assuming we added it.
         result = await self.call_action(
-            "ingest_document", # Using string literal if enum missing, or update enum
+            LangBotToRuntimeAction.RAG_INGEST_DOCUMENT,
             {
                 "plugin_author": plugin_author,
                 "plugin_name": plugin_name,
                 "context": context_data
             },
-            timeout=300 # Ingestion can be slow
+            timeout=300  # Ingestion can be slow
         )
         return result
 
     async def rag_delete_document(self, plugin_author: str, plugin_name: str, document_id: str, kb_id: str) -> bool:
         result = await self.call_action(
-            "delete_document",
+            LangBotToRuntimeAction.RAG_DELETE_DOCUMENT,
             {
                 "plugin_author": plugin_author,
                 "plugin_name": plugin_name,
@@ -939,11 +937,38 @@ class RuntimeConnectionHandler(handler.Handler):
             },
             timeout=30
         )
-        return result["success"]
+        return result.get("success", False)
+
+    async def rag_on_kb_create(self, plugin_author: str, plugin_name: str, kb_id: str, config: dict[str, Any]) -> dict[str, Any]:
+        """Notify plugin about KB creation."""
+        result = await self.call_action(
+            LangBotToRuntimeAction.RAG_ON_KB_CREATE,
+            {
+                "plugin_author": plugin_author,
+                "plugin_name": plugin_name,
+                "kb_id": kb_id,
+                "config": config
+            },
+            timeout=30
+        )
+        return result
+
+    async def rag_on_kb_delete(self, plugin_author: str, plugin_name: str, kb_id: str) -> dict[str, Any]:
+        """Notify plugin about KB deletion."""
+        result = await self.call_action(
+            LangBotToRuntimeAction.RAG_ON_KB_DELETE,
+            {
+                "plugin_author": plugin_author,
+                "plugin_name": plugin_name,
+                "kb_id": kb_id
+            },
+            timeout=30
+        )
+        return result
 
     async def get_rag_creation_schema(self, plugin_author: str, plugin_name: str) -> dict[str, Any]:
         return await self.call_action(
-            "get_rag_creation_settings_schema",
+            LangBotToRuntimeAction.GET_RAG_CREATION_SETTINGS_SCHEMA,
             {
                 "plugin_author": plugin_author,
                 "plugin_name": plugin_name
@@ -953,7 +978,7 @@ class RuntimeConnectionHandler(handler.Handler):
 
     async def get_rag_retrieval_schema(self, plugin_author: str, plugin_name: str) -> dict[str, Any]:
         return await self.call_action(
-            "get_rag_retrieval_settings_schema",
+            LangBotToRuntimeAction.GET_RAG_RETRIEVAL_SETTINGS_SCHEMA,
             {
                 "plugin_author": plugin_author,
                 "plugin_name": plugin_name
