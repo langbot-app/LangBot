@@ -28,9 +28,7 @@ class DBMigrateMonitoring(migration.DBMigration):
         # Add runner_name to monitoring_messages table
         try:
             await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text(
-                    'ALTER TABLE monitoring_messages ADD COLUMN runner_name VARCHAR(255)'
-                )
+                sqlalchemy.text('ALTER TABLE monitoring_messages ADD COLUMN runner_name VARCHAR(255)')
             )
             self.ap.logger.info('Added runner_name column to monitoring_messages table')
         except Exception as e:
@@ -39,9 +37,7 @@ class DBMigrateMonitoring(migration.DBMigration):
         # Add variables to monitoring_messages table
         try:
             await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text(
-                    'ALTER TABLE monitoring_messages ADD COLUMN variables TEXT'
-                )
+                sqlalchemy.text('ALTER TABLE monitoring_messages ADD COLUMN variables TEXT')
             )
             self.ap.logger.info('Added variables column to monitoring_messages table')
         except Exception as e:
@@ -50,9 +46,7 @@ class DBMigrateMonitoring(migration.DBMigration):
         # Add message_id to monitoring_llm_calls table
         try:
             await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text(
-                    'ALTER TABLE monitoring_llm_calls ADD COLUMN message_id VARCHAR(255)'
-                )
+                sqlalchemy.text('ALTER TABLE monitoring_llm_calls ADD COLUMN message_id VARCHAR(255)')
             )
             self.ap.logger.info('Added message_id column to monitoring_llm_calls table')
         except Exception as e:
@@ -72,9 +66,7 @@ class DBMigrateMonitoring(migration.DBMigration):
         # Add message_id to monitoring_errors table
         try:
             await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text(
-                    'ALTER TABLE monitoring_errors ADD COLUMN message_id VARCHAR(255)'
-                )
+                sqlalchemy.text('ALTER TABLE monitoring_errors ADD COLUMN message_id VARCHAR(255)')
             )
             self.ap.logger.info('Added message_id column to monitoring_errors table')
         except Exception as e:

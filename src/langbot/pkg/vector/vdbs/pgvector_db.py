@@ -86,7 +86,7 @@ class PgVectorDatabase(VectorDatabase):
             # Create tables
             Base.metadata.create_all(self.engine)
 
-            self.ap.logger.info("Connected to PostgreSQL with pgvector")
+            self.ap.logger.info('Connected to PostgreSQL with pgvector')
         except Exception as e:
             self.ap.logger.error(f'Failed to connect to PostgreSQL: {e}')
             raise

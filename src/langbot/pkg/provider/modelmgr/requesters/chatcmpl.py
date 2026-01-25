@@ -415,6 +415,7 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
             except Exception as monitor_err:
                 self.ap.logger.error(f'[Monitoring] Failed to record LLM call: {monitor_err}')
                 import traceback
+
                 self.ap.logger.error(f'[Monitoring] Traceback: {traceback.format_exc()}')
 
     async def invoke_embedding(
