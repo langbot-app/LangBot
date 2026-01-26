@@ -30,7 +30,6 @@ interface KBDetailDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   kbId?: string;
-  kbType?: 'retriever' | 'rag_engine';
   onFormCancel: () => void;
   onKbDeleted: () => void;
   onNewKbCreated: (kbId: string) => void;
@@ -41,7 +40,6 @@ export default function KBDetailDialog({
   open,
   onOpenChange,
   kbId: propKbId,
-  kbType: propKbType,
   onFormCancel,
   onKbDeleted,
   onNewKbCreated,
@@ -49,44 +47,24 @@ export default function KBDetailDialog({
 }: KBDetailDialogProps) {
   const { t } = useTranslation();
   const [kbId, setKbId] = useState<string | undefined>(propKbId);
-  const [kbType, setKbType] = useState<'retriever' | 'rag_engine' | undefined>(propKbType);
   const [activeMenu, setActiveMenu] = useState('metadata');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [kbInfo, setKbInfo] = useState<KnowledgeBase | null>(null);
 
   useEffect(() => {
     setKbId(propKbId);
-    setKbType(propKbType);
     setActiveMenu('metadata');
-    if (propKbId && propKbType) {
-      loadKbInfo(propKbId, propKbType);
+    if (propKbId) {
+      loadKbInfo(propKbId);
     } else {
       setKbInfo(null);
     }
-  }, [propKbId, propKbType, open]);
+  }, [propKbId, open]);
 
-  async function loadKbInfo(id: string, type: 'retriever' | 'rag_engine') {
+  async function loadKbInfo(id: string) {
     try {
-      if (type === 'retriever') {
-        // For retriever type, we create a compatible structure
-        const resp = await httpClient.getExternalKnowledgeBase(id);
-        const extKb = resp.base;
-        setKbInfo({
-          uuid: extKb.uuid,
-          name: extKb.name,
-          description: extKb.description,
-          embedding_model_uuid: '',
-          top_k: 5,
-          rag_engine: {
-            plugin_id: `${extKb.plugin_author}/${extKb.plugin_name}`,
-            name: extKb.retriever_name,
-            capabilities: [],
-          },
-        });
-      } else {
-        const resp = await httpClient.getKnowledgeBase(id);
-        setKbInfo(resp.base);
-      }
+      const resp = await httpClient.getKnowledgeBase(id);
+      setKbInfo(resp.base);
     } catch (e) {
       console.error('Failed to load KB info:', e);
     }
@@ -95,7 +73,7 @@ export default function KBDetailDialog({
   // Check if this KB supports document management
   const hasDocumentCapability = (): boolean => {
     if (!kbInfo || !kbInfo.rag_engine) {
-      return false; // No engine info, cannot determine capability
+      return false;
     }
     return kbInfo.rag_engine.capabilities.includes('doc_ingestion');
   };
@@ -149,23 +127,14 @@ export default function KBDetailDialog({
   ];
 
   const confirmDelete = () => {
-    if (kbType === 'retriever') {
-      httpClient.deleteExternalKnowledgeBase(kbId ?? '').then(() => {
-        onKbDeleted();
-      });
-    } else {
-      httpClient.deleteKnowledgeBase(kbId ?? '').then(() => {
-        onKbDeleted();
-      });
-    }
+    httpClient.deleteKnowledgeBase(kbId ?? '').then(() => {
+      onKbDeleted();
+    });
     setShowDeleteConfirm(false);
   };
 
-  // Unified retrieve function
+  // Retrieve function
   const retrieveFunction = async (id: string, query: string) => {
-    if (kbType === 'retriever') {
-      return await httpClient.retrieveExternalKnowledgeBase(id, query);
-    }
     return await httpClient.retrieveKnowledgeBase(id, query);
   };
 
@@ -181,7 +150,6 @@ export default function KBDetailDialog({
             <div className="flex-1 overflow-y-auto px-6 pb-6">
               <KBForm
                 initKbId={undefined}
-                initKbType={undefined}
                 onNewKbCreated={onNewKbCreated}
                 onKbUpdated={onKbUpdated}
               />
@@ -248,7 +216,6 @@ export default function KBDetailDialog({
                 {activeMenu === 'metadata' && (
                   <KBForm
                     initKbId={kbId}
-                    initKbType={kbType}
                     onNewKbCreated={onNewKbCreated}
                     onKbUpdated={onKbUpdated}
                   />

@@ -7,11 +7,8 @@ export interface IKnowledgeBaseVO {
   embeddingModelUUID: string;
   top_k: number;
   lastUpdatedTimeAgo: string;
-  // New unified fields
   ragEngine?: RAGEngineInfo;
   ragEnginePluginId?: string;
-  // Type of knowledge base: 'retriever' for external KB, 'rag_engine' for new plugin-based KB
-  type: 'retriever' | 'rag_engine';
 }
 
 export class KnowledgeBaseVO implements IKnowledgeBaseVO {
@@ -23,7 +20,6 @@ export class KnowledgeBaseVO implements IKnowledgeBaseVO {
   lastUpdatedTimeAgo: string;
   ragEngine?: RAGEngineInfo;
   ragEnginePluginId?: string;
-  type: 'retriever' | 'rag_engine';
 
   constructor(props: IKnowledgeBaseVO) {
     this.id = props.id;
@@ -34,7 +30,6 @@ export class KnowledgeBaseVO implements IKnowledgeBaseVO {
     this.lastUpdatedTimeAgo = props.lastUpdatedTimeAgo;
     this.ragEngine = props.ragEngine;
     this.ragEnginePluginId = props.ragEnginePluginId;
-    this.type = props.type;
   }
 
   /**

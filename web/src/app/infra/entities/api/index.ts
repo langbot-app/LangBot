@@ -185,12 +185,9 @@ export interface RAGEngine {
   plugin_id: string;
   name: string;
   description?: I18nObject;
-  type: 'retriever' | 'rag_engine'; // retriever = external KB, rag_engine = new RAG with doc support
   capabilities: string[];
   creation_schema?: JSONSchema;
   retrieval_schema?: JSONSchema;
-  // For retriever type (external KB)
-  component_name?: string;
 }
 
 export interface JSONSchema {
@@ -210,25 +207,6 @@ export interface JSONSchemaProperty {
 
 export interface ApiRespRAGEngines {
   engines: RAGEngine[];
-}
-
-export interface ExternalKnowledgeBase {
-  uuid?: string;
-  name: string;
-  description: string;
-  created_at?: string;
-  plugin_author: string;
-  plugin_name: string;
-  retriever_name: string;
-  retriever_config?: Record<string, unknown>;
-}
-
-export interface ApiRespExternalKnowledgeBases {
-  bases: ExternalKnowledgeBase[];
-}
-
-export interface ApiRespExternalKnowledgeBase {
-  base: ExternalKnowledgeBase;
 }
 
 export interface ApiRespKnowledgeBaseFiles {

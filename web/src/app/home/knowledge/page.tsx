@@ -8,7 +8,7 @@ import { KnowledgeBaseVO } from '@/app/home/knowledge/components/kb-card/KBCardV
 import KBCard from '@/app/home/knowledge/components/kb-card/KBCard';
 import KBDetailDialog from '@/app/home/knowledge/KBDetailDialog';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { KnowledgeBase, ExternalKnowledgeBase } from '@/app/infra/entities/api';
+import { KnowledgeBase } from '@/app/infra/entities/api';
 
 export default function KnowledgePage() {
   const { t } = useTranslation();
@@ -16,7 +16,6 @@ export default function KnowledgePage() {
     [],
   );
   const [selectedKbId, setSelectedKbId] = useState<string>('');
-  const [selectedKbType, setSelectedKbType] = useState<'retriever' | 'rag_engine' | undefined>(undefined);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -24,16 +23,11 @@ export default function KnowledgePage() {
   }, []);
 
   async function getKnowledgeBaseList() {
-    // Load both types of knowledge bases
-    const [ragEngineResp, retrieverResp] = await Promise.all([
-      httpClient.getKnowledgeBases(),
-      httpClient.getExternalKnowledgeBases(),
-    ]);
+    const resp = await httpClient.getKnowledgeBases();
 
     const currentTime = new Date();
 
-    // Convert rag_engine type KBs
-    const ragEngineKBs = ragEngineResp.bases.map((kb: KnowledgeBase) => {
+    const kbs = resp.bases.map((kb: KnowledgeBase) => {
       const lastUpdatedTimeAgo = Math.floor(
         (currentTime.getTime() -
           new Date(kb.updated_at ?? currentTime.getTime()).getTime()) /
@@ -57,56 +51,19 @@ export default function KnowledgePage() {
         lastUpdatedTimeAgo: lastUpdatedTimeAgoText,
         ragEngine: kb.rag_engine,
         ragEnginePluginId: kb.rag_engine_plugin_id,
-        type: 'rag_engine',
       });
     });
 
-    // Convert retriever type (external) KBs
-    const retrieverKBs = retrieverResp.bases.map((kb: ExternalKnowledgeBase) => {
-      const lastUpdatedTimeAgo = Math.floor(
-        (currentTime.getTime() -
-          new Date(kb.created_at ?? currentTime.getTime()).getTime()) /
-          1000 /
-          60 /
-          60 /
-          24,
-      );
-
-      const lastUpdatedTimeAgoText =
-        lastUpdatedTimeAgo > 0
-          ? ` ${lastUpdatedTimeAgo} ${t('knowledge.daysAgo')}`
-          : t('knowledge.today');
-
-      return new KnowledgeBaseVO({
-        id: kb.uuid || '',
-        name: kb.name,
-        description: kb.description,
-        embeddingModelUUID: '',
-        top_k: 5,
-        lastUpdatedTimeAgo: lastUpdatedTimeAgoText,
-        ragEngine: {
-          plugin_id: `${kb.plugin_author}/${kb.plugin_name}`,
-          name: kb.retriever_name,
-          capabilities: [],
-        },
-        ragEnginePluginId: `${kb.plugin_author}/${kb.plugin_name}`,
-        type: 'retriever',
-      });
-    });
-
-    // Combine both lists
-    setKnowledgeBaseList([...ragEngineKBs, ...retrieverKBs]);
+    setKnowledgeBaseList(kbs);
   }
 
   const handleKBCardClick = (kb: KnowledgeBaseVO) => {
     setSelectedKbId(kb.id);
-    setSelectedKbType(kb.type);
     setDetailDialogOpen(true);
   };
 
   const handleCreateKBClick = () => {
     setSelectedKbId('');
-    setSelectedKbType(undefined);
     setDetailDialogOpen(true);
   };
 
@@ -135,7 +92,6 @@ export default function KnowledgePage() {
         open={detailDialogOpen}
         onOpenChange={setDetailDialogOpen}
         kbId={selectedKbId || undefined}
-        kbType={selectedKbType}
         onFormCancel={handleFormCancel}
         onKbDeleted={handleKbDeleted}
         onNewKbCreated={handleNewKbCreated}
