@@ -101,6 +101,46 @@ class MonitoringService:
 
         return call_id
 
+    async def record_embedding_call(
+        self,
+        model_name: str,
+        prompt_tokens: int,
+        total_tokens: int,
+        duration: int,
+        input_count: int,
+        status: str = 'success',
+        error_message: str | None = None,
+        knowledge_base_id: str | None = None,
+        query_text: str | None = None,
+        session_id: str | None = None,
+        message_id: str | None = None,
+        call_type: str | None = None,
+    ) -> str:
+        """Record an embedding call"""
+        call_id = str(uuid.uuid4())
+        call_data = {
+            'id': call_id,
+            'timestamp': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
+            'model_name': model_name,
+            'prompt_tokens': prompt_tokens,
+            'total_tokens': total_tokens,
+            'duration': duration,
+            'input_count': input_count,
+            'status': status,
+            'error_message': error_message,
+            'knowledge_base_id': knowledge_base_id,
+            'query_text': query_text,
+            'session_id': session_id,
+            'message_id': message_id,
+            'call_type': call_type,
+        }
+
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.insert(persistence_monitoring.MonitoringEmbeddingCall).values(call_data)
+        )
+
+        return call_id
+
     async def record_session_start(
         self,
         session_id: str,
@@ -229,6 +269,7 @@ class MonitoringService:
         # Build base query conditions
         message_conditions = []
         llm_conditions = []
+        embedding_conditions = []
         session_conditions = []
 
         if bot_ids:
@@ -244,11 +285,13 @@ class MonitoringService:
         if start_time:
             message_conditions.append(persistence_monitoring.MonitoringMessage.timestamp >= start_time)
             llm_conditions.append(persistence_monitoring.MonitoringLLMCall.timestamp >= start_time)
+            embedding_conditions.append(persistence_monitoring.MonitoringEmbeddingCall.timestamp >= start_time)
             session_conditions.append(persistence_monitoring.MonitoringSession.start_time >= start_time)
 
         if end_time:
             message_conditions.append(persistence_monitoring.MonitoringMessage.timestamp <= end_time)
             llm_conditions.append(persistence_monitoring.MonitoringLLMCall.timestamp <= end_time)
+            embedding_conditions.append(persistence_monitoring.MonitoringEmbeddingCall.timestamp <= end_time)
             session_conditions.append(persistence_monitoring.MonitoringSession.start_time <= end_time)
 
         # Total messages
@@ -266,6 +309,17 @@ class MonitoringService:
 
         llm_calls_result = await self.ap.persistence_mgr.execute_async(llm_query)
         llm_calls = llm_calls_result.scalar() or 0
+
+        # Total Embedding calls
+        embedding_query = sqlalchemy.select(sqlalchemy.func.count(persistence_monitoring.MonitoringEmbeddingCall.id))
+        if embedding_conditions:
+            embedding_query = embedding_query.where(sqlalchemy.and_(*embedding_conditions))
+
+        embedding_calls_result = await self.ap.persistence_mgr.execute_async(embedding_query)
+        embedding_calls = embedding_calls_result.scalar() or 0
+
+        # Total model calls (LLM + Embedding)
+        model_calls = llm_calls + embedding_calls
 
         # Success rate (based on messages)
         success_query = sqlalchemy.select(sqlalchemy.func.count(persistence_monitoring.MonitoringMessage.id)).where(
@@ -291,6 +345,8 @@ class MonitoringService:
         return {
             'total_messages': total_messages,
             'llm_calls': llm_calls,
+            'embedding_calls': embedding_calls,
+            'model_calls': model_calls,
             'success_rate': round(success_rate, 2),
             'active_sessions': active_sessions,
         }
@@ -392,6 +448,54 @@ class MonitoringService:
                     persistence_monitoring.MonitoringLLMCall, row[0] if isinstance(row, tuple) else row
                 )
                 for row in llm_calls_rows
+            ],
+            total,
+        )
+
+    async def get_embedding_calls(
+        self,
+        start_time: datetime.datetime | None = None,
+        end_time: datetime.datetime | None = None,
+        knowledge_base_id: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[dict], int]:
+        """Get embedding calls with filters"""
+        conditions = []
+
+        if start_time:
+            conditions.append(persistence_monitoring.MonitoringEmbeddingCall.timestamp >= start_time)
+        if end_time:
+            conditions.append(persistence_monitoring.MonitoringEmbeddingCall.timestamp <= end_time)
+        if knowledge_base_id:
+            conditions.append(persistence_monitoring.MonitoringEmbeddingCall.knowledge_base_id == knowledge_base_id)
+
+        # Get total count
+        count_query = sqlalchemy.select(sqlalchemy.func.count(persistence_monitoring.MonitoringEmbeddingCall.id))
+        if conditions:
+            count_query = count_query.where(sqlalchemy.and_(*conditions))
+
+        count_result = await self.ap.persistence_mgr.execute_async(count_query)
+        total = count_result.scalar() or 0
+
+        # Get embedding calls
+        query = sqlalchemy.select(persistence_monitoring.MonitoringEmbeddingCall).order_by(
+            persistence_monitoring.MonitoringEmbeddingCall.timestamp.desc()
+        )
+        if conditions:
+            query = query.where(sqlalchemy.and_(*conditions))
+
+        query = query.limit(limit).offset(offset)
+
+        result = await self.ap.persistence_mgr.execute_async(query)
+        embedding_calls_rows = result.all()
+
+        return (
+            [
+                self.ap.persistence_mgr.serialize_model(
+                    persistence_monitoring.MonitoringEmbeddingCall, row[0] if isinstance(row, tuple) else row
+                )
+                for row in embedding_calls_rows
             ],
             total,
         )

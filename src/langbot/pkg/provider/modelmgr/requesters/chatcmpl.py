@@ -354,8 +354,8 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
         model: requester.RuntimeEmbeddingModel,
         input_text: list[str],
         extra_args: dict[str, typing.Any] = {},
-    ) -> list[list[float]]:
-        """调用 Embedding API"""
+    ) -> tuple[list[list[float]], dict]:
+        """调用 Embedding API, returns (embeddings, usage_info)"""
         self.client.api_key = model.provider.token_mgr.get_token()
 
         args = {
@@ -371,7 +371,13 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
         try:
             resp = await self.client.embeddings.create(**args)
 
-            return [d.embedding for d in resp.data]
+            # Extract usage info
+            usage_info = {}
+            if hasattr(resp, 'usage') and resp.usage:
+                usage_info['prompt_tokens'] = resp.usage.prompt_tokens or 0
+                usage_info['total_tokens'] = resp.usage.total_tokens or 0
+
+            return [d.embedding for d in resp.data], usage_info
         except asyncio.TimeoutError:
             raise errors.RequesterError('请求超时')
         except openai.BadRequestError as e:

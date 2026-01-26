@@ -815,6 +815,8 @@ export class BackendClient extends BaseHttpClient {
     overview: {
       total_messages: number;
       llm_calls: number;
+      embedding_calls: number;
+      model_calls: number;
       success_rate: number;
       active_sessions: number;
     };
@@ -851,6 +853,22 @@ export class BackendClient extends BaseHttpClient {
       error_message?: string;
       message_id?: string;
     }>;
+    embeddingCalls: Array<{
+      id: string;
+      timestamp: string;
+      model_name: string;
+      prompt_tokens: number;
+      total_tokens: number;
+      duration: number;
+      input_count: number;
+      status: string;
+      error_message?: string;
+      knowledge_base_id?: string;
+      query_text?: string;
+      session_id?: string;
+      message_id?: string;
+      call_type?: string;
+    }>;
     sessions: Array<{
       session_id: string;
       bot_id: string;
@@ -879,6 +897,7 @@ export class BackendClient extends BaseHttpClient {
     totalCount: {
       messages: number;
       llmCalls: number;
+      embeddingCalls: number;
       sessions: number;
       errors: number;
     };

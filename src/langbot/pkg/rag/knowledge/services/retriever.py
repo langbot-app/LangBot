@@ -23,6 +23,9 @@ class Retriever(base_service.BaseService):
             model=embedding_model,
             input_text=[query],
             extra_args={},  # TODO: add extra args
+            knowledge_base_id=kb_id,
+            query_text=query,
+            call_type='retrieve',
         )
 
         vector_results = await self.ap.vector_db_mgr.vector_db.search(kb_id, query_embedding[0], k)

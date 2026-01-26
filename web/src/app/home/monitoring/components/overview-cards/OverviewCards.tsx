@@ -48,8 +48,8 @@ export default function OverviewCards({
         : undefined,
     },
     {
-      title: t('monitoring.llmCallsCount'),
-      value: metrics?.llmCalls || 0,
+      title: t('monitoring.modelCallsCount'),
+      value: metrics?.modelCalls || 0,
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"

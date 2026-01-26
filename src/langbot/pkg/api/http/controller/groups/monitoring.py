@@ -112,6 +112,37 @@ class MonitoringRouterGroup(group.RouterGroup):
                 }
             )
 
+        @self.route('/embedding-calls', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        async def get_embedding_calls() -> str:
+            """Get embedding call records"""
+            # Parse query parameters
+            start_time_str = quart.request.args.get('startTime')
+            end_time_str = quart.request.args.get('endTime')
+            knowledge_base_id = quart.request.args.get('knowledgeBaseId')
+            limit = int(quart.request.args.get('limit', 100))
+            offset = int(quart.request.args.get('offset', 0))
+
+            # Parse datetime
+            start_time = parse_iso_datetime(start_time_str)
+            end_time = parse_iso_datetime(end_time_str)
+
+            embedding_calls, total = await self.ap.monitoring_service.get_embedding_calls(
+                start_time=start_time,
+                end_time=end_time,
+                knowledge_base_id=knowledge_base_id if knowledge_base_id else None,
+                limit=limit,
+                offset=offset,
+            )
+
+            return self.success(
+                data={
+                    'embedding_calls': embedding_calls,
+                    'total': total,
+                    'limit': limit,
+                    'offset': offset,
+                }
+            )
+
         @self.route('/sessions', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def get_sessions() -> str:
             """Get session information"""
@@ -248,16 +279,26 @@ class MonitoringRouterGroup(group.RouterGroup):
                 offset=0,
             )
 
+            # Get embedding calls
+            embedding_calls, embedding_calls_total = await self.ap.monitoring_service.get_embedding_calls(
+                start_time=start_time,
+                end_time=end_time,
+                limit=limit,
+                offset=0,
+            )
+
             return self.success(
                 data={
                     'overview': overview,
                     'messages': messages,
                     'llmCalls': llm_calls,
+                    'embeddingCalls': embedding_calls,
                     'sessions': sessions,
                     'errors': errors,
                     'totalCount': {
                         'messages': messages_total,
                         'llmCalls': llm_calls_total,
+                        'embeddingCalls': embedding_calls_total,
                         'sessions': sessions_total,
                         'errors': errors_total,
                     },

@@ -42,6 +42,8 @@ class Embedder(BaseService):
                 model=embedding_model,
                 input_text=batch,
                 extra_args={},  # TODO: add extra args
+                knowledge_base_id=kb_id,
+                call_type='embedding',
             )
             embeddings_list.extend(batch_embeddings)
 

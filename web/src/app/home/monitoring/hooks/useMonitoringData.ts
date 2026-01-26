@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { FilterState, MonitoringData } from '../types/monitoring';
+import {
+  FilterState,
+  MonitoringData,
+  ModelCall,
+  LLMCall,
+  EmbeddingCall,
+} from '../types/monitoring';
 import { backendClient } from '@/app/infra/http';
 
 /**
@@ -90,6 +96,9 @@ export function useMonitoringData(filterState: FilterState) {
         overview: {
           totalMessages: response.overview.total_messages,
           llmCalls: response.overview.llm_calls,
+          embeddingCalls: response.overview.embedding_calls || 0,
+          modelCalls:
+            response.overview.model_calls || response.overview.llm_calls,
           successRate: response.overview.success_rate,
           activeSessions: response.overview.active_sessions,
         },
@@ -163,6 +172,41 @@ export function useMonitoringData(filterState: FilterState) {
             messageId: call.message_id,
           }),
         ),
+        embeddingCalls: (response.embeddingCalls || []).map(
+          (call: {
+            id: string;
+            timestamp: string;
+            model_name: string;
+            prompt_tokens: number;
+            total_tokens: number;
+            duration: number;
+            input_count: number;
+            status: string;
+            error_message?: string;
+            knowledge_base_id?: string;
+            query_text?: string;
+            session_id?: string;
+            message_id?: string;
+            call_type?: string;
+          }) => ({
+            id: call.id,
+            timestamp: new Date(call.timestamp),
+            modelName: call.model_name,
+            promptTokens: call.prompt_tokens,
+            totalTokens: call.total_tokens,
+            duration: call.duration,
+            inputCount: call.input_count,
+            status: call.status as 'success' | 'error',
+            errorMessage: call.error_message,
+            knowledgeBaseId: call.knowledge_base_id,
+            queryText: call.query_text,
+            sessionId: call.session_id,
+            messageId: call.message_id,
+            callType: call.call_type as 'embedding' | 'retrieve' | undefined,
+          }),
+        ),
+        // Create merged modelCalls array from llmCalls and embeddingCalls
+        modelCalls: [] as ModelCall[], // Will be populated after transform
         sessions: response.sessions.map(
           (session: {
             session_id: string;
@@ -221,10 +265,58 @@ export function useMonitoringData(filterState: FilterState) {
         totalCount: {
           messages: response.totalCount.messages,
           llmCalls: response.totalCount.llmCalls,
+          embeddingCalls: response.totalCount.embeddingCalls || 0,
           sessions: response.totalCount.sessions,
           errors: response.totalCount.errors,
         },
       };
+
+      // Merge LLM calls and embedding calls into modelCalls
+      const llmModelCalls: ModelCall[] = transformedData.llmCalls.map(
+        (call: LLMCall): ModelCall => ({
+          id: call.id,
+          timestamp: call.timestamp,
+          modelName: call.modelName,
+          modelType: 'llm',
+          status: call.status,
+          duration: call.duration,
+          errorMessage: call.errorMessage,
+          messageId: call.messageId,
+          tokens: call.tokens,
+          cost: call.cost,
+          botId: call.botId,
+          botName: call.botName,
+          pipelineId: call.pipelineId,
+          pipelineName: call.pipelineName,
+        }),
+      );
+
+      const embeddingModelCalls: ModelCall[] =
+        transformedData.embeddingCalls.map(
+          (call: EmbeddingCall): ModelCall => ({
+            id: call.id,
+            timestamp: call.timestamp,
+            modelName: call.modelName,
+            modelType: 'embedding',
+            status: call.status,
+            duration: call.duration,
+            errorMessage: call.errorMessage,
+            messageId: call.messageId,
+            callType: call.callType,
+            promptTokens: call.promptTokens,
+            totalTokens: call.totalTokens,
+            inputCount: call.inputCount,
+            knowledgeBaseId: call.knowledgeBaseId,
+            queryText: call.queryText,
+            sessionId: call.sessionId,
+          }),
+        );
+
+      // Combine and sort by timestamp (newest first)
+      transformedData.modelCalls = [
+        ...llmModelCalls,
+        ...embeddingModelCalls,
+      ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
       setData(transformedData);
     } catch (err) {

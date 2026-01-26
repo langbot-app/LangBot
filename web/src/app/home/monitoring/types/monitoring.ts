@@ -35,6 +35,54 @@ export interface LLMCall {
   messageId?: string;
 }
 
+export interface EmbeddingCall {
+  id: string;
+  timestamp: Date;
+  modelName: string;
+  promptTokens: number;
+  totalTokens: number;
+  duration: number;
+  inputCount: number;
+  status: 'success' | 'error';
+  errorMessage?: string;
+  knowledgeBaseId?: string;
+  queryText?: string;
+  sessionId?: string;
+  messageId?: string;
+  callType?: 'embedding' | 'retrieve';
+}
+
+// Unified model call type for displaying LLM and Embedding calls together
+export interface ModelCall {
+  id: string;
+  timestamp: Date;
+  modelName: string;
+  modelType: 'llm' | 'embedding';
+  status: 'success' | 'error';
+  duration: number;
+  errorMessage?: string;
+  messageId?: string;
+  // LLM specific fields
+  tokens?: {
+    input: number;
+    output: number;
+    total: number;
+  };
+  cost?: number;
+  botId?: string;
+  botName?: string;
+  pipelineId?: string;
+  pipelineName?: string;
+  // Embedding specific fields
+  callType?: 'embedding' | 'retrieve';
+  promptTokens?: number;
+  totalTokens?: number;
+  inputCount?: number;
+  knowledgeBaseId?: string;
+  queryText?: string;
+  sessionId?: string;
+}
+
 export interface SessionInfo {
   sessionId: string;
   botId: string;
@@ -82,6 +130,8 @@ export interface MessageDetails {
 export interface OverviewMetrics {
   totalMessages: number;
   llmCalls: number;
+  embeddingCalls: number;
+  modelCalls: number;
   successRate: number;
   activeSessions: number;
   trends?: {
@@ -116,11 +166,14 @@ export interface MonitoringData {
   overview: OverviewMetrics;
   messages: MonitoringMessage[];
   llmCalls: LLMCall[];
+  embeddingCalls: EmbeddingCall[];
+  modelCalls: ModelCall[];
   sessions: SessionInfo[];
   errors: ErrorLog[];
   totalCount: {
     messages: number;
     llmCalls: number;
+    embeddingCalls: number;
     sessions: number;
     errors: number;
   };

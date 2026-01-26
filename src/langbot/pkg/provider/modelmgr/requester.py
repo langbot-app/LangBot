@@ -189,13 +189,63 @@ class RuntimeProvider:
         model: RuntimeEmbeddingModel,
         input_text: typing.List[str],
         extra_args: dict[str, typing.Any] = {},
+        knowledge_base_id: str | None = None,
+        query_text: str | None = None,
+        session_id: str | None = None,
+        message_id: str | None = None,
+        call_type: str | None = None,
     ) -> typing.List[typing.List[float]]:
-        """Bridge method for invoking embedding (no monitoring needed)"""
-        return await self.requester.invoke_embedding(
-            model=model,
-            input_text=input_text,
-            extra_args=extra_args,
-        )
+        """Bridge method for invoking embedding with monitoring"""
+        # Start timing for monitoring
+        start_time = time.time()
+        prompt_tokens = 0
+        total_tokens = 0
+        status = 'success'
+        error_message = None
+
+        try:
+            # Call the underlying requester
+            result = await self.requester.invoke_embedding(
+                model=model,
+                input_text=input_text,
+                extra_args=extra_args,
+            )
+
+            # Handle both old format (list only) and new format (tuple with usage)
+            if isinstance(result, tuple):
+                embeddings, usage_info = result
+                if usage_info:
+                    prompt_tokens = usage_info.get('prompt_tokens', 0)
+                    total_tokens = usage_info.get('total_tokens', 0)
+                return embeddings
+            else:
+                return result
+
+        except Exception as e:
+            status = 'error'
+            error_message = str(e)
+            raise
+        finally:
+            # Record embedding call monitoring data
+            duration_ms = int((time.time() - start_time) * 1000)
+
+            try:
+                await self.requester.ap.monitoring_service.record_embedding_call(
+                    model_name=model.model_entity.name,
+                    prompt_tokens=prompt_tokens,
+                    total_tokens=total_tokens,
+                    duration=duration_ms,
+                    input_count=len(input_text),
+                    status=status,
+                    error_message=error_message,
+                    knowledge_base_id=knowledge_base_id,
+                    query_text=query_text,
+                    session_id=session_id,
+                    message_id=message_id,
+                    call_type=call_type,
+                )
+            except Exception as monitor_err:
+                self.requester.ap.logger.error(f'[Monitoring] Failed to record embedding call: {monitor_err}')
 
 
 class RuntimeLLMModel:
@@ -305,7 +355,7 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
         model: RuntimeEmbeddingModel,
         input_text: typing.List[str],
         extra_args: dict[str, typing.Any] = {},
-    ) -> typing.List[typing.List[float]]:
+    ) -> typing.Union[typing.List[typing.List[float]], tuple[typing.List[typing.List[float]], dict]]:
         """调用 Embedding API
 
         Args:
@@ -315,5 +365,6 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
 
         Returns:
             typing.List[typing.List[float]]: 返回的 embedding 向量
+            或者 tuple[typing.List[typing.List[float]], dict]: 返回 (embedding 向量, usage_info)
         """
         pass

@@ -81,3 +81,25 @@ class MonitoringError(Base):
     session_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
     stack_trace = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
     message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)  # Associated message ID
+
+
+class MonitoringEmbeddingCall(Base):
+    """Embedding call records"""
+
+    __tablename__ = 'monitoring_embedding_calls'
+
+    id = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
+    timestamp = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, index=True)
+    model_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
+    prompt_tokens = sqlalchemy.Column(sqlalchemy.Integer, nullable=False)
+    total_tokens = sqlalchemy.Column(sqlalchemy.Integer, nullable=False)
+    duration = sqlalchemy.Column(sqlalchemy.Integer, nullable=False)  # milliseconds
+    input_count = sqlalchemy.Column(sqlalchemy.Integer, nullable=False)  # Number of input texts
+    status = sqlalchemy.Column(sqlalchemy.String(50), nullable=False)  # success, error
+    error_message = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    # Optional context fields
+    knowledge_base_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    query_text = sqlalchemy.Column(sqlalchemy.Text, nullable=True)  # For retrieval calls
+    session_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    call_type = sqlalchemy.Column(sqlalchemy.String(50), nullable=True)  # embedding, retrieve

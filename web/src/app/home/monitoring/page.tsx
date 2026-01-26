@@ -245,10 +245,10 @@ function MonitoringPageContent() {
                   {t('monitoring.tabs.messages')}
                 </TabsTrigger>
                 <TabsTrigger
-                  value="llmCalls"
+                  value="modelCalls"
                   className="px-6 py-2 text-sm font-medium cursor-pointer data-[state=active]:bg-white dark:data-[state=active]:bg-[#2a2a2e] data-[state=active]:shadow-sm"
                 >
-                  {t('monitoring.tabs.llmCalls')}
+                  {t('monitoring.tabs.modelCalls')}
                 </TabsTrigger>
                 <TabsTrigger
                   value="errors"
@@ -407,7 +407,7 @@ function MonitoringPageContent() {
               </div>
             </TabsContent>
 
-            <TabsContent value="llmCalls" className="p-6 m-0">
+            <TabsContent value="modelCalls" className="p-6 m-0">
               <div>
                 {loading && (
                   <div className="text-center text-gray-500 dark:text-gray-400 py-12">
@@ -418,22 +418,22 @@ function MonitoringPageContent() {
 
                 {!loading &&
                   data &&
-                  data.llmCalls &&
-                  data.llmCalls.length > 0 && (
+                  data.modelCalls &&
+                  data.modelCalls.length > 0 && (
                     <div className="space-y-4">
-                      {data.llmCalls.map((call) => (
+                      {data.modelCalls.map((call) => (
                         <div
                           key={call.id}
                           className="border border-gray-200 dark:border-gray-700 rounded-xl p-5 hover:shadow-md transition-all duration-200"
                         >
                           <div className="flex justify-between items-start mb-3">
                             <div className="flex-1">
-                              {/* Query ID */}
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">
-                                  Query ID: {call.messageId || '-'}
-                                </span>
-                                {call.messageId && (
+                              {/* Query ID - only show if messageId exists */}
+                              {call.messageId && (
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">
+                                    Query ID: {call.messageId}
+                                  </span>
                                   <Button
                                     variant="ghost"
                                     size="sm"
@@ -447,12 +447,41 @@ function MonitoringPageContent() {
                                       'monitoring.messageList.viewConversation',
                                     )}
                                   </Button>
-                                )}
-                              </div>
+                                </div>
+                              )}
                               <div className="flex items-center gap-2 mb-2">
-                                <span className="font-medium text-sm text-gray-700 dark:text-gray-300">
-                                  {call.modelName}
+                                {/* Model Type Badge */}
+                                <span
+                                  className={`text-xs px-2 py-1 rounded ${
+                                    call.modelType === 'llm'
+                                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                                      : 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+                                  }`}
+                                >
+                                  {call.modelType === 'llm'
+                                    ? t('monitoring.modelCalls.llmModel')
+                                    : t('monitoring.modelCalls.embeddingModel')}
                                 </span>
+                                {/* Call Type Badge for Embedding */}
+                                {call.modelType === 'embedding' &&
+                                  call.callType && (
+                                    <span
+                                      className={`text-xs px-2 py-1 rounded ${
+                                        call.callType === 'retrieve'
+                                          ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200'
+                                          : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+                                      }`}
+                                    >
+                                      {call.callType === 'retrieve'
+                                        ? t(
+                                            'monitoring.modelCalls.retrieveCall',
+                                          )
+                                        : t(
+                                            'monitoring.modelCalls.embeddingCall',
+                                          )}
+                                    </span>
+                                  )}
+                                {/* Status Badge */}
                                 <span
                                   className={`text-xs px-2 py-1 rounded ${
                                     call.status === 'success'
@@ -463,27 +492,62 @@ function MonitoringPageContent() {
                                   {call.status}
                                 </span>
                               </div>
+                              {/* Model Name */}
+                              <div className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">
+                                {call.modelName}
+                              </div>
+                              {/* Context Info - only for LLM calls */}
+                              {call.modelType === 'llm' &&
+                                call.botName &&
+                                call.pipelineName && (
+                                  <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">
+                                    {call.botName} → {call.pipelineName}
+                                  </div>
+                                )}
+                              {/* Token Info */}
                               <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-                                <div>
-                                  {call.botName} → {call.pipelineName}
-                                </div>
-                                <div className="flex gap-4">
-                                  <span>
-                                    {t('monitoring.llmCalls.inputTokens')}:{' '}
-                                    {call.tokens.input}
-                                  </span>
-                                  <span>
-                                    {t('monitoring.llmCalls.outputTokens')}:{' '}
-                                    {call.tokens.output}
-                                  </span>
-                                  <span>
-                                    {t('monitoring.llmCalls.totalTokens')}:{' '}
-                                    {call.tokens.total}
-                                  </span>
+                                <div className="flex flex-wrap gap-4">
+                                  {call.modelType === 'llm' && call.tokens && (
+                                    <>
+                                      <span>
+                                        {t('monitoring.llmCalls.inputTokens')}:{' '}
+                                        {call.tokens.input}
+                                      </span>
+                                      <span>
+                                        {t('monitoring.llmCalls.outputTokens')}:{' '}
+                                        {call.tokens.output}
+                                      </span>
+                                      <span>
+                                        {t('monitoring.llmCalls.totalTokens')}:{' '}
+                                        {call.tokens.total}
+                                      </span>
+                                    </>
+                                  )}
+                                  {call.modelType === 'embedding' && (
+                                    <>
+                                      <span>
+                                        {t(
+                                          'monitoring.embeddingCalls.promptTokens',
+                                        )}
+                                        : {call.promptTokens}
+                                      </span>
+                                      <span>
+                                        {t(
+                                          'monitoring.embeddingCalls.totalTokens',
+                                        )}
+                                        : {call.totalTokens}
+                                      </span>
+                                      <span>
+                                        {t(
+                                          'monitoring.embeddingCalls.inputCount',
+                                        )}
+                                        : {call.inputCount}
+                                      </span>
+                                    </>
+                                  )}
                                   <span>
                                     {t('monitoring.llmCalls.duration')}:{' '}
-                                    {call.duration}
-                                    ms
+                                    {call.duration}ms
                                   </span>
                                   {call.cost && (
                                     <span>
@@ -492,6 +556,34 @@ function MonitoringPageContent() {
                                     </span>
                                   )}
                                 </div>
+                                {/* Knowledge Base Info for Embedding */}
+                                {call.modelType === 'embedding' &&
+                                  call.knowledgeBaseId && (
+                                    <div>
+                                      {t(
+                                        'monitoring.embeddingCalls.knowledgeBase',
+                                      )}
+                                      : {call.knowledgeBaseId}
+                                    </div>
+                                  )}
+                                {/* Query Text for Embedding Retrieve */}
+                                {call.modelType === 'embedding' &&
+                                  call.queryText && (
+                                    <div className="mt-2 p-2 bg-gray-50 dark:bg-gray-800 rounded text-sm">
+                                      <span className="text-gray-500 dark:text-gray-400">
+                                        {t(
+                                          'monitoring.embeddingCalls.queryText',
+                                        )}
+                                        :{' '}
+                                      </span>
+                                      <span className="text-gray-700 dark:text-gray-300">
+                                        {call.queryText.length > 100
+                                          ? call.queryText.substring(0, 100) +
+                                            '...'
+                                          : call.queryText}
+                                      </span>
+                                    </div>
+                                  )}
                               </div>
                               {call.errorMessage && (
                                 <div className="mt-2 text-xs text-red-600 dark:text-red-400">
@@ -509,7 +601,9 @@ function MonitoringPageContent() {
                   )}
 
                 {!loading &&
-                  (!data || !data.llmCalls || data.llmCalls.length === 0) && (
+                  (!data ||
+                    !data.modelCalls ||
+                    data.modelCalls.length === 0) && (
                     <div className="text-center text-gray-500 dark:text-gray-400 py-16">
                       <svg
                         className="w-16 h-16 mx-auto mb-4 text-gray-300 dark:text-gray-600"
@@ -525,7 +619,7 @@ function MonitoringPageContent() {
                         />
                       </svg>
                       <p className="text-base font-medium">
-                        {t('monitoring.llmCalls.noData')}
+                        {t('monitoring.modelCalls.noData')}
                       </p>
                     </div>
                   )}
