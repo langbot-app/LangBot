@@ -463,15 +463,6 @@ class PluginRuntimeConnector:
 
             yield cmd_ret
 
-    # KnowledgeRetriever methods
-    async def list_knowledge_retrievers(self, bound_plugins: list[str] | None = None) -> list[dict[str, Any]]:
-        """List all available KnowledgeRetriever components."""
-        if not self.is_enable_plugin:
-            return []
-
-        retrievers_data = await self.handler.list_knowledge_retrievers(include_plugins=bound_plugins)
-        return retrievers_data
-
     async def retrieve_knowledge(
         self,
         plugin_author: str,
@@ -480,7 +471,7 @@ class PluginRuntimeConnector:
         instance_id: str,
         retrieval_context: dict[str, Any],
     ) -> list[dict[str, Any]]:
-        """Retrieve knowledge using a KnowledgeRetriever instance."""
+        """Retrieve knowledge using a RAGEngine instance."""
         if not self.is_enable_plugin:
             return []
 
@@ -503,39 +494,17 @@ class PluginRuntimeConnector:
     async def sync_polymorphic_component_instances(self) -> dict[str, Any]:
         """Sync polymorphic component instances with runtime.
 
-        This collects all external knowledge bases from database and sends to runtime
-        to ensure instance integrity across restarts.
+        Currently no polymorphic components need syncing.
+        This method is kept for future extensibility.
         """
         if not self.is_enable_plugin:
             return {}
 
-        # ===== external knowledge bases =====
-
-        external_kbs = await self.ap.external_kb_service.get_external_knowledge_bases()
-
-        # Build required_instances list
+        # No polymorphic components to sync
         required_instances = []
-        for kb in external_kbs:
-            required_instances.append(
-                {
-                    'instance_id': kb['uuid'],
-                    'plugin_author': kb['plugin_author'],
-                    'plugin_name': kb['plugin_name'],
-                    'component_kind': 'KnowledgeRetriever',
-                    'component_name': kb['retriever_name'],
-                    'config': kb['retriever_config'],
-                }
-            )
 
-        self.ap.logger.info(f'Syncing {len(required_instances)} polymorphic component instances to runtime')
-
-        # Send to runtime
+        # Send to runtime (empty list)
         sync_result = await self.handler.sync_polymorphic_component_instances(required_instances)
-
-        self.ap.logger.info(
-            f'Sync complete: {len(sync_result.get("success_instances", []))} succeeded, '
-            f'{len(sync_result.get("failed_instances", []))} failed'
-        )
 
         return sync_result
 

@@ -857,18 +857,6 @@ class RuntimeConnectionHandler(handler.Handler):
         async for ret in gen:
             yield ret
 
-    # KnowledgeRetriever methods
-    async def list_knowledge_retrievers(self, include_plugins: list[str] | None = None) -> list[dict[str, Any]]:
-        """List knowledge retrievers"""
-        result = await self.call_action(
-            LangBotToRuntimeAction.LIST_KNOWLEDGE_RETRIEVERS,
-            {
-                'include_plugins': include_plugins,
-            },
-            timeout=10,
-        )
-        return result['retrievers']
-
     async def retrieve_knowledge(
         self,
         plugin_author: str,
