@@ -119,7 +119,7 @@ class RuntimePipeline:
         # Record query start for monitoring
         try:
             # Get bot name from bot_uuid
-            bot_name = 'Unknown'
+            bot_name = 'WebChat'
             if query.bot_uuid:
                 try:
                     bot = await self.ap.bot_service.get_bot(query.bot_uuid, include_secret=False)

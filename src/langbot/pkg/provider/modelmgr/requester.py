@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 import typing
+import time
 
 from ...core import app
 from ...entity.persistence import model as persistence_model
@@ -32,6 +33,169 @@ class RuntimeProvider:
         self.provider_entity = provider_entity
         self.token_mgr = token_mgr
         self.requester = requester
+
+    async def invoke_llm(
+        self,
+        query: pipeline_query.Query,
+        model: RuntimeLLMModel,
+        messages: typing.List[provider_message.Message],
+        funcs: typing.List[resource_tool.LLMTool] = None,
+        extra_args: dict[str, typing.Any] = {},
+        remove_think: bool = False,
+    ) -> provider_message.Message:
+        """Bridge method for invoking LLM with monitoring"""
+        # Start timing for monitoring
+        start_time = time.time()
+        input_tokens = 0
+        output_tokens = 0
+        status = 'success'
+        error_message = None
+
+        try:
+            # Call the underlying requester
+            result = await self.requester.invoke_llm(
+                query=query,
+                model=model,
+                messages=messages,
+                funcs=funcs,
+                extra_args=extra_args,
+                remove_think=remove_think,
+            )
+
+            # Try to extract token usage if the requester returns it
+            # For requesters that return tuple (message, usage_info)
+            if isinstance(result, tuple):
+                msg, usage_info = result
+                if usage_info:
+                    input_tokens = usage_info.get('input_tokens', 0)
+                    output_tokens = usage_info.get('output_tokens', 0)
+                return msg
+            else:
+                return result
+
+        except Exception as e:
+            status = 'error'
+            error_message = str(e)
+            raise
+        finally:
+            # Record LLM call monitoring data (only if query is provided)
+            if query is not None:
+                duration_ms = int((time.time() - start_time) * 1000)
+
+                # Import monitoring helper
+                try:
+                    from ...pipeline import monitoring_helper
+
+                    # Get monitoring metadata from query variables
+                    if query.variables:
+                        bot_name = query.variables.get('_monitoring_bot_name', 'Unknown')
+                        pipeline_name = query.variables.get('_monitoring_pipeline_name', 'Unknown')
+                        message_id = query.variables.get('_monitoring_message_id')
+                    else:
+                        bot_name = 'Unknown'
+                        pipeline_name = 'Unknown'
+                        message_id = None
+
+                    await monitoring_helper.MonitoringHelper.record_llm_call(
+                        ap=self.requester.ap,
+                        query=query,
+                        bot_id=query.bot_uuid or 'unknown',
+                        bot_name=bot_name,
+                        pipeline_id=query.pipeline_uuid or 'unknown',
+                        pipeline_name=pipeline_name,
+                        model_name=model.model_entity.name,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        duration_ms=duration_ms,
+                        status=status,
+                        error_message=error_message,
+                        message_id=message_id,
+                    )
+                except Exception as monitor_err:
+                    self.requester.ap.logger.error(f'[Monitoring] Failed to record LLM call: {monitor_err}')
+
+    async def invoke_llm_stream(
+        self,
+        query: pipeline_query.Query,
+        model: RuntimeLLMModel,
+        messages: typing.List[provider_message.Message],
+        funcs: typing.List[resource_tool.LLMTool] = None,
+        extra_args: dict[str, typing.Any] = {},
+        remove_think: bool = False,
+    ) -> provider_message.MessageChunk:
+        """Bridge method for invoking LLM stream with monitoring"""
+        # Start timing for monitoring
+        start_time = time.time()
+        status = 'success'
+        error_message = None
+        # Note: Stream doesn't easily provide token counts, set to 0
+        input_tokens = 0
+        output_tokens = 0
+
+        try:
+            # Stream the response
+            async for chunk in self.requester.invoke_llm_stream(
+                query=query,
+                model=model,
+                messages=messages,
+                funcs=funcs,
+                extra_args=extra_args,
+                remove_think=remove_think,
+            ):
+                yield chunk
+        except Exception as e:
+            status = 'error'
+            error_message = str(e)
+            raise
+        finally:
+            # Record LLM call monitoring data (only if query is provided)
+            if query is not None:
+                duration_ms = int((time.time() - start_time) * 1000)
+
+                # Import monitoring helper
+                try:
+                    from ...pipeline import monitoring_helper
+
+                    # Get monitoring metadata from query variables
+                    if query.variables:
+                        bot_name = query.variables.get('_monitoring_bot_name', 'Unknown')
+                        pipeline_name = query.variables.get('_monitoring_pipeline_name', 'Unknown')
+                        message_id = query.variables.get('_monitoring_message_id')
+                    else:
+                        bot_name = 'Unknown'
+                        pipeline_name = 'Unknown'
+                        message_id = None
+
+                    await monitoring_helper.MonitoringHelper.record_llm_call(
+                        ap=self.requester.ap,
+                        query=query,
+                        bot_id=query.bot_uuid or 'unknown',
+                        bot_name=bot_name,
+                        pipeline_id=query.pipeline_uuid or 'unknown',
+                        pipeline_name=pipeline_name,
+                        model_name=model.model_entity.name,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        duration_ms=duration_ms,
+                        status=status,
+                        error_message=error_message,
+                        message_id=message_id,
+                    )
+                except Exception as monitor_err:
+                    self.requester.ap.logger.error(f'[Monitoring] Failed to record LLM stream call: {monitor_err}')
+
+    async def invoke_embedding(
+        self,
+        model: RuntimeEmbeddingModel,
+        input_text: typing.List[str],
+        extra_args: dict[str, typing.Any] = {},
+    ) -> typing.List[typing.List[float]]:
+        """Bridge method for invoking embedding (no monitoring needed)"""
+        return await self.requester.invoke_embedding(
+            model=model,
+            input_text=input_text,
+            extra_args=extra_args,
+        )
 
 
 class RuntimeLLMModel:

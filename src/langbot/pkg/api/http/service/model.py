@@ -192,7 +192,7 @@ class LLMModelsService:
             runtime_llm_model = await self.ap.model_mgr.init_temporary_runtime_llm_model(model_data)
 
         extra_args = model_data.get('extra_args', {})
-        await runtime_llm_model.provider.requester.invoke_llm(
+        await runtime_llm_model.provider.invoke_llm(
             query=None,
             model=runtime_llm_model,
             messages=[provider_message.Message(role='user', content='Hello, world! Please just reply a "Hello".')],
@@ -354,7 +354,7 @@ class EmbeddingModelsService:
         else:
             runtime_embedding_model = await self.ap.model_mgr.init_temporary_runtime_embedding_model(model_data)
 
-        await runtime_embedding_model.provider.requester.invoke_embedding(
+        await runtime_embedding_model.provider.invoke_embedding(
             model=runtime_embedding_model,
             input_text=['Hello, world!'],
             extra_args={},

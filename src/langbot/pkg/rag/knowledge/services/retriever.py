@@ -19,7 +19,7 @@ class Retriever(base_service.BaseService):
             f"Retrieving for query: '{query[:10]}' with k={k} using {embedding_model.model_entity.uuid}"
         )
 
-        query_embedding: list[float] = await embedding_model.provider.requester.invoke_embedding(
+        query_embedding: list[float] = await embedding_model.provider.invoke_embedding(
             model=embedding_model,
             input_text=[query],
             extra_args={},  # TODO: add extra args

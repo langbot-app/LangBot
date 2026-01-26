@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import typing
-import time
 
 import openai
 import openai.types.chat.chat_completion as chat_completion_module
@@ -303,7 +302,8 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
         funcs: typing.List[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> provider_message.Message:
+    ) -> tuple[provider_message.Message, dict]:
+        """Invoke LLM and return message with usage info"""
         req_messages = []  # req_messages 仅用于类内，外部同步由 query.messages 进行
         for m in messages:
             msg_dict = m.dict(exclude_none=True)
@@ -315,13 +315,6 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
                     msg_dict['content'] = '\n'.join(part['text'] for part in content)
             req_messages.append(msg_dict)
 
-        # Start timing for monitoring
-        start_time = time.time()
-        input_tokens = 0
-        output_tokens = 0
-        status = 'success'
-        error_message = None
-
         try:
             msg, usage_info = await self._closure(
                 query=query,
@@ -331,92 +324,30 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
                 extra_args=extra_args,
                 remove_think=remove_think,
             )
-
-            # Get token usage from the usage_info returned by _closure
-            if usage_info:
-                input_tokens = usage_info.get('input_tokens', 0)
-                output_tokens = usage_info.get('output_tokens', 0)
-
-            return msg
+            return msg, usage_info
         except asyncio.TimeoutError:
-            status = 'error'
-            error_message = '请求超时'
             raise errors.RequesterError('请求超时')
         except openai.BadRequestError as e:
-            status = 'error'
             error_message = str(e.message) if hasattr(e, 'message') else str(e)
             if 'context_length_exceeded' in str(e):
                 raise errors.RequesterError(f'上文过长，请重置会话: {error_message}')
             else:
                 raise errors.RequesterError(f'请求参数错误: {error_message}')
         except openai.AuthenticationError as e:
-            status = 'error'
             error_message = str(e.message) if hasattr(e, 'message') else str(e)
             raise errors.RequesterError(f'无效的 api-key: {error_message}')
         except openai.NotFoundError as e:
-            status = 'error'
             error_message = str(e.message) if hasattr(e, 'message') else str(e)
             raise errors.RequesterError(f'请求路径错误: {error_message}')
         except openai.RateLimitError as e:
-            status = 'error'
             error_message = str(e.message) if hasattr(e, 'message') else str(e)
             raise errors.RequesterError(f'请求过于频繁或余额不足: {error_message}')
         except openai.APIConnectionError as e:
-            status = 'error'
             error_message = f'连接错误: {str(e)}'
             raise errors.RequesterError(error_message)
         except openai.APIError as e:
-            status = 'error'
             error_message = str(e.message) if hasattr(e, 'message') else str(e)
             raise errors.RequesterError(f'请求错误: {error_message}')
-        except Exception as e:
-            status = 'error'
-            error_message = str(e)
-            raise
-        finally:
-            # Record LLM call monitoring data
-            duration_ms = int((time.time() - start_time) * 1000)
-
-            # Import monitoring helper
-            try:
-                from ....pipeline import monitoring_helper
-
-                # Get monitoring metadata from query variables
-                if query.variables:
-                    bot_name = query.variables.get('_monitoring_bot_name', 'Unknown')
-                    pipeline_name = query.variables.get('_monitoring_pipeline_name', 'Unknown')
-                    message_id = query.variables.get('_monitoring_message_id')
-                else:
-                    bot_name = 'Unknown'
-                    pipeline_name = 'Unknown'
-                    message_id = None
-
-                self.ap.logger.info(
-                    f'[Monitoring] Recording LLM call: status={status}, input_tokens={input_tokens}, '
-                    f'output_tokens={output_tokens}, duration_ms={duration_ms}, error={error_message}'
-                )
-
-                await monitoring_helper.MonitoringHelper.record_llm_call(
-                    ap=self.ap,
-                    query=query,
-                    bot_id=query.bot_uuid or 'unknown',
-                    bot_name=bot_name,
-                    pipeline_id=query.pipeline_uuid or 'unknown',
-                    pipeline_name=pipeline_name,
-                    model_name=model.model_entity.name,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    duration_ms=duration_ms,
-                    status=status,
-                    error_message=error_message,
-                    message_id=message_id,
-                )
-                self.ap.logger.info('[Monitoring] LLM call recorded successfully')
-            except Exception as monitor_err:
-                self.ap.logger.error(f'[Monitoring] Failed to record LLM call: {monitor_err}')
-                import traceback
-
-                self.ap.logger.error(f'[Monitoring] Traceback: {traceback.format_exc()}')
 
     async def invoke_embedding(
         self,

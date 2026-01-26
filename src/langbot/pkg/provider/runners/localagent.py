@@ -130,7 +130,7 @@ class LocalAgentRunner(runner.RequestRunner):
         if not is_stream:
             # 非流式输出，直接请求
 
-            msg = await use_llm_model.provider.requester.invoke_llm(
+            msg = await use_llm_model.provider.invoke_llm(
                 query,
                 use_llm_model,
                 req_messages,
@@ -147,7 +147,7 @@ class LocalAgentRunner(runner.RequestRunner):
             accumulated_content = ''  # 从开始累积的所有内容
             last_role = 'assistant'
             msg_sequence = 1
-            async for msg in use_llm_model.provider.requester.invoke_llm_stream(
+            async for msg in use_llm_model.provider.invoke_llm_stream(
                 query,
                 use_llm_model,
                 req_messages,
@@ -265,7 +265,7 @@ class LocalAgentRunner(runner.RequestRunner):
                 last_role = 'assistant'
                 msg_sequence = first_end_sequence
 
-                async for msg in use_llm_model.provider.requester.invoke_llm_stream(
+                async for msg in use_llm_model.provider.invoke_llm_stream(
                     query,
                     use_llm_model,
                     req_messages,
@@ -321,7 +321,7 @@ class LocalAgentRunner(runner.RequestRunner):
                 )
             else:
                 # 处理完所有调用，再次请求
-                msg = await use_llm_model.provider.requester.invoke_llm(
+                msg = await use_llm_model.provider.invoke_llm(
                     query,
                     use_llm_model,
                     req_messages,
