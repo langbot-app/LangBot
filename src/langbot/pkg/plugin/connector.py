@@ -584,3 +584,13 @@ class PluginRuntimeConnector:
         """Notify plugin about KB deletion."""
         plugin_author, plugin_name = plugin_id.split('/', 1)
         return await self.handler.rag_on_kb_delete(plugin_author, plugin_name, kb_id)
+
+    async def list_rag_engines(self) -> list[dict[str, Any]]:
+        """List all available RAG engines from plugins.
+
+        Returns a list of RAG engines with their capabilities and configuration schemas.
+        """
+        if not self.is_enable_plugin:
+            return []
+
+        return await self.handler.list_rag_engines()

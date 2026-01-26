@@ -41,6 +41,7 @@ import {
   ApiRespModelProviders,
   ApiRespModelProvider,
   ModelProvider,
+  ApiRespRAGEngines,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
@@ -405,6 +406,11 @@ export class BackendClient extends BaseHttpClient {
     query: string,
   ): Promise<ApiRespKnowledgeBaseRetrieve> {
     return this.post(`/api/v1/knowledge/bases/${uuid}/retrieve`, { query });
+  }
+
+  // ============ RAG Engines API ============
+  public getRagEngines(): Promise<ApiRespRAGEngines> {
+    return this.get('/api/v1/knowledge/engines');
   }
 
   // ============ External Knowledge Base API ============

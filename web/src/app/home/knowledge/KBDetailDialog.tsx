@@ -21,18 +21,16 @@ import {
 import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
 import { httpClient } from '@/app/infra/http/HttpClient';
-// import { KnowledgeBase } from '@/app/infra/entities/api';
+import { KnowledgeBase } from '@/app/infra/entities/api';
 import KBForm from '@/app/home/knowledge/components/kb-form/KBForm';
 import KBDoc from '@/app/home/knowledge/components/kb-docs/KBDoc';
-import KBRetrieve from '@/app/home/knowledge/components/kb-retrieve/KBRetrieve';
-import ExternalKBForm from '@/app/home/knowledge/components/external-kb-form/ExternalKBForm';
-import ExternalKBRetrieve from '@/app/home/knowledge/components/kb-retrieve/ExternalKBRetrieve';
+import KBRetrieveGeneric from '@/app/home/knowledge/components/kb-retrieve/KBRetrieveGeneric';
 
 interface KBDetailDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   kbId?: string;
-  kbType: 'builtin' | 'external';
+  kbType?: 'retriever' | 'rag_engine';
   onFormCancel: () => void;
   onKbDeleted: () => void;
   onNewKbCreated: (kbId: string) => void;
@@ -43,7 +41,7 @@ export default function KBDetailDialog({
   open,
   onOpenChange,
   kbId: propKbId,
-  kbType,
+  kbType: propKbType,
   onFormCancel,
   onKbDeleted,
   onNewKbCreated,
@@ -51,15 +49,58 @@ export default function KBDetailDialog({
 }: KBDetailDialogProps) {
   const { t } = useTranslation();
   const [kbId, setKbId] = useState<string | undefined>(propKbId);
+  const [kbType, setKbType] = useState<'retriever' | 'rag_engine' | undefined>(propKbType);
   const [activeMenu, setActiveMenu] = useState('metadata');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [kbInfo, setKbInfo] = useState<KnowledgeBase | null>(null);
 
   useEffect(() => {
     setKbId(propKbId);
+    setKbType(propKbType);
     setActiveMenu('metadata');
-  }, [propKbId, open]);
+    if (propKbId && propKbType) {
+      loadKbInfo(propKbId, propKbType);
+    } else {
+      setKbInfo(null);
+    }
+  }, [propKbId, propKbType, open]);
 
-  // Build menu based on KB type
+  async function loadKbInfo(id: string, type: 'retriever' | 'rag_engine') {
+    try {
+      if (type === 'retriever') {
+        // For retriever type, we create a compatible structure
+        const resp = await httpClient.getExternalKnowledgeBase(id);
+        const extKb = resp.base;
+        setKbInfo({
+          uuid: extKb.uuid,
+          name: extKb.name,
+          description: extKb.description,
+          embedding_model_uuid: '',
+          top_k: 5,
+          rag_engine: {
+            plugin_id: `${extKb.plugin_author}/${extKb.plugin_name}`,
+            name: extKb.retriever_name,
+            capabilities: [],
+          },
+        });
+      } else {
+        const resp = await httpClient.getKnowledgeBase(id);
+        setKbInfo(resp.base);
+      }
+    } catch (e) {
+      console.error('Failed to load KB info:', e);
+    }
+  }
+
+  // Check if this KB supports document management
+  const hasDocumentCapability = (): boolean => {
+    if (!kbInfo || !kbInfo.rag_engine) {
+      return false; // No engine info, cannot determine capability
+    }
+    return kbInfo.rag_engine.capabilities.includes('doc_ingestion');
+  };
+
+  // Build menu based on KB capabilities
   const menu = [
     {
       key: 'metadata',
@@ -74,8 +115,8 @@ export default function KBDetailDialog({
         </svg>
       ),
     },
-    // Only show documents for builtin KB
-    ...(kbType === 'builtin'
+    // Show documents only if capability is present
+    ...(hasDocumentCapability()
       ? [
           {
             key: 'documents',
@@ -108,65 +149,53 @@ export default function KBDetailDialog({
   ];
 
   const confirmDelete = () => {
-    const deletePromise =
-      kbType === 'builtin'
-        ? httpClient.deleteKnowledgeBase(kbId ?? '')
-        : httpClient.deleteExternalKnowledgeBase(kbId ?? '');
-
-    deletePromise.then(() => {
-      onKbDeleted();
-    });
+    if (kbType === 'retriever') {
+      httpClient.deleteExternalKnowledgeBase(kbId ?? '').then(() => {
+        onKbDeleted();
+      });
+    } else {
+      httpClient.deleteKnowledgeBase(kbId ?? '').then(() => {
+        onKbDeleted();
+      });
+    }
     setShowDeleteConfirm(false);
   };
 
+  // Unified retrieve function
+  const retrieveFunction = async (id: string, query: string) => {
+    if (kbType === 'retriever') {
+      return await httpClient.retrieveExternalKnowledgeBase(id, query);
+    }
+    return await httpClient.retrieveKnowledgeBase(id, query);
+  };
+
   if (!kbId) {
-    // new kb
+    // New KB creation
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="overflow-hidden p-0 !max-w-[40vw] max-h-[70vh] flex">
           <main className="flex flex-1 flex-col h-[70vh]">
             <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
-              <DialogTitle>
-                {kbType === 'builtin'
-                  ? t('knowledge.createKnowledgeBase')
-                  : t('knowledge.addExternal')}
-              </DialogTitle>
+              <DialogTitle>{t('knowledge.createKnowledgeBase')}</DialogTitle>
             </DialogHeader>
             <div className="flex-1 overflow-y-auto px-6 pb-6">
-              {kbType === 'builtin' ? (
-                <KBForm
-                  initKbId={undefined}
-                  onNewKbCreated={onNewKbCreated}
-                  onKbUpdated={onKbUpdated}
-                />
-              ) : (
-                <ExternalKBForm
-                  initKBId={undefined}
-                  onFormSubmit={() => onOpenChange(false)}
-                  onKBDeleted={() => {}}
-                  onNewKBCreated={onNewKbCreated}
-                />
-              )}
+              <KBForm
+                initKbId={undefined}
+                initKbType={undefined}
+                onNewKbCreated={onNewKbCreated}
+                onKbUpdated={onKbUpdated}
+              />
             </div>
-            {activeMenu === 'metadata' && (
-              <DialogFooter className="px-6 py-4 border-t shrink-0">
-                <div className="flex justify-end gap-2">
-                  <Button
-                    type="submit"
-                    form={kbType === 'builtin' ? 'kb-form' : 'external-kb-form'}
-                  >
-                    {t('common.save')}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={onFormCancel}
-                  >
-                    {t('common.cancel')}
-                  </Button>
-                </div>
-              </DialogFooter>
-            )}
+            <DialogFooter className="px-6 py-4 border-t shrink-0">
+              <div className="flex justify-end gap-2">
+                <Button type="submit" form="kb-form">
+                  {t('common.save')}
+                </Button>
+                <Button type="button" variant="outline" onClick={onFormCancel}>
+                  {t('common.cancel')}
+                </Button>
+              </div>
+            </DialogFooter>
           </main>
         </DialogContent>
       </Dialog>
@@ -216,33 +245,23 @@ export default function KBDetailDialog({
                 </DialogTitle>
               </DialogHeader>
               <div className="flex-1 overflow-y-auto px-6 pb-6">
-                {activeMenu === 'metadata' &&
-                  (kbType === 'builtin' ? (
-                    <KBForm
-                      initKbId={kbId}
-                      onNewKbCreated={onNewKbCreated}
-                      onKbUpdated={onKbUpdated}
-                    />
-                  ) : (
-                    <ExternalKBForm
-                      initKBId={kbId}
-                      onFormSubmit={() => onOpenChange(false)}
-                      onKBDeleted={() => {
-                        onKbDeleted();
-                        onOpenChange(false);
-                      }}
-                      onNewKBCreated={onNewKbCreated}
-                    />
-                  ))}
-                {activeMenu === 'documents' && kbType === 'builtin' && (
+                {activeMenu === 'metadata' && (
+                  <KBForm
+                    initKbId={kbId}
+                    initKbType={kbType}
+                    onNewKbCreated={onNewKbCreated}
+                    onKbUpdated={onKbUpdated}
+                  />
+                )}
+                {activeMenu === 'documents' && hasDocumentCapability() && (
                   <KBDoc kbId={kbId} />
                 )}
-                {activeMenu === 'retrieve' &&
-                  (kbType === 'builtin' ? (
-                    <KBRetrieve kbId={kbId} />
-                  ) : (
-                    <ExternalKBRetrieve kbId={kbId} />
-                  ))}
+                {activeMenu === 'retrieve' && (
+                  <KBRetrieveGeneric
+                    kbId={kbId}
+                    retrieveFunction={retrieveFunction}
+                  />
+                )}
               </div>
               {activeMenu === 'metadata' && (
                 <DialogFooter className="px-6 py-4 border-t shrink-0">
@@ -254,12 +273,7 @@ export default function KBDetailDialog({
                     >
                       {t('common.delete')}
                     </Button>
-                    <Button
-                      type="submit"
-                      form={
-                        kbType === 'builtin' ? 'kb-form' : 'external-kb-form'
-                      }
-                    >
+                    <Button type="submit" form="kb-form">
                       {t('common.save')}
                     </Button>
                     <Button
@@ -277,7 +291,7 @@ export default function KBDetailDialog({
         </DialogContent>
       </Dialog>
 
-      {/* 删除确认对话框 */}
+      {/* Delete confirmation dialog */}
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <DialogContent>
           <DialogHeader>

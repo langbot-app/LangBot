@@ -5,137 +5,108 @@ import styles from './knowledgeBase.module.css';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
 import { KnowledgeBaseVO } from '@/app/home/knowledge/components/kb-card/KBCardVO';
-import { ExternalKBCardVO } from '@/app/home/knowledge/components/external-kb-card/ExternalKBCardVO';
 import KBCard from '@/app/home/knowledge/components/kb-card/KBCard';
-import ExternalKBCard from '@/app/home/knowledge/components/external-kb-card/ExternalKBCard';
 import KBDetailDialog from '@/app/home/knowledge/KBDetailDialog';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import {
-  KnowledgeBase,
-  ExternalKnowledgeBase,
-  ApiRespPluginSystemStatus,
-} from '@/app/infra/entities/api';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { KnowledgeBase, ExternalKnowledgeBase } from '@/app/infra/entities/api';
 
 export default function KnowledgePage() {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState('builtin');
   const [knowledgeBaseList, setKnowledgeBaseList] = useState<KnowledgeBaseVO[]>(
     [],
   );
-  const [externalKBList, setExternalKBList] = useState<ExternalKBCardVO[]>([]);
   const [selectedKbId, setSelectedKbId] = useState<string>('');
-  const [selectedKbType, setSelectedKbType] = useState<'builtin' | 'external'>(
-    'builtin',
-  );
+  const [selectedKbType, setSelectedKbType] = useState<'retriever' | 'rag_engine' | undefined>(undefined);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-  const [pluginSystemStatus, setPluginSystemStatus] =
-    useState<ApiRespPluginSystemStatus | null>(null);
 
   useEffect(() => {
     getKnowledgeBaseList();
-    getExternalKBList();
-    fetchPluginSystemStatus();
   }, []);
 
-  async function fetchPluginSystemStatus() {
-    try {
-      const status = await httpClient.getPluginSystemStatus();
-      setPluginSystemStatus(status);
-    } catch (error) {
-      console.error('Failed to fetch plugin system status:', error);
-    }
-  }
-
   async function getKnowledgeBaseList() {
-    const resp = await httpClient.getKnowledgeBases();
-    setKnowledgeBaseList(
-      resp.bases.map((kb: KnowledgeBase) => {
-        const currentTime = new Date();
-        const lastUpdatedTimeAgo = Math.floor(
-          (currentTime.getTime() -
-            new Date(kb.updated_at ?? currentTime.getTime()).getTime()) /
-            1000 /
-            60 /
-            60 /
-            24,
-        );
+    // Load both types of knowledge bases
+    const [ragEngineResp, retrieverResp] = await Promise.all([
+      httpClient.getKnowledgeBases(),
+      httpClient.getExternalKnowledgeBases(),
+    ]);
 
-        const lastUpdatedTimeAgoText =
-          lastUpdatedTimeAgo > 0
-            ? ` ${lastUpdatedTimeAgo} ${t('knowledge.daysAgo')}`
-            : t('knowledge.today');
+    const currentTime = new Date();
 
-        return new KnowledgeBaseVO({
-          id: kb.uuid || '',
-          name: kb.name,
-          description: kb.description,
-          embeddingModelUUID: kb.embedding_model_uuid,
-          top_k: kb.top_k ?? 5,
-          lastUpdatedTimeAgo: lastUpdatedTimeAgoText,
-        });
-      }),
-    );
-  }
-
-  async function getExternalKBList() {
-    try {
-      const resp = await httpClient.getExternalKnowledgeBases();
-      setExternalKBList(
-        resp.bases.map((kb: ExternalKnowledgeBase) => {
-          const currentTime = new Date();
-          const lastUpdatedTimeAgo = Math.floor(
-            (currentTime.getTime() -
-              new Date(kb.created_at ?? currentTime.getTime()).getTime()) /
-              1000 /
-              60 /
-              60 /
-              24,
-          );
-
-          const lastUpdatedTimeAgoText =
-            lastUpdatedTimeAgo > 0
-              ? ` ${lastUpdatedTimeAgo} ${t('knowledge.daysAgo')}`
-              : t('knowledge.today');
-
-          return new ExternalKBCardVO({
-            id: kb.uuid || '',
-            name: kb.name,
-            description: kb.description,
-            retrieverName: `${kb.plugin_author}/${kb.plugin_name}/${kb.retriever_name}`,
-            retrieverConfig: kb.retriever_config || {},
-            lastUpdatedTimeAgo: lastUpdatedTimeAgoText,
-            pluginAuthor: kb.plugin_author,
-            pluginName: kb.plugin_name,
-          });
-        }),
+    // Convert rag_engine type KBs
+    const ragEngineKBs = ragEngineResp.bases.map((kb: KnowledgeBase) => {
+      const lastUpdatedTimeAgo = Math.floor(
+        (currentTime.getTime() -
+          new Date(kb.updated_at ?? currentTime.getTime()).getTime()) /
+          1000 /
+          60 /
+          60 /
+          24,
       );
-    } catch (error) {
-      console.error('Failed to load external knowledge bases:', error);
-    }
+
+      const lastUpdatedTimeAgoText =
+        lastUpdatedTimeAgo > 0
+          ? ` ${lastUpdatedTimeAgo} ${t('knowledge.daysAgo')}`
+          : t('knowledge.today');
+
+      return new KnowledgeBaseVO({
+        id: kb.uuid || '',
+        name: kb.name,
+        description: kb.description,
+        embeddingModelUUID: kb.embedding_model_uuid,
+        top_k: kb.top_k ?? 5,
+        lastUpdatedTimeAgo: lastUpdatedTimeAgoText,
+        ragEngine: kb.rag_engine,
+        ragEnginePluginId: kb.rag_engine_plugin_id,
+        type: 'rag_engine',
+      });
+    });
+
+    // Convert retriever type (external) KBs
+    const retrieverKBs = retrieverResp.bases.map((kb: ExternalKnowledgeBase) => {
+      const lastUpdatedTimeAgo = Math.floor(
+        (currentTime.getTime() -
+          new Date(kb.created_at ?? currentTime.getTime()).getTime()) /
+          1000 /
+          60 /
+          60 /
+          24,
+      );
+
+      const lastUpdatedTimeAgoText =
+        lastUpdatedTimeAgo > 0
+          ? ` ${lastUpdatedTimeAgo} ${t('knowledge.daysAgo')}`
+          : t('knowledge.today');
+
+      return new KnowledgeBaseVO({
+        id: kb.uuid || '',
+        name: kb.name,
+        description: kb.description,
+        embeddingModelUUID: '',
+        top_k: 5,
+        lastUpdatedTimeAgo: lastUpdatedTimeAgoText,
+        ragEngine: {
+          plugin_id: `${kb.plugin_author}/${kb.plugin_name}`,
+          name: kb.retriever_name,
+          capabilities: [],
+        },
+        ragEnginePluginId: `${kb.plugin_author}/${kb.plugin_name}`,
+        type: 'retriever',
+      });
+    });
+
+    // Combine both lists
+    setKnowledgeBaseList([...ragEngineKBs, ...retrieverKBs]);
   }
 
-  const handleKBCardClick = (kbId: string) => {
-    setSelectedKbId(kbId);
-    setSelectedKbType('builtin');
+  const handleKBCardClick = (kb: KnowledgeBaseVO) => {
+    setSelectedKbId(kb.id);
+    setSelectedKbType(kb.type);
     setDetailDialogOpen(true);
   };
 
   const handleCreateKBClick = () => {
     setSelectedKbId('');
-    setSelectedKbType('builtin');
-    setDetailDialogOpen(true);
-  };
-
-  const handleExternalKBCardClick = (kbId: string) => {
-    setSelectedKbId(kbId);
-    setSelectedKbType('external');
-    setDetailDialogOpen(true);
-  };
-
-  const handleCreateExternalKB = () => {
-    setSelectedKbId('');
-    setSelectedKbType('external');
+    setSelectedKbType(undefined);
     setDetailDialogOpen(true);
   };
 
@@ -144,30 +115,18 @@ export default function KnowledgePage() {
   };
 
   const handleKbDeleted = () => {
-    if (selectedKbType === 'builtin') {
-      getKnowledgeBaseList();
-    } else {
-      getExternalKBList();
-    }
+    getKnowledgeBaseList();
     setDetailDialogOpen(false);
   };
 
   const handleNewKbCreated = (newKbId: string) => {
-    if (selectedKbType === 'builtin') {
-      getKnowledgeBaseList();
-    } else {
-      getExternalKBList();
-    }
+    getKnowledgeBaseList();
     setSelectedKbId(newKbId);
     setDetailDialogOpen(true);
   };
 
   const handleKbUpdated = () => {
-    if (selectedKbType === 'builtin') {
-      getKnowledgeBaseList();
-    } else {
-      getExternalKBList();
-    }
+    getKnowledgeBaseList();
   };
 
   return (
@@ -183,66 +142,22 @@ export default function KnowledgePage() {
         onKbUpdated={handleKbUpdated}
       />
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <div className="flex flex-row justify-between items-center px-[0.8rem]">
-          <TabsList className="shadow-md py-5 bg-[#f0f0f0] dark:bg-[#2a2a2e]">
-            <TabsTrigger value="builtin" className="px-6 py-4 cursor-pointer">
-              {t('knowledge.builtIn')}
-            </TabsTrigger>
-            {/* Only show external tab if plugin system is enabled and connected */}
-            {pluginSystemStatus?.is_enable &&
-              pluginSystemStatus?.is_connected && (
-                <TabsTrigger
-                  value="external"
-                  className="px-6 py-4 cursor-pointer"
-                >
-                  {t('knowledge.external')}
-                </TabsTrigger>
-              )}
-          </TabsList>
-        </div>
+      <div className={styles.knowledgeListContainer}>
+        <CreateCardComponent
+          width={'100%'}
+          height={'10rem'}
+          plusSize={'90px'}
+          onClick={handleCreateKBClick}
+        />
 
-        <TabsContent value="builtin">
-          <div className={styles.knowledgeListContainer}>
-            <CreateCardComponent
-              width={'100%'}
-              height={'10rem'}
-              plusSize={'90px'}
-              onClick={handleCreateKBClick}
-            />
-
-            {knowledgeBaseList.map((kb) => {
-              return (
-                <div key={kb.id} onClick={() => handleKBCardClick(kb.id)}>
-                  <KBCard kbCardVO={kb} />
-                </div>
-              );
-            })}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="external">
-          <div className={styles.knowledgeListContainer}>
-            <CreateCardComponent
-              width={'100%'}
-              height={'10rem'}
-              plusSize={'90px'}
-              onClick={handleCreateExternalKB}
-            />
-
-            {externalKBList.map((kb) => {
-              return (
-                <div
-                  key={kb.id}
-                  onClick={() => handleExternalKBCardClick(kb.id)}
-                >
-                  <ExternalKBCard kbCardVO={kb} />
-                </div>
-              );
-            })}
-          </div>
-        </TabsContent>
-      </Tabs>
+        {knowledgeBaseList.map((kb) => {
+          return (
+            <div key={kb.id} onClick={() => handleKBCardClick(kb)}>
+              <KBCard kbCardVO={kb} />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

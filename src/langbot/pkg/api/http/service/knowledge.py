@@ -15,14 +15,59 @@ class KnowledgeService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
+    async def _enrich_kb_with_engine_info(self, kb_dict: dict) -> dict:
+        """Enrich knowledge base dict with RAG engine information."""
+        plugin_id = kb_dict.get("rag_engine_plugin_id")
+
+        if plugin_id:
+            # Try to get engine info from plugin
+            try:
+                engines = await self.list_rag_engines()
+                engine_info = next(
+                    (e for e in engines if e["plugin_id"] == plugin_id),
+                    None
+                )
+                if engine_info:
+                    kb_dict["rag_engine"] = {
+                        "plugin_id": plugin_id,
+                        "name": engine_info.get("name", plugin_id),
+                        "capabilities": engine_info.get("capabilities", []),
+                    }
+                else:
+                    # Plugin not loaded, use basic info
+                    kb_dict["rag_engine"] = {
+                        "plugin_id": plugin_id,
+                        "name": plugin_id,
+                        "capabilities": ["doc_ingestion"],
+                    }
+            except Exception:
+                kb_dict["rag_engine"] = {
+                    "plugin_id": plugin_id,
+                    "name": plugin_id,
+                    "capabilities": ["doc_ingestion"],
+                }
+        else:
+            # Legacy internal KB without plugin
+            kb_dict["rag_engine"] = {
+                "plugin_id": None,
+                "name": "Internal (Legacy)",
+                "capabilities": ["doc_ingestion"],
+            }
+
+        return kb_dict
+
     async def get_knowledge_bases(self) -> list[dict]:
         """获取所有知识库"""
         result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_rag.KnowledgeBase))
         knowledge_bases = result.all()
-        return [
-            self.ap.persistence_mgr.serialize_model(persistence_rag.KnowledgeBase, knowledge_base)
-            for knowledge_base in knowledge_bases
-        ]
+
+        kb_list = []
+        for knowledge_base in knowledge_bases:
+            kb_dict = self.ap.persistence_mgr.serialize_model(persistence_rag.KnowledgeBase, knowledge_base)
+            kb_dict = await self._enrich_kb_with_engine_info(kb_dict)
+            kb_list.append(kb_dict)
+
+        return kb_list
 
     async def get_knowledge_base(self, kb_uuid: str) -> dict | None:
         """获取知识库"""
@@ -32,7 +77,10 @@ class KnowledgeService:
         knowledge_base = result.first()
         if knowledge_base is None:
             return None
-        return self.ap.persistence_mgr.serialize_model(persistence_rag.KnowledgeBase, knowledge_base)
+
+        kb_dict = self.ap.persistence_mgr.serialize_model(persistence_rag.KnowledgeBase, knowledge_base)
+        kb_dict = await self._enrich_kb_with_engine_info(kb_dict)
+        return kb_dict
 
     async def create_knowledge_base(self, kb_data: dict) -> str:
         """创建知识库"""
@@ -48,26 +96,31 @@ class KnowledgeService:
             )
             return kb.uuid
 
-        kb_data['uuid'] = str(uuid.uuid4())
-        await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_rag.KnowledgeBase).values(kb_data))
+        # Filter to only valid database fields for internal KB
+        valid_fields = {'uuid', 'name', 'description', 'embedding_model_uuid', 'top_k', 'rag_engine_plugin_id', 'creation_settings'}
+        filtered_data = {k: v for k, v in kb_data.items() if k in valid_fields}
 
-        kb = await self.get_knowledge_base(kb_data['uuid'])
+        filtered_data['uuid'] = str(uuid.uuid4())
+        await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_rag.KnowledgeBase).values(filtered_data))
+
+        kb = await self.get_knowledge_base(filtered_data['uuid'])
 
         await self.ap.rag_mgr.load_knowledge_base(kb)
 
-        return kb_data['uuid']
+        return filtered_data['uuid']
 
     async def update_knowledge_base(self, kb_uuid: str, kb_data: dict) -> None:
         """更新知识库"""
-        if 'uuid' in kb_data:
-            del kb_data['uuid']
+        # Filter to only valid database fields
+        valid_fields = {'name', 'description', 'top_k', 'rag_engine_plugin_id', 'creation_settings'}
+        filtered_data = {k: v for k, v in kb_data.items() if k in valid_fields}
 
-        if 'embedding_model_uuid' in kb_data:
-            del kb_data['embedding_model_uuid']
+        if not filtered_data:
+            return
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_rag.KnowledgeBase)
-            .values(kb_data)
+            .values(filtered_data)
             .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
         )
         await self.ap.rag_mgr.remove_knowledge_base_from_runtime(kb_uuid)
@@ -161,3 +214,66 @@ class KnowledgeService:
             await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.delete(persistence_rag.File).where(persistence_rag.File.uuid == file.uuid)
             )
+
+    # ================= RAG Engine Discovery =================
+
+    async def list_rag_engines(self) -> list[dict]:
+        """List all available knowledge base engines from plugins.
+
+        Returns both KnowledgeRetriever (external) and RAGEngine types.
+        """
+        engines = []
+
+        if not self.ap.plugin_connector.is_enable_plugin:
+            return engines
+
+        # 1. Get KnowledgeRetriever plugins (external knowledge bases like dify)
+        try:
+            retrievers = await self.ap.plugin_connector.list_knowledge_retrievers()
+            for retriever in retrievers:
+                # Get config from manifest.manifest.spec.config
+                manifest_data = retriever.get('manifest', {})
+                raw_manifest = manifest_data.get('manifest', {})
+                spec = raw_manifest.get('spec', {})
+                config_items = spec.get('config', [])
+
+                engines.append({
+                    'plugin_id': f"{retriever['plugin_author']}/{retriever['plugin_name']}",
+                    'name': retriever.get('retriever_name', 'Unknown'),
+                    'description': retriever.get('retriever_description'),
+                    'type': 'retriever',  # External retriever type
+                    'capabilities': [],  # No doc_ingestion
+                    'creation_schema': config_items,  # Use config items as creation schema
+                    'retrieval_schema': None,
+                    # Keep original info for creating external KB
+                    'component_name': retriever.get('retriever_name', ''),
+                })
+        except Exception as e:
+            self.ap.logger.warning(f"Failed to list knowledge retrievers: {e}")
+
+        # 2. Get RAGEngine plugins (new type with doc_ingestion support)
+        try:
+            rag_engines = await self.ap.plugin_connector.list_rag_engines()
+            for engine in rag_engines:
+                engine['type'] = 'rag_engine'  # Mark as RAG engine type
+                engines.append(engine)
+        except Exception as e:
+            self.ap.logger.warning(f"Failed to list RAG engines from plugins: {e}")
+
+        return engines
+
+    async def get_engine_creation_schema(self, plugin_id: str) -> dict:
+        """Get creation settings schema for a specific RAG engine."""
+        try:
+            return await self.ap.plugin_connector.get_rag_creation_schema(plugin_id)
+        except Exception as e:
+            self.ap.logger.warning(f"Failed to get creation schema for {plugin_id}: {e}")
+            return {}
+
+    async def get_engine_retrieval_schema(self, plugin_id: str) -> dict:
+        """Get retrieval settings schema for a specific RAG engine."""
+        try:
+            return await self.ap.plugin_connector.get_rag_retrieval_schema(plugin_id)
+        except Exception as e:
+            self.ap.logger.warning(f"Failed to get retrieval schema for {plugin_id}: {e}")
+            return {}

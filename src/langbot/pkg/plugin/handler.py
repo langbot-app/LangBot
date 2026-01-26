@@ -985,3 +985,12 @@ class RuntimeConnectionHandler(handler.Handler):
             },
             timeout=10
         )
+
+    async def list_rag_engines(self) -> list[dict[str, Any]]:
+        """List all available RAG engines from plugins."""
+        result = await self.call_action(
+            LangBotToRuntimeAction.LIST_RAG_ENGINES,
+            {},
+            timeout=10
+        )
+        return result.get("engines", [])

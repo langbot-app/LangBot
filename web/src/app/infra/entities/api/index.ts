@@ -168,6 +168,48 @@ export interface KnowledgeBase {
   top_k: number;
   created_at?: string;
   updated_at?: string;
+  // New unified fields
+  rag_engine_plugin_id?: string;
+  creation_settings?: Record<string, unknown>;
+  rag_engine?: RAGEngineInfo;
+}
+
+// RAG Engine types
+export interface RAGEngineInfo {
+  plugin_id: string | null;
+  name: string;
+  capabilities: string[];
+}
+
+export interface RAGEngine {
+  plugin_id: string;
+  name: string;
+  description?: I18nObject;
+  type: 'retriever' | 'rag_engine'; // retriever = external KB, rag_engine = new RAG with doc support
+  capabilities: string[];
+  creation_schema?: JSONSchema;
+  retrieval_schema?: JSONSchema;
+  // For retriever type (external KB)
+  component_name?: string;
+}
+
+export interface JSONSchema {
+  type: string;
+  properties?: Record<string, JSONSchemaProperty>;
+  required?: string[];
+}
+
+export interface JSONSchemaProperty {
+  type: string;
+  default?: unknown;
+  description?: string;
+  enum?: unknown[];
+  minimum?: number;
+  maximum?: number;
+}
+
+export interface ApiRespRAGEngines {
+  engines: RAGEngine[];
 }
 
 export interface ExternalKnowledgeBase {
