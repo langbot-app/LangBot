@@ -228,6 +228,7 @@ function HomeSidebarContent({
       );
       if (routeSelectChild) {
         setSelectedChild(routeSelectChild);
+        onSelectedChangeAction(routeSelectChild);
       }
     }
   }

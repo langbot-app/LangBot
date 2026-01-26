@@ -760,7 +760,7 @@ const zhHant = {
     spaceEmailMismatch: 'Space登入帳號電子郵件與本實例帳號電子郵件不匹配',
   },
   monitoring: {
-    title: '監控',
+    title: '日誌監控',
     description: '監控機器人活動、LLM調用和系統效能',
     overview: '概覽',
     totalMessages: '總訊息數',
@@ -848,7 +848,7 @@ const zhHant = {
     queryVariables: {
       title: '查詢變數',
     },
-    viewMonitoring: '查看監控',
+    viewMonitoring: '查看日誌監控',
     refreshData: '重新整理資料',
     exportData: '匯出資料',
   },
