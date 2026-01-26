@@ -123,12 +123,16 @@ export default function TrafficChart({
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-        <div className="h-[200px] flex items-center justify-center">
-          <div className="animate-pulse flex flex-col items-center gap-2">
-            <div className="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded"></div>
-            <div className="h-[160px] w-full bg-gray-100 dark:bg-gray-800 rounded"></div>
+      <div className="bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="h-5 w-32 bg-gray-200 dark:bg-gray-700 animate-pulse rounded"></div>
+          <div className="flex gap-4">
+            <div className="h-4 w-24 bg-gray-200 dark:bg-gray-700 animate-pulse rounded"></div>
+            <div className="h-4 w-24 bg-gray-200 dark:bg-gray-700 animate-pulse rounded"></div>
           </div>
+        </div>
+        <div className="h-[300px] flex items-center justify-center">
+          <div className="animate-pulse w-full h-full bg-gray-100 dark:bg-gray-800 rounded"></div>
         </div>
       </div>
     );
@@ -136,36 +140,49 @@ export default function TrafficChart({
 
   if (chartData.length === 0) {
     return (
-      <div className="bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">
+      <div className="bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
+        <h3 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-4">
           {t('monitoring.trafficChart.title')}
         </h3>
-        <div className="h-[200px] flex items-center justify-center text-gray-400 dark:text-gray-500">
-          {t('monitoring.trafficChart.noData')}
+        <div className="h-[300px] flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
+          <svg
+            className="w-16 h-16 mb-4 text-gray-300 dark:text-gray-600"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+            />
+          </svg>
+          <p className="text-sm font-medium">{t('monitoring.trafficChart.noData')}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">
+    <div className="bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
+      <h3 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-6">
         {t('monitoring.trafficChart.title')}
       </h3>
-      <div className="h-[200px]">
+      <div className="h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
             data={chartData}
-            margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+            margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
           >
             <defs>
               <linearGradient id="colorMessages" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
+                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.05} />
               </linearGradient>
               <linearGradient id="colorLLMCalls" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
+                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.05} />
               </linearGradient>
             </defs>
             <CartesianGrid
@@ -176,50 +193,60 @@ export default function TrafficChart({
             />
             <XAxis
               dataKey="time"
-              tick={{ fontSize: 11, fill: '#9ca3af' }}
+              tick={{ fontSize: 12, fill: '#9ca3af' }}
               tickLine={false}
-              axisLine={false}
+              axisLine={{ stroke: '#e5e7eb' }}
               dy={10}
             />
             <YAxis
-              tick={{ fontSize: 11, fill: '#9ca3af' }}
+              tick={{ fontSize: 12, fill: '#9ca3af' }}
               tickLine={false}
-              axisLine={false}
-              width={30}
+              axisLine={{ stroke: '#e5e7eb' }}
+              width={40}
               allowDecimals={false}
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                backgroundColor: 'rgba(255, 255, 255, 0.98)',
                 border: '1px solid #e5e7eb',
-                borderRadius: '8px',
-                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-                fontSize: '12px',
+                borderRadius: '12px',
+                boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
+                fontSize: '13px',
+                padding: '12px',
               }}
-              labelStyle={{ fontWeight: 600, marginBottom: '4px' }}
+              labelStyle={{ fontWeight: 600, marginBottom: '8px', color: '#374151' }}
+              itemStyle={{ padding: '4px 0' }}
             />
             <Legend
-              wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}
+              wrapperStyle={{
+                fontSize: '13px',
+                paddingTop: '16px',
+                fontWeight: 500,
+              }}
               iconType="circle"
-              iconSize={8}
+              iconSize={10}
             />
             <Area
               type="monotone"
               dataKey="messages"
               name={t('monitoring.trafficChart.messages')}
               stroke="#3b82f6"
-              strokeWidth={2}
+              strokeWidth={2.5}
               fillOpacity={1}
               fill="url(#colorMessages)"
+              dot={false}
+              activeDot={{ r: 6, strokeWidth: 2 }}
             />
             <Area
               type="monotone"
               dataKey="llmCalls"
               name={t('monitoring.trafficChart.llmCalls')}
               stroke="#8b5cf6"
-              strokeWidth={2}
+              strokeWidth={2.5}
               fillOpacity={1}
               fill="url(#colorLLMCalls)"
+              dot={false}
+              activeDot={{ r: 6, strokeWidth: 2 }}
             />
           </AreaChart>
         </ResponsiveContainer>
