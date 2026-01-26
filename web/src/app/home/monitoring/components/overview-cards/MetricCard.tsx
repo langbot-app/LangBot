@@ -29,7 +29,9 @@ export default function MetricCard({
             {title}
           </CardTitle>
           <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 flex items-center justify-center">
-            <div className="h-5 w-5 text-blue-600 dark:text-blue-400">{icon}</div>
+            <div className="h-5 w-5 text-blue-600 dark:text-blue-400">
+              {icon}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -63,11 +65,7 @@ export default function MetricCard({
                   : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'
               }`}
             >
-              <svg
-                className="w-3 h-3"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                 {trend.direction === 'up' ? (
                   <path
                     fillRule="evenodd"

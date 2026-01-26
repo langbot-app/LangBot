@@ -158,7 +158,9 @@ export default function TrafficChart({
               d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
             />
           </svg>
-          <p className="text-sm font-medium">{t('monitoring.trafficChart.noData')}</p>
+          <p className="text-sm font-medium">
+            {t('monitoring.trafficChart.noData')}
+          </p>
         </div>
       </div>
     );
@@ -210,11 +212,16 @@ export default function TrafficChart({
                 backgroundColor: 'rgba(255, 255, 255, 0.98)',
                 border: '1px solid #e5e7eb',
                 borderRadius: '12px',
-                boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
+                boxShadow:
+                  '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
                 fontSize: '13px',
                 padding: '12px',
               }}
-              labelStyle={{ fontWeight: 600, marginBottom: '8px', color: '#374151' }}
+              labelStyle={{
+                fontWeight: 600,
+                marginBottom: '8px',
+                color: '#374151',
+              }}
               itemStyle={{ padding: '4px 0' }}
             />
             <Legend
