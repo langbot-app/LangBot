@@ -4,6 +4,7 @@ export interface IPipelineCardVO {
   description: string;
   lastUpdatedTimeAgo: string;
   isDefault: boolean;
+  emoji?: string;
 }
 
 export class PipelineCardVO implements IPipelineCardVO {
@@ -12,6 +13,7 @@ export class PipelineCardVO implements IPipelineCardVO {
   name: string;
   lastUpdatedTimeAgo: string;
   isDefault: boolean;
+  emoji?: string;
 
   constructor(props: IPipelineCardVO) {
     this.id = props.id;
@@ -19,5 +21,6 @@ export class PipelineCardVO implements IPipelineCardVO {
     this.description = props.description;
     this.lastUpdatedTimeAgo = props.lastUpdatedTimeAgo;
     this.isDefault = props.isDefault;
+    this.emoji = props.emoji;
   }
 }

@@ -37,6 +37,7 @@ const zhHans = {
     enable: '是否启用',
     name: '名称',
     description: '描述',
+    icon: '图标',
     close: '关闭',
     deleteSuccess: '删除成功',
     deleteError: '删除失败：',

@@ -15,6 +15,7 @@ import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { ExternalKnowledgeBase } from '@/app/infra/entities/api';
+import EmojiPicker from '@/components/ui/emoji-picker';
 import {
   Dialog,
   DialogContent,
@@ -54,6 +55,7 @@ const getFormSchema = (t: (key: string) => string) =>
   z.object({
     name: z.string().min(1, { message: t('knowledge.nameRequired') }),
     description: z.string().optional(),
+    emoji: z.string().optional(),
     plugin_author: z.string().min(1, { message: 'Please select a retriever' }),
     plugin_name: z.string().min(1, { message: 'Please select a retriever' }),
     retriever_name: z.string().min(1, { message: 'Please select a retriever' }),
@@ -101,6 +103,7 @@ export default function ExternalKBForm({
     defaultValues: {
       name: '',
       description: '',
+      emoji: '🔗',
       plugin_author: '',
       plugin_name: '',
       retriever_name: '',
@@ -140,6 +143,7 @@ export default function ExternalKBForm({
         // Set form values
         form.setValue('name', kbConfig.name);
         form.setValue('description', kbConfig.description || '');
+        form.setValue('emoji', kbConfig.emoji || '🔗');
         form.setValue('plugin_author', kbConfig.plugin_author);
         form.setValue('plugin_name', kbConfig.plugin_name);
         form.setValue('retriever_name', kbConfig.retriever_name);
@@ -207,6 +211,7 @@ export default function ExternalKBForm({
     return {
       name: kb.name,
       description: kb.description,
+      emoji: kb.emoji || '🔗',
       plugin_author: kb.plugin_author,
       plugin_name: kb.plugin_name,
       retriever_name: kb.retriever_name,
@@ -276,6 +281,7 @@ export default function ExternalKBForm({
     const formData: ExternalKnowledgeBase = {
       name: form.getValues().name,
       description: form.getValues().description || '',
+      emoji: form.getValues().emoji,
       plugin_author: form.getValues().plugin_author,
       plugin_name: form.getValues().plugin_name,
       retriever_name: form.getValues().retriever_name,
@@ -390,23 +396,41 @@ export default function ExternalKBForm({
           className="space-y-8"
         >
           <div className="space-y-4">
-            {/* KB Name */}
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    {t('knowledge.kbName')}
-                    <span className="text-red-500">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {/* KB Name and Emoji in same row */}
+            <div className="flex gap-4 items-start">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem className="flex-1">
+                    <FormLabel>
+                      {t('knowledge.kbName')}
+                      <span className="text-red-500">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="emoji"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('common.icon')}</FormLabel>
+                    <FormControl>
+                      <EmojiPicker
+                        value={field.value}
+                        onChange={field.onChange}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             {/* KB Description */}
             <FormField

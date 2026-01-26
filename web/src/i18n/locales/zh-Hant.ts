@@ -37,6 +37,7 @@ const zhHant = {
     enable: '是否啟用',
     name: '名稱',
     description: '描述',
+    icon: '圖標',
     close: '關閉',
     deleteSuccess: '刪除成功',
     deleteError: '刪除失敗：',
