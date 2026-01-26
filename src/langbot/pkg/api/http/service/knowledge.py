@@ -131,14 +131,16 @@ class KnowledgeService:
 
     async def store_file(self, kb_uuid: str, file_id: str) -> int:
         """存储文件"""
-        # await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_rag.File).values(kb_id=kb_uuid, file_id=file_id))
-        # await self.ap.rag_mgr.store_file(file_id)
         runtime_kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
         if runtime_kb is None:
             raise Exception('Knowledge base not found')
-        # Only internal KBs support file storage
-        if runtime_kb.get_type() != 'internal':
-            raise Exception('Only internal knowledge bases support file storage')
+
+        # Check if the RAG engine supports document ingestion
+        kb_info = await self.get_knowledge_base(kb_uuid)
+        capabilities = kb_info.get('rag_engine', {}).get('capabilities', [])
+        if 'doc_ingestion' not in capabilities:
+            raise Exception('This knowledge base does not support document upload')
+
         result = await runtime_kb.store_file(file_id)
 
         # Update the KB's updated_at timestamp
@@ -181,9 +183,13 @@ class KnowledgeService:
         runtime_kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
         if runtime_kb is None:
             raise Exception('Knowledge base not found')
-        # Only internal KBs support file deletion
-        if runtime_kb.get_type() != 'internal':
-            raise Exception('Only internal knowledge bases support file deletion')
+
+        # Check if the RAG engine supports document ingestion
+        kb_info = await self.get_knowledge_base(kb_uuid)
+        capabilities = kb_info.get('rag_engine', {}).get('capabilities', [])
+        if 'doc_ingestion' not in capabilities:
+            raise Exception('This knowledge base does not support document deletion')
+
         await runtime_kb.delete_file(file_id)
 
         # Update the KB's updated_at timestamp
@@ -218,45 +224,16 @@ class KnowledgeService:
     # ================= RAG Engine Discovery =================
 
     async def list_rag_engines(self) -> list[dict]:
-        """List all available knowledge base engines from plugins.
-
-        Returns both KnowledgeRetriever (external) and RAGEngine types.
-        """
+        """List all available RAG engines from plugins."""
         engines = []
 
         if not self.ap.plugin_connector.is_enable_plugin:
             return engines
 
-        # 1. Get KnowledgeRetriever plugins (external knowledge bases like dify)
-        try:
-            retrievers = await self.ap.plugin_connector.list_knowledge_retrievers()
-            for retriever in retrievers:
-                # Get config from manifest.manifest.spec.config
-                manifest_data = retriever.get('manifest', {})
-                raw_manifest = manifest_data.get('manifest', {})
-                spec = raw_manifest.get('spec', {})
-                config_items = spec.get('config', [])
-
-                engines.append({
-                    'plugin_id': f"{retriever['plugin_author']}/{retriever['plugin_name']}",
-                    'name': retriever.get('retriever_name', 'Unknown'),
-                    'description': retriever.get('retriever_description'),
-                    'type': 'retriever',  # External retriever type
-                    'capabilities': [],  # No doc_ingestion
-                    'creation_schema': config_items,  # Use config items as creation schema
-                    'retrieval_schema': None,
-                    # Keep original info for creating external KB
-                    'component_name': retriever.get('retriever_name', ''),
-                })
-        except Exception as e:
-            self.ap.logger.warning(f"Failed to list knowledge retrievers: {e}")
-
-        # 2. Get RAGEngine plugins (new type with doc_ingestion support)
+        # Get RAGEngine plugins
         try:
             rag_engines = await self.ap.plugin_connector.list_rag_engines()
-            for engine in rag_engines:
-                engine['type'] = 'rag_engine'  # Mark as RAG engine type
-                engines.append(engine)
+            engines.extend(rag_engines)
         except Exception as e:
             self.ap.logger.warning(f"Failed to list RAG engines from plugins: {e}")
 

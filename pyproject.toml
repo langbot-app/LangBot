@@ -64,7 +64,7 @@ dependencies = [
     "chromadb>=0.4.24",
     "qdrant-client (>=1.15.1,<2.0.0)",
     "pyseekdb>=0.1.0",
-    "langbot-plugin==0.2.4",
+    "langbot-plugin @ file:///home/yhh/workspace/langbot-plugin-sdk",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "tboxsdk>=0.0.10",
