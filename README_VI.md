@@ -84,11 +84,12 @@ Nhấp vào các nút Star và Watch ở góc trên bên phải của kho lưu t
 <img width="500" src="https://docs.langbot.app/ui/bot-page-en-rounded.png" />
 
 
-- 💬 Chat với LLM / Agent: Hỗ trợ nhiều LLM, thích ứng với chat nhóm và chat riêng tư; Hỗ trợ các cuộc trò chuyện nhiều vòng, gọi công cụ, khả năng đa phương thức và đầu ra streaming. Triển khai RAG (cơ sở kiến thức) tích hợp sẵn và tích hợp sâu với [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io) v.v. LLMOps platforms.
+- 💬 Chat với LLM / Agent: Hỗ trợ nhiều LLM, thích ứng với chat nhóm và chat riêng tư; Hỗ trợ các cuộc trò chuyện nhiều vòng, gọi công cụ, khả năng đa phương thức và đầu ra streaming. Triển khai RAG (cơ sở kiến thức) tích hợp sẵn và tích hợp sâu với [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io), [Langflow](https://langflow.org) v.v. LLMOps platforms.
 - 🤖 Hỗ trợ Đa nền tảng: Hiện hỗ trợ QQ, QQ Channel, WeCom, WeChat cá nhân, Lark, DingTalk, Discord, Telegram, KOOK, Slack, LINE, v.v.
-- 🛠️ Độ ổn định Cao, Tính năng Phong phú: Kiểm soát truy cập gốc, giới hạn tốc độ, lọc từ nhạy cảm, v.v.; Dễ sử dụng, hỗ trợ nhiều phương pháp triển khai. Hỗ trợ nhiều cấu hình pipeline, các bot khác nhau cho các kịch bản khác nhau.
+- 🛠️ Độ ổn định Cao, Tính năng Phong phú: Kiểm soát truy cập gốc, giới hạn tốc độ, lọc từ nhạy cảm, v.v.; Dễ sử dụng, hỗ trợ nhiều phương pháp triển khai.
 - 🧩 Mở rộng Plugin, Cộng đồng Hoạt động: Hỗ trợ các cơ chế plugin hướng sự kiện, mở rộng thành phần, v.v.; Tích hợp giao thức [MCP](https://modelcontextprotocol.io/) của Anthropic; Hiện có hàng trăng plugin.
 - 😻 Giao diện Web: Hỗ trợ quản lý các phiên bản LangBot thông qua trình duyệt. Không cần viết tệp cấu hình thủ công.
+- 📊 Tính năng Cấp sản xuất: Hỗ trợ nhiều cấu hình pipeline, các bot khác nhau cho các kịch bản khác nhau. Có khả năng giám sát toàn diện và xử lý ngoại lệ.
 
 Để biết thêm thông số kỹ thuật chi tiết, vui lòng tham khảo [tài liệu](https://docs.langbot.app/en/insight/features.html).
 

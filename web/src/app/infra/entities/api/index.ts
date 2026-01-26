@@ -78,6 +78,7 @@ export interface KnowledgeBase {
   created_at?: string;
   updated_at?: string;
   top_k: number;
+  emoji?: string;
 }
 
 export interface ApiRespProviderEmbeddingModels {
@@ -110,6 +111,7 @@ export interface Pipeline {
   is_default?: boolean;
   created_at?: string;
   updated_at?: string;
+  emoji?: string;
 }
 
 export interface ApiRespPlatformAdapters {
@@ -168,6 +170,7 @@ export interface KnowledgeBase {
   top_k: number;
   created_at?: string;
   updated_at?: string;
+  emoji?: string;
 }
 
 export interface ExternalKnowledgeBase {
@@ -179,6 +182,7 @@ export interface ExternalKnowledgeBase {
   plugin_name: string;
   retriever_name: string;
   retriever_config?: Record<string, unknown>;
+  emoji?: string;
 }
 
 export interface ApiRespExternalKnowledgeBases {
@@ -306,6 +310,7 @@ interface GetPipeline {
   stages: string[];
   updated_at: string;
   uuid: string;
+  emoji?: string;
 }
 
 export interface GetPipelineResponseData {

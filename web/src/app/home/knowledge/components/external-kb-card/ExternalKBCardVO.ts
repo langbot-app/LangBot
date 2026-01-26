@@ -2,6 +2,7 @@ export class ExternalKBCardVO {
   id: string;
   name: string;
   description: string;
+  emoji?: string;
   retrieverName: string;
   retrieverConfig: Record<string, unknown>;
   lastUpdatedTimeAgo: string;
@@ -12,6 +13,7 @@ export class ExternalKBCardVO {
     id,
     name,
     description,
+    emoji,
     retrieverName,
     retrieverConfig,
     lastUpdatedTimeAgo,
@@ -21,6 +23,7 @@ export class ExternalKBCardVO {
     id: string;
     name: string;
     description: string;
+    emoji?: string;
     retrieverName: string;
     retrieverConfig: Record<string, unknown>;
     lastUpdatedTimeAgo: string;
@@ -30,6 +33,7 @@ export class ExternalKBCardVO {
     this.id = id;
     this.name = name;
     this.description = description;
+    this.emoji = emoji;
     this.retrieverName = retrieverName;
     this.retrieverConfig = retrieverConfig;
     this.lastUpdatedTimeAgo = lastUpdatedTimeAgo;

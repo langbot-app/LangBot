@@ -84,11 +84,12 @@ LangBot은 BTPanel에 등록되어 있습니다. BTPanel을 설치한 경우 [�
 <img width="500" src="https://docs.langbot.app/ui/bot-page-en-rounded.png" />
 
 
-- 💬 LLM / Agent와 채팅: 여러 LLM을 지원하며 그룹 채팅 및 개인 채팅에 적응; 멀티 라운드 대화, 도구 호출, 멀티모달, 스트리밍 출력 기능을 지원합니다. 내장된 RAG(지식 베이스) 구현 및 [Dify](https://dify.ai)、[Coze](https://coze.com)、[n8n](https://n8n.io) 등의 LLMOps 플랫폼과 깊이 통합됩니다.
+- 💬 LLM / Agent와 채팅: 여러 LLM을 지원하며 그룹 채팅 및 개인 채팅에 적응; 멀티 라운드 대화, 도구 호출, 멀티모달, 스트리밍 출력 기능을 지원합니다. 내장된 RAG(지식 베이스) 구현 및 [Dify](https://dify.ai)、[Coze](https://coze.com)、[n8n](https://n8n.io)、[Langflow](https://langflow.org)등의 LLMOps 플랫폼과 깊이 통합됩니다.
 - 🤖 다중 플랫폼 지원: 현재 QQ, QQ Channel, WeCom, 개인 WeChat, Lark, DingTalk, Discord, Telegram, KOOK, Slack, LINE 등을 지원합니다.
-- 🛠️ 높은 안정성, 풍부한 기능: 네이티브 액세스 제어, 속도 제한, 민감한 단어 필터링 등의 메커니즘; 사용하기 쉽고 여러 배포 방법을 지원합니다. 여러 파이프라인 구성을 지원하며 다양한 시나리오에 대해 다른 봇을 사용할 수 있습니다.
+- 🛠️ 높은 안정성, 풍부한 기능: 네이티브 액세스 제어, 속도 제한, 민감한 단어 필터링 등의 메커니즘; 사용하기 쉽고 여러 배포 방법을 지원합니다.
 - 🧩 플러그인 확장, 활발한 커뮤니티: 고안정성, 고보안 생산 수준의 플러그인 시스템; 이벤트 기반, 컴포넌트 확장 등의 플러그인 메커니즘을 지원; Anthropic [MCP 프로토콜](https://modelcontextprotocol.io/) 통합; 현재 수백 개의 플러그인이 있습니다.
 - 😻 웹 UI: 브라우저를 통해 LangBot 인스턴스 관리를 지원합니다. 구성 파일을 수동으로 작성할 필요가 없습니다.
+- 📊 생산 수준의 기능: 여러 파이프라인 구성을 지원하며 다양한 시나리오에 대해 다른 봇을 사용할 수 있습니다. 포괄적인 모니터링 및 예외 처리 기능을 갖추고 있습니다.
 
 더 자세한 사양은 [문서](https://docs.langbot.app/en/insight/features.html)를 참조하세요.
 

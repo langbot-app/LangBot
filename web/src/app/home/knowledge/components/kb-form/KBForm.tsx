@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/input';
+import EmojiPicker from '@/components/ui/emoji-picker';
 import {
   Form,
   FormControl,
@@ -32,6 +33,7 @@ const getFormSchema = (t: (key: string) => string) =>
     description: z
       .string()
       .min(1, { message: t('knowledge.kbDescriptionRequired') }),
+    emoji: z.string().optional(),
     embeddingModelUUID: z
       .string()
       .min(1, { message: t('knowledge.embeddingModelUUIDRequired') }),
@@ -58,6 +60,7 @@ export default function KBForm({
     defaultValues: {
       name: '',
       description: t('knowledge.defaultDescription'),
+      emoji: '📚',
       embeddingModelUUID: '',
       top_k: 5,
     },
@@ -71,6 +74,7 @@ export default function KBForm({
         getKbConfig(initKbId).then((val) => {
           form.setValue('name', val.name);
           form.setValue('description', val.description);
+          form.setValue('emoji', val.emoji);
           form.setValue('embeddingModelUUID', val.embeddingModelUUID);
           form.setValue('top_k', val.top_k || 5);
         });
@@ -86,6 +90,7 @@ export default function KBForm({
         resolve({
           name: res.base.name,
           description: res.base.description,
+          emoji: res.base.emoji || '📚',
           embeddingModelUUID: res.base.embedding_model_uuid,
           top_k: res.base.top_k || 5,
         });
@@ -111,6 +116,7 @@ export default function KBForm({
       const updateKb: KnowledgeBase = {
         name: data.name,
         description: data.description,
+        emoji: data.emoji,
         embedding_model_uuid: data.embeddingModelUUID,
         top_k: data.top_k,
       };
@@ -129,6 +135,7 @@ export default function KBForm({
       const newKb: KnowledgeBase = {
         name: data.name,
         description: data.description,
+        emoji: data.emoji,
         embedding_model_uuid: data.embeddingModelUUID,
         top_k: data.top_k,
       };
@@ -152,22 +159,41 @@ export default function KBForm({
           className="space-y-8"
         >
           <div className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    {t('knowledge.kbName')}
-                    <span className="text-red-500">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {/* Name and Emoji in same row */}
+            <div className="flex gap-4 items-start">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem className="flex-1">
+                    <FormLabel>
+                      {t('knowledge.kbName')}
+                      <span className="text-red-500">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="emoji"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('common.icon')}</FormLabel>
+                    <FormControl>
+                      <EmojiPicker
+                        value={field.value}
+                        onChange={field.onChange}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
             <FormField
               control={form.control}
               name="description"

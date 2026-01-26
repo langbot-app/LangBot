@@ -37,6 +37,7 @@ const enUS = {
     enable: 'Enable',
     name: 'Name',
     description: 'Description',
+    icon: 'Icon',
     close: 'Close',
     deleteSuccess: 'Deleted successfully',
     deleteError: 'Delete failed: ',

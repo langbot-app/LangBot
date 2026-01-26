@@ -7,12 +7,15 @@ export default function KBCard({ kbCardVO }: { kbCardVO: KnowledgeBaseVO }) {
   return (
     <div className={`${styles.cardContainer}`}>
       <div className={`${styles.basicInfoContainer}`}>
-        <div className={`${styles.basicInfoNameContainer}`}>
-          <div className={`${styles.basicInfoNameText}  ${styles.bigText}`}>
-            {kbCardVO.name}
-          </div>
-          <div className={`${styles.basicInfoDescriptionText}`}>
-            {kbCardVO.description}
+        <div className={`${styles.iconBasicInfoContainer}`}>
+          <div className={`${styles.iconEmoji}`}>{kbCardVO.emoji || '📚'}</div>
+          <div className={`${styles.basicInfoNameContainer}`}>
+            <div className={`${styles.basicInfoNameText}  ${styles.bigText}`}>
+              {kbCardVO.name}
+            </div>
+            <div className={`${styles.basicInfoDescriptionText}`}>
+              {kbCardVO.description}
+            </div>
           </div>
         </div>
 

@@ -8,12 +8,15 @@ export default function PipelineCard({ cardVO }: { cardVO: PipelineCardVO }) {
   return (
     <div className={`${styles.cardContainer}`}>
       <div className={`${styles.basicInfoContainer}`}>
-        <div className={`${styles.basicInfoNameContainer}`}>
-          <div className={`${styles.basicInfoNameText}  ${styles.bigText}`}>
-            {cardVO.name}
-          </div>
-          <div className={`${styles.basicInfoDescriptionText}`}>
-            {cardVO.description}
+        <div className={`${styles.iconBasicInfoContainer}`}>
+          <div className={`${styles.iconEmoji}`}>{cardVO.emoji || '⚙️'}</div>
+          <div className={`${styles.basicInfoNameContainer}`}>
+            <div className={`${styles.basicInfoNameText}  ${styles.bigText}`}>
+              {cardVO.name}
+            </div>
+            <div className={`${styles.basicInfoDescriptionText}`}>
+              {cardVO.description}
+            </div>
           </div>
         </div>
 
@@ -33,8 +36,8 @@ export default function PipelineCard({ cardVO }: { cardVO: PipelineCardVO }) {
         </div>
       </div>
 
-      <div className={styles.operationContainer}>
-        {cardVO.isDefault && (
+      {cardVO.isDefault && (
+        <div className={styles.operationContainer}>
           <div className={styles.operationDefaultBadge}>
             <svg
               className={styles.operationDefaultBadgeIcon}
@@ -48,8 +51,8 @@ export default function PipelineCard({ cardVO }: { cardVO: PipelineCardVO }) {
               {t('pipelines.defaultBadge')}
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

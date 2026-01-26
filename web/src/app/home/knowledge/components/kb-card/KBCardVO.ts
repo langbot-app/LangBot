@@ -5,6 +5,7 @@ export interface IKnowledgeBaseVO {
   embeddingModelUUID: string;
   top_k: number;
   lastUpdatedTimeAgo: string;
+  emoji?: string;
 }
 
 export class KnowledgeBaseVO implements IKnowledgeBaseVO {
@@ -14,6 +15,7 @@ export class KnowledgeBaseVO implements IKnowledgeBaseVO {
   embeddingModelUUID: string;
   top_k: number;
   lastUpdatedTimeAgo: string;
+  emoji?: string;
 
   constructor(props: IKnowledgeBaseVO) {
     this.id = props.id;
@@ -22,5 +24,6 @@ export class KnowledgeBaseVO implements IKnowledgeBaseVO {
     this.embeddingModelUUID = props.embeddingModelUUID;
     this.top_k = props.top_k;
     this.lastUpdatedTimeAgo = props.lastUpdatedTimeAgo;
+    this.emoji = props.emoji;
   }
 }

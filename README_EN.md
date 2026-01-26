@@ -85,11 +85,12 @@ Click the Star and Watch button in the upper right corner of the repository to g
 <img width="500" src="https://docs.langbot.app/ui/bot-page-en-rounded.png" />
 
 
-- 💬 Chat with LLM / Agent: Supports multiple LLMs, adapt to group chats and private chats; Supports multi-round conversations, tool calls, multi-modal, and streaming output capabilities. Built-in RAG (knowledge base) implementation, and deeply integrates with [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io) etc. LLMOps platforms.
+- 💬 Chat with LLM / Agent: Supports multiple LLMs, adapt to group chats and private chats; Supports multi-round conversations, tool calls, multi-modal, and streaming output capabilities. Built-in RAG (knowledge base) implementation, and deeply integrates with [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io), [Langflow](https://langflow.org) etc. LLMOps platforms.
 - 🤖 Multi-platform Support: Currently supports QQ, QQ Channel, WeCom, personal WeChat, Lark, DingTalk, Discord, Telegram, KOOK, Slack, LINE, etc.
-- 🛠️ High Stability, Feature-rich: Native access control, rate limiting, sensitive word filtering, etc. mechanisms; Easy to use, supports multiple deployment methods. Supports multiple pipeline configurations, different bots can be used for different scenarios.
+- 🛠️ High Stability, Feature-rich: Native access control, rate limiting, sensitive word filtering, etc. mechanisms; Easy to use, supports multiple deployment methods.
 - 🧩 Plugin Extension, Active Community: High stability, high security production-level plugin system; Support event-driven, component extension, etc. plugin mechanisms; Integrate Anthropic [MCP protocol](https://modelcontextprotocol.io/); Currently has hundreds of plugins.
 - 😻 Web UI: Support management LangBot instance through the browser. No need to manually write configuration files.
+- 📊 Production-grade Features: Supports multiple pipeline configurations, different bots can be used for different scenarios. Has comprehensive monitoring and exception handling capabilities.
 
 For more detailed specifications, please refer to the [documentation](https://docs.langbot.app/en/insight/features.html).
 

@@ -13,6 +13,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Input } from '@/components/ui/input';
+import EmojiPicker from '@/components/ui/emoji-picker';
 import {
   Form,
   FormControl,
@@ -62,6 +63,7 @@ export default function PipelineFormComponent({
           description: z
             .string()
             .min(1, { message: t('pipelines.descriptionRequired') }),
+          emoji: z.string().optional(),
         }),
         ai: z.record(z.string(), z.any()),
         trigger: z.record(z.string(), z.any()),
@@ -74,6 +76,7 @@ export default function PipelineFormComponent({
           description: z
             .string()
             .min(1, { message: t('pipelines.descriptionRequired') }),
+          emoji: z.string().optional(),
         }),
         ai: z.record(z.string(), z.any()).optional(),
         trigger: z.record(z.string(), z.any()).optional(),
@@ -105,7 +108,9 @@ export default function PipelineFormComponent({
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      basic: {},
+      basic: {
+        emoji: '⚙️',
+      },
       ai: {},
       trigger: {},
       safety: {},
@@ -138,6 +143,7 @@ export default function PipelineFormComponent({
             basic: {
               name: resp.pipeline.name,
               description: resp.pipeline.description,
+              emoji: resp.pipeline.emoji || '⚙️',
             },
             ai: resp.pipeline.config.ai,
             trigger: resp.pipeline.config.trigger,
@@ -154,6 +160,7 @@ export default function PipelineFormComponent({
         basic: {
           name: '',
           description: '',
+          emoji: '⚙️',
         },
       });
     }
@@ -172,6 +179,7 @@ export default function PipelineFormComponent({
       config: {},
       description: values.basic.description,
       name: values.basic.name,
+      emoji: values.basic.emoji,
     };
     httpClient
       .createPipeline(pipeline)
@@ -199,6 +207,7 @@ export default function PipelineFormComponent({
       description: values.basic.description,
       // for_version: '',
       name: values.basic.name,
+      emoji: values.basic.emoji,
       // stages: [],
       // updated_at: '',
       // uuid: pipelineId || '',
@@ -399,22 +408,41 @@ export default function PipelineFormComponent({
                     >
                       {formLabel.name === 'basic' && (
                         <div className="space-y-6">
-                          <FormField
-                            control={form.control}
-                            name="basic.name"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>
-                                  {t('common.name')}
-                                  <span className="text-red-500">*</span>
-                                </FormLabel>
-                                <FormControl>
-                                  <Input {...field} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
+                          {/* Name and Emoji in same row */}
+                          <div className="flex gap-4 items-start">
+                            <FormField
+                              control={form.control}
+                              name="basic.name"
+                              render={({ field }) => (
+                                <FormItem className="flex-1">
+                                  <FormLabel>
+                                    {t('common.name')}
+                                    <span className="text-red-500">*</span>
+                                  </FormLabel>
+                                  <FormControl>
+                                    <Input {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="basic.emoji"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>{t('common.icon')}</FormLabel>
+                                  <FormControl>
+                                    <EmojiPicker
+                                      value={field.value}
+                                      onChange={field.onChange}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
 
                           <FormField
                             control={form.control}

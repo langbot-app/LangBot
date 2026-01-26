@@ -295,4 +295,7 @@ class UserService:
             )
         )
 
+        # Update Space model provider API keys
+        await self.ap.provider_service.update_space_model_provider_api_keys(api_key)
+
         return await self.get_user_by_email(space_email)

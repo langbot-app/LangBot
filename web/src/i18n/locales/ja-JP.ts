@@ -38,6 +38,7 @@ const jaJP = {
     enable: '有効にする',
     name: '名前',
     description: '説明',
+    icon: 'アイコン',
     close: '閉じる',
     deleteSuccess: '削除に成功しました',
     deleteError: '削除に失敗しました：',
