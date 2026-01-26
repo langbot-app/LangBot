@@ -47,8 +47,8 @@ class KnowledgeBaseInterface(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def get_type(self) -> str:
-        """Get the type of knowledge base (internal/external)"""
+    def get_rag_engine_plugin_id(self) -> str:
+        """Get the RAG engine plugin ID"""
         pass
 
     @abc.abstractmethod

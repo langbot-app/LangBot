@@ -1,8 +1,10 @@
 from __future__ import annotations
+import logging
 import traceback
 import uuid
 import zipfile
 import io
+from typing import Any, Dict
 from langbot.pkg.core import app
 import sqlalchemy
 
@@ -11,8 +13,8 @@ from langbot.pkg.entity.persistence import rag as persistence_rag
 from langbot.pkg.core import taskmgr
 from langbot_plugin.api.entities.builtin.rag import context as rag_context
 from .base import KnowledgeBaseInterface
-from .external import ExternalKnowledgeBase
-from .plugin_adapter import RAGPluginAdapter
+
+logger = logging.getLogger(__name__)
 
 
 class RuntimeKnowledgeBase(KnowledgeBaseInterface):
@@ -20,13 +22,9 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
 
     knowledge_base_entity: persistence_rag.KnowledgeBase
 
-    # Plugin Adapter handles both plugin and legacy logic
-    rag_adapter: RAGPluginAdapter
-
     def __init__(self, ap: app.Application, knowledge_base_entity: persistence_rag.KnowledgeBase):
         super().__init__(ap)
         self.knowledge_base_entity = knowledge_base_entity
-        self.rag_adapter = RAGPluginAdapter(ap)
 
     async def initialize(self):
         pass
@@ -41,18 +39,17 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             )
 
             task_context.set_current_action('Processing file')
-            
-            # Delegate to adapter (which handles legacy logic internally if needed)
-            await self.rag_adapter.ingest_document(
-                self.knowledge_base_entity,
+
+            # Call plugin to ingest document
+            await self._ingest_document(
                 {
                     "document_id": file.uuid,
                     "filename": file.file_name,
                     "extension": file.extension,
-                    "file_size": 0, # TODO: Get size
-                    "mime_type": "application/octet-stream" # TODO: Detect type
+                    "file_size": 0,  # TODO: Get size
+                    "mime_type": "application/octet-stream"  # TODO: Detect type
                 },
-                file.file_name # storage path
+                file.file_name  # storage path
             )
 
             # set file status to completed
@@ -174,13 +171,9 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         retrieve_settings = {"top_k": top_k}
         if settings:
             retrieve_settings.update(settings)
-            
-        response = await self.rag_adapter.retrieve(
-            self.knowledge_base_entity,
-            query,
-            retrieve_settings
-        )
-        
+
+        response = await self._retrieve(query, retrieve_settings)
+
         results_data = response.get("results", [])
         entries = []
         for r in results_data:
@@ -191,9 +184,9 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         return entries
 
     async def delete_file(self, file_id: str):
-        await self.rag_adapter.delete_document(self.knowledge_base_entity, file_id)
-        
-        # Also cleanup DB record (Adapter handles chunk/vector deletion)
+        await self._delete_document(file_id)
+
+        # Also cleanup DB record
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.delete(persistence_rag.File).where(persistence_rag.File.uuid == file_id)
         )
@@ -206,13 +199,126 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         """Get the name of the knowledge base"""
         return self.knowledge_base_entity.name
 
-    def get_type(self) -> str:
-        """Get the type of knowledge base"""
-        return 'internal'
+    def get_rag_engine_plugin_id(self) -> str:
+        """Get the RAG engine plugin ID"""
+        return self.knowledge_base_entity.rag_engine_plugin_id or ""
 
     async def dispose(self):
-        await self.rag_adapter.on_kb_delete(self.knowledge_base_entity)
-        await self.ap.vector_db_mgr.vector_db.delete_collection(self.knowledge_base_entity.uuid)
+        """Dispose the knowledge base, notifying the plugin to cleanup."""
+        await self._on_kb_delete()
+
+    # ========== Plugin Communication Methods ==========
+
+    async def _on_kb_create(self) -> None:
+        """Notify plugin about KB creation."""
+        plugin_id = self.knowledge_base_entity.rag_engine_plugin_id
+        if not plugin_id:
+            return
+
+        try:
+            config = self.knowledge_base_entity.creation_settings or {}
+            logger.info(
+                f"Calling RAG plugin {plugin_id}: on_knowledge_base_create(kb_id={self.knowledge_base_entity.uuid})"
+            )
+            await self.ap.plugin_connector.rag_on_kb_create(plugin_id, self.knowledge_base_entity.uuid, config)
+        except Exception as e:
+            logger.error(f"Failed to notify plugin {plugin_id} on KB create: {e}")
+
+    async def _on_kb_delete(self) -> None:
+        """Notify plugin about KB deletion."""
+        plugin_id = self.knowledge_base_entity.rag_engine_plugin_id
+        if not plugin_id:
+            return
+
+        try:
+            logger.info(
+                f"Calling RAG plugin {plugin_id}: on_knowledge_base_delete(kb_id={self.knowledge_base_entity.uuid})"
+            )
+            await self.ap.plugin_connector.rag_on_kb_delete(plugin_id, self.knowledge_base_entity.uuid)
+        except Exception as e:
+            logger.error(f"Failed to notify plugin {plugin_id} on KB delete: {e}")
+
+    async def _ingest_document(
+        self,
+        file_metadata: Dict[str, Any],
+        storage_path: str,
+    ) -> Dict[str, Any]:
+        """Call plugin to ingest document."""
+        kb = self.knowledge_base_entity
+        plugin_id = kb.rag_engine_plugin_id
+        if not plugin_id:
+            logger.error(f"No RAG plugin ID configured for KB {kb.uuid}. Ingestion failed.")
+            raise ValueError("RAG Plugin ID required")
+
+        logger.info(f"Calling RAG plugin {plugin_id}: ingest(doc={file_metadata.get('filename')})")
+
+        context_data = {
+            "file_object": {
+                "metadata": file_metadata,
+                "storage_path": storage_path,
+            },
+            "knowledge_base_id": kb.uuid,
+            "collection_id": kb.collection_id or kb.uuid,
+            "chunking_strategy": kb.creation_settings.get("chunking_strategy", "fixed_size") if kb.creation_settings else "fixed_size",
+            "custom_settings": kb.creation_settings or {},
+        }
+
+        try:
+            result = await self.ap.plugin_connector.call_rag_ingest(plugin_id, context_data)
+            return result
+        except Exception as e:
+            logger.error(f"Plugin ingestion failed: {e}")
+            raise
+
+    async def _retrieve(
+        self,
+        query: str,
+        settings: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Call plugin to retrieve documents."""
+        kb = self.knowledge_base_entity
+        plugin_id = kb.rag_engine_plugin_id
+        if not plugin_id:
+            logger.error(f"No RAG plugin ID configured for KB {kb.uuid}. Retrieval failed.")
+            return {"results": [], "total_found": 0}
+
+        plugin_author, plugin_name = plugin_id.split('/', 1)
+
+        retrieval_context = {
+            "query": query,
+            "knowledge_base_id": kb.uuid,
+            "collection_id": kb.collection_id or kb.uuid,
+            "top_k": settings.get("top_k", kb.top_k or 5),
+            "config": settings,
+        }
+
+        try:
+            result = await self.ap.plugin_connector.retrieve_knowledge(
+                plugin_author,
+                plugin_name,
+                "",  # retriever_name - runtime will find the RAGEngine component
+                kb.uuid,  # instance_id
+                retrieval_context
+            )
+            return result
+        except Exception as e:
+            logger.error(f"Plugin retrieval failed: {e}")
+            return {"results": [], "total_found": 0}
+
+    async def _delete_document(self, document_id: str) -> bool:
+        """Call plugin to delete document."""
+        kb = self.knowledge_base_entity
+        plugin_id = kb.rag_engine_plugin_id
+        if not plugin_id:
+            return False
+
+        logger.info(f"Calling RAG plugin {plugin_id}: delete_document(doc_id={document_id})")
+
+        try:
+            return await self.ap.plugin_connector.call_rag_delete_document(plugin_id, document_id, kb.uuid)
+        except Exception as e:
+            logger.error(f"Plugin document deletion failed: {e}")
+            return False
 
 
 
@@ -239,8 +345,8 @@ class RAGManager:
         """Create a new knowledge base using a RAG plugin."""
         kb_uuid = str(uuid.uuid4())
         # Use UUID as collection ID by default for isolation
-        collection_id = kb_uuid 
-        
+        collection_id = kb_uuid
+
         kb_data = {
            "uuid": kb_uuid,
            "name": name,
@@ -250,20 +356,19 @@ class RAGManager:
            "creation_settings": creation_settings,
            "embedding_model_uuid": embedding_model_uuid
         }
-        
+
         # Create Entity
         kb = persistence_rag.KnowledgeBase(**kb_data)
-        
+
         # Persist
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_rag.KnowledgeBase).values(kb_data))
-        
-        # Notify Plugin
-        adapter = RAGPluginAdapter(self.ap)
-        await adapter.on_kb_create(kb)
-        
+
         # Load into Runtime
-        await self.load_knowledge_base(kb)
-        
+        runtime_kb = await self.load_knowledge_base(kb)
+
+        # Notify Plugin
+        await runtime_kb._on_kb_create()
+
         self.ap.logger.info(f"Created new Knowledge Base {name} ({kb_uuid}) using plugin {rag_engine_plugin_id}")
         return kb
 
@@ -272,7 +377,7 @@ class RAGManager:
 
         self.knowledge_bases = []
 
-        # Load internal knowledge bases
+        # Load knowledge bases
         result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_rag.KnowledgeBase))
         knowledge_bases = result.all()
 
@@ -282,21 +387,6 @@ class RAGManager:
             except Exception as e:
                 self.ap.logger.error(
                     f'Error loading knowledge base {knowledge_base.uuid}: {e}\n{traceback.format_exc()}'
-                )
-
-        # Load external knowledge bases
-        external_result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_rag.ExternalKnowledgeBase)
-        )
-        external_kbs = external_result.all()
-
-        for external_kb in external_kbs:
-            try:
-                # Don't trigger sync during batch loading - will sync once after LangBot connects to runtime
-                await self.load_external_knowledge_base(external_kb, trigger_sync=False)
-            except Exception as e:
-                self.ap.logger.error(
-                    f'Error loading external knowledge base {external_kb.uuid}: {e}\n{traceback.format_exc()}'
                 )
 
     async def load_knowledge_base(
@@ -320,39 +410,6 @@ class RAGManager:
         self.knowledge_bases.append(runtime_knowledge_base)
 
         return runtime_knowledge_base
-
-    async def load_external_knowledge_base(
-        self,
-        external_kb_entity: persistence_rag.ExternalKnowledgeBase | sqlalchemy.Row | dict,
-        trigger_sync: bool = True,
-    ) -> ExternalKnowledgeBase:
-        """Load external knowledge base into runtime
-
-        Args:
-            external_kb_entity: External KB entity to load
-            trigger_sync: Whether to trigger sync after loading (default True for manual creation, False for batch loading)
-        """
-        if isinstance(external_kb_entity, sqlalchemy.Row):
-            external_kb_entity = persistence_rag.ExternalKnowledgeBase(**external_kb_entity._mapping)
-        elif isinstance(external_kb_entity, dict):
-            external_kb_entity = persistence_rag.ExternalKnowledgeBase(**external_kb_entity)
-
-        external_kb = ExternalKnowledgeBase(ap=self.ap, external_kb_entity=external_kb_entity)
-
-        await external_kb.initialize()
-
-        self.knowledge_bases.append(external_kb)
-
-        # Trigger sync to create the instance immediately (for manual creation)
-        # Skip sync during batch loading from DB to avoid multiple sync calls
-        if trigger_sync:
-            try:
-                await self.ap.plugin_connector.sync_polymorphic_component_instances()
-                self.ap.logger.info(f'Triggered sync after loading external KB {external_kb_entity.uuid}')
-            except Exception as e:
-                self.ap.logger.error(f'Failed to sync after loading external KB: {e}')
-
-        return external_kb
 
     async def get_knowledge_base_by_uuid(self, kb_uuid: str) -> KnowledgeBaseInterface | None:
         for kb in self.knowledge_bases:
