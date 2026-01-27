@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+import mimetypes
 import traceback
 import uuid
 import zipfile
@@ -40,14 +41,23 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
 
             task_context.set_current_action('Processing file')
 
+            # Get file size from storage
+            file_bytes = await self.ap.storage_mgr.storage_provider.load(file.file_name)
+            file_size = len(file_bytes) if file_bytes else 0
+
+            # Detect MIME type from extension
+            mime_type, _ = mimetypes.guess_type(file.file_name)
+            if mime_type is None:
+                mime_type = "application/octet-stream"
+
             # Call plugin to ingest document
             await self._ingest_document(
                 {
                     "document_id": file.uuid,
                     "filename": file.file_name,
                     "extension": file.extension,
-                    "file_size": 0,  # TODO: Get size
-                    "mime_type": "application/octet-stream"  # TODO: Detect type
+                    "file_size": file_size,
+                    "mime_type": mime_type
                 },
                 file.file_name  # storage path
             )
