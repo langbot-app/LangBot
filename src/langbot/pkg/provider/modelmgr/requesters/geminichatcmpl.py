@@ -28,8 +28,11 @@ class GeminiChatCompletions(chatcmpl.OpenAIChatCompletions):
         """
         for msg in messages:
             if 'tool_calls' in msg and msg['tool_calls']:
+                # Ensure we're working with a mutable copy of tool_calls
+                if not isinstance(msg['tool_calls'], list):
+                    continue
                 for tool_call in msg['tool_calls']:
-                    if 'thought_signature' not in tool_call:
+                    if isinstance(tool_call, dict) and 'thought_signature' not in tool_call:
                         tool_call['thought_signature'] = ''
         return messages
 
@@ -168,6 +171,7 @@ class GeminiChatCompletions(chatcmpl.OpenAIChatCompletions):
     ) -> tuple[provider_message.Message, dict]:
         """Override _closure to add thought_signature to messages"""
         # Add thought_signature to tool_calls for Gemini compatibility
+        # Note: modifying in place is safe here as parent _closure will make a copy
         req_messages = self._add_thought_signature_to_messages(req_messages)
         
         # Call parent implementation
