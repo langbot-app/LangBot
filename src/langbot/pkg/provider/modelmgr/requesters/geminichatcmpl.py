@@ -25,6 +25,8 @@ class GeminiChatCompletions(chatcmpl.OpenAIChatCompletions):
         
         Gemini API requires a thought_signature field in function call parts.
         See: https://ai.google.dev/gemini-api/docs/thought-signatures
+        
+        Note: This function modifies the dictionaries in the messages list in place.
         """
         for msg in messages:
             if 'tool_calls' in msg and msg['tool_calls']:
@@ -170,14 +172,16 @@ class GeminiChatCompletions(chatcmpl.OpenAIChatCompletions):
         remove_think: bool = False,
     ) -> tuple[provider_message.Message, dict]:
         """Override _closure to add thought_signature to messages"""
+        # Make a shallow copy to avoid mutating the caller's list
+        messages = req_messages.copy()
+        
         # Add thought_signature to tool_calls for Gemini compatibility
-        # Note: modifying in place is safe here as parent _closure will make a copy
-        req_messages = self._add_thought_signature_to_messages(req_messages)
+        messages = self._add_thought_signature_to_messages(messages)
         
         # Call parent implementation
         return await super()._closure(
             query=query,
-            req_messages=req_messages,
+            req_messages=messages,
             use_model=use_model,
             use_funcs=use_funcs,
             extra_args=extra_args,
