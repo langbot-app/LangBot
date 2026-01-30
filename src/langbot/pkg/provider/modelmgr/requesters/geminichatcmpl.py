@@ -20,6 +20,19 @@ class GeminiChatCompletions(chatcmpl.OpenAIChatCompletions):
         'timeout': 120,
     }
 
+    def _add_thought_signature_to_messages(self, messages: list[dict]) -> list[dict]:
+        """Add thought_signature to tool_calls in messages for Gemini API compatibility
+        
+        Gemini API requires a thought_signature field in function call parts.
+        See: https://ai.google.dev/gemini-api/docs/thought-signatures
+        """
+        for msg in messages:
+            if 'tool_calls' in msg and msg['tool_calls']:
+                for tool_call in msg['tool_calls']:
+                    if 'thought_signature' not in tool_call:
+                        tool_call['thought_signature'] = ''
+        return messages
+
     async def _closure_stream(
         self,
         query: pipeline_query.Query,
@@ -41,6 +54,9 @@ class GeminiChatCompletions(chatcmpl.OpenAIChatCompletions):
 
         # 设置此次请求中的messages
         messages = req_messages.copy()
+
+        # Add thought_signature to tool_calls for Gemini compatibility
+        messages = self._add_thought_signature_to_messages(messages)
 
         # 检查vision
         for msg in messages:
@@ -140,3 +156,26 @@ class GeminiChatCompletions(chatcmpl.OpenAIChatCompletions):
 
             yield provider_message.MessageChunk(**chunk_data)
             chunk_idx += 1
+
+    async def _closure(
+        self,
+        query: pipeline_query.Query,
+        req_messages: list[dict],
+        use_model: requester.RuntimeLLMModel,
+        use_funcs: list[resource_tool.LLMTool] = None,
+        extra_args: dict[str, typing.Any] = {},
+        remove_think: bool = False,
+    ) -> tuple[provider_message.Message, dict]:
+        """Override _closure to add thought_signature to messages"""
+        # Add thought_signature to tool_calls for Gemini compatibility
+        req_messages = self._add_thought_signature_to_messages(req_messages)
+        
+        # Call parent implementation
+        return await super()._closure(
+            query=query,
+            req_messages=req_messages,
+            use_model=use_model,
+            use_funcs=use_funcs,
+            extra_args=extra_args,
+            remove_think=remove_think,
+        )
