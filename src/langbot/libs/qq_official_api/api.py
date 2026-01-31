@@ -164,6 +164,11 @@ class QQOfficialClient:
         else:
             message_data['image_attachments'] = None
 
+        # Extract message_reference if present
+        message_reference = msg.get('d', {}).get('message_reference', {})
+        if message_reference:
+            message_data['message_reference'] = message_reference
+
         return message_data
 
     async def is_image(self, attachment: dict) -> bool:
@@ -269,6 +274,57 @@ class QQOfficialClient:
         if self.access_token_expiry_time is None:
             return True
         return time.time() > self.access_token_expiry_time
+
+    async def get_message_by_id(self, message_id: str, channel_id: str = None, group_openid: str = None, user_openid: str = None) -> Dict[str, Any]:
+        """根据消息ID获取消息内容
+        
+        Args:
+            message_id: 消息ID
+            channel_id: 频道ID（频道消息需要）
+            group_openid: 群组openid（群消息需要）
+            user_openid: 用户openid（私聊消息需要）
+            
+        Returns:
+            消息内容字典
+        """
+        if not await self.check_access_token():
+            await self.get_access_token()
+        
+        # Validate that exactly one context parameter is provided
+        provided_contexts = sum([bool(channel_id), bool(group_openid), bool(user_openid)])
+        if provided_contexts == 0:
+            await self.logger.warning(f'Cannot fetch message {message_id}: no context provided')
+            return {}
+        if provided_contexts > 1:
+            await self.logger.warning(f'Cannot fetch message {message_id}: multiple contexts provided')
+            return {}
+            
+        # Determine which API endpoint to use based on provided parameters
+        if channel_id:
+            # Channel message
+            url = f'{self.base_url}/channels/{channel_id}/messages/{message_id}'
+        elif group_openid:
+            # Group message
+            url = f'{self.base_url}/v2/groups/{group_openid}/messages/{message_id}'
+        elif user_openid:
+            # Private message
+            url = f'{self.base_url}/v2/users/{user_openid}/messages/{message_id}'
+            
+        async with httpx.AsyncClient() as client:
+            headers = {
+                'Authorization': f'QQBot {self.access_token}',
+                'Content-Type': 'application/json',
+            }
+            try:
+                response = await client.get(url, headers=headers)
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    await self.logger.warning(f'Failed to fetch message {message_id}: {response.status_code}')
+                    return {}
+            except Exception as e:
+                await self.logger.warning(f'Error fetching message {message_id}: {e}')
+                return {}
 
     async def repeat_seed(self, bot_secret: str, target_size: int = 32) -> bytes:
         seed = bot_secret
