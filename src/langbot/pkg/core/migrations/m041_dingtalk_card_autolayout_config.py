@@ -14,5 +14,4 @@ class DingTalkCardAutoLayoutMigration(migration.Migration):
     async def run(self):
         """执行迁移"""
         self.ap.platform_cfg.data['platform-adapters']["app"]["dingtalk"]["card_autolayout"] = False
-            
         await self.ap.platform_cfg.dump_config()

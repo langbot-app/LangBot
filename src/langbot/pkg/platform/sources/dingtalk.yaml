@@ -56,7 +56,7 @@ spec:
       type: boolean
       required: true
       default: false
-    - name: card_ autolayout
+    - name: card_ auto_layout
       label:
         en_US: Card Auto Layout
         zh_Hans: 卡片宽屏自动布局

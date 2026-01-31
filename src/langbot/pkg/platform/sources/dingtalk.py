@@ -231,7 +231,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         card_template_id = self.config['card_template_id']
         incoming_message = event.source_platform_object.incoming_message
         # message_id = incoming_message.message_id
-        card_auto_layout = self.config.get('card_ autolayout', False)
+        card_auto_layout = self.config.get('card_ auto_layout', False)
         card_instance, card_instance_id = await self.bot.create_and_card(card_template_id, incoming_message,card_auto_layout=card_auto_layout)
         self.card_instance_id_dict[message_id] = (card_instance, card_instance_id)
         return True
