@@ -3,7 +3,7 @@ from __future__ import annotations
 from .. import migration
 
 
-@migration.migration_class('dingtalk_card_auto_layout', 33)
+@migration.migration_class('dingtalk_card_auto_layout', 41)
 class DingTalkCardAutoLayoutMigration(migration.Migration):
     """迁移"""
 
