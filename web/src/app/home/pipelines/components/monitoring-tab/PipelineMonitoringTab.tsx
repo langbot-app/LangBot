@@ -98,7 +98,7 @@ export default function PipelineMonitoringTab({
       setExpandedMessageId(messageId);
 
       if (!messageDetails[messageId]) {
-        setLoadingDetails({ ...loadingDetails, [messageId]: true });
+        setLoadingDetails((prev) => ({ ...prev, [messageId]: true }));
         try {
           const result = await httpClient.get<{
             message_id: string;
@@ -167,7 +167,7 @@ export default function PipelineMonitoringTab({
         } catch (error) {
           console.error('Failed to fetch message details:', error);
         } finally {
-          setLoadingDetails({ ...loadingDetails, [messageId]: false });
+          setLoadingDetails((prev) => ({ ...prev, [messageId]: false }));
         }
       }
     }
@@ -183,6 +183,7 @@ export default function PipelineMonitoringTab({
 
   const jumpToMessage = async (messageId: string) => {
     setActiveTab('messages');
+    // Small delay to ensure tab transition completes before expanding
     setTimeout(() => {
       toggleMessageExpand(messageId);
     }, 100);
