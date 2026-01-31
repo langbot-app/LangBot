@@ -620,6 +620,10 @@ const zhHans = {
       showMarkdown: '渲染',
       showRaw: '原文',
     },
+    monitoring: {
+      title: '监控日志',
+      description: '查看此流水线的运行记录和错误信息（最近24小时）',
+    },
   },
   knowledge: {
     title: '知识库',

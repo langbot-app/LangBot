@@ -613,6 +613,10 @@ const zhHant = {
       showMarkdown: '渲染',
       showRaw: '原文',
     },
+    monitoring: {
+      title: '監控日誌',
+      description: '檢視此流程線的執行記錄和錯誤資訊（最近24小時）',
+    },
   },
   knowledge: {
     title: '知識庫',
