@@ -616,6 +616,7 @@ const zhHant = {
     monitoring: {
       title: '監控日誌',
       description: '檢視此流程線的執行記錄和錯誤資訊（最近24小時）',
+      detailedLogs: '詳細日誌',
     },
   },
   knowledge: {

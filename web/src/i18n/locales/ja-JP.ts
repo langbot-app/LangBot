@@ -650,6 +650,7 @@ const jaJP = {
     monitoring: {
       title: 'モニタリング',
       description: 'このパイプラインの実行ログとエラー情報を表示（過去24時間）',
+      detailedLogs: '詳細ログ',
     },
   },
   knowledge: {

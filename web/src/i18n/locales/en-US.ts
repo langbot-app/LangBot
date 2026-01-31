@@ -647,6 +647,7 @@ const enUS = {
     monitoring: {
       title: 'Monitoring',
       description: 'View execution logs and errors for this pipeline (last 24 hours)',
+      detailedLogs: 'Detailed Logs',
     },
   },
   knowledge: {
