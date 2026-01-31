@@ -350,8 +350,7 @@ class DingTalkClient:
         self, temp_card_id: str, incoming_message: dingtalk_stream.ChatbotMessage, quote_origin: bool = False, card_auto_layout: bool = False
     ):  
         card_data = {}
-        if card_auto_layout:
-            card_data['config'] = json.dumps({"autoLayout": card_auto_layout})
+        card_data['config'] = json.dumps({"autoLayout": card_auto_layout})
         card_data["content"] = ''
 
         card_instance = dingtalk_stream.AICardReplier(self.client, incoming_message)
