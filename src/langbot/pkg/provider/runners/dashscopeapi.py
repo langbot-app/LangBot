@@ -118,6 +118,7 @@ class DashScopeAPIRunner(runner.RequestRunner):
             stream=True,  # 流式输出
             incremental_output=True,  # 增量输出，使用流式输出需要开启增量输出
             session_id=query.session.using_conversation.uuid,  # 会话ID用于，多轮对话
+            enable_thinking=has_thoughts,
             has_thoughts=has_thoughts,
             # rag_options={                                     # 主要用于文件交互，暂不支持
             #     "session_file_ids": ["FILE_ID1"],             # FILE_ID1 替换为实际的临时文件ID,逗号隔开多个
@@ -141,14 +142,14 @@ class DashScopeAPIRunner(runner.RequestRunner):
                 # 获取流式传输的output
                 stream_output = chunk.get('output', {})
                 stream_think = stream_output.get('thoughts', [])
-                if stream_think[0].get('thought'):
+                if stream_think and stream_think[0].get('thought'):
                     if not think_start:
                         think_start = True
                         pending_content += f'<think>\n{stream_think[0].get("thought")}'
                     else:
                         # 继续输出 reasoning_content
                         pending_content += stream_think[0].get('thought')
-                elif stream_think[0].get('thought') == '' and not think_end:
+                elif (not stream_think or stream_think[0].get('thought') == '') and not think_end:
                     think_end = True
                     pending_content += '\n</think>\n'
                 if stream_output.get('text') is not None:
