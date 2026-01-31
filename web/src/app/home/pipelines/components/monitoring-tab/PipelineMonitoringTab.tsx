@@ -284,138 +284,132 @@ export default function PipelineMonitoringTab({
               </div>
             )}
 
-            {!loading &&
-              data &&
-              data.messages &&
-              data.messages.length > 0 && (
-                <div className="space-y-3">
-                  {data.messages
-                    .filter((msg) => {
-                      const content = msg.messageContent?.trim();
-                      return content && content !== '[]' && content !== '""';
-                    })
-                    .map((msg) => (
+            {!loading && data && data.messages && data.messages.length > 0 && (
+              <div className="space-y-3">
+                {data.messages
+                  .filter((msg) => {
+                    const content = msg.messageContent?.trim();
+                    return content && content !== '[]' && content !== '""';
+                  })
+                  .map((msg) => (
+                    <div
+                      key={msg.id}
+                      className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden hover:shadow-md transition-all duration-200"
+                    >
                       <div
-                        key={msg.id}
-                        className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden hover:shadow-md transition-all duration-200"
+                        className="p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                        onClick={() => toggleMessageExpand(msg.id)}
                       >
-                        <div
-                          className="p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                          onClick={() => toggleMessageExpand(msg.id)}
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-start flex-1">
-                              <div className="mr-2 mt-0.5">
-                                {expandedMessageId === msg.id ? (
-                                  <ChevronDown className="w-4 h-4 text-gray-500" />
-                                ) : (
-                                  <ChevronRight className="w-4 h-4 text-gray-500" />
-                                )}
-                              </div>
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span
-                                    className={`text-xs px-2 py-0.5 rounded ${
-                                      msg.status === 'success'
-                                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                                        : msg.status === 'error'
-                                          ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                                          : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                                    }`}
-                                  >
-                                    {msg.status}
-                                  </span>
-                                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                                    {msg.botName}
-                                  </span>
-                                </div>
-                                <div className="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">
-                                  <MessageContentRenderer
-                                    content={msg.messageContent}
-                                  />
-                                </div>
-                              </div>
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start flex-1">
+                            <div className="mr-2 mt-0.5">
+                              {expandedMessageId === msg.id ? (
+                                <ChevronDown className="w-4 h-4 text-gray-500" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-gray-500" />
+                              )}
                             </div>
-                            <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap ml-4">
-                              {msg.timestamp.toLocaleString()}
-                            </span>
-                          </div>
-                        </div>
-
-                        {expandedMessageId === msg.id && (
-                          <div className="border-t border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-900">
-                            {loadingDetails[msg.id] && (
-                              <div className="flex justify-center py-8">
-                                <LoadingSpinner
-                                  text={t('monitoring.messageList.loading')}
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span
+                                  className={`text-xs px-2 py-0.5 rounded ${
+                                    msg.status === 'success'
+                                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                      : msg.status === 'error'
+                                        ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                                        : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                                  }`}
+                                >
+                                  {msg.status}
+                                </span>
+                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                  {msg.botName}
+                                </span>
+                              </div>
+                              <div className="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">
+                                <MessageContentRenderer
+                                  content={msg.messageContent}
                                 />
                               </div>
-                            )}
+                            </div>
+                          </div>
+                          <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap ml-4">
+                            {msg.timestamp.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
 
-                            {!loadingDetails[msg.id] &&
-                              messageDetails[msg.id] && (
-                                <div className="space-y-4">
-                                  {messageDetails[msg.id].errors.length > 0 && (
-                                    <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3">
-                                      <h4 className="text-sm font-semibold text-red-700 dark:text-red-400 mb-2">
-                                        {t('monitoring.errors.errorMessage')}
-                                      </h4>
-                                      {messageDetails[msg.id].errors.map(
-                                        (error) => (
-                                          <div
-                                            key={error.id}
-                                            className="text-sm space-y-2"
-                                          >
-                                            <div className="text-red-600 dark:text-red-400">
-                                              {error.errorType}:{' '}
-                                              {error.errorMessage}
-                                            </div>
-                                            {error.stackTrace && (
-                                              <pre className="text-xs text-gray-600 dark:text-gray-400 overflow-auto max-h-40 bg-white dark:bg-gray-900 p-2 rounded whitespace-pre-wrap break-words">
-                                                {error.stackTrace}
-                                              </pre>
-                                            )}
+                      {expandedMessageId === msg.id && (
+                        <div className="border-t border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-900">
+                          {loadingDetails[msg.id] && (
+                            <div className="flex justify-center py-8">
+                              <LoadingSpinner
+                                text={t('monitoring.messageList.loading')}
+                              />
+                            </div>
+                          )}
+
+                          {!loadingDetails[msg.id] &&
+                            messageDetails[msg.id] && (
+                              <div className="space-y-4">
+                                {messageDetails[msg.id].errors.length > 0 && (
+                                  <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3">
+                                    <h4 className="text-sm font-semibold text-red-700 dark:text-red-400 mb-2">
+                                      {t('monitoring.errors.errorMessage')}
+                                    </h4>
+                                    {messageDetails[msg.id].errors.map(
+                                      (error) => (
+                                        <div
+                                          key={error.id}
+                                          className="text-sm space-y-2"
+                                        >
+                                          <div className="text-red-600 dark:text-red-400">
+                                            {error.errorType}:{' '}
+                                            {error.errorMessage}
                                           </div>
-                                        ),
-                                      )}
-                                    </div>
-                                  )}
-
-                                  {messageDetails[msg.id].llmCalls.length >
-                                    0 && (
-                                    <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
-                                      <h4 className="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-2">
-                                        {t('monitoring.tabs.modelCalls')} (
-                                        {messageDetails[msg.id].llmCalls.length}
-                                        )
-                                      </h4>
-                                      <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-                                        <div>
-                                          {t('monitoring.llmCalls.totalTokens')}
-                                          :{' '}
-                                          {
-                                            messageDetails[msg.id].llmStats
-                                              .totalTokens
-                                          }
-                                        </div>
-                                        <div>
-                                          {t('monitoring.llmCalls.duration')}:{' '}
-                                          {messageDetails[msg.id].llmStats.totalDurationMs.toFixed(
-                                            0,
+                                          {error.stackTrace && (
+                                            <pre className="text-xs text-gray-600 dark:text-gray-400 overflow-auto max-h-40 bg-white dark:bg-gray-900 p-2 rounded whitespace-pre-wrap break-words">
+                                              {error.stackTrace}
+                                            </pre>
                                           )}
-                                          ms
                                         </div>
+                                      ),
+                                    )}
+                                  </div>
+                                )}
+
+                                {messageDetails[msg.id].llmCalls.length > 0 && (
+                                  <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
+                                    <h4 className="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-2">
+                                      {t('monitoring.tabs.modelCalls')} (
+                                      {messageDetails[msg.id].llmCalls.length})
+                                    </h4>
+                                    <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                                      <div>
+                                        {t('monitoring.llmCalls.totalTokens')}:{' '}
+                                        {
+                                          messageDetails[msg.id].llmStats
+                                            .totalTokens
+                                        }
+                                      </div>
+                                      <div>
+                                        {t('monitoring.llmCalls.duration')}:{' '}
+                                        {messageDetails[
+                                          msg.id
+                                        ].llmStats.totalDurationMs.toFixed(0)}
+                                        ms
                                       </div>
                                     </div>
-                                  )}
-                                </div>
-                              )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                </div>
-              )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            )}
 
             {!loading &&
               (!data || !data.messages || data.messages.length === 0) && (
@@ -468,9 +462,7 @@ export default function PipelineMonitoringTab({
                                   }}
                                 >
                                   <ExternalLink className="w-3 h-3 mr-1" />
-                                  {t(
-                                    'monitoring.messageList.viewConversation',
-                                  )}
+                                  {t('monitoring.messageList.viewConversation')}
                                 </Button>
                               )}
                             </div>
@@ -549,72 +541,69 @@ export default function PipelineMonitoringTab({
               </div>
             )}
 
-            {!loading &&
-              data &&
-              data.llmCalls &&
-              data.llmCalls.length > 0 && (
-                <div className="space-y-3">
-                  {data.llmCalls.map((call) => (
-                    <div
-                      key={call.id}
-                      className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-all duration-200"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span
-                              className={`text-xs px-2 py-0.5 rounded ${
-                                call.status === 'success'
-                                  ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                                  : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                              }`}
-                            >
-                              {call.status}
-                            </span>
-                          </div>
-                          <div className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">
-                            {call.modelName}
-                          </div>
-                          <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-                            <div className="flex flex-wrap gap-4">
-                              <span>
-                                {t('monitoring.llmCalls.inputTokens')}:{' '}
-                                {call.tokens.input}
-                              </span>
-                              <span>
-                                {t('monitoring.llmCalls.outputTokens')}:{' '}
-                                {call.tokens.output}
-                              </span>
-                              <span>
-                                {t('monitoring.llmCalls.totalTokens')}:{' '}
-                                {call.tokens.total}
-                              </span>
-                              <span>
-                                {t('monitoring.llmCalls.duration')}:{' '}
-                                {call.duration}ms
-                              </span>
-                              {call.cost && (
-                                <span>
-                                  {t('monitoring.llmCalls.cost')}: $
-                                  {call.cost.toFixed(4)}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          {call.errorMessage && (
-                            <div className="mt-2 text-xs text-red-600 dark:text-red-400">
-                              Error: {call.errorMessage}
-                            </div>
-                          )}
+            {!loading && data && data.llmCalls && data.llmCalls.length > 0 && (
+              <div className="space-y-3">
+                {data.llmCalls.map((call) => (
+                  <div
+                    key={call.id}
+                    className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-all duration-200"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span
+                            className={`text-xs px-2 py-0.5 rounded ${
+                              call.status === 'success'
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                            }`}
+                          >
+                            {call.status}
+                          </span>
                         </div>
-                        <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap ml-4">
-                          {call.timestamp.toLocaleString()}
-                        </span>
+                        <div className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">
+                          {call.modelName}
+                        </div>
+                        <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                          <div className="flex flex-wrap gap-4">
+                            <span>
+                              {t('monitoring.llmCalls.inputTokens')}:{' '}
+                              {call.tokens.input}
+                            </span>
+                            <span>
+                              {t('monitoring.llmCalls.outputTokens')}:{' '}
+                              {call.tokens.output}
+                            </span>
+                            <span>
+                              {t('monitoring.llmCalls.totalTokens')}:{' '}
+                              {call.tokens.total}
+                            </span>
+                            <span>
+                              {t('monitoring.llmCalls.duration')}:{' '}
+                              {call.duration}ms
+                            </span>
+                            {call.cost && (
+                              <span>
+                                {t('monitoring.llmCalls.cost')}: $
+                                {call.cost.toFixed(4)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {call.errorMessage && (
+                          <div className="mt-2 text-xs text-red-600 dark:text-red-400">
+                            Error: {call.errorMessage}
+                          </div>
+                        )}
                       </div>
+                      <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap ml-4">
+                        {call.timestamp.toLocaleString()}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              )}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {!loading &&
               (!data || !data.llmCalls || data.llmCalls.length === 0) && (
