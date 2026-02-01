@@ -247,6 +247,7 @@ export default function DynamicFormItemComponent({
   switch (config.type) {
     case DynamicFormItemType.INT:
     case DynamicFormItemType.FLOAT:
+    case DynamicFormItemType.NUMBER:
       return (
         <Input
           type="number"
@@ -298,6 +299,15 @@ export default function DynamicFormItemComponent({
         <Textarea
           {...field}
           className="min-h-[120px] w-full max-w-full resize-y overflow-x-hidden break-all"
+        />
+      );
+
+    case DynamicFormItemType.JSON:
+      return (
+        <Textarea
+          {...field}
+          className="min-h-[200px] font-mono text-sm"
+          placeholder='{"key": "value"}'
         />
       );
 

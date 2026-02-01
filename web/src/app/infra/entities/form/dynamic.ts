@@ -70,6 +70,11 @@ export enum DynamicFormItemType {
   WEBHOOK_URL = 'webhook-url',
   EMBED_CODE = 'embed-code',
   QR_CODE_LOGIN = 'qr-code-login',
+  // Plugin manifest type aliases for compatibility
+  SELECT_LLM_MODEL = 'select-llm-model',
+  SELECT_KNOWLEDGE_BASES = 'select-knowledge-bases',
+  NUMBER = 'number',
+  JSON = 'json',
 }
 
 export interface IFileConfig {
