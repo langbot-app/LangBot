@@ -1,4 +1,7 @@
-import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
+import {
+  IDynamicFormItemSchema,
+  DynamicFormItemType,
+} from '@/app/infra/entities/form/dynamic';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -13,6 +16,19 @@ import {
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
 import { useEffect, useRef } from 'react';
 import { extractI18nObject } from '@/i18n/I18nProvider';
+
+/**
+ * Normalize plugin manifest type names to frontend-compatible types
+ */
+function normalizeItemType(type: string): string {
+  const typeMap: Record<string, string> = {
+    'select-llm-model': DynamicFormItemType.LLM_MODEL_SELECTOR,
+    'select-knowledge-bases': DynamicFormItemType.KNOWLEDGE_BASE_MULTI_SELECTOR,
+    number: DynamicFormItemType.FLOAT,
+    json: DynamicFormItemType.TEXT,
+  };
+  return typeMap[type] || type;
+}
 
 export default function DynamicFormComponent({
   itemConfigList,
@@ -32,8 +48,11 @@ export default function DynamicFormComponent({
   const formSchema = z.object(
     itemConfigList.reduce(
       (acc, item) => {
+        // Normalize type to handle plugin manifest type names
+        const normalizedType = normalizeItemType(item.type);
+
         let fieldSchema;
-        switch (item.type) {
+        switch (normalizedType) {
           case 'integer':
             fieldSchema = z.number();
             break;
@@ -71,6 +90,9 @@ export default function DynamicFormComponent({
                 role: z.string(),
               }),
             );
+            break;
+          case 'text':
+            fieldSchema = z.string();
             break;
           default:
             fieldSchema = z.string();
@@ -161,34 +183,42 @@ export default function DynamicFormComponent({
   return (
     <Form {...form}>
       <div className="space-y-4">
-        {itemConfigList.map((config) => (
-          <FormField
-            key={config.id}
-            control={form.control}
-            name={config.name as keyof FormValues}
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  {extractI18nObject(config.label)}{' '}
-                  {config.required && <span className="text-red-500">*</span>}
-                </FormLabel>
-                <FormControl>
-                  <DynamicFormItemComponent
-                    config={config}
-                    field={field}
-                    onFileUploaded={onFileUploaded}
-                  />
-                </FormControl>
-                {config.description && (
-                  <p className="text-sm text-muted-foreground">
-                    {extractI18nObject(config.description)}
-                  </p>
-                )}
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        ))}
+        {itemConfigList.map((config) => {
+          // Create a normalized config with type converted to frontend format
+          const normalizedConfig = {
+            ...config,
+            type: normalizeItemType(config.type),
+          };
+
+          return (
+            <FormField
+              key={config.id}
+              control={form.control}
+              name={config.name as keyof FormValues}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {extractI18nObject(config.label)}{' '}
+                    {config.required && <span className="text-red-500">*</span>}
+                  </FormLabel>
+                  <FormControl>
+                    <DynamicFormItemComponent
+                      config={normalizedConfig}
+                      field={field}
+                      onFileUploaded={onFileUploaded}
+                    />
+                  </FormControl>
+                  {config.description && (
+                    <p className="text-sm text-muted-foreground">
+                      {extractI18nObject(config.description)}
+                    </p>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          );
+        })}
       </div>
     </Form>
   );

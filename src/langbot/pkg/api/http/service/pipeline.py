@@ -31,10 +31,65 @@ class PipelineService:
         self.ap = ap
 
     async def get_pipeline_metadata(self) -> list[dict]:
+        """Get pipeline metadata with dynamically loaded plugin runners"""
+        import copy
+
+        # Deep copy AI metadata to avoid modifying the original
+        ai_metadata = copy.deepcopy(self.ap.pipeline_config_meta_ai)
+
+        # Find the runner stage
+        runner_stage = None
+        for stage in ai_metadata.get('stages', []):
+            if stage.get('name') == 'runner':
+                runner_stage = stage
+                break
+
+        if runner_stage:
+            # Find the runner select config
+            for config_item in runner_stage.get('config', []):
+                if config_item.get('name') == 'runner':
+                    # Get plugin agent runners
+                    try:
+                        plugin_runners = await self.ap.plugin_connector.list_agent_runners()
+
+                        # Add plugin runners to options
+                        for runner in plugin_runners:
+                            manifest = runner.get('manifest', {})
+                            metadata = manifest.get('metadata', {})
+
+                            # Format: plugin:author/plugin_name/runner_name
+                            runner_value = (
+                                f'plugin:{runner["plugin_author"]}/{runner["plugin_name"]}/{runner["runner_name"]}'
+                            )
+
+                            # Add to options
+                            config_item['options'].append(
+                                {
+                                    'name': runner_value,
+                                    'label': metadata.get('label', {runner['runner_name']: runner['runner_name']}),
+                                    'description': metadata.get('description'),
+                                }
+                            )
+
+                            # Add corresponding stage configuration for this runner
+                            spec_config = manifest.get('spec', {}).get('config', [])
+                            if spec_config:
+                                ai_metadata['stages'].append(
+                                    {
+                                        'name': runner_value,
+                                        'label': metadata.get('label', {runner['runner_name']: runner['runner_name']}),
+                                        'description': metadata.get('description'),
+                                        'config': spec_config,
+                                    }
+                                )
+
+                    except Exception as e:
+                        self.ap.logger.warning(f'Failed to load plugin agent runners: {e}')
+
         return [
             self.ap.pipeline_config_meta_trigger,
             self.ap.pipeline_config_meta_safety,
-            self.ap.pipeline_config_meta_ai,
+            ai_metadata,
             self.ap.pipeline_config_meta_output,
         ]
 

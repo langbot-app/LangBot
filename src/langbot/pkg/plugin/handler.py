@@ -338,6 +338,135 @@ class RuntimeConnectionHandler(handler.Handler):
                 },
             )
 
+        @self.action(PluginToRuntimeAction.INVOKE_LLM_STREAM)
+        async def invoke_llm_stream(data: dict[str, Any]):
+            """Invoke llm with streaming response"""
+            llm_model_uuid = data['llm_model_uuid']
+            messages = data['messages']
+            funcs = data.get('funcs', [])
+            extra_args = data.get('extra_args', {})
+
+            llm_model = await self.ap.model_mgr.get_model_by_uuid(llm_model_uuid)
+            if llm_model is None:
+                yield handler.ActionResponse.error(
+                    message=f'LLM model with llm_model_uuid {llm_model_uuid} not found',
+                )
+                return
+
+            messages_obj = [provider_message.Message.model_validate(message) for message in messages]
+            funcs_obj = [resource_tool.LLMTool.model_validate(func) for func in funcs]
+
+            async for chunk in llm_model.provider.invoke_llm_stream(
+                query=None,
+                model=llm_model,
+                messages=messages_obj,
+                funcs=funcs_obj,
+                extra_args=extra_args,
+            ):
+                yield handler.ActionResponse.success(
+                    data={
+                        'chunk': chunk.model_dump(),
+                    },
+                )
+
+        @self.action(PluginToRuntimeAction.CALL_TOOL)
+        async def call_tool(data: dict[str, Any]) -> handler.ActionResponse:
+            """Call a tool"""
+            tool_name = data['tool_name']
+            parameters = data['parameters']
+            # session_data = data['session']
+            # query_id = data['query_id']
+
+            # Convert session_data to Session object (simplified)
+            # In real implementation, you would reconstruct the full session
+            # For now, we'll call the tool manager's execute method
+            try:
+                result = await self.ap.tool_mgr.execute_func_call(
+                    name=tool_name,
+                    parameters=parameters,
+                    query=None,  # TODO: reconstruct query from session_data if needed
+                )
+                return handler.ActionResponse.success(
+                    data={
+                        'result': result,
+                    },
+                )
+            except Exception as e:
+                traceback.print_exc()
+                return handler.ActionResponse.error(
+                    message=f'Failed to execute tool {tool_name}: {e}',
+                )
+
+        @self.action(PluginToRuntimeAction.RETRIEVE_KNOWLEDGE)
+        async def retrieve_knowledge(data: dict[str, Any]) -> handler.ActionResponse:
+            """Retrieve knowledge from a knowledge base"""
+            kb_uuid = data['kb_uuid']
+            query = data['query']
+            top_k = data.get('top_k', 5)
+
+            try:
+                kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
+                if kb is None:
+                    return handler.ActionResponse.error(
+                        message=f'Knowledge base with uuid {kb_uuid} not found',
+                    )
+
+                results = await kb.retrieve(query=query, top_k=top_k)
+
+                # Convert results to dict format
+                results_data = [
+                    {
+                        'id': r.id,
+                        'content': [c.model_dump() for c in r.content],
+                        'metadata': r.metadata,
+                    }
+                    for r in results
+                ]
+
+                return handler.ActionResponse.success(
+                    data={
+                        'results': results_data,
+                    },
+                )
+            except Exception as e:
+                traceback.print_exc()
+                return handler.ActionResponse.error(
+                    message=f'Failed to retrieve knowledge: {e}',
+                )
+
+        @self.action(PluginToRuntimeAction.INVOKE_EMBEDDING)
+        async def invoke_embedding(data: dict[str, Any]) -> handler.ActionResponse:
+            """Invoke an embedding model"""
+            embedding_model_uuid = data['embedding_model_uuid']
+            texts = data['texts']
+
+            try:
+                embedding_model = await self.ap.model_mgr.get_embedding_model_by_uuid(embedding_model_uuid)
+                if embedding_model is None:
+                    return handler.ActionResponse.error(
+                        message=f'Embedding model with uuid {embedding_model_uuid} not found',
+                    )
+
+                # Call embedding model to generate embeddings
+                embeddings = []
+                for text in texts:
+                    embedding = await embedding_model.provider.invoke_embedding(
+                        model=embedding_model,
+                        text=text,
+                    )
+                    embeddings.append(embedding)
+
+                return handler.ActionResponse.success(
+                    data={
+                        'embeddings': embeddings,
+                    },
+                )
+            except Exception as e:
+                traceback.print_exc()
+                return handler.ActionResponse.error(
+                    message=f'Failed to invoke embedding model: {e}',
+                )
+
         @self.action(RuntimeToLangBotAction.SET_BINARY_STORAGE)
         async def set_binary_storage(data: dict[str, Any]) -> handler.ActionResponse:
             """Set binary storage"""

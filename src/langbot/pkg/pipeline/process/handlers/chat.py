@@ -17,9 +17,79 @@ from ....provider import runners
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
+from langbot_plugin.api.entities.builtin.agent_runner.context import AgentRunContext
 
 
 importutil.import_modules_in_pkg(runners)
+
+
+class PluginAgentRunnerWrapper(runner_module.RequestRunner):
+    """Wrapper to run AgentRunner from plugin"""
+
+    def __init__(self, ap, plugin_author: str, plugin_name: str, runner_name: str, pipeline_config: dict):
+        super().__init__(ap, pipeline_config)
+        self.plugin_author = plugin_author
+        self.plugin_name = plugin_name
+        self.runner_name = runner_name
+        self.name = f'plugin:{plugin_author}/{plugin_name}/{runner_name}'
+
+    async def run(
+        self, query: pipeline_query.Query
+    ) -> typing.AsyncGenerator[provider_message.Message | provider_message.MessageChunk, None]:
+        """Run the plugin agent runner"""
+
+        # Build AgentRunContext
+        context = AgentRunContext(
+            query_id=query.query_id,
+            session=query.session,
+            messages=query.messages,
+            user_message=query.user_message.content[0]
+            if isinstance(query.user_message.content, list)
+            else provider_message.ContentElement.from_text(query.user_message.content),
+            use_funcs=query.use_funcs,
+            extra_config=self.pipeline_config.get('ai', {}).get(self.runner_name, {}),
+        )
+
+        # Call plugin connector to run agent
+        async for result_dict in self.ap.plugin_connector.run_agent(
+            plugin_author=self.plugin_author,
+            plugin_name=self.plugin_name,
+            runner_name=self.runner_name,
+            context=context.model_dump(),
+        ):
+            # Convert result to Message/MessageChunk
+            result_type = result_dict.get('type')
+
+            if result_type == 'chunk':
+                # Stream chunk
+                chunk_data = result_dict.get('message_chunk')
+                if chunk_data:
+                    yield provider_message.MessageChunk.model_validate(chunk_data)
+
+            elif result_type == 'text':
+                # Text content
+                content = result_dict.get('content', '')
+                yield provider_message.MessageChunk(
+                    role='assistant',
+                    content=content,
+                )
+
+            elif result_type == 'tool_call':
+                # Tool call notification (may not need to yield anything here)
+                pass
+
+            elif result_type == 'finish':
+                # Final message
+                message_data = result_dict.get('message')
+                if message_data:
+                    yield provider_message.Message.model_validate(message_data)
+                else:
+                    # Fallback: create message from content
+                    content = result_dict.get('content', '')
+                    yield provider_message.Message(
+                        role='assistant',
+                        content=content,
+                    )
 
 
 class ChatMessageHandler(handler.MessageHandler):
@@ -80,12 +150,32 @@ class ChatMessageHandler(handler.MessageHandler):
                 is_stream = False
 
             try:
+                runner_name = query.pipeline_config['ai']['runner']['runner']
+
+                # Check if it's a built-in runner
+                runner = None
                 for r in runner_module.preregistered_runners:
-                    if r.name == query.pipeline_config['ai']['runner']['runner']:
+                    if r.name == runner_name:
                         runner = r(self.ap, query.pipeline_config)
                         break
-                else:
-                    raise ValueError(f'Request Runner not found: {query.pipeline_config["ai"]["runner"]["runner"]}')
+
+                # If not found in built-in runners, check plugin runners
+                if runner is None:
+                    # Parse runner name: format is "plugin:author/plugin_name/runner_name"
+                    if runner_name.startswith('plugin:'):
+                        parts = runner_name[7:].split('/')  # Remove "plugin:" prefix
+                        if len(parts) == 3:
+                            plugin_author, plugin_name, component_runner_name = parts
+                            runner = PluginAgentRunnerWrapper(
+                                self.ap, plugin_author, plugin_name, component_runner_name, query.pipeline_config
+                            )
+                        else:
+                            raise ValueError(
+                                f'Invalid plugin runner name format: {runner_name}. Expected: plugin:author/name/runner'
+                            )
+                    else:
+                        raise ValueError(f'Request Runner not found: {runner_name}')
+
                 # Mark start time for telemetry
                 start_ts = time.time()
 

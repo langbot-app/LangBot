@@ -464,6 +464,43 @@ class PluginRuntimeConnector:
             yield cmd_ret
 
     # KnowledgeRetriever methods
+    # AgentRunner methods
+    async def list_agent_runners(self, bound_plugins: list[str] | None = None) -> list[ComponentManifest]:
+        """List all available AgentRunner components."""
+        if not self.is_enable_plugin:
+            return []
+
+        runners_data = await self.handler.list_agent_runners(include_plugins=bound_plugins)
+        runners = [ComponentManifest.model_validate(runner) for runner in runners_data]
+        return runners
+
+    async def run_agent(
+        self,
+        plugin_author: str,
+        plugin_name: str,
+        runner_name: str,
+        context: dict[str, Any],
+    ) -> typing.AsyncGenerator[dict[str, Any], None]:
+        """Run an AgentRunner from a plugin.
+
+        Args:
+            plugin_author: Plugin author
+            plugin_name: Plugin name
+            runner_name: AgentRunner component name
+            context: AgentRunContext as dict
+
+        Yields:
+            AgentRunReturn results as dicts
+        """
+        if not self.is_enable_plugin:
+            yield {'type': 'finish', 'finish_reason': 'error', 'content': 'Plugin system is disabled'}
+            return
+
+        gen = self.handler.run_agent(plugin_author, plugin_name, runner_name, context)
+
+        async for ret in gen:
+            yield ret
+
     async def list_knowledge_retrievers(self, bound_plugins: list[str] | None = None) -> list[dict[str, Any]]:
         """List all available KnowledgeRetriever components."""
         if not self.is_enable_plugin:

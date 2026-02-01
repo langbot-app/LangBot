@@ -176,6 +176,7 @@ export default function DynamicFormItemComponent({
   switch (config.type) {
     case DynamicFormItemType.INT:
     case DynamicFormItemType.FLOAT:
+    case DynamicFormItemType.NUMBER:
       return (
         <Input
           type="number"
@@ -189,6 +190,15 @@ export default function DynamicFormItemComponent({
 
     case DynamicFormItemType.TEXT:
       return <Textarea {...field} className="min-h-[120px]" />;
+
+    case DynamicFormItemType.JSON:
+      return (
+        <Textarea
+          {...field}
+          className="min-h-[200px] font-mono text-sm"
+          placeholder='{"key": "value"}'
+        />
+      );
 
     case DynamicFormItemType.BOOLEAN:
       return <Switch checked={field.value} onCheckedChange={field.onChange} />;

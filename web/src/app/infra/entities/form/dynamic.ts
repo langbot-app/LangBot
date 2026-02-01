@@ -32,6 +32,11 @@ export enum DynamicFormItemType {
   KNOWLEDGE_BASE_MULTI_SELECTOR = 'knowledge-base-multi-selector',
   PLUGIN_SELECTOR = 'plugin-selector',
   BOT_SELECTOR = 'bot-selector',
+  // Plugin manifest type aliases for compatibility
+  SELECT_LLM_MODEL = 'select-llm-model',
+  SELECT_KNOWLEDGE_BASES = 'select-knowledge-bases',
+  NUMBER = 'number',
+  JSON = 'json',
 }
 
 export interface IFileConfig {
