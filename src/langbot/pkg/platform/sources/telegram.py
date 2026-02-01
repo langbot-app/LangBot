@@ -179,7 +179,9 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         application = ApplicationBuilder().token(config['token']).build()
         bot = application.bot
-        application.add_handler(MessageHandler(filters.TEXT | (filters.COMMAND) | filters.PHOTO | filters.VOICE, telegram_callback))
+        application.add_handler(
+            MessageHandler(filters.TEXT | (filters.COMMAND) | filters.PHOTO | filters.VOICE, telegram_callback)
+        )
         super().__init__(
             config=config,
             logger=logger,
