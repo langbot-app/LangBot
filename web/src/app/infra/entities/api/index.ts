@@ -155,7 +155,7 @@ export interface KnowledgeBase {
   uuid?: string;
   name: string;
   description: string;
-  embedding_model_uuid: string;
+  embedding_model_uuid?: string; // Optional - can be in creation_settings instead
   top_k: number;
   created_at?: string;
   updated_at?: string;
@@ -178,23 +178,10 @@ export interface RAGEngine {
   name: string;
   description?: I18nObject;
   capabilities: string[];
-  creation_schema?: JSONSchema;
-  retrieval_schema?: JSONSchema;
-}
-
-export interface JSONSchema {
-  type: string;
-  properties?: Record<string, JSONSchemaProperty>;
-  required?: string[];
-}
-
-export interface JSONSchemaProperty {
-  type: string;
-  default?: unknown;
-  description?: string;
-  enum?: unknown[];
-  minimum?: number;
-  maximum?: number;
+  // Schema format: Array of form field definitions (IDynamicFormItemSchema-like)
+  // Each item: { name, label, type, required, default, description?, options? }
+  creation_schema?: unknown[];
+  retrieval_schema?: unknown[];
 }
 
 export interface ApiRespRAGEngines {

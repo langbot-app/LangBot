@@ -4,7 +4,7 @@ export interface IKnowledgeBaseVO {
   id: string;
   name: string;
   description: string;
-  embeddingModelUUID: string;
+  embeddingModelUUID?: string;
   top_k: number;
   lastUpdatedTimeAgo: string;
   emoji?: string;
@@ -16,7 +16,7 @@ export class KnowledgeBaseVO implements IKnowledgeBaseVO {
   id: string;
   name: string;
   description: string;
-  embeddingModelUUID: string;
+  embeddingModelUUID?: string;
   top_k: number;
   lastUpdatedTimeAgo: string;
   emoji?: string;

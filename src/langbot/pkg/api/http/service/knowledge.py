@@ -112,7 +112,7 @@ class KnowledgeService:
     async def update_knowledge_base(self, kb_uuid: str, kb_data: dict) -> None:
         """更新知识库"""
         # Filter to only valid database fields
-        valid_fields = {'name', 'description', 'top_k', 'rag_engine_plugin_id', 'creation_settings'}
+        valid_fields = {'name', 'description', 'top_k', 'rag_engine_plugin_id', 'creation_settings', 'embedding_model_uuid'}
         filtered_data = {k: v for k, v in kb_data.items() if k in valid_fields}
 
         if not filtered_data:
@@ -235,7 +235,9 @@ class KnowledgeService:
             rag_engines = await self.ap.plugin_connector.list_rag_engines()
             engines.extend(rag_engines)
         except Exception as e:
-            self.ap.logger.warning(f"Failed to list RAG engines from plugins: {e}")
+            self.ap.logger.warning(f"Failed to list RAG engines from plugins: {type(e)} {e}")
+            import traceback
+            traceback.print_exc()
 
         return engines
 

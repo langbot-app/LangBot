@@ -698,6 +698,8 @@ const zhHans = {
     noEnginesAvailable: '没有可用的知识库引擎',
     installEngineHint: '请先安装知识库插件',
     createKnowledgeBaseFailed: '知识库创建失败',
+    embeddingModel: '嵌入模型',
+    embeddingModelRequired: '此引擎需要选择嵌入模型',
     addExternal: '添加外部知识库',
     createExternalSuccess: '外部知识库创建成功',
     updateExternalSuccess: '外部知识库更新成功',

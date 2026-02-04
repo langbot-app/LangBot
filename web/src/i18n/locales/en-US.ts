@@ -728,6 +728,8 @@ const enUS = {
     noEnginesAvailable: 'No knowledge base engines available',
     installEngineHint: 'Please install a knowledge base plugin first',
     createKnowledgeBaseFailed: 'Failed to create knowledge base',
+    embeddingModel: 'Embedding Model',
+    embeddingModelRequired: 'Embedding model is required for this engine',
     addExternal: 'Add External Knowledge Base',
     createExternalSuccess: 'External knowledge base created successfully',
     updateExternalSuccess: 'External knowledge base updated successfully',

@@ -22,6 +22,7 @@ import {
   LLMModel,
   Bot,
   KnowledgeBase,
+  EmbeddingModel,
 } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -49,6 +50,7 @@ export default function DynamicFormItemComponent({
   onFileUploaded?: (fileKey: string) => void;
 }) {
   const [llmModels, setLlmModels] = useState<LLMModel[]>([]);
+  const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModel[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [bots, setBots] = useState<Bot[]>([]);
   const [uploading, setUploading] = useState<boolean>(false);
@@ -105,6 +107,19 @@ export default function DynamicFormItemComponent({
         })
         .catch((err) => {
           toast.error('Failed to get LLM model list: ' + err.msg);
+        });
+    }
+  }, [config.type]);
+
+  useEffect(() => {
+    if (config.type === DynamicFormItemType.EMBEDDING_MODEL_SELECTOR) {
+      httpClient
+        .getProviderEmbeddingModels()
+        .then((resp) => {
+          setEmbeddingModels(resp.models);
+        })
+        .catch((err) => {
+          toast.error('Failed to get embedding model list: ' + err.msg);
         });
     }
   }, [config.type]);
@@ -256,6 +271,38 @@ export default function DynamicFormItemComponent({
                         <Wrench className="h-3 w-3 text-muted-foreground" />
                       )}
                     </span>
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+
+    case DynamicFormItemType.EMBEDDING_MODEL_SELECTOR:
+      // Group embedding models by provider
+      const groupedEmbeddingModels = embeddingModels.reduce(
+        (acc, model) => {
+          const providerName = model.provider?.name || 'Unknown';
+          if (!acc[providerName]) acc[providerName] = [];
+          acc[providerName].push(model);
+          return acc;
+        },
+        {} as Record<string, EmbeddingModel[]>,
+      );
+
+      return (
+        <Select value={field.value} onValueChange={field.onChange}>
+          <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+            <SelectValue placeholder={t('knowledge.selectEmbeddingModel')} />
+          </SelectTrigger>
+          <SelectContent>
+            {Object.entries(groupedEmbeddingModels).map(([providerName, models]) => (
+              <SelectGroup key={providerName}>
+                <SelectLabel>{providerName}</SelectLabel>
+                {models.map((model) => (
+                  <SelectItem key={model.uuid} value={model.uuid}>
+                    {model.name}
                   </SelectItem>
                 ))}
               </SelectGroup>

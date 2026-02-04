@@ -262,6 +262,9 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
 
         logger.info(f"Calling RAG plugin {plugin_id}: ingest(doc={file_metadata.get('filename')})")
 
+        # Inject knowledge_base_id into file metadata as required by SDK schema
+        file_metadata["knowledge_base_id"] = kb.uuid
+
         context_data = {
             "file_object": {
                 "metadata": file_metadata,

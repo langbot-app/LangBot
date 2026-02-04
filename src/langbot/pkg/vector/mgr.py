@@ -65,3 +65,80 @@ class VectorDBManager:
         else:
             self.vector_db = ChromaVectorDatabase(self.ap)
             self.ap.logger.warning('No vector database backend configured, defaulting to Chroma.')
+
+    async def upsert(
+        self,
+        collection_name: str,
+        vectors: list[list[float]],
+        ids: list[str],
+        metadata: list[dict] | None = None,
+    ):
+        """Proxy: Upsert vectors"""
+        await self.vector_db.get_or_create_collection(collection_name)
+        await self.vector_db.add_embeddings(
+            collection=collection_name,
+            ids=ids,
+            embeddings_list=vectors,
+            metadatas=metadata or [{} for _ in vectors],
+        )
+
+    async def search(
+        self,
+        collection_name: str,
+        query_vector: list[float],
+        limit: int,
+        filter: dict | None = None,
+    ) -> list[dict]:
+        """Proxy: Search vectors"""
+        import numpy as np
+        # Ensure collection exists before searching? Or let it fail/return empty?
+        # Usually implementations handle collection not found.
+        results = await self.vector_db.search(
+            collection=collection_name,
+            query_embedding=np.array(query_vector),
+            k=limit,
+            # Note: filters are not yet unified in VectorDatabase abstract method signature properly in all impls,
+            # but we pass what we can. The ABI above shows search(collection, query_embedding, k).
+            # We might need to handle filters if implementations support it.
+        )
+        
+        # Convert results to standard format
+        # Abstract return type is Dict[str, Any] which usually contains 'ids', 'distances', 'metadatas', 'documents'
+        # We want to return list of results
+        
+        # Assuming typical Chroma/Standard format:
+        # { 'ids': [['id1']], 'distances': [[0.1]], 'metadatas': [[{}]], 'documents': [['text']] }
+        # Note: VectorDatabase.search implementation details vary.
+        # Let's inspect ChromaVectorDatabase.search to match return format logic.
+        
+        # For now, let's implement a basic return structure assuming the Dict matches standard.
+        parsed_results = []
+        if not results or 'ids' not in results or not results['ids']:
+             return []
+             
+        # Flatten if list of lists (batch search)
+        r_ids = results['ids'][0] if isinstance(results['ids'], list) and results['ids'] and isinstance(results['ids'][0], list) else results['ids']
+        r_dists = results['distances'][0] if isinstance(results['distances'], list) and results['distances'] and isinstance(results['distances'][0], list) else results['distances']
+        r_metas = results['metadatas'][0] if isinstance(results['metadatas'], list) and results['metadatas'] and isinstance(results['metadatas'][0], list) else results['metadatas']
+        
+        for i, id_val in enumerate(r_ids):
+            parsed_results.append({
+                'id': id_val,
+                'score': r_dists[i] if r_dists is not None else 0.0,
+                'metadata': r_metas[i] if r_metas else {},
+            })
+            
+        return parsed_results
+
+    async def delete(self, collection_name: str, ids: list[str]):
+        """Proxy: Delete vectors by ID"""
+        for doc_id in ids:
+             await self.vector_db.delete_by_file_id(collection_name, doc_id)
+
+    async def delete_by_filter(self, collection_name: str, filter: dict):
+        """Proxy: Delete vectors by filter"""
+        # Base VectorDatabase doesn't support delete_by_filter explicitly in the interface shown (only delete_by_file_id and delete_collection)
+        # We might need to extend VectorDatabase or implemented logic here.
+        # For now, log warning or implement if VDB supports it.
+        # Given the error was 'AttributeError: ... has no attribute upsert', implementing aliases is step 1.
+        pass

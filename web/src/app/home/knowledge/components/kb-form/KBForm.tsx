@@ -26,10 +26,13 @@ import { KnowledgeBase, RAGEngine } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
+import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
 import {
-  jsonSchemaToFormItems,
-  getDefaultValuesFromSchema,
-} from '@/app/infra/utils/jsonSchemaConverter';
+  DynamicFormItemConfig,
+  getDefaultValues,
+  parseDynamicFormItemType,
+} from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
+import { UUID } from 'uuidjs';
 
 const getFormSchema = (t: (key: string) => string) =>
   z.object({
@@ -42,6 +45,36 @@ const getFormSchema = (t: (key: string) => string) =>
       .string()
       .min(1, { message: t('knowledge.ragEngineRequired') }),
   });
+
+/**
+ * Parse creation schema from RAG engine to IDynamicFormItemSchema[]
+ * Same pattern as ExternalKBForm uses for retriever config
+ */
+function parseCreationSchema(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  schemaItems: any | any[] | undefined,
+): IDynamicFormItemSchema[] {
+  if (!schemaItems) return [];
+
+  // Handle wrapped schema (e.g. { schema: [...] }) which might be returned by the API
+  const items = Array.isArray(schemaItems) ? schemaItems : schemaItems.schema;
+
+  if (!items || !Array.isArray(items)) return [];
+
+  return items.map(
+    (item) =>
+      new DynamicFormItemConfig({
+        default: item.default,
+        id: UUID.generate(),
+        label: item.label,
+        description: item.description,
+        name: item.name,
+        required: item.required,
+        type: parseDynamicFormItemType(item.type),
+        options: item.options,
+      }),
+  );
+}
 
 export default function KBForm({
   initKbId,
@@ -93,10 +126,9 @@ export default function KBForm({
       setSelectedEngineId(firstEngine.plugin_id);
       form.setValue('ragEngineId', firstEngine.plugin_id);
       // Initialize config settings with defaults
-      if (firstEngine.creation_schema) {
-        setConfigSettings(
-          getDefaultValuesFromSchema(firstEngine.creation_schema),
-        );
+      const formItems = parseCreationSchema(firstEngine.creation_schema);
+      if (formItems.length > 0) {
+        setConfigSettings(getDefaultValues(formItems));
       }
     }
   }, [ragEngines, selectedEngineId, isEditing]);
@@ -141,8 +173,9 @@ export default function KBForm({
     // Find engine and initialize config settings with defaults from schema
     const engine = ragEngines.find((e) => e.plugin_id === engineId);
     if (engine) {
-      if (engine.creation_schema) {
-        setConfigSettings(getDefaultValuesFromSchema(engine.creation_schema));
+      const formItems = parseCreationSchema(engine.creation_schema);
+      if (formItems.length > 0) {
+        setConfigSettings(getDefaultValues(formItems));
       } else {
         setConfigSettings({});
       }
@@ -156,7 +189,6 @@ export default function KBForm({
       emoji: data.emoji,
       rag_engine_plugin_id: selectedEngineId,
       creation_settings: configSettings,
-      embedding_model_uuid: '',
       top_k: 5,
     };
 
@@ -186,11 +218,8 @@ export default function KBForm({
     }
   };
 
-  // Convert creation schema to dynamic form items
-  const configFormItems = (() => {
-    if (!selectedEngine?.creation_schema) return [];
-    return jsonSchemaToFormItems(selectedEngine.creation_schema);
-  })();
+  // Convert creation schema to dynamic form items (same as ExternalKBForm)
+  const configFormItems = parseCreationSchema(selectedEngine?.creation_schema);
 
   // Show loading state
   if (loading) {
@@ -327,7 +356,7 @@ export default function KBForm({
               )}
             />
 
-            {/* Engine specific fields (dynamic form) */}
+            {/* Engine specific fields (dynamic form from creation_schema) */}
             {configFormItems.length > 0 && (
               <div className="space-y-4 pt-2 border-t">
                 <div className="text-sm font-medium text-muted-foreground">

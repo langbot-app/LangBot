@@ -42,6 +42,9 @@ class RuntimeConnectionHandler(handler.Handler):
     ):
         super().__init__(connection, disconnect_callback)
         self.ap = ap
+        import sys
+        sys.stderr.write(f"DEBUG_HANDLER: Initializing RuntimeConnectionHandler. Actions: {list(self.actions.keys())}\n")
+        sys.stderr.flush()
 
         @self.action(RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS)
         async def initialize_plugin_settings(data: dict[str, Any]) -> handler.ActionResponse:
@@ -465,10 +468,22 @@ class RuntimeConnectionHandler(handler.Handler):
         async def _get_kb_entity(kb_id: str):
             stmt = sqlalchemy.select(persistence_rag.KnowledgeBase).where(persistence_rag.KnowledgeBase.uuid == kb_id)
             result = await self.ap.persistence_mgr.execute_async(stmt)
-            kb = result.scalar_one_or_none()
-            if not kb:
+            row = result.first()
+            if not row:
                  raise ValueError(f"Knowledge Base {kb_id} not found")
+            # Convert Row to KnowledgeBase entity
+            kb = persistence_rag.KnowledgeBase(**row._mapping)
             return kb
+
+        def _get_embedding_model_uuid(kb: persistence_rag.KnowledgeBase) -> str | None:
+            """Get embedding model UUID from creation_settings (preferred) or KB field (fallback)."""
+            # First check creation_settings (new approach - plugin defines via creation_schema)
+            if kb.creation_settings and isinstance(kb.creation_settings, dict):
+                embed_uuid = kb.creation_settings.get('embedding_model_uuid')
+                if embed_uuid:
+                    return embed_uuid
+            # Fallback to KB field (backward compatibility)
+            return kb.embedding_model_uuid
 
         @self.action(PluginToRuntimeAction.RAG_EMBED_DOCUMENTS)
         async def rag_embed_documents(data: dict[str, Any]) -> handler.ActionResponse:
@@ -477,30 +492,28 @@ class RuntimeConnectionHandler(handler.Handler):
             try:
                 # 1. Get KB config to find embedding model
                 kb = await _get_kb_entity(kb_id)
-                embed_model_uuid = kb.embedding_model_uuid
+                embed_model_uuid = _get_embedding_model_uuid(kb)
 
                 # 2. Get embedder instance
                 if not embed_model_uuid:
                      return handler.ActionResponse.error(
-                         message="Embedding model not configured for this Knowledge Base",
-                         data={"error_type": "EmbeddingError", "kb_id": kb_id}
+                         message=f"Embedding model not configured for this Knowledge Base (kb_id: {kb_id})"
                      )
 
                 embedder_model = await self.ap.model_mgr.get_embedding_model_by_uuid(embed_model_uuid)
 
                 if not embedder_model:
                      return handler.ActionResponse.error(
-                         message=f"Embedding model {embed_model_uuid} not found",
-                         data={"error_type": "EmbeddingError", "model_uuid": embed_model_uuid}
+                         message=f"Embedding model {embed_model_uuid} not found"
                      )
 
                 # 3. Generate embeddings
-                vectors = await embedder_model.provider.embed_documents(texts)
+                vectors = await embedder_model.embed_documents(texts)
                 return handler.ActionResponse.success(data={'vectors': vectors})
             except Exception as e:
+                import json
                 return handler.ActionResponse.error(
-                    message=str(e),
-                    data={"error_type": "EmbeddingError", "original_error": type(e).__name__}
+                    message=f"{str(e)} (Original Error: {type(e).__name__}, Data: {json.dumps({'error_type': 'EmbeddingError', 'original_error': type(e).__name__})})"
                 )
 
         @self.action(PluginToRuntimeAction.RAG_EMBED_QUERY)
@@ -509,27 +522,25 @@ class RuntimeConnectionHandler(handler.Handler):
             text = data['text']
             try:
                 kb = await _get_kb_entity(kb_id)
-                embed_model_uuid = kb.embedding_model_uuid
+                embed_model_uuid = _get_embedding_model_uuid(kb)
 
                 if not embed_model_uuid:
                      return handler.ActionResponse.error(
-                         message="Embedding model not configured",
-                         data={"error_type": "EmbeddingError", "kb_id": kb_id}
+                         message=f"Embedding model not configured (kb_id: {kb_id})"
                      )
 
                 embedder_model = await self.ap.model_mgr.get_embedding_model_by_uuid(embed_model_uuid)
                 if not embedder_model:
                      return handler.ActionResponse.error(
-                         message=f"Embedding model {embed_model_uuid} not found",
-                         data={"error_type": "EmbeddingError", "model_uuid": embed_model_uuid}
+                         message=f"Embedding model {embed_model_uuid} not found"
                      )
 
-                vector = await embedder_model.provider.embed_query(text)
+                vector = await embedder_model.embed_query(text)
                 return handler.ActionResponse.success(data={'vector': vector})
             except Exception as e:
+                import json
                 return handler.ActionResponse.error(
-                    message=str(e),
-                    data={"error_type": "EmbeddingError", "original_error": type(e).__name__}
+                    message=f"{str(e)} (Original Error: {type(e).__name__}, Data: {json.dumps({'error_type': 'EmbeddingError', 'original_error': type(e).__name__})})"
                 )
 
         @self.action(PluginToRuntimeAction.RAG_VECTOR_UPSERT)
@@ -548,9 +559,9 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
                 return handler.ActionResponse.success(data={})
             except Exception as e:
+                import json
                 return handler.ActionResponse.error(
-                    message=str(e),
-                    data={"error_type": "VectorStoreError", "collection_id": collection_id, "original_error": type(e).__name__}
+                    message=f"{str(e)} (Original Error: {type(e).__name__}, Data: {json.dumps({'error_type': 'VectorStoreError', 'collection_id': collection_id, 'original_error': type(e).__name__})})"
                 )
 
         @self.action(PluginToRuntimeAction.RAG_VECTOR_SEARCH)
@@ -568,9 +579,9 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
                 return handler.ActionResponse.success(data={'results': results})
             except Exception as e:
+                import json
                 return handler.ActionResponse.error(
-                    message=str(e),
-                    data={"error_type": "VectorStoreError", "collection_id": collection_id, "original_error": type(e).__name__}
+                    message=f"{str(e)} (Original Error: {type(e).__name__}, Data: {json.dumps({'error_type': 'VectorStoreError', 'collection_id': collection_id, 'original_error': type(e).__name__})})"
                 )
 
         @self.action(PluginToRuntimeAction.RAG_VECTOR_DELETE)
@@ -588,9 +599,9 @@ class RuntimeConnectionHandler(handler.Handler):
 
                 return handler.ActionResponse.success(data={'count': count})
             except Exception as e:
+                import json
                 return handler.ActionResponse.error(
-                    message=str(e),
-                    data={"error_type": "VectorStoreError", "collection_id": collection_id, "original_error": type(e).__name__}
+                    message=f"{str(e)} (Original Error: {type(e).__name__}, Data: {json.dumps({'error_type': 'VectorStoreError', 'collection_id': collection_id, 'original_error': type(e).__name__})})"
                 )
 
         @self.action(PluginToRuntimeAction.RAG_GET_FILE_STREAM)
@@ -613,10 +624,23 @@ class RuntimeConnectionHandler(handler.Handler):
                 content_base64 = base64.b64encode(content_bytes).decode('utf-8')
                 return handler.ActionResponse.success(data={'content_base64': content_base64})
             except Exception as e:
+                import json
                 return handler.ActionResponse.error(
-                    message=str(e),
-                    data={"error_type": "FileServiceError", "storage_path": storage_path, "original_error": type(e).__name__}
+                    message=f"{str(e)} (Original Error: {type(e).__name__}, Data: {json.dumps({'error_type': 'FileServiceError', 'storage_path': storage_path, 'original_error': type(e).__name__})})"
                 )
+
+        @self.action(CommonAction.PING)
+        async def ping(data: dict[str, Any]) -> handler.ActionResponse:
+            """Ping"""
+            return handler.ActionResponse.success(
+                data={
+                     "pong": "pong",
+                },
+            )
+
+        import sys
+        sys.stderr.write(f"DEBUG_HANDLER: RuntimeConnectionHandler initialized. Actions: {list(self.actions.keys())}\n")
+        sys.stderr.flush()
 
     async def ping(self) -> dict[str, Any]:
         """Ping the runtime"""
@@ -897,7 +921,7 @@ class RuntimeConnectionHandler(handler.Handler):
             },
             timeout=30,
         )
-        return result['retrieval_results']
+        return result
 
     async def sync_polymorphic_component_instances(self, required_instances: list[dict[str, Any]]) -> dict[str, Any]:
         """Sync polymorphic component instances with runtime"""
@@ -999,6 +1023,6 @@ class RuntimeConnectionHandler(handler.Handler):
         result = await self.call_action(
             LangBotToRuntimeAction.LIST_RAG_ENGINES,
             {},
-            timeout=10
+            timeout=60
         )
         return result.get("engines", [])
