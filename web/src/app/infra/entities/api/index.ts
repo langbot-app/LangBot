@@ -70,16 +70,6 @@ export interface LLMModel {
   extra_args?: object;
 }
 
-export interface KnowledgeBase {
-  uuid?: string;
-  name: string;
-  description: string;
-  embedding_model_uuid: string;
-  created_at?: string;
-  updated_at?: string;
-  top_k: number;
-}
-
 export interface ApiRespProviderEmbeddingModels {
   models: EmbeddingModel[];
 }
@@ -110,6 +100,7 @@ export interface Pipeline {
   is_default?: boolean;
   created_at?: string;
   updated_at?: string;
+  emoji?: string;
 }
 
 export interface ApiRespPlatformAdapters {
@@ -168,6 +159,7 @@ export interface KnowledgeBase {
   top_k: number;
   created_at?: string;
   updated_at?: string;
+  emoji?: string;
   // New unified fields
   rag_engine_plugin_id?: string;
   creation_settings?: Record<string, unknown>;
@@ -326,6 +318,7 @@ interface GetPipeline {
   stages: string[];
   updated_at: string;
   uuid: string;
+  emoji?: string;
 }
 
 export interface GetPipelineResponseData {

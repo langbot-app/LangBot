@@ -289,12 +289,16 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                         yield msg
                 if chunk['event'] == 'message_file':
                     if chunk['type'] == 'image' and chunk['belongs_to'] == 'assistant':
-                        base_url = self.dify_client.base_url
+                        # 检查URL是否已经是完整的连接
+                        if chunk['url'].startswith('http://') or chunk['url'].startswith('https://'):
+                            image_url = chunk['url']
+                        else:
+                            base_url = self.dify_client.base_url
 
-                        if base_url.endswith('/v1'):
-                            base_url = base_url[:-3]
+                            if base_url.endswith('/v1'):
+                                base_url = base_url[:-3]
 
-                        image_url = base_url + chunk['url']
+                            image_url = base_url + chunk['url']
 
                         yield provider_message.Message(
                             role='assistant',
@@ -559,12 +563,16 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 if chunk['event'] == 'message_file':
                     message_idx += 1
                     if chunk['type'] == 'image' and chunk['belongs_to'] == 'assistant':
-                        base_url = self.dify_client.base_url
+                        # 检查URL是否已经是完整的连接
+                        if chunk['url'].startswith('http://') or chunk['url'].startswith('https://'):
+                            image_url = chunk['url']
+                        else:
+                            base_url = self.dify_client.base_url
 
-                        if base_url.endswith('/v1'):
-                            base_url = base_url[:-3]
+                            if base_url.endswith('/v1'):
+                                base_url = base_url[:-3]
 
-                        image_url = base_url + chunk['url']
+                            image_url = base_url + chunk['url']
 
                         yield provider_message.MessageChunk(
                             role='assistant',

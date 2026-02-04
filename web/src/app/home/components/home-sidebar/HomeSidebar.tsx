@@ -1,7 +1,7 @@
 'use client';
 
 import styles from './HomeSidebar.module.css';
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState } from 'react';
 import {
   SidebarChild,
   SidebarChildVO,
@@ -20,7 +20,6 @@ import {
   Lightbulb,
   LogOut,
   KeyRound,
-  Loader2,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 
@@ -59,7 +58,7 @@ function compareVersions(v1: string, v2: string): boolean {
 }
 
 // TODO 侧边导航栏要加动画
-function HomeSidebarContent({
+export default function HomeSidebar({
   onSelectedChangeAction,
 }: {
   onSelectedChangeAction: (sidebarChild: SidebarChildVO) => void;
@@ -228,6 +227,7 @@ function HomeSidebarContent({
       );
       if (routeSelectChild) {
         setSelectedChild(routeSelectChild);
+        onSelectedChangeAction(routeSelectChild);
       }
     }
   }
@@ -481,27 +481,5 @@ function HomeSidebarContent({
         onOpenChange={handleModelsDialogChange}
       />
     </div>
-  );
-}
-
-function SidebarLoadingFallback() {
-  return (
-    <div className={`${styles.sidebarContainer}`}>
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-6 w-6 animate-spin" />
-      </div>
-    </div>
-  );
-}
-
-export default function HomeSidebar({
-  onSelectedChangeAction,
-}: {
-  onSelectedChangeAction: (sidebarChild: SidebarChildVO) => void;
-}) {
-  return (
-    <Suspense fallback={<SidebarLoadingFallback />}>
-      <HomeSidebarContent onSelectedChangeAction={onSelectedChangeAction} />
-    </Suspense>
   );
 }

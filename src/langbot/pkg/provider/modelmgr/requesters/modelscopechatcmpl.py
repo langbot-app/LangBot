@@ -130,7 +130,7 @@ class ModelScopeChatCompletions(requester.ProviderAPIRequester):
         use_funcs: list[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> provider_message.Message:
+    ) -> tuple[provider_message.Message, dict]:
         self.client.api_key = use_model.provider.token_mgr.get_token()
 
         args = {}
@@ -162,7 +162,10 @@ class ModelScopeChatCompletions(requester.ProviderAPIRequester):
         # 处理请求结果
         message = await self._make_msg(resp)
 
-        return message
+        # ModelScope uses streaming, usage info not available
+        usage_info = {}
+
+        return message, usage_info
 
     async def _req_stream(
         self,

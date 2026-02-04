@@ -17,7 +17,7 @@ import { Switch } from '@/components/ui/switch';
 import { ControllerRenderProps } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
-import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
+import { httpClient, systemInfo, userInfo } from '@/app/infra/http';
 import {
   LLMModel,
   Bot,
@@ -92,8 +92,11 @@ export default function DynamicFormItemComponent({
         .getProviderLLMModels()
         .then((resp) => {
           let models = resp.models;
-          // Filter out space-chat-completions models when models service is disabled
-          if (systemInfo.disable_models_service) {
+          // Filter out space-chat-completions models when not logged in with space account or when models service is disabled
+          if (
+            systemInfo.disable_models_service ||
+            userInfo?.account_type !== 'space'
+          ) {
             models = models.filter(
               (m) => m.provider?.requester !== 'space-chat-completions',
             );

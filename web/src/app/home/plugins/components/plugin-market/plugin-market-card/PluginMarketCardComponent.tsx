@@ -15,9 +15,11 @@ import { Button } from '@/components/ui/button';
 export default function PluginMarketCardComponent({
   cardVO,
   onInstall,
+  tagNames = {},
 }: {
   cardVO: PluginMarketCardVO;
   onInstall?: (author: string, pluginName: string) => void;
+  tagNames?: Record<string, string>;
 }) {
   const { t } = useTranslation();
   const [isHovered, setIsHovered] = useState(false);
@@ -40,13 +42,6 @@ export default function PluginMarketCardComponent({
     EventListener: <AudioWaveform className="w-4 h-4" />,
     Command: <Hash className="w-4 h-4" />,
     KnowledgeRetriever: <Book className="w-4 h-4" />,
-  };
-
-  const componentKindNameMap: Record<string, string> = {
-    Tool: t('plugins.componentName.Tool'),
-    EventListener: t('plugins.componentName.EventListener'),
-    Command: t('plugins.componentName.Command'),
-    KnowledgeRetriever: t('plugins.componentName.KnowledgeRetriever'),
   };
 
   return (
@@ -97,24 +92,63 @@ export default function PluginMarketCardComponent({
           </div>
         </div>
 
-        {/* 下部分：下载量和组件列表 */}
-        <div className="w-full flex flex-row items-center justify-between gap-[0.3rem] sm:gap-[0.4rem] px-0 sm:px-[0.4rem] flex-shrink-0">
-          <div className="flex flex-row items-center justify-start gap-[0.3rem] sm:gap-[0.4rem]">
-            <svg
-              className="w-4 h-4 sm:w-[1.2rem] sm:h-[1.2rem] text-[#2563eb] flex-shrink-0"
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7,10 12,15 17,10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            <div className="text-xs sm:text-sm text-[#2563eb] font-medium whitespace-nowrap">
-              {cardVO.installCount.toLocaleString()}
+        {/* 下部分：下载量、标签和组件列表 */}
+        <div className="w-full flex flex-row items-center justify-between gap-2 px-0 sm:px-[0.4rem] flex-shrink-0">
+          <div className="flex flex-row items-center justify-start gap-2 flex-wrap">
+            {/* 下载数量 */}
+            <div className="flex flex-row items-center gap-[0.3rem] sm:gap-[0.4rem]">
+              <svg
+                className="w-4 h-4 sm:w-[1.2rem] sm:h-[1.2rem] text-[#2563eb] dark:text-[#5b8def] flex-shrink-0"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7,10 12,15 17,10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <div className="text-xs sm:text-sm text-[#2563eb] dark:text-[#5b8def] font-medium whitespace-nowrap">
+                {cardVO.installCount.toLocaleString()}
+              </div>
             </div>
+
+            {/* Tags */}
+            {cardVO.tags && cardVO.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {cardVO.tags.slice(0, 2).map((tag) => (
+                  <Badge
+                    key={tag}
+                    variant="secondary"
+                    className="text-[0.65rem] sm:text-[0.7rem] px-2 py-0.5 h-5 flex items-center gap-1 flex-shrink-0"
+                  >
+                    <svg
+                      className="w-2.5 h-2.5 flex-shrink-0"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                      <line x1="7" y1="7" x2="7.01" y2="7" />
+                    </svg>
+                    <span className="truncate">{tagNames[tag] || tag}</span>
+                  </Badge>
+                ))}
+                {cardVO.tags.length > 2 && (
+                  <Badge
+                    variant="outline"
+                    className="text-[0.65rem] sm:text-[0.7rem] px-2 py-0.5 h-5 flex items-center flex-shrink-0"
+                  >
+                    +{cardVO.tags.length - 2}
+                  </Badge>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 组件列表 */}
@@ -127,10 +161,6 @@ export default function PluginMarketCardComponent({
                   className="flex items-center gap-1"
                 >
                   {kindIconMap[kind]}
-                  {/* 响应式显示组件名称：在中等屏幕以上显示 */}
-                  <span className="hidden md:inline">
-                    {componentKindNameMap[kind]}
-                  </span>
                   <span className="ml-1">{count}</span>
                 </Badge>
               ))}

@@ -765,4 +765,150 @@ export class BackendClient extends BaseHttpClient {
     }
     return response.data.data;
   }
+
+  // ============ Monitoring API ============
+  public getMonitoringData(params: {
+    botId?: string[];
+    pipelineId?: string[];
+    startTime?: string;
+    endTime?: string;
+    limit?: number;
+  }): Promise<{
+    overview: {
+      total_messages: number;
+      llm_calls: number;
+      embedding_calls: number;
+      model_calls: number;
+      success_rate: number;
+      active_sessions: number;
+    };
+    messages: Array<{
+      id: string;
+      timestamp: string;
+      bot_id: string;
+      bot_name: string;
+      pipeline_id: string;
+      pipeline_name: string;
+      message_content: string;
+      session_id: string;
+      status: string;
+      level: string;
+      platform?: string;
+      user_id?: string;
+      runner_name?: string;
+      variables?: string;
+    }>;
+    llmCalls: Array<{
+      id: string;
+      timestamp: string;
+      model_name: string;
+      input_tokens: number;
+      output_tokens: number;
+      total_tokens: number;
+      duration: number;
+      cost?: number;
+      status: string;
+      bot_id: string;
+      bot_name: string;
+      pipeline_id: string;
+      pipeline_name: string;
+      error_message?: string;
+      message_id?: string;
+    }>;
+    embeddingCalls: Array<{
+      id: string;
+      timestamp: string;
+      model_name: string;
+      prompt_tokens: number;
+      total_tokens: number;
+      duration: number;
+      input_count: number;
+      status: string;
+      error_message?: string;
+      knowledge_base_id?: string;
+      query_text?: string;
+      session_id?: string;
+      message_id?: string;
+      call_type?: string;
+    }>;
+    sessions: Array<{
+      session_id: string;
+      bot_id: string;
+      bot_name: string;
+      pipeline_id: string;
+      pipeline_name: string;
+      message_count: number;
+      last_activity: string;
+      start_time: string;
+      platform?: string;
+      user_id?: string;
+    }>;
+    errors: Array<{
+      id: string;
+      timestamp: string;
+      error_type: string;
+      error_message: string;
+      bot_id: string;
+      bot_name: string;
+      pipeline_id: string;
+      pipeline_name: string;
+      session_id?: string;
+      stack_trace?: string;
+      message_id?: string;
+    }>;
+    totalCount: {
+      messages: number;
+      llmCalls: number;
+      embeddingCalls: number;
+      sessions: number;
+      errors: number;
+    };
+  }> {
+    const queryParams = new URLSearchParams();
+    if (params.botId) {
+      params.botId.forEach((id) => queryParams.append('botId', id));
+    }
+    if (params.pipelineId) {
+      params.pipelineId.forEach((id) => queryParams.append('pipelineId', id));
+    }
+    if (params.startTime) {
+      queryParams.append('startTime', params.startTime);
+    }
+    if (params.endTime) {
+      queryParams.append('endTime', params.endTime);
+    }
+    if (params.limit) {
+      queryParams.append('limit', params.limit.toString());
+    }
+
+    return this.get(`/api/v1/monitoring/data?${queryParams.toString()}`);
+  }
+
+  public getMonitoringOverview(params: {
+    botId?: string[];
+    pipelineId?: string[];
+    startTime?: string;
+    endTime?: string;
+  }): Promise<{
+    total_messages: number;
+    llm_calls: number;
+    success_rate: number;
+    active_sessions: number;
+  }> {
+    const queryParams = new URLSearchParams();
+    if (params.botId) {
+      params.botId.forEach((id) => queryParams.append('botId', id));
+    }
+    if (params.pipelineId) {
+      params.pipelineId.forEach((id) => queryParams.append('pipelineId', id));
+    }
+    if (params.startTime) {
+      queryParams.append('startTime', params.startTime);
+    }
+    if (params.endTime) {
+      queryParams.append('endTime', params.endTime);
+    }
+
+    return this.get(`/api/v1/monitoring/overview?${queryParams.toString()}`);
+  }
 }

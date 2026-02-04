@@ -25,7 +25,7 @@ class DeepseekChatCompletions(chatcmpl.OpenAIChatCompletions):
         use_funcs: list[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> provider_message.Message:
+    ) -> tuple[provider_message.Message, dict]:
         self.client.api_key = use_model.provider.token_mgr.get_token()
 
         args = {}
@@ -43,7 +43,7 @@ class DeepseekChatCompletions(chatcmpl.OpenAIChatCompletions):
         # deepseek 不支持多模态，把content都转换成纯文字
         for m in messages:
             if 'content' in m and isinstance(m['content'], list):
-                m['content'] = ' '.join([c['text'] for c in m['content']])
+                m['content'] = ' '.join([c['text'] for c in m['content'] if 'text' in c])
 
         args['messages'] = messages
 
@@ -57,4 +57,11 @@ class DeepseekChatCompletions(chatcmpl.OpenAIChatCompletions):
         # 处理请求结果
         message = await self._make_msg(resp, remove_think)
 
-        return message
+        # Extract token usage from response
+        usage_info = {}
+        if hasattr(resp, 'usage') and resp.usage:
+            usage_info['input_tokens'] = resp.usage.prompt_tokens or 0
+            usage_info['output_tokens'] = resp.usage.completion_tokens or 0
+            usage_info['total_tokens'] = resp.usage.total_tokens or 0
+
+        return message, usage_info

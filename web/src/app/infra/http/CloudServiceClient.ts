@@ -35,6 +35,7 @@ export class CloudServiceClient extends BaseHttpClient {
     sort_by?: string,
     sort_order?: string,
     component_filter?: string,
+    tags_filter?: string[],
   ): Promise<ApiRespMarketplacePlugins> {
     return this.post<ApiRespMarketplacePlugins>(
       '/api/v1/marketplace/plugins/search',
@@ -45,6 +46,7 @@ export class CloudServiceClient extends BaseHttpClient {
         sort_by,
         sort_order,
         component_filter,
+        tags_filter,
       },
     );
   }
@@ -92,6 +94,20 @@ export class CloudServiceClient extends BaseHttpClient {
   public getLangBotReleases(): Promise<GitHubRelease[]> {
     return this.get<GitHubRelease[]>('/api/v1/dist/info/releases');
   }
+
+  public getAllTags(): Promise<{ tags: PluginTag[] }> {
+    return this.get<{ tags: PluginTag[] }>('/api/v1/marketplace/tags');
+  }
+}
+
+export interface PluginTag {
+  tag: string;
+  display_name: {
+    zh_Hans?: string;
+    en_US?: string;
+    zh_Hant?: string;
+    ja_JP?: string;
+  };
 }
 
 export interface GitHubRelease {

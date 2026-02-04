@@ -42,7 +42,6 @@ botpy.log*
 test.py
 /web_ui
 .venv/
-uv.lock
 /test
 plugins.bak
 coverage.xml

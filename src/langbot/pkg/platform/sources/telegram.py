@@ -85,6 +85,26 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
                 )
             )
 
+        if message.voice:
+            if message.caption:
+                message_components.extend(parse_message_text(message.caption))
+
+            file = await message.voice.get_file()
+
+            file_bytes = None
+            file_format = message.voice.mime_type or 'audio/ogg'
+
+            async with aiohttp.ClientSession(trust_env=True) as session:
+                async with session.get(file.file_path) as response:
+                    file_bytes = await response.read()
+
+            message_components.append(
+                platform_message.Voice(
+                    base64=f'data:{file_format};base64,{base64.b64encode(file_bytes).decode("utf-8")}',
+                    length=message.voice.duration,
+                )
+            )
+
         return platform_message.MessageChain(message_components)
 
 
@@ -159,7 +179,9 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         application = ApplicationBuilder().token(config['token']).build()
         bot = application.bot
-        application.add_handler(MessageHandler(filters.TEXT | (filters.COMMAND) | filters.PHOTO, telegram_callback))
+        application.add_handler(
+            MessageHandler(filters.TEXT | (filters.COMMAND) | filters.PHOTO | filters.VOICE, telegram_callback)
+        )
         super().__init__(
             config=config,
             logger=logger,

@@ -50,6 +50,26 @@ export const sidebarConfigList = [
     },
   }),
   new SidebarChildVO({
+    id: 'monitoring',
+    name: t('monitoring.title'),
+    icon: (
+      <svg
+        className={`${styles.sidebarChildIcon}`}
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+      >
+        <path d="M2 3.9934C2 3.44476 2.45531 3 2.9918 3H21.0082C21.556 3 22 3.44495 22 3.9934V20.0066C22 20.5552 21.5447 21 21.0082 21H2.9918C2.44405 21 2 20.5551 2 20.0066V3.9934ZM4 5V19H20V5H4ZM6 7H18V9H6V7ZM6 11H18V13H6V11ZM6 15H12V17H6V15Z"></path>
+      </svg>
+    ),
+    route: '/home/monitoring',
+    description: t('monitoring.description'),
+    helpLink: {
+      en_US: 'https://docs.langbot.app/en/features/monitoring.html',
+      zh_Hans: 'https://docs.langbot.app/zh/features/monitoring.html',
+    },
+  }),
+  new SidebarChildVO({
     id: 'knowledge',
     name: t('knowledge.title'),
     icon: (

@@ -1,3 +1,3 @@
-"""LangBot - Production-grade platform for building IM bots"""
+"""LangBot - Production-grade platform for building agentic IM bots"""
 
-__version__ = '4.7.2'
+__version__ = '4.8.3'

@@ -46,6 +46,7 @@ export default function KnowledgePage() {
         id: kb.uuid || '',
         name: kb.name,
         description: kb.description,
+        emoji: kb.emoji,
         embeddingModelUUID: kb.embedding_model_uuid,
         top_k: kb.top_k ?? 5,
         lastUpdatedTimeAgo: lastUpdatedTimeAgoText,

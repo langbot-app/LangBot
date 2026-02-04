@@ -21,7 +21,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { useEffect, useState } from 'react';
-import { httpClient } from '@/app/infra/http/HttpClient';
+import { httpClient, initializeUserInfo } from '@/app/infra/http';
 import { useRouter } from 'next/navigation';
 import { Mail, Lock, Loader2 } from 'lucide-react';
 import langbotIcon from '@/app/assets/langbot-logo.webp';
@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 
 const formSchema = (t: (key: string) => string) =>
   z.object({
@@ -95,9 +96,10 @@ export default function Login() {
   function handleLogin(username: string, password: string) {
     httpClient
       .authUser(username, password)
-      .then((res) => {
+      .then(async (res) => {
         localStorage.setItem('token', res.token);
         localStorage.setItem('userEmail', username);
+        await initializeUserInfo();
         router.push('/home');
         toast.success(t('common.loginSuccess'));
       })
@@ -122,7 +124,7 @@ export default function Login() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-900">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <LoadingSpinner />
       </div>
     );
   }

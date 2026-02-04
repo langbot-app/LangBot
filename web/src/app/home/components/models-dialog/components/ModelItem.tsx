@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { LLMModel, EmbeddingModel } from '@/app/infra/entities/api';
 import { ExtraArg, ModelType, TestResult } from '../types';
 import ExtraArgsEditor from './ExtraArgsEditor';
+import { userInfo } from '@/app/infra/http';
 
 interface ModelItemProps {
   model: LLMModel | EmbeddingModel;
@@ -113,10 +114,15 @@ export default function ModelItem({
     }
   };
 
+  // Check if popover should be disabled (space models when not logged in)
+  const isPopoverDisabled =
+    isLangBotModels && userInfo?.account_type !== 'space';
+
   return (
     <Popover
-      open={isEditOpen}
+      open={isEditOpen && !isPopoverDisabled}
       onOpenChange={(open) => {
+        if (isPopoverDisabled) return;
         if (open) {
           onOpenEditModel(model.uuid);
         } else {
@@ -125,7 +131,13 @@ export default function ModelItem({
       }}
     >
       <PopoverTrigger asChild>
-        <div className="flex items-center justify-between py-2 px-3 rounded-md border bg-background hover:bg-accent cursor-pointer">
+        <div
+          className={`flex items-center justify-between py-2 px-3 rounded-md border bg-background ${
+            isPopoverDisabled
+              ? 'cursor-not-allowed opacity-60'
+              : 'hover:bg-accent cursor-pointer'
+          }`}
+        >
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium">{model.name}</span>
             <Badge variant="secondary" className="text-xs">

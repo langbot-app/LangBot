@@ -13,12 +13,14 @@ import {
 } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ChevronDownIcon } from 'lucide-react';
+import { ChevronDownIcon, ExternalLink } from 'lucide-react';
 import { debounce } from 'lodash';
 import { useTranslation } from 'react-i18next';
+import { useRouter } from 'next/navigation';
 
 export function BotLogListComponent({ botId }: { botId: string }) {
   const { t } = useTranslation();
+  const router = useRouter();
   const manager = useRef(new BotLogManager(botId)).current;
   const [botLogList, setBotLogList] = useState<BotLog[]>([]);
   const [autoFlush, setAutoFlush] = useState(true);
@@ -206,6 +208,15 @@ export function BotLogListComponent({ botId }: { botId: string }) {
             </div>
           </PopoverContent>
         </Popover>
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-4 flex items-center gap-1"
+          onClick={() => router.push(`/home/monitoring?botId=${botId}`)}
+        >
+          <ExternalLink className="h-4 w-4" />
+          <span className="text-sm">{t('bots.viewDetailedLogs')}</span>
+        </Button>
       </div>
 
       {filteredLogs.map((botLog) => {

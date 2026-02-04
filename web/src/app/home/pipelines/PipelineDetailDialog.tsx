@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useRouter } from 'next/navigation';
 import {
   Dialog,
   DialogContent,
@@ -19,6 +20,7 @@ import {
 import PipelineFormComponent from './components/pipeline-form/PipelineFormComponent';
 import DebugDialog from './components/debug-dialog/DebugDialog';
 import PipelineExtension from './components/pipeline-extensions/PipelineExtension';
+import PipelineMonitoringTab from './components/monitoring-tab/PipelineMonitoringTab';
 
 interface PipelineDialogProps {
   open: boolean;
@@ -32,7 +34,7 @@ interface PipelineDialogProps {
   onCancel: () => void;
 }
 
-type DialogMode = 'config' | 'debug' | 'extensions';
+type DialogMode = 'config' | 'debug' | 'extensions' | 'monitoring';
 
 export default function PipelineDialog({
   open,
@@ -45,6 +47,7 @@ export default function PipelineDialog({
   onCancel,
 }: PipelineDialogProps) {
   const { t } = useTranslation();
+  const router = useRouter();
   const [pipelineId, setPipelineId] = useState<string | undefined>(
     propPipelineId,
   );
@@ -108,6 +111,19 @@ export default function PipelineDialog({
         </svg>
       ),
     },
+    {
+      key: 'monitoring',
+      label: t('pipelines.monitoring.title'),
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+        >
+          <path d="M2 3.9934C2 3.44476 2.45531 3 2.9918 3H21.0082C21.556 3 22 3.44495 22 3.9934V20.0066C22 20.5552 21.5447 21 21.0082 21H2.9918C2.44405 21 2 20.5551 2 20.0066V3.9934ZM4 5V19H20V5H4ZM6 7H18V9H6V7ZM6 11H18V13H6V11ZM6 15H12V17H6V15Z"></path>
+        </svg>
+      ),
+    },
   ];
 
   const getDialogTitle = () => {
@@ -118,6 +134,9 @@ export default function PipelineDialog({
     }
     if (currentMode === 'extensions') {
       return t('pipelines.extensions.title');
+    }
+    if (currentMode === 'monitoring') {
+      return t('pipelines.monitoring.title');
     }
     return t('pipelines.debugDialog.title');
   };
@@ -238,6 +257,16 @@ export default function PipelineDialog({
                   pipelineId={pipelineId}
                   isEmbedded={true}
                   onConnectionStatusChange={setIsWebSocketConnected}
+                />
+              )}
+
+              {currentMode === 'monitoring' && pipelineId && (
+                <PipelineMonitoringTab
+                  pipelineId={pipelineId}
+                  onNavigateToMonitoring={() => {
+                    router.push(`/home/monitoring?pipelineId=${pipelineId}`);
+                    onOpenChange(false);
+                  }}
                 />
               )}
             </div>

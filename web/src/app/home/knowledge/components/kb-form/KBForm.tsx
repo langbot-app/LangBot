@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/input';
+import EmojiPicker from '@/components/ui/emoji-picker';
 import {
   Form,
   FormControl,
@@ -36,6 +37,7 @@ const getFormSchema = (t: (key: string) => string) =>
     description: z
       .string()
       .min(1, { message: t('knowledge.kbDescriptionRequired') }),
+    emoji: z.string().optional(),
     ragEngineId: z
       .string()
       .min(1, { message: t('knowledge.ragEngineRequired') }),
@@ -66,6 +68,7 @@ export default function KBForm({
     defaultValues: {
       name: '',
       description: t('knowledge.defaultDescription'),
+      emoji: '📚',
       ragEngineId: '',
     },
   });
@@ -122,6 +125,7 @@ export default function KBForm({
 
       form.setValue('name', kb.name);
       form.setValue('description', kb.description);
+      form.setValue('emoji', kb.emoji || '📚');
       form.setValue('ragEngineId', engineId);
 
       setConfigSettings(kb.creation_settings || {});
@@ -149,6 +153,7 @@ export default function KBForm({
     const kbData: KnowledgeBase = {
       name: data.name,
       description: data.description,
+      emoji: data.emoji,
       rag_engine_plugin_id: selectedEngineId,
       creation_settings: configSettings,
       embedding_model_uuid: '',
@@ -268,23 +273,41 @@ export default function KBForm({
               )}
             />
 
-            {/* Name */}
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    {t('knowledge.kbName')}
-                    <span className="text-red-500">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {/* Name and Emoji in same row */}
+            <div className="flex gap-4 items-start">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem className="flex-1">
+                    <FormLabel>
+                      {t('knowledge.kbName')}
+                      <span className="text-red-500">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="emoji"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('common.icon')}</FormLabel>
+                    <FormControl>
+                      <EmojiPicker
+                        value={field.value}
+                        onChange={field.onChange}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             {/* Description */}
             <FormField

@@ -64,7 +64,9 @@ class LLMModelsService:
         models = result.all()
         return [self.ap.persistence_mgr.serialize_model(persistence_model.LLMModel, m) for m in models]
 
-    async def create_llm_model(self, model_data: dict, preserve_uuid: bool = False) -> str:
+    async def create_llm_model(
+        self, model_data: dict, preserve_uuid: bool = False, auto_set_to_default_pipeline: bool = True
+    ) -> str:
         """Create a new LLM model"""
         if not preserve_uuid:
             model_data['uuid'] = str(uuid.uuid4())
@@ -95,18 +97,19 @@ class LLMModelsService:
         )
         self.ap.model_mgr.llm_models.append(runtime_llm_model)
 
-        # set the default pipeline model to this model
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
-                persistence_pipeline.LegacyPipeline.is_default == True
+        if auto_set_to_default_pipeline:
+            # set the default pipeline model to this model
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
+                    persistence_pipeline.LegacyPipeline.is_default == True
+                )
             )
-        )
-        pipeline = result.first()
-        if pipeline is not None and pipeline.config['ai']['local-agent']['model'] == '':
-            pipeline_config = pipeline.config
-            pipeline_config['ai']['local-agent']['model'] = model_data['uuid']
-            pipeline_data = {'config': pipeline_config}
-            await self.ap.pipeline_service.update_pipeline(pipeline.uuid, pipeline_data)
+            pipeline = result.first()
+            if pipeline is not None and pipeline.config['ai']['local-agent']['model'] == '':
+                pipeline_config = pipeline.config
+                pipeline_config['ai']['local-agent']['model'] = model_data['uuid']
+                pipeline_data = {'config': pipeline_config}
+                await self.ap.pipeline_service.update_pipeline(pipeline.uuid, pipeline_data)
 
         return model_data['uuid']
 
@@ -192,7 +195,7 @@ class LLMModelsService:
             runtime_llm_model = await self.ap.model_mgr.init_temporary_runtime_llm_model(model_data)
 
         extra_args = model_data.get('extra_args', {})
-        await runtime_llm_model.provider.requester.invoke_llm(
+        await runtime_llm_model.provider.invoke_llm(
             query=None,
             model=runtime_llm_model,
             messages=[provider_message.Message(role='user', content='Hello, world! Please just reply a "Hello".')],
@@ -354,7 +357,7 @@ class EmbeddingModelsService:
         else:
             runtime_embedding_model = await self.ap.model_mgr.init_temporary_runtime_embedding_model(model_data)
 
-        await runtime_embedding_model.provider.requester.invoke_embedding(
+        await runtime_embedding_model.provider.invoke_embedding(
             model=runtime_embedding_model,
             input_text=['Hello, world!'],
             extra_args={},

@@ -149,6 +149,7 @@ class ModelManager:
                         'prefered_ranking': space_model.featured_order,
                     },
                     preserve_uuid=True,
+                    auto_set_to_default_pipeline=False,
                 )
 
             elif space_model.category == 'embedding':

@@ -12,6 +12,13 @@ export let systemInfo: ApiRespSystemInfo = {
   disable_models_service: false,
 };
 
+// 用户信息
+export let userInfo: {
+  user: string;
+  account_type: 'local' | 'space';
+  has_password: boolean;
+} | null = null;
+
 /**
  * 获取基础 URL
  */
@@ -24,6 +31,8 @@ const getBaseURL = (): string => {
 
 // 创建后端客户端实例
 export const backendClient = new BackendClient(getBaseURL());
+// 为了兼容性，也导出为 httpClient
+export const httpClient = backendClient;
 
 // 创建云服务客户端实例（初始化时使用默认 URL）
 export const cloudServiceClient = new CloudServiceClient(
@@ -80,6 +89,27 @@ export const initializeSystemInfo = async (): Promise<void> => {
   } catch (error) {
     console.error('Failed to initialize system info:', error);
   }
+};
+
+/**
+ * 初始化用户信息
+ * 应该在用户登录后调用此方法
+ */
+export const initializeUserInfo = async (): Promise<void> => {
+  try {
+    userInfo = await backendClient.getUserInfo();
+  } catch (error) {
+    console.error('Failed to initialize user info:', error);
+    userInfo = null;
+  }
+};
+
+/**
+ * 清除用户信息
+ * 应该在用户登出时调用此方法
+ */
+export const clearUserInfo = (): void => {
+  userInfo = null;
 };
 
 // 导出类型，以便其他地方使用

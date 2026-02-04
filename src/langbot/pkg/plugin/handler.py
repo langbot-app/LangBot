@@ -327,7 +327,7 @@ class RuntimeConnectionHandler(handler.Handler):
             messages_obj = [provider_message.Message.model_validate(message) for message in messages]
             funcs_obj = [resource_tool.LLMTool.model_validate(func) for func in funcs]
 
-            result = await llm_model.provider.requester.invoke_llm(
+            result = await llm_model.provider.invoke_llm(
                 query=None,
                 model=llm_model,
                 messages=messages_obj,

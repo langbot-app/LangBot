@@ -7,6 +7,7 @@ export interface IKnowledgeBaseVO {
   embeddingModelUUID: string;
   top_k: number;
   lastUpdatedTimeAgo: string;
+  emoji?: string;
   ragEngine?: RAGEngineInfo;
   ragEnginePluginId?: string;
 }
@@ -18,6 +19,7 @@ export class KnowledgeBaseVO implements IKnowledgeBaseVO {
   embeddingModelUUID: string;
   top_k: number;
   lastUpdatedTimeAgo: string;
+  emoji?: string;
   ragEngine?: RAGEngineInfo;
   ragEnginePluginId?: string;
 
@@ -28,6 +30,7 @@ export class KnowledgeBaseVO implements IKnowledgeBaseVO {
     this.embeddingModelUUID = props.embeddingModelUUID;
     this.top_k = props.top_k;
     this.lastUpdatedTimeAgo = props.lastUpdatedTimeAgo;
+    this.emoji = props.emoji;
     this.ragEngine = props.ragEngine;
     this.ragEnginePluginId = props.ragEnginePluginId;
   }

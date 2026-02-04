@@ -7,7 +7,8 @@ import { ThemeProvider } from '@/components/providers/theme-provider';
 
 export const metadata: Metadata = {
   title: 'LangBot',
-  description: 'LangBot 是大模型原生即时通信机器人平台',
+  description:
+    'Production-grade platform for building agentic IM bots, integrated with Telegram, Slack, Discord, WeChat, QQ, etc.',
 };
 
 export default function RootLayout({

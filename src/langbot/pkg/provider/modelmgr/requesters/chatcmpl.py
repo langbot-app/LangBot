@@ -253,7 +253,7 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
         use_funcs: list[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> provider_message.Message:
+    ) -> tuple[provider_message.Message, dict]:
         self.client.api_key = use_model.provider.token_mgr.get_token()
 
         args = {}
@@ -285,7 +285,14 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
         # 处理请求结果
         message = await self._make_msg(resp, remove_think)
 
-        return message
+        # Extract token usage from response
+        usage_info = {}
+        if hasattr(resp, 'usage') and resp.usage:
+            usage_info['input_tokens'] = resp.usage.prompt_tokens or 0
+            usage_info['output_tokens'] = resp.usage.completion_tokens or 0
+            usage_info['total_tokens'] = resp.usage.total_tokens or 0
+
+        return message, usage_info
 
     async def invoke_llm(
         self,
@@ -295,7 +302,8 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
         funcs: typing.List[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> provider_message.Message:
+    ) -> tuple[provider_message.Message, dict]:
+        """Invoke LLM and return message with usage info"""
         req_messages = []  # req_messages 仅用于类内，外部同步由 query.messages 进行
         for m in messages:
             msg_dict = m.dict(exclude_none=True)
@@ -308,7 +316,7 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
             req_messages.append(msg_dict)
 
         try:
-            msg = await self._closure(
+            msg, usage_info = await self._closure(
                 query=query,
                 req_messages=req_messages,
                 use_model=model,
@@ -316,30 +324,38 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
                 extra_args=extra_args,
                 remove_think=remove_think,
             )
-            return msg
+            return msg, usage_info
         except asyncio.TimeoutError:
             raise errors.RequesterError('请求超时')
         except openai.BadRequestError as e:
-            if 'context_length_exceeded' in e.message:
-                raise errors.RequesterError(f'上文过长，请重置会话: {e.message}')
+            error_message = str(e.message) if hasattr(e, 'message') else str(e)
+            if 'context_length_exceeded' in str(e):
+                raise errors.RequesterError(f'上文过长，请重置会话: {error_message}')
             else:
-                raise errors.RequesterError(f'请求参数错误: {e.message}')
+                raise errors.RequesterError(f'请求参数错误: {error_message}')
         except openai.AuthenticationError as e:
-            raise errors.RequesterError(f'无效的 api-key: {e.message}')
+            error_message = str(e.message) if hasattr(e, 'message') else str(e)
+            raise errors.RequesterError(f'无效的 api-key: {error_message}')
         except openai.NotFoundError as e:
-            raise errors.RequesterError(f'请求路径错误: {e.message}')
+            error_message = str(e.message) if hasattr(e, 'message') else str(e)
+            raise errors.RequesterError(f'请求路径错误: {error_message}')
         except openai.RateLimitError as e:
-            raise errors.RequesterError(f'请求过于频繁或余额不足: {e.message}')
+            error_message = str(e.message) if hasattr(e, 'message') else str(e)
+            raise errors.RequesterError(f'请求过于频繁或余额不足: {error_message}')
+        except openai.APIConnectionError as e:
+            error_message = f'连接错误: {str(e)}'
+            raise errors.RequesterError(error_message)
         except openai.APIError as e:
-            raise errors.RequesterError(f'请求错误: {e.message}')
+            error_message = str(e.message) if hasattr(e, 'message') else str(e)
+            raise errors.RequesterError(f'请求错误: {error_message}')
 
     async def invoke_embedding(
         self,
         model: requester.RuntimeEmbeddingModel,
         input_text: list[str],
         extra_args: dict[str, typing.Any] = {},
-    ) -> list[list[float]]:
-        """调用 Embedding API"""
+    ) -> tuple[list[list[float]], dict]:
+        """调用 Embedding API, returns (embeddings, usage_info)"""
         self.client.api_key = model.provider.token_mgr.get_token()
 
         args = {
@@ -355,7 +371,13 @@ class OpenAIChatCompletions(requester.ProviderAPIRequester):
         try:
             resp = await self.client.embeddings.create(**args)
 
-            return [d.embedding for d in resp.data]
+            # Extract usage info
+            usage_info = {}
+            if hasattr(resp, 'usage') and resp.usage:
+                usage_info['prompt_tokens'] = resp.usage.prompt_tokens or 0
+                usage_info['total_tokens'] = resp.usage.total_tokens or 0
+
+            return [d.embedding for d in resp.data], usage_info
         except asyncio.TimeoutError:
             raise errors.RequesterError('请求超时')
         except openai.BadRequestError as e:

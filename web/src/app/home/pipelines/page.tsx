@@ -69,6 +69,7 @@ export default function PluginConfigPage() {
             description: pipeline.description,
             id: pipeline.uuid ?? '',
             name: pipeline.name,
+            emoji: pipeline.emoji,
             isDefault: pipeline.is_default ?? false,
           });
         });

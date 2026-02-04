@@ -7,6 +7,7 @@ class KnowledgeBase(Base):
     uuid = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True, unique=True)
     name = sqlalchemy.Column(sqlalchemy.String, index=True)
     description = sqlalchemy.Column(sqlalchemy.Text)
+    emoji = sqlalchemy.Column(sqlalchemy.String(10), nullable=True, default='📚')
     created_at = sqlalchemy.Column(sqlalchemy.DateTime, default=sqlalchemy.func.now())
     updated_at = sqlalchemy.Column(sqlalchemy.DateTime, default=sqlalchemy.func.now(), onupdate=sqlalchemy.func.now())
     embedding_model_uuid = sqlalchemy.Column(sqlalchemy.String, default='')

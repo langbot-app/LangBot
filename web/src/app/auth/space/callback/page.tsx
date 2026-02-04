@@ -19,6 +19,7 @@ import {
   CardDescription,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import langbotIcon from '@/app/assets/langbot-logo.webp';
 
 function SpaceOAuthCallbackContent() {
@@ -174,9 +175,7 @@ function SpaceOAuthCallbackContent() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col items-center space-y-4">
-          {status === 'loading' && (
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-          )}
+          {status === 'loading' && <LoadingSpinner size="lg" text="" />}
           {status === 'confirm' && (
             <>
               <AlertTriangle className="h-12 w-12 text-yellow-500" />
@@ -232,7 +231,7 @@ function LoadingFallback() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-900">
       <Card className="w-[400px] shadow-lg dark:shadow-white/10">
         <CardContent className="flex flex-col items-center py-12">
-          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+          <LoadingSpinner size="lg" text="" />
         </CardContent>
       </Card>
     </div>
