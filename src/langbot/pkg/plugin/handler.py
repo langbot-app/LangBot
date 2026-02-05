@@ -463,50 +463,12 @@ class RuntimeConnectionHandler(handler.Handler):
 
         # ================= RAG Capability Handlers =================
 
-        async def _get_kb_entity(kb_id: str):
-            stmt = sqlalchemy.select(persistence_rag.KnowledgeBase).where(persistence_rag.KnowledgeBase.uuid == kb_id)
-            result = await self.ap.persistence_mgr.execute_async(stmt)
-            row = result.first()
-            if not row:
-                 raise ValueError(f"Knowledge Base {kb_id} not found")
-            # Convert Row to KnowledgeBase entity
-            kb = persistence_rag.KnowledgeBase(**row._mapping)
-            return kb
-
-        def _get_embedding_model_uuid(kb: persistence_rag.KnowledgeBase) -> str | None:
-            """Get embedding model UUID from creation_settings (preferred) or KB field (fallback)."""
-            # First check creation_settings (new approach - plugin defines via creation_schema)
-            if kb.creation_settings and isinstance(kb.creation_settings, dict):
-                embed_uuid = kb.creation_settings.get('embedding_model_uuid')
-                if embed_uuid:
-                    return embed_uuid
-            # Fallback to KB field (backward compatibility)
-            return kb.embedding_model_uuid
-
         @self.action(PluginToRuntimeAction.RAG_EMBED_DOCUMENTS)
         async def rag_embed_documents(data: dict[str, Any]) -> handler.ActionResponse:
             kb_id = data['kb_id']
             texts = data['texts']
             try:
-                # 1. Get KB config to find embedding model
-                kb = await _get_kb_entity(kb_id)
-                embed_model_uuid = _get_embedding_model_uuid(kb)
-
-                # 2. Get embedder instance
-                if not embed_model_uuid:
-                     return handler.ActionResponse.error(
-                         message=f"Embedding model not configured for this Knowledge Base (kb_id: {kb_id})"
-                     )
-
-                embedder_model = await self.ap.model_mgr.get_embedding_model_by_uuid(embed_model_uuid)
-
-                if not embedder_model:
-                     return handler.ActionResponse.error(
-                         message=f"Embedding model {embed_model_uuid} not found"
-                     )
-
-                # 3. Generate embeddings
-                vectors = await embedder_model.embed_documents(texts)
+                vectors = await self.ap.rag_runtime_service.embed_documents(kb_id, texts)
                 return handler.ActionResponse.success(data={'vectors': vectors})
             except Exception as e:
                 return handler.ActionResponse.error(
@@ -518,21 +480,7 @@ class RuntimeConnectionHandler(handler.Handler):
             kb_id = data['kb_id']
             text = data['text']
             try:
-                kb = await _get_kb_entity(kb_id)
-                embed_model_uuid = _get_embedding_model_uuid(kb)
-
-                if not embed_model_uuid:
-                     return handler.ActionResponse.error(
-                         message=f"Embedding model not configured (kb_id: {kb_id})"
-                     )
-
-                embedder_model = await self.ap.model_mgr.get_embedding_model_by_uuid(embed_model_uuid)
-                if not embedder_model:
-                     return handler.ActionResponse.error(
-                         message=f"Embedding model {embed_model_uuid} not found"
-                     )
-
-                vector = await embedder_model.embed_query(text)
+                vector = await self.ap.rag_runtime_service.embed_query(kb_id, text)
                 return handler.ActionResponse.success(data={'vector': vector})
             except Exception as e:
                 return handler.ActionResponse.error(
@@ -546,13 +494,7 @@ class RuntimeConnectionHandler(handler.Handler):
             ids = data['ids']
             metadata = data.get('metadata')
             try:
-                metadatas = metadata if metadata else [{} for _ in vectors]
-                await self.ap.vector_db_mgr.upsert(
-                    collection_name=collection_id,
-                    vectors=vectors,
-                    ids=ids,
-                    metadata=metadatas
-                )
+                await self.ap.rag_runtime_service.vector_upsert(collection_id, vectors, ids, metadata)
                 return handler.ActionResponse.success(data={})
             except Exception as e:
                 return handler.ActionResponse.error(
@@ -566,12 +508,7 @@ class RuntimeConnectionHandler(handler.Handler):
             top_k = data['top_k']
             filters = data.get('filters')
             try:
-                results = await self.ap.vector_db_mgr.search(
-                    collection_name=collection_id,
-                    query_vector=query_vector,
-                    limit=top_k,
-                    filter=filters
-                )
+                results = await self.ap.rag_runtime_service.vector_search(collection_id, query_vector, top_k, filters)
                 return handler.ActionResponse.success(data={'results': results})
             except Exception as e:
                 return handler.ActionResponse.error(
@@ -584,13 +521,7 @@ class RuntimeConnectionHandler(handler.Handler):
             ids = data.get('ids')
             filters = data.get('filters')
             try:
-                count = 0
-                if ids:
-                    await self.ap.vector_db_mgr.delete(collection_name=collection_id, ids=ids)
-                    count = len(ids)
-                elif filters:
-                     await self.ap.vector_db_mgr.delete_by_filter(collection_name=collection_id, filter=filters)
-
+                count = await self.ap.rag_runtime_service.vector_delete(collection_id, ids, filters)
                 return handler.ActionResponse.success(data={'count': count})
             except Exception as e:
                 return handler.ActionResponse.error(
@@ -601,19 +532,7 @@ class RuntimeConnectionHandler(handler.Handler):
         async def rag_get_file_stream(data: dict[str, Any]) -> handler.ActionResponse:
             storage_path = data['storage_path']
             try:
-                provider = self.ap.storage_mgr.storage_provider
-                content_bytes = b""
-
-                if isinstance(provider, LocalStorageProvider):
-                    real_path = os.path.join(LOCAL_STORAGE_PATH, storage_path)
-                    if os.path.exists(real_path):
-                         with open(real_path, "rb") as f:
-                             content_bytes = f.read()
-                    else:
-                        content_bytes = await self.ap.storage_mgr.load(storage_path)
-                else:
-                    content_bytes = await self.ap.storage_mgr.load(storage_path)
-
+                content_bytes = await self.ap.rag_runtime_service.get_file_stream(storage_path)
                 content_base64 = base64.b64encode(content_bytes).decode('utf-8')
                 return handler.ActionResponse.success(data={'content_base64': content_base64})
             except Exception as e:

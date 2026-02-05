@@ -35,6 +35,7 @@ from ..utils import logcache
 from . import taskmgr
 from . import entities as core_entities
 from ..rag.knowledge import kbmgr as rag_mgr
+from ..rag.service import RAGRuntimeService
 from ..vector import mgr as vectordb_mgr
 from ..telemetry import telemetry as telemetry_module
 
@@ -60,6 +61,7 @@ class Application:
     model_mgr: llm_model_mgr.ModelManager = None
 
     rag_mgr: rag_mgr.RAGManager = None
+    rag_runtime_service: RAGRuntimeService = None
 
     # TODO move to pipeline
     tool_mgr: llm_tool_mgr.ToolManager = None

@@ -25,29 +25,21 @@ class KnowledgeService:
 
     async def create_knowledge_base(self, kb_data: dict) -> str:
         """创建知识库"""
-        # Check if plugin-based creation
-        if 'rag_engine_plugin_id' in kb_data and kb_data['rag_engine_plugin_id']:
-            # Use new manager method
-            kb = await self.ap.rag_mgr.create_knowledge_base(
-                name=kb_data.get('name', 'Untitled'),
-                rag_engine_plugin_id=kb_data['rag_engine_plugin_id'],
-                creation_settings=kb_data.get('creation_settings', {}),
-                description=kb_data.get('description', ''),
-                embedding_model_uuid=kb_data.get('embedding_model_uuid', '')
-            )
-            return kb.uuid
+        # In new architecture, we delegate entirely to RAGManager which uses plugins.
+        # Legacy internal KB creation is removed.
+        
+        rag_engine_plugin_id = kb_data.get('rag_engine_plugin_id')
+        if not rag_engine_plugin_id:
+             raise ValueError("rag_engine_plugin_id is required")
 
-        # Filter to only valid database fields for internal KB
-        filtered_data = {k: v for k, v in kb_data.items() if k in persistence_rag.KnowledgeBase.CREATE_FIELDS}
-
-        filtered_data['uuid'] = str(uuid.uuid4())
-        await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_rag.KnowledgeBase).values(filtered_data))
-
-        kb = await self.get_knowledge_base(filtered_data['uuid'])
-
-        await self.ap.rag_mgr.load_knowledge_base(kb)
-
-        return filtered_data['uuid']
+        kb = await self.ap.rag_mgr.create_knowledge_base(
+            name=kb_data.get('name', 'Untitled'),
+            rag_engine_plugin_id=rag_engine_plugin_id,
+            creation_settings=kb_data.get('creation_settings', {}),
+            description=kb_data.get('description', ''),
+            embedding_model_uuid=kb_data.get('embedding_model_uuid', '')
+        )
+        return kb.uuid
 
     async def update_knowledge_base(self, kb_uuid: str, kb_data: dict) -> None:
         """更新知识库"""
@@ -174,9 +166,7 @@ class KnowledgeService:
             rag_engines = await self.ap.plugin_connector.list_rag_engines()
             engines.extend(rag_engines)
         except Exception as e:
-            self.ap.logger.warning(f"Failed to list RAG engines from plugins: {type(e)} {e}")
-            import traceback
-            traceback.print_exc()
+            self.ap.logger.warning(f"Failed to list RAG engines from plugins: {e}")
 
         return engines
 
