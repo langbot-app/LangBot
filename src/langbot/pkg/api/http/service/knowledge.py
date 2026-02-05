@@ -97,8 +97,7 @@ class KnowledgeService:
             return kb.uuid
 
         # Filter to only valid database fields for internal KB
-        valid_fields = {'uuid', 'name', 'description', 'embedding_model_uuid', 'top_k', 'rag_engine_plugin_id', 'creation_settings'}
-        filtered_data = {k: v for k, v in kb_data.items() if k in valid_fields}
+        filtered_data = {k: v for k, v in kb_data.items() if k in persistence_rag.KnowledgeBase.CREATE_FIELDS}
 
         filtered_data['uuid'] = str(uuid.uuid4())
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_rag.KnowledgeBase).values(filtered_data))
@@ -111,9 +110,8 @@ class KnowledgeService:
 
     async def update_knowledge_base(self, kb_uuid: str, kb_data: dict) -> None:
         """更新知识库"""
-        # Filter to only valid database fields
-        valid_fields = {'name', 'description', 'top_k', 'rag_engine_plugin_id', 'creation_settings', 'embedding_model_uuid'}
-        filtered_data = {k: v for k, v in kb_data.items() if k in valid_fields}
+        # Filter to only mutable fields
+        filtered_data = {k: v for k, v in kb_data.items() if k in persistence_rag.KnowledgeBase.MUTABLE_FIELDS}
 
         if not filtered_data:
             return

@@ -411,9 +411,7 @@ class RAGManager:
             knowledge_base_entity = persistence_rag.KnowledgeBase(**knowledge_base_entity._mapping)
         elif isinstance(knowledge_base_entity, dict):
             # Filter out non-database fields (like rag_engine which is computed)
-            valid_fields = {'uuid', 'name', 'description', 'embedding_model_uuid', 'top_k',
-                           'rag_engine_plugin_id', 'creation_settings', 'created_at', 'updated_at'}
-            filtered_dict = {k: v for k, v in knowledge_base_entity.items() if k in valid_fields}
+            filtered_dict = {k: v for k, v in knowledge_base_entity.items() if k in persistence_rag.KnowledgeBase.ALL_DB_FIELDS}
             knowledge_base_entity = persistence_rag.KnowledgeBase(**filtered_dict)
 
         runtime_knowledge_base = RuntimeKnowledgeBase(ap=self.ap, knowledge_base_entity=knowledge_base_entity)
