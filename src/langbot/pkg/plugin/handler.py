@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import typing
 from typing import Any
 import base64
@@ -42,9 +43,6 @@ class RuntimeConnectionHandler(handler.Handler):
     ):
         super().__init__(connection, disconnect_callback)
         self.ap = ap
-        import sys
-        sys.stderr.write(f"DEBUG_HANDLER: Initializing RuntimeConnectionHandler. Actions: {list(self.actions.keys())}\n")
-        sys.stderr.flush()
 
         @self.action(RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS)
         async def initialize_plugin_settings(data: dict[str, Any]) -> handler.ActionResponse:
@@ -511,7 +509,6 @@ class RuntimeConnectionHandler(handler.Handler):
                 vectors = await embedder_model.embed_documents(texts)
                 return handler.ActionResponse.success(data={'vectors': vectors})
             except Exception as e:
-                import json
                 return handler.ActionResponse.error(
                     message=f"{str(e)} (Original Error: {type(e).__name__}, Data: {json.dumps({'error_type': 'EmbeddingError', 'original_error': type(e).__name__})})"
                 )
@@ -538,7 +535,6 @@ class RuntimeConnectionHandler(handler.Handler):
                 vector = await embedder_model.embed_query(text)
                 return handler.ActionResponse.success(data={'vector': vector})
             except Exception as e:
-                import json
                 return handler.ActionResponse.error(
                     message=f"{str(e)} (Original Error: {type(e).__name__}, Data: {json.dumps({'error_type': 'EmbeddingError', 'original_error': type(e).__name__})})"
                 )
@@ -559,7 +555,6 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
                 return handler.ActionResponse.success(data={})
             except Exception as e:
-                import json
                 return handler.ActionResponse.error(
                     message=f"{str(e)} (Original Error: {type(e).__name__}, Data: {json.dumps({'error_type': 'VectorStoreError', 'collection_id': collection_id, 'original_error': type(e).__name__})})"
                 )
@@ -579,7 +574,6 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
                 return handler.ActionResponse.success(data={'results': results})
             except Exception as e:
-                import json
                 return handler.ActionResponse.error(
                     message=f"{str(e)} (Original Error: {type(e).__name__}, Data: {json.dumps({'error_type': 'VectorStoreError', 'collection_id': collection_id, 'original_error': type(e).__name__})})"
                 )
@@ -599,7 +593,6 @@ class RuntimeConnectionHandler(handler.Handler):
 
                 return handler.ActionResponse.success(data={'count': count})
             except Exception as e:
-                import json
                 return handler.ActionResponse.error(
                     message=f"{str(e)} (Original Error: {type(e).__name__}, Data: {json.dumps({'error_type': 'VectorStoreError', 'collection_id': collection_id, 'original_error': type(e).__name__})})"
                 )
@@ -624,7 +617,6 @@ class RuntimeConnectionHandler(handler.Handler):
                 content_base64 = base64.b64encode(content_bytes).decode('utf-8')
                 return handler.ActionResponse.success(data={'content_base64': content_base64})
             except Exception as e:
-                import json
                 return handler.ActionResponse.error(
                     message=f"{str(e)} (Original Error: {type(e).__name__}, Data: {json.dumps({'error_type': 'FileServiceError', 'storage_path': storage_path, 'original_error': type(e).__name__})})"
                 )
@@ -637,10 +629,6 @@ class RuntimeConnectionHandler(handler.Handler):
                      "pong": "pong",
                 },
             )
-
-        import sys
-        sys.stderr.write(f"DEBUG_HANDLER: RuntimeConnectionHandler initialized. Actions: {list(self.actions.keys())}\n")
-        sys.stderr.flush()
 
     async def ping(self) -> dict[str, Any]:
         """Ping the runtime"""

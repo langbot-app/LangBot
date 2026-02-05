@@ -136,9 +136,13 @@ class VectorDBManager:
              await self.vector_db.delete_by_file_id(collection_name, doc_id)
 
     async def delete_by_filter(self, collection_name: str, filter: dict):
-        """Proxy: Delete vectors by filter"""
-        # Base VectorDatabase doesn't support delete_by_filter explicitly in the interface shown (only delete_by_file_id and delete_collection)
-        # We might need to extend VectorDatabase or implemented logic here.
-        # For now, log warning or implement if VDB supports it.
-        # Given the error was 'AttributeError: ... has no attribute upsert', implementing aliases is step 1.
-        pass
+        """Proxy: Delete vectors by filter.
+
+        Note: This feature requires vector database implementations to support
+        filter-based deletion. Currently not implemented in VectorDatabase interface.
+        """
+        # TODO: Implement when VectorDatabase interface adds filter-based deletion
+        self.ap.logger.warning(
+            f"delete_by_filter called on collection '{collection_name}' but "
+            "filter-based deletion is not yet implemented in VectorDatabase interface"
+        )
