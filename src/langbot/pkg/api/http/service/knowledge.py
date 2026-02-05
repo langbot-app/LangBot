@@ -15,72 +15,13 @@ class KnowledgeService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
-    async def _enrich_kb_with_engine_info(self, kb_dict: dict) -> dict:
-        """Enrich knowledge base dict with RAG engine information."""
-        plugin_id = kb_dict.get("rag_engine_plugin_id")
-
-        if plugin_id:
-            # Try to get engine info from plugin
-            try:
-                engines = await self.list_rag_engines()
-                engine_info = next(
-                    (e for e in engines if e["plugin_id"] == plugin_id),
-                    None
-                )
-                if engine_info:
-                    kb_dict["rag_engine"] = {
-                        "plugin_id": plugin_id,
-                        "name": engine_info.get("name", plugin_id),
-                        "capabilities": engine_info.get("capabilities", []),
-                    }
-                else:
-                    # Plugin not loaded, use basic info
-                    kb_dict["rag_engine"] = {
-                        "plugin_id": plugin_id,
-                        "name": plugin_id,
-                        "capabilities": ["doc_ingestion"],
-                    }
-            except Exception:
-                kb_dict["rag_engine"] = {
-                    "plugin_id": plugin_id,
-                    "name": plugin_id,
-                    "capabilities": ["doc_ingestion"],
-                }
-        else:
-            # Legacy internal KB without plugin
-            kb_dict["rag_engine"] = {
-                "plugin_id": None,
-                "name": "Internal (Legacy)",
-                "capabilities": ["doc_ingestion"],
-            }
-
-        return kb_dict
-
     async def get_knowledge_bases(self) -> list[dict]:
         """获取所有知识库"""
-        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_rag.KnowledgeBase))
-        knowledge_bases = result.all()
-
-        kb_list = []
-        for knowledge_base in knowledge_bases:
-            kb_dict = self.ap.persistence_mgr.serialize_model(persistence_rag.KnowledgeBase, knowledge_base)
-            kb_dict = await self._enrich_kb_with_engine_info(kb_dict)
-            kb_list.append(kb_dict)
-
-        return kb_list
+        return await self.ap.rag_mgr.get_all_knowledge_base_details()
 
     async def get_knowledge_base(self, kb_uuid: str) -> dict | None:
         """获取知识库"""
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_rag.KnowledgeBase).where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
-        )
-        knowledge_base = result.first()
-        if knowledge_base is None:
-            return None
-
-        kb_dict = self.ap.persistence_mgr.serialize_model(persistence_rag.KnowledgeBase, knowledge_base)
-        kb_dict = await self._enrich_kb_with_engine_info(kb_dict)
-        return kb_dict
+        return await self.ap.rag_mgr.get_knowledge_base_details(kb_uuid)
 
     async def create_knowledge_base(self, kb_data: dict) -> str:
         """创建知识库"""
