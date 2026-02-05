@@ -11,7 +11,7 @@ from ....core import app
 from ....entity.persistence import rag as persistence_rag
 from ....storage.providers.localstorage import LocalStorageProvider, LOCAL_STORAGE_PATH
 
-logger = logging.getLogger(__name__)
+
 
 class RAGRuntimeService:
     """Service to handle RAG-related requests from plugins (Runtime)."""

@@ -815,7 +815,7 @@ class RuntimeConnectionHandler(handler.Handler):
         retriever_name: str,
         instance_id: str,
         retrieval_context: dict[str, Any],
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, Any]:
         """Retrieve knowledge"""
         result = await self.call_action(
             LangBotToRuntimeAction.RETRIEVE_KNOWLEDGE,

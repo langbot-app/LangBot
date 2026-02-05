@@ -15,7 +15,7 @@ from langbot.pkg.core import taskmgr
 from langbot_plugin.api.entities.builtin.rag import context as rag_context
 from .base import KnowledgeBaseInterface
 
-logger = logging.getLogger(__name__)
+
 
 
 class RuntimeKnowledgeBase(KnowledgeBaseInterface):
@@ -227,12 +227,12 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
 
         try:
             config = self.knowledge_base_entity.creation_settings or {}
-            logger.info(
+            self.ap.logger.info(
                 f"Calling RAG plugin {plugin_id}: on_knowledge_base_create(kb_id={self.knowledge_base_entity.uuid})"
             )
             await self.ap.plugin_connector.rag_on_kb_create(plugin_id, self.knowledge_base_entity.uuid, config)
         except Exception as e:
-            logger.error(f"Failed to notify plugin {plugin_id} on KB create: {e}")
+            self.ap.logger.error(f"Failed to notify plugin {plugin_id} on KB create: {e}")
 
     async def _on_kb_delete(self) -> None:
         """Notify plugin about KB deletion."""
@@ -241,12 +241,12 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             return
 
         try:
-            logger.info(
+            self.ap.logger.info(
                 f"Calling RAG plugin {plugin_id}: on_knowledge_base_delete(kb_id={self.knowledge_base_entity.uuid})"
             )
             await self.ap.plugin_connector.rag_on_kb_delete(plugin_id, self.knowledge_base_entity.uuid)
         except Exception as e:
-            logger.error(f"Failed to notify plugin {plugin_id} on KB delete: {e}")
+            self.ap.logger.error(f"Failed to notify plugin {plugin_id} on KB delete: {e}")
 
     async def _ingest_document(
         self,
@@ -257,10 +257,10 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         kb = self.knowledge_base_entity
         plugin_id = kb.rag_engine_plugin_id
         if not plugin_id:
-            logger.error(f"No RAG plugin ID configured for KB {kb.uuid}. Ingestion failed.")
+            self.ap.logger.error(f"No RAG plugin ID configured for KB {kb.uuid}. Ingestion failed.")
             raise ValueError("RAG Plugin ID required")
 
-        logger.info(f"Calling RAG plugin {plugin_id}: ingest(doc={file_metadata.get('filename')})")
+        self.ap.logger.info(f"Calling RAG plugin {plugin_id}: ingest(doc={file_metadata.get('filename')})")
 
         # Inject knowledge_base_id into file metadata as required by SDK schema
         file_metadata["knowledge_base_id"] = kb.uuid
@@ -280,7 +280,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             result = await self.ap.plugin_connector.call_rag_ingest(plugin_id, context_data)
             return result
         except Exception as e:
-            logger.error(f"Plugin ingestion failed: {e}")
+            self.ap.logger.error(f"Plugin ingestion failed: {e}")
             raise
 
     async def _retrieve(
@@ -292,7 +292,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         kb = self.knowledge_base_entity
         plugin_id = kb.rag_engine_plugin_id
         if not plugin_id:
-            logger.error(f"No RAG plugin ID configured for KB {kb.uuid}. Retrieval failed.")
+            self.ap.logger.error(f"No RAG plugin ID configured for KB {kb.uuid}. Retrieval failed.")
             return {"results": [], "total_found": 0}
 
         plugin_author, plugin_name = plugin_id.split('/', 1)
@@ -315,7 +315,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             )
             return result
         except Exception as e:
-            logger.error(f"Plugin retrieval failed: {e}")
+            self.ap.logger.error(f"Plugin retrieval failed: {e}")
             return {"results": [], "total_found": 0}
 
     async def _delete_document(self, document_id: str) -> bool:
@@ -325,12 +325,12 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         if not plugin_id:
             return False
 
-        logger.info(f"Calling RAG plugin {plugin_id}: delete_document(doc_id={document_id})")
+        self.ap.logger.info(f"Calling RAG plugin {plugin_id}: delete_document(doc_id={document_id})")
 
         try:
             return await self.ap.plugin_connector.call_rag_delete_document(plugin_id, document_id, kb.uuid)
         except Exception as e:
-            logger.error(f"Plugin document deletion failed: {e}")
+            self.ap.logger.error(f"Plugin document deletion failed: {e}")
             return False
 
 
