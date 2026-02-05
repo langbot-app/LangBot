@@ -16,7 +16,7 @@ export default function KBCard({ kbCardVO }: { kbCardVO: KnowledgeBaseVO }) {
                 {kbCardVO.name}
               </div>
               {/* Engine badge */}
-              <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300">
+              <span className={styles.engineBadge}>
                 {kbCardVO.getEngineName()}
               </span>
             </div>
