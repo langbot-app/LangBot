@@ -281,7 +281,7 @@ export default function KBForm({
                             key={engine.plugin_id}
                             value={engine.plugin_id}
                           >
-                            {engine.name}
+                            {extractI18nObject(engine.name)}
                           </SelectItem>
                         ))}
                       </SelectContent>

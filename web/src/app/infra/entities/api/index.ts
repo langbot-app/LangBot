@@ -175,7 +175,7 @@ export interface RAGEngineInfo {
 
 export interface RAGEngine {
   plugin_id: string;
-  name: string;
+  name: I18nObject;
   description?: I18nObject;
   capabilities: string[];
   // Schema format: Array of form field definitions (IDynamicFormItemSchema-like)
