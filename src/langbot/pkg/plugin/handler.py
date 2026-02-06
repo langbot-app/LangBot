@@ -520,10 +520,11 @@ class RuntimeConnectionHandler(handler.Handler):
         @self.action(PluginToRuntimeAction.RAG_VECTOR_DELETE)
         async def rag_vector_delete(data: dict[str, Any]) -> handler.ActionResponse:
             collection_id = data['collection_id']
-            ids = data.get('ids')
+            # Support both 'file_ids' (preferred) and 'ids' (legacy) for backward compatibility
+            file_ids = data.get('file_ids') or data.get('ids')
             filters = data.get('filters')
             try:
-                count = await self.ap.rag_runtime_service.vector_delete(collection_id, ids, filters)
+                count = await self.ap.rag_runtime_service.vector_delete(collection_id, file_ids, filters)
                 return handler.ActionResponse.success(data={'count': count})
             except Exception as e:
                 return _make_rag_error_response(e, 'VectorStoreError', collection_id=collection_id)

@@ -401,8 +401,12 @@ export class BackendClient extends BaseHttpClient {
   public retrieveKnowledgeBase(
     uuid: string,
     query: string,
+    retrievalSettings?: Record<string, unknown>,
   ): Promise<ApiRespKnowledgeBaseRetrieve> {
-    return this.post(`/api/v1/knowledge/bases/${uuid}/retrieve`, { query });
+    return this.post(`/api/v1/knowledge/bases/${uuid}/retrieve`, {
+      query,
+      retrieval_settings: retrievalSettings ?? {},
+    });
   }
 
   // ============ RAG Engines API ============

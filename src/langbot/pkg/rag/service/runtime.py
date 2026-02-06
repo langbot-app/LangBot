@@ -98,20 +98,25 @@ class RAGRuntimeService:
     async def vector_delete(
         self,
         collection_id: str,
-        ids: Optional[List[str]] = None,
+        file_ids: Optional[List[str]] = None,
         filters: Optional[Dict[str, Any]] = None
     ) -> int:
         """Handle RAG_VECTOR_DELETE action.
 
+        Deletes vectors associated with the given file IDs from the collection.
+        Each file_id corresponds to a document whose vectors will be removed.
+
         Args:
             collection_id: The collection to delete from.
-            ids: File IDs to delete (uses delete_by_file_id under the hood).
+            file_ids: File IDs whose associated vectors should be deleted.
+                Each file_id maps to a set of vectors stored with that file_id
+                in their metadata.
             filters: Filter-based deletion (not yet supported, will raise).
         """
         count = 0
-        if ids:
-            await self.ap.vector_db_mgr.delete_by_file_id(collection_name=collection_id, file_ids=ids)
-            count = len(ids)
+        if file_ids:
+            await self.ap.vector_db_mgr.delete_by_file_id(collection_name=collection_id, file_ids=file_ids)
+            count = len(file_ids)
         elif filters:
             await self.ap.vector_db_mgr.delete_by_filter(collection_name=collection_id, filter=filters)
         return count

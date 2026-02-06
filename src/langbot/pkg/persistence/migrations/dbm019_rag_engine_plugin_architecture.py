@@ -8,7 +8,7 @@ class DBMigrateRAGEnginePluginArchitecture(migration.DBMigration):
 
     Changes:
     - Add rag_engine_plugin_id, collection_id, creation_settings columns to knowledge_bases
-    - Drop external_knowledge_bases table (data migrated to knowledge_bases)
+    - Drop external_knowledge_bases table (no longer needed; external KB data is not migrated)
     """
 
     async def upgrade(self):

@@ -398,14 +398,27 @@ class RAGManager:
         self._enrich_kb_dict(kb_dict, engine_map)
         return kb_dict
 
+    @staticmethod
+    def _to_i18n_name(name) -> dict:
+        """Ensure name is always an I18nObject-compatible dict.
+
+        If *name* is already a dict (with ``en_US`` / ``zh_Hans`` keys) it is
+        returned as-is.  A plain string is wrapped into an I18nObject so the
+        frontend ``extractI18nObject`` helper never receives an unexpected type.
+        """
+        if isinstance(name, dict):
+            return name
+        return {"en_US": str(name), "zh_Hans": str(name)}
+
     def _enrich_kb_dict(self, kb_dict: dict, engine_map: dict) -> None:
         """Helper to inject engine info into KB dict."""
         plugin_id = kb_dict.get("rag_engine_plugin_id")
         
-        # Default fallback structure
+        # Default fallback structure — name must be I18nObject for frontend compatibility
+        fallback_name = self._to_i18n_name(plugin_id or "Internal (Legacy)")
         fallback_info = {
             "plugin_id": plugin_id,
-            "name": plugin_id or "Internal (Legacy)",
+            "name": fallback_name,
             "capabilities": ["doc_ingestion"], 
         }
 
@@ -417,7 +430,7 @@ class RAGManager:
         if engine_info:
             kb_dict["rag_engine"] = {
                 "plugin_id": plugin_id,
-                "name": engine_info.get("name", plugin_id),
+                "name": self._to_i18n_name(engine_info.get("name", plugin_id)),
                 "capabilities": engine_info.get("capabilities", []),
             }
         else:
