@@ -302,7 +302,8 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             "knowledge_base_id": kb.uuid,
             "collection_id": kb.collection_id or kb.uuid,
             "top_k": settings.get("top_k", kb.top_k or 5),
-            "config": settings,
+            "retrieval_settings": settings,
+            "creation_settings": kb.creation_settings or {},
         }
 
         try:
