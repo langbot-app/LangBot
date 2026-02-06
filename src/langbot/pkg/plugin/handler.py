@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import typing
 from typing import Any
 import base64
@@ -22,12 +21,23 @@ import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 from ..entity.persistence import plugin as persistence_plugin
 from ..entity.persistence import bstorage as persistence_bstorage
-from ..entity.persistence import rag as persistence_rag
-from ..storage.providers.localstorage import LocalStorageProvider, LOCAL_STORAGE_PATH
-import os
 
 from ..core import app
 from ..utils import constants
+
+
+def _make_rag_error_response(error: Exception, error_type: str, **extra_context) -> handler.ActionResponse:
+    """Create a clean error response for RAG operations.
+
+    Args:
+        error: The caught exception.
+        error_type: A category string like 'EmbeddingError', 'VectorStoreError'.
+        **extra_context: Additional context fields for the error message.
+    """
+    context_parts = [f"{k}={v}" for k, v in extra_context.items()]
+    context_str = f" [{', '.join(context_parts)}]" if context_parts else ""
+    message = f"[{error_type}/{type(error).__name__}]{context_str} {str(error)}"
+    return handler.ActionResponse.error(message=message)
 
 
 class RuntimeConnectionHandler(handler.Handler):
@@ -471,9 +481,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 vectors = await self.ap.rag_runtime_service.embed_documents(kb_id, texts)
                 return handler.ActionResponse.success(data={'vectors': vectors})
             except Exception as e:
-                return handler.ActionResponse.error(
-                    message=f"{str(e)} (Original Error: {type(e).__name__}, Data: {json.dumps({'error_type': 'EmbeddingError', 'original_error': type(e).__name__})})"
-                )
+                return _make_rag_error_response(e, 'EmbeddingError', kb_id=kb_id)
 
         @self.action(PluginToRuntimeAction.RAG_EMBED_QUERY)
         async def rag_embed_query(data: dict[str, Any]) -> handler.ActionResponse:
@@ -483,9 +491,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 vector = await self.ap.rag_runtime_service.embed_query(kb_id, text)
                 return handler.ActionResponse.success(data={'vector': vector})
             except Exception as e:
-                return handler.ActionResponse.error(
-                    message=f"{str(e)} (Original Error: {type(e).__name__}, Data: {json.dumps({'error_type': 'EmbeddingError', 'original_error': type(e).__name__})})"
-                )
+                return _make_rag_error_response(e, 'EmbeddingError', kb_id=kb_id)
 
         @self.action(PluginToRuntimeAction.RAG_VECTOR_UPSERT)
         async def rag_vector_upsert(data: dict[str, Any]) -> handler.ActionResponse:
@@ -497,9 +503,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 await self.ap.rag_runtime_service.vector_upsert(collection_id, vectors, ids, metadata)
                 return handler.ActionResponse.success(data={})
             except Exception as e:
-                return handler.ActionResponse.error(
-                    message=f"{str(e)} (Original Error: {type(e).__name__}, Data: {json.dumps({'error_type': 'VectorStoreError', 'collection_id': collection_id, 'original_error': type(e).__name__})})"
-                )
+                return _make_rag_error_response(e, 'VectorStoreError', collection_id=collection_id)
 
         @self.action(PluginToRuntimeAction.RAG_VECTOR_SEARCH)
         async def rag_vector_search(data: dict[str, Any]) -> handler.ActionResponse:
@@ -511,9 +515,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 results = await self.ap.rag_runtime_service.vector_search(collection_id, query_vector, top_k, filters)
                 return handler.ActionResponse.success(data={'results': results})
             except Exception as e:
-                return handler.ActionResponse.error(
-                    message=f"{str(e)} (Original Error: {type(e).__name__}, Data: {json.dumps({'error_type': 'VectorStoreError', 'collection_id': collection_id, 'original_error': type(e).__name__})})"
-                )
+                return _make_rag_error_response(e, 'VectorStoreError', collection_id=collection_id)
 
         @self.action(PluginToRuntimeAction.RAG_VECTOR_DELETE)
         async def rag_vector_delete(data: dict[str, Any]) -> handler.ActionResponse:
@@ -524,9 +526,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 count = await self.ap.rag_runtime_service.vector_delete(collection_id, ids, filters)
                 return handler.ActionResponse.success(data={'count': count})
             except Exception as e:
-                return handler.ActionResponse.error(
-                    message=f"{str(e)} (Original Error: {type(e).__name__}, Data: {json.dumps({'error_type': 'VectorStoreError', 'collection_id': collection_id, 'original_error': type(e).__name__})})"
-                )
+                return _make_rag_error_response(e, 'VectorStoreError', collection_id=collection_id)
 
         @self.action(PluginToRuntimeAction.RAG_GET_FILE_STREAM)
         async def rag_get_file_stream(data: dict[str, Any]) -> handler.ActionResponse:
@@ -536,9 +536,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 content_base64 = base64.b64encode(content_bytes).decode('utf-8')
                 return handler.ActionResponse.success(data={'content_base64': content_base64})
             except Exception as e:
-                return handler.ActionResponse.error(
-                    message=f"{str(e)} (Original Error: {type(e).__name__}, Data: {json.dumps({'error_type': 'FileServiceError', 'storage_path': storage_path, 'original_error': type(e).__name__})})"
-                )
+                return _make_rag_error_response(e, 'FileServiceError', storage_path=storage_path)
 
         @self.action(CommonAction.PING)
         async def ping(data: dict[str, Any]) -> handler.ActionResponse:

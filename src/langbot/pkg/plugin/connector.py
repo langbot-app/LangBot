@@ -500,58 +500,60 @@ class PluginRuntimeConnector:
         if not self.is_enable_plugin:
             return {}
 
-        # No polymorphic components to sync
-        required_instances = []
-
-        # Send to runtime (empty list)
-        sync_result = await self.handler.sync_polymorphic_component_instances(required_instances)
-
-        return sync_result
+        return await self.handler.sync_polymorphic_component_instances([])
 
     # ================= RAG Capability Callers =================
 
+    @staticmethod
+    def _parse_plugin_id(plugin_id: str) -> tuple[str, str]:
+        """Parse a plugin ID string into (author, name).
+
+        Args:
+            plugin_id: Plugin ID in 'author/name' format.
+
+        Returns:
+            Tuple of (plugin_author, plugin_name).
+
+        Raises:
+            ValueError: If plugin_id is not in the expected 'author/name' format.
+        """
+        if '/' not in plugin_id:
+            raise ValueError(
+                f"Invalid plugin_id format: '{plugin_id}'. "
+                "Expected 'author/name' format (e.g. 'langbot/rag-engine')."
+            )
+        return plugin_id.split('/', 1)
+
     async def call_rag_ingest(self, plugin_id: str, context_data: dict[str, Any]) -> dict[str, Any]:
         """Call plugin to ingest document.
-        
+
         Args:
             plugin_id: Target plugin ID (author/name).
             context_data: IngestionContext data.
         """
-        # Determine target from plugin_id
-        plugin_author, plugin_name = plugin_id.split('/', 1)
-        
-        # We need a new action type in RuntimeToPluginAction and LangBotToRuntimeAction
-        # Currently leveraging generic EXECUTE_COMMAND or need new specific actions
-        # Using a new action: INGEST_DOCUMENT which should be added to Handler first.
-        
-        # Since we modified enums in SDK, we should assume runtime supports it.
-        # But LangBot -> Runtime communication (LangBotToRuntimeAction) also needs update.
-        
-        # For now, let's assume we add specific methods to Handler or extended Action logic.
-        # Direct call to handler which sends Action to Runtime.
-        
+        plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
         return await self.handler.rag_ingest_document(plugin_author, plugin_name, context_data)
 
     async def call_rag_delete_document(self, plugin_id: str, document_id: str, kb_id: str) -> bool:
-        plugin_author, plugin_name = plugin_id.split('/', 1)
+        plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
         return await self.handler.rag_delete_document(plugin_author, plugin_name, document_id, kb_id)
 
     async def get_rag_creation_schema(self, plugin_id: str) -> dict[str, Any]:
-        plugin_author, plugin_name = plugin_id.split('/', 1)
+        plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
         return await self.handler.get_rag_creation_schema(plugin_author, plugin_name)
 
     async def get_rag_retrieval_schema(self, plugin_id: str) -> dict[str, Any]:
-        plugin_author, plugin_name = plugin_id.split('/', 1)
+        plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
         return await self.handler.get_rag_retrieval_schema(plugin_author, plugin_name)
 
     async def rag_on_kb_create(self, plugin_id: str, kb_id: str, config: dict[str, Any]) -> dict[str, Any]:
         """Notify plugin about KB creation."""
-        plugin_author, plugin_name = plugin_id.split('/', 1)
+        plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
         return await self.handler.rag_on_kb_create(plugin_author, plugin_name, kb_id, config)
 
     async def rag_on_kb_delete(self, plugin_id: str, kb_id: str) -> dict[str, Any]:
         """Notify plugin about KB deletion."""
-        plugin_author, plugin_name = plugin_id.split('/', 1)
+        plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
         return await self.handler.rag_on_kb_delete(plugin_author, plugin_name, kb_id)
 
     async def list_rag_engines(self) -> list[dict[str, Any]]:

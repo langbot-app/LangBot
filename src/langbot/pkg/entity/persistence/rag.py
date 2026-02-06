@@ -16,16 +16,16 @@ class KnowledgeBase(Base):
     # New fields for plugin-based RAG
     rag_engine_plugin_id = sqlalchemy.Column(sqlalchemy.String, nullable=True)
     collection_id = sqlalchemy.Column(sqlalchemy.String, nullable=True)
-    creation_settings = sqlalchemy.Column(sqlalchemy.JSON, nullable=True, default={})
+    creation_settings = sqlalchemy.Column(sqlalchemy.JSON, nullable=True, default=None)
 
     # Field sets for different operations
-    MUTABLE_FIELDS = {'name', 'description', 'top_k', 'rag_engine_plugin_id', 'creation_settings', 'embedding_model_uuid'}
+    MUTABLE_FIELDS = {'name', 'description', 'top_k', 'creation_settings', 'embedding_model_uuid'}
     """Fields that can be updated after creation."""
 
-    CREATE_FIELDS = MUTABLE_FIELDS | {'uuid'}
+    CREATE_FIELDS = MUTABLE_FIELDS | {'uuid', 'rag_engine_plugin_id', 'collection_id'}
     """Fields used when creating a new knowledge base."""
 
-    ALL_DB_FIELDS = CREATE_FIELDS | {'created_at', 'updated_at'}
+    ALL_DB_FIELDS = CREATE_FIELDS | {'emoji', 'created_at', 'updated_at'}
     """All fields stored in database (for loading from DB row)."""
 
 

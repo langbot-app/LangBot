@@ -30,7 +30,7 @@ class KnowledgeService:
         
         rag_engine_plugin_id = kb_data.get('rag_engine_plugin_id')
         if not rag_engine_plugin_id:
-             raise ValueError("rag_engine_plugin_id is required")
+            raise ValueError("rag_engine_plugin_id is required")
 
         kb = await self.ap.rag_mgr.create_knowledge_base(
             name=kb_data.get('name', 'Untitled'),
@@ -60,17 +60,30 @@ class KnowledgeService:
 
         await self.ap.rag_mgr.load_knowledge_base(kb)
 
+    async def _check_doc_capability(self, kb_uuid: str, operation: str) -> None:
+        """Check if the KB's RAG engine supports document operations.
+
+        Args:
+            kb_uuid: Knowledge base UUID.
+            operation: Human-readable operation name for error messages.
+
+        Raises:
+            Exception: If the KB does not support doc_ingestion.
+        """
+        kb_info = await self.ap.rag_mgr.get_knowledge_base_details(kb_uuid)
+        if not kb_info:
+            raise Exception('Knowledge base not found')
+        capabilities = kb_info.get('rag_engine', {}).get('capabilities', [])
+        if 'doc_ingestion' not in capabilities:
+            raise Exception(f'This knowledge base does not support {operation}')
+
     async def store_file(self, kb_uuid: str, file_id: str) -> int:
         """存储文件"""
         runtime_kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
         if runtime_kb is None:
             raise Exception('Knowledge base not found')
 
-        # Check if the RAG engine supports document ingestion
-        kb_info = await self.get_knowledge_base(kb_uuid)
-        capabilities = kb_info.get('rag_engine', {}).get('capabilities', [])
-        if 'doc_ingestion' not in capabilities:
-            raise Exception('This knowledge base does not support document upload')
+        await self._check_doc_capability(kb_uuid, 'document upload')
 
         result = await runtime_kb.store_file(file_id)
 
@@ -115,11 +128,7 @@ class KnowledgeService:
         if runtime_kb is None:
             raise Exception('Knowledge base not found')
 
-        # Check if the RAG engine supports document ingestion
-        kb_info = await self.get_knowledge_base(kb_uuid)
-        capabilities = kb_info.get('rag_engine', {}).get('capabilities', [])
-        if 'doc_ingestion' not in capabilities:
-            raise Exception('This knowledge base does not support document deletion')
+        await self._check_doc_capability(kb_uuid, 'document deletion')
 
         await runtime_kb.delete_file(file_id)
 

@@ -288,12 +288,19 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         query: str,
         settings: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Call plugin to retrieve documents."""
+        """Call plugin to retrieve documents.
+
+        Raises:
+            ValueError: If no RAG plugin is configured for this KB.
+            Exception: If the plugin retrieval call fails.
+        """
         kb = self.knowledge_base_entity
         plugin_id = kb.rag_engine_plugin_id
         if not plugin_id:
-            self.ap.logger.error(f"No RAG plugin ID configured for KB {kb.uuid}. Retrieval failed.")
-            return {"results": [], "total_found": 0}
+            raise ValueError(f"No RAG plugin ID configured for KB {kb.uuid}. Retrieval failed.")
+
+        if '/' not in plugin_id:
+            raise ValueError(f"Invalid plugin_id format: '{plugin_id}' for KB {kb.uuid}")
 
         plugin_author, plugin_name = plugin_id.split('/', 1)
 
@@ -306,18 +313,14 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             "creation_settings": kb.creation_settings or {},
         }
 
-        try:
-            result = await self.ap.plugin_connector.retrieve_knowledge(
-                plugin_author,
-                plugin_name,
-                "",  # retriever_name - runtime will find the RAGEngine component
-                kb.uuid,  # instance_id
-                retrieval_context
-            )
-            return result
-        except Exception as e:
-            self.ap.logger.error(f"Plugin retrieval failed: {e}")
-            return {"results": [], "total_found": 0}
+        result = await self.ap.plugin_connector.retrieve_knowledge(
+            plugin_author,
+            plugin_name,
+            "",  # retriever_name - runtime will find the RAGEngine component
+            kb.uuid,  # instance_id
+            retrieval_context
+        )
+        return result
 
     async def _delete_document(self, document_id: str) -> bool:
         """Call plugin to delete document."""
@@ -412,13 +415,13 @@ class RAGManager:
 
         engine_info = engine_map.get(plugin_id)
         if engine_info:
-             kb_dict["rag_engine"] = {
+            kb_dict["rag_engine"] = {
                 "plugin_id": plugin_id,
                 "name": engine_info.get("name", plugin_id),
                 "capabilities": engine_info.get("capabilities", []),
             }
         else:
-             kb_dict["rag_engine"] = fallback_info
+            kb_dict["rag_engine"] = fallback_info
 
     async def create_knowledge_base(
         self,

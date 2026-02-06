@@ -58,8 +58,8 @@ export default function KnowledgePage() {
     setKnowledgeBaseList(kbs);
   }
 
-  const handleKBCardClick = (kb: KnowledgeBaseVO) => {
-    setSelectedKbId(kb.id);
+  const handleKBCardClick = (kbId: string) => {
+    setSelectedKbId(kbId);
     setDetailDialogOpen(true);
   };
 
@@ -109,7 +109,7 @@ export default function KnowledgePage() {
 
         {knowledgeBaseList.map((kb) => {
           return (
-            <div key={kb.id} onClick={() => handleKBCardClick(kb)}>
+            <div key={kb.id} onClick={() => handleKBCardClick(kb.id)}>
               <KBCard kbCardVO={kb} />
             </div>
           );

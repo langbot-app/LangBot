@@ -361,14 +361,21 @@ export default function KBForm({
               <div className="space-y-4 pt-2 border-t">
                 <div className="text-sm font-medium text-muted-foreground">
                   {t('knowledge.engineSettings')}
+                  {isEditing && (
+                    <span className="ml-2 text-xs text-muted-foreground font-normal">
+                      ({t('knowledge.engineSettingsReadonly')})
+                    </span>
+                  )}
                 </div>
-                <DynamicFormComponent
-                  itemConfigList={configFormItems}
-                  initialValues={configSettings as Record<string, object>}
-                  onSubmit={(val) =>
-                    setConfigSettings(val as Record<string, unknown>)
-                  }
-                />
+                <div className={isEditing ? 'pointer-events-none opacity-60' : ''}>
+                  <DynamicFormComponent
+                    itemConfigList={configFormItems}
+                    initialValues={configSettings as Record<string, object>}
+                    onSubmit={(val) =>
+                      setConfigSettings(val as Record<string, unknown>)
+                    }
+                  />
+                </div>
               </div>
             )}
           </div>

@@ -89,60 +89,64 @@ class VectorDBManager:
         limit: int,
         filter: dict | None = None,
     ) -> list[dict]:
-        """Proxy: Search vectors"""
+        """Proxy: Search vectors.
+
+        Returns a list of dicts with keys: 'id', 'score', 'metadata'.
+        The underlying VectorDatabase.search returns Chroma-style format:
+        { 'ids': [['id1']], 'distances': [[0.1]], 'metadatas': [[{}]] }
+        """
         import numpy as np
-        # Ensure collection exists before searching? Or let it fail/return empty?
-        # Usually implementations handle collection not found.
+
         results = await self.vector_db.search(
             collection=collection_name,
             query_embedding=np.array(query_vector),
             k=limit,
-            # Note: filters are not yet unified in VectorDatabase abstract method signature properly in all impls,
-            # but we pass what we can. The ABI above shows search(collection, query_embedding, k).
-            # We might need to handle filters if implementations support it.
         )
-        
-        # Convert results to standard format
-        # Abstract return type is Dict[str, Any] which usually contains 'ids', 'distances', 'metadatas', 'documents'
-        # We want to return list of results
-        
-        # Assuming typical Chroma/Standard format:
-        # { 'ids': [['id1']], 'distances': [[0.1]], 'metadatas': [[{}]], 'documents': [['text']] }
-        # Note: VectorDatabase.search implementation details vary.
-        # Let's inspect ChromaVectorDatabase.search to match return format logic.
-        
-        # For now, let's implement a basic return structure assuming the Dict matches standard.
-        parsed_results = []
+
         if not results or 'ids' not in results or not results['ids']:
-             return []
-             
-        # Flatten if list of lists (batch search)
-        r_ids = results['ids'][0] if isinstance(results['ids'], list) and results['ids'] and isinstance(results['ids'][0], list) else results['ids']
-        r_dists = results['distances'][0] if isinstance(results['distances'], list) and results['distances'] and isinstance(results['distances'][0], list) else results['distances']
-        r_metas = results['metadatas'][0] if isinstance(results['metadatas'], list) and results['metadatas'] and isinstance(results['metadatas'][0], list) else results['metadatas']
-        
+            return []
+
+        # Flatten nested lists (Chroma returns batch-style: list of lists)
+        raw_ids = results['ids']
+        raw_dists = results.get('distances', [])
+        raw_metas = results.get('metadatas', [])
+
+        r_ids = raw_ids[0] if raw_ids and isinstance(raw_ids[0], list) else raw_ids
+        r_dists = raw_dists[0] if raw_dists and isinstance(raw_dists[0], list) else raw_dists
+        r_metas = raw_metas[0] if raw_metas and isinstance(raw_metas[0], list) else raw_metas
+
+        parsed_results = []
         for i, id_val in enumerate(r_ids):
             parsed_results.append({
                 'id': id_val,
-                'score': r_dists[i] if r_dists is not None else 0.0,
-                'metadata': r_metas[i] if r_metas else {},
+                'score': r_dists[i] if r_dists and i < len(r_dists) else 0.0,
+                'metadata': r_metas[i] if r_metas and i < len(r_metas) else {},
             })
-            
+
         return parsed_results
 
-    async def delete(self, collection_name: str, ids: list[str]):
-        """Proxy: Delete vectors by ID"""
-        for doc_id in ids:
-             await self.vector_db.delete_by_file_id(collection_name, doc_id)
+    async def delete_by_file_id(self, collection_name: str, file_ids: list[str]):
+        """Proxy: Delete vectors by file_id (metadata-level identifier).
+
+        This delegates to VectorDatabase.delete_by_file_id which removes
+        all vectors associated with the given file IDs.
+        """
+        for file_id in file_ids:
+            await self.vector_db.delete_by_file_id(collection_name, file_id)
+
+    async def delete_collection(self, collection_name: str):
+        """Proxy: Delete an entire collection."""
+        await self.vector_db.delete_collection(collection_name)
 
     async def delete_by_filter(self, collection_name: str, filter: dict):
         """Proxy: Delete vectors by filter.
 
-        Note: This feature requires vector database implementations to support
-        filter-based deletion. Currently not implemented in VectorDatabase interface.
+        Raises:
+            NotImplementedError: Filter-based deletion is not yet supported
+                by the VectorDatabase interface.
         """
-        # TODO: Implement when VectorDatabase interface adds filter-based deletion
-        self.ap.logger.warning(
+        raise NotImplementedError(
             f"delete_by_filter called on collection '{collection_name}' but "
-            "filter-based deletion is not yet implemented in VectorDatabase interface"
+            "filter-based deletion is not yet implemented in VectorDatabase interface. "
+            "Use delete_by_file_id for file-level deletion."
         )
