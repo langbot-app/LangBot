@@ -106,7 +106,7 @@ export default function KBRetrieveGeneric({
                 <CardTitle className="text-sm font-medium flex justify-between items-center">
                   <span>{getTitle(result)}</span>
                   <span className="text-xs text-muted-foreground">
-                    {t('knowledge.distance')}: {result.distance.toFixed(4)}
+                    {t('knowledge.distance')}: {(result.distance ?? 0).toFixed(4)}
                   </span>
                 </CardTitle>
               </CardHeader>
