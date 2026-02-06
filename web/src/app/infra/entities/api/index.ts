@@ -169,7 +169,7 @@ export interface KnowledgeBase {
 // RAG Engine types
 export interface RAGEngineInfo {
   plugin_id: string | null;
-  name: string;
+  name: I18nObject;
   capabilities: string[];
 }
 

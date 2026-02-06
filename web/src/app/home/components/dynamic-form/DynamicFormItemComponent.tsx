@@ -315,7 +315,9 @@ export default function DynamicFormItemComponent({
       // Group KBs by RAG engine name
       const kbsByEngine = knowledgeBases.reduce(
         (acc, kb) => {
-          const engineName = kb.rag_engine?.name || t('knowledge.unknownEngine');
+          const engineName = kb.rag_engine?.name
+            ? extractI18nObject(kb.rag_engine.name)
+            : t('knowledge.unknownEngine');
           if (!acc[engineName]) {
             acc[engineName] = [];
           }
@@ -353,7 +355,9 @@ export default function DynamicFormItemComponent({
       // Group KBs by RAG engine name for multi-selector
       const multiKbsByEngine = knowledgeBases.reduce(
         (acc, kb) => {
-          const engineName = kb.rag_engine?.name || t('knowledge.unknownEngine');
+          const engineName = kb.rag_engine?.name
+            ? extractI18nObject(kb.rag_engine.name)
+            : t('knowledge.unknownEngine');
           if (!acc[engineName]) {
             acc[engineName] = [];
           }
@@ -385,7 +389,7 @@ export default function DynamicFormItemComponent({
                             {currentKb.name}
                             {currentKb.rag_engine?.name && (
                               <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300">
-                                {currentKb.rag_engine.name}
+                                {extractI18nObject(currentKb.rag_engine.name)}
                               </span>
                             )}
                           </div>

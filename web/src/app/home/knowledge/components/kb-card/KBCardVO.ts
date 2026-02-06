@@ -1,4 +1,5 @@
 import { RAGEngineInfo } from '@/app/infra/entities/api';
+import { extractI18nObject } from '@/i18n/I18nProvider';
 
 export interface IKnowledgeBaseVO {
   id: string;
@@ -52,6 +53,6 @@ export class KnowledgeBaseVO implements IKnowledgeBaseVO {
     if (!this.ragEngine) {
       return 'Unknown';
     }
-    return this.ragEngine.name;
+    return extractI18nObject(this.ragEngine.name);
   }
 }
