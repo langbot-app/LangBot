@@ -110,7 +110,7 @@ export default function PluginMarketCardComponent({
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
               <div className="text-xs sm:text-sm text-[#2563eb] dark:text-[#5b8def] font-medium whitespace-nowrap">
-                {cardVO.installCount.toLocaleString()}
+                {cardVO.installCount?.toLocaleString() ?? '0'}
               </div>
             </div>
 
