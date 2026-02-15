@@ -1,1 +1,1 @@
-from .runtime import RAGRuntimeService
+from .runtime import RAGRuntimeService as RAGRuntimeService

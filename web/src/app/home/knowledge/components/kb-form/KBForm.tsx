@@ -88,9 +88,9 @@ export default function KBForm({
   const { t } = useTranslation();
   const [ragEngines, setRagEngines] = useState<RAGEngine[]>([]);
   const [selectedEngineId, setSelectedEngineId] = useState<string>('');
-  const [configSettings, setConfigSettings] = useState<
-    Record<string, unknown>
-  >({});
+  const [configSettings, setConfigSettings] = useState<Record<string, unknown>>(
+    {},
+  );
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -234,7 +234,9 @@ export default function KBForm({
   if (ragEngines.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-8 space-y-4">
-        <p className="text-muted-foreground">{t('knowledge.noEnginesAvailable')}</p>
+        <p className="text-muted-foreground">
+          {t('knowledge.noEnginesAvailable')}
+        </p>
         <p className="text-sm text-muted-foreground">
           {t('knowledge.installEngineHint')}
         </p>
@@ -367,7 +369,9 @@ export default function KBForm({
                     </span>
                   )}
                 </div>
-                <div className={isEditing ? 'pointer-events-none opacity-60' : ''}>
+                <div
+                  className={isEditing ? 'pointer-events-none opacity-60' : ''}
+                >
                   <DynamicFormComponent
                     itemConfigList={configFormItems}
                     initialValues={configSettings as Record<string, object>}

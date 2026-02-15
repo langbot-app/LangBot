@@ -16,7 +16,9 @@ class RAGEnginesRouterGroup(group.RouterGroup):
             engines = await self.ap.knowledge_service.list_rag_engines()
             return self.success(data={'engines': engines})
 
-        @self.route('/<path:plugin_id>/creation-schema', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        @self.route(
+            '/<path:plugin_id>/creation-schema', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
+        )
         async def get_engine_creation_schema(plugin_id: str) -> quart.Response:
             """Get creation settings schema for a specific RAG engine.
 
@@ -26,7 +28,9 @@ class RAGEnginesRouterGroup(group.RouterGroup):
             schema = await self.ap.knowledge_service.get_engine_creation_schema(plugin_id)
             return self.success(data={'schema': schema})
 
-        @self.route('/<path:plugin_id>/retrieval-schema', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        @self.route(
+            '/<path:plugin_id>/retrieval-schema', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
+        )
         async def get_engine_retrieval_schema(plugin_id: str) -> quart.Response:
             """Get retrieval settings schema for a specific RAG engine.
 

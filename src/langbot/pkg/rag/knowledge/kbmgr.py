@@ -1,5 +1,4 @@
 from __future__ import annotations
-import logging
 import mimetypes
 import traceback
 import uuid
@@ -14,8 +13,6 @@ from langbot.pkg.entity.persistence import rag as persistence_rag
 from langbot.pkg.core import taskmgr
 from langbot_plugin.api.entities.builtin.rag import context as rag_context
 from .base import KnowledgeBaseInterface
-
-
 
 
 class RuntimeKnowledgeBase(KnowledgeBaseInterface):
@@ -48,18 +45,18 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             # Detect MIME type from extension
             mime_type, _ = mimetypes.guess_type(file.file_name)
             if mime_type is None:
-                mime_type = "application/octet-stream"
+                mime_type = 'application/octet-stream'
 
             # Call plugin to ingest document
             await self._ingest_document(
                 {
-                    "document_id": file.uuid,
-                    "filename": file.file_name,
-                    "extension": file.extension,
-                    "file_size": file_size,
-                    "mime_type": mime_type
+                    'document_id': file.uuid,
+                    'filename': file.file_name,
+                    'extension': file.extension,
+                    'file_size': file_size,
+                    'mime_type': mime_type,
                 },
-                file.file_name  # storage path
+                file.file_name,  # storage path
             )
 
             # set file status to completed
@@ -176,15 +173,17 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
 
         return stored_file_tasks[0] if stored_file_tasks else ''
 
-    async def retrieve(self, query: str, top_k: int, settings: dict | None = None) -> list[rag_context.RetrievalResultEntry]:
+    async def retrieve(
+        self, query: str, top_k: int, settings: dict | None = None
+    ) -> list[rag_context.RetrievalResultEntry]:
         # Merge top_k into settings or use as default
-        retrieve_settings = {"top_k": top_k}
+        retrieve_settings = {'top_k': top_k}
         if settings:
             retrieve_settings.update(settings)
 
         response = await self._retrieve(query, retrieve_settings)
 
-        results_data = response.get("results", [])
+        results_data = response.get('results', [])
         entries = []
         for r in results_data:
             if isinstance(r, dict):
@@ -211,7 +210,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
 
     def get_rag_engine_plugin_id(self) -> str:
         """Get the RAG engine plugin ID"""
-        return self.knowledge_base_entity.rag_engine_plugin_id or ""
+        return self.knowledge_base_entity.rag_engine_plugin_id or ''
 
     async def dispose(self):
         """Dispose the knowledge base, notifying the plugin to cleanup."""
@@ -228,11 +227,11 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         try:
             config = self.knowledge_base_entity.creation_settings or {}
             self.ap.logger.info(
-                f"Calling RAG plugin {plugin_id}: on_knowledge_base_create(kb_id={self.knowledge_base_entity.uuid})"
+                f'Calling RAG plugin {plugin_id}: on_knowledge_base_create(kb_id={self.knowledge_base_entity.uuid})'
             )
             await self.ap.plugin_connector.rag_on_kb_create(plugin_id, self.knowledge_base_entity.uuid, config)
         except Exception as e:
-            self.ap.logger.error(f"Failed to notify plugin {plugin_id} on KB create: {e}")
+            self.ap.logger.error(f'Failed to notify plugin {plugin_id} on KB create: {e}')
 
     async def _on_kb_delete(self) -> None:
         """Notify plugin about KB deletion."""
@@ -242,11 +241,11 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
 
         try:
             self.ap.logger.info(
-                f"Calling RAG plugin {plugin_id}: on_knowledge_base_delete(kb_id={self.knowledge_base_entity.uuid})"
+                f'Calling RAG plugin {plugin_id}: on_knowledge_base_delete(kb_id={self.knowledge_base_entity.uuid})'
             )
             await self.ap.plugin_connector.rag_on_kb_delete(plugin_id, self.knowledge_base_entity.uuid)
         except Exception as e:
-            self.ap.logger.error(f"Failed to notify plugin {plugin_id} on KB delete: {e}")
+            self.ap.logger.error(f'Failed to notify plugin {plugin_id} on KB delete: {e}')
 
     async def _ingest_document(
         self,
@@ -257,30 +256,32 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         kb = self.knowledge_base_entity
         plugin_id = kb.rag_engine_plugin_id
         if not plugin_id:
-            self.ap.logger.error(f"No RAG plugin ID configured for KB {kb.uuid}. Ingestion failed.")
-            raise ValueError("RAG Plugin ID required")
+            self.ap.logger.error(f'No RAG plugin ID configured for KB {kb.uuid}. Ingestion failed.')
+            raise ValueError('RAG Plugin ID required')
 
-        self.ap.logger.info(f"Calling RAG plugin {plugin_id}: ingest(doc={file_metadata.get('filename')})")
+        self.ap.logger.info(f'Calling RAG plugin {plugin_id}: ingest(doc={file_metadata.get("filename")})')
 
         # Inject knowledge_base_id into file metadata as required by SDK schema
-        file_metadata["knowledge_base_id"] = kb.uuid
+        file_metadata['knowledge_base_id'] = kb.uuid
 
         context_data = {
-            "file_object": {
-                "metadata": file_metadata,
-                "storage_path": storage_path,
+            'file_object': {
+                'metadata': file_metadata,
+                'storage_path': storage_path,
             },
-            "knowledge_base_id": kb.uuid,
-            "collection_id": kb.collection_id or kb.uuid,
-            "chunking_strategy": kb.creation_settings.get("chunking_strategy", "fixed_size") if kb.creation_settings else "fixed_size",
-            "custom_settings": kb.creation_settings or {},
+            'knowledge_base_id': kb.uuid,
+            'collection_id': kb.collection_id or kb.uuid,
+            'chunking_strategy': kb.creation_settings.get('chunking_strategy', 'fixed_size')
+            if kb.creation_settings
+            else 'fixed_size',
+            'custom_settings': kb.creation_settings or {},
         }
 
         try:
             result = await self.ap.plugin_connector.call_rag_ingest(plugin_id, context_data)
             return result
         except Exception as e:
-            self.ap.logger.error(f"Plugin ingestion failed: {e}")
+            self.ap.logger.error(f'Plugin ingestion failed: {e}')
             raise
 
     async def _retrieve(
@@ -297,7 +298,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         kb = self.knowledge_base_entity
         plugin_id = kb.rag_engine_plugin_id
         if not plugin_id:
-            raise ValueError(f"No RAG plugin ID configured for KB {kb.uuid}. Retrieval failed.")
+            raise ValueError(f'No RAG plugin ID configured for KB {kb.uuid}. Retrieval failed.')
 
         if '/' not in plugin_id:
             raise ValueError(f"Invalid plugin_id format: '{plugin_id}' for KB {kb.uuid}")
@@ -305,20 +306,20 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         plugin_author, plugin_name = plugin_id.split('/', 1)
 
         retrieval_context = {
-            "query": query,
-            "knowledge_base_id": kb.uuid,
-            "collection_id": kb.collection_id or kb.uuid,
-            "top_k": settings.get("top_k") or kb.top_k or 5,
-            "retrieval_settings": settings,
-            "creation_settings": kb.creation_settings or {},
+            'query': query,
+            'knowledge_base_id': kb.uuid,
+            'collection_id': kb.collection_id or kb.uuid,
+            'top_k': settings.get('top_k') or kb.top_k or 5,
+            'retrieval_settings': settings,
+            'creation_settings': kb.creation_settings or {},
         }
 
         result = await self.ap.plugin_connector.retrieve_knowledge(
             plugin_author,
             plugin_name,
-            "",  # retriever_name - runtime will find the RAGEngine component
+            '',  # retriever_name - runtime will find the RAGEngine component
             kb.uuid,  # instance_id
-            retrieval_context
+            retrieval_context,
         )
         return result
 
@@ -329,14 +330,13 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         if not plugin_id:
             return False
 
-        self.ap.logger.info(f"Calling RAG plugin {plugin_id}: delete_document(doc_id={document_id})")
+        self.ap.logger.info(f'Calling RAG plugin {plugin_id}: delete_document(doc_id={document_id})')
 
         try:
             return await self.ap.plugin_connector.call_rag_delete_document(plugin_id, document_id, kb.uuid)
         except Exception as e:
-            self.ap.logger.error(f"Plugin document deletion failed: {e}")
+            self.ap.logger.error(f'Plugin document deletion failed: {e}')
             return False
-
 
 
 class RAGManager:
@@ -362,9 +362,9 @@ class RAGManager:
         if self.ap.plugin_connector.is_enable_plugin:
             try:
                 engines = await self.ap.plugin_connector.list_rag_engines()
-                engine_map = {e["plugin_id"]: e for e in engines}
+                engine_map = {e['plugin_id']: e for e in engines}
             except Exception as e:
-                self.ap.logger.warning(f"Failed to list RAG engines: {e}")
+                self.ap.logger.warning(f'Failed to list RAG engines: {e}')
 
         # 3. Serialize and enrich
         kb_list = []
@@ -385,15 +385,15 @@ class RAGManager:
             return None
 
         kb_dict = self.ap.persistence_mgr.serialize_model(persistence_rag.KnowledgeBase, kb)
-        
+
         # Fetch engines
         engine_map = {}
         if self.ap.plugin_connector.is_enable_plugin:
             try:
                 engines = await self.ap.plugin_connector.list_rag_engines()
-                engine_map = {e["plugin_id"]: e for e in engines}
+                engine_map = {e['plugin_id']: e for e in engines}
             except Exception as e:
-                self.ap.logger.warning(f"Failed to list RAG engines: {e}")
+                self.ap.logger.warning(f'Failed to list RAG engines: {e}')
 
         self._enrich_kb_dict(kb_dict, engine_map)
         return kb_dict
@@ -408,41 +408,41 @@ class RAGManager:
         """
         if isinstance(name, dict):
             return name
-        return {"en_US": str(name), "zh_Hans": str(name)}
+        return {'en_US': str(name), 'zh_Hans': str(name)}
 
     def _enrich_kb_dict(self, kb_dict: dict, engine_map: dict) -> None:
         """Helper to inject engine info into KB dict."""
-        plugin_id = kb_dict.get("rag_engine_plugin_id")
-        
+        plugin_id = kb_dict.get('rag_engine_plugin_id')
+
         # Default fallback structure — name must be I18nObject for frontend compatibility
-        fallback_name = self._to_i18n_name(plugin_id or "Internal (Legacy)")
+        fallback_name = self._to_i18n_name(plugin_id or 'Internal (Legacy)')
         fallback_info = {
-            "plugin_id": plugin_id,
-            "name": fallback_name,
-            "capabilities": ["doc_ingestion"], 
+            'plugin_id': plugin_id,
+            'name': fallback_name,
+            'capabilities': ['doc_ingestion'],
         }
 
         if not plugin_id:
-            kb_dict["rag_engine"] = fallback_info
+            kb_dict['rag_engine'] = fallback_info
             return
 
         engine_info = engine_map.get(plugin_id)
         if engine_info:
-            kb_dict["rag_engine"] = {
-                "plugin_id": plugin_id,
-                "name": self._to_i18n_name(engine_info.get("name", plugin_id)),
-                "capabilities": engine_info.get("capabilities", []),
+            kb_dict['rag_engine'] = {
+                'plugin_id': plugin_id,
+                'name': self._to_i18n_name(engine_info.get('name', plugin_id)),
+                'capabilities': engine_info.get('capabilities', []),
             }
         else:
-            kb_dict["rag_engine"] = fallback_info
+            kb_dict['rag_engine'] = fallback_info
 
     async def create_knowledge_base(
         self,
         name: str,
         rag_engine_plugin_id: str,
         creation_settings: dict,
-        description: str = "",
-        embedding_model_uuid: str = ""
+        description: str = '',
+        embedding_model_uuid: str = '',
     ) -> persistence_rag.KnowledgeBase:
         """Create a new knowledge base using a RAG plugin."""
         kb_uuid = str(uuid.uuid4())
@@ -450,13 +450,13 @@ class RAGManager:
         collection_id = kb_uuid
 
         kb_data = {
-           "uuid": kb_uuid,
-           "name": name,
-           "description": description,
-           "rag_engine_plugin_id": rag_engine_plugin_id,
-           "collection_id": collection_id,
-           "creation_settings": creation_settings,
-           "embedding_model_uuid": embedding_model_uuid
+            'uuid': kb_uuid,
+            'name': name,
+            'description': description,
+            'rag_engine_plugin_id': rag_engine_plugin_id,
+            'collection_id': collection_id,
+            'creation_settings': creation_settings,
+            'embedding_model_uuid': embedding_model_uuid,
         }
 
         # Create Entity
@@ -471,7 +471,7 @@ class RAGManager:
         # Notify Plugin
         await runtime_kb._on_kb_create()
 
-        self.ap.logger.info(f"Created new Knowledge Base {name} ({kb_uuid}) using plugin {rag_engine_plugin_id}")
+        self.ap.logger.info(f'Created new Knowledge Base {name} ({kb_uuid}) using plugin {rag_engine_plugin_id}')
         return kb
 
     async def load_knowledge_bases_from_db(self):
@@ -500,7 +500,9 @@ class RAGManager:
             knowledge_base_entity = persistence_rag.KnowledgeBase(**knowledge_base_entity._mapping)
         elif isinstance(knowledge_base_entity, dict):
             # Filter out non-database fields (like rag_engine which is computed)
-            filtered_dict = {k: v for k, v in knowledge_base_entity.items() if k in persistence_rag.KnowledgeBase.ALL_DB_FIELDS}
+            filtered_dict = {
+                k: v for k, v in knowledge_base_entity.items() if k in persistence_rag.KnowledgeBase.ALL_DB_FIELDS
+            }
             knowledge_base_entity = persistence_rag.KnowledgeBase(**filtered_dict)
 
         runtime_knowledge_base = RuntimeKnowledgeBase(ap=self.ap, knowledge_base_entity=knowledge_base_entity)

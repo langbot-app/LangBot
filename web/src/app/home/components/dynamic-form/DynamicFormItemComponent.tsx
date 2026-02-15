@@ -297,16 +297,18 @@ export default function DynamicFormItemComponent({
             <SelectValue placeholder={t('knowledge.selectEmbeddingModel')} />
           </SelectTrigger>
           <SelectContent>
-            {Object.entries(groupedEmbeddingModels).map(([providerName, models]) => (
-              <SelectGroup key={providerName}>
-                <SelectLabel>{providerName}</SelectLabel>
-                {models.map((model) => (
-                  <SelectItem key={model.uuid} value={model.uuid}>
-                    {model.name}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            ))}
+            {Object.entries(groupedEmbeddingModels).map(
+              ([providerName, models]) => (
+                <SelectGroup key={providerName}>
+                  <SelectLabel>{providerName}</SelectLabel>
+                  {models.map((model) => (
+                    <SelectItem key={model.uuid} value={model.uuid}>
+                      {model.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              ),
+            )}
           </SelectContent>
         </Select>
       );

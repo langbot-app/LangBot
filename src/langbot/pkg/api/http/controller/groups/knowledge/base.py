@@ -100,4 +100,3 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
                 knowledge_base_uuid, query, retrieval_settings
             )
             return self.success(data={'results': results})
-

@@ -18,13 +18,11 @@ class RAGRuntimeService:
         self.ap = ap
 
     async def _get_kb_entity(self, kb_id: str) -> persistence_rag.KnowledgeBase:
-        stmt = sqlalchemy.select(persistence_rag.KnowledgeBase).where(
-            persistence_rag.KnowledgeBase.uuid == kb_id
-        )
+        stmt = sqlalchemy.select(persistence_rag.KnowledgeBase).where(persistence_rag.KnowledgeBase.uuid == kb_id)
         result = await self.ap.persistence_mgr.execute_async(stmt)
         row = result.first()
         if not row:
-            raise ValueError(f"Knowledge Base {kb_id} not found")
+            raise ValueError(f'Knowledge Base {kb_id} not found')
         kb = persistence_rag.KnowledgeBase(**row._mapping)
         return kb
 
@@ -42,11 +40,11 @@ class RAGRuntimeService:
         embed_model_uuid = self._get_embedding_model_uuid(kb)
 
         if not embed_model_uuid:
-            raise ValueError(f"Embedding model not configured for this Knowledge Base (kb_id: {kb_id})")
+            raise ValueError(f'Embedding model not configured for this Knowledge Base (kb_id: {kb_id})')
 
         embedder_model = await self.ap.model_mgr.get_embedding_model_by_uuid(embed_model_uuid)
         if not embedder_model:
-            raise ValueError(f"Embedding model {embed_model_uuid} not found")
+            raise ValueError(f'Embedding model {embed_model_uuid} not found')
 
         return await embedder_model.embed_documents(texts)
 
@@ -56,11 +54,11 @@ class RAGRuntimeService:
         embed_model_uuid = self._get_embedding_model_uuid(kb)
 
         if not embed_model_uuid:
-            raise ValueError(f"Embedding model not configured (kb_id: {kb_id})")
+            raise ValueError(f'Embedding model not configured (kb_id: {kb_id})')
 
         embedder_model = await self.ap.model_mgr.get_embedding_model_by_uuid(embed_model_uuid)
         if not embedder_model:
-            raise ValueError(f"Embedding model {embed_model_uuid} not found")
+            raise ValueError(f'Embedding model {embed_model_uuid} not found')
 
         return await embedder_model.embed_query(text)
 
@@ -69,37 +67,22 @@ class RAGRuntimeService:
         collection_id: str,
         vectors: List[List[float]],
         ids: List[str],
-        metadata: Optional[List[Dict[str, Any]]] = None
+        metadata: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         """Handle RAG_VECTOR_UPSERT action."""
         metadatas = metadata if metadata else [{} for _ in vectors]
-        await self.ap.vector_db_mgr.upsert(
-            collection_name=collection_id,
-            vectors=vectors,
-            ids=ids,
-            metadata=metadatas
-        )
+        await self.ap.vector_db_mgr.upsert(collection_name=collection_id, vectors=vectors, ids=ids, metadata=metadatas)
 
     async def vector_search(
-        self,
-        collection_id: str,
-        query_vector: List[float],
-        top_k: int,
-        filters: Optional[Dict[str, Any]] = None
+        self, collection_id: str, query_vector: List[float], top_k: int, filters: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
         """Handle RAG_VECTOR_SEARCH action."""
         return await self.ap.vector_db_mgr.search(
-            collection_name=collection_id,
-            query_vector=query_vector,
-            limit=top_k,
-            filter=filters
+            collection_name=collection_id, query_vector=query_vector, limit=top_k, filter=filters
         )
 
     async def vector_delete(
-        self,
-        collection_id: str,
-        file_ids: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None
+        self, collection_id: str, file_ids: Optional[List[str]] = None, filters: Optional[Dict[str, Any]] = None
     ) -> int:
         """Handle RAG_VECTOR_DELETE action.
 
@@ -128,4 +111,4 @@ class RAGRuntimeService:
         regardless of the underlying storage provider.
         """
         content_bytes = await self.ap.storage_mgr.load(storage_path)
-        return content_bytes if content_bytes else b""
+        return content_bytes if content_bytes else b''

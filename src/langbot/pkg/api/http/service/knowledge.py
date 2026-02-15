@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 import sqlalchemy
 
 from ....core import app
@@ -27,17 +26,17 @@ class KnowledgeService:
         """创建知识库"""
         # In new architecture, we delegate entirely to RAGManager which uses plugins.
         # Legacy internal KB creation is removed.
-        
+
         rag_engine_plugin_id = kb_data.get('rag_engine_plugin_id')
         if not rag_engine_plugin_id:
-            raise ValueError("rag_engine_plugin_id is required")
+            raise ValueError('rag_engine_plugin_id is required')
 
         kb = await self.ap.rag_mgr.create_knowledge_base(
             name=kb_data.get('name', 'Untitled'),
             rag_engine_plugin_id=rag_engine_plugin_id,
             creation_settings=kb_data.get('creation_settings', {}),
             description=kb_data.get('description', ''),
-            embedding_model_uuid=kb_data.get('embedding_model_uuid', '')
+            embedding_model_uuid=kb_data.get('embedding_model_uuid', ''),
         )
         return kb.uuid
 
@@ -103,16 +102,11 @@ class KnowledgeService:
         runtime_kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
         if runtime_kb is None:
             raise Exception('Knowledge base not found')
-        
-        # Pass retrieval_settings
-        results = await runtime_kb.retrieve(
-            query, 
-            runtime_kb.knowledge_base_entity.top_k, 
-            settings=retrieval_settings
-        )
-        
-        return [result.model_dump() for result in results]
 
+        # Pass retrieval_settings
+        results = await runtime_kb.retrieve(query, runtime_kb.knowledge_base_entity.top_k, settings=retrieval_settings)
+
+        return [result.model_dump() for result in results]
 
     async def get_files_by_knowledge_base(self, kb_uuid: str) -> list[dict]:
         """获取知识库文件"""
@@ -175,7 +169,7 @@ class KnowledgeService:
             rag_engines = await self.ap.plugin_connector.list_rag_engines()
             engines.extend(rag_engines)
         except Exception as e:
-            self.ap.logger.warning(f"Failed to list RAG engines from plugins: {e}")
+            self.ap.logger.warning(f'Failed to list RAG engines from plugins: {e}')
 
         return engines
 
@@ -184,7 +178,7 @@ class KnowledgeService:
         try:
             return await self.ap.plugin_connector.get_rag_creation_schema(plugin_id)
         except Exception as e:
-            self.ap.logger.warning(f"Failed to get creation schema for {plugin_id}: {e}")
+            self.ap.logger.warning(f'Failed to get creation schema for {plugin_id}: {e}')
             return {}
 
     async def get_engine_retrieval_schema(self, plugin_id: str) -> dict:
@@ -192,5 +186,5 @@ class KnowledgeService:
         try:
             return await self.ap.plugin_connector.get_rag_retrieval_schema(plugin_id)
         except Exception as e:
-            self.ap.logger.warning(f"Failed to get retrieval schema for {plugin_id}: {e}")
+            self.ap.logger.warning(f'Failed to get retrieval schema for {plugin_id}: {e}')
             return {}

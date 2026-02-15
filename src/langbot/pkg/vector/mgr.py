@@ -117,11 +117,13 @@ class VectorDBManager:
 
         parsed_results = []
         for i, id_val in enumerate(r_ids):
-            parsed_results.append({
-                'id': id_val,
-                'score': r_dists[i] if r_dists and i < len(r_dists) else 0.0,
-                'metadata': r_metas[i] if r_metas and i < len(r_metas) else {},
-            })
+            parsed_results.append(
+                {
+                    'id': id_val,
+                    'score': r_dists[i] if r_dists and i < len(r_dists) else 0.0,
+                    'metadata': r_metas[i] if r_metas and i < len(r_metas) else {},
+                }
+            )
 
         return parsed_results
 
@@ -147,6 +149,6 @@ class VectorDBManager:
         """
         raise NotImplementedError(
             f"delete_by_filter called on collection '{collection_name}' but "
-            "filter-based deletion is not yet implemented in VectorDatabase interface. "
-            "Use delete_by_file_id for file-level deletion."
+            'filter-based deletion is not yet implemented in VectorDatabase interface. '
+            'Use delete_by_file_id for file-level deletion.'
         )
