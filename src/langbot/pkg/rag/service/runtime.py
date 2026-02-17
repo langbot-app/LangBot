@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sqlalchemy
 from typing import Any, List, Dict, Optional
 from langbot.pkg.core import app
