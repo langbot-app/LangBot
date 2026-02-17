@@ -82,7 +82,7 @@ class RuntimeBot:
                     if custom_launcher_id:
                         launcher_id = custom_launcher_id
 
-                await self.ap.query_pool.add_query(
+                await self.ap.msg_aggregator.add_message(
                     bot_uuid=self.bot_entity.uuid,
                     launcher_type=provider_session.LauncherTypes.PERSON,
                     launcher_id=launcher_id,
@@ -125,7 +125,7 @@ class RuntimeBot:
                     if custom_launcher_id:
                         launcher_id = custom_launcher_id
 
-                await self.ap.query_pool.add_query(
+                await self.ap.msg_aggregator.add_message(
                     bot_uuid=self.bot_entity.uuid,
                     launcher_type=provider_session.LauncherTypes.GROUP,
                     launcher_id=launcher_id,

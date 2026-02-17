@@ -123,6 +123,34 @@ stages:
         type: array[string]
         required: true
         default: []
+  - name: message-aggregation
+    label:
+      en_US: Message Aggregation
+      zh_Hans: 消息聚合
+    description:
+      en_US: When a user sends multiple messages consecutively, wait for a period and merge them into one before processing
+      zh_Hans: 当用户连续发送多条消息时，等待一段时间后合并为一条消息再处理（防抖）
+    config:
+      - name: enabled
+        label:
+          en_US: Enable Message Aggregation
+          zh_Hans: 启用消息聚合
+        description:
+          en_US: If enabled, consecutive messages from the same user will be merged after a delay
+          zh_Hans: 如果启用，同一用户连续发送的消息将在延迟后合并处理
+        type: boolean
+        required: true
+        default: true
+      - name: delay
+        label:
+          en_US: Aggregation Delay (seconds)
+          zh_Hans: 聚合延迟（秒）
+        description:
+          en_US: 'Wait time before merging messages. Range: 1.0-10.0 seconds.'
+          zh_Hans: '合并消息前的等待时间。范围：1.0-10.0 秒。'
+        type: float
+        required: true
+        default: 1.5
   - name: misc
     label:
       en_US: Misc
