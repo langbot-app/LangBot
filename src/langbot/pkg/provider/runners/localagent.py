@@ -92,9 +92,9 @@ class LocalAgentRunner(runner.RequestRunner):
                         if content.type == 'text' and content.text is not None:
                             texts.append(f'[{idx}] {content.text}')
                             idx += 1
-                rag_context = '\n\n'.join(texts)
+                rag_context_text = '\n\n'.join(texts)
                 final_user_message_text = rag_combined_prompt_template.format(
-                    rag_context=rag_context, user_message=user_message_text
+                    rag_context=rag_context_text, user_message=user_message_text
                 )
 
             else:

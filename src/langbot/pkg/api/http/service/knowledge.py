@@ -76,7 +76,7 @@ class KnowledgeService:
         if 'doc_ingestion' not in capabilities:
             raise Exception(f'This knowledge base does not support {operation}')
 
-    async def store_file(self, kb_uuid: str, file_id: str) -> int:
+    async def store_file(self, kb_uuid: str, file_id: str) -> str:
         """存储文件"""
         runtime_kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
         if runtime_kb is None:

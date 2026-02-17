@@ -466,7 +466,7 @@ class PluginRuntimeConnector:
     ) -> dict[str, Any]:
         """Retrieve knowledge using a RAGEngine instance."""
         if not self.is_enable_plugin:
-            return []
+            return {'results': []}
 
         return await self.handler.retrieve_knowledge(
             plugin_author, plugin_name, retriever_name, instance_id, retrieval_context

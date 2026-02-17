@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sqlalchemy
 from typing import Any, List, Dict, Optional
 from langbot.pkg.core import app
@@ -110,5 +111,8 @@ class RAGRuntimeService:
         Uses the storage manager abstraction to load file content,
         regardless of the underlying storage provider.
         """
-        content_bytes = await self.ap.storage_mgr.load(storage_path)
+        # Validate storage_path to prevent path traversal
+        if '..' in storage_path or storage_path.startswith('/'):
+            raise ValueError(f'Invalid storage path: {storage_path}')
+        content_bytes = await self.ap.storage_mgr.storage_provider.load(storage_path)
         return content_bytes if content_bytes else b''

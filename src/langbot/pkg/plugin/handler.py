@@ -499,6 +499,10 @@ class RuntimeConnectionHandler(handler.Handler):
             vectors = data['vectors']
             ids = data['ids']
             metadata = data.get('metadata')
+            if len(vectors) != len(ids):
+                return handler.ActionResponse.error(message='vectors and ids must have same length')
+            if metadata and len(metadata) != len(vectors):
+                return handler.ActionResponse.error(message='metadata must match vectors length')
             try:
                 await self.ap.rag_runtime_service.vector_upsert(collection_id, vectors, ids, metadata)
                 return handler.ActionResponse.success(data={})

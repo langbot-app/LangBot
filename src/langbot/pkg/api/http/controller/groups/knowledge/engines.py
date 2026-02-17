@@ -25,6 +25,8 @@ class RAGEnginesRouterGroup(group.RouterGroup):
             plugin_id is in 'author/name' format, captured via <path:> converter.
             """
             plugin_id = unquote(plugin_id)
+            if '/' not in plugin_id:
+                return self.http_status(400, -1, 'Invalid plugin_id format. Expected author/name.')
             schema = await self.ap.knowledge_service.get_engine_creation_schema(plugin_id)
             return self.success(data={'schema': schema})
 
@@ -37,5 +39,7 @@ class RAGEnginesRouterGroup(group.RouterGroup):
             plugin_id is in 'author/name' format, captured via <path:> converter.
             """
             plugin_id = unquote(plugin_id)
+            if '/' not in plugin_id:
+                return self.http_status(400, -1, 'Invalid plugin_id format. Expected author/name.')
             schema = await self.ap.knowledge_service.get_engine_retrieval_schema(plugin_id)
             return self.success(data={'schema': schema})

@@ -56,14 +56,9 @@ class DBMigrateRAGEnginePluginArchitecture(migration.DBMigration):
 
         for col_name, col_type in new_columns.items():
             if col_name not in columns:
-                if self.ap.persistence_mgr.db.name == 'postgresql':
-                    await self.ap.persistence_mgr.execute_async(
-                        sqlalchemy.text(f'ALTER TABLE knowledge_bases ADD COLUMN {col_name} {col_type};')
-                    )
-                else:
-                    await self.ap.persistence_mgr.execute_async(
-                        sqlalchemy.text(f'ALTER TABLE knowledge_bases ADD COLUMN {col_name} {col_type};')
-                    )
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.text(f'ALTER TABLE knowledge_bases ADD COLUMN {col_name} {col_type};')
+                )
 
         # For existing knowledge bases without rag_engine_plugin_id,
         # set collection_id = uuid (same default as new KBs)

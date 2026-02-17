@@ -13,7 +13,10 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
 
             elif quart.request.method == 'POST':
                 json_data = await quart.request.json
-                knowledge_base_uuid = await self.ap.knowledge_service.create_knowledge_base(json_data)
+                try:
+                    knowledge_base_uuid = await self.ap.knowledge_service.create_knowledge_base(json_data)
+                except ValueError as e:
+                    return self.http_status(400, -1, str(e))
                 return self.success(data={'uuid': knowledge_base_uuid})
 
             return self.http_status(405, -1, 'Method not allowed')

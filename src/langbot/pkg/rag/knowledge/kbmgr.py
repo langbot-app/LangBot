@@ -232,6 +232,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             await self.ap.plugin_connector.rag_on_kb_create(plugin_id, self.knowledge_base_entity.uuid, config)
         except Exception as e:
             self.ap.logger.error(f'Failed to notify plugin {plugin_id} on KB create: {e}')
+            raise
 
     async def _on_kb_delete(self) -> None:
         """Notify plugin about KB deletion."""
@@ -419,7 +420,7 @@ class RAGManager:
         fallback_info = {
             'plugin_id': plugin_id,
             'name': fallback_name,
-            'capabilities': ['doc_ingestion'],
+            'capabilities': [],
         }
 
         if not plugin_id:
@@ -531,3 +532,4 @@ class RAGManager:
                 await kb.dispose()
                 self.knowledge_bases.remove(kb)
                 return
+        self.ap.logger.warning(f'Knowledge base {kb_uuid} not found in runtime, skipping plugin notification')
