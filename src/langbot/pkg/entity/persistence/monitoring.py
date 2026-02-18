@@ -22,6 +22,7 @@ class MonitoringMessage(Base):
     user_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
     runner_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)  # Runner name for this query
     variables = sqlalchemy.Column(sqlalchemy.Text, nullable=True)  # Query variables as JSON string
+    role = sqlalchemy.Column(sqlalchemy.String(50), nullable=True, default='user')  # user, assistant
 
 
 class MonitoringLLMCall(Base):
