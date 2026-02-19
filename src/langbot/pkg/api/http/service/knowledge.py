@@ -142,6 +142,8 @@ class KnowledgeService:
         )
 
         # delete files
+        # NOTE: Chunk cleanup is for legacy (pre-plugin) KBs that stored chunks locally.
+        # For plugin-based RAG engines, the Chunk table is not populated, so this is a no-op.
         files = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.select(persistence_rag.File).where(persistence_rag.File.kb_id == kb_uuid)
         )

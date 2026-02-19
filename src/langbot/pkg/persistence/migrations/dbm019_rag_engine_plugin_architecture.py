@@ -69,6 +69,18 @@ class DBMigrateRAGEnginePluginArchitecture(migration.DBMigration):
     async def _drop_external_knowledge_bases_table(self):
         """Drop the external_knowledge_bases table if it exists."""
         if await self._table_exists('external_knowledge_bases'):
+            # Log existing external KBs before dropping, so users are aware of data loss
+            rows = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.text('SELECT * FROM external_knowledge_bases;')
+            )
+            existing = rows.fetchall()
+            if existing:
+                self.ap.logger.warning(
+                    'Dropping external_knowledge_bases table with %d existing record(s). '
+                    'These external KB configurations will be removed: %s',
+                    len(existing),
+                    [dict(row._mapping) for row in existing],
+                )
             await self.ap.persistence_mgr.execute_async(sqlalchemy.text('DROP TABLE external_knowledge_bases;'))
 
     async def downgrade(self):
