@@ -4,7 +4,7 @@ import traceback
 import uuid
 import zipfile
 import io
-from typing import Any, Dict
+from typing import Any
 from langbot.pkg.core import app
 import sqlalchemy
 
@@ -249,9 +249,9 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
 
     async def _ingest_document(
         self,
-        file_metadata: Dict[str, Any],
+        file_metadata: dict[str, Any],
         storage_path: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Call plugin to ingest document."""
         kb = self.knowledge_base_entity
         plugin_id = kb.rag_engine_plugin_id
@@ -287,8 +287,8 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
     async def _retrieve(
         self,
         query: str,
-        settings: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        settings: dict[str, Any],
+    ) -> dict[str, Any]:
         """Call plugin to retrieve documents.
 
         Raises:
@@ -300,11 +300,6 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         if not plugin_id:
             raise ValueError(f'No RAG plugin ID configured for KB {kb.uuid}. Retrieval failed.')
 
-        if '/' not in plugin_id:
-            raise ValueError(f"Invalid plugin_id format: '{plugin_id}' for KB {kb.uuid}")
-
-        plugin_author, plugin_name = plugin_id.split('/', 1)
-
         retrieval_context = {
             'query': query,
             'knowledge_base_id': kb.uuid,
@@ -314,10 +309,8 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             'creation_settings': kb.creation_settings or {},
         }
 
-        result = await self.ap.plugin_connector.retrieve_knowledge(
-            plugin_author,
-            plugin_name,
-            '',  # retriever_name - runtime will find the RAGEngine component
+        result = await self.ap.plugin_connector.call_rag_retrieve(
+            plugin_id,
             retrieval_context,
         )
         return result

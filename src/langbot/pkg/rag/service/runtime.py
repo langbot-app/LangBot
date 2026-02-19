@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import posixpath
 import sqlalchemy
-from typing import Any, List, Dict, Optional
+from typing import Any
 from langbot.pkg.core import app
 
 from langbot.pkg.entity.persistence import rag as persistence_rag
@@ -34,7 +35,7 @@ class RAGRuntimeService:
                 return embed_uuid
         return kb.embedding_model_uuid
 
-    async def embed_documents(self, kb_id: str, texts: List[str]) -> List[List[float]]:
+    async def embed_documents(self, kb_id: str, texts: list[str]) -> list[list[float]]:
         """Handle RAG_EMBED_DOCUMENTS action."""
         kb = await self._get_kb_entity(kb_id)
         embed_model_uuid = self._get_embedding_model_uuid(kb)
@@ -48,7 +49,7 @@ class RAGRuntimeService:
 
         return await embedder_model.embed_documents(texts)
 
-    async def embed_query(self, kb_id: str, text: str) -> List[float]:
+    async def embed_query(self, kb_id: str, text: str) -> list[float]:
         """Handle RAG_EMBED_QUERY action."""
         kb = await self._get_kb_entity(kb_id)
         embed_model_uuid = self._get_embedding_model_uuid(kb)
@@ -65,24 +66,24 @@ class RAGRuntimeService:
     async def vector_upsert(
         self,
         collection_id: str,
-        vectors: List[List[float]],
-        ids: List[str],
-        metadata: Optional[List[Dict[str, Any]]] = None,
+        vectors: list[list[float]],
+        ids: list[str],
+        metadata: list[dict[str, Any]] | None = None,
     ) -> None:
         """Handle RAG_VECTOR_UPSERT action."""
         metadatas = metadata if metadata else [{} for _ in vectors]
         await self.ap.vector_db_mgr.upsert(collection_name=collection_id, vectors=vectors, ids=ids, metadata=metadatas)
 
     async def vector_search(
-        self, collection_id: str, query_vector: List[float], top_k: int, filters: Optional[Dict[str, Any]] = None
-    ) -> List[Dict[str, Any]]:
+        self, collection_id: str, query_vector: list[float], top_k: int, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         """Handle RAG_VECTOR_SEARCH action."""
         return await self.ap.vector_db_mgr.search(
             collection_name=collection_id, query_vector=query_vector, limit=top_k, filter=filters
         )
 
     async def vector_delete(
-        self, collection_id: str, file_ids: Optional[List[str]] = None, filters: Optional[Dict[str, Any]] = None
+        self, collection_id: str, file_ids: list[str] | None = None, filters: dict[str, Any] | None = None
     ) -> int:
         """Handle RAG_VECTOR_DELETE action.
 
@@ -111,7 +112,8 @@ class RAGRuntimeService:
         regardless of the underlying storage provider.
         """
         # Validate storage_path to prevent path traversal
-        if '..' in storage_path or storage_path.startswith('/'):
+        normalized = posixpath.normpath(storage_path)
+        if normalized.startswith('/') or normalized.startswith('..') or '/../' in normalized:
             raise ValueError(f'Invalid storage path: {storage_path}')
         content_bytes = await self.ap.storage_mgr.storage_provider.load(storage_path)
         return content_bytes if content_bytes else b''

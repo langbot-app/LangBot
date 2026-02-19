@@ -21,11 +21,14 @@ class DBMigrateRAGEnginePluginArchitecture(migration.DBMigration):
         if self.ap.persistence_mgr.db.name == 'postgresql':
             result = await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.text(
-                    f"SELECT column_name FROM information_schema.columns WHERE table_name = '{table_name}';"
-                )
+                    'SELECT column_name FROM information_schema.columns WHERE table_name = :table_name;'
+                ).bindparams(table_name=table_name)
             )
             return [row[0] for row in result.fetchall()]
         else:
+            # SQLite PRAGMA does not support bind parameters; validate identifier.
+            if not table_name.isidentifier():
+                raise ValueError(f'Invalid table name: {table_name}')
             result = await self.ap.persistence_mgr.execute_async(sqlalchemy.text(f'PRAGMA table_info({table_name});'))
             return [row[1] for row in result.fetchall()]
 
@@ -34,13 +37,15 @@ class DBMigrateRAGEnginePluginArchitecture(migration.DBMigration):
         if self.ap.persistence_mgr.db.name == 'postgresql':
             result = await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.text(
-                    f"SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = '{table_name}');"
-                )
+                    'SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = :table_name);'
+                ).bindparams(table_name=table_name)
             )
             return result.scalar()
         else:
             result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}';")
+                sqlalchemy.text(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=:table_name;"
+                ).bindparams(table_name=table_name)
             )
             return result.first() is not None
 

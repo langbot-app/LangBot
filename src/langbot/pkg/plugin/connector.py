@@ -534,6 +534,16 @@ class PluginRuntimeConnector:
         plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
         return await self.handler.rag_on_kb_delete(plugin_author, plugin_name, kb_id)
 
+    async def call_rag_retrieve(self, plugin_id: str, retrieval_context: dict[str, Any]) -> dict[str, Any]:
+        """Call plugin to retrieve knowledge.
+
+        Args:
+            plugin_id: Target plugin ID (author/name).
+            retrieval_context: RetrievalContext data.
+        """
+        plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
+        return await self.handler.retrieve_knowledge(plugin_author, plugin_name, '', retrieval_context)
+
     @alru_cache(ttl=60)
     async def list_rag_engines(self) -> list[dict[str, Any]]:
         """List all available RAG engines from plugins.

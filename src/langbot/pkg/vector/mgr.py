@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import numpy as np
+
 from ..core import app
 from .vdb import VectorDatabase
 from .vdbs.chroma import ChromaVectorDatabase
@@ -95,8 +97,6 @@ class VectorDBManager:
         The underlying VectorDatabase.search returns Chroma-style format:
         { 'ids': [['id1']], 'distances': [[0.1]], 'metadatas': [[{}]] }
         """
-        import numpy as np
-
         results = await self.vector_db.search(
             collection=collection_name,
             query_embedding=np.array(query_vector),
