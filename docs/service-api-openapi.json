@@ -9,7 +9,7 @@
       "url": "https://langbot.app"
     },
     "license": {
-      "name": "AGPL-3.0",
+      "name": "Apache-2.0",
       "url": "https://github.com/langbot-app/LangBot/blob/master/LICENSE"
     }
   },
