@@ -39,8 +39,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             task_context.set_current_action('Processing file')
 
             # Get file size from storage
-            file_bytes = await self.ap.storage_mgr.storage_provider.load(file.file_name)
-            file_size = len(file_bytes) if file_bytes else 0
+            file_size = await self.ap.storage_mgr.storage_provider.size(file.file_name)
 
             # Detect MIME type from extension
             mime_type, _ = mimetypes.guess_type(file.file_name)
@@ -319,7 +318,6 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             plugin_author,
             plugin_name,
             '',  # retriever_name - runtime will find the RAGEngine component
-            kb.uuid,  # instance_id
             retrieval_context,
         )
         return result

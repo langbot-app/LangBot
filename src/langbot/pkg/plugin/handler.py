@@ -815,7 +815,6 @@ class RuntimeConnectionHandler(handler.Handler):
         plugin_author: str,
         plugin_name: str,
         retriever_name: str,
-        instance_id: str,
         retrieval_context: dict[str, Any],
     ) -> dict[str, Any]:
         """Retrieve knowledge"""
@@ -825,7 +824,6 @@ class RuntimeConnectionHandler(handler.Handler):
                 'plugin_author': plugin_author,
                 'plugin_name': plugin_name,
                 'retriever_name': retriever_name,
-                'instance_id': instance_id,
                 'retrieval_context': retrieval_context,
             },
             timeout=30,

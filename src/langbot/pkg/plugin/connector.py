@@ -461,7 +461,6 @@ class PluginRuntimeConnector:
         plugin_author: str,
         plugin_name: str,
         retriever_name: str,
-        instance_id: str,
         retrieval_context: dict[str, Any],
     ) -> dict[str, Any]:
         """Retrieve knowledge using a RAGEngine instance."""
@@ -469,7 +468,7 @@ class PluginRuntimeConnector:
             return {'results': []}
 
         return await self.handler.retrieve_knowledge(
-            plugin_author, plugin_name, retriever_name, instance_id, retrieval_context
+            plugin_author, plugin_name, retriever_name, retrieval_context
         )
 
     def dispose(self):

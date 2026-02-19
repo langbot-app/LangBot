@@ -101,7 +101,7 @@ class RAGRuntimeService:
             await self.ap.vector_db_mgr.delete_by_file_id(collection_name=collection_id, file_ids=file_ids)
             count = len(file_ids)
         elif filters:
-            await self.ap.vector_db_mgr.delete_by_filter(collection_name=collection_id, filter=filters)
+            count = await self.ap.vector_db_mgr.delete_by_filter(collection_name=collection_id, filter=filters)
         return count
 
     async def get_file_stream(self, storage_path: str) -> bytes:
