@@ -96,20 +96,20 @@ export default function KBDetailDialog({
     // Show documents only if capability is present
     ...(hasDocumentCapability()
       ? [
-          {
-            key: 'documents',
-            label: t('knowledge.documents'),
-            icon: (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M21 8V20.9932C21 21.5501 20.5552 22 20.0066 22H3.9934C3.44495 22 3 21.556 3 21.0082V2.9918C3 2.45531 3.4487 2 4.00221 2H14.9968L21 8ZM19 9H14V4H5V20H19V9ZM8 7H11V9H8V7ZM8 11H16V13H8V11ZM8 15H16V17H8V15Z"></path>
-              </svg>
-            ),
-          },
-        ]
+        {
+          key: 'documents',
+          label: t('knowledge.documents'),
+          icon: (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
+              <path d="M21 8V20.9932C21 21.5501 20.5552 22 20.0066 22H3.9934C3.44495 22 3 21.556 3 21.0082V2.9918C3 2.45531 3.4487 2 4.00221 2H14.9968L21 8ZM19 9H14V4H5V20H19V9ZM8 7H11V9H8V7ZM8 11H16V13H8V11ZM8 15H16V17H8V15Z"></path>
+            </svg>
+          ),
+        },
+      ]
       : []),
     {
       key: 'retrieve',
@@ -202,7 +202,7 @@ export default function KBDetailDialog({
                 </SidebarGroup>
               </SidebarContent>
             </Sidebar>
-            <main className="flex flex-1 flex-col h-[75vh]">
+            <main className="flex flex-1 flex-col h-[75vh] min-w-0 overflow-x-hidden">
               <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
                 <DialogTitle>
                   {activeMenu === 'metadata'
