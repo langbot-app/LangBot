@@ -10,6 +10,9 @@ export interface IDynamicFormItemSchema {
   description?: I18nObject;
   options?: IDynamicFormItemOption[];
 
+  /** Whether this field can be edited after creation. Defaults to true if not specified. */
+  editable?: boolean;
+
   /** when type is PLUGIN_SELECTOR, the scopes is the scopes of components(plugin contains), the default is all */
   scopes?: string[];
   accept?: string; // For file type: accepted MIME types

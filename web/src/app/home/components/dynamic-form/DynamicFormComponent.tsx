@@ -19,11 +19,13 @@ export default function DynamicFormComponent({
   onSubmit,
   initialValues,
   onFileUploaded,
+  isEditing,
 }: {
   itemConfigList: IDynamicFormItemSchema[];
   onSubmit?: (val: object) => unknown;
   initialValues?: Record<string, object>;
   onFileUploaded?: (fileKey: string) => void;
+  isEditing?: boolean;
 }) {
   const isInitialMount = useRef(true);
   const previousInitialValues = useRef(initialValues);
@@ -164,34 +166,40 @@ export default function DynamicFormComponent({
   return (
     <Form {...form}>
       <div className="space-y-4">
-        {itemConfigList.map((config) => (
-          <FormField
-            key={config.id}
-            control={form.control}
-            name={config.name as keyof FormValues}
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  {extractI18nObject(config.label)}{' '}
-                  {config.required && <span className="text-red-500">*</span>}
-                </FormLabel>
-                <FormControl>
-                  <DynamicFormItemComponent
-                    config={config}
-                    field={field}
-                    onFileUploaded={onFileUploaded}
-                  />
-                </FormControl>
-                {config.description && (
-                  <p className="text-sm text-muted-foreground">
-                    {extractI18nObject(config.description)}
-                  </p>
-                )}
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        ))}
+        {itemConfigList.map((config) => {
+          // Field is disabled when editing and editable is explicitly false
+          const isFieldDisabled = isEditing && config.editable === false;
+          return (
+            <FormField
+              key={config.id}
+              control={form.control}
+              name={config.name as keyof FormValues}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {extractI18nObject(config.label)}{' '}
+                    {config.required && <span className="text-red-500">*</span>}
+                  </FormLabel>
+                  <FormControl>
+                    <div className={isFieldDisabled ? 'pointer-events-none opacity-60' : ''}>
+                      <DynamicFormItemComponent
+                        config={config}
+                        field={field}
+                        onFileUploaded={onFileUploaded}
+                      />
+                    </div>
+                  </FormControl>
+                  {config.description && (
+                    <p className="text-sm text-muted-foreground">
+                      {extractI18nObject(config.description)}
+                    </p>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          );
+        })}
       </div>
     </Form>
   );
