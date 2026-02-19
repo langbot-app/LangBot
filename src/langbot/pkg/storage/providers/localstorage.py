@@ -47,6 +47,12 @@ class LocalStorageProvider(provider.StorageProvider):
     ):
         os.remove(os.path.join(LOCAL_STORAGE_PATH, f'{key}'))
 
+    async def size(
+        self,
+        key: str,
+    ) -> int:
+        return os.path.getsize(os.path.join(LOCAL_STORAGE_PATH, f'{key}'))
+
     async def delete_dir_recursive(
         self,
         dir_path: str,
