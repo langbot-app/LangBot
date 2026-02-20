@@ -7,7 +7,6 @@ import typing
 import os
 import sys
 import httpx
-import traceback
 import sqlalchemy
 from async_lru import alru_cache
 from langbot_plugin.api.entities.builtin.pipeline.query import provider_session
@@ -102,12 +101,6 @@ class PluginRuntimeConnector:
             self.handler_task = asyncio.create_task(self.handler.run())
             _ = await self.handler.ping()
             self.ap.logger.info('Connected to plugin runtime.')
-            # Sync polymorphic component instances after connection
-            try:
-                await self.sync_polymorphic_component_instances()
-            except Exception as e:
-                traceback.print_exc()
-                self.ap.logger.error(f'Failed to sync polymorphic component instances: {e}')
             await self.handler_task
 
         task: asyncio.Task | None = None
@@ -491,19 +484,6 @@ class PluginRuntimeConnector:
             self.heartbeat_task.cancel()
             self.heartbeat_task = None
 
-    async def sync_polymorphic_component_instances(self) -> dict[str, Any]:
-        """Sync polymorphic component instances with runtime.
-
-        Currently no polymorphic components need syncing.
-        This method is kept for future extensibility.
-        """
-        if not self.is_enable_plugin:
-            return {}
-
-        return await self.handler.sync_polymorphic_component_instances([])
-
-    # ================= RAG Capability Callers =================
-
     @staticmethod
     def _parse_plugin_id(plugin_id: str) -> tuple[str, str]:
         """Parse a plugin ID string into (author, name).
@@ -519,8 +499,7 @@ class PluginRuntimeConnector:
         """
         if '/' not in plugin_id:
             raise ValueError(
-                f"Invalid plugin_id format: '{plugin_id}'. "
-                "Expected 'author/name' format (e.g. 'langbot/rag-engine')."
+                f"Invalid plugin_id format: '{plugin_id}'. Expected 'author/name' format (e.g. 'langbot/rag-engine')."
             )
         return plugin_id.split('/', 1)
 

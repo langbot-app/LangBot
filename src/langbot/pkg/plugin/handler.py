@@ -34,9 +34,9 @@ def _make_rag_error_response(error: Exception, error_type: str, **extra_context)
         error_type: A category string like 'EmbeddingError', 'VectorStoreError'.
         **extra_context: Additional context fields for the error message.
     """
-    context_parts = [f"{k}={v}" for k, v in extra_context.items()]
-    context_str = f" [{', '.join(context_parts)}]" if context_parts else ""
-    message = f"[{error_type}/{type(error).__name__}]{context_str} {str(error)}"
+    context_parts = [f'{k}={v}' for k, v in extra_context.items()]
+    context_str = f' [{", ".join(context_parts)}]' if context_parts else ''
+    message = f'[{error_type}/{type(error).__name__}]{context_str} {str(error)}'
     return handler.ActionResponse.error(message=message)
 
 
@@ -544,7 +544,7 @@ class RuntimeConnectionHandler(handler.Handler):
             """Ping"""
             return handler.ActionResponse.success(
                 data={
-                     "pong": "pong",
+                    'pong': 'pong',
                 },
             )
 
@@ -829,17 +829,6 @@ class RuntimeConnectionHandler(handler.Handler):
         )
         return result
 
-    async def sync_polymorphic_component_instances(self, required_instances: list[dict[str, Any]]) -> dict[str, Any]:
-        """Sync polymorphic component instances with runtime"""
-        result = await self.call_action(
-            LangBotToRuntimeAction.SYNC_POLYMORPHIC_COMPONENT_INSTANCES,
-            {
-                'required_instances': required_instances,
-            },
-            timeout=30,
-        )
-        return result
-
     async def get_debug_info(self) -> dict[str, Any]:
         """Get debug information including debug key and WS URL"""
         result = await self.call_action(
@@ -851,43 +840,33 @@ class RuntimeConnectionHandler(handler.Handler):
 
     # ================= RAG Capability Callers (LangBot -> Runtime) =================
 
-    async def rag_ingest_document(self, plugin_author: str, plugin_name: str, context_data: dict[str, Any]) -> dict[str, Any]:
+    async def rag_ingest_document(
+        self, plugin_author: str, plugin_name: str, context_data: dict[str, Any]
+    ) -> dict[str, Any]:
         """Send INGEST_DOCUMENT action to runtime."""
         result = await self.call_action(
             LangBotToRuntimeAction.RAG_INGEST_DOCUMENT,
-            {
-                "plugin_author": plugin_author,
-                "plugin_name": plugin_name,
-                "context": context_data
-            },
-            timeout=300  # Ingestion can be slow
+            {'plugin_author': plugin_author, 'plugin_name': plugin_name, 'context': context_data},
+            timeout=300,  # Ingestion can be slow
         )
         return result
 
     async def rag_delete_document(self, plugin_author: str, plugin_name: str, document_id: str, kb_id: str) -> bool:
         result = await self.call_action(
             LangBotToRuntimeAction.RAG_DELETE_DOCUMENT,
-            {
-                "plugin_author": plugin_author,
-                "plugin_name": plugin_name,
-                "document_id": document_id,
-                "kb_id": kb_id
-            },
-            timeout=30
+            {'plugin_author': plugin_author, 'plugin_name': plugin_name, 'document_id': document_id, 'kb_id': kb_id},
+            timeout=30,
         )
-        return result.get("success", False)
+        return result.get('success', False)
 
-    async def rag_on_kb_create(self, plugin_author: str, plugin_name: str, kb_id: str, config: dict[str, Any]) -> dict[str, Any]:
+    async def rag_on_kb_create(
+        self, plugin_author: str, plugin_name: str, kb_id: str, config: dict[str, Any]
+    ) -> dict[str, Any]:
         """Notify plugin about KB creation."""
         result = await self.call_action(
             LangBotToRuntimeAction.RAG_ON_KB_CREATE,
-            {
-                "plugin_author": plugin_author,
-                "plugin_name": plugin_name,
-                "kb_id": kb_id,
-                "config": config
-            },
-            timeout=30
+            {'plugin_author': plugin_author, 'plugin_name': plugin_name, 'kb_id': kb_id, 'config': config},
+            timeout=30,
         )
         return result
 
@@ -895,40 +874,26 @@ class RuntimeConnectionHandler(handler.Handler):
         """Notify plugin about KB deletion."""
         result = await self.call_action(
             LangBotToRuntimeAction.RAG_ON_KB_DELETE,
-            {
-                "plugin_author": plugin_author,
-                "plugin_name": plugin_name,
-                "kb_id": kb_id
-            },
-            timeout=30
+            {'plugin_author': plugin_author, 'plugin_name': plugin_name, 'kb_id': kb_id},
+            timeout=30,
         )
         return result
 
     async def get_rag_creation_schema(self, plugin_author: str, plugin_name: str) -> dict[str, Any]:
         return await self.call_action(
             LangBotToRuntimeAction.GET_RAG_CREATION_SETTINGS_SCHEMA,
-            {
-                "plugin_author": plugin_author,
-                "plugin_name": plugin_name
-            },
-            timeout=10
+            {'plugin_author': plugin_author, 'plugin_name': plugin_name},
+            timeout=10,
         )
 
     async def get_rag_retrieval_schema(self, plugin_author: str, plugin_name: str) -> dict[str, Any]:
         return await self.call_action(
             LangBotToRuntimeAction.GET_RAG_RETRIEVAL_SETTINGS_SCHEMA,
-            {
-                "plugin_author": plugin_author,
-                "plugin_name": plugin_name
-            },
-            timeout=10
+            {'plugin_author': plugin_author, 'plugin_name': plugin_name},
+            timeout=10,
         )
 
     async def list_rag_engines(self) -> list[dict[str, Any]]:
         """List all available RAG engines from plugins."""
-        result = await self.call_action(
-            LangBotToRuntimeAction.LIST_RAG_ENGINES,
-            {},
-            timeout=60
-        )
-        return result.get("engines", [])
+        result = await self.call_action(LangBotToRuntimeAction.LIST_RAG_ENGINES, {}, timeout=60)
+        return result.get('engines', [])
