@@ -181,7 +181,11 @@ export default function DynamicFormComponent({
                     {config.required && <span className="text-red-500">*</span>}
                   </FormLabel>
                   <FormControl>
-                    <div className={isFieldDisabled ? 'pointer-events-none opacity-60' : ''}>
+                    <div
+                      className={
+                        isFieldDisabled ? 'pointer-events-none opacity-60' : ''
+                      }
+                    >
                       <DynamicFormItemComponent
                         config={config}
                         field={field}
