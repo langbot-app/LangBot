@@ -481,9 +481,7 @@ class RAGManager:
         except Exception:
             self.knowledge_bases.pop(kb_uuid, None)
             await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.delete(persistence_rag.KnowledgeBase).where(
-                    persistence_rag.KnowledgeBase.uuid == kb_uuid
-                )
+                sqlalchemy.delete(persistence_rag.KnowledgeBase).where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
             )
             raise
 
