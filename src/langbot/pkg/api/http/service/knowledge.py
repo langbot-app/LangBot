@@ -56,6 +56,8 @@ class KnowledgeService:
         await self.ap.rag_mgr.remove_knowledge_base_from_runtime(kb_uuid)
 
         kb = await self.get_knowledge_base(kb_uuid)
+        if kb is None:
+            raise Exception('Knowledge base not found after update')
 
         await self.ap.rag_mgr.load_knowledge_base(kb)
 

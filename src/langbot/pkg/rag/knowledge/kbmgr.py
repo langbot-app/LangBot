@@ -1,5 +1,6 @@
 from __future__ import annotations
 import mimetypes
+import os.path
 import traceback
 import uuid
 import zipfile
@@ -86,7 +87,8 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             raise Exception(f'File {file_id} not found')
 
         file_name = file_id
-        extension = file_name.split('.')[-1].lower()
+        _, ext = os.path.splitext(file_name)
+        extension = ext.lstrip('.').lower() if ext else ''
 
         if extension == 'zip':
             return await self._store_zip_file(file_id)
@@ -133,7 +135,8 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                 if file_info.is_dir() or file_info.filename.startswith('.'):
                     continue
 
-                file_extension = file_info.filename.split('.')[-1].lower()
+                _, file_ext = os.path.splitext(file_info.filename)
+                file_extension = file_ext.lstrip('.').lower()
                 if file_extension not in supported_extensions:
                     self.ap.logger.debug(f'Skipping unsupported file in ZIP: {file_info.filename}')
                     continue
@@ -142,13 +145,13 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                     file_content = zip_ref.read(file_info.filename)
 
                     base_name = file_info.filename.replace('/', '_').replace('\\', '_')
-                    extension = base_name.split('.')[-1]
-                    file_name = base_name.split('.')[0]
+                    file_stem, file_ext = os.path.splitext(base_name)
+                    extension = file_ext.lstrip('.')
 
-                    if file_name.startswith('__MACOSX'):
+                    if file_stem.startswith('__MACOSX'):
                         continue
 
-                    extracted_file_id = file_name + '_' + str(uuid.uuid4())[:8] + '.' + extension
+                    extracted_file_id = file_stem + '_' + str(uuid.uuid4())[:8] + '.' + extension
                     # save file to storage
 
                     await self.ap.storage_mgr.storage_provider.save(extracted_file_id, file_content)
@@ -334,11 +337,11 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
 class RAGManager:
     ap: app.Application
 
-    knowledge_bases: list[KnowledgeBaseInterface]
+    knowledge_bases: dict[str, KnowledgeBaseInterface]
 
     def __init__(self, ap: app.Application):
         self.ap = ap
-        self.knowledge_bases = []
+        self.knowledge_bases = {}
 
     async def initialize(self):
         await self.load_knowledge_bases_from_db()
@@ -460,8 +463,17 @@ class RAGManager:
         # Load into Runtime
         runtime_kb = await self.load_knowledge_base(kb)
 
-        # Notify Plugin
-        await runtime_kb._on_kb_create()
+        # Notify Plugin — rollback DB record and runtime entry on failure
+        try:
+            await runtime_kb._on_kb_create()
+        except Exception:
+            self.knowledge_bases.pop(kb_uuid, None)
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.delete(persistence_rag.KnowledgeBase).where(
+                    persistence_rag.KnowledgeBase.uuid == kb_uuid
+                )
+            )
+            raise
 
         self.ap.logger.info(f'Created new Knowledge Base {name} ({kb_uuid}) using plugin {rag_engine_plugin_id}')
         return kb
@@ -469,7 +481,7 @@ class RAGManager:
     async def load_knowledge_bases_from_db(self):
         self.ap.logger.info('Loading knowledge bases from db...')
 
-        self.knowledge_bases = []
+        self.knowledge_bases = {}
 
         # Load knowledge bases
         result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_rag.KnowledgeBase))
@@ -501,26 +513,19 @@ class RAGManager:
 
         await runtime_knowledge_base.initialize()
 
-        self.knowledge_bases.append(runtime_knowledge_base)
+        self.knowledge_bases[runtime_knowledge_base.get_uuid()] = runtime_knowledge_base
 
         return runtime_knowledge_base
 
     async def get_knowledge_base_by_uuid(self, kb_uuid: str) -> KnowledgeBaseInterface | None:
-        for kb in self.knowledge_bases:
-            if kb.get_uuid() == kb_uuid:
-                return kb
-        return None
+        return self.knowledge_bases.get(kb_uuid)
 
     async def remove_knowledge_base_from_runtime(self, kb_uuid: str):
-        for kb in self.knowledge_bases:
-            if kb.get_uuid() == kb_uuid:
-                self.knowledge_bases.remove(kb)
-                return
+        self.knowledge_bases.pop(kb_uuid, None)
 
     async def delete_knowledge_base(self, kb_uuid: str):
-        for kb in self.knowledge_bases:
-            if kb.get_uuid() == kb_uuid:
-                await kb.dispose()
-                self.knowledge_bases.remove(kb)
-                return
-        self.ap.logger.warning(f'Knowledge base {kb_uuid} not found in runtime, skipping plugin notification')
+        kb = self.knowledge_bases.pop(kb_uuid, None)
+        if kb is not None:
+            await kb.dispose()
+        else:
+            self.ap.logger.warning(f'Knowledge base {kb_uuid} not found in runtime, skipping plugin notification')

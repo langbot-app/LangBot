@@ -85,7 +85,7 @@ class RAGRuntimeService:
         """
         # Validate storage_path to prevent path traversal
         normalized = posixpath.normpath(storage_path)
-        if normalized.startswith('/') or normalized.startswith('..') or '/../' in normalized:
-            raise ValueError(f'Invalid storage path: {storage_path}')
-        content_bytes = await self.ap.storage_mgr.storage_provider.load(storage_path)
+        if normalized.startswith('/') or '..' in normalized.split('/'):
+            raise ValueError('Invalid storage path')
+        content_bytes = await self.ap.storage_mgr.storage_provider.load(normalized)
         return content_bytes if content_bytes else b''
