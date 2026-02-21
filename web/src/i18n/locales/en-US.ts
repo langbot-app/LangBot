@@ -352,7 +352,7 @@ const enUS = {
       Tool: 'Tool',
       EventListener: 'Event Listener',
       Command: 'Command',
-      KnowledgeRetriever: 'Knowledge Retriever',
+      RAGEngine: 'RAG Engine',
     },
     uploadLocal: 'Upload Local',
     debugging: 'Debugging',

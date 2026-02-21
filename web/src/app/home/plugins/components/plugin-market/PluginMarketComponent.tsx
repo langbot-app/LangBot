@@ -449,12 +449,12 @@ function MarketPageContent({
                 {t('plugins.componentName.EventListener')}
               </ToggleGroupItem>
               <ToggleGroupItem
-                value="KnowledgeRetriever"
-                aria-label="KnowledgeRetriever"
+                value="RAGEngine"
+                aria-label="RAGEngine"
                 className="text-xs sm:text-sm cursor-pointer"
               >
                 <Book className="h-4 w-4 mr-1" />
-                {t('plugins.componentName.KnowledgeRetriever')}
+                {t('plugins.componentName.RAGEngine')}
               </ToggleGroupItem>
             </ToggleGroup>
           </div>
