@@ -48,6 +48,7 @@ const enUS = {
     test: 'Test',
     forgotPassword: 'Forgot Password?',
     loading: 'Loading...',
+    fieldRequired: 'This field is required',
     or: 'or',
     loginWithSpace: 'Login with Space',
     spaceLoginRecommended:
@@ -729,6 +730,9 @@ const enUS = {
     noEnginesAvailable: 'No knowledge base engines available',
     installEngineHint: 'Please install a knowledge base plugin first',
     createKnowledgeBaseFailed: 'Failed to create knowledge base',
+    loadKnowledgeBaseFailed: 'Failed to load knowledge base',
+    deleteKnowledgeBaseFailed: 'Failed to delete knowledge base',
+    getKnowledgeBaseListError: 'Failed to get knowledge base list: ',
     embeddingModel: 'Embedding Model',
     embeddingModelRequired: 'Embedding model is required for this engine',
     addExternal: 'Add External Knowledge Base',

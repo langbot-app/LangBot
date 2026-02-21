@@ -137,8 +137,7 @@ class KnowledgeService:
 
     async def delete_knowledge_base(self, kb_uuid: str) -> None:
         """删除知识库"""
-        await self.ap.rag_mgr.delete_knowledge_base(kb_uuid)
-
+        # Delete from DB first to commit the deletion, then clean up runtime/plugin (best-effort)
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.delete(persistence_rag.KnowledgeBase).where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
         )
@@ -158,6 +157,9 @@ class KnowledgeService:
             await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.delete(persistence_rag.File).where(persistence_rag.File.uuid == file.uuid)
             )
+
+        # Remove from runtime and notify plugin (best-effort, DB is already cleaned up)
+        await self.ap.rag_mgr.delete_knowledge_base(kb_uuid)
 
     # ================= RAG Engine Discovery =================
 

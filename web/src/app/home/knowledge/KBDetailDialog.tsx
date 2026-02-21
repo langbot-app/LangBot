@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { KnowledgeBase } from '@/app/infra/entities/api';
+import { toast } from 'sonner';
 import KBForm from '@/app/home/knowledge/components/kb-form/KBForm';
 import KBDoc from '@/app/home/knowledge/components/kb-docs/KBDoc';
 import KBRetrieveGeneric from '@/app/home/knowledge/components/kb-retrieve/KBRetrieveGeneric';
@@ -67,6 +68,7 @@ export default function KBDetailDialog({
       setKbInfo(resp.base);
     } catch (e) {
       console.error('Failed to load KB info:', e);
+      toast.error(t('knowledge.loadKnowledgeBaseFailed'));
     }
   }
 
@@ -75,7 +77,7 @@ export default function KBDetailDialog({
     if (!kbInfo || !kbInfo.rag_engine) {
       return false;
     }
-    return kbInfo.rag_engine.capabilities.includes('doc_ingestion');
+    return kbInfo.rag_engine.capabilities?.includes('doc_ingestion') ?? false;
   };
 
   // Build menu based on KB capabilities
@@ -126,11 +128,16 @@ export default function KBDetailDialog({
     },
   ];
 
-  const confirmDelete = () => {
-    httpClient.deleteKnowledgeBase(kbId ?? '').then(() => {
+  const confirmDelete = async () => {
+    try {
+      await httpClient.deleteKnowledgeBase(kbId ?? '');
       onKbDeleted();
-    });
-    setShowDeleteConfirm(false);
+    } catch (e) {
+      console.error('Failed to delete KB:', e);
+      toast.error(t('knowledge.deleteKnowledgeBaseFailed'));
+    } finally {
+      setShowDeleteConfirm(false);
+    }
   };
 
   // Retrieve function

@@ -440,6 +440,18 @@ class RAGManager:
         embedding_model_uuid: str = '',
     ) -> persistence_rag.KnowledgeBase:
         """Create a new knowledge base using a RAG plugin."""
+        # Validate that the RAG engine plugin exists
+        if self.ap.plugin_connector.is_enable_plugin:
+            try:
+                engines = await self.ap.plugin_connector.list_rag_engines()
+                engine_ids = [e.get('plugin_id') for e in engines]
+                if rag_engine_plugin_id not in engine_ids:
+                    raise ValueError(f'RAG engine plugin {rag_engine_plugin_id} not found')
+            except ValueError:
+                raise
+            except Exception as e:
+                self.ap.logger.warning(f'Failed to validate RAG engine plugin existence: {e}')
+
         kb_uuid = str(uuid.uuid4())
         # Use UUID as collection ID by default for isolation
         collection_id = kb_uuid

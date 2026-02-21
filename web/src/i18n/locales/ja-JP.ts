@@ -49,6 +49,7 @@ const jaJP = {
     test: 'テスト',
     forgotPassword: 'パスワードを忘れた？',
     loading: '読み込み中...',
+    fieldRequired: 'この項目は必須です',
     or: 'または',
     loginWithSpace: 'Space でログイン',
     spaceLoginRecommended:
@@ -722,6 +723,9 @@ const jaJP = {
     noResults: '検索結果がありません',
     retrieveError: '検索に失敗しました',
     unknownEngine: '不明なエンジン',
+    loadKnowledgeBaseFailed: 'ナレッジベースの読み込みに失敗しました',
+    deleteKnowledgeBaseFailed: 'ナレッジベースの削除に失敗しました',
+    getKnowledgeBaseListError: 'ナレッジベース一覧の取得に失敗しました：',
     addExternal: '外部ナレッジベースを追加',
     createExternalSuccess: '外部ナレッジベースが正常に作成されました',
     updateExternalSuccess: '外部ナレッジベースが正常に更新されました',

@@ -106,7 +106,7 @@ export default function DynamicFormItemComponent({
           setLlmModels(models);
         })
         .catch((err) => {
-          toast.error('Failed to get LLM model list: ' + err.msg);
+          toast.error(t('models.getModelListError') + err.msg);
         });
     }
   }, [config.type]);
@@ -119,7 +119,7 @@ export default function DynamicFormItemComponent({
           setEmbeddingModels(resp.models);
         })
         .catch((err) => {
-          toast.error('Failed to get embedding model list: ' + err.msg);
+          toast.error(t('embedding.getModelListError') + err.msg);
         });
     }
   }, [config.type]);
@@ -135,7 +135,7 @@ export default function DynamicFormItemComponent({
           setKnowledgeBases(resp.bases);
         })
         .catch((err) => {
-          toast.error('Failed to get knowledge base list: ' + err.msg);
+          toast.error(t('knowledge.getKnowledgeBaseListError') + err.msg);
         });
     }
   }, [config.type]);
@@ -148,7 +148,7 @@ export default function DynamicFormItemComponent({
           setBots(resp.bots);
         })
         .catch((err) => {
-          toast.error('Failed to get bot list: ' + err.msg);
+          toast.error(t('bots.getBotListError') + err.msg);
         });
     }
   }, [config.type]);

@@ -13,6 +13,7 @@ import {
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
 import { useEffect, useRef } from 'react';
 import { extractI18nObject } from '@/i18n/I18nProvider';
+import { useTranslation } from 'react-i18next';
 
 export default function DynamicFormComponent({
   itemConfigList,
@@ -29,6 +30,7 @@ export default function DynamicFormComponent({
 }) {
   const isInitialMount = useRef(true);
   const previousInitialValues = useRef(initialValues);
+  const { t } = useTranslation();
 
   // 根据 itemConfigList 动态生成 zod schema
   const formSchema = z.object(
@@ -86,7 +88,9 @@ export default function DynamicFormComponent({
           (fieldSchema instanceof z.ZodString ||
             fieldSchema instanceof z.ZodArray)
         ) {
-          fieldSchema = fieldSchema.min(1, { message: '此字段为必填项' });
+          fieldSchema = fieldSchema.min(1, {
+            message: t('common.fieldRequired'),
+          });
         }
 
         return {
