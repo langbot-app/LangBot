@@ -473,25 +473,22 @@ class RuntimeConnectionHandler(handler.Handler):
 
         # ================= RAG Capability Handlers =================
 
-        @self.action(PluginToRuntimeAction.RAG_EMBED_DOCUMENTS)
-        async def rag_embed_documents(data: dict[str, Any]) -> handler.ActionResponse:
-            kb_id = data['kb_id']
+        @self.action(PluginToRuntimeAction.INVOKE_EMBEDDING)
+        async def invoke_embedding(data: dict[str, Any]) -> handler.ActionResponse:
+            embedding_model_uuid = data['embedding_model_uuid']
             texts = data['texts']
+
+            embedding_model = await self.ap.model_mgr.get_embedding_model_by_uuid(embedding_model_uuid)
+            if embedding_model is None:
+                return handler.ActionResponse.error(
+                    message=f'Embedding model with embedding_model_uuid {embedding_model_uuid} not found',
+                )
+
             try:
-                vectors = await self.ap.rag_runtime_service.embed_documents(kb_id, texts)
+                vectors = await embedding_model.provider.invoke_embedding(embedding_model, texts)
                 return handler.ActionResponse.success(data={'vectors': vectors})
             except Exception as e:
-                return _make_rag_error_response(e, 'EmbeddingError', kb_id=kb_id)
-
-        @self.action(PluginToRuntimeAction.RAG_EMBED_QUERY)
-        async def rag_embed_query(data: dict[str, Any]) -> handler.ActionResponse:
-            kb_id = data['kb_id']
-            text = data['text']
-            try:
-                vector = await self.ap.rag_runtime_service.embed_query(kb_id, text)
-                return handler.ActionResponse.success(data={'vector': vector})
-            except Exception as e:
-                return _make_rag_error_response(e, 'EmbeddingError', kb_id=kb_id)
+                return _make_rag_error_response(e, 'EmbeddingError', embedding_model_uuid=embedding_model_uuid)
 
         @self.action(PluginToRuntimeAction.RAG_VECTOR_UPSERT)
         async def rag_vector_upsert(data: dict[str, Any]) -> handler.ActionResponse:

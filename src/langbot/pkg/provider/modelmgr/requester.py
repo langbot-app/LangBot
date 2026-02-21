@@ -283,15 +283,6 @@ class RuntimeEmbeddingModel:
         self.model_entity = model_entity
         self.provider = provider
 
-    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        """Embed a list of documents"""
-        return await self.provider.invoke_embedding(self, texts)
-
-    async def embed_query(self, text: str) -> list[float]:
-        """Embed a query string"""
-        vectors = await self.provider.invoke_embedding(self, [text])
-        return vectors[0] if vectors else []
-
 
 class ProviderAPIRequester(metaclass=abc.ABCMeta):
     """Provider API请求器"""

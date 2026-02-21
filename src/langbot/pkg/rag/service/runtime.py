@@ -35,34 +35,6 @@ class RAGRuntimeService:
                 return embed_uuid
         return kb.embedding_model_uuid
 
-    async def embed_documents(self, kb_id: str, texts: list[str]) -> list[list[float]]:
-        """Handle RAG_EMBED_DOCUMENTS action."""
-        kb = await self._get_kb_entity(kb_id)
-        embed_model_uuid = self._get_embedding_model_uuid(kb)
-
-        if not embed_model_uuid:
-            raise ValueError(f'Embedding model not configured for this Knowledge Base (kb_id: {kb_id})')
-
-        embedder_model = await self.ap.model_mgr.get_embedding_model_by_uuid(embed_model_uuid)
-        if not embedder_model:
-            raise ValueError(f'Embedding model {embed_model_uuid} not found')
-
-        return await embedder_model.embed_documents(texts)
-
-    async def embed_query(self, kb_id: str, text: str) -> list[float]:
-        """Handle RAG_EMBED_QUERY action."""
-        kb = await self._get_kb_entity(kb_id)
-        embed_model_uuid = self._get_embedding_model_uuid(kb)
-
-        if not embed_model_uuid:
-            raise ValueError(f'Embedding model not configured (kb_id: {kb_id})')
-
-        embedder_model = await self.ap.model_mgr.get_embedding_model_by_uuid(embed_model_uuid)
-        if not embedder_model:
-            raise ValueError(f'Embedding model {embed_model_uuid} not found')
-
-        return await embedder_model.embed_query(text)
-
     async def vector_upsert(
         self,
         collection_id: str,
