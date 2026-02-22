@@ -110,3 +110,10 @@ class QQOfficialEvent(dict):
         文件类型
         """
         return self.get('content_type', '')
+
+    @property
+    def message_reference(self) -> dict:
+        """
+        引用消息
+        """
+        return self.get('message_reference', {})
