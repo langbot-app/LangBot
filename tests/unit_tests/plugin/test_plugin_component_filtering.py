@@ -42,9 +42,7 @@ async def test_plugin_list_filter_by_component_kinds():
                     }
                 }
             },
-            'components': [
-                {'manifest': {'manifest': {'kind': 'RAGEngine', 'metadata': {'name': 'retriever1'}}}}
-            ],
+            'components': [{'manifest': {'manifest': {'kind': 'RAGEngine', 'metadata': {'name': 'retriever1'}}}}],
         },
         {
             'debug': False,
@@ -150,9 +148,7 @@ async def test_plugin_list_filter_no_filter():
                     }
                 }
             },
-            'components': [
-                {'manifest': {'manifest': {'kind': 'RAGEngine', 'metadata': {'name': 'retriever1'}}}}
-            ],
+            'components': [{'manifest': {'manifest': {'kind': 'RAGEngine', 'metadata': {'name': 'retriever1'}}}}],
         },
     ]
 
@@ -201,9 +197,7 @@ async def test_plugin_list_filter_empty_result():
                     }
                 }
             },
-            'components': [
-                {'manifest': {'manifest': {'kind': 'RAGEngine', 'metadata': {'name': 'retriever1'}}}}
-            ],
+            'components': [{'manifest': {'manifest': {'kind': 'RAGEngine', 'metadata': {'name': 'retriever1'}}}}],
         },
     ]
 

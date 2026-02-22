@@ -43,9 +43,9 @@ class DBMigrateRAGEnginePluginArchitecture(migration.DBMigration):
             return result.scalar()
         else:
             result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name=:table_name;"
-                ).bindparams(table_name=table_name)
+                sqlalchemy.text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table_name;").bindparams(
+                    table_name=table_name
+                )
             )
             return result.first() is not None
 

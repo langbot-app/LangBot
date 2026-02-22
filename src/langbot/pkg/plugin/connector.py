@@ -467,9 +467,7 @@ class PluginRuntimeConnector:
         if not self.is_enable_plugin:
             return {'results': []}
 
-        return await self.handler.retrieve_knowledge(
-            plugin_author, plugin_name, retriever_name, retrieval_context
-        )
+        return await self.handler.retrieve_knowledge(plugin_author, plugin_name, retriever_name, retrieval_context)
 
     def dispose(self):
         # No need to consider the shutdown on Windows
