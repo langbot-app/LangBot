@@ -274,10 +274,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             },
             'knowledge_base_id': kb.uuid,
             'collection_id': kb.collection_id or kb.uuid,
-            'chunking_strategy': kb.creation_settings.get('chunking_strategy', 'fixed_size')
-            if kb.creation_settings
-            else 'fixed_size',
-            'custom_settings': kb.creation_settings or {},
+            'creation_settings': kb.creation_settings or {},
         }
 
         try:
