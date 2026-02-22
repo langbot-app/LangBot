@@ -115,6 +115,60 @@ class MonitoringHelper:
             ap.logger.error(f'Failed to record query success: {e}')
 
     @staticmethod
+    async def record_query_response(
+        ap: app.Application,
+        query: pipeline_query.Query,
+        bot_id: str,
+        bot_name: str,
+        pipeline_id: str,
+        pipeline_name: str,
+        runner_name: str | None = None,
+    ):
+        """Record bot response message to monitoring"""
+        try:
+            session_id = f'{query.launcher_type}_{query.launcher_id}'
+
+            # Extract response content from resp_message_chain
+            if hasattr(query, 'resp_message_chain') and query.resp_message_chain:
+                # Serialize the last response message chain
+                last_resp = query.resp_message_chain[-1]
+                if hasattr(last_resp, 'model_dump'):
+                    message_content = json.dumps(last_resp.model_dump(), ensure_ascii=False)
+                else:
+                    message_content = str(last_resp)
+            elif hasattr(query, 'resp_messages') and query.resp_messages:
+                last_resp = query.resp_messages[-1]
+                if hasattr(last_resp, 'get_content_platform_message_chain'):
+                    chain = last_resp.get_content_platform_message_chain()
+                    if hasattr(chain, 'model_dump'):
+                        message_content = json.dumps(chain.model_dump(), ensure_ascii=False)
+                    else:
+                        message_content = str(chain)
+                else:
+                    message_content = str(last_resp)
+            else:
+                return  # No response to record
+
+            await ap.monitoring_service.record_message(
+                bot_id=bot_id,
+                bot_name=bot_name,
+                pipeline_id=pipeline_id,
+                pipeline_name=pipeline_name,
+                message_content=message_content,
+                session_id=session_id,
+                status='success',
+                level='info',
+                platform=query.launcher_type.value
+                if hasattr(query.launcher_type, 'value')
+                else str(query.launcher_type),
+                user_id=query.sender_id,
+                runner_name=runner_name,
+                role='assistant',
+            )
+        except Exception as e:
+            ap.logger.error(f'Failed to record query response: {e}')
+
+    @staticmethod
     async def record_query_error(
         ap: app.Application,
         query: pipeline_query.Query,
