@@ -490,8 +490,8 @@ class RuntimeConnectionHandler(handler.Handler):
             except Exception as e:
                 return _make_rag_error_response(e, 'EmbeddingError', embedding_model_uuid=embedding_model_uuid)
 
-        @self.action(PluginToRuntimeAction.RAG_VECTOR_UPSERT)
-        async def rag_vector_upsert(data: dict[str, Any]) -> handler.ActionResponse:
+        @self.action(PluginToRuntimeAction.VECTOR_UPSERT)
+        async def vector_upsert(data: dict[str, Any]) -> handler.ActionResponse:
             collection_id = data['collection_id']
             vectors = data['vectors']
             ids = data['ids']
@@ -506,8 +506,8 @@ class RuntimeConnectionHandler(handler.Handler):
             except Exception as e:
                 return _make_rag_error_response(e, 'VectorStoreError', collection_id=collection_id)
 
-        @self.action(PluginToRuntimeAction.RAG_VECTOR_SEARCH)
-        async def rag_vector_search(data: dict[str, Any]) -> handler.ActionResponse:
+        @self.action(PluginToRuntimeAction.VECTOR_SEARCH)
+        async def vector_search(data: dict[str, Any]) -> handler.ActionResponse:
             collection_id = data['collection_id']
             query_vector = data['query_vector']
             top_k = data['top_k']
@@ -518,8 +518,8 @@ class RuntimeConnectionHandler(handler.Handler):
             except Exception as e:
                 return _make_rag_error_response(e, 'VectorStoreError', collection_id=collection_id)
 
-        @self.action(PluginToRuntimeAction.RAG_VECTOR_DELETE)
-        async def rag_vector_delete(data: dict[str, Any]) -> handler.ActionResponse:
+        @self.action(PluginToRuntimeAction.VECTOR_DELETE)
+        async def vector_delete(data: dict[str, Any]) -> handler.ActionResponse:
             collection_id = data['collection_id']
             file_ids = data.get('file_ids')
             filters = data.get('filters')
@@ -529,8 +529,8 @@ class RuntimeConnectionHandler(handler.Handler):
             except Exception as e:
                 return _make_rag_error_response(e, 'VectorStoreError', collection_id=collection_id)
 
-        @self.action(PluginToRuntimeAction.RAG_GET_FILE_STREAM)
-        async def rag_get_file_stream(data: dict[str, Any]) -> handler.ActionResponse:
+        @self.action(PluginToRuntimeAction.GET_RAG_FILE_STREAM)
+        async def get_rag_file_stream(data: dict[str, Any]) -> handler.ActionResponse:
             storage_path = data['storage_path']
             try:
                 content_bytes = await self.ap.rag_runtime_service.get_file_stream(storage_path)

@@ -42,14 +42,14 @@ class RAGRuntimeService:
         ids: list[str],
         metadata: list[dict[str, Any]] | None = None,
     ) -> None:
-        """Handle RAG_VECTOR_UPSERT action."""
+        """Handle VECTOR_UPSERT action."""
         metadatas = metadata if metadata else [{} for _ in vectors]
         await self.ap.vector_db_mgr.upsert(collection_name=collection_id, vectors=vectors, ids=ids, metadata=metadatas)
 
     async def vector_search(
         self, collection_id: str, query_vector: list[float], top_k: int, filters: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
-        """Handle RAG_VECTOR_SEARCH action."""
+        """Handle VECTOR_SEARCH action."""
         return await self.ap.vector_db_mgr.search(
             collection_name=collection_id, query_vector=query_vector, limit=top_k, filter=filters
         )
@@ -57,7 +57,7 @@ class RAGRuntimeService:
     async def vector_delete(
         self, collection_id: str, file_ids: list[str] | None = None, filters: dict[str, Any] | None = None
     ) -> int:
-        """Handle RAG_VECTOR_DELETE action.
+        """Handle VECTOR_DELETE action.
 
         Deletes vectors associated with the given file IDs from the collection.
         Each file_id corresponds to a document whose vectors will be removed.
@@ -78,7 +78,7 @@ class RAGRuntimeService:
         return count
 
     async def get_file_stream(self, storage_path: str) -> bytes:
-        """Handle RAG_GET_FILE_STREAM action.
+        """Handle GET_RAG_FILE_STREAM action.
 
         Uses the storage manager abstraction to load file content,
         regardless of the underlying storage provider.
