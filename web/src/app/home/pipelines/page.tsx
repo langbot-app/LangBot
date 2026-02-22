@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { systemInfo } from '@/app/infra/http';
 
 export default function PluginConfigPage() {
   const { t } = useTranslation();
@@ -87,6 +88,11 @@ export default function PluginConfigPage() {
   };
 
   const handleCreateNew = () => {
+    const maxPipelines = systemInfo.limitation?.max_pipelines ?? -1;
+    if (maxPipelines >= 0 && pipelineList.length >= maxPipelines) {
+      toast.error(t('limitation.maxPipelinesReached', { max: maxPipelines }));
+      return;
+    }
     setIsEditForm(false);
     setSelectedPipelineId('');
     setDialogOpen(true);

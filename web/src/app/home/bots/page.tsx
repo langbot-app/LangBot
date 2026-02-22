@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import BotDetailDialog from '@/app/home/bots/BotDetailDialog';
 import { CustomApiError } from '@/app/infra/entities/common';
+import { systemInfo } from '@/app/infra/http';
 
 export default function BotConfigPage() {
   const { t } = useTranslation();
@@ -60,6 +61,11 @@ export default function BotConfigPage() {
   }
 
   function handleCreateBotClick() {
+    const maxBots = systemInfo.limitation?.max_bots ?? -1;
+    if (maxBots >= 0 && botList.length >= maxBots) {
+      toast.error(t('limitation.maxBotsReached', { max: maxBots }));
+      return;
+    }
     setSelectedBotId('');
     setDetailDialogOpen(true);
   }

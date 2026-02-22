@@ -240,13 +240,21 @@ export interface PluginReorderElement {
 }
 
 // system
+export interface SystemLimitation {
+  max_bots: number;
+  max_pipelines: number;
+  max_extensions: number;
+}
+
 export interface ApiRespSystemInfo {
   debug: boolean;
   version: string;
+  edition: string;
   cloud_service_url: string;
   enable_marketplace: boolean;
   allow_modify_login_info: boolean;
   disable_models_service: boolean;
+  limitation: SystemLimitation;
 }
 
 export interface ApiRespPluginSystemStatus {

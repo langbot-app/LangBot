@@ -76,6 +76,14 @@ class PipelineService:
     async def create_pipeline(self, pipeline_data: dict, default: bool = False) -> str:
         from ....utils import paths as path_utils
 
+        # Check limitation
+        limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
+        max_pipelines = limitation.get('max_pipelines', -1)
+        if max_pipelines >= 0:
+            existing_pipelines = await self.get_pipelines()
+            if len(existing_pipelines) >= max_pipelines:
+                raise ValueError(f'Maximum number of pipelines ({max_pipelines}) reached')
+
         pipeline_data['uuid'] = str(uuid.uuid4())
         pipeline_data['for_version'] = self.ap.ver_mgr.get_current_version()
         pipeline_data['stages'] = default_stage_order.copy()
@@ -153,6 +161,14 @@ class PipelineService:
 
     async def copy_pipeline(self, pipeline_uuid: str) -> str:
         """Copy a pipeline with all its configurations"""
+        # Check limitation
+        limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
+        max_pipelines = limitation.get('max_pipelines', -1)
+        if max_pipelines >= 0:
+            existing_pipelines = await self.get_pipelines()
+            if len(existing_pipelines) >= max_pipelines:
+                raise ValueError(f'Maximum number of pipelines ({max_pipelines}) reached')
+
         # Get the original pipeline
         result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(

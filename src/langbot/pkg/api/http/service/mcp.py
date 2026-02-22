@@ -38,6 +38,16 @@ class MCPService:
         return serialized_servers
 
     async def create_mcp_server(self, server_data: dict) -> str:
+        # Check limitation (extensions = MCP servers + plugins)
+        limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
+        max_extensions = limitation.get('max_extensions', -1)
+        if max_extensions >= 0:
+            existing_mcp_servers = await self.get_mcp_servers()
+            plugins = await self.ap.plugin_connector.list_plugins()
+            total_extensions = len(existing_mcp_servers) + len(plugins)
+            if total_extensions >= max_extensions:
+                raise ValueError(f'Maximum number of extensions ({max_extensions}) reached')
+
         server_data['uuid'] = str(uuid.uuid4())
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_mcp.MCPServer).values(server_data))
 

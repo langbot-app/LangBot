@@ -953,6 +953,14 @@ const enUS = {
     refreshData: 'Refresh Data',
     exportData: 'Export Data',
   },
+  limitation: {
+    maxBotsReached:
+      'Maximum number of bots ({{max}}) reached. Please remove an existing bot before creating a new one.',
+    maxPipelinesReached:
+      'Maximum number of pipelines ({{max}}) reached. Please remove an existing pipeline before creating a new one.',
+    maxExtensionsReached:
+      'Maximum number of extensions ({{max}}) reached. Please remove an existing MCP server or plugin before adding a new one.',
+  },
 };
 
 export default enUS;

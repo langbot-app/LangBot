@@ -6,10 +6,16 @@ import { ApiRespSystemInfo } from '@/app/infra/entities/api';
 export let systemInfo: ApiRespSystemInfo = {
   debug: false,
   version: '',
+  edition: 'community',
   enable_marketplace: true,
   cloud_service_url: '',
   allow_modify_login_info: true,
   disable_models_service: false,
+  limitation: {
+    max_bots: -1,
+    max_pipelines: -1,
+    max_extensions: -1,
+  },
 };
 
 // 用户信息

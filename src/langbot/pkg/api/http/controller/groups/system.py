@@ -13,6 +13,7 @@ class SystemRouterGroup(group.RouterGroup):
                 data={
                     'version': constants.semantic_version,
                     'debug': constants.debug_mode,
+                    'edition': constants.edition,
                     'enable_marketplace': self.ap.instance_config.data.get('plugin', {}).get(
                         'enable_marketplace', True
                     ),
@@ -25,6 +26,7 @@ class SystemRouterGroup(group.RouterGroup):
                     'disable_models_service': self.ap.instance_config.data.get('space', {}).get(
                         'disable_models_service', False
                     ),
+                    'limitation': self.ap.instance_config.data.get('system', {}).get('limitation', {}),
                 }
             )
 

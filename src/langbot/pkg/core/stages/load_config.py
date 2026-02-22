@@ -156,8 +156,10 @@ class LoadConfigStage(stage.BootingStage):
         )
 
         constants.instance_id = ap.instance_id.data['instance_id']
+        constants.edition = ap.instance_config.data.get('system', {}).get('edition', 'community')
 
         print(f'LangBot instance id: {constants.instance_id}')
+        print(f'LangBot edition: {constants.edition}')
 
         await ap.instance_id.dump_config()
 

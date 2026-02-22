@@ -15,8 +15,13 @@ proxy:
     http: ''
     https: ''
 system:
+    edition: community
     recovery_key: ''
     allow_modify_login_info: true
+    limitation:
+        max_bots: -1
+        max_pipelines: -1
+        max_extensions: -1
     jwt:
         expire: 604800
         secret: ''

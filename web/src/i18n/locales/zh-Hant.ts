@@ -888,6 +888,14 @@ const zhHant = {
     refreshData: '重新整理資料',
     exportData: '匯出資料',
   },
+  limitation: {
+    maxBotsReached:
+      '已達到機器人數量上限（{{max}}個）。請先刪除已有機器人後再建立新的。',
+    maxPipelinesReached:
+      '已達到流水線數量上限（{{max}}個）。請先刪除已有流水線後再建立新的。',
+    maxExtensionsReached:
+      '已達到擴充功能數量上限（{{max}}個）。請先刪除已有的 MCP 伺服器或外掛後再新增。',
+  },
 };
 
 export default zhHant;

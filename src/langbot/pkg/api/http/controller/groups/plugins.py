@@ -14,6 +14,18 @@ from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 
 @group.group_class('plugins', '/api/v1/plugins')
 class PluginsRouterGroup(group.RouterGroup):
+    async def _check_extensions_limit(self) -> str | None:
+        """Check if extensions limit is reached. Returns error response if limit exceeded, None otherwise."""
+        limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
+        max_extensions = limitation.get('max_extensions', -1)
+        if max_extensions >= 0:
+            plugins = await self.ap.plugin_connector.list_plugins()
+            mcp_servers = await self.ap.mcp_service.get_mcp_servers()
+            total_extensions = len(plugins) + len(mcp_servers)
+            if total_extensions >= max_extensions:
+                return self.http_status(400, -1, f'Maximum number of extensions ({max_extensions}) reached')
+        return None
+
     async def initialize(self) -> None:
         @self.route('', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def _() -> str:
@@ -239,6 +251,10 @@ class PluginsRouterGroup(group.RouterGroup):
         @self.route('/install/github', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def _() -> str:
             """Install plugin from GitHub release asset"""
+            limit_error = await self._check_extensions_limit()
+            if limit_error is not None:
+                return limit_error
+
             data = await quart.request.json
             asset_url = data.get('asset_url', '')
             owner = data.get('owner', '')
@@ -273,6 +289,10 @@ class PluginsRouterGroup(group.RouterGroup):
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
         )
         async def _() -> str:
+            limit_error = await self._check_extensions_limit()
+            if limit_error is not None:
+                return limit_error
+
             data = await quart.request.json
 
             ctx = taskmgr.TaskContext.new()
@@ -288,6 +308,10 @@ class PluginsRouterGroup(group.RouterGroup):
 
         @self.route('/install/local', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def _() -> str:
+            limit_error = await self._check_extensions_limit()
+            if limit_error is not None:
+                return limit_error
+
             file = (await quart.request.files).get('file')
             if file is None:
                 return self.http_status(400, -1, 'file is required')

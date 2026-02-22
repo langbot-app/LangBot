@@ -940,6 +940,14 @@ const jaJP = {
     refreshData: 'データを更新',
     exportData: 'データをエクスポート',
   },
+  limitation: {
+    maxBotsReached:
+      'ボット数が上限（{{max}}個）に達しました。新しいボットを作成するには、既存のボットを削除してください。',
+    maxPipelinesReached:
+      'パイプライン数が上限（{{max}}個）に達しました。新しいパイプラインを作成するには、既存のパイプラインを削除してください。',
+    maxExtensionsReached:
+      '拡張機能数が上限（{{max}}個）に達しました。新しい MCP サーバーやプラグインを追加するには、既存のものを削除してください。',
+  },
 };
 
 export default jaJP;

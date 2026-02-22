@@ -453,7 +453,10 @@ export default function MCPFormDialog({
       onSuccess?.();
     } catch (error) {
       console.error('Failed to save MCP server:', error);
-      toast.error(isEditMode ? t('mcp.updateFailed') : t('mcp.createFailed'));
+      const errMsg = (error as CustomApiError).msg || '';
+      toast.error(
+        (isEditMode ? t('mcp.updateFailed') : t('mcp.createFailed')) + errMsg,
+      );
     }
   }
 

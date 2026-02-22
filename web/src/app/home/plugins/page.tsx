@@ -186,6 +186,28 @@ export default function PluginConfigPage() {
     setFetchingAssets(false);
   }
 
+  async function checkExtensionsLimit(): Promise<boolean> {
+    const maxExtensions = systemInfo.limitation?.max_extensions ?? -1;
+    if (maxExtensions < 0) return true;
+    try {
+      const [pluginsResp, mcpResp] = await Promise.all([
+        httpClient.getPlugins(),
+        httpClient.getMCPServers(),
+      ]);
+      const total =
+        (pluginsResp.plugins?.length ?? 0) + (mcpResp.servers?.length ?? 0);
+      if (total >= maxExtensions) {
+        toast.error(
+          t('limitation.maxExtensionsReached', { max: maxExtensions }),
+        );
+        return false;
+      }
+    } catch {
+      // If we can't check, let backend handle it
+    }
+    return true;
+  }
+
   async function fetchGithubReleases() {
     if (!githubURL.trim()) {
       toast.error(t('plugins.enterRepoUrl'));
@@ -328,6 +350,8 @@ export default function PluginConfigPage() {
         return;
       }
 
+      if (!(await checkExtensionsLimit())) return;
+
       setModalOpen(true);
       setPluginInstallStatus(PluginInstallStatus.INSTALLING);
       setInstallError(null);
@@ -336,7 +360,8 @@ export default function PluginConfigPage() {
     [t, pluginSystemStatus, installPlugin],
   );
 
-  const handleFileSelect = useCallback(() => {
+  const handleFileSelect = useCallback(async () => {
+    if (!(await checkExtensionsLimit())) return;
     if (fileInputRef.current) {
       fileInputRef.current.click();
     }
@@ -633,7 +658,8 @@ export default function PluginConfigPage() {
                 {activeTab === 'mcp-servers' ? (
                   <>
                     <DropdownMenuItem
-                      onClick={() => {
+                      onClick={async () => {
+                        if (!(await checkExtensionsLimit())) return;
                         setActiveTab('mcp-servers');
                         setIsEditMode(false);
                         setEditingServerName(null);
@@ -661,7 +687,8 @@ export default function PluginConfigPage() {
                       {t('plugins.uploadLocal')}
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      onClick={() => {
+                      onClick={async () => {
+                        if (!(await checkExtensionsLimit())) return;
                         setInstallSource('github');
                         setPluginInstallStatus(PluginInstallStatus.WAIT_INPUT);
                         setInstallError(null);
@@ -683,7 +710,8 @@ export default function PluginConfigPage() {
         </TabsContent>
         <TabsContent value="market" className="flex-1 overflow-y-auto mt-0">
           <MarketPage
-            installPlugin={(plugin: PluginV4) => {
+            installPlugin={async (plugin: PluginV4) => {
+              if (!(await checkExtensionsLimit())) return;
               setInstallSource('marketplace');
               setInstallInfo({
                 plugin_author: plugin.author,

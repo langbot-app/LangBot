@@ -83,6 +83,14 @@ class BotService:
 
     async def create_bot(self, bot_data: dict) -> str:
         """Create bot"""
+        # Check limitation
+        limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
+        max_bots = limitation.get('max_bots', -1)
+        if max_bots >= 0:
+            existing_bots = await self.get_bots()
+            if len(existing_bots) >= max_bots:
+                raise ValueError(f'Maximum number of bots ({max_bots}) reached')
+
         # TODO: 检查配置信息格式
         bot_data['uuid'] = str(uuid.uuid4())
 
