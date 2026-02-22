@@ -40,10 +40,74 @@ class KnowledgeService:
         )
         return kb.uuid
 
+    async def _filter_creation_settings(self, kb_uuid: str, incoming_settings: dict) -> dict | None:
+        """Filter out non-editable fields from incoming creation_settings.
+
+        Looks up the KB's plugin creation schema and replaces any non-editable
+        field values with the existing DB values.
+
+        Returns the filtered settings dict, or None if the schema cannot be
+        retrieved (in which case the caller should skip updating creation_settings).
+        """
+        # Fetch current KB record for plugin id and existing settings
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_rag.KnowledgeBase)
+            .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+        )
+        row = result.first()
+        if row is None:
+            return None
+
+        plugin_id = row.rag_engine_plugin_id
+        existing_settings: dict = row.creation_settings or {}
+
+        if not plugin_id:
+            return incoming_settings
+
+        # Get the creation schema from the plugin
+        try:
+            schema_resp = await self.ap.plugin_connector.get_rag_creation_schema(plugin_id)
+        except Exception as e:
+            self.ap.logger.warning(f'Failed to get creation schema for {plugin_id}: {e}')
+            return None
+
+        schema_items: list = schema_resp.get('schema', [])
+
+        # Identify non-editable field names
+        non_editable_fields = set()
+        for item in schema_items:
+            if item.get('editable') is False:
+                field_name = item.get('name') or item.get('id')
+                if field_name:
+                    non_editable_fields.add(field_name)
+
+        if not non_editable_fields:
+            return incoming_settings
+
+        # Overwrite non-editable fields with existing DB values
+        filtered = dict(incoming_settings)
+        for field in non_editable_fields:
+            if field in existing_settings:
+                filtered[field] = existing_settings[field]
+            elif field in filtered:
+                del filtered[field]
+
+        return filtered
+
     async def update_knowledge_base(self, kb_uuid: str, kb_data: dict) -> None:
         """更新知识库"""
         # Filter to only mutable fields
         filtered_data = {k: v for k, v in kb_data.items() if k in persistence_rag.KnowledgeBase.MUTABLE_FIELDS}
+
+        if not filtered_data:
+            return
+
+        if 'creation_settings' in filtered_data and filtered_data['creation_settings'] is not None:
+            result = await self._filter_creation_settings(kb_uuid, filtered_data['creation_settings'])
+            if result is None:
+                del filtered_data['creation_settings']
+            else:
+                filtered_data['creation_settings'] = result
 
         if not filtered_data:
             return

@@ -19,10 +19,10 @@ class KnowledgeBase(Base):
     creation_settings = sqlalchemy.Column(sqlalchemy.JSON, nullable=True, default=None)
 
     # Field sets for different operations
-    MUTABLE_FIELDS = {'name', 'description', 'top_k', 'creation_settings', 'embedding_model_uuid'}
+    MUTABLE_FIELDS = {'name', 'description', 'top_k', 'creation_settings'}
     """Fields that can be updated after creation."""
 
-    CREATE_FIELDS = MUTABLE_FIELDS | {'uuid', 'rag_engine_plugin_id', 'collection_id'}
+    CREATE_FIELDS = MUTABLE_FIELDS | {'uuid', 'rag_engine_plugin_id', 'collection_id', 'embedding_model_uuid'}
     """Fields used when creating a new knowledge base."""
 
     ALL_DB_FIELDS = CREATE_FIELDS | {'emoji', 'created_at', 'updated_at'}
