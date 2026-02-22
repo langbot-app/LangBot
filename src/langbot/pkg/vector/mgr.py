@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import numpy as np
+
 from ..core import app
 from .vdb import VectorDatabase
 from .vdbs.chroma import ChromaVectorDatabase
@@ -65,3 +67,88 @@ class VectorDBManager:
         else:
             self.vector_db = ChromaVectorDatabase(self.ap)
             self.ap.logger.warning('No vector database backend configured, defaulting to Chroma.')
+
+    async def upsert(
+        self,
+        collection_name: str,
+        vectors: list[list[float]],
+        ids: list[str],
+        metadata: list[dict] | None = None,
+    ):
+        """Proxy: Upsert vectors"""
+        await self.vector_db.get_or_create_collection(collection_name)
+        await self.vector_db.add_embeddings(
+            collection=collection_name,
+            ids=ids,
+            embeddings_list=vectors,
+            metadatas=metadata or [{} for _ in vectors],
+        )
+
+    async def search(
+        self,
+        collection_name: str,
+        query_vector: list[float],
+        limit: int,
+        filter: dict | None = None,
+    ) -> list[dict]:
+        """Proxy: Search vectors.
+
+        Returns a list of dicts with keys: 'id', 'score', 'metadata'.
+        The underlying VectorDatabase.search returns Chroma-style format:
+        { 'ids': [['id1']], 'distances': [[0.1]], 'metadatas': [[{}]] }
+        """
+        results = await self.vector_db.search(
+            collection=collection_name,
+            query_embedding=np.array(query_vector),
+            k=limit,
+        )
+
+        if not results or 'ids' not in results or not results['ids']:
+            return []
+
+        # Flatten nested lists (Chroma returns batch-style: list of lists)
+        raw_ids = results['ids']
+        raw_dists = results.get('distances', [])
+        raw_metas = results.get('metadatas', [])
+
+        r_ids = raw_ids[0] if raw_ids and isinstance(raw_ids[0], list) else raw_ids
+        r_dists = raw_dists[0] if raw_dists and isinstance(raw_dists[0], list) else raw_dists
+        r_metas = raw_metas[0] if raw_metas and isinstance(raw_metas[0], list) else raw_metas
+
+        parsed_results = []
+        for i, id_val in enumerate(r_ids):
+            parsed_results.append(
+                {
+                    'id': id_val,
+                    'score': r_dists[i] if r_dists and i < len(r_dists) else 0.0,
+                    'metadata': r_metas[i] if r_metas and i < len(r_metas) else {},
+                }
+            )
+
+        return parsed_results
+
+    async def delete_by_file_id(self, collection_name: str, file_ids: list[str]):
+        """Proxy: Delete vectors by file_id (metadata-level identifier).
+
+        This delegates to VectorDatabase.delete_by_file_id which removes
+        all vectors associated with the given file IDs.
+        """
+        for file_id in file_ids:
+            await self.vector_db.delete_by_file_id(collection_name, file_id)
+
+    async def delete_collection(self, collection_name: str):
+        """Proxy: Delete an entire collection."""
+        await self.vector_db.delete_collection(collection_name)
+
+    async def delete_by_filter(self, collection_name: str, filter: dict):
+        """Proxy: Delete vectors by filter.
+
+        Raises:
+            NotImplementedError: Filter-based deletion is not yet supported
+                by the VectorDatabase interface.
+        """
+        raise NotImplementedError(
+            f"delete_by_filter called on collection '{collection_name}' but "
+            'filter-based deletion is not yet implemented in VectorDatabase interface. '
+            'Use delete_by_file_id for file-level deletion.'
+        )

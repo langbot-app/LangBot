@@ -22,12 +22,15 @@ class KnowledgeBaseInterface(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    async def retrieve(self, query: str, top_k: int) -> list[rag_context.RetrievalResultEntry]:
+    async def retrieve(
+        self, query: str, top_k: int, settings: dict | None = None
+    ) -> list[rag_context.RetrievalResultEntry]:
         """Retrieve relevant documents from the knowledge base
 
         Args:
             query: The query string
             top_k: Number of top results to return
+            settings: Optional retrieval settings/configuration
 
         Returns:
             List of retrieve result entries
@@ -45,8 +48,8 @@ class KnowledgeBaseInterface(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def get_type(self) -> str:
-        """Get the type of knowledge base (internal/external)"""
+    def get_rag_engine_plugin_id(self) -> str:
+        """Get the RAG engine plugin ID"""
         pass
 
     @abc.abstractmethod

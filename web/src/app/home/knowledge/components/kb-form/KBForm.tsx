@@ -14,18 +14,25 @@ import {
   FormMessage,
   FormDescription,
 } from '@/components/ui/form';
-import { httpClient, systemInfo, userInfo } from '@/app/infra/http';
+import { httpClient } from '@/app/infra/http/HttpClient';
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { KnowledgeBase, EmbeddingModel } from '@/app/infra/entities/api';
+import { KnowledgeBase, RAGEngine } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
+import { extractI18nObject } from '@/i18n/I18nProvider';
+import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
+import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
+import {
+  DynamicFormItemConfig,
+  getDefaultValues,
+  parseDynamicFormItemType,
+} from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
+import { UUID } from 'uuidjs';
 
 const getFormSchema = (t: (key: string) => string) =>
   z.object({
@@ -34,14 +41,41 @@ const getFormSchema = (t: (key: string) => string) =>
       .string()
       .min(1, { message: t('knowledge.kbDescriptionRequired') }),
     emoji: z.string().optional(),
-    embeddingModelUUID: z
+    ragEngineId: z
       .string()
-      .min(1, { message: t('knowledge.embeddingModelUUIDRequired') }),
-    top_k: z
-      .number()
-      .min(1, { message: t('knowledge.topKRequired') })
-      .max(30, { message: t('knowledge.topKMax') }),
+      .min(1, { message: t('knowledge.ragEngineRequired') }),
   });
+
+/**
+ * Parse creation schema from RAG engine to IDynamicFormItemSchema[]
+ * Same pattern as ExternalKBForm uses for retriever config
+ */
+function parseCreationSchema(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  schemaItems: any | any[] | undefined,
+): IDynamicFormItemSchema[] {
+  if (!schemaItems) return [];
+
+  // Handle wrapped schema (e.g. { schema: [...] }) which might be returned by the API
+  const items = Array.isArray(schemaItems) ? schemaItems : schemaItems.schema;
+
+  if (!items || !Array.isArray(items)) return [];
+
+  return items.map(
+    (item) =>
+      new DynamicFormItemConfig({
+        default: item.default,
+        id: UUID.generate(),
+        label: item.label,
+        description: item.description,
+        name: item.name,
+        required: item.required,
+        type: parseDynamicFormItemType(item.type),
+        options: item.options,
+        editable: item.editable,
+      }),
+  );
+}
 
 export default function KBForm({
   initKbId,
@@ -53,6 +87,14 @@ export default function KBForm({
   onKbUpdated: (kbId: string) => void;
 }) {
   const { t } = useTranslation();
+  const [ragEngines, setRagEngines] = useState<RAGEngine[]>([]);
+  const [selectedEngineId, setSelectedEngineId] = useState<string>('');
+  const [configSettings, setConfigSettings] = useState<Record<string, unknown>>(
+    {},
+  );
+  const [isEditing, setIsEditing] = useState(false);
+  const [loading, setLoading] = useState(true);
+
   const formSchema = getFormSchema(t);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -61,70 +103,100 @@ export default function KBForm({
       name: '',
       description: t('knowledge.defaultDescription'),
       emoji: '📚',
-      embeddingModelUUID: '',
-      top_k: 5,
+      ragEngineId: '',
     },
   });
 
-  const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModel[]>([]);
+  // Get selected engine details
+  const selectedEngine = ragEngines.find(
+    (e) => e.plugin_id === selectedEngineId,
+  );
 
   useEffect(() => {
-    getEmbeddingModelNameList().then(() => {
+    loadRagEngines().then(() => {
       if (initKbId) {
-        getKbConfig(initKbId).then((val) => {
-          form.setValue('name', val.name);
-          form.setValue('description', val.description);
-          form.setValue('emoji', val.emoji);
-          form.setValue('embeddingModelUUID', val.embeddingModelUUID);
-          form.setValue('top_k', val.top_k || 5);
-        });
+        loadKbConfig(initKbId);
       }
     });
   }, []);
 
-  const getKbConfig = async (
-    kbId: string,
-  ): Promise<z.infer<typeof formSchema>> => {
-    return new Promise((resolve) => {
-      httpClient.getKnowledgeBase(kbId).then((res) => {
-        resolve({
-          name: res.base.name,
-          description: res.base.description,
-          emoji: res.base.emoji || '📚',
-          embeddingModelUUID: res.base.embedding_model_uuid,
-          top_k: res.base.top_k || 5,
-        });
-      });
-    });
+  // Auto-select first engine when engines are loaded and no selection
+  useEffect(() => {
+    if (ragEngines.length > 0 && !selectedEngineId && !isEditing) {
+      const firstEngine = ragEngines[0];
+      setSelectedEngineId(firstEngine.plugin_id);
+      form.setValue('ragEngineId', firstEngine.plugin_id);
+      // Initialize config settings with defaults
+      const formItems = parseCreationSchema(firstEngine.creation_schema);
+      if (formItems.length > 0) {
+        setConfigSettings(getDefaultValues(formItems));
+      }
+    }
+  }, [ragEngines, selectedEngineId, isEditing]);
+
+  const loadRagEngines = async () => {
+    setLoading(true);
+    try {
+      const resp = await httpClient.getRagEngines();
+      setRagEngines(resp.engines);
+    } catch (err) {
+      console.error('Failed to load RAG engines:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const getEmbeddingModelNameList = async () => {
-    const resp = await httpClient.getProviderEmbeddingModels();
-    let models = resp.models;
-    // Filter out space-chat-completions models when not logged in with space account or when models service is disabled
-    if (
-      systemInfo.disable_models_service ||
-      userInfo?.account_type !== 'space'
-    ) {
-      models = models.filter(
-        (m) => m.provider?.requester !== 'space-chat-completions',
-      );
+  const loadKbConfig = async (kbId: string) => {
+    try {
+      setIsEditing(true);
+
+      const res = await httpClient.getKnowledgeBase(kbId);
+      const kb = res.base;
+
+      const engineId = kb.rag_engine_plugin_id || '';
+      setSelectedEngineId(engineId);
+
+      form.setValue('name', kb.name);
+      form.setValue('description', kb.description);
+      form.setValue('emoji', kb.emoji || '📚');
+      form.setValue('ragEngineId', engineId);
+
+      setConfigSettings(kb.creation_settings || {});
+    } catch (err) {
+      console.error('Failed to load KB config:', err);
     }
-    setEmbeddingModels(models);
+  };
+
+  const handleEngineChange = (engineId: string) => {
+    setSelectedEngineId(engineId);
+    form.setValue('ragEngineId', engineId);
+
+    // Find engine and initialize config settings with defaults from schema
+    const engine = ragEngines.find((e) => e.plugin_id === engineId);
+    if (engine) {
+      const formItems = parseCreationSchema(engine.creation_schema);
+      if (formItems.length > 0) {
+        setConfigSettings(getDefaultValues(formItems));
+      } else {
+        setConfigSettings({});
+      }
+    }
   };
 
   const onSubmit = (data: z.infer<typeof formSchema>) => {
+    const kbData: KnowledgeBase = {
+      name: data.name,
+      description: data.description,
+      emoji: data.emoji,
+      rag_engine_plugin_id: selectedEngineId,
+      creation_settings: configSettings,
+      top_k: 5,
+    };
+
     if (initKbId) {
-      // update knowledge base
-      const updateKb: KnowledgeBase = {
-        name: data.name,
-        description: data.description,
-        emoji: data.emoji,
-        embedding_model_uuid: data.embeddingModelUUID,
-        top_k: data.top_k,
-      };
+      // Update knowledge base
       httpClient
-        .updateKnowledgeBase(initKbId, updateKb)
+        .updateKnowledgeBase(initKbId, kbData)
         .then((res) => {
           onKbUpdated(res.uuid);
           toast.success(t('knowledge.updateKnowledgeBaseSuccess'));
@@ -134,24 +206,44 @@ export default function KBForm({
           toast.error(t('knowledge.updateKnowledgeBaseFailed'));
         });
     } else {
-      // create knowledge base
-      const newKb: KnowledgeBase = {
-        name: data.name,
-        description: data.description,
-        emoji: data.emoji,
-        embedding_model_uuid: data.embeddingModelUUID,
-        top_k: data.top_k,
-      };
+      // Create knowledge base
       httpClient
-        .createKnowledgeBase(newKb)
+        .createKnowledgeBase(kbData)
         .then((res) => {
           onNewKbCreated(res.uuid);
         })
         .catch((err) => {
           console.error('create knowledge base failed', err);
+          toast.error(t('knowledge.createKnowledgeBaseFailed'));
         });
     }
   };
+
+  // Convert creation schema to dynamic form items (same as ExternalKBForm)
+  const configFormItems = parseCreationSchema(selectedEngine?.creation_schema);
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <p className="text-muted-foreground">{t('common.loading')}</p>
+      </div>
+    );
+  }
+
+  // Show message if no engines available
+  if (ragEngines.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8 space-y-4">
+        <p className="text-muted-foreground">
+          {t('knowledge.noEnginesAvailable')}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          {t('knowledge.installEngineHint')}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -162,6 +254,57 @@ export default function KBForm({
           className="space-y-8"
         >
           <div className="space-y-4">
+            {/* RAG Engine Selector */}
+            <FormField
+              control={form.control}
+              name="ragEngineId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {t('knowledge.ragEngine')}
+                    <span className="text-red-500">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Select
+                      disabled={isEditing}
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        handleEngineChange(value);
+                      }}
+                      value={field.value}
+                    >
+                      <SelectTrigger className="w-full bg-[#ffffff] dark:bg-[#2a2a2e]">
+                        <SelectValue
+                          placeholder={t('knowledge.selectRagEngine')}
+                        />
+                      </SelectTrigger>
+                      <SelectContent className="fixed z-[1000]">
+                        {ragEngines.map((engine) => (
+                          <SelectItem
+                            key={engine.plugin_id}
+                            value={engine.plugin_id}
+                          >
+                            {extractI18nObject(engine.name)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormControl>
+                  {selectedEngine?.description && (
+                    <FormDescription>
+                      {extractI18nObject(selectedEngine.description)}
+                    </FormDescription>
+                  )}
+                  {isEditing && (
+                    <FormDescription>
+                      {t('knowledge.cannotChangeRagEngine')}
+                    </FormDescription>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             {/* Name and Emoji in same row */}
             <div className="flex gap-4 items-start">
               <FormField
@@ -197,6 +340,8 @@ export default function KBForm({
                 )}
               />
             </div>
+
+            {/* Description */}
             <FormField
               control={form.control}
               name="description"
@@ -213,96 +358,25 @@ export default function KBForm({
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
-              name="embeddingModelUUID"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    {t('knowledge.embeddingModelUUID')}
-                    <span className="text-red-500">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <div className="relative">
-                      <Select
-                        disabled={!!initKbId}
-                        onValueChange={(value) => {
-                          field.onChange(value);
-                        }}
-                        value={field.value}
-                      >
-                        <SelectTrigger className="w-[180px] bg-[#ffffff] dark:bg-[#2a2a2e]">
-                          <SelectValue
-                            placeholder={t('knowledge.selectEmbeddingModel')}
-                          />
-                        </SelectTrigger>
-                        <SelectContent className="fixed z-[1000]">
-                          {(() => {
-                            const grouped = embeddingModels.reduce(
-                              (acc, model) => {
-                                const providerName =
-                                  model.provider?.name ||
-                                  model.provider?.requester ||
-                                  'Unknown';
-                                if (!acc[providerName]) acc[providerName] = [];
-                                acc[providerName].push(model);
-                                return acc;
-                              },
-                              {} as Record<string, EmbeddingModel[]>,
-                            );
-                            return Object.entries(grouped).map(
-                              ([providerName, models]) => (
-                                <SelectGroup key={providerName}>
-                                  <SelectLabel>{providerName}</SelectLabel>
-                                  {models.map((model) => (
-                                    <SelectItem
-                                      key={model.uuid}
-                                      value={model.uuid}
-                                    >
-                                      {model.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectGroup>
-                              ),
-                            );
-                          })()}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </FormControl>
-                  <FormDescription>
-                    {initKbId
-                      ? t('knowledge.cannotChangeEmbeddingModel')
-                      : t('knowledge.embeddingModelDescription')}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="top_k"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    {t('knowledge.topK')}
-                    <span className="text-red-500">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      {...field}
-                      onChange={(e) => field.onChange(Number(e.target.value))}
-                      className="w-[180px] h-10 text-base appearance-none"
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    {t('knowledge.topKdescription')}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+
+            {/* Engine specific fields (dynamic form from creation_schema) */}
+            {configFormItems.length > 0 && (
+              <div className="space-y-4 pt-2 border-t">
+                <div className="text-sm font-medium text-muted-foreground">
+                  {t('knowledge.engineSettings')}
+                </div>
+                <div>
+                  <DynamicFormComponent
+                    itemConfigList={configFormItems}
+                    initialValues={configSettings as Record<string, object>}
+                    onSubmit={(val) =>
+                      setConfigSettings(val as Record<string, unknown>)
+                    }
+                    isEditing={isEditing}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </form>
       </Form>

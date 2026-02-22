@@ -11,6 +11,7 @@ from ...provider.session import sessionmgr as llm_session_mgr
 from ...provider.modelmgr import modelmgr as llm_model_mgr
 from ...provider.tools import toolmgr as llm_tool_mgr
 from ...rag.knowledge import kbmgr as rag_mgr
+from ...rag.service import RAGRuntimeService
 from ...platform import botmgr as im_mgr
 from ...platform.webhook_pusher import WebhookPusher
 from ...persistence import mgr as persistencemgr
@@ -25,7 +26,6 @@ from ...api.http.service import knowledge as knowledge_service
 from ...api.http.service import mcp as mcp_service
 from ...api.http.service import apikey as apikey_service
 from ...api.http.service import webhook as webhook_service
-from ...api.http.service import external_kb as external_kb_service
 from ...api.http.service import monitoring as monitoring_service
 from ...discover import engine as discover_engine
 from ...storage import mgr as storagemgr
@@ -70,9 +70,6 @@ class BuildAppStage(stage.BootingStage):
 
         knowledge_service_inst = knowledge_service.KnowledgeService(ap)
         ap.knowledge_service = knowledge_service_inst
-
-        external_kb_service_inst = external_kb_service.ExternalKBService(ap)
-        ap.external_kb_service = external_kb_service_inst
 
         mcp_service_inst = mcp_service.MCPService(ap)
         ap.mcp_service = mcp_service_inst
@@ -140,6 +137,9 @@ class BuildAppStage(stage.BootingStage):
         rag_mgr_inst = rag_mgr.RAGManager(ap)
         await rag_mgr_inst.initialize()
         ap.rag_mgr = rag_mgr_inst
+
+        # Initialize RAG Runtime Service for plugins
+        ap.rag_runtime_service = RAGRuntimeService(ap)
 
         # 初始化向量数据库管理器
         vectordb_mgr_inst = vectordb_mgr.VectorDBManager(ap)

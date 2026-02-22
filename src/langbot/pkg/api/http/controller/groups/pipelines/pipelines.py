@@ -68,7 +68,7 @@ class PipelinesRouterGroup(group.RouterGroup):
                     return self.http_status(404, -1, 'pipeline not found')
 
                 # Only include plugins with pipeline-related components (Command, EventListener, Tool)
-                # Plugins that only have KnowledgeRetriever components are not suitable for pipeline extensions
+                # Plugins that only have RAGEngine components are not suitable for pipeline extensions
                 pipeline_component_kinds = ['Command', 'EventListener', 'Tool']
                 plugins = await self.ap.plugin_connector.list_plugins(component_kinds=pipeline_component_kinds)
                 mcp_servers = await self.ap.mcp_service.get_mcp_servers(contain_runtime_info=True)

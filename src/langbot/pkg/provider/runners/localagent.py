@@ -74,13 +74,8 @@ class LocalAgentRunner(runner.RequestRunner):
                     self.ap.logger.warning(f'Knowledge base {kb_uuid} not found, skipping')
                     continue
 
-                # Get top_k based on KB type
-                if kb.get_type() == 'internal':
-                    top_k = kb.knowledge_base_entity.top_k
-                elif kb.get_type() == 'external':
-                    top_k = 5  # external kb's top_k is managed by plugin config
-                else:
-                    top_k = 5  # default fallback
+                # Get top_k from KB entity, default to 5 if not set
+                top_k = kb.knowledge_base_entity.top_k or 5
 
                 result = await kb.retrieve(user_message_text, top_k)
 
@@ -97,9 +92,9 @@ class LocalAgentRunner(runner.RequestRunner):
                         if content.type == 'text' and content.text is not None:
                             texts.append(f'[{idx}] {content.text}')
                             idx += 1
-                rag_context = '\n\n'.join(texts)
+                rag_context_text = '\n\n'.join(texts)
                 final_user_message_text = rag_combined_prompt_template.format(
-                    rag_context=rag_context, user_message=user_message_text
+                    rag_context=rag_context_text, user_message=user_message_text
                 )
 
             else:
