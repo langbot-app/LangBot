@@ -383,8 +383,6 @@ class RuntimePipeline:
 class PipelineManager:
     """流水线管理器"""
 
-    # ====== 4.0 ======
-
     ap: app.Application
 
     pipelines: list[RuntimePipeline]
