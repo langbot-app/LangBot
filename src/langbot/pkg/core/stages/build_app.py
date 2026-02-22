@@ -5,6 +5,7 @@ import asyncio
 from .. import stage, app
 from ...utils import version, proxy
 from ...pipeline import pool, controller, pipelinemgr
+from ...pipeline import aggregator as message_aggregator
 from ...plugin import connector as plugin_connector
 from ...command import cmdmgr
 from ...provider.session import sessionmgr as llm_session_mgr
@@ -136,6 +137,10 @@ class BuildAppStage(stage.BootingStage):
         pipeline_mgr = pipelinemgr.PipelineManager(ap)
         await pipeline_mgr.initialize()
         ap.pipeline_mgr = pipeline_mgr
+
+        # Initialize message aggregator (after pipeline_mgr, as it needs pipeline config)
+        msg_aggregator_inst = message_aggregator.MessageAggregator(ap)
+        ap.msg_aggregator = msg_aggregator_inst
 
         rag_mgr_inst = rag_mgr.RAGManager(ap)
         await rag_mgr_inst.initialize()

@@ -15,6 +15,7 @@ from ..command import cmdmgr
 from ..plugin import connector as plugin_connector
 from ..pipeline import pool
 from ..pipeline import controller, pipelinemgr
+from ..pipeline import aggregator as message_aggregator
 from ..utils import version as version_mgr, proxy as proxy_mgr
 from ..persistence import mgr as persistencemgr
 from ..api.http.controller import main as http_controller
@@ -95,6 +96,8 @@ class Application:
     plugin_connector: plugin_connector.PluginRuntimeConnector = None
 
     query_pool: pool.QueryPool = None
+
+    msg_aggregator: message_aggregator.MessageAggregator = None
 
     ctrl: controller.Controller = None
 

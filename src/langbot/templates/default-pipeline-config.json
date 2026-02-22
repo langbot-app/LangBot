@@ -17,6 +17,10 @@
             "prefix": [],
             "regexp": []
         },
+        "message-aggregation": {
+            "enabled": true,
+            "delay": 1.5
+        },
         "misc": {
             "combine-quote-message": true
         }
