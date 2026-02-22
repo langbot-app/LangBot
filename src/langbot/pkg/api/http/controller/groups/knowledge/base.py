@@ -13,7 +13,10 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
 
             elif quart.request.method == 'POST':
                 json_data = await quart.request.json
-                knowledge_base_uuid = await self.ap.knowledge_service.create_knowledge_base(json_data)
+                try:
+                    knowledge_base_uuid = await self.ap.knowledge_service.create_knowledge_base(json_data)
+                except ValueError as e:
+                    return self.http_status(400, -1, str(e))
                 return self.success(data={'uuid': knowledge_base_uuid})
 
             return self.http_status(405, -1, 'Method not allowed')
@@ -39,7 +42,7 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
             elif quart.request.method == 'PUT':
                 json_data = await quart.request.json
                 await self.ap.knowledge_service.update_knowledge_base(knowledge_base_uuid, json_data)
-                return self.success({})
+                return self.success(data={'uuid': knowledge_base_uuid})
 
             elif quart.request.method == 'DELETE':
                 await self.ap.knowledge_service.delete_knowledge_base(knowledge_base_uuid)
@@ -90,5 +93,13 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
         async def retrieve_knowledge_base(knowledge_base_uuid: str) -> str:
             json_data = await quart.request.json
             query = json_data.get('query')
-            results = await self.ap.knowledge_service.retrieve_knowledge_base(knowledge_base_uuid, query)
+
+            if not query or not query.strip():
+                return self.http_status(400, -1, 'Query is required and cannot be empty')
+
+            # Extract retrieval_settings to allow dynamic control over RAG engine behavior (e.g. top_k, filters)
+            retrieval_settings = json_data.get('retrieval_settings', {})
+            results = await self.ap.knowledge_service.retrieve_knowledge_base(
+                knowledge_base_uuid, query, retrieval_settings
+            )
             return self.success(data={'results': results})

@@ -1,0 +1,93 @@
+import sqlalchemy
+from .. import migration
+
+
+@migration.migration_class(19)
+class DBMigrateRAGEnginePluginArchitecture(migration.DBMigration):
+    """Migrate to unified RAG Engine plugin architecture.
+
+    Changes:
+    - Add rag_engine_plugin_id, collection_id, creation_settings columns to knowledge_bases
+    - Drop external_knowledge_bases table (no longer needed; external KB data is not migrated)
+    """
+
+    async def upgrade(self):
+        """Upgrade"""
+        await self._add_columns_to_knowledge_bases()
+        await self._drop_external_knowledge_bases_table()
+
+    async def _get_table_columns(self, table_name: str) -> list[str]:
+        """Get column names from a table (works for both SQLite and PostgreSQL)."""
+        if self.ap.persistence_mgr.db.name == 'postgresql':
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.text(
+                    'SELECT column_name FROM information_schema.columns WHERE table_name = :table_name;'
+                ).bindparams(table_name=table_name)
+            )
+            return [row[0] for row in result.fetchall()]
+        else:
+            # SQLite PRAGMA does not support bind parameters; validate identifier.
+            if not table_name.isidentifier():
+                raise ValueError(f'Invalid table name: {table_name}')
+            result = await self.ap.persistence_mgr.execute_async(sqlalchemy.text(f'PRAGMA table_info({table_name});'))
+            return [row[1] for row in result.fetchall()]
+
+    async def _table_exists(self, table_name: str) -> bool:
+        """Check if a table exists."""
+        if self.ap.persistence_mgr.db.name == 'postgresql':
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.text(
+                    'SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = :table_name);'
+                ).bindparams(table_name=table_name)
+            )
+            return result.scalar()
+        else:
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table_name;").bindparams(
+                    table_name=table_name
+                )
+            )
+            return result.first() is not None
+
+    async def _add_columns_to_knowledge_bases(self):
+        """Add new RAG plugin architecture columns to knowledge_bases table."""
+        columns = await self._get_table_columns('knowledge_bases')
+
+        new_columns = {
+            'rag_engine_plugin_id': 'VARCHAR',
+            'collection_id': 'VARCHAR',
+            'creation_settings': 'TEXT',  # JSON stored as TEXT for SQLite compatibility
+        }
+
+        for col_name, col_type in new_columns.items():
+            if col_name not in columns:
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.text(f'ALTER TABLE knowledge_bases ADD COLUMN {col_name} {col_type};')
+                )
+
+        # For existing knowledge bases without rag_engine_plugin_id,
+        # set collection_id = uuid (same default as new KBs)
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.text('UPDATE knowledge_bases SET collection_id = uuid WHERE collection_id IS NULL;')
+        )
+
+    async def _drop_external_knowledge_bases_table(self):
+        """Drop the external_knowledge_bases table if it exists."""
+        if await self._table_exists('external_knowledge_bases'):
+            # Log existing external KBs before dropping, so users are aware of data loss
+            rows = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.text('SELECT * FROM external_knowledge_bases;')
+            )
+            existing = rows.fetchall()
+            if existing:
+                self.ap.logger.warning(
+                    'Dropping external_knowledge_bases table with %d existing record(s). '
+                    'These external KB configurations will be removed: %s',
+                    len(existing),
+                    [dict(row._mapping) for row in existing],
+                )
+            await self.ap.persistence_mgr.execute_async(sqlalchemy.text('DROP TABLE external_knowledge_bases;'))
+
+    async def downgrade(self):
+        """Downgrade"""
+        pass

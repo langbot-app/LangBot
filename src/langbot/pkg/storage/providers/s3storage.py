@@ -117,6 +117,21 @@ class S3StorageProvider(provider.StorageProvider):
             self.ap.logger.error(f'Failed to delete from S3: {e}')
             raise
 
+    async def size(
+        self,
+        key: str,
+    ) -> int:
+        """Get object size from S3 without downloading it"""
+        try:
+            response = self.s3_client.head_object(
+                Bucket=self.bucket_name,
+                Key=key,
+            )
+            return response['ContentLength']
+        except Exception as e:
+            self.ap.logger.error(f'Failed to get size from S3: {e}')
+            raise
+
     async def delete_dir_recursive(
         self,
         dir_path: str,

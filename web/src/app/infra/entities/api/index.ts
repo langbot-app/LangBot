@@ -70,17 +70,6 @@ export interface LLMModel {
   extra_args?: object;
 }
 
-export interface KnowledgeBase {
-  uuid?: string;
-  name: string;
-  description: string;
-  embedding_model_uuid: string;
-  created_at?: string;
-  updated_at?: string;
-  top_k: number;
-  emoji?: string;
-}
-
 export interface ApiRespProviderEmbeddingModels {
   models: EmbeddingModel[];
 }
@@ -166,31 +155,37 @@ export interface KnowledgeBase {
   uuid?: string;
   name: string;
   description: string;
-  embedding_model_uuid: string;
+  embedding_model_uuid?: string; // Optional - can be in creation_settings instead
   top_k: number;
   created_at?: string;
   updated_at?: string;
   emoji?: string;
+  // New unified fields
+  rag_engine_plugin_id?: string;
+  creation_settings?: Record<string, unknown>;
+  rag_engine?: RAGEngineInfo;
 }
 
-export interface ExternalKnowledgeBase {
-  uuid?: string;
-  name: string;
-  description: string;
-  created_at?: string;
-  plugin_author: string;
-  plugin_name: string;
-  retriever_name: string;
-  retriever_config?: Record<string, unknown>;
-  emoji?: string;
+// RAG Engine types
+export interface RAGEngineInfo {
+  plugin_id: string | null;
+  name: I18nObject;
+  capabilities: string[];
 }
 
-export interface ApiRespExternalKnowledgeBases {
-  bases: ExternalKnowledgeBase[];
+export interface RAGEngine {
+  plugin_id: string;
+  name: I18nObject;
+  description?: I18nObject;
+  capabilities: string[];
+  // Schema format: Array of form field definitions (IDynamicFormItemSchema-like)
+  // Each item: { name, label, type, required, default, description?, options? }
+  creation_schema?: unknown[];
+  retrieval_schema?: unknown[];
 }
 
-export interface ApiRespExternalKnowledgeBase {
-  base: ExternalKnowledgeBase;
+export interface ApiRespRAGEngines {
+  engines: RAGEngine[];
 }
 
 export interface ApiRespKnowledgeBaseFiles {

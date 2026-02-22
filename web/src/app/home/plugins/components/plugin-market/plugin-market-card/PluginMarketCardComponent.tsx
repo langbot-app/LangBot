@@ -41,7 +41,7 @@ export default function PluginMarketCardComponent({
     Tool: <Wrench className="w-4 h-4" />,
     EventListener: <AudioWaveform className="w-4 h-4" />,
     Command: <Hash className="w-4 h-4" />,
-    KnowledgeRetriever: <Book className="w-4 h-4" />,
+    RAGEngine: <Book className="w-4 h-4" />,
   };
 
   return (

@@ -13,20 +13,24 @@ import {
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
 import { useEffect, useRef } from 'react';
 import { extractI18nObject } from '@/i18n/I18nProvider';
+import { useTranslation } from 'react-i18next';
 
 export default function DynamicFormComponent({
   itemConfigList,
   onSubmit,
   initialValues,
   onFileUploaded,
+  isEditing,
 }: {
   itemConfigList: IDynamicFormItemSchema[];
   onSubmit?: (val: object) => unknown;
   initialValues?: Record<string, object>;
   onFileUploaded?: (fileKey: string) => void;
+  isEditing?: boolean;
 }) {
   const isInitialMount = useRef(true);
   const previousInitialValues = useRef(initialValues);
+  const { t } = useTranslation();
 
   // 根据 itemConfigList 动态生成 zod schema
   const formSchema = z.object(
@@ -55,6 +59,9 @@ export default function DynamicFormComponent({
           case 'llm-model-selector':
             fieldSchema = z.string();
             break;
+          case 'embedding-model-selector':
+            fieldSchema = z.string();
+            break;
           case 'knowledge-base-selector':
             fieldSchema = z.string();
             break;
@@ -81,7 +88,9 @@ export default function DynamicFormComponent({
           (fieldSchema instanceof z.ZodString ||
             fieldSchema instanceof z.ZodArray)
         ) {
-          fieldSchema = fieldSchema.min(1, { message: '此字段为必填项' });
+          fieldSchema = fieldSchema.min(1, {
+            message: t('common.fieldRequired'),
+          });
         }
 
         return {
@@ -161,34 +170,44 @@ export default function DynamicFormComponent({
   return (
     <Form {...form}>
       <div className="space-y-4">
-        {itemConfigList.map((config) => (
-          <FormField
-            key={config.id}
-            control={form.control}
-            name={config.name as keyof FormValues}
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  {extractI18nObject(config.label)}{' '}
-                  {config.required && <span className="text-red-500">*</span>}
-                </FormLabel>
-                <FormControl>
-                  <DynamicFormItemComponent
-                    config={config}
-                    field={field}
-                    onFileUploaded={onFileUploaded}
-                  />
-                </FormControl>
-                {config.description && (
-                  <p className="text-sm text-muted-foreground">
-                    {extractI18nObject(config.description)}
-                  </p>
-                )}
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        ))}
+        {itemConfigList.map((config) => {
+          // Field is disabled when editing and editable is explicitly false
+          const isFieldDisabled = isEditing && config.editable === false;
+          return (
+            <FormField
+              key={config.id}
+              control={form.control}
+              name={config.name as keyof FormValues}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {extractI18nObject(config.label)}{' '}
+                    {config.required && <span className="text-red-500">*</span>}
+                  </FormLabel>
+                  <FormControl>
+                    <div
+                      className={
+                        isFieldDisabled ? 'pointer-events-none opacity-60' : ''
+                      }
+                    >
+                      <DynamicFormItemComponent
+                        config={config}
+                        field={field}
+                        onFileUploaded={onFileUploaded}
+                      />
+                    </div>
+                  </FormControl>
+                  {config.description && (
+                    <p className="text-sm text-muted-foreground">
+                      {extractI18nObject(config.description)}
+                    </p>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          );
+        })}
       </div>
     </Form>
   );
