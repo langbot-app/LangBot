@@ -51,8 +51,7 @@ class KnowledgeService:
         """
         # Fetch current KB record for plugin id and existing settings
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_rag.KnowledgeBase)
-            .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+            sqlalchemy.select(persistence_rag.KnowledgeBase).where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
         )
         row = result.first()
         if row is None:
