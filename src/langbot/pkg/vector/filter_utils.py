@@ -62,8 +62,7 @@ def strip_unsupported_fields(
             kept.append((field, op, value))
         else:
             logger.warning(
-                'Filter field %r is not supported by this backend and will be ignored '
-                '(supported: %s)',
+                'Filter field %r is not supported by this backend and will be ignored (supported: %s)',
                 field,
                 ', '.join(sorted(supported_fields)),
             )

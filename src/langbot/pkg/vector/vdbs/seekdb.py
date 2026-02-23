@@ -151,7 +151,11 @@ class SeekDBVectorDatabase(VectorDatabase):
         return await self._get_or_create_collection_internal(collection)
 
     async def add_embeddings(
-        self, collection: str, ids: List[str], embeddings_list: List[List[float]], metadatas: List[Dict[str, Any]],
+        self,
+        collection: str,
+        ids: List[str],
+        embeddings_list: List[List[float]],
+        metadatas: List[Dict[str, Any]],
         documents: List[str] | None = None,
     ) -> None:
         """Add vector embeddings to the specified collection.
@@ -237,8 +241,7 @@ class SeekDBVectorDatabase(VectorDatabase):
         results = await asyncio.to_thread(coll.query, **query_kwargs)
 
         self.ap.logger.info(
-            f"SeekDB {search_type} search in '{collection}' "
-            f"returned {len(results.get('ids', [[]])[0])} results"
+            f"SeekDB {search_type} search in '{collection}' returned {len(results.get('ids', [[]])[0])} results"
         )
 
         return results

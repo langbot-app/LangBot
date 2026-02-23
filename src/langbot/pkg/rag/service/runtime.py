@@ -26,7 +26,11 @@ class RAGRuntimeService:
         """Handle VECTOR_UPSERT action."""
         metadatas = metadata if metadata else [{} for _ in vectors]
         await self.ap.vector_db_mgr.upsert(
-            collection_name=collection_id, vectors=vectors, ids=ids, metadata=metadatas, documents=documents,
+            collection_name=collection_id,
+            vectors=vectors,
+            ids=ids,
+            metadata=metadatas,
+            documents=documents,
         )
 
     async def vector_search(

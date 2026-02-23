@@ -505,7 +505,11 @@ class RuntimeConnectionHandler(handler.Handler):
                 return handler.ActionResponse.error(message='documents must match vectors length')
             try:
                 await self.ap.rag_runtime_service.vector_upsert(
-                    collection_id, vectors, ids, metadata, documents,
+                    collection_id,
+                    vectors,
+                    ids,
+                    metadata,
+                    documents,
                 )
                 return handler.ActionResponse.success(data={})
             except Exception as e:
@@ -521,7 +525,12 @@ class RuntimeConnectionHandler(handler.Handler):
             query_text = data.get('query_text', '')
             try:
                 results = await self.ap.rag_runtime_service.vector_search(
-                    collection_id, query_vector, top_k, filters, search_type, query_text,
+                    collection_id,
+                    query_vector,
+                    top_k,
+                    filters,
+                    search_type,
+                    query_text,
                 )
                 return handler.ActionResponse.success(data={'results': results})
             except Exception as e:

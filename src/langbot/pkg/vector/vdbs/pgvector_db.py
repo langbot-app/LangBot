@@ -302,9 +302,7 @@ class PgVectorDatabase(VectorDatabase):
                 result = await session.execute(stmt)
                 await session.commit()
                 deleted = result.rowcount
-                self.ap.logger.info(
-                    f"Deleted {deleted} embeddings from pgvector collection '{collection}' by filter"
-                )
+                self.ap.logger.info(f"Deleted {deleted} embeddings from pgvector collection '{collection}' by filter")
                 return deleted
             except Exception as e:
                 await session.rollback()
