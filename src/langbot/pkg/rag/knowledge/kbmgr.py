@@ -48,7 +48,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                 mime_type = 'application/octet-stream'
 
             # Call plugin to ingest document
-            await self._ingest_document(
+            result = await self._ingest_document(
                 {
                     'document_id': file.uuid,
                     'filename': file.file_name,
@@ -58,6 +58,11 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                 },
                 file.file_name,  # storage path
             )
+
+            # Check plugin result status
+            if result.get('status') == 'failed':
+                error_msg = result.get('error_message', 'Plugin ingestion returned failed status')
+                raise Exception(error_msg)
 
             # set file status to completed
             await self.ap.persistence_mgr.execute_async(
