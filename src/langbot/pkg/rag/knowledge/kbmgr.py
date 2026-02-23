@@ -176,14 +176,15 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         return stored_file_tasks[0] if stored_file_tasks else ''
 
     async def retrieve(
-        self, query: str, top_k: int, settings: dict | None = None
+        self, query: str, settings: dict | None = None
     ) -> list[rag_context.RetrievalResultEntry]:
-        # Merge top_k into settings or use as default
-        retrieve_settings = {'top_k': top_k}
-        if settings:
-            retrieve_settings.update(settings)
+        # Merge stored retrieval_settings with per-request overrides
+        stored = self.knowledge_base_entity.retrieval_settings or {}
+        merged = {**stored, **(settings or {})}
+        if 'top_k' not in merged:
+            merged['top_k'] = 5  # fallback default
 
-        response = await self._retrieve(query, retrieve_settings)
+        response = await self._retrieve(query, merged)
 
         results_data = response.get('results', [])
         entries = []
@@ -304,7 +305,6 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             'query': query,
             'knowledge_base_id': kb.uuid,
             'collection_id': kb.collection_id or kb.uuid,
-            'top_k': settings.get('top_k') or kb.top_k or 5,
             'retrieval_settings': settings,
             'creation_settings': kb.creation_settings or {},
         }
@@ -434,7 +434,6 @@ class RAGManager:
         rag_engine_plugin_id: str,
         creation_settings: dict,
         description: str = '',
-        embedding_model_uuid: str = '',
     ) -> persistence_rag.KnowledgeBase:
         """Create a new knowledge base using a RAG plugin."""
         # Validate that the RAG engine plugin exists
@@ -460,7 +459,6 @@ class RAGManager:
             'rag_engine_plugin_id': rag_engine_plugin_id,
             'collection_id': collection_id,
             'creation_settings': creation_settings,
-            'embedding_model_uuid': embedding_model_uuid,
         }
 
         # Create Entity

@@ -72,7 +72,6 @@ function parseCreationSchema(
         required: item.required,
         type: parseDynamicFormItemType(item.type),
         options: item.options,
-        editable: item.editable,
       }),
   );
 }
@@ -90,6 +89,9 @@ export default function KBForm({
   const [ragEngines, setRagEngines] = useState<RAGEngine[]>([]);
   const [selectedEngineId, setSelectedEngineId] = useState<string>('');
   const [configSettings, setConfigSettings] = useState<Record<string, unknown>>(
+    {},
+  );
+  const [retrievalSettings, setRetrievalSettings] = useState<Record<string, unknown>>(
     {},
   );
   const [isEditing, setIsEditing] = useState(false);
@@ -131,6 +133,10 @@ export default function KBForm({
       if (formItems.length > 0) {
         setConfigSettings(getDefaultValues(formItems));
       }
+      const retrievalItems = parseCreationSchema(firstEngine.retrieval_schema);
+      if (retrievalItems.length > 0) {
+        setRetrievalSettings(getDefaultValues(retrievalItems));
+      }
     }
   }, [ragEngines, selectedEngineId, isEditing]);
 
@@ -162,6 +168,7 @@ export default function KBForm({
       form.setValue('ragEngineId', engineId);
 
       setConfigSettings(kb.creation_settings || {});
+      setRetrievalSettings(kb.retrieval_settings || {});
     } catch (err) {
       console.error('Failed to load KB config:', err);
     }
@@ -180,6 +187,12 @@ export default function KBForm({
       } else {
         setConfigSettings({});
       }
+      const retrievalItems = parseCreationSchema(engine.retrieval_schema);
+      if (retrievalItems.length > 0) {
+        setRetrievalSettings(getDefaultValues(retrievalItems));
+      } else {
+        setRetrievalSettings({});
+      }
     }
   };
 
@@ -190,7 +203,7 @@ export default function KBForm({
       emoji: data.emoji,
       rag_engine_plugin_id: selectedEngineId,
       creation_settings: configSettings,
-      top_k: 5,
+      retrieval_settings: retrievalSettings,
     };
 
     if (initKbId) {
@@ -221,6 +234,9 @@ export default function KBForm({
 
   // Convert creation schema to dynamic form items (same as ExternalKBForm)
   const configFormItems = parseCreationSchema(selectedEngine?.creation_schema);
+
+  // Convert retrieval schema to dynamic form items
+  const retrievalFormItems = parseCreationSchema(selectedEngine?.retrieval_schema);
 
   // Show loading state
   if (loading) {
@@ -373,6 +389,24 @@ export default function KBForm({
                       setConfigSettings(val as Record<string, unknown>)
                     }
                     isEditing={isEditing}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Retrieval settings (dynamic form from retrieval_schema) */}
+            {retrievalFormItems.length > 0 && (
+              <div className="space-y-4 pt-2 border-t">
+                <div className="text-sm font-medium text-muted-foreground">
+                  {t('knowledge.retrievalSettings')}
+                </div>
+                <div>
+                  <DynamicFormComponent
+                    itemConfigList={retrievalFormItems}
+                    initialValues={retrievalSettings as Record<string, object>}
+                    onSubmit={(val) =>
+                      setRetrievalSettings(val as Record<string, unknown>)
+                    }
                   />
                 </div>
               </div>

@@ -171,8 +171,8 @@ export default function DynamicFormComponent({
     <Form {...form}>
       <div className="space-y-4">
         {itemConfigList.map((config) => {
-          // Field is disabled when editing and editable is explicitly false
-          const isFieldDisabled = isEditing && config.editable === false;
+          // All fields are disabled when editing (creation_settings are immutable)
+          const isFieldDisabled = !!isEditing;
           return (
             <FormField
               key={config.id}

@@ -727,6 +727,7 @@ const enUS = {
     cannotChangeRagEngine: 'RAG engine cannot be changed after creation',
     engineSettings: 'Engine Settings',
     engineSettingsReadonly: 'read-only in edit mode',
+    retrievalSettings: 'Retrieval Settings',
     noEnginesAvailable: 'No knowledge base engines available',
     installEngineHint: 'Please install a knowledge base plugin first',
     createKnowledgeBaseFailed: 'Failed to create knowledge base',

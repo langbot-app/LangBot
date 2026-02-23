@@ -155,14 +155,13 @@ export interface KnowledgeBase {
   uuid?: string;
   name: string;
   description: string;
-  embedding_model_uuid?: string; // Optional - can be in creation_settings instead
-  top_k: number;
   created_at?: string;
   updated_at?: string;
   emoji?: string;
   // New unified fields
   rag_engine_plugin_id?: string;
   creation_settings?: Record<string, unknown>;
+  retrieval_settings?: Record<string, unknown>;
   rag_engine?: RAGEngineInfo;
 }
 

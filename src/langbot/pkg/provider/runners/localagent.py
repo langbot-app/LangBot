@@ -74,10 +74,7 @@ class LocalAgentRunner(runner.RequestRunner):
                     self.ap.logger.warning(f'Knowledge base {kb_uuid} not found, skipping')
                     continue
 
-                # Get top_k from KB entity, default to 5 if not set
-                top_k = kb.knowledge_base_entity.top_k or 5
-
-                result = await kb.retrieve(user_message_text, top_k)
+                result = await kb.retrieve(user_message_text)
 
                 if result:
                     all_results.extend(result)

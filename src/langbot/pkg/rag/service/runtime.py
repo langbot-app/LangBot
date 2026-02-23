@@ -27,14 +27,6 @@ class RAGRuntimeService:
         kb = persistence_rag.KnowledgeBase(**row._mapping)
         return kb
 
-    def _get_embedding_model_uuid(self, kb: persistence_rag.KnowledgeBase) -> str | None:
-        """Get embedding model UUID from creation_settings (preferred) or KB field (fallback)."""
-        if kb.creation_settings and isinstance(kb.creation_settings, dict):
-            embed_uuid = kb.creation_settings.get('embedding_model_uuid')
-            if embed_uuid:
-                return embed_uuid
-        return kb.embedding_model_uuid
-
     async def vector_upsert(
         self,
         collection_id: str,

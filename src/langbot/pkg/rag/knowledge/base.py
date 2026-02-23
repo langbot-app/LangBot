@@ -23,14 +23,13 @@ class KnowledgeBaseInterface(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     async def retrieve(
-        self, query: str, top_k: int, settings: dict | None = None
+        self, query: str, settings: dict | None = None
     ) -> list[rag_context.RetrievalResultEntry]:
         """Retrieve relevant documents from the knowledge base
 
         Args:
             query: The query string
-            top_k: Number of top results to return
-            settings: Optional retrieval settings/configuration
+            settings: Optional per-request retrieval settings overrides
 
         Returns:
             List of retrieve result entries

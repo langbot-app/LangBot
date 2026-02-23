@@ -1,3 +1,5 @@
+import json
+
 import sqlalchemy
 from .. import migration
 
@@ -7,13 +9,19 @@ class DBMigrateRAGEnginePluginArchitecture(migration.DBMigration):
     """Migrate to unified RAG Engine plugin architecture.
 
     Changes:
-    - Add rag_engine_plugin_id, collection_id, creation_settings columns to knowledge_bases
+    - Add rag_engine_plugin_id, collection_id, creation_settings, retrieval_settings columns to knowledge_bases
+    - Migrate existing top_k values into retrieval_settings JSON
+    - Migrate existing embedding_model_uuid into creation_settings JSON
+    - Drop embedding_model_uuid and top_k columns (PostgreSQL only; SQLite leaves them unmapped)
     - Drop external_knowledge_bases table (no longer needed; external KB data is not migrated)
     """
 
     async def upgrade(self):
         """Upgrade"""
         await self._add_columns_to_knowledge_bases()
+        await self._migrate_top_k_to_retrieval_settings()
+        await self._migrate_embedding_model_uuid_to_creation_settings()
+        await self._drop_old_columns()
         await self._drop_external_knowledge_bases_table()
 
     async def _get_table_columns(self, table_name: str) -> list[str]:
@@ -57,6 +65,7 @@ class DBMigrateRAGEnginePluginArchitecture(migration.DBMigration):
             'rag_engine_plugin_id': 'VARCHAR',
             'collection_id': 'VARCHAR',
             'creation_settings': 'TEXT',  # JSON stored as TEXT for SQLite compatibility
+            'retrieval_settings': 'TEXT',
         }
 
         for col_name, col_type in new_columns.items():
@@ -70,6 +79,88 @@ class DBMigrateRAGEnginePluginArchitecture(migration.DBMigration):
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.text('UPDATE knowledge_bases SET collection_id = uuid WHERE collection_id IS NULL;')
         )
+
+    async def _migrate_top_k_to_retrieval_settings(self):
+        """Migrate existing top_k values into retrieval_settings JSON."""
+        columns = await self._get_table_columns('knowledge_bases')
+        if 'top_k' not in columns:
+            return
+
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.text(
+                'SELECT uuid, top_k FROM knowledge_bases WHERE top_k IS NOT NULL AND retrieval_settings IS NULL;'
+            )
+        )
+        rows = result.fetchall()
+
+        for row in rows:
+            kb_uuid = row[0]
+            top_k = row[1]
+            retrieval_settings = json.dumps({'top_k': top_k})
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.text(
+                    'UPDATE knowledge_bases SET retrieval_settings = :rs WHERE uuid = :uuid;'
+                ).bindparams(rs=retrieval_settings, uuid=kb_uuid)
+            )
+
+    async def _migrate_embedding_model_uuid_to_creation_settings(self):
+        """Migrate existing embedding_model_uuid into creation_settings JSON."""
+        columns = await self._get_table_columns('knowledge_bases')
+        if 'embedding_model_uuid' not in columns:
+            return
+
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.text(
+                "SELECT uuid, embedding_model_uuid, creation_settings FROM knowledge_bases "
+                "WHERE embedding_model_uuid IS NOT NULL AND embedding_model_uuid != '';"
+            )
+        )
+        rows = result.fetchall()
+
+        for row in rows:
+            kb_uuid = row[0]
+            emb_uuid = row[1]
+            existing_settings = row[2]
+
+            if existing_settings and isinstance(existing_settings, str):
+                try:
+                    settings = json.loads(existing_settings)
+                except (json.JSONDecodeError, TypeError):
+                    settings = {}
+            elif isinstance(existing_settings, dict):
+                settings = existing_settings
+            else:
+                settings = {}
+
+            if 'embedding_model_uuid' not in settings:
+                settings['embedding_model_uuid'] = emb_uuid
+                new_settings = json.dumps(settings)
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.text(
+                        'UPDATE knowledge_bases SET creation_settings = :cs WHERE uuid = :uuid;'
+                    ).bindparams(cs=new_settings, uuid=kb_uuid)
+                )
+
+    async def _drop_old_columns(self):
+        """Drop embedding_model_uuid and top_k columns (PostgreSQL only).
+
+        SQLite does not support DROP COLUMN in older versions, so we leave the
+        columns in place — the SQLAlchemy entity simply won't map them.
+        """
+        if self.ap.persistence_mgr.db.name != 'postgresql':
+            return
+
+        columns = await self._get_table_columns('knowledge_bases')
+
+        if 'embedding_model_uuid' in columns:
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.text('ALTER TABLE knowledge_bases DROP COLUMN embedding_model_uuid;')
+            )
+
+        if 'top_k' in columns:
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.text('ALTER TABLE knowledge_bases DROP COLUMN top_k;')
+            )
 
     async def _drop_external_knowledge_bases_table(self):
         """Drop the external_knowledge_bases table if it exists."""

@@ -47,8 +47,6 @@ export default function KnowledgePage() {
         name: kb.name,
         description: kb.description,
         emoji: kb.emoji,
-        embeddingModelUUID: kb.embedding_model_uuid,
-        top_k: kb.top_k ?? 5,
         lastUpdatedTimeAgo: lastUpdatedTimeAgoText,
         ragEngine: kb.rag_engine,
         ragEnginePluginId: kb.rag_engine_plugin_id,

@@ -697,6 +697,7 @@ const zhHans = {
     cannotChangeRagEngine: '知识库创建后不可修改 RAG 引擎',
     engineSettings: '引擎设置',
     engineSettingsReadonly: '编辑模式下不可修改',
+    retrievalSettings: '检索设置',
     noEnginesAvailable: '没有可用的知识库引擎',
     installEngineHint: '请先安装知识库插件',
     createKnowledgeBaseFailed: '知识库创建失败',
