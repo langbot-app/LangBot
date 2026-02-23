@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 import posixpath
-import sqlalchemy
 from typing import Any
 from langbot.pkg.core import app
-
-from langbot.pkg.entity.persistence import rag as persistence_rag
 
 
 class RAGRuntimeService:
@@ -17,15 +14,6 @@ class RAGRuntimeService:
 
     def __init__(self, ap: app.Application):
         self.ap = ap
-
-    async def _get_kb_entity(self, kb_id: str) -> persistence_rag.KnowledgeBase:
-        stmt = sqlalchemy.select(persistence_rag.KnowledgeBase).where(persistence_rag.KnowledgeBase.uuid == kb_id)
-        result = await self.ap.persistence_mgr.execute_async(stmt)
-        row = result.first()
-        if not row:
-            raise ValueError(f'Knowledge Base {kb_id} not found')
-        kb = persistence_rag.KnowledgeBase(**row._mapping)
-        return kb
 
     async def vector_upsert(
         self,
