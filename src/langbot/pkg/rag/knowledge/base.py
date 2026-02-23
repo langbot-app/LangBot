@@ -22,9 +22,7 @@ class KnowledgeBaseInterface(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    async def retrieve(
-        self, query: str, settings: dict | None = None
-    ) -> list[rag_context.RetrievalResultEntry]:
+    async def retrieve(self, query: str, settings: dict | None = None) -> list[rag_context.RetrievalResultEntry]:
         """Retrieve relevant documents from the knowledge base
 
         Args:

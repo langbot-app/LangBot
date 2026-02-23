@@ -98,9 +98,9 @@ class DBMigrateRAGEnginePluginArchitecture(migration.DBMigration):
             top_k = row[1]
             retrieval_settings = json.dumps({'top_k': top_k})
             await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text(
-                    'UPDATE knowledge_bases SET retrieval_settings = :rs WHERE uuid = :uuid;'
-                ).bindparams(rs=retrieval_settings, uuid=kb_uuid)
+                sqlalchemy.text('UPDATE knowledge_bases SET retrieval_settings = :rs WHERE uuid = :uuid;').bindparams(
+                    rs=retrieval_settings, uuid=kb_uuid
+                )
             )
 
     async def _migrate_embedding_model_uuid_to_creation_settings(self):
@@ -111,7 +111,7 @@ class DBMigrateRAGEnginePluginArchitecture(migration.DBMigration):
 
         result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.text(
-                "SELECT uuid, embedding_model_uuid, creation_settings FROM knowledge_bases "
+                'SELECT uuid, embedding_model_uuid, creation_settings FROM knowledge_bases '
                 "WHERE embedding_model_uuid IS NOT NULL AND embedding_model_uuid != '';"
             )
         )

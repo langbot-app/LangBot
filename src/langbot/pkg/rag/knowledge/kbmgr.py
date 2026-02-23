@@ -180,9 +180,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
 
         return stored_file_tasks[0] if stored_file_tasks else ''
 
-    async def retrieve(
-        self, query: str, settings: dict | None = None
-    ) -> list[rag_context.RetrievalResultEntry]:
+    async def retrieve(self, query: str, settings: dict | None = None) -> list[rag_context.RetrievalResultEntry]:
         # Merge stored retrieval_settings with per-request overrides
         stored = self.knowledge_base_entity.retrieval_settings or {}
         merged = {**stored, **(settings or {})}
