@@ -5,9 +5,20 @@ from sqlalchemy.orm import declarative_base
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from pgvector.sqlalchemy import Vector
 from langbot.pkg.vector.vdb import VectorDatabase
+from langbot.pkg.vector.filter_utils import normalize_filter, strip_unsupported_fields
 from langbot.pkg.core import app
 
 Base = declarative_base()
+
+# pgvector schema only stores these metadata fields.
+_PG_SUPPORTED_FIELDS = {'text', 'file_id', 'chunk_uuid'}
+
+# Map schema field names to SQLAlchemy columns (resolved lazily from PgVectorEntry).
+_PG_COLUMN_MAP = {
+    'text': 'text',
+    'file_id': 'file_id',
+    'chunk_uuid': 'chunk_uuid',
+}
 
 
 class PgVectorEntry(Base):
@@ -21,6 +32,33 @@ class PgVectorEntry(Base):
     text = Column(Text)
     file_id = Column(String, index=True)
     chunk_uuid = Column(String)
+
+
+def _build_pg_conditions(filter_dict: dict[str, Any]) -> list:
+    """Translate canonical filter dict into a list of SQLAlchemy conditions."""
+    triples = normalize_filter(filter_dict)
+    triples = strip_unsupported_fields(triples, _PG_SUPPORTED_FIELDS)
+
+    conditions = []
+    for field, op, value in triples:
+        col = getattr(PgVectorEntry, _PG_COLUMN_MAP[field])
+        if op == '$eq':
+            conditions.append(col == value)
+        elif op == '$ne':
+            conditions.append(col != value)
+        elif op == '$gt':
+            conditions.append(col > value)
+        elif op == '$gte':
+            conditions.append(col >= value)
+        elif op == '$lt':
+            conditions.append(col < value)
+        elif op == '$lte':
+            conditions.append(col <= value)
+        elif op == '$in':
+            conditions.append(col.in_(value))
+        elif op == '$nin':
+            conditions.append(col.notin_(value))
+    return conditions
 
 
 class PgVectorDatabase(VectorDatabase):
@@ -109,6 +147,7 @@ class PgVectorDatabase(VectorDatabase):
         ids: list[str],
         embeddings_list: list[list[float]],
         metadatas: list[dict[str, Any]],
+        documents: list[str] | None = None,
     ) -> None:
         """Add vector embeddings to pgvector
 
@@ -142,7 +181,15 @@ class PgVectorDatabase(VectorDatabase):
                 self.ap.logger.error(f'Error adding embeddings to pgvector: {e}')
                 raise
 
-    async def search(self, collection: str, query_embedding: list[float], k: int = 5) -> Dict[str, Any]:
+    async def search(
+        self,
+        collection: str,
+        query_embedding: list[float],
+        k: int = 5,
+        search_type: str = 'vector',
+        query_text: str = '',
+        filter: dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
         """Search for similar vectors using cosine distance
 
         Args:
@@ -173,6 +220,10 @@ class PgVectorDatabase(VectorDatabase):
                     .order_by(PgVectorEntry.embedding.cosine_distance(query_embedding))
                     .limit(k)
                 )
+
+                if filter:
+                    for cond in _build_pg_conditions(filter):
+                        stmt = stmt.filter(cond)
 
                 result = await session.execute(stmt)
                 rows = result.fetchall()
@@ -223,6 +274,41 @@ class PgVectorDatabase(VectorDatabase):
             except Exception as e:
                 await session.rollback()
                 self.ap.logger.error(f'Error deleting from pgvector: {e}')
+                raise
+
+    async def delete_by_filter(self, collection: str, filter: dict[str, Any]) -> int:
+        """Delete vectors matching a metadata filter.
+
+        Args:
+            collection: Collection name
+            filter: Canonical metadata filter dict
+        """
+        conditions = _build_pg_conditions(filter)
+        if not conditions:
+            self.ap.logger.warning(
+                f"pgvector delete_by_filter on '{collection}': filter produced no conditions, skipping"
+            )
+            return 0
+
+        await self.get_or_create_collection(collection)
+
+        async with self.AsyncSessionLocal() as session:
+            try:
+                from sqlalchemy import delete
+
+                stmt = delete(PgVectorEntry).where(PgVectorEntry.collection == collection)
+                for cond in conditions:
+                    stmt = stmt.where(cond)
+                result = await session.execute(stmt)
+                await session.commit()
+                deleted = result.rowcount
+                self.ap.logger.info(
+                    f"Deleted {deleted} embeddings from pgvector collection '{collection}' by filter"
+                )
+                return deleted
+            except Exception as e:
+                await session.rollback()
+                self.ap.logger.error(f'Error deleting from pgvector by filter: {e}')
                 raise
 
     async def delete_collection(self, collection: str):

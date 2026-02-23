@@ -28,19 +28,33 @@ class ChromaVectorDatabase(VectorDatabase):
         ids: list[str],
         embeddings_list: list[list[float]],
         metadatas: list[dict[str, Any]],
+        documents: list[str] | None = None,
     ) -> None:
         col = await self.get_or_create_collection(collection)
-        await asyncio.to_thread(col.add, embeddings=embeddings_list, ids=ids, metadatas=metadatas)
+        kwargs: dict[str, Any] = dict(embeddings=embeddings_list, ids=ids, metadatas=metadatas)
+        if documents is not None:
+            kwargs['documents'] = documents
+        await asyncio.to_thread(col.add, **kwargs)
         self.ap.logger.info(f"Added {len(ids)} embeddings to Chroma collection '{collection}'.")
 
-    async def search(self, collection: str, query_embedding: list[float], k: int = 5) -> dict[str, Any]:
+    async def search(
+        self,
+        collection: str,
+        query_embedding: list[float],
+        k: int = 5,
+        search_type: str = 'vector',
+        query_text: str = '',
+        filter: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         col = await self.get_or_create_collection(collection)
-        results = await asyncio.to_thread(
-            col.query,
+        query_kwargs: dict[str, Any] = dict(
             query_embeddings=query_embedding,
             n_results=k,
             include=['metadatas', 'distances', 'documents'],
         )
+        if filter:
+            query_kwargs['where'] = filter
+        results = await asyncio.to_thread(col.query, **query_kwargs)
         self.ap.logger.info(f"Chroma search in '{collection}' returned {len(results.get('ids', [[]])[0])} results.")
         return results
 
@@ -48,6 +62,12 @@ class ChromaVectorDatabase(VectorDatabase):
         col = await self.get_or_create_collection(collection)
         await asyncio.to_thread(col.delete, where={'file_id': file_id})
         self.ap.logger.info(f"Deleted embeddings from Chroma collection '{collection}' with file_id: {file_id}")
+
+    async def delete_by_filter(self, collection: str, filter: dict[str, Any]) -> int:
+        col = await self.get_or_create_collection(collection)
+        await asyncio.to_thread(col.delete, where=filter)
+        self.ap.logger.info(f"Deleted embeddings from Chroma collection '{collection}' by filter")
+        return 0  # Chroma delete does not return a count
 
     async def delete_collection(self, collection: str):
         if collection in self._collections:

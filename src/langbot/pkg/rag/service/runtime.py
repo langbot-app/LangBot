@@ -21,17 +21,31 @@ class RAGRuntimeService:
         vectors: list[list[float]],
         ids: list[str],
         metadata: list[dict[str, Any]] | None = None,
+        documents: list[str] | None = None,
     ) -> None:
         """Handle VECTOR_UPSERT action."""
         metadatas = metadata if metadata else [{} for _ in vectors]
-        await self.ap.vector_db_mgr.upsert(collection_name=collection_id, vectors=vectors, ids=ids, metadata=metadatas)
+        await self.ap.vector_db_mgr.upsert(
+            collection_name=collection_id, vectors=vectors, ids=ids, metadata=metadatas, documents=documents,
+        )
 
     async def vector_search(
-        self, collection_id: str, query_vector: list[float], top_k: int, filters: dict[str, Any] | None = None
+        self,
+        collection_id: str,
+        query_vector: list[float],
+        top_k: int,
+        filters: dict[str, Any] | None = None,
+        search_type: str = 'vector',
+        query_text: str = '',
     ) -> list[dict[str, Any]]:
         """Handle VECTOR_SEARCH action."""
         return await self.ap.vector_db_mgr.search(
-            collection_name=collection_id, query_vector=query_vector, limit=top_k, filter=filters
+            collection_name=collection_id,
+            query_vector=query_vector,
+            limit=top_k,
+            filter=filters,
+            search_type=search_type,
+            query_text=query_text,
         )
 
     async def vector_delete(

@@ -310,6 +310,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             'collection_id': kb.collection_id or kb.uuid,
             'retrieval_settings': settings,
             'creation_settings': kb.creation_settings or {},
+            'filters': settings.pop('filters', {}),
         }
 
         result = await self.ap.plugin_connector.call_rag_retrieve(

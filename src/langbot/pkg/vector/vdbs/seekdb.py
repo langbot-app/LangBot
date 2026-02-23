@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 
 
 from langbot.pkg.core import app
-from langbot.pkg.vector.vdb import VectorDatabase
+from langbot.pkg.vector.vdb import VectorDatabase, SearchType
 
 try:
     import pyseekdb
@@ -25,8 +25,12 @@ class SeekDBVectorDatabase(VectorDatabase):
     SeekDB is an AI-native search database by OceanBase that unifies
     relational, vector, text, JSON and GIS in a single engine.
 
-    Supports both embedded mode and remote server mode.
+    Supports embedded mode, remote server mode, and full-text/hybrid search.
     """
+
+    @classmethod
+    def supported_search_types(cls) -> list[SearchType]:
+        return [SearchType.VECTOR, SearchType.FULL_TEXT, SearchType.HYBRID]
 
     def __init__(self, ap: app.Application):
         if not SEEKDB_AVAILABLE:
@@ -147,7 +151,8 @@ class SeekDBVectorDatabase(VectorDatabase):
         return await self._get_or_create_collection_internal(collection)
 
     async def add_embeddings(
-        self, collection: str, ids: List[str], embeddings_list: List[List[float]], metadatas: List[Dict[str, Any]]
+        self, collection: str, ids: List[str], embeddings_list: List[List[float]], metadatas: List[Dict[str, Any]],
+        documents: List[str] | None = None,
     ) -> None:
         """Add vector embeddings to the specified collection.
 
@@ -156,6 +161,7 @@ class SeekDBVectorDatabase(VectorDatabase):
             ids: List of document IDs
             embeddings_list: List of embedding vectors
             metadatas: List of metadata dictionaries
+            documents: Optional raw text documents for full-text search support
         """
         if not embeddings_list:
             return
@@ -166,17 +172,33 @@ class SeekDBVectorDatabase(VectorDatabase):
 
         cleaned_metadatas = [self._clean_metadata(meta) for meta in metadatas]
 
-        await asyncio.to_thread(coll.add, ids=ids, embeddings=embeddings_list, metadatas=cleaned_metadatas)
+        kwargs: Dict[str, Any] = dict(ids=ids, embeddings=embeddings_list, metadatas=cleaned_metadatas)
+        if documents is not None:
+            kwargs['documents'] = documents
+        await asyncio.to_thread(coll.add, **kwargs)
 
         self.ap.logger.info(f"Added {len(ids)} embeddings to SeekDB collection '{collection}'")
 
-    async def search(self, collection: str, query_embedding: List[float], k: int = 5) -> Dict[str, Any]:
+    async def search(
+        self,
+        collection: str,
+        query_embedding: List[float],
+        k: int = 5,
+        search_type: str = 'vector',
+        query_text: str = '',
+        filter: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
         """Search for the most similar vectors in the specified collection.
+
+        SeekDB supports vector, full-text, and hybrid search modes.
 
         Args:
             collection: Collection name
-            query_embedding: Query vector
+            query_embedding: Query vector (used for vector and hybrid modes)
             k: Number of results to return
+            search_type: One of 'vector', 'full_text', 'hybrid'
+            query_text: Raw query text (used for full_text and hybrid modes)
+            filter: Optional metadata filters (Chroma-style ``where`` syntax).
 
         Returns:
             Dictionary with 'ids', 'metadatas', 'distances' keys
@@ -193,11 +215,31 @@ class SeekDBVectorDatabase(VectorDatabase):
         else:
             coll = self._collections[collection]
 
-        # Perform query
-        # SeekDB's query() returns: {'ids': [[...]], 'metadatas': [[...]], 'distances': [[...]]}
-        results = await asyncio.to_thread(coll.query, query_embeddings=query_embedding, n_results=k)
+        # Build query kwargs based on search type
+        query_kwargs: Dict[str, Any] = {'n_results': k}
 
-        self.ap.logger.info(f"SeekDB search in '{collection}' returned {len(results.get('ids', [[]])[0])} results")
+        if filter:
+            query_kwargs['where'] = filter
+
+        if search_type == SearchType.FULL_TEXT:
+            if not query_text:
+                return {'ids': [[]], 'metadatas': [[]], 'distances': [[]]}
+            query_kwargs['query_texts'] = [query_text]
+        elif search_type == SearchType.HYBRID:
+            # Hybrid: provide both embeddings and text for combined scoring
+            query_kwargs['query_embeddings'] = query_embedding
+            if query_text:
+                query_kwargs['query_texts'] = [query_text]
+        else:
+            # Default: vector search
+            query_kwargs['query_embeddings'] = query_embedding
+
+        results = await asyncio.to_thread(coll.query, **query_kwargs)
+
+        self.ap.logger.info(
+            f"SeekDB {search_type} search in '{collection}' "
+            f"returned {len(results.get('ids', [[]])[0])} results"
+        )
 
         return results
 
@@ -226,6 +268,28 @@ class SeekDBVectorDatabase(VectorDatabase):
         await asyncio.to_thread(coll.delete, where={'file_id': file_id})
 
         self.ap.logger.info(f"Deleted embeddings from SeekDB collection '{collection}' with file_id: {file_id}")
+
+    async def delete_by_filter(self, collection: str, filter: Dict[str, Any]) -> int:
+        """Delete vectors from the collection by metadata filter.
+
+        Args:
+            collection: Collection name
+            filter: Chroma-style ``where`` filter dict
+        """
+        exists = await asyncio.to_thread(self.client.has_collection, collection)
+        if not exists:
+            self.ap.logger.warning(f"SeekDB collection '{collection}' not found for deletion")
+            return 0
+
+        if collection not in self._collections:
+            coll = await asyncio.to_thread(self.client.get_collection, collection, embedding_function=None)
+            self._collections[collection] = coll
+        else:
+            coll = self._collections[collection]
+
+        await asyncio.to_thread(coll.delete, where=filter)
+        self.ap.logger.info(f"Deleted embeddings from SeekDB collection '{collection}' by filter")
+        return 0  # SeekDB delete does not return a count
 
     async def delete_collection(self, collection: str):
         """Delete the entire collection.

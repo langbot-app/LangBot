@@ -5,6 +5,37 @@ from typing import Any, Dict, List
 from qdrant_client import AsyncQdrantClient, models
 from langbot.pkg.core import app
 from langbot.pkg.vector.vdb import VectorDatabase
+from langbot.pkg.vector.filter_utils import normalize_filter
+
+
+def _build_qdrant_filter(filter_dict: dict[str, Any]) -> models.Filter:
+    """Translate canonical filter dict into a Qdrant ``models.Filter``."""
+    triples = normalize_filter(filter_dict)
+    must: list[models.Condition] = []
+    must_not: list[models.Condition] = []
+
+    for field, op, value in triples:
+        if op == '$eq':
+            must.append(models.FieldCondition(key=field, match=models.MatchValue(value=value)))
+        elif op == '$ne':
+            must_not.append(models.FieldCondition(key=field, match=models.MatchValue(value=value)))
+        elif op == '$in':
+            must.append(models.FieldCondition(key=field, match=models.MatchAny(any=value)))
+        elif op == '$nin':
+            must_not.append(models.FieldCondition(key=field, match=models.MatchAny(any=value)))
+        elif op in ('$gt', '$gte', '$lt', '$lte'):
+            range_kwargs: dict[str, Any] = {}
+            if op == '$gt':
+                range_kwargs['gt'] = value
+            elif op == '$gte':
+                range_kwargs['gte'] = value
+            elif op == '$lt':
+                range_kwargs['lt'] = value
+            elif op == '$lte':
+                range_kwargs['lte'] = value
+            must.append(models.FieldCondition(key=field, range=models.Range(**range_kwargs)))
+
+    return models.Filter(must=must or None, must_not=must_not or None)
 
 
 class QdrantVectorDatabase(VectorDatabase):
@@ -48,6 +79,7 @@ class QdrantVectorDatabase(VectorDatabase):
         ids: List[str],
         embeddings_list: List[List[float]],
         metadatas: List[Dict[str, Any]],
+        documents: List[str] | None = None,
     ) -> None:
         if not embeddings_list:
             return
@@ -60,19 +92,29 @@ class QdrantVectorDatabase(VectorDatabase):
         await self.client.upsert(collection_name=collection, points=points)
         self.ap.logger.info(f"Added {len(ids)} embeddings to Qdrant collection '{collection}'.")
 
-    async def search(self, collection: str, query_embedding: list[float], k: int = 5) -> dict[str, Any]:
+    async def search(
+        self,
+        collection: str,
+        query_embedding: list[float],
+        k: int = 5,
+        search_type: str = 'vector',
+        query_text: str = '',
+        filter: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         exists = await self.client.collection_exists(collection)
         if not exists:
             return {'ids': [[]], 'metadatas': [[]], 'distances': [[]]}
 
-        hits = (
-            await self.client.query_points(
-                collection_name=collection,
-                query=query_embedding,
-                limit=k,
-                with_payload=True,
-            )
-        ).points
+        query_kwargs: dict[str, Any] = dict(
+            collection_name=collection,
+            query=query_embedding,
+            limit=k,
+            with_payload=True,
+        )
+        if filter:
+            query_kwargs['query_filter'] = _build_qdrant_filter(filter)
+
+        hits = (await self.client.query_points(**query_kwargs)).points
         ids = [str(hit.id) for hit in hits]
         metadatas = [hit.payload or {} for hit in hits]
         # Qdrant's score is similarity; convert to a pseudo-distance for consistency
@@ -94,6 +136,19 @@ class QdrantVectorDatabase(VectorDatabase):
             ),
         )
         self.ap.logger.info(f"Deleted embeddings from Qdrant collection '{collection}' with file_id: {file_id}")
+
+    async def delete_by_filter(self, collection: str, filter: dict[str, Any]) -> int:
+        exists = await self.client.collection_exists(collection)
+        if not exists:
+            return 0
+
+        qdrant_filter = _build_qdrant_filter(filter)
+        await self.client.delete(
+            collection_name=collection,
+            points_selector=qdrant_filter,
+        )
+        self.ap.logger.info(f"Deleted embeddings from Qdrant collection '{collection}' by filter")
+        return 0  # Qdrant delete does not return a count
 
     async def delete_collection(self, collection: str):
         try:

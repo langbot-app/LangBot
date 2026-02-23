@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..core import app
-from .vdb import VectorDatabase
+from .vdb import VectorDatabase, SearchType
 from .vdbs.chroma import ChromaVectorDatabase
 from .vdbs.qdrant import QdrantVectorDatabase
 from .vdbs.seekdb import SeekDBVectorDatabase
@@ -68,12 +68,19 @@ class VectorDBManager:
             self.vector_db = ChromaVectorDatabase(self.ap)
             self.ap.logger.warning('No vector database backend configured, defaulting to Chroma.')
 
+    def get_supported_search_types(self) -> list[str]:
+        """Return the search types supported by the current VDB backend."""
+        if self.vector_db is None:
+            return [SearchType.VECTOR.value]
+        return [st.value for st in self.vector_db.supported_search_types()]
+
     async def upsert(
         self,
         collection_name: str,
         vectors: list[list[float]],
         ids: list[str],
         metadata: list[dict] | None = None,
+        documents: list[str] | None = None,
     ):
         """Proxy: Upsert vectors"""
         await self.vector_db.get_or_create_collection(collection_name)
@@ -82,6 +89,7 @@ class VectorDBManager:
             ids=ids,
             embeddings_list=vectors,
             metadatas=metadata or [{} for _ in vectors],
+            documents=documents,
         )
 
     async def search(
@@ -90,6 +98,8 @@ class VectorDBManager:
         query_vector: list[float],
         limit: int,
         filter: dict | None = None,
+        search_type: str = 'vector',
+        query_text: str = '',
     ) -> list[dict]:
         """Proxy: Search vectors.
 
@@ -101,6 +111,9 @@ class VectorDBManager:
             collection=collection_name,
             query_embedding=np.array(query_vector),
             k=limit,
+            search_type=search_type,
+            query_text=query_text,
+            filter=filter,
         )
 
         if not results or 'ids' not in results or not results['ids']:
@@ -140,15 +153,10 @@ class VectorDBManager:
         """Proxy: Delete an entire collection."""
         await self.vector_db.delete_collection(collection_name)
 
-    async def delete_by_filter(self, collection_name: str, filter: dict):
-        """Proxy: Delete vectors by filter.
+    async def delete_by_filter(self, collection_name: str, filter: dict) -> int:
+        """Proxy: Delete vectors by metadata filter.
 
-        Raises:
-            NotImplementedError: Filter-based deletion is not yet supported
-                by the VectorDatabase interface.
+        Returns:
+            Number of deleted vectors (best-effort; some backends return 0).
         """
-        raise NotImplementedError(
-            f"delete_by_filter called on collection '{collection_name}' but "
-            'filter-based deletion is not yet implemented in VectorDatabase interface. '
-            'Use delete_by_file_id for file-level deletion.'
-        )
+        return await self.vector_db.delete_by_filter(collection_name, filter)

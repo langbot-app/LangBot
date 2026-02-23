@@ -496,12 +496,17 @@ class RuntimeConnectionHandler(handler.Handler):
             vectors = data['vectors']
             ids = data['ids']
             metadata = data.get('metadata')
+            documents = data.get('documents')
             if len(vectors) != len(ids):
                 return handler.ActionResponse.error(message='vectors and ids must have same length')
             if metadata and len(metadata) != len(vectors):
                 return handler.ActionResponse.error(message='metadata must match vectors length')
+            if documents and len(documents) != len(vectors):
+                return handler.ActionResponse.error(message='documents must match vectors length')
             try:
-                await self.ap.rag_runtime_service.vector_upsert(collection_id, vectors, ids, metadata)
+                await self.ap.rag_runtime_service.vector_upsert(
+                    collection_id, vectors, ids, metadata, documents,
+                )
                 return handler.ActionResponse.success(data={})
             except Exception as e:
                 return _make_rag_error_response(e, 'VectorStoreError', collection_id=collection_id)
@@ -512,8 +517,12 @@ class RuntimeConnectionHandler(handler.Handler):
             query_vector = data['query_vector']
             top_k = data['top_k']
             filters = data.get('filters')
+            search_type = data.get('search_type', 'vector')
+            query_text = data.get('query_text', '')
             try:
-                results = await self.ap.rag_runtime_service.vector_search(collection_id, query_vector, top_k, filters)
+                results = await self.ap.rag_runtime_service.vector_search(
+                    collection_id, query_vector, top_k, filters, search_type, query_text,
+                )
                 return handler.ActionResponse.success(data={'results': results})
             except Exception as e:
                 return _make_rag_error_response(e, 'VectorStoreError', collection_id=collection_id)
