@@ -115,8 +115,10 @@ class SeekDBVectorDatabase(VectorDatabase):
 
         # Collection doesn't exist, create it
         if vector_size is None:
-            # Default dimension if not specified
-            vector_size = 384
+            raise ValueError(
+                f"Cannot create SeekDB collection '{collection}' without knowing the vector dimension. "
+                "Ensure add_embeddings is called before any standalone get_or_create_collection."
+            )
 
         # Create HNSW configuration
         config = HNSWConfiguration(dimension=vector_size, distance='cosine')
@@ -219,26 +221,69 @@ class SeekDBVectorDatabase(VectorDatabase):
         else:
             coll = self._collections[collection]
 
-        # Build query kwargs based on search type
-        query_kwargs: Dict[str, Any] = {'n_results': k}
-
-        if filter:
-            query_kwargs['where'] = filter
-
+        # Route by search type.
+        # pyseekdb's query() always requires embeddings, so full-text and
+        # hybrid modes use hybrid_search() which supports text-only queries
+        # and returns the same nested-list format with distances.
         if search_type == SearchType.FULL_TEXT:
             if not query_text:
                 return {'ids': [[]], 'metadatas': [[]], 'distances': [[]]}
-            query_kwargs['query_texts'] = [query_text]
-        elif search_type == SearchType.HYBRID:
-            # Hybrid: provide both embeddings and text for combined scoring
-            query_kwargs['query_embeddings'] = query_embedding
-            if query_text:
-                query_kwargs['query_texts'] = [query_text]
-        else:
-            # Default: vector search
-            query_kwargs['query_embeddings'] = query_embedding
 
-        results = await asyncio.to_thread(coll.query, **query_kwargs)
+            query_cfg: Dict[str, Any] = {
+                'where_document': {'$contains': query_text},
+                'n_results': k,
+            }
+            if filter:
+                query_cfg['where'] = filter
+
+            # TODO: pyseekdb hybrid_search with query-only (no knn) returns None
+            # for IDs due to column name mismatch (*/_id vs _id).
+            # See: https://github.com/oceanbase/pyseekdb/issues/171
+            results = await asyncio.to_thread(
+                coll.hybrid_search,
+                query=query_cfg,
+                knn=None,
+                n_results=k,
+                include=['documents', 'metadatas'],
+            )
+
+        elif search_type == SearchType.HYBRID:
+            if not query_text:
+                # Fall back to pure vector search when no text is provided
+                query_kwargs: Dict[str, Any] = {
+                    'n_results': k,
+                    'query_embeddings': query_embedding,
+                }
+                if filter:
+                    query_kwargs['where'] = filter
+                results = await asyncio.to_thread(coll.query, **query_kwargs)
+            else:
+                query_cfg = {
+                    'where_document': {'$contains': query_text},
+                    'n_results': k,
+                }
+                knn_cfg: Dict[str, Any] = {
+                    'query_embeddings': query_embedding,
+                    'n_results': k,
+                }
+                if filter:
+                    query_cfg['where'] = filter
+                    knn_cfg['where'] = filter
+
+                results = await asyncio.to_thread(
+                    coll.hybrid_search,
+                    query=query_cfg,
+                    knn=knn_cfg,
+                    rank={'rrf': {}},
+                    n_results=k,
+                    include=['documents', 'metadatas'],
+                )
+        else:
+            # Default: vector search via query()
+            query_kwargs = {'n_results': k, 'query_embeddings': query_embedding}
+            if filter:
+                query_kwargs['where'] = filter
+            results = await asyncio.to_thread(coll.query, **query_kwargs)
 
         self.ap.logger.info(
             f"SeekDB {search_type} search in '{collection}' returned {len(results.get('ids', [[]])[0])} results"

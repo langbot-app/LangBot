@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import numpy as np
-
 from ..core import app
 from .vdb import VectorDatabase, SearchType
 from .vdbs.chroma import ChromaVectorDatabase
@@ -83,7 +81,6 @@ class VectorDBManager:
         documents: list[str] | None = None,
     ):
         """Proxy: Upsert vectors"""
-        await self.vector_db.get_or_create_collection(collection_name)
         await self.vector_db.add_embeddings(
             collection=collection_name,
             ids=ids,
@@ -109,7 +106,7 @@ class VectorDBManager:
         """
         results = await self.vector_db.search(
             collection=collection_name,
-            query_embedding=np.array(query_vector),
+            query_embedding=query_vector,
             k=limit,
             search_type=search_type,
             query_text=query_text,
