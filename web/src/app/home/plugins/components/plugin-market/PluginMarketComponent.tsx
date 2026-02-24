@@ -350,16 +350,20 @@ function MarketPageContent({
   // 如果用户进行了筛选/搜索，推荐列表不显示，此时不需要去重。
   const visiblePlugins = useMemo(() => {
     const showRecommendations =
-      !searchQuery &&
-      componentFilter === 'all' &&
-      selectedTags.length === 0;
+      !searchQuery && componentFilter === 'all' && selectedTags.length === 0;
 
     if (!showRecommendations) {
       return plugins;
     }
 
     return plugins.filter((p) => !recommendedPluginIds.has(p.pluginId));
-  }, [plugins, recommendedPluginIds, searchQuery, componentFilter, selectedTags]);
+  }, [
+    plugins,
+    recommendedPluginIds,
+    searchQuery,
+    componentFilter,
+    selectedTags,
+  ]);
 
   // 加载更多
   const loadMore = useCallback(() => {
