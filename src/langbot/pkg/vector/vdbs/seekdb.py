@@ -93,7 +93,7 @@ class SeekDBVectorDatabase(VectorDatabase):
             {
                 '\x00': '',
                 '\\': '\\\\',
-                "'": "\\'",
+                "'": "''",    # Standard SQL escaping (OceanBase NO_BACKSLASH_ESCAPES)
                 '"': '\\"',
                 '\n': '\\n',
                 '\r': '\\r',
