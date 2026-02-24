@@ -173,11 +173,7 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                 if duration is not None:
                     body_builder = body_builder.duration(duration)
 
-                request = (
-                    CreateFileRequest.builder()
-                    .request_body(body_builder.build())
-                    .build()
-                )
+                request = CreateFileRequest.builder().request_body(body_builder.build()).build()
 
                 response = await api_client.im.v1.file.acreate(request)
 
@@ -327,9 +323,15 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                     # Guess file_type from extension
                     ext = os.path.splitext(file_name)[1].lstrip('.').lower() if file_name else ''
                     file_type_map = {
-                        'opus': 'opus', 'mp4': 'mp4', 'pdf': 'pdf',
-                        'doc': 'doc', 'docx': 'doc', 'xls': 'xls',
-                        'xlsx': 'xls', 'ppt': 'ppt', 'pptx': 'ppt',
+                        'opus': 'opus',
+                        'mp4': 'mp4',
+                        'pdf': 'pdf',
+                        'doc': 'doc',
+                        'docx': 'doc',
+                        'xls': 'xls',
+                        'xlsx': 'xls',
+                        'ppt': 'ppt',
+                        'pptx': 'ppt',
                     }
                     file_type = file_type_map.get(ext, 'stream')
                     file_key = await LarkMessageConverter.upload_file_to_lark(
@@ -339,9 +341,7 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                         media_items.append({'msg_type': 'file', 'content': {'file_key': file_key}})
             elif isinstance(msg, platform_message.Forward):
                 for node in msg.node_list:
-                    sub_elements, sub_media = await LarkMessageConverter.yiri2target(
-                        node.message_chain, api_client
-                    )
+                    sub_elements, sub_media = await LarkMessageConverter.yiri2target(node.message_chain, api_client)
                     message_elements.extend(sub_elements)
                     media_items.extend(sub_media)
 
@@ -1042,20 +1042,18 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if text_elements:
             # Determine msg_type based on content: use 'post' if at mentions
             # are present (requires post paragraph structure), otherwise 'text'
-            needs_post = any(
-                ele['tag'] == 'at'
-                for paragraph in text_elements
-                for ele in paragraph
-            )
+            needs_post = any(ele['tag'] == 'at' for paragraph in text_elements for ele in paragraph)
 
             if needs_post:
                 msg_type = 'post'
-                final_content = json.dumps({
-                    'zh_Hans': {
-                        'title': '',
-                        'content': text_elements,
-                    },
-                })
+                final_content = json.dumps(
+                    {
+                        'zh_Hans': {
+                            'title': '',
+                            'content': text_elements,
+                        },
+                    }
+                )
             else:
                 msg_type = 'text'
                 parts = []
@@ -1160,9 +1158,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             if text_elements:
                 parts = []
                 for paragraph in text_elements:
-                    para_text = ''.join(
-                        ele['text'] for ele in paragraph if ele['tag'] in ('text', 'md')
-                    )
+                    para_text = ''.join(ele['text'] for ele in paragraph if ele['tag'] in ('text', 'md'))
                     if para_text:
                         parts.append(para_text)
                 text_message = '\n\n'.join(parts)
