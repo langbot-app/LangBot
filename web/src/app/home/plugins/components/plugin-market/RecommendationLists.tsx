@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import PluginMarketCardComponent from './PluginMarketCardComponent';
-import { PluginMarketCardVO } from './PluginMarketCardVO';
+import PluginMarketCardComponent from './plugin-market-card/PluginMarketCardComponent';
+import { PluginMarketCardVO } from './plugin-market-card/PluginMarketCardVO';
 import { PluginV4 } from '@/app/infra/entities/plugin';
 import { I18nObject } from '@/app/infra/entities/common';
 import { extractI18nObject } from '@/i18n/I18nProvider';

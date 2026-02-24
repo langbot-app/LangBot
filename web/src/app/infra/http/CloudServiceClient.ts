@@ -4,6 +4,7 @@ import {
   ApiRespMarketplacePlugins,
 } from '@/app/infra/entities/api';
 import { PluginV4 } from '@/app/infra/entities/plugin';
+import { I18nObject } from '@/app/infra/entities/common';
 
 /**
  * 云服务客户端
@@ -109,7 +110,7 @@ export class CloudServiceClient extends BaseHttpClient {
 
 export interface RecommendationList {
   uuid: string;
-  label: Record<string, string>;
+  label: I18nObject;
   sort_order: number;
   plugins: PluginV4[];
 }
