@@ -1154,15 +1154,18 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         message_id = bot_message.resp_message_id
         msg_seq = bot_message.msg_sequence
         if msg_seq % 8 == 0 or is_final:
-            text_elements, _media_items = await self.message_converter.yiri2target(message, self.api_client)
+            text_elements, media_items = await self.message_converter.yiri2target(message, self.api_client)
 
             text_message = ''
             if text_elements:
-                for ele in text_elements[0]:
-                    if ele['tag'] == 'text':
-                        text_message += ele['text']
-                    elif ele['tag'] == 'md':
-                        text_message += ele['text']
+                parts = []
+                for paragraph in text_elements:
+                    para_text = ''.join(
+                        ele['text'] for ele in paragraph if ele['tag'] in ('text', 'md')
+                    )
+                    if para_text:
+                        parts.append(para_text)
+                text_message = '\n\n'.join(parts)
 
             # content = {
             #     'type': 'card_json',
@@ -1211,6 +1214,30 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     f'client.im.v1.message.patch failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
                 )
                 return
+
+            # Send media messages when streaming is done
+            if is_final and media_items:
+                for media in media_items:
+                    media_request: ReplyMessageRequest = (
+                        ReplyMessageRequest.builder()
+                        .message_id(message_source.message_chain.message_id)
+                        .request_body(
+                            ReplyMessageRequestBody.builder()
+                            .content(json.dumps(media['content']))
+                            .msg_type(media['msg_type'])
+                            .reply_in_thread(False)
+                            .uuid(str(uuid.uuid4()))
+                            .build()
+                        )
+                        .build()
+                    )
+                    media_response: ReplyMessageResponse = await self.api_client.im.v1.message.areply(
+                        media_request, req_opt
+                    )
+                    if not media_response.success():
+                        raise Exception(
+                            f'client.im.v1.message.reply ({media["msg_type"]}) failed, code: {media_response.code}, msg: {media_response.msg}, log_id: {media_response.get_log_id()}'
+                        )
 
     async def is_muted(self, group_id: int) -> bool:
         return False
