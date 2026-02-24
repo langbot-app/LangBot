@@ -552,3 +552,15 @@ class PluginRuntimeConnector:
             return []
 
         return await self.handler.list_rag_engines()
+
+    @alru_cache(ttl=60)
+    async def list_parsers(self) -> list[dict[str, Any]]:
+        """List all available parsers from plugins."""
+        if not self.is_enable_plugin:
+            return []
+        return await self.handler.list_parsers()
+
+    async def call_parser(self, plugin_id: str, context_data: dict[str, Any]) -> dict[str, Any]:
+        """Call plugin to parse a document."""
+        plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
+        return await self.handler.parse_document(plugin_author, plugin_name, context_data)

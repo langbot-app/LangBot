@@ -707,6 +707,12 @@ const enUS = {
       processing: 'Processing',
       completed: 'Completed',
       failed: 'Failed',
+      selectParser: 'Select Parser',
+      builtInParser: 'Provided by RAG engine',
+      noParserAvailable:
+        'No parser supports this file type. Please install a parser plugin that can handle this format.',
+      confirmUpload: 'Upload',
+      cancelUpload: 'Cancel',
     },
     deleteKnowledgeBaseConfirmation:
       'Are you sure you want to delete this knowledge base? All documents in this knowledge base will be deleted.',

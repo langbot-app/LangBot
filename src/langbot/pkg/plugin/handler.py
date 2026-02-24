@@ -557,6 +557,20 @@ class RuntimeConnectionHandler(handler.Handler):
             except Exception as e:
                 return _make_rag_error_response(e, 'FileServiceError', storage_path=storage_path)
 
+        @self.action(PluginToRuntimeAction.INVOKE_PARSER)
+        async def invoke_parser(data: dict[str, Any]) -> handler.ActionResponse:
+            """Plugin requests host to invoke a parser plugin."""
+            plugin_author = data['plugin_author']
+            plugin_name = data['plugin_name']
+            context_data = data['context']
+            try:
+                result = await self.ap.plugin_connector.call_parser(
+                    f'{plugin_author}/{plugin_name}', context_data
+                )
+                return handler.ActionResponse.success(data=result)
+            except Exception as e:
+                return _make_rag_error_response(e, 'ParserError')
+
         @self.action(CommonAction.PING)
         async def ping(data: dict[str, Any]) -> handler.ActionResponse:
             """Ping"""
@@ -913,3 +927,21 @@ class RuntimeConnectionHandler(handler.Handler):
         """List all available RAG engines from plugins."""
         result = await self.call_action(LangBotToRuntimeAction.LIST_RAG_ENGINES, {}, timeout=60)
         return result.get('engines', [])
+
+    # ================= Parser Capability Callers (LangBot -> Runtime) =================
+
+    async def list_parsers(self) -> list[dict[str, Any]]:
+        """List all available parsers from plugins."""
+        result = await self.call_action(LangBotToRuntimeAction.LIST_PARSERS, {}, timeout=60)
+        return result.get('parsers', [])
+
+    async def parse_document(
+        self, plugin_author: str, plugin_name: str, context_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Send PARSE_DOCUMENT action to runtime."""
+        result = await self.call_action(
+            LangBotToRuntimeAction.PARSE_DOCUMENT,
+            {'plugin_author': plugin_author, 'plugin_name': plugin_name, 'context': context_data},
+            timeout=300,
+        )
+        return result

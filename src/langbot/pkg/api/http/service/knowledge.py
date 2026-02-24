@@ -78,7 +78,7 @@ class KnowledgeService:
         if 'doc_ingestion' not in capabilities:
             raise Exception(f'This knowledge base does not support {operation}')
 
-    async def store_file(self, kb_uuid: str, file_id: str) -> str:
+    async def store_file(self, kb_uuid: str, file_id: str, parser_plugin_id: str | None = None) -> str:
         """存储文件"""
         runtime_kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
         if runtime_kb is None:
@@ -86,7 +86,7 @@ class KnowledgeService:
 
         await self._check_doc_capability(kb_uuid, 'document upload')
 
-        result = await runtime_kb.store_file(file_id)
+        result = await runtime_kb.store_file(file_id, parser_plugin_id=parser_plugin_id)
 
         # Update the KB's updated_at timestamp
         await self.ap.persistence_mgr.execute_async(
@@ -178,6 +178,19 @@ class KnowledgeService:
             self.ap.logger.warning(f'Failed to list RAG engines from plugins: {e}')
 
         return engines
+
+    async def list_parsers(self, mime_type: str | None = None) -> list[dict]:
+        """List available parsers, optionally filtered by MIME type."""
+        if not self.ap.plugin_connector.is_enable_plugin:
+            return []
+        try:
+            parsers = await self.ap.plugin_connector.list_parsers()
+            if mime_type:
+                parsers = [p for p in parsers if mime_type in p.get('supported_mime_types', [])]
+            return parsers
+        except Exception as e:
+            self.ap.logger.warning(f'Failed to list parsers: {e}')
+            return []
 
     async def get_engine_creation_schema(self, plugin_id: str) -> dict:
         """Get creation settings schema for a specific RAG engine."""

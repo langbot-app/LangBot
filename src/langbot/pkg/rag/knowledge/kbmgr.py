@@ -1,4 +1,5 @@
 from __future__ import annotations
+import base64
 import mimetypes
 import os.path
 import traceback
@@ -28,7 +29,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
     async def initialize(self):
         pass
 
-    async def _store_file_task(self, file: persistence_rag.File, task_context: taskmgr.TaskContext):
+    async def _store_file_task(self, file: persistence_rag.File, task_context: taskmgr.TaskContext, parser_plugin_id: str | None = None):
         try:
             # set file status to processing
             await self.ap.persistence_mgr.execute_async(
@@ -47,6 +48,19 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             if mime_type is None:
                 mime_type = 'application/octet-stream'
 
+            # If a parser plugin is specified, call it before ingestion
+            parsed_content = None
+            if parser_plugin_id:
+                task_context.set_current_action('Parsing file')
+                file_bytes = await self.ap.storage_mgr.storage_provider.load(file.file_name)
+                parse_context = {
+                    'file_content_base64': base64.b64encode(file_bytes).decode('utf-8'),
+                    'mime_type': mime_type,
+                    'filename': file.file_name,
+                    'metadata': {},
+                }
+                parsed_content = await self.ap.plugin_connector.call_parser(parser_plugin_id, parse_context)
+
             # Call plugin to ingest document
             result = await self._ingest_document(
                 {
@@ -57,6 +71,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                     'mime_type': mime_type,
                 },
                 file.file_name,  # storage path
+                parsed_content=parsed_content,
             )
 
             # Check plugin result status
@@ -86,7 +101,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             # delete file from storage
             await self.ap.storage_mgr.storage_provider.delete(file.file_name)
 
-    async def store_file(self, file_id: str) -> str:
+    async def store_file(self, file_id: str, parser_plugin_id: str | None = None) -> str:
         # pre checking
         if not await self.ap.storage_mgr.storage_provider.exists(file_id):
             raise Exception(f'File {file_id} not found')
@@ -96,7 +111,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         extension = ext.lstrip('.').lower() if ext else ''
 
         if extension == 'zip':
-            return await self._store_zip_file(file_id)
+            return await self._store_zip_file(file_id, parser_plugin_id=parser_plugin_id)
 
         file_uuid = str(uuid.uuid4())
         kb_id = self.knowledge_base_entity.uuid
@@ -116,7 +131,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         # run background task asynchronously
         ctx = taskmgr.TaskContext.new()
         wrapper = self.ap.task_mgr.create_user_task(
-            self._store_file_task(file_obj, task_context=ctx),
+            self._store_file_task(file_obj, task_context=ctx, parser_plugin_id=parser_plugin_id),
             kind='knowledge-operation',
             name=f'knowledge-store-file-{file_id}',
             label=f'Store file {file_id}',
@@ -124,7 +139,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         )
         return wrapper.id
 
-    async def _store_zip_file(self, zip_file_id: str) -> str:
+    async def _store_zip_file(self, zip_file_id: str, parser_plugin_id: str | None = None) -> str:
         """Handle ZIP file by extracting each document and storing them separately."""
         self.ap.logger.info(f'Processing ZIP file: {zip_file_id}')
 
@@ -161,7 +176,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
 
                     await self.ap.storage_mgr.storage_provider.save(extracted_file_id, file_content)
 
-                    task_id = await self.store_file(extracted_file_id)
+                    task_id = await self.store_file(extracted_file_id, parser_plugin_id=parser_plugin_id)
                     stored_file_tasks.append(task_id)
 
                     self.ap.logger.info(
@@ -258,6 +273,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         self,
         file_metadata: dict[str, Any],
         storage_path: str,
+        parsed_content: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Call plugin to ingest document."""
         kb = self.knowledge_base_entity
@@ -279,6 +295,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             'knowledge_base_id': kb.uuid,
             'collection_id': kb.collection_id or kb.uuid,
             'creation_settings': kb.creation_settings or {},
+            'parsed_content': parsed_content,
         }
 
         try:

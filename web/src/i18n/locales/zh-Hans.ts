@@ -677,6 +677,11 @@ const zhHans = {
       processing: '处理中',
       completed: '完成',
       failed: '失败',
+      selectParser: '选择解析器',
+      builtInParser: '由 RAG 引擎提供',
+      noParserAvailable: '没有解析器支持此文件类型，请安装支持该格式的解析器插件。',
+      confirmUpload: '上传',
+      cancelUpload: '取消',
     },
     deleteKnowledgeBaseConfirmation:
       '你确定要删除这个知识库吗？此知识库下的所有文档将被删除。',

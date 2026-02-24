@@ -710,6 +710,12 @@ const jaJP = {
       processing: '処理中',
       completed: '完了',
       failed: '失敗',
+      selectParser: 'パーサーを選択',
+      builtInParser: 'RAGエンジンが提供',
+      noParserAvailable:
+        'このファイル形式に対応するパーサーがありません。対応するパーサープラグインをインストールしてください。',
+      confirmUpload: 'アップロード',
+      cancelUpload: 'キャンセル',
     },
     deleteKnowledgeBaseConfirmation:
       '本当にこの知識ベースを削除しますか？この知識ベースに紐付けられたドキュメントは削除されます。',

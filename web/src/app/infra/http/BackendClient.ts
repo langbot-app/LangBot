@@ -39,6 +39,7 @@ import {
   ApiRespModelProvider,
   ModelProvider,
   ApiRespRAGEngines,
+  ApiRespParsers,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
@@ -375,9 +376,11 @@ export class BackendClient extends BaseHttpClient {
   public uploadKnowledgeBaseFile(
     uuid: string,
     file_id: string,
+    parserPluginId?: string,
   ): Promise<object> {
     return this.post(`/api/v1/knowledge/bases/${uuid}/files`, {
       file_id,
+      parser_plugin_id: parserPluginId,
     });
   }
 
@@ -412,6 +415,14 @@ export class BackendClient extends BaseHttpClient {
   // ============ RAG Engines API ============
   public getRagEngines(): Promise<ApiRespRAGEngines> {
     return this.get('/api/v1/knowledge/engines');
+  }
+
+  // ============ Parsers API ============
+  public listParsers(mimeType?: string): Promise<ApiRespParsers> {
+    const params = mimeType
+      ? `?mime_type=${encodeURIComponent(mimeType)}`
+      : '';
+    return this.get(`/api/v1/knowledge/parsers${params}`);
   }
 
   // ============ Plugins API ============
