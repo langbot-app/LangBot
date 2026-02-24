@@ -93,6 +93,7 @@ class SeekDBVectorDatabase(VectorDatabase):
             {
                 '\x00': '',
                 '\\': '\\\\',
+                "'": "\\'",
                 '"': '\\"',
                 '\n': '\\n',
                 '\r': '\\r',
@@ -180,7 +181,7 @@ class SeekDBVectorDatabase(VectorDatabase):
 
         kwargs: Dict[str, Any] = dict(ids=ids, embeddings=embeddings_list, metadatas=cleaned_metadatas)
         if documents is not None:
-            kwargs['documents'] = documents
+            kwargs['documents'] = [doc.translate(self._escape_table) for doc in documents]
         await asyncio.to_thread(coll.add, **kwargs)
 
         self.ap.logger.info(f"Added {len(ids)} embeddings to SeekDB collection '{collection}'")
