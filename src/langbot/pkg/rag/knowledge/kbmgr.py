@@ -437,6 +437,7 @@ class RAGManager:
         name: str,
         rag_engine_plugin_id: str,
         creation_settings: dict,
+        retrieval_settings: dict | None = None,
         description: str = '',
     ) -> persistence_rag.KnowledgeBase:
         """Create a new knowledge base using a RAG plugin."""
@@ -463,6 +464,7 @@ class RAGManager:
             'rag_engine_plugin_id': rag_engine_plugin_id,
             'collection_id': collection_id,
             'creation_settings': creation_settings,
+            'retrieval_settings': retrieval_settings or {},
         }
 
         # Create Entity

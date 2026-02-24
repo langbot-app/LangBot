@@ -35,6 +35,7 @@ class KnowledgeService:
             name=kb_data.get('name', 'Untitled'),
             rag_engine_plugin_id=rag_engine_plugin_id,
             creation_settings=kb_data.get('creation_settings', {}),
+            retrieval_settings=kb_data.get('retrieval_settings', {}),
             description=kb_data.get('description', ''),
         )
         return kb.uuid
