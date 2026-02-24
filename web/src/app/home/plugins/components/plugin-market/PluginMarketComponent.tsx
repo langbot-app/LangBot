@@ -23,6 +23,8 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { TagsFilter } from './TagsFilter';
 import { PluginTag } from '@/app/infra/http/CloudServiceClient';
 
+import { RecommendationLists, RecommendationList } from './RecommendationLists';
+
 interface SortOption {
   value: string;
   label: string;
@@ -50,6 +52,9 @@ function MarketPageContent({
   const [currentPage, setCurrentPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [sortOption, setSortOption] = useState('install_count_desc');
+  const [recommendationLists, setRecommendationLists] = useState<
+    RecommendationList[]
+  >([]);
 
   const pageSize = 16; // 每页16个，4行x4列
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -202,6 +207,20 @@ function MarketPageContent({
       console.error('Failed to fetch tags:', error);
     }
   };
+
+  // Fetch recommendation lists
+  useEffect(() => {
+    async function fetchRecommendationLists() {
+      try {
+        const response =
+          await getCloudServiceClientSync().getRecommendationLists();
+        setRecommendationLists(response.lists || []);
+      } catch (error) {
+        console.error('Failed to fetch recommendation lists:', error);
+      }
+    }
+    fetchRecommendationLists();
+  }, []);
 
   // 搜索功能
   const handleSearch = useCallback(
@@ -494,6 +513,20 @@ function MarketPageContent({
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto px-3 sm:px-4"
       >
+        {/* Recommendation Lists */}
+        {!searchQuery &&
+          componentFilter === 'all' &&
+          selectedTags.length === 0 &&
+          currentPage === 1 && (
+            <div className="pt-4">
+              <RecommendationLists
+                lists={recommendationLists}
+                tagNames={tagNames}
+                onInstall={handleInstallPlugin}
+              />
+            </div>
+          )}
+
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <LoadingSpinner text={t('market.loading')} />
