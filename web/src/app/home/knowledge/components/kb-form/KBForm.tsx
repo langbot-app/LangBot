@@ -72,6 +72,7 @@ function parseCreationSchema(
         required: item.required,
         type: parseDynamicFormItemType(item.type),
         options: item.options,
+        show_if: item.show_if,
       }),
   );
 }
@@ -389,6 +390,7 @@ export default function KBForm({
                       setConfigSettings(val as Record<string, unknown>)
                     }
                     isEditing={isEditing}
+                    externalDependentValues={retrievalSettings}
                   />
                 </div>
               </div>
@@ -407,6 +409,7 @@ export default function KBForm({
                     onSubmit={(val) =>
                       setRetrievalSettings(val as Record<string, unknown>)
                     }
+                    externalDependentValues={configSettings}
                   />
                 </div>
               </div>

@@ -21,12 +21,14 @@ export default function DynamicFormComponent({
   initialValues,
   onFileUploaded,
   isEditing,
+  externalDependentValues,
 }: {
   itemConfigList: IDynamicFormItemSchema[];
   onSubmit?: (val: object) => unknown;
   initialValues?: Record<string, object>;
   onFileUploaded?: (fileKey: string) => void;
   isEditing?: boolean;
+  externalDependentValues?: Record<string, unknown>;
 }) {
   const isInitialMount = useRef(true);
   const previousInitialValues = useRef(initialValues);
@@ -150,6 +152,9 @@ export default function DynamicFormComponent({
     }
   }, [initialValues, form, itemConfigList]);
 
+  // Get reactive form values for conditional rendering
+  const watchedValues = form.watch();
+
   // 监听表单值变化
   useEffect(() => {
     const subscription = form.watch(() => {
@@ -171,6 +176,33 @@ export default function DynamicFormComponent({
     <Form {...form}>
       <div className="space-y-4">
         {itemConfigList.map((config) => {
+          if (config.show_if) {
+            const dependValue =
+              watchedValues[config.show_if.field as keyof typeof watchedValues] !== undefined
+                ? watchedValues[config.show_if.field as keyof typeof watchedValues]
+                : externalDependentValues?.[config.show_if.field];
+
+            if (
+              config.show_if.operator === 'eq' &&
+              dependValue !== config.show_if.value
+            ) {
+              return null;
+            }
+            if (
+              config.show_if.operator === 'neq' &&
+              dependValue === config.show_if.value
+            ) {
+              return null;
+            }
+            if (
+              config.show_if.operator === 'in' &&
+              Array.isArray(config.show_if.value) &&
+              !config.show_if.value.includes(dependValue)
+            ) {
+              return null;
+            }
+          }
+
           // All fields are disabled when editing (creation_settings are immutable)
           const isFieldDisabled = !!isEditing;
           return (

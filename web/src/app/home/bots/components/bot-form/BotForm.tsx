@@ -313,6 +313,7 @@ export default function BotForm({
               required: item.required,
               type: parseDynamicFormItemType(item.type),
               options: item.options,
+              show_if: item.show_if,
             }),
         ),
       );
@@ -337,7 +338,7 @@ export default function BotForm({
             use_pipeline_uuid: bot.use_pipeline_uuid ?? '',
             webhook_full_url: bot.adapter_runtime_values
               ? ((bot.adapter_runtime_values as Record<string, unknown>)
-                  .webhook_full_url as string)
+                .webhook_full_url as string)
               : undefined,
           });
         })
