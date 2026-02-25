@@ -60,7 +60,7 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
   const [messages, setMessages] = useState<SessionMessage[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const loadSessions = useCallback(async () => {
     setLoadingSessions(true);
@@ -103,8 +103,16 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
     }
   }, [selectedSessionId, loadMessages]);
 
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Scroll within the messages container only, without affecting parent containers
+    const container = messagesContainerRef.current;
+    if (container) {
+      // ScrollArea renders a viewport div as [data-radix-scroll-area-viewport]
+      const viewport = container.querySelector('[data-radix-scroll-area-viewport]');
+      const scrollTarget = viewport || container;
+      scrollTarget.scrollTop = scrollTarget.scrollHeight;
+    }
   }, [messages]);
 
   const parseMessageChain = (content: string): MessageChainComponent[] => {
@@ -418,7 +426,7 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
             </div>
 
             {/* Messages - Chat Bubble Style (like DebugDialog) */}
-            <ScrollArea className="flex-1 min-h-0 p-4 bg-white dark:bg-black">
+            <ScrollArea ref={messagesContainerRef} className="flex-1 min-h-0 p-4 bg-white dark:bg-black">
               <div className="space-y-4">
                 {loadingMessages ? (
                   <div className="text-center text-muted-foreground py-12 text-sm">
@@ -475,7 +483,6 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
                     );
                   })
                 )}
-                <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
           </>
