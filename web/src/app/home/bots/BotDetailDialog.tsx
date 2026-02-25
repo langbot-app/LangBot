@@ -137,7 +137,9 @@ export default function BotDetailDialog({
             <main className="flex flex-1 flex-col h-[70vh]">
               <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
                 <DialogTitle>{t('bots.createBot')}</DialogTitle>
-                <DialogDescription className="sr-only">{t('bots.createBot')}</DialogDescription>
+                <DialogDescription className="sr-only">
+                  {t('bots.createBot')}
+                </DialogDescription>
               </DialogHeader>
               <div className="flex-1 overflow-y-auto px-6 pb-6">
                 <BotForm
@@ -217,7 +219,13 @@ export default function BotDetailDialog({
                       : t('bots.sessionMonitor.title')}
                 </DialogDescription>
               </DialogHeader>
-              <div className={activeMenu === 'sessions' ? 'flex-1 min-h-0' : 'flex-1 overflow-y-auto px-6 pb-6'}>
+              <div
+                className={
+                  activeMenu === 'sessions'
+                    ? 'flex-1 min-h-0'
+                    : 'flex-1 overflow-y-auto px-6 pb-6'
+                }
+              >
                 {activeMenu === 'config' && (
                   <BotForm
                     initBotId={botId}
@@ -266,7 +274,9 @@ export default function BotDetailDialog({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t('common.confirmDelete')}</DialogTitle>
-            <DialogDescription className="sr-only">{t('bots.deleteConfirmation')}</DialogDescription>
+            <DialogDescription className="sr-only">
+              {t('bots.deleteConfirmation')}
+            </DialogDescription>
           </DialogHeader>
           <div className="py-4">{t('bots.deleteConfirmation')}</div>
           <DialogFooter>

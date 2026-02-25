@@ -9,9 +9,7 @@ class DBMigrateMonitoringMessageRole(migration.DBMigration):
     async def upgrade(self):
         """Upgrade"""
         try:
-            sql_text = sqlalchemy.text(
-                "ALTER TABLE monitoring_messages ADD COLUMN role VARCHAR(50) DEFAULT 'user'"
-            )
+            sql_text = sqlalchemy.text("ALTER TABLE monitoring_messages ADD COLUMN role VARCHAR(50) DEFAULT 'user'")
             await self.ap.persistence_mgr.execute_async(sql_text)
         except Exception:
             # Column may already exist
