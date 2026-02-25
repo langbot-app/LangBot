@@ -38,12 +38,12 @@ def _deserialize_message_chain(data: List[Dict[str, Any]]) -> platform_message.M
 
     for item in data:
         if not isinstance(item, dict) or 'type' not in item:
-            components.append(platform_message.Unknown(text=f"Invalid component: {item}"))
+            components.append(platform_message.Unknown(text=f'Invalid component: {item}'))
             continue
 
         comp_type = item['type']
         if comp_type not in component_types:
-            components.append(platform_message.Unknown(text=f"Unknown type: {comp_type}"))
+            components.append(platform_message.Unknown(text=f'Unknown type: {comp_type}'))
             continue
 
         comp_class = component_types[comp_type]

@@ -400,40 +400,34 @@ class AiocqhttpAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 for component in node.message_chain:
                     if isinstance(component, platform_message.Plain):
                         if component.text:
-                            content.append({
-                                "type": "text",
-                                "data": {"text": component.text}
-                            })
+                            content.append({'type': 'text', 'data': {'text': component.text}})
                     elif isinstance(component, platform_message.Image):
                         img_data = {}
                         if component.base64:
                             b64 = component.base64
                             if b64.startswith('data:'):
                                 b64 = b64.split(',', 1)[-1] if ',' in b64 else b64
-                            img_data["file"] = f"base64://{b64}"
+                            img_data['file'] = f'base64://{b64}'
                         elif component.url:
-                            img_data["file"] = component.url
+                            img_data['file'] = component.url
                         elif component.path:
-                            img_data["file"] = str(component.path)
+                            img_data['file'] = str(component.path)
 
                         if img_data:
-                            content.append({
-                                "type": "image",
-                                "data": img_data
-                            })
+                            content.append({'type': 'image', 'data': img_data})
 
             if not content:
                 continue
 
             # Build node data - use user_id and nickname format for NapCat
-            user_id = str(node.sender_id) if node.sender_id else str(self.bot_account_id or "10000")
+            user_id = str(node.sender_id) if node.sender_id else str(self.bot_account_id or '10000')
             node_data = {
-                "type": "node",
-                "data": {
-                    "user_id": user_id,
-                    "nickname": node.sender_name or "未知",
-                    "content": content,
-                }
+                'type': 'node',
+                'data': {
+                    'user_id': user_id,
+                    'nickname': node.sender_name or '未知',
+                    'content': content,
+                },
             }
 
             messages.append(node_data)
@@ -443,42 +437,40 @@ class AiocqhttpAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
 
         # Build the full message payload for NapCat's send_forward_msg API
         # This matches the format used by GiveMeSetuPlugin
-        bot_id = str(self.bot_account_id) if self.bot_account_id else "10000"
+        bot_id = str(self.bot_account_id) if self.bot_account_id else '10000'
         payload = {
-            "group_id": str(group_id),
-            "user_id": bot_id,  # Required by NapCat for display
-            "messages": messages,
+            'group_id': str(group_id),
+            'user_id': bot_id,  # Required by NapCat for display
+            'messages': messages,
         }
 
         # Add display settings if available
         if forward.display:
             if forward.display.title:
-                payload["news"] = [{"text": forward.display.title}]
+                payload['news'] = [{'text': forward.display.title}]
             if forward.display.brief:
-                payload["prompt"] = forward.display.brief
+                payload['prompt'] = forward.display.brief
             if forward.display.summary:
-                payload["summary"] = forward.display.summary
+                payload['summary'] = forward.display.summary
             if forward.display.source:
-                payload["source"] = forward.display.source
+                payload['source'] = forward.display.source
 
         try:
             # Use send_forward_msg (NapCat extended API) instead of send_group_forward_msg
-            await self.logger.info(f"Sending forward message to group {group_id} with {len(messages)} nodes, payload keys: {list(payload.keys())}")
-            result = await self.bot.call_action("send_forward_msg", **payload)
-            await self.logger.info(f"Forward message sent to group {group_id}, result: {result}")
+            await self.logger.info(
+                f'Sending forward message to group {group_id} with {len(messages)} nodes, payload keys: {list(payload.keys())}'
+            )
+            result = await self.bot.call_action('send_forward_msg', **payload)
+            await self.logger.info(f'Forward message sent to group {group_id}, result: {result}')
         except Exception as e:
-            await self.logger.error(f"Failed to send forward message to group {group_id}: {e}")
+            await self.logger.error(f'Failed to send forward message to group {group_id}: {e}')
             # Fallback: try standard OneBot API with integer group_id
             try:
-                await self.logger.info(f"Trying fallback API send_group_forward_msg")
-                await self.bot.call_action(
-                    "send_group_forward_msg",
-                    group_id=group_id,
-                    messages=messages
-                )
-                await self.logger.info(f"Forward message sent via fallback API to group {group_id}")
+                await self.logger.info('Trying fallback API send_group_forward_msg')
+                await self.bot.call_action('send_group_forward_msg', group_id=group_id, messages=messages)
+                await self.logger.info(f'Forward message sent via fallback API to group {group_id}')
             except Exception as e2:
-                await self.logger.error(f"Fallback also failed: {e2}")
+                await self.logger.error(f'Fallback also failed: {e2}')
                 raise
 
     async def reply_message(
