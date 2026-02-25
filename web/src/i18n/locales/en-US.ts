@@ -589,6 +589,7 @@ const enUS = {
     copyConfirmTitle: 'Confirm Copy',
     copyConfirmation:
       'Are you sure you want to copy this pipeline? This will create a new pipeline with all configurations.',
+    unsavedChanges: 'You have unsaved changes',
     extensions: {
       title: 'Extensions',
       loadError: 'Failed to load plugins',

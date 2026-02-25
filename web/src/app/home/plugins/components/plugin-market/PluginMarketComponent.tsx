@@ -1,6 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  Suspense,
+  useMemo,
+} from 'react';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -22,6 +29,8 @@ import { ApiRespMarketplacePlugins } from '@/app/infra/entities/api';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { TagsFilter } from './TagsFilter';
 import { PluginTag } from '@/app/infra/http/CloudServiceClient';
+
+import { RecommendationLists, RecommendationList } from './RecommendationLists';
 
 interface SortOption {
   value: string;
@@ -50,6 +59,9 @@ function MarketPageContent({
   const [currentPage, setCurrentPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [sortOption, setSortOption] = useState('install_count_desc');
+  const [recommendationLists, setRecommendationLists] = useState<
+    RecommendationList[]
+  >([]);
 
   const pageSize = 16; // 每页16个，4行x4列
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -203,6 +215,20 @@ function MarketPageContent({
     }
   };
 
+  // Fetch recommendation lists
+  useEffect(() => {
+    async function fetchRecommendationLists() {
+      try {
+        const response =
+          await getCloudServiceClientSync().getRecommendationLists();
+        setRecommendationLists(response.lists || []);
+      } catch (error) {
+        console.error('Failed to fetch recommendation lists:', error);
+      }
+    }
+    fetchRecommendationLists();
+  }, []);
+
   // 搜索功能
   const handleSearch = useCallback(
     (query: string) => {
@@ -305,6 +331,39 @@ function MarketPageContent({
       }
     };
   }, []);
+
+  // 计算所有推荐插件的 ID 集合
+  const recommendedPluginIds = useMemo(() => {
+    const ids = new Set<string>();
+    recommendationLists.forEach((list) => {
+      list.plugins.forEach((plugin) => {
+        ids.add(`${plugin.author} / ${plugin.name}`);
+      });
+    });
+    return ids;
+  }, [recommendationLists]);
+
+  // 过滤掉已在推荐列表中展示的插件
+  // 仅在显示推荐列表的条件下（无搜索、无筛选、第一页或后续页的累积数据中）进行过滤
+  // 注意：如果用户翻页，我们希望一直保持去重，否则推荐过的插件会在第二页出现
+  // 但是推荐列表只在第一页且无筛选时显示。
+  // 如果用户进行了筛选/搜索，推荐列表不显示，此时不需要去重。
+  const visiblePlugins = useMemo(() => {
+    const showRecommendations =
+      !searchQuery && componentFilter === 'all' && selectedTags.length === 0;
+
+    if (!showRecommendations) {
+      return plugins;
+    }
+
+    return plugins.filter((p) => !recommendedPluginIds.has(p.pluginId));
+  }, [
+    plugins,
+    recommendedPluginIds,
+    searchQuery,
+    componentFilter,
+    selectedTags,
+  ]);
 
   // 加载更多
   const loadMore = useCallback(() => {
@@ -494,6 +553,20 @@ function MarketPageContent({
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto px-3 sm:px-4"
       >
+        {/* Recommendation Lists */}
+        {!searchQuery &&
+          componentFilter === 'all' &&
+          selectedTags.length === 0 &&
+          currentPage === 1 && (
+            <div className="pt-4">
+              <RecommendationLists
+                lists={recommendationLists}
+                tagNames={tagNames}
+                onInstall={handleInstallPlugin}
+              />
+            </div>
+          )}
+
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <LoadingSpinner text={t('market.loading')} />
@@ -507,7 +580,7 @@ function MarketPageContent({
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6 pb-6 pt-4">
-              {plugins.map((plugin) => (
+              {visiblePlugins.map((plugin) => (
                 <PluginMarketCardComponent
                   key={plugin.pluginId}
                   cardVO={plugin}

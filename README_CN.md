@@ -1,6 +1,6 @@
 <p align="center">
 <a href="https://langbot.app">
-<img width="130" src="https://docs.langbot.app/langbot-logo.png" alt="LangBot"/>
+<img width="130" src="res/logo-blue.png" alt="LangBot"/>
 </a>
 
 <div align="center">
@@ -33,24 +33,24 @@
 
 ---
 
-## 🚀 什么是 LangBot？
+## 什么是 LangBot？
 
 LangBot 是一个**开源的生产级平台**，用于构建 AI 驱动的即时通信机器人。它将大语言模型（LLM）连接到各种聊天平台，帮助你创建能够对话、执行任务、并集成到现有工作流程中的智能 Agent。
 
 ### 核心能力
 
-- **💬 AI 对话与 Agent** — 多轮对话、工具调用、多模态、流式输出。自带 RAG（知识库），深度集成 [Dify](https://dify.ai)、[Coze](https://coze.com)、[n8n](https://n8n.io)、[Langflow](https://langflow.org) 等 LLMOps 平台。
-- **🤖 全平台支持** — 一套代码，覆盖 QQ、微信、企业微信、飞书、钉钉、Discord、Telegram、Slack、LINE、KOOK 等平台。
-- **🛠️ 生产就绪** — 访问控制、限速、敏感词过滤、全面监控与异常处理，已被多家企业采用。
-- **🧩 插件生态** — 数百个插件，事件驱动架构，组件扩展，适配 [MCP 协议](https://modelcontextprotocol.io/)。
-- **😻 Web 管理面板** — 通过浏览器直观地配置、管理和监控机器人，无需手动编辑配置文件。
-- **📊 多流水线架构** — 不同机器人用于不同场景，具备全面的监控和异常处理能力。
+- **AI 对话与 Agent** — 多轮对话、工具调用、多模态、流式输出。自带 RAG（知识库），深度集成 [Dify](https://dify.ai)、[Coze](https://coze.com)、[n8n](https://n8n.io)、[Langflow](https://langflow.org) 等 LLMOps 平台。
+- **全平台支持** — 一套代码，覆盖 QQ、微信、企业微信、飞书、钉钉、Discord、Telegram、Slack、LINE、KOOK 等平台。
+- **生产就绪** — 访问控制、限速、敏感词过滤、全面监控与异常处理，已被多家企业采用。
+- **插件生态** — 数百个插件，事件驱动架构，组件扩展，适配 [MCP 协议](https://modelcontextprotocol.io/)。
+- **Web 管理面板** — 通过浏览器直观地配置、管理和监控机器人，无需手动编辑配置文件。
+- **多流水线架构** — 不同机器人用于不同场景，具备全面的监控和异常处理能力。
 
 [→ 了解更多功能特性](https://docs.langbot.app/zh/insight/features.html)
 
 ---
 
-## 📦 快速开始
+## 快速开始
 
 ### 一键启动
 
@@ -77,7 +77,7 @@ docker compose up -d
 
 ---
 
-## ✨ 支持的平台
+## 支持的平台
 
 | 平台 | 状态 | 备注 |
 |------|------|------|
@@ -94,7 +94,7 @@ docker compose up -d
 
 ---
 
-## 🤖 支持的大模型与集成
+## 支持的大模型与集成
 
 | 提供商 | 类型 | 状态 |
 |--------|------|------|
@@ -140,7 +140,7 @@ docker compose up -d
 
 ---
 
-## 🌟 为什么选择 LangBot？
+## 为什么选择 LangBot？
 
 | 使用场景 | LangBot 如何帮助 |
 |----------|------------------|
@@ -151,7 +151,7 @@ docker compose up -d
 
 ---
 
-## 🎮 在线演示
+## 在线演示
 
 **立即体验：** https://demo.langbot.dev/
 - 邮箱：`demo@langbot.app`
@@ -161,23 +161,23 @@ docker compose up -d
 
 ---
 
-## 🤝 社区
+## 社区
 
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&label=Discord)](https://discord.gg/wdNEHETs87)
 [![QQ Group](https://img.shields.io/badge/%E7%A4%BE%E5%8C%BAQQ%E7%BE%A4-1030838208-blue)](https://qm.qq.com/q/DxZZcNxM1W)
 
-- 💬 [Discord 社区](https://discord.gg/wdNEHETs87)
-- 💬 [QQ 社区群](https://qm.qq.com/q/DxZZcNxM1W)
+- [Discord 社区](https://discord.gg/wdNEHETs87)
+- [QQ 社区群](https://qm.qq.com/q/DxZZcNxM1W)
 
 ---
 
-## ⭐ Star 趋势
+## Star 趋势
 
 [![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
 
 ---
 
-## 😘 贡献者
+## 贡献者
 
 感谢所有[贡献者](https://github.com/langbot-app/LangBot/graphs/contributors)对 LangBot 的帮助：
 

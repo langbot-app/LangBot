@@ -143,8 +143,20 @@ export default function DynamicFormComponent({
 
   // 监听表单值变化
   useEffect(() => {
+    // Emit initial form values immediately so the parent always has a valid snapshot,
+    // even if the user saves without modifying any field.
+    // form.watch(callback) only fires on subsequent changes, not on mount.
+    const formValues = form.getValues();
+    const initialFinalValues = itemConfigList.reduce(
+      (acc, item) => {
+        acc[item.name] = formValues[item.name] ?? item.default;
+        return acc;
+      },
+      {} as Record<string, object>,
+    );
+    onSubmit?.(initialFinalValues);
+
     const subscription = form.watch(() => {
-      // 获取完整的表单值，确保包含所有默认值
       const formValues = form.getValues();
       const finalValues = itemConfigList.reduce(
         (acc, item) => {

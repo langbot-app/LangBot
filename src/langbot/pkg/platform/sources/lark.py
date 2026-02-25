@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import lark_oapi
-from lark_oapi.api.im.v1 import CreateImageRequest, CreateImageRequestBody
+from lark_oapi.api.im.v1 import CreateImageRequest, CreateImageRequestBody, CreateFileRequest, CreateFileRequestBody
 import traceback
 import typing
 import asyncio
@@ -142,6 +142,88 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
             return None
 
     @staticmethod
+    async def upload_file_to_lark(
+        file_bytes: bytes,
+        api_client: lark_oapi.Client,
+        file_type: str,
+        file_name: str = 'file',
+        duration: typing.Optional[int] = None,
+    ) -> typing.Optional[str]:
+        """Upload a file to Lark and return the file_key, or None if upload fails.
+
+        Args:
+            file_bytes: Raw file bytes.
+            api_client: Lark API client.
+            file_type: Lark file type, e.g. 'opus', 'mp4', 'pdf', 'doc', etc.
+            file_name: Display name for the file.
+            duration: Duration in milliseconds (for audio files).
+        """
+        try:
+            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                temp_file.write(file_bytes)
+                temp_file_path = temp_file.name
+
+            try:
+                body_builder = (
+                    CreateFileRequestBody.builder()
+                    .file_type(file_type)
+                    .file_name(file_name)
+                    .file(open(temp_file_path, 'rb'))
+                )
+                if duration is not None:
+                    body_builder = body_builder.duration(duration)
+
+                request = CreateFileRequest.builder().request_body(body_builder.build()).build()
+
+                response = await api_client.im.v1.file.acreate(request)
+
+                if not response.success():
+                    print(
+                        f'client.im.v1.file.create failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}'
+                    )
+                    return None
+
+                return response.data.file_key
+            finally:
+                os.unlink(temp_file_path)
+        except Exception as e:
+            print(f'Failed to upload file to Lark: {e}')
+            traceback.print_exc()
+            return None
+
+    @staticmethod
+    async def _get_media_bytes(
+        msg: typing.Union[platform_message.Voice, platform_message.File],
+    ) -> typing.Optional[bytes]:
+        """Get bytes from a Voice or File message (base64, url, or path)."""
+        data = None
+
+        if msg.base64:
+            try:
+                base64_str = msg.base64
+                if ',' in base64_str:
+                    base64_str = base64_str.split(',', 1)[1]
+                data = base64.b64decode(base64_str)
+            except Exception:
+                pass
+        elif msg.url:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(msg.url) as resp:
+                        if resp.status == 200:
+                            data = await resp.read()
+            except Exception:
+                pass
+        elif msg.path:
+            try:
+                with open(msg.path, 'rb') as f:
+                    data = f.read()
+            except Exception:
+                pass
+
+        return data
+
+    @staticmethod
     async def yiri2target(
         message_chain: platform_message.MessageChain, api_client: lark_oapi.Client
     ) -> typing.Tuple[list, list]:
@@ -150,10 +232,10 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
         Returns:
             Tuple of (text_elements, image_keys):
             - text_elements: List of paragraphs for post message format
-            - image_keys: List of image_key strings for separate image messages
+            - media_items: List of dicts with 'msg_type' and 'content' for separate media messages
         """
         message_elements = []
-        image_keys = []
+        media_items = []
         pending_paragraph = []
 
         # Regex pattern to match Markdown image syntax: ![alt](url)
@@ -196,40 +278,77 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                 # Check for and extract Markdown images from text
                 cleaned_text, extracted_urls = await process_text_with_images(text)
 
-                # Add cleaned text if not empty
+                # Split by blank lines to create separate paragraphs for Lark post format.
+                # Lark truncates md elements at the first \n\n, so we must use the
+                # post format's native paragraph structure instead.
                 if cleaned_text:
-                    pending_paragraph.append({'tag': 'md', 'text': cleaned_text})
+                    segments = re.split(r'\n\s*\n', cleaned_text)
+                    for i, segment in enumerate(segments):
+                        segment = segment.strip()
+                        if not segment:
+                            continue
+                        if i > 0 and pending_paragraph:
+                            message_elements.append(pending_paragraph)
+                            pending_paragraph = []
+                        pending_paragraph.append({'tag': 'md', 'text': segment})
 
                 # Process extracted image URLs
                 for url in extracted_urls:
-                    # Create a temporary Image message to upload
                     temp_image = platform_message.Image(url=url)
                     image_key = await LarkMessageConverter.upload_image_to_lark(temp_image, api_client)
                     if image_key:
-                        image_keys.append(image_key)
+                        media_items.append({'msg_type': 'image', 'content': {'image_key': image_key}})
 
             elif isinstance(msg, platform_message.At):
                 pending_paragraph.append({'tag': 'at', 'user_id': msg.target, 'style': []})
             elif isinstance(msg, platform_message.AtAll):
                 pending_paragraph.append({'tag': 'at', 'user_id': 'all', 'style': []})
             elif isinstance(msg, platform_message.Image):
-                # Upload image and get image_key
                 image_key = await LarkMessageConverter.upload_image_to_lark(msg, api_client)
                 if image_key:
-                    # Store image_key for separate image message
-                    image_keys.append(image_key)
+                    media_items.append({'msg_type': 'image', 'content': {'image_key': image_key}})
+            elif isinstance(msg, platform_message.Voice):
+                data = await LarkMessageConverter._get_media_bytes(msg)
+                if data:
+                    duration = int(msg.length * 1000) if msg.length else None
+                    file_key = await LarkMessageConverter.upload_file_to_lark(
+                        data, api_client, file_type='opus', file_name='voice.opus', duration=duration
+                    )
+                    if file_key:
+                        media_items.append({'msg_type': 'audio', 'content': {'file_key': file_key}})
+            elif isinstance(msg, platform_message.File):
+                data = await LarkMessageConverter._get_media_bytes(msg)
+                if data:
+                    file_name = msg.name or 'file'
+                    # Guess file_type from extension
+                    ext = os.path.splitext(file_name)[1].lstrip('.').lower() if file_name else ''
+                    file_type_map = {
+                        'opus': 'opus',
+                        'mp4': 'mp4',
+                        'pdf': 'pdf',
+                        'doc': 'doc',
+                        'docx': 'doc',
+                        'xls': 'xls',
+                        'xlsx': 'xls',
+                        'ppt': 'ppt',
+                        'pptx': 'ppt',
+                    }
+                    file_type = file_type_map.get(ext, 'stream')
+                    file_key = await LarkMessageConverter.upload_file_to_lark(
+                        data, api_client, file_type=file_type, file_name=file_name
+                    )
+                    if file_key:
+                        media_items.append({'msg_type': 'file', 'content': {'file_key': file_key}})
             elif isinstance(msg, platform_message.Forward):
                 for node in msg.node_list:
-                    sub_elements, sub_image_keys = await LarkMessageConverter.yiri2target(
-                        node.message_chain, api_client
-                    )
+                    sub_elements, sub_media = await LarkMessageConverter.yiri2target(node.message_chain, api_client)
                     message_elements.extend(sub_elements)
-                    image_keys.extend(sub_image_keys)
+                    media_items.extend(sub_media)
 
         if pending_paragraph:
             message_elements.append(pending_paragraph)
 
-        return message_elements, image_keys
+        return message_elements, media_items
 
     @staticmethod
     async def target2yiri(
@@ -917,23 +1036,40 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     ):
         # 不再需要了，因为message_id已经被包含到message_chain中
         # lark_event = await self.event_converter.yiri2target(message_source)
-        text_elements, image_keys = await self.message_converter.yiri2target(message, self.api_client)
+        text_elements, media_items = await self.message_converter.yiri2target(message, self.api_client)
 
         # Send text message if there are text elements
         if text_elements:
-            final_content = {
-                'zh_Hans': {
-                    'title': '',
-                    'content': text_elements,
-                },
-            }
+            # Determine msg_type based on content: use 'post' if at mentions
+            # are present (requires post paragraph structure), otherwise 'text'
+            needs_post = any(ele['tag'] == 'at' for paragraph in text_elements for ele in paragraph)
+
+            if needs_post:
+                msg_type = 'post'
+                final_content = json.dumps(
+                    {
+                        'zh_Hans': {
+                            'title': '',
+                            'content': text_elements,
+                        },
+                    }
+                )
+            else:
+                msg_type = 'text'
+                parts = []
+                for paragraph in text_elements:
+                    para_text = ''.join(ele.get('text', '') for ele in paragraph)
+                    if para_text:
+                        parts.append(para_text)
+                final_content = json.dumps({'text': '\n\n'.join(parts)})
+
             request: ReplyMessageRequest = (
                 ReplyMessageRequest.builder()
                 .message_id(message_source.message_chain.message_id)
                 .request_body(
                     ReplyMessageRequestBody.builder()
-                    .content(json.dumps(final_content))
-                    .msg_type('post')
+                    .content(final_content)
+                    .msg_type(msg_type)
                     .reply_in_thread(False)
                     .uuid(str(uuid.uuid4()))
                     .build()
@@ -963,17 +1099,15 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     f'client.im.v1.message.reply failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
                 )
 
-        # Send image messages separately using msg_type='image'
-        for image_key in image_keys:
-            image_content = json.dumps({'image_key': image_key})
-
+        # Send media messages separately (image, audio, file, etc.)
+        for media in media_items:
             request: ReplyMessageRequest = (
                 ReplyMessageRequest.builder()
                 .message_id(message_source.message_chain.message_id)
                 .request_body(
                     ReplyMessageRequestBody.builder()
-                    .content(image_content)
-                    .msg_type('image')
+                    .content(json.dumps(media['content']))
+                    .msg_type(media['msg_type'])
                     .reply_in_thread(False)
                     .uuid(str(uuid.uuid4()))
                     .build()
@@ -1000,7 +1134,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
             if not response.success():
                 raise Exception(
-                    f'client.im.v1.message.reply (image) failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
+                    f'client.im.v1.message.reply ({media["msg_type"]}) failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
                 )
 
     async def reply_message_chunk(
@@ -1018,15 +1152,16 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         message_id = bot_message.resp_message_id
         msg_seq = bot_message.msg_sequence
         if msg_seq % 8 == 0 or is_final:
-            text_elements, image_keys = await self.message_converter.yiri2target(message, self.api_client)
+            text_elements, media_items = await self.message_converter.yiri2target(message, self.api_client)
 
             text_message = ''
             if text_elements:
-                for ele in text_elements[0]:
-                    if ele['tag'] == 'text':
-                        text_message += ele['text']
-                    elif ele['tag'] == 'md':
-                        text_message += ele['text']
+                parts = []
+                for paragraph in text_elements:
+                    para_text = ''.join(ele['text'] for ele in paragraph if ele['tag'] in ('text', 'md'))
+                    if para_text:
+                        parts.append(para_text)
+                text_message = '\n\n'.join(parts)
 
             # content = {
             #     'type': 'card_json',
@@ -1075,6 +1210,30 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     f'client.im.v1.message.patch failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
                 )
                 return
+
+            # Send media messages when streaming is done
+            if is_final and media_items:
+                for media in media_items:
+                    media_request: ReplyMessageRequest = (
+                        ReplyMessageRequest.builder()
+                        .message_id(message_source.message_chain.message_id)
+                        .request_body(
+                            ReplyMessageRequestBody.builder()
+                            .content(json.dumps(media['content']))
+                            .msg_type(media['msg_type'])
+                            .reply_in_thread(False)
+                            .uuid(str(uuid.uuid4()))
+                            .build()
+                        )
+                        .build()
+                    )
+                    media_response: ReplyMessageResponse = await self.api_client.im.v1.message.areply(
+                        media_request, req_opt
+                    )
+                    if not media_response.success():
+                        raise Exception(
+                            f'client.im.v1.message.reply ({media["msg_type"]}) failed, code: {media_response.code}, msg: {media_response.msg}, log_id: {media_response.get_log_id()}'
+                        )
 
     async def is_muted(self, group_id: int) -> bool:
         return False

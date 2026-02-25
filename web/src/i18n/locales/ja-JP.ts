@@ -591,6 +591,7 @@ const jaJP = {
     copyConfirmTitle: 'コピーの確認',
     copyConfirmation:
       'このパイプラインをコピーしますか？すべての設定を含む新しいパイプラインが作成されます。',
+    unsavedChanges: '未保存の変更があります',
     extensions: {
       title: 'プラグイン統合',
       loadError: 'プラグインリストの読み込みに失敗しました',

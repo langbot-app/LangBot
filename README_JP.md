@@ -1,6 +1,6 @@
 <p align="center">
 <a href="https://langbot.app">
-<img width="130" src="https://docs.langbot.app/langbot-logo.png" alt="LangBot"/>
+<img width="130" src="res/logo-blue.png" alt="LangBot"/>
 </a>
 
 <div align="center">
@@ -31,24 +31,24 @@
 
 ---
 
-## 🚀 LangBot とは？
+## LangBot とは？
 
 LangBot は、AI搭載のインスタントメッセージングボットを構築するための**オープンソースの本番グレードプラットフォーム**です。大規模言語モデル（LLM）をあらゆるチャットプラットフォームに接続し、会話、タスク実行、既存のワークフローとの統合が可能なインテリジェントエージェントを作成できます。
 
 ### 主な機能
 
-- **💬 AI対話とエージェント** — マルチターン対話、ツール呼び出し、マルチモーダル対応、ストリーミング出力。RAG（ナレッジベース）を内蔵し、[Dify](https://dify.ai)、[Coze](https://coze.com)、[n8n](https://n8n.io)、[Langflow](https://langflow.org) と深く統合。
-- **🤖 ユニバーサルIMプラットフォーム対応** — 単一のコードベースで Discord、Telegram、Slack、LINE、QQ、WeChat、WeCom、Lark、DingTalk、KOOK に対応。
-- **🛠️ 本番環境対応** — アクセス制御、レート制限、センシティブワードフィルタリング、包括的な監視、例外処理を搭載。エンタープライズの信頼に応える品質。
-- **🧩 プラグインエコシステム** — 数百のプラグイン、イベント駆動アーキテクチャ、コンポーネント拡張、[MCPプロトコル](https://modelcontextprotocol.io/)対応。
-- **😻 Web管理パネル** — 直感的なブラウザインターフェースからボットの設定、管理、監視が可能。YAML編集は不要。
-- **📊 マルチパイプラインアーキテクチャ** — 異なるシナリオに異なるボットを配置し、包括的な監視と例外処理を実現。
+- **AI対話とエージェント** — マルチターン対話、ツール呼び出し、マルチモーダル対応、ストリーミング出力。RAG（ナレッジベース）を内蔵し、[Dify](https://dify.ai)、[Coze](https://coze.com)、[n8n](https://n8n.io)、[Langflow](https://langflow.org) と深く統合。
+- **ユニバーサルIMプラットフォーム対応** — 単一のコードベースで Discord、Telegram、Slack、LINE、QQ、WeChat、WeCom、Lark、DingTalk、KOOK に対応。
+- **本番環境対応** — アクセス制御、レート制限、センシティブワードフィルタリング、包括的な監視、例外処理を搭載。エンタープライズの信頼に応える品質。
+- **プラグインエコシステム** — 数百のプラグイン、イベント駆動アーキテクチャ、コンポーネント拡張、[MCPプロトコル](https://modelcontextprotocol.io/)対応。
+- **Web管理パネル** — 直感的なブラウザインターフェースからボットの設定、管理、監視が可能。YAML編集は不要。
+- **マルチパイプラインアーキテクチャ** — 異なるシナリオに異なるボットを配置し、包括的な監視と例外処理を実現。
 
 [→ すべての機能について詳しく見る](https://docs.langbot.app/ja/insight/features.html)
 
 ---
 
-## 📦 クイックスタート
+## クイックスタート
 
 ### ワンライン起動
 
@@ -75,7 +75,7 @@ docker compose up -d
 
 ---
 
-## ✨ 対応プラットフォーム
+## 対応プラットフォーム
 
 | プラットフォーム | ステータス | 備考 |
 |----------|--------|-------|
@@ -93,7 +93,7 @@ docker compose up -d
 
 ---
 
-## 🤖 対応LLMと統合
+## 対応LLMと統合
 
 | プロバイダー | タイプ | ステータス |
 |----------|------|--------|
@@ -123,7 +123,7 @@ docker compose up -d
 
 ---
 
-## 🌟 なぜ LangBot？
+## なぜ LangBot？
 
 | ユースケース | LangBot の活用方法 |
 |----------|-------------------|
@@ -134,7 +134,7 @@ docker compose up -d
 
 ---
 
-## 🎮 ライブデモ
+## ライブデモ
 
 **今すぐ試す:** https://demo.langbot.dev/
 - メール: `demo@langbot.app`
@@ -144,21 +144,21 @@ docker compose up -d
 
 ---
 
-## 🤝 コミュニティ
+## コミュニティ
 
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&label=Discord)](https://discord.gg/wdNEHETs87)
 
-- 💬 [Discord コミュニティ](https://discord.gg/wdNEHETs87)
+- [Discord コミュニティ](https://discord.gg/wdNEHETs87)
 
 ---
 
-## ⭐ Star 推移
+## Star 推移
 
 [![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
 
 ---
 
-## 😘 コントリビューター
+## コントリビューター
 
 LangBot をより良くするために貢献してくださったすべての[コントリビューター](https://github.com/langbot-app/LangBot/graphs/contributors)に感謝します:
 

@@ -565,6 +565,7 @@ const zhHans = {
     copyConfirmTitle: '确认复制',
     copyConfirmation:
       '确定要复制这个流水线吗？复制将创建一个包含完整配置的新流水线。',
+    unsavedChanges: '有未保存的更改',
     extensions: {
       title: '扩展集成',
       loadError: '加载插件列表失败',
