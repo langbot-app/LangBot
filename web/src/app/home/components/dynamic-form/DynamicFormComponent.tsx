@@ -141,6 +141,11 @@ export default function DynamicFormComponent({
     }
   }, [initialValues, form, itemConfigList]);
 
+  // Stable ref for onSubmit to avoid re-triggering the effect when the
+  // parent passes a new closure on every render.
+  const onSubmitRef = useRef(onSubmit);
+  onSubmitRef.current = onSubmit;
+
   // 监听表单值变化
   useEffect(() => {
     // Emit initial form values immediately so the parent always has a valid snapshot,
@@ -154,7 +159,7 @@ export default function DynamicFormComponent({
       },
       {} as Record<string, object>,
     );
-    onSubmit?.(initialFinalValues);
+    onSubmitRef.current?.(initialFinalValues);
 
     const subscription = form.watch(() => {
       const formValues = form.getValues();
@@ -165,10 +170,10 @@ export default function DynamicFormComponent({
         },
         {} as Record<string, object>,
       );
-      onSubmit?.(finalValues);
+      onSubmitRef.current?.(finalValues);
     });
     return () => subscription.unsubscribe();
-  }, [form, onSubmit, itemConfigList]);
+  }, [form, itemConfigList]);
 
   return (
     <Form {...form}>
