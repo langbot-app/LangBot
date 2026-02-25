@@ -18,7 +18,7 @@
             "regexp": []
         },
         "message-aggregation": {
-            "enabled": true,
+            "enabled": false,
             "delay": 1.5
         },
         "misc": {

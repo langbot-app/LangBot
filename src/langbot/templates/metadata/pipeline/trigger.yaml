@@ -140,7 +140,7 @@ stages:
           zh_Hans: 如果启用，同一用户连续发送的消息将在延迟后合并处理
         type: boolean
         required: true
-        default: true
+        default: false
       - name: delay
         label:
           en_US: Aggregation Delay (seconds)
