@@ -377,10 +377,15 @@ class AiocqhttpAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         # Check if message contains a Forward component
         forward_msg = message.get_first(platform_message.Forward)
-        if forward_msg and target_type == 'group':
-            # Send as merged forward message via OneBot API
-            await self._send_forward_message(int(target_id), forward_msg)
-            return
+        if forward_msg:
+            if target_type == 'group':
+                # Send as merged forward message via OneBot API
+                await self._send_forward_message(int(target_id), forward_msg)
+                return
+            else:
+                await self.logger.warning(
+                    f'Forward message is only supported for group targets, got target_type={target_type}. Falling through to normal send.'
+                )
 
         aiocq_msg = (await AiocqhttpMessageConverter.yiri2target(message))[0]
 
@@ -439,7 +444,7 @@ class AiocqhttpAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         # This matches the format used by GiveMeSetuPlugin
         bot_id = str(self.bot_account_id) if self.bot_account_id else '10000'
         payload = {
-            'group_id': str(group_id),
+            'group_id': group_id,
             'user_id': bot_id,  # Required by NapCat for display
             'messages': messages,
         }

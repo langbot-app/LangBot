@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import typing
-from typing import Any, List, Dict
+from typing import Any
 import base64
 import traceback
 
@@ -24,76 +24,6 @@ from ..entity.persistence import bstorage as persistence_bstorage
 
 from ..core import app
 from ..utils import constants
-
-
-def _deserialize_message_chain(data: List[Dict[str, Any]]) -> platform_message.MessageChain:
-    """Deserialize message chain with proper handling of Forward messages.
-
-    The default MessageChain.model_validate doesn't properly deserialize nested
-    MessageChain in ForwardMessageNode, causing data loss. This function handles
-    that case explicitly.
-    """
-    components = []
-    component_types = platform_message.MessageChain._get_component_types()
-
-    for item in data:
-        if not isinstance(item, dict) or 'type' not in item:
-            components.append(platform_message.Unknown(text=f'Invalid component: {item}'))
-            continue
-
-        comp_type = item['type']
-        if comp_type not in component_types:
-            components.append(platform_message.Unknown(text=f'Unknown type: {comp_type}'))
-            continue
-
-        comp_class = component_types[comp_type]
-
-        # Special handling for Forward messages
-        if comp_type == 'Forward':
-            node_list = []
-            for node_data in item.get('node_list', []):
-                # Recursively deserialize message_chain in each node
-                mc_data = node_data.get('message_chain', [])
-                if isinstance(mc_data, list):
-                    mc = _deserialize_message_chain(mc_data)
-                elif isinstance(mc_data, platform_message.MessageChain):
-                    mc = mc_data
-                else:
-                    mc = platform_message.MessageChain([])
-
-                node = platform_message.ForwardMessageNode(
-                    sender_id=node_data.get('sender_id', ''),
-                    sender_name=node_data.get('sender_name', ''),
-                    message_chain=mc,
-                    message_id=node_data.get('message_id', 0),
-                )
-                node_list.append(node)
-
-            display_data = item.get('display', {})
-            display = platform_message.ForwardMessageDiaplay(
-                title=display_data.get('title', 'Chat history'),
-                brief=display_data.get('brief', '[Chat history]'),
-                source=display_data.get('source', 'Chat history'),
-                preview=display_data.get('preview', []),
-                summary=display_data.get('summary', 'View forwarded messages'),
-            )
-
-            forward = platform_message.Forward(
-                display=display,
-                node_list=node_list,
-            )
-            components.append(forward)
-        else:
-            # For other component types, use default validation
-            # but handle Quote's nested MessageChain
-            if comp_type == 'Quote' and 'origin' in item:
-                origin_data = item['origin']
-                if isinstance(origin_data, list):
-                    item['origin'] = _deserialize_message_chain(origin_data)
-
-            components.append(comp_class.model_validate(item))
-
-    return platform_message.MessageChain(root=components)
 
 
 class RuntimeConnectionHandler(handler.Handler):
@@ -350,7 +280,7 @@ class RuntimeConnectionHandler(handler.Handler):
             message_chain = data['message_chain']
 
             # Use custom deserializer that properly handles Forward messages
-            message_chain_obj = _deserialize_message_chain(message_chain)
+            message_chain_obj = platform_message.MessageChain.model_validate(message_chain)
 
             bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
             if bot is None:
