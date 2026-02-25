@@ -78,7 +78,6 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
     setLoadingMessages(true);
     try {
       const response = await httpClient.getSessionMessages(sessionId);
-      // Sort messages chronologically (ascending) for chat view
       const sorted = (response.messages ?? []).sort(
         (a, b) =>
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
@@ -103,13 +102,12 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
     }
   }, [selectedSessionId, loadMessages]);
 
-
   useEffect(() => {
-    // Scroll within the messages container only, without affecting parent containers
     const container = messagesContainerRef.current;
     if (container) {
-      // ScrollArea renders a viewport div as [data-radix-scroll-area-viewport]
-      const viewport = container.querySelector('[data-radix-scroll-area-viewport]');
+      const viewport = container.querySelector(
+        '[data-radix-scroll-area-viewport]',
+      );
       const scrollTarget = viewport || container;
       scrollTarget.scrollTop = scrollTarget.scrollHeight;
     }
@@ -130,7 +128,6 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
   const isUserMessage = (msg: SessionMessage): boolean => {
     if (msg.role === 'assistant') return false;
     if (msg.role === 'user') return true;
-    // Fallback for old messages without role field
     return !msg.runner_name;
   };
 
@@ -149,7 +146,7 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
         return (
           <span
             key={index}
-            className="inline-flex align-middle mx-1 px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded text-xs"
+            className="inline-flex align-middle mx-0.5 px-1.5 py-0.5 bg-blue-200/60 dark:bg-blue-800/60 text-blue-700 dark:text-blue-300 rounded-md text-xs font-medium"
           >
             @{displayName}
           </span>
@@ -160,7 +157,7 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
         return (
           <span
             key={index}
-            className="inline-flex align-middle mx-1 px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded text-xs"
+            className="inline-flex align-middle mx-0.5 px-1.5 py-0.5 bg-blue-200/60 dark:bg-blue-800/60 text-blue-700 dark:text-blue-300 rounded-md text-xs font-medium"
           >
             @All
           </span>
@@ -173,18 +170,31 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
           return (
             <span
               key={index}
-              className="text-gray-500 dark:text-gray-400 text-xs"
+              className="inline-flex items-center gap-1 text-gray-400 dark:text-gray-500 text-xs"
             >
+              <svg
+                className="w-3.5 h-3.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z"
+                />
+              </svg>
               [Image]
             </span>
           );
         }
         return (
-          <div key={index} className="my-1">
+          <div key={index} className="my-1.5">
             <img
               src={imageUrl}
               alt="Image"
-              className="max-w-full max-h-48 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+              className="max-w-full max-h-52 rounded-xl cursor-pointer hover:opacity-90 transition-opacity shadow-sm"
             />
           </div>
         );
@@ -197,23 +207,23 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
           return (
             <span
               key={index}
-              className="text-gray-500 dark:text-gray-400 text-xs"
+              className="inline-flex items-center gap-1 text-gray-400 dark:text-gray-500 text-xs"
             >
-              [Voice]
+              🎙 [Voice]
             </span>
           );
         }
         return (
-          <div key={index} className="my-1 flex items-center gap-2">
-            <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
+          <div key={index} className="my-1.5">
+            <div className="inline-flex items-center gap-2 px-3 py-2 bg-white/50 dark:bg-gray-900/50 rounded-xl">
               <audio
                 controls
                 src={voiceUrl}
                 className="h-8"
-                style={{ maxWidth: '200px' }}
+                style={{ maxWidth: '220px' }}
               />
               {voice.length && voice.length > 0 && (
-                <span className="text-xs text-gray-500 dark:text-gray-400">
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
                   {voice.length}s
                 </span>
               )}
@@ -227,9 +237,9 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
         return (
           <div
             key={index}
-            className="mb-1 pl-2 border-l-2 border-gray-400 dark:border-gray-500"
+            className="mb-2 pl-2.5 border-l-2 border-gray-300 dark:border-gray-600 opacity-80"
           >
-            <div className="text-sm opacity-75">
+            <div className="text-[13px]">
               {quote.origin?.map((comp, idx) =>
                 renderMessageComponent(comp as MessageChainComponent, idx),
               )}
@@ -244,11 +254,26 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
       case 'File': {
         const file = component as MessageChainComponent & { name?: string };
         return (
-          <div key={index} className="my-1 flex items-center gap-2 text-sm">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" />
+          <div
+            key={index}
+            className="my-1.5 inline-flex items-center gap-2 px-3 py-2 bg-white/50 dark:bg-gray-900/50 rounded-xl text-sm"
+          >
+            <svg
+              className="w-4 h-4 text-gray-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.5}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13"
+              />
             </svg>
-            <span>[File] {file.name || 'Unknown'}</span>
+            <span className="text-gray-700 dark:text-gray-300">
+              {file.name || 'File'}
+            </span>
           </div>
         );
       }
@@ -257,7 +282,7 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
         return (
           <span
             key={index}
-            className="text-gray-500 dark:text-gray-400 text-xs"
+            className="text-gray-400 dark:text-gray-500 text-xs"
           >
             [{component.type}]
           </span>
@@ -268,7 +293,7 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
   const renderMessageContent = (msg: SessionMessage) => {
     const chain = parseMessageChain(msg.message_content);
     return (
-      <div className="text-sm leading-relaxed whitespace-pre-wrap">
+      <div className="text-[14px] leading-relaxed whitespace-pre-wrap break-words">
         {chain.map((component, index) =>
           renderMessageComponent(component, index),
         )}
@@ -313,18 +338,30 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
     return `${diffDays}d`;
   };
 
+  /** Get a preview of the last message for session list */
+  const getSessionPreview = (session: SessionInfo): string => {
+    // We don't have last message content in session info,
+    // so show message count and relative time
+    return `${session.message_count} ${t('bots.sessionMonitor.messages')}`;
+  };
+
+  const selectedSession = sessions.find(
+    (s) => s.session_id === selectedSessionId,
+  );
+
   return (
-    <div className="flex h-full min-h-0 gap-0">
+    <div className="flex h-full min-h-0 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0a0a0a]">
       {/* Left Panel: Session List */}
-      <div className="w-56 flex-shrink-0 border-r border-gray-200 dark:border-gray-700 flex flex-col min-h-0">
-        <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 shrink-0 flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+      <div className="w-72 flex-shrink-0 border-r border-gray-200 dark:border-gray-800 flex flex-col min-h-0 bg-gray-50/50 dark:bg-[#111]">
+        {/* Session List Header */}
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 shrink-0 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
             {t('bots.sessionMonitor.sessions')}
-          </span>
+          </h3>
           <Button
             variant="ghost"
             size="icon"
-            className="w-6 h-6"
+            className="w-7 h-7 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800"
             onClick={loadSessions}
             disabled={loadingSessions}
           >
@@ -342,52 +379,113 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
             </svg>
           </Button>
         </div>
+
+        {/* Session List */}
         <ScrollArea className="flex-1 min-h-0">
           {loadingSessions && sessions.length === 0 ? (
-            <div className="text-center text-muted-foreground py-8 text-sm">
+            <div className="flex flex-col items-center justify-center py-16 text-sm text-gray-400">
+              <svg
+                className="w-5 h-5 mb-2 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
+              </svg>
               {t('bots.sessionMonitor.loading')}
             </div>
           ) : sessions.length === 0 ? (
-            <div className="text-center text-muted-foreground py-8 text-sm">
-              {t('bots.sessionMonitor.noSessions')}
+            <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+              <div className="w-12 h-12 mb-3 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                <svg
+                  className="w-6 h-6 text-gray-400 dark:text-gray-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={1.5}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 0 1-.825-.242m9.345-8.334a2.126 2.126 0 0 0-.476-.095 48.64 48.64 0 0 0-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0 0 11.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155"
+                  />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                {t('bots.sessionMonitor.noSessions')}
+              </p>
             </div>
           ) : (
-            <div className="p-1">
-              {sessions.map((session) => (
-                <button
-                  key={session.session_id}
-                  className={cn(
-                    'w-full text-left px-3 py-2.5 rounded-md mb-0.5 transition-colors',
-                    selectedSessionId === session.session_id
-                      ? 'bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800'
-                      : 'hover:bg-gray-50 dark:hover:bg-gray-800 border border-transparent',
-                  )}
-                  onClick={() => setSelectedSessionId(session.session_id)}
-                >
-                  <div className="flex items-center gap-1.5 mb-1">
-                    {session.is_active && (
-                      <div className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
+            <div className="p-2 space-y-0.5">
+              {sessions.map((session) => {
+                const isSelected = selectedSessionId === session.session_id;
+                return (
+                  <button
+                    key={session.session_id}
+                    className={cn(
+                      'w-full text-left px-3 py-3 rounded-lg transition-all duration-150',
+                      isSelected
+                        ? 'bg-blue-50 dark:bg-blue-950/50 shadow-sm'
+                        : 'hover:bg-gray-100 dark:hover:bg-gray-800/60',
                     )}
-                    <span className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
-                      {session.user_id || session.session_id}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1 mb-1">
-                    {session.platform && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
-                        {session.platform}
+                    onClick={() =>
+                      setSelectedSessionId(session.session_id)
+                    }
+                  >
+                    {/* Top row: user + time */}
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        {/* Avatar circle */}
+                        <div
+                          className={cn(
+                            'w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-semibold',
+                            isSelected
+                              ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300'
+                              : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300',
+                          )}
+                        >
+                          {session.is_active && (
+                            <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-white dark:border-gray-900" />
+                          )}
+                          {(session.user_id || session.session_id)
+                            .slice(0, 2)
+                            .toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                            {session.user_id || session.session_id.slice(0, 12)}
+                          </div>
+                        </div>
+                      </div>
+                      <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums flex-shrink-0 ml-2">
+                        {formatRelativeTime(session.last_activity)}
                       </span>
-                    )}
-                    <span className="text-[10px] text-gray-500 dark:text-gray-400">
-                      {session.message_count}{' '}
-                      {t('bots.sessionMonitor.messages')}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-gray-400 dark:text-gray-500">
-                    {formatRelativeTime(session.last_activity)}
-                  </div>
-                </button>
-              ))}
+                    </div>
+                    {/* Bottom row: preview + badges */}
+                    <div className="flex items-center gap-1.5 pl-10">
+                      {session.platform && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-gray-200/80 dark:bg-gray-700/80 text-gray-500 dark:text-gray-400 flex-shrink-0">
+                          {session.platform}
+                        </span>
+                      )}
+                      <span className="text-xs text-gray-400 dark:text-gray-500 truncate">
+                        {getSessionPreview(session)}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </ScrollArea>
@@ -396,45 +494,150 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
       {/* Right Panel: Messages */}
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
         {!selectedSessionId ? (
-          <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-            {t('bots.sessionMonitor.selectSession')}
+          /* Empty state */
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
+            <div className="w-16 h-16 mb-4 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+              <svg
+                className="w-8 h-8 text-gray-300 dark:text-gray-600"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z"
+                />
+              </svg>
+            </div>
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+              {t('bots.sessionMonitor.selectSession')}
+            </p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              {t('bots.sessionMonitor.selectSessionHint', {
+                defaultValue: 'Choose a session from the left to view messages',
+              })}
+            </p>
           </div>
         ) : (
           <>
-            {/* Session Info Header */}
-            <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 shrink-0 flex items-center gap-2">
-              <span className="text-xs font-mono text-gray-600 dark:text-gray-400 truncate">
-                {selectedSessionId}
-              </span>
-              {(() => {
-                const session = sessions.find(
-                  (s) => s.session_id === selectedSessionId,
-                );
-                return session ? (
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    {session.platform && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
-                        {session.platform}
-                      </span>
-                    )}
-                    <span className="text-[10px] text-gray-500 dark:text-gray-400">
-                      {session.pipeline_name}
-                    </span>
+            {/* Chat Header */}
+            <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-800 shrink-0 flex items-center justify-between bg-white dark:bg-[#0a0a0a]">
+              <div className="flex items-center gap-3 min-w-0">
+                {/* Avatar */}
+                <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center flex-shrink-0">
+                  <span className="text-xs font-semibold text-blue-600 dark:text-blue-300">
+                    {(selectedSession?.user_id || selectedSessionId)
+                      .slice(0, 2)
+                      .toUpperCase()}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                    {selectedSession?.user_id ||
+                      selectedSessionId.slice(0, 16)}
                   </div>
-                ) : null;
-              })()}
+                  <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                    {selectedSession?.platform && (
+                      <span>{selectedSession.platform}</span>
+                    )}
+                    {selectedSession?.pipeline_name && (
+                      <>
+                        <span className="text-gray-300 dark:text-gray-600">
+                          ·
+                        </span>
+                        <span>{selectedSession.pipeline_name}</span>
+                      </>
+                    )}
+                    {selectedSession?.is_active && (
+                      <>
+                        <span className="text-gray-300 dark:text-gray-600">
+                          ·
+                        </span>
+                        <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                          <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                          Active
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="w-8 h-8 rounded-lg"
+                onClick={() => loadMessages(selectedSessionId)}
+                disabled={loadingMessages}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={cn(
+                    'w-4 h-4',
+                    loadingMessages && 'animate-spin',
+                  )}
+                >
+                  <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
+                </svg>
+              </Button>
             </div>
 
-            {/* Messages - Chat Bubble Style (like DebugDialog) */}
-            <ScrollArea ref={messagesContainerRef} className="flex-1 min-h-0 p-4 bg-white dark:bg-black">
-              <div className="space-y-4">
+            {/* Messages Area */}
+            <ScrollArea
+              ref={messagesContainerRef}
+              className="flex-1 min-h-0"
+            >
+              <div className="px-5 py-4 space-y-3">
                 {loadingMessages ? (
-                  <div className="text-center text-muted-foreground py-12 text-sm">
+                  <div className="flex flex-col items-center justify-center py-16 text-sm text-gray-400">
+                    <svg
+                      className="w-5 h-5 mb-2 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
                     {t('bots.sessionMonitor.loading')}
                   </div>
                 ) : messages.length === 0 ? (
-                  <div className="text-center text-muted-foreground py-12 text-sm">
-                    {t('bots.sessionMonitor.noMessages')}
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="w-12 h-12 mb-3 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                      <svg
+                        className="w-6 h-6 text-gray-300 dark:text-gray-600"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={1.5}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M2.25 12.76c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 0 1 1.037-.443 48.282 48.282 0 0 0 5.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z"
+                        />
+                      </svg>
+                    </div>
+                    <p className="text-sm text-gray-400 dark:text-gray-500">
+                      {t('bots.sessionMonitor.noMessages')}
+                    </p>
                   </div>
                 ) : (
                   messages.map((msg) => {
@@ -447,35 +650,41 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
                           isUser ? 'justify-end' : 'justify-start',
                         )}
                       >
-                        <div
-                          className={cn(
-                            'max-w-[75%] px-4 py-2.5 rounded-2xl',
-                            isUser
-                              ? 'bg-blue-100 dark:bg-blue-900 text-gray-900 dark:text-gray-100 rounded-br-none'
-                              : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-none',
-                            msg.status === 'error' &&
-                              'border border-red-300 dark:border-red-700',
-                          )}
-                        >
-                          {renderMessageContent(msg)}
+                        <div className={cn('max-w-[75%] group')}>
                           <div
                             className={cn(
-                              'text-[10px] mt-1.5 flex items-center gap-2',
+                              'px-4 py-2.5 rounded-2xl shadow-sm',
                               isUser
-                                ? 'text-gray-500 dark:text-gray-400 justify-end'
-                                : 'text-gray-400 dark:text-gray-500',
+                                ? 'bg-blue-500 text-white rounded-br-md'
+                                : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-md',
+                              msg.status === 'error' &&
+                                'ring-1 ring-red-400/50',
                             )}
                           >
-                            <span>{formatTime(msg.timestamp)}</span>
+                            {renderMessageContent(msg)}
+                          </div>
+                          {/* Metadata line below bubble */}
+                          <div
+                            className={cn(
+                              'flex items-center gap-1.5 mt-1 px-1 text-[11px]',
+                              isUser ? 'justify-end' : 'justify-start',
+                              'text-gray-400 dark:text-gray-500',
+                              'opacity-0 group-hover:opacity-100 transition-opacity duration-150',
+                            )}
+                          >
+                            <span className="tabular-nums">
+                              {formatTime(msg.timestamp)}
+                            </span>
                             {msg.status === 'error' && (
-                              <span className="text-red-500 dark:text-red-400">
-                                error
+                              <span className="text-red-400">
+                                · error
                               </span>
                             )}
                             {msg.runner_name && (
-                              <span className="px-1 py-0.5 rounded bg-purple-100 text-purple-600 dark:bg-purple-900 dark:text-purple-300">
-                                {msg.runner_name}
-                              </span>
+                              <>
+                                <span>·</span>
+                                <span>{msg.runner_name}</span>
+                              </>
                             )}
                           </div>
                         </div>
