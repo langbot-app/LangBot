@@ -50,6 +50,10 @@ LangBot est une **plateforme open-source de niveau production** pour créer des 
 
 ## Démarrage Rapide
 
+### ☁️ LangBot Cloud (Recommandé)
+
+**[LangBot Cloud](https://space.langbot.app/cloud)** — Sans déploiement, prêt à utiliser.
+
 ### Lancement en une ligne
 
 ```bash

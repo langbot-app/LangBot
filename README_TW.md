@@ -52,6 +52,10 @@ LangBot 是一個**開源的生產級平台**，用於建構 AI 驅動的即時�
 
 ## 快速開始
 
+### ☁️ LangBot Cloud（推薦）
+
+**[LangBot Cloud](https://space.langbot.app/cloud)** — 免部署，開箱即用。
+
 ### 一鍵啟動
 
 ```bash

@@ -50,6 +50,10 @@ LangBot은 AI 기반 인스턴트 메시징 봇을 구축하기 위한 **오픈�
 
 ## 빠른 시작
 
+### ☁️ LangBot Cloud (추천)
+
+**[LangBot Cloud](https://space.langbot.app/cloud)** — 배포 없이 바로 사용.
+
 ### 원라인 실행
 
 ```bash

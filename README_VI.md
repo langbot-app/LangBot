@@ -50,6 +50,10 @@ LangBot là một **nền tảng mã nguồn mở, cấp sản xuất** để x�
 
 ## Bắt đầu nhanh
 
+### ☁️ LangBot Cloud (Khuyên dùng)
+
+**[LangBot Cloud](https://space.langbot.app/cloud)** — Không cần triển khai, sẵn sàng sử dụng.
+
 ### Khởi chạy một dòng
 
 ```bash

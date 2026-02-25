@@ -22,6 +22,7 @@ English / [简体中文](README_CN.md) / [繁體中文](README_TW.md) / [日本�
 <a href="https://docs.langbot.app/en/insight/features">Features</a> ｜
 <a href="https://docs.langbot.app/en/insight/guide">Docs</a> ｜
 <a href="https://docs.langbot.app/en/tags/readme">API</a> ｜
+<a href="https://space.langbot.app/cloud">Cloud</a> ｜
 <a href="https://space.langbot.app">Plugin Market</a> ｜
 <a href="https://langbot.featurebase.app/roadmap">Roadmap</a>
 
@@ -49,6 +50,10 @@ LangBot is an **open-source, production-grade platform** for building AI-powered
 ---
 
 ## Quick Start
+
+### ☁️ LangBot Cloud (Recommended)
+
+**[LangBot Cloud](https://space.langbot.app/cloud)** — Zero deployment, ready to use.
 
 ### One-Line Launch
 

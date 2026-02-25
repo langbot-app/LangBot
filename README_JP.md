@@ -50,6 +50,10 @@ LangBot は、AI搭載のインスタントメッセージングボットを構�
 
 ## クイックスタート
 
+### ☁️ LangBot Cloud（推奨）
+
+**[LangBot Cloud](https://space.langbot.app/cloud)** — デプロイ不要、すぐに使えます。
+
 ### ワンライン起動
 
 ```bash
