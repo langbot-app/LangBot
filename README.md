@@ -19,9 +19,9 @@ English / [简体中文](README_CN.md) / [繁體中文](README_TW.md) / [日本�
 [![GitHub stars](https://img.shields.io/github/stars/langbot-app/LangBot?style=social)](https://github.com/langbot-app/LangBot/stargazers)
 
 <a href="https://langbot.app">Website</a> ｜
-<a href="https://docs.langbot.app/en/insight/features.html">Features</a> ｜
-<a href="https://docs.langbot.app/en/insight/guide.html">Docs</a> ｜
-<a href="https://docs.langbot.app/en/tags/readme.html">API</a> ｜
+<a href="https://docs.langbot.app/en/insight/features">Features</a> ｜
+<a href="https://docs.langbot.app/en/insight/guide">Docs</a> ｜
+<a href="https://docs.langbot.app/en/tags/readme">API</a> ｜
 <a href="https://space.langbot.app">Plugin Market</a> ｜
 <a href="https://langbot.featurebase.app/roadmap">Roadmap</a>
 
@@ -44,7 +44,7 @@ LangBot is an **open-source, production-grade platform** for building AI-powered
 - **Web Management Panel** — Configure, manage, and monitor your bots through an intuitive browser interface. No YAML editing required.
 - **Multi-Pipeline Architecture** — Different bots for different scenarios, with comprehensive monitoring and exception handling.
 
-[→ Learn more about all features](https://docs.langbot.app/en/insight/features.html)
+[→ Learn more about all features](https://docs.langbot.app/en/insight/features)
 
 ---
 
@@ -71,7 +71,7 @@ docker compose up -d
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/en-US/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
-**More options:** [Docker](https://docs.langbot.app/en/deploy/langbot/docker.html) · [Manual](https://docs.langbot.app/en/deploy/langbot/manual.html) · [BTPanel](https://docs.langbot.app/en/deploy/langbot/one-click/bt.html) · [Kubernetes](./docker/README_K8S.md)
+**More options:** [Docker](https://docs.langbot.app/en/deploy/langbot/docker) · [Manual](https://docs.langbot.app/en/deploy/langbot/manual) · [BTPanel](https://docs.langbot.app/en/deploy/langbot/one-click/bt) · [Kubernetes](./docker/README_K8S.md)
 
 ---
 
@@ -119,7 +119,7 @@ docker compose up -d
 | [接口 AI](https://jiekou.ai/) | Gateway | ✅ |
 | [302.AI](https://share.302.ai/SuTG99) | Gateway | ✅ |
 
-[→ View all integrations](https://docs.langbot.app/en/insight/features.html)
+[→ View all integrations](https://docs.langbot.app/en/insight/features)
 
 ---
 
