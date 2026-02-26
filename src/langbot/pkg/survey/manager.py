@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import typing
 import httpx
 
 from ..core import app as core_app
 from ..utils import constants
+
+TRIGGERED_EVENTS_FILE = 'data/survey_triggered_events.json'
 
 
 class SurveyManager:
@@ -15,13 +19,33 @@ class SurveyManager:
 
     def __init__(self, ap: core_app.Application):
         self.ap = ap
-        self._triggered_events: set[str] = set()  # Events already triggered this session
+        self._triggered_events: set[str] = set()
         self._pending_survey: typing.Optional[dict] = None
         self._space_url: str = ''
 
     async def initialize(self):
         space_config = self.ap.instance_config.data.get('space', {})
         self._space_url = space_config.get('url', '').rstrip('/')
+        self._load_triggered_events()
+
+    def _load_triggered_events(self):
+        """Load previously triggered events from disk."""
+        try:
+            if os.path.exists(TRIGGERED_EVENTS_FILE):
+                with open(TRIGGERED_EVENTS_FILE, 'r') as f:
+                    data = json.load(f)
+                    self._triggered_events = set(data.get('events', []))
+        except Exception:
+            self._triggered_events = set()
+
+    def _save_triggered_events(self):
+        """Persist triggered events to disk."""
+        try:
+            os.makedirs(os.path.dirname(TRIGGERED_EVENTS_FILE), exist_ok=True)
+            with open(TRIGGERED_EVENTS_FILE, 'w') as f:
+                json.dump({'events': list(self._triggered_events)}, f)
+        except Exception:
+            pass
 
     def _is_space_configured(self) -> bool:
         space_config = self.ap.instance_config.data.get('space', {})
@@ -37,6 +61,7 @@ class SurveyManager:
             return
 
         self._triggered_events.add(event)
+        self._save_triggered_events()
 
         # Check for pending survey asynchronously
         asyncio.create_task(self._fetch_pending_survey(event))
