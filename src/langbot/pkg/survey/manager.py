@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import typing
 import httpx
+import sqlalchemy
 
 from ..core import app as core_app
+from ..entity.persistence.metadata import Metadata
 from ..utils import constants
 
-TRIGGERED_EVENTS_FILE = 'data/survey_triggered_events.json'
+SURVEY_TRIGGERED_KEY = 'survey_triggered_events'
 
 
 class SurveyManager:
@@ -26,26 +27,39 @@ class SurveyManager:
     async def initialize(self):
         space_config = self.ap.instance_config.data.get('space', {})
         self._space_url = space_config.get('url', '').rstrip('/')
-        self._load_triggered_events()
+        await self._load_triggered_events()
 
-    def _load_triggered_events(self):
-        """Load previously triggered events from disk."""
+    async def _load_triggered_events(self):
+        """Load previously triggered events from metadata table."""
         try:
-            if os.path.exists(TRIGGERED_EVENTS_FILE):
-                with open(TRIGGERED_EVENTS_FILE, 'r') as f:
-                    data = json.load(f)
-                    self._triggered_events = set(data.get('events', []))
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(Metadata).where(Metadata.key == SURVEY_TRIGGERED_KEY)
+            )
+            row = result.first()
+            if row:
+                self._triggered_events = set(json.loads(row[0].value))
         except Exception:
             self._triggered_events = set()
 
-    def _save_triggered_events(self):
-        """Persist triggered events to disk."""
+    async def _save_triggered_events(self):
+        """Persist triggered events to metadata table."""
         try:
-            os.makedirs(os.path.dirname(TRIGGERED_EVENTS_FILE), exist_ok=True)
-            with open(TRIGGERED_EVENTS_FILE, 'w') as f:
-                json.dump({'events': list(self._triggered_events)}, f)
-        except Exception:
-            pass
+            value = json.dumps(list(self._triggered_events))
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(Metadata).where(Metadata.key == SURVEY_TRIGGERED_KEY)
+            )
+            if result.first():
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.update(Metadata)
+                    .where(Metadata.key == SURVEY_TRIGGERED_KEY)
+                    .values(value=value)
+                )
+            else:
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.insert(Metadata).values(key=SURVEY_TRIGGERED_KEY, value=value)
+                )
+        except Exception as e:
+            self.ap.logger.debug(f'Failed to save survey triggered events: {e}')
 
     def _is_space_configured(self) -> bool:
         space_config = self.ap.instance_config.data.get('space', {})
@@ -61,7 +75,7 @@ class SurveyManager:
             return
 
         self._triggered_events.add(event)
-        self._save_triggered_events()
+        await self._save_triggered_events()
 
         # Check for pending survey asynchronously
         asyncio.create_task(self._fetch_pending_survey(event))
