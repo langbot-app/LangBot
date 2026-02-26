@@ -6,7 +6,6 @@ from .. import group
 @group.group_class('survey', '/api/v1/survey')
 class SurveyRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
-
         @self.route('/pending', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _get_pending() -> str:
             """Get pending survey for the frontend to display."""

@@ -50,9 +50,7 @@ class SurveyManager:
             )
             if result.first():
                 await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.update(Metadata)
-                    .where(Metadata.key == SURVEY_TRIGGERED_KEY)
-                    .values(value=value)
+                    sqlalchemy.update(Metadata).where(Metadata.key == SURVEY_TRIGGERED_KEY).values(value=value)
                 )
             else:
                 await self.ap.persistence_mgr.execute_async(

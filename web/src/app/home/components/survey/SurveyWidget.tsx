@@ -2,7 +2,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import type { SurveyQuestion, SurveyOption } from '@/app/infra/http/BackendClient';
+import type {
+  SurveyQuestion,
+  SurveyOption,
+} from '@/app/infra/http/BackendClient';
 import { X, ChevronRight, ChevronLeft, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -13,8 +16,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 function getI18nText(obj?: Record<string, string> | null): string {
   if (!obj) return '';
   const lang = typeof navigator !== 'undefined' ? navigator.language : 'en';
-  if (lang.startsWith('zh')) return obj['zh_Hans'] || obj['en_US'] || Object.values(obj)[0] || '';
-  if (lang.startsWith('ja')) return obj['ja_JP'] || obj['en_US'] || Object.values(obj)[0] || '';
+  if (lang.startsWith('zh'))
+    return obj['zh_Hans'] || obj['en_US'] || Object.values(obj)[0] || '';
+  if (lang.startsWith('ja'))
+    return obj['ja_JP'] || obj['en_US'] || Object.values(obj)[0] || '';
   return obj['en_US'] || Object.values(obj)[0] || '';
 }
 
@@ -69,7 +74,9 @@ export default function SurveyWidget() {
     if (survey) {
       try {
         await httpClient.dismissSurvey(survey.survey_id);
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
     setVisible(false);
   }, [survey]);
@@ -84,7 +91,9 @@ export default function SurveyWidget() {
         const current = finalAnswers[qId];
         if (Array.isArray(current)) {
           // Replace 'other' with the text
-          finalAnswers[qId] = (current as string[]).map(v => v === 'other' ? `other:${text}` : v);
+          finalAnswers[qId] = (current as string[]).map((v) =>
+            v === 'other' ? `other:${text}` : v,
+          );
         } else if (current === 'other') {
           finalAnswers[qId] = `other:${text}`;
         }
@@ -92,14 +101,20 @@ export default function SurveyWidget() {
     }
 
     try {
-      await httpClient.submitSurveyResponse(survey.survey_id, finalAnswers, true);
+      await httpClient.submitSurveyResponse(
+        survey.survey_id,
+        finalAnswers,
+        true,
+      );
       setSubmitted(true);
       setTimeout(() => setVisible(false), 2000);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [survey, answers, otherInputs]);
 
   const setAnswer = useCallback((qId: string, value: unknown) => {
-    setAnswers(prev => ({ ...prev, [qId]: value }));
+    setAnswers((prev) => ({ ...prev, [qId]: value }));
   }, []);
 
   if (!visible || !survey) return null;
@@ -113,7 +128,12 @@ export default function SurveyWidget() {
       <div className="fixed bottom-6 right-6 z-50 w-80 bg-card border rounded-xl shadow-lg p-6 animate-in slide-in-from-bottom-4">
         <div className="text-center">
           <div className="text-3xl mb-2">🎉</div>
-          <p className="text-sm font-medium">{getI18nText({ zh_Hans: '感谢你的反馈！', en_US: 'Thanks for your feedback!' })}</p>
+          <p className="text-sm font-medium">
+            {getI18nText({
+              zh_Hans: '感谢你的反馈！',
+              en_US: 'Thanks for your feedback!',
+            })}
+          </p>
         </div>
       </div>
     );
@@ -136,13 +156,21 @@ export default function SurveyWidget() {
       <div className="flex items-center justify-between px-4 py-3 border-b">
         <div className="flex items-center gap-2">
           <MessageSquare className="w-4 h-4 text-primary" />
-          <span className="text-sm font-medium">{getI18nText(survey.title)}</span>
+          <span className="text-sm font-medium">
+            {getI18nText(survey.title)}
+          </span>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => setCollapsed(true)} className="p-1 hover:bg-accent rounded">
+          <button
+            onClick={() => setCollapsed(true)}
+            className="p-1 hover:bg-accent rounded"
+          >
             <ChevronRight className="w-4 h-4 text-muted-foreground" />
           </button>
-          <button onClick={handleDismiss} className="p-1 hover:bg-accent rounded">
+          <button
+            onClick={handleDismiss}
+            className="p-1 hover:bg-accent rounded"
+          >
             <X className="w-4 h-4 text-muted-foreground" />
           </button>
         </div>
@@ -167,31 +195,47 @@ export default function SurveyWidget() {
 
       {/* Question */}
       <div className="px-4 py-3">
-        <p className="text-sm font-medium mb-1">{getI18nText(currentQuestion?.title)}</p>
+        <p className="text-sm font-medium mb-1">
+          {getI18nText(currentQuestion?.title)}
+        </p>
         {currentQuestion?.subtitle && (
-          <p className="text-xs text-muted-foreground mb-3">{getI18nText(currentQuestion.subtitle)}</p>
+          <p className="text-xs text-muted-foreground mb-3">
+            {getI18nText(currentQuestion.subtitle)}
+          </p>
         )}
 
         <div className="space-y-2 max-h-[260px] overflow-y-auto">
-          {currentQuestion?.type === 'single_select' && currentQuestion.options && (
-            <SingleSelectField
-              options={currentQuestion.options}
-              value={answers[currentQuestion.id] as string}
-              onChange={(v) => setAnswer(currentQuestion.id, v)}
-              otherText={otherInputs[currentQuestion.id] || ''}
-              onOtherChange={(t) => setOtherInputs(prev => ({ ...prev, [currentQuestion.id]: t }))}
-            />
-          )}
+          {currentQuestion?.type === 'single_select' &&
+            currentQuestion.options && (
+              <SingleSelectField
+                options={currentQuestion.options}
+                value={answers[currentQuestion.id] as string}
+                onChange={(v) => setAnswer(currentQuestion.id, v)}
+                otherText={otherInputs[currentQuestion.id] || ''}
+                onOtherChange={(t) =>
+                  setOtherInputs((prev) => ({
+                    ...prev,
+                    [currentQuestion.id]: t,
+                  }))
+                }
+              />
+            )}
 
-          {currentQuestion?.type === 'multi_select' && currentQuestion.options && (
-            <MultiSelectField
-              options={currentQuestion.options}
-              value={(answers[currentQuestion.id] as string[]) || []}
-              onChange={(v) => setAnswer(currentQuestion.id, v)}
-              otherText={otherInputs[currentQuestion.id] || ''}
-              onOtherChange={(t) => setOtherInputs(prev => ({ ...prev, [currentQuestion.id]: t }))}
-            />
-          )}
+          {currentQuestion?.type === 'multi_select' &&
+            currentQuestion.options && (
+              <MultiSelectField
+                options={currentQuestion.options}
+                value={(answers[currentQuestion.id] as string[]) || []}
+                onChange={(v) => setAnswer(currentQuestion.id, v)}
+                otherText={otherInputs[currentQuestion.id] || ''}
+                onOtherChange={(t) =>
+                  setOtherInputs((prev) => ({
+                    ...prev,
+                    [currentQuestion.id]: t,
+                  }))
+                }
+              />
+            )}
 
           {currentQuestion?.type === 'text' && (
             <textarea
@@ -231,7 +275,9 @@ export default function SurveyWidget() {
             <Button
               size="sm"
               onClick={() => setCurrentStep(currentStep + 1)}
-              disabled={currentQuestion?.required && !answers[currentQuestion?.id]}
+              disabled={
+                currentQuestion?.required && !answers[currentQuestion?.id]
+              }
             >
               {getI18nText({ zh_Hans: '下一题', en_US: 'Next' })}
             </Button>
