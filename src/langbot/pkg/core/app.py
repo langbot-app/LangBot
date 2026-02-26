@@ -39,6 +39,7 @@ from . import entities as core_entities
 from ..rag.knowledge import kbmgr as rag_mgr
 from ..vector import mgr as vectordb_mgr
 from ..telemetry import telemetry as telemetry_module
+from ..survey import manager as survey_module
 
 
 class Application:
@@ -146,6 +147,8 @@ class Application:
     webhook_service: webhook_service.WebhookService = None
 
     telemetry: telemetry_module.TelemetryManager = None
+
+    survey: survey_module.SurveyManager = None
 
     monitoring_service: monitoring_service.MonitoringService = None
 

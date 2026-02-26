@@ -200,6 +200,11 @@ class ChatMessageHandler(handler.MessageHandler):
 
                     # Send telemetry asynchronously and do not block pipeline via app's telemetry manager
                     await self.ap.telemetry.start_send_task(payload)
+
+                    # Trigger survey event on first successful non-WebSocket response
+                    if not locals().get('error_info') and adapter_name and 'WebSocket' not in adapter_name:
+                        if self.ap.survey:
+                            await self.ap.survey.trigger_event('first_bot_response_success')
                 except Exception as ex:
                     # Ensure telemetry issues do not affect normal flow
                     self.ap.logger.warning(f'Failed to send telemetry: {ex}')

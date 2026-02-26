@@ -1007,4 +1007,50 @@ export class BackendClient extends BaseHttpClient {
 
     return this.get(`/api/v1/monitoring/overview?${queryParams.toString()}`);
   }
+
+  // ============ Survey API ============
+  public getSurveyPending(): Promise<{
+    survey: {
+      survey_id: string;
+      version: number;
+      title: Record<string, string>;
+      description: Record<string, string>;
+      questions: SurveyQuestion[];
+    } | null;
+  }> {
+    return this.get('/api/v1/survey/pending');
+  }
+
+  public submitSurveyResponse(
+    surveyId: string,
+    answers: Record<string, unknown>,
+    completed: boolean = true,
+  ): Promise<object> {
+    return this.post('/api/v1/survey/respond', {
+      survey_id: surveyId,
+      answers,
+      completed,
+    });
+  }
+
+  public dismissSurvey(surveyId: string): Promise<object> {
+    return this.post('/api/v1/survey/dismiss', { survey_id: surveyId });
+  }
+}
+
+export interface SurveyQuestion {
+  id: string;
+  type: 'single_select' | 'multi_select' | 'text';
+  title: Record<string, string>;
+  subtitle?: Record<string, string>;
+  required: boolean;
+  options?: SurveyOption[];
+  placeholder?: Record<string, string>;
+  max_length?: number;
+}
+
+export interface SurveyOption {
+  id: string;
+  label: Record<string, string>;
+  has_input?: boolean;
 }

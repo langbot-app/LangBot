@@ -3,6 +3,7 @@
 import styles from './layout.module.css';
 import HomeSidebar from '@/app/home/components/home-sidebar/HomeSidebar';
 import HomeTitleBar from '@/app/home/components/home-titlebar/HomeTitleBar';
+import SurveyWidget from '@/app/home/components/survey/SurveyWidget';
 import React, {
   useState,
   useCallback,
@@ -54,6 +55,8 @@ export default function HomeLayout({
         <HomeTitleBar title={title} subtitle={subtitle} helpLink={helpLink} />
 
         <main className={styles.mainContent}>{mainContent}</main>
+
+        <SurveyWidget />
       </div>
     </div>
   );

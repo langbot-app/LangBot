@@ -34,6 +34,7 @@ from ...utils import logcache
 from ...vector import mgr as vectordb_mgr
 from .. import taskmgr
 from ...telemetry import telemetry as telemetry_module
+from ...survey import manager as survey_module
 
 
 @stage.stage_class('BuildAppStage')
@@ -109,6 +110,11 @@ class BuildAppStage(stage.BootingStage):
         telemetry_inst = telemetry_module.TelemetryManager(ap)
         await telemetry_inst.initialize()
         ap.telemetry = telemetry_inst
+
+        # Survey manager
+        survey_inst = survey_module.SurveyManager(ap)
+        await survey_inst.initialize()
+        ap.survey = survey_inst
 
         cmd_mgr_inst = cmdmgr.CommandManager(ap)
         await cmd_mgr_inst.initialize()
