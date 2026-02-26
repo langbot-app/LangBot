@@ -194,7 +194,31 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         )
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
-        pass
+        components = await TelegramMessageConverter.yiri2target(message, self.bot)
+
+        chat_id_str, _, thread_id_str = str(target_id).partition('#')
+        chat_id: int | str = int(chat_id_str) if chat_id_str.lstrip('-').isdigit() else chat_id_str
+        message_thread_id = int(thread_id_str) if thread_id_str and thread_id_str.isdigit() else None
+
+        for component in components:
+            component_type = component.get('type')
+            args = {'chat_id': chat_id}
+            if message_thread_id is not None:
+                args['message_thread_id'] = message_thread_id
+
+            if component_type == 'text':
+                text = component.get('text', '')
+                if self.config['markdown_card'] is True:
+                    text = telegramify_markdown.markdownify(content=text)
+                    args['parse_mode'] = 'MarkdownV2'
+                args['text'] = text
+                await self.bot.send_message(**args)
+            elif component_type == 'photo':
+                photo = component.get('photo')
+                if photo is None:
+                    continue
+                args['photo'] = telegram.InputFile(photo)
+                await self.bot.send_photo(**args)
 
     async def reply_message(
         self,
