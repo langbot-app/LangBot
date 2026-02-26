@@ -306,9 +306,8 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
     @staticmethod
     async def target2yiri(event: aiocqhttp.Event, bot=None):
-        yiri_chain = await AiocqhttpMessageConverter.target2yiri(event.message, event.message_id, bot)
-
         if event.message_type == 'group':
+            yiri_chain = await AiocqhttpMessageConverter.target2yiri(event.message, event.message_id, bot)
             permission = 'MEMBER'
 
             if 'role' in event.sender:
@@ -334,6 +333,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
             )
             return converted_event
         elif event.message_type == 'private':
+            yiri_chain = await AiocqhttpMessageConverter.target2yiri(event.message, event.message_id, bot)
             return platform_events.FriendMessage(
                 sender=platform_entities.Friend(
                     id=event.sender['user_id'],
@@ -341,6 +341,57 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
                     remark='',
                 ),
                 message_chain=yiri_chain,
+                time=event.time,
+                source_platform_object=event,
+            )
+        elif event.post_type == 'notice':
+            yiri_chain = platform_message.MessageChain(
+                [
+                    platform_message.Source(id=-1, time=datetime.datetime.now()),
+                    platform_message.Notice(
+                        notice_type=event.get('notice_type', ''),
+                        sub_type=event.get('sub_type', ''),
+                        user_id=event.get('user_id', None),
+                        target_id=event.get('target_id', None),
+                        group_id=event.get('group_id', None),
+                        operator_id=event.get('operator_id', None),
+                        message_id=event.get('message_id', None),
+                        duration=event.get('duration', None),
+                        file=event.get('file', None),
+                        honor_type=event.get('honor_type', None),
+                    ),
+                ]
+            )
+            return platform_events.NoticeEvent(
+                notice_type=event.get('notice_type', ''),
+                sub_type=event.get('sub_type', ''),
+                user_id=event.get('user_id', None),
+                target_id=event.get('target_id', None),
+                group_id=event.get('group_id', None),
+                time=event.time,
+                source_platform_object=event,
+            )
+        elif event.post_type == 'request':
+            yiri_chain = platform_message.MessageChain(
+                [
+                    platform_message.Source(id=-1, time=datetime.datetime.now()),
+                    platform_message.Request(
+                        request_type=event.get('request_type', ''),
+                        sub_type=event.get('sub_type', ''),
+                        user_id=event.get('user_id', None),
+                        group_id=event.get('group_id', None),
+                        comment=event.get('comment', ''),
+                        flag=event.get('flag', ''),
+                    ),
+                ]
+            )
+            return platform_events.RequestEvent(
+                request_type=event.get('request_type', ''),
+                sub_type=event.get('sub_type', ''),
+                user_id=event.get('user_id', None),
+                group_id=event.get('group_id', None),
+                comment=event.get('comment', ''),
+                flag=event.get('flag', ''),
                 time=event.time,
                 source_platform_object=event,
             )
@@ -413,12 +464,31 @@ class AiocqhttpAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 await self.logger.error(f'Error in on_message: {traceback.format_exc()}')
                 traceback.print_exc()
 
+        async def on_notice(event: aiocqhttp.Event):
+            self.bot_account_id = event.self_id
+            try:
+                return await callback(await self.event_converter.target2yiri(event, self.bot), self)
+            except Exception:
+                await self.logger.error(f'Error in on_notice: {traceback.format_exc()}')
+                traceback.print_exc()
+
+        async def on_request(event: aiocqhttp.Event):
+            self.bot_account_id = event.self_id
+            try:
+                return await callback(await self.event_converter.target2yiri(event, self.bot), self)
+            except Exception:
+                await self.logger.error(f'Error in on_request: {traceback.format_exc()}')
+                traceback.print_exc()
+
         if event_type == platform_events.GroupMessage:
             self.bot.on_message('group')(on_message)
             # self.bot.on_notice()(on_message)
         elif event_type == platform_events.FriendMessage:
             self.bot.on_message('private')(on_message)
-            # self.bot.on_notice()(on_message)
+        elif event_type == platform_events.NoticeEvent:
+            self.bot.on_notice()(on_notice)
+        elif event_type == platform_events.RequestEvent:
+            self.bot.on_request()(on_request)
         # print(event_type)
 
         async def on_websocket_connection(event: aiocqhttp.Event):
