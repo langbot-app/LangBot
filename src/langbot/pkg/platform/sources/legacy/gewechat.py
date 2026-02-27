@@ -9,8 +9,6 @@ import copy
 import threading
 
 import quart
-import aiohttp
-
 from langbot.pkg.utils import httpclient
 
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter

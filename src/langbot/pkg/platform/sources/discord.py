@@ -14,8 +14,6 @@ import io
 import asyncio
 from enum import Enum
 
-import aiohttp
-
 from langbot.pkg.utils import httpclient
 import pydantic
 

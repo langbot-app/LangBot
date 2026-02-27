@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import aiohttp
-
 from langbot.pkg.utils import httpclient
 import typing
 import datetime

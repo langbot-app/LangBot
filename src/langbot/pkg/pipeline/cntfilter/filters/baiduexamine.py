@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import aiohttp
-
 from .. import entities
 from .. import filter as filter_model
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query

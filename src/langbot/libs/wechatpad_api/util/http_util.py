@@ -1,6 +1,4 @@
 import requests
-import aiohttp
-
 from langbot.pkg.utils import httpclient
 
 

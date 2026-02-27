@@ -56,6 +56,7 @@ async def get_gewechat_image_base64(
                 f'{gewechat_url}/v2/api/message/downloadImage',
                 headers=headers,
                 json={'appId': app_id, 'type': image_type, 'xml': xml_content},
+                timeout=timeout,
             ) as response:
                 if response.status != 200:
                     # print(response)

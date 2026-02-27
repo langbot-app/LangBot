@@ -17,8 +17,6 @@ import tempfile
 import os
 import mimetypes
 
-import aiohttp
-
 from langbot.pkg.utils import httpclient
 import lark_oapi.ws.exception
 import quart

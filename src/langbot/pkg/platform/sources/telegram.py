@@ -9,7 +9,6 @@ import telegramify_markdown
 import typing
 import traceback
 import base64
-import aiohttp
 import pydantic
 
 from langbot.pkg.utils import httpclient
