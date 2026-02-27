@@ -25,7 +25,7 @@ def get_session(*, trust_env: bool = False) -> aiohttp.ClientSession:
     Returns:
         A shared aiohttp.ClientSession instance.
     """
-    key = f"trust_env={trust_env}"
+    key = f'trust_env={trust_env}'
 
     session = _sessions.get(key)
     if session is None or session.closed:

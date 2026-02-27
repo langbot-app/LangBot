@@ -75,8 +75,8 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
             file_format = ''
 
             async with httpclient.get_session(trust_env=True).get(file.file_path) as response:
-                    file_bytes = await response.read()
-                    file_format = 'image/jpeg'
+                file_bytes = await response.read()
+                file_format = 'image/jpeg'
 
             message_components.append(
                 platform_message.Image(
@@ -94,7 +94,7 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
             file_format = message.voice.mime_type or 'audio/ogg'
 
             async with httpclient.get_session(trust_env=True).get(file.file_path) as response:
-                    file_bytes = await response.read()
+                file_bytes = await response.read()
 
             message_components.append(
                 platform_message.Voice(

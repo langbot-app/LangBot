@@ -156,9 +156,7 @@ async def get_qq_image_bytes(image_url: str, query: dict = {}) -> tuple[bytes, s
     ssl_context.check_hostname = False
     ssl_context.verify_mode = ssl.CERT_NONE
     session = httpclient.get_session()
-    async with session.get(
-        image_url, params=query, ssl=ssl_context, timeout=aiohttp.ClientTimeout(total=30.0)
-    ) as resp:
+    async with session.get(image_url, params=query, ssl=ssl_context, timeout=aiohttp.ClientTimeout(total=30.0)) as resp:
         resp.raise_for_status()
         file_bytes = await resp.read()
         content_type = resp.headers.get('Content-Type')
