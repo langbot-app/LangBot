@@ -552,8 +552,8 @@ class RuntimeConnectionHandler(handler.Handler):
             storage_path = data['storage_path']
             try:
                 content_bytes = await self.ap.rag_runtime_service.get_file_stream(storage_path)
-                content_base64 = base64.b64encode(content_bytes).decode('utf-8')
-                return handler.ActionResponse.success(data={'content_base64': content_base64})
+                file_key = await self.send_file(content_bytes, "")
+                return handler.ActionResponse.success(data={'file_key': file_key})
             except Exception as e:
                 return _make_rag_error_response(e, 'FileServiceError', storage_path=storage_path)
 
