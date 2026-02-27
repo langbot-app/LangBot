@@ -562,10 +562,20 @@ class RuntimeConnectionHandler(handler.Handler):
             """Plugin requests host to invoke a parser plugin."""
             plugin_author = data['plugin_author']
             plugin_name = data['plugin_name']
-            context_data = data['context']
+            storage_path = data['storage_path']
+            mime_type = data.get('mime_type', 'application/octet-stream')
+            filename = data.get('filename', '')
+            metadata = data.get('metadata', {})
             try:
+                # Read file from storage
+                file_bytes = await self.ap.rag_runtime_service.get_file_stream(storage_path)
+                context_data = {
+                    'mime_type': mime_type,
+                    'filename': filename,
+                    'metadata': metadata,
+                }
                 result = await self.ap.plugin_connector.call_parser(
-                    f'{plugin_author}/{plugin_name}', context_data
+                    f'{plugin_author}/{plugin_name}', context_data, file_bytes
                 )
                 return handler.ActionResponse.success(data=result)
             except Exception as e:
@@ -936,9 +946,19 @@ class RuntimeConnectionHandler(handler.Handler):
         return result.get('parsers', [])
 
     async def parse_document(
-        self, plugin_author: str, plugin_name: str, context_data: dict[str, Any]
+        self, plugin_author: str, plugin_name: str, context_data: dict[str, Any], file_bytes: bytes
     ) -> dict[str, Any]:
-        """Send PARSE_DOCUMENT action to runtime."""
+        """Send PARSE_DOCUMENT action to runtime.
+
+        Sends file content via chunked FILE_CHUNK transfer, then invokes
+        the PARSE_DOCUMENT action with a file_key reference.
+        """
+        # Send file to runtime via chunked transfer
+        file_key = await self.send_file(file_bytes, "")
+
+        # Include file_key in context_data for the runtime to read
+        context_data["file_key"] = file_key
+
         result = await self.call_action(
             LangBotToRuntimeAction.PARSE_DOCUMENT,
             {'plugin_author': plugin_author, 'plugin_name': plugin_name, 'context': context_data},

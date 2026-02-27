@@ -1,5 +1,4 @@
 from __future__ import annotations
-import base64
 import mimetypes
 import os.path
 import traceback
@@ -54,12 +53,11 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                 task_context.set_current_action('Parsing file')
                 file_bytes = await self.ap.storage_mgr.storage_provider.load(file.file_name)
                 parse_context = {
-                    'file_content_base64': base64.b64encode(file_bytes).decode('utf-8'),
                     'mime_type': mime_type,
                     'filename': file.file_name,
                     'metadata': {},
                 }
-                parsed_content = await self.ap.plugin_connector.call_parser(parser_plugin_id, parse_context)
+                parsed_content = await self.ap.plugin_connector.call_parser(parser_plugin_id, parse_context, file_bytes)
 
             # Call plugin to ingest document
             result = await self._ingest_document(
