@@ -5,7 +5,7 @@ version: "3"
 services:
 
   langbot_plugin_runtime:
-    image: rockchin/langbot:latest
+    image: a251231/langbot:master
     container_name: langbot_plugin_runtime
     volumes:
       - ./data/plugins:/app/data/plugins
@@ -19,7 +19,7 @@ services:
       - langbot_network
 
   langbot:
-    image: rockchin/langbot:latest
+    image: a251231/langbot:master
     container_name: langbot
     volumes:
       - ./data:/app/data
