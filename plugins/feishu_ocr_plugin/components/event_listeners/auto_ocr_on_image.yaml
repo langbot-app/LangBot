@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: EventListener
+metadata:
+  name: auto_ocr_on_image
+  label:
+    en_US: AutoOcrOnImage
+    zh_Hans: AutoOcrOnImage
+  description:
+    en_US: 'Automatically run OCR and reply when image messages are received.'
+    zh_Hans: 'Automatically run OCR and reply when image messages are received.'
+spec:
+execution:
+  python:
+    path: auto_ocr_on_image.py
+    attr: AutoOcrOnImageListener

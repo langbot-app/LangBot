@@ -56,6 +56,9 @@ spec:
     Tool:
       fromDirs:
         - path: components/tools/
+    EventListener:
+      fromDirs:
+        - path: components/event_listeners/
 execution:
   python:
     path: main.py
