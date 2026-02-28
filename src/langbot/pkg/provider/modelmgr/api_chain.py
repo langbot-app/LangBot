@@ -1,4 +1,4 @@
-﻿"""API Chain Manager - handles API failover and health checking.
+"""API Chain Manager - handles API failover and health checking.
 
 chain_config item schema (per provider entry):
 {
@@ -21,6 +21,7 @@ chain_config item schema (per provider entry):
 If model_configs is absent, the original query model is used with round-robin keys.
 If api_key_indices is absent for a model config, round-robin rotation is used.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -54,10 +55,17 @@ class APIChainManager:
 
     async def load_chains_from_db(self):
         """Load all API chains from database"""
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(api_chain_entity.APIChain)
-        )
-        for chain in result.all():
+        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(api_chain_entity.APIChain))
+        for row in result.all():
+            # result.all() returns read-only Row objects; wrap them in mutable instances
+            chain = api_chain_entity.APIChain(
+                uuid=row.uuid,
+                name=row.name,
+                description=row.description,
+                chain_config=row.chain_config,
+                health_check_interval=row.health_check_interval,
+                health_check_enabled=row.health_check_enabled,
+            )
             self.chains[chain.uuid] = chain
 
     async def start_health_check_tasks(self):
@@ -76,7 +84,19 @@ class APIChainManager:
     # ==================== Health Check ====================
 
     async def _health_check_loop(self, chain_uuid: str):
-        """Background loop for health checking failed APIs"""
+        """Background loop for health checking failed APIs.
+
+        An immediate check is performed on startup so that pre-existing
+        unhealthy records are evaluated without waiting for the full interval.
+        """
+        # Immediate check on start
+        try:
+            await self._perform_health_checks(chain_uuid)
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            self.ap.logger.error(f'Initial health check error for chain {chain_uuid}: {e}')
+
         while True:
             try:
                 chain = self.chains.get(chain_uuid)
@@ -87,7 +107,7 @@ class APIChainManager:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                self.ap.logger.error(f"Health check loop error for chain {chain_uuid}: {e}")
+                self.ap.logger.error(f'Health check loop error for chain {chain_uuid}: {e}')
                 await asyncio.sleep(60)
 
     async def _perform_health_checks(self, chain_uuid: str):
@@ -106,48 +126,83 @@ class APIChainManager:
                 if not provider:
                     continue
 
-                is_healthy = await self._check_api_health(provider, status.api_key_index)
+                is_healthy = await self._check_api_health(status, provider)
 
                 if is_healthy:
                     await self._update_status(
                         status.uuid,
                         is_healthy=True,
                         failure_count=0,
+                        health_check_last_failed=False,
                         last_success_time=datetime.now(),
                         last_health_check_time=datetime.now(),
                         last_error_message=None,
                     )
                     self.ap.logger.info(
-                        f"API recovered: provider={status.provider_uuid} "
-                        f"model={status.model_name} key_index={status.api_key_index}"
+                        f'API recovered: provider={status.provider_uuid} '
+                        f'model={status.model_name} key_index={status.api_key_index}'
                     )
                 else:
+                    # Health check probe failed: mark the flag but do NOT increment failure_count
                     await self._update_status(
                         status.uuid,
+                        health_check_last_failed=True,
                         last_health_check_time=datetime.now(),
                     )
             except Exception as e:
                 self.ap.logger.error(
-                    f"Health check failed for provider={status.provider_uuid} "
-                    f"model={status.model_name} key_index={status.api_key_index}: {e}"
+                    f'Health check loop error for provider={status.provider_uuid} '
+                    f'model={status.model_name} key_index={status.api_key_index}: {e}'
                 )
+                try:
+                    await self._update_status(
+                        status.uuid,
+                        health_check_last_failed=True,
+                        last_health_check_time=datetime.now(),
+                    )
+                except Exception:
+                    pass
 
     async def _check_api_health(
         self,
+        status: api_chain_entity.APIChainStatus,
         provider: requester.RuntimeProvider,
-        api_key_index: Optional[int],
     ) -> bool:
-        """Check health by verifying the API key exists and is non-empty"""
+        """Check API health by making a minimal test request to the LLM endpoint.
+
+        Returns True if the request succeeds (API is reachable and authenticated),
+        False otherwise.  Does NOT raise exceptions.
+        """
         try:
-            tokens = provider.token_mgr.tokens
-            if not tokens:
+            temp_provider = self._create_provider_for_key(provider, status.api_key_index)
+            model_entity = self._resolve_model_entity(provider, None, status.model_name)
+            if model_entity is None:
+                self.ap.logger.warning(
+                    f'Health check: no model found for provider={status.provider_uuid} '
+                    f'model_name={status.model_name}, skipping'
+                )
                 return False
-            if api_key_index is not None:
-                if api_key_index >= len(tokens):
-                    return False
-                return bool(tokens[api_key_index])
+
+            temp_model = requester.RuntimeLLMModel(
+                model_entity=model_entity,
+                provider=temp_provider,
+            )
+            test_msg = provider_message.Message(role='user', content='hi')
+
+            await temp_provider.invoke_llm(
+                query=None,
+                model=temp_model,
+                messages=[test_msg],
+                funcs=None,
+                extra_args={},
+                remove_think=True,
+            )
             return True
-        except Exception:
+        except Exception as e:
+            self.ap.logger.debug(
+                f'Health check request failed for provider={status.provider_uuid} '
+                f'model={status.model_name} key={status.api_key_index}: {e}'
+            )
             return False
 
     # ==================== Status Helpers ====================
@@ -175,9 +230,7 @@ class APIChainManager:
             conditions.append(api_chain_entity.APIChainStatus.api_key_index == api_key_index)
 
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(api_chain_entity.APIChainStatus).where(
-                sqlalchemy.and_(*conditions)
-            )
+            sqlalchemy.select(api_chain_entity.APIChainStatus).where(sqlalchemy.and_(*conditions))
         )
         existing = result.first()
         if existing:
@@ -196,9 +249,7 @@ class APIChainManager:
             )
         )
         result2 = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(api_chain_entity.APIChainStatus).where(
-                api_chain_entity.APIChainStatus.uuid == new_uuid
-            )
+            sqlalchemy.select(api_chain_entity.APIChainStatus).where(api_chain_entity.APIChainStatus.uuid == new_uuid)
         )
         return result2.first()
 
@@ -211,6 +262,7 @@ class APIChainManager:
         last_success_time: Optional[datetime] = None,
         last_health_check_time: Optional[datetime] = None,
         last_error_message: Optional[str] = None,
+        health_check_last_failed: Optional[bool] = None,
     ):
         """Update a status record by UUID"""
         update_data: Dict[str, Any] = {}
@@ -229,6 +281,8 @@ class APIChainManager:
         elif is_healthy:
             # Clear error message when marking healthy
             update_data['last_error_message'] = None
+        if health_check_last_failed is not None:
+            update_data['health_check_last_failed'] = health_check_last_failed
 
         if update_data:
             await self.ap.persistence_mgr.execute_async(
@@ -244,7 +298,7 @@ class APIChainManager:
         return self.chains.get(chain_uuid)
 
     async def create_chain(self, chain_data: Dict[str, Any]) -> str:
-        """Create a new API chain"""
+        """Create a new API chain and start its health check loop"""
         chain_uuid = chain_data.get('uuid', str(uuid_lib.uuid4()))
 
         chain = api_chain_entity.APIChain(
@@ -256,8 +310,16 @@ class APIChainManager:
             health_check_enabled=chain_data.get('health_check_enabled', True),
         )
 
+        # Use explicit column values to avoid SQLAlchemy internal state pollution
         await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.insert(api_chain_entity.APIChain).values(**chain.__dict__)
+            sqlalchemy.insert(api_chain_entity.APIChain).values(
+                uuid=chain.uuid,
+                name=chain.name,
+                description=chain.description,
+                chain_config=chain.chain_config,
+                health_check_interval=chain.health_check_interval,
+                health_check_enabled=chain.health_check_enabled,
+            )
         )
         self.chains[chain_uuid] = chain
 
@@ -269,26 +331,64 @@ class APIChainManager:
 
     async def update_chain(self, chain_uuid: str, chain_data: Dict[str, Any]):
         """Update an existing API chain"""
-        chain = self.chains.get(chain_uuid)
-        if not chain:
-            raise ValueError(f"Chain {chain_uuid} not found")
+        existing = self.chains.get(chain_uuid)
 
+        # Collect current attribute values (may come from an in-memory instance or DB)
+        if existing is not None:
+            current = {
+                'uuid': existing.uuid,
+                'name': existing.name,
+                'description': existing.description,
+                'chain_config': existing.chain_config,
+                'health_check_interval': existing.health_check_interval,
+                'health_check_enabled': existing.health_check_enabled,
+            }
+        else:
+            db_result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(api_chain_entity.APIChain).where(api_chain_entity.APIChain.uuid == chain_uuid)
+            )
+            row = db_result.first()
+            if not row:
+                raise ValueError(f'Chain {chain_uuid} not found')
+            current = {
+                'uuid': row.uuid,
+                'name': row.name,
+                'description': row.description,
+                'chain_config': row.chain_config,
+                'health_check_interval': row.health_check_interval,
+                'health_check_enabled': row.health_check_enabled,
+            }
+
+        # Merge incoming changes
         for key, value in chain_data.items():
-            if hasattr(chain, key) and key != 'uuid':
-                setattr(chain, key, value)
+            if key in current and key != 'uuid':
+                current[key] = value
 
+        # Persist changes to DB
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(api_chain_entity.APIChain)
             .where(api_chain_entity.APIChain.uuid == chain_uuid)
             .values(**{k: v for k, v in chain_data.items() if k != 'uuid'})
         )
 
-        if chain.health_check_enabled and chain_uuid not in self.health_check_tasks:
+        # Rebuild mutable in-memory instance with merged data
+        new_chain = api_chain_entity.APIChain(
+            uuid=current['uuid'],
+            name=current['name'],
+            description=current.get('description', ''),
+            chain_config=current.get('chain_config', []),
+            health_check_interval=current.get('health_check_interval', 300),
+            health_check_enabled=current.get('health_check_enabled', True),
+        )
+        self.chains[chain_uuid] = new_chain
+
+        # Cancel existing task and restart to pick up new config immediately
+        existing_task = self.health_check_tasks.pop(chain_uuid, None)
+        if existing_task is not None:
+            existing_task.cancel()
+        if new_chain.health_check_enabled:
             task = asyncio.create_task(self._health_check_loop(chain_uuid))
             self.health_check_tasks[chain_uuid] = task
-        elif not chain.health_check_enabled and chain_uuid in self.health_check_tasks:
-            self.health_check_tasks[chain_uuid].cancel()
-            del self.health_check_tasks[chain_uuid]
 
     async def delete_chain(self, chain_uuid: str):
         """Delete an API chain"""
@@ -297,9 +397,7 @@ class APIChainManager:
             del self.health_check_tasks[chain_uuid]
 
         await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.delete(api_chain_entity.APIChain).where(
-                api_chain_entity.APIChain.uuid == chain_uuid
-            )
+            sqlalchemy.delete(api_chain_entity.APIChain).where(api_chain_entity.APIChain.uuid == chain_uuid)
         )
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.delete(api_chain_entity.APIChainStatus).where(
@@ -318,6 +416,10 @@ class APIChainManager:
 
         Returns [(None, None)] when model_configs is empty, meaning the caller's
         original model and round-robin key rotation will be used (legacy behaviour).
+        When api_key_indices is configured for a model, each key index becomes a
+        separate failover task ordered by priority. When api_key_indices is absent,
+        the entry uses (model_name, None) so the provider's TokenManager performs
+        round-robin rotation across all configured keys.
         """
         if not model_configs:
             return [(None, None)]
@@ -326,7 +428,15 @@ class APIChainManager:
         sorted_models = sorted(model_configs, key=lambda x: x.get('priority', 0))
         for mc in sorted_models:
             model_name: Optional[str] = mc.get('model_name') or None
-            tasks.append((model_name, None))
+            api_key_indices: List[Dict] = mc.get('api_key_indices') or []
+            if api_key_indices:
+                # Expand each configured key index as an independent failover task
+                sorted_keys = sorted(api_key_indices, key=lambda x: x.get('priority', 0))
+                for key_config in sorted_keys:
+                    tasks.append((model_name, key_config['index']))
+            else:
+                # No specific key configured: use round-robin rotation
+                tasks.append((model_name, None))
         return tasks if tasks else [(None, None)]
 
     def _create_provider_for_key(
@@ -378,10 +488,7 @@ class APIChainManager:
             return None
 
         for m in self.ap.model_mgr.llm_models:
-            if (
-                m.model_entity.provider_uuid == provider.provider_entity.uuid
-                and m.model_entity.name == model_name
-            ):
+            if m.model_entity.provider_uuid == provider.provider_entity.uuid and m.model_entity.name == model_name:
                 return m.model_entity
 
         if default_model is not None:
@@ -406,7 +513,7 @@ class APIChainManager:
         """Invoke LLM through API chain with per-model/per-API-key failover"""
         chain = self.chains.get(chain_uuid)
         if not chain:
-            raise ValueError(f"Chain {chain_uuid} not found")
+            raise ValueError(f'Chain {chain_uuid} not found')
 
         sorted_items = sorted(chain.chain_config, key=lambda x: x.get('priority', 0))
         last_error: Optional[Exception] = None
@@ -419,20 +526,17 @@ class APIChainManager:
 
             provider = self.ap.model_mgr.provider_dict.get(provider_uuid)
             if not provider:
-                self.ap.logger.warning(f"Provider {provider_uuid} not found in chain {chain_uuid}")
+                self.ap.logger.warning(f'Provider {provider_uuid} not found in chain {chain_uuid}')
                 continue
 
             tasks = self._build_invoke_tasks(model_configs)
 
             for task_model_name, task_api_key_index in tasks:
-                status = await self._ensure_status(
-                    chain_uuid, provider_uuid, task_model_name, task_api_key_index
-                )
+                status = await self._ensure_status(chain_uuid, provider_uuid, task_model_name, task_api_key_index)
 
                 if status and not status.is_healthy and not is_aggregated:
                     self.ap.logger.debug(
-                        f"Skipping unhealthy: provider={provider_uuid} "
-                        f"model={task_model_name} key={task_api_key_index}"
+                        f'Skipping unhealthy: provider={provider_uuid} model={task_model_name} key={task_api_key_index}'
                     )
                     continue
 
@@ -440,7 +544,7 @@ class APIChainManager:
                 model_entity = self._resolve_model_entity(provider, model, task_model_name)
                 if model_entity is None:
                     self.ap.logger.warning(
-                        f"No model found for provider {provider_uuid} in chain {chain_uuid}, skipping"
+                        f'No model found for provider {provider_uuid} in chain {chain_uuid}, skipping'
                     )
                     continue
                 temp_model = requester.RuntimeLLMModel(
@@ -461,11 +565,16 @@ class APIChainManager:
                             remove_think=remove_think,
                         )
 
+                        # Advance round-robin token rotation on success
+                        if task_api_key_index is None:
+                            provider.token_mgr.next_token()
+
                         if status:
                             await self._update_status(
                                 status.uuid,
                                 is_healthy=True,
                                 failure_count=0,
+                                health_check_last_failed=False,
                                 last_success_time=datetime.now(),
                             )
                         return result
@@ -473,24 +582,40 @@ class APIChainManager:
                     except Exception as e:
                         last_error = e
                         self.ap.logger.warning(
-                            f"Chain {chain_uuid} provider={provider_uuid} "
-                            f"model={task_model_name} key={task_api_key_index} "
-                            f"attempt {attempt + 1} failed: {e}"
+                            f'Chain {chain_uuid} provider={provider_uuid} '
+                            f'model={task_model_name} key={task_api_key_index} '
+                            f'attempt {attempt + 1}/{max(1, retry_count + 1)} failed: {e}'
                         )
-                        if not is_aggregated:
-                            if status:
-                                await self._update_status(
-                                    status.uuid,
-                                    is_healthy=False,
-                                    failure_count=(status.failure_count or 0) + 1,
-                                    last_failure_time=datetime.now(),
-                                    last_error_message=str(e)[:1024],
-                                )
+                        # Advance round-robin token rotation on failure too
+                        if task_api_key_index is None:
+                            provider.token_mgr.next_token()
+
+                        if attempt + 1 >= max(1, retry_count + 1):
+                            # All retries exhausted for this (model, key) task
+                            if is_aggregated:
+                                # Aggregated: track failure count but keep is_healthy=True
+                                if status:
+                                    await self._update_status(
+                                        status.uuid,
+                                        failure_count=(status.failure_count or 0) + 1,
+                                        last_failure_time=datetime.now(),
+                                        last_error_message=str(e)[:1024],
+                                    )
+                            else:
+                                if status:
+                                    await self._update_status(
+                                        status.uuid,
+                                        is_healthy=False,
+                                        failure_count=(status.failure_count or 0) + 1,
+                                        health_check_last_failed=False,
+                                        last_failure_time=datetime.now(),
+                                        last_error_message=str(e)[:1024],
+                                    )
                             break  # Move to next (model_name, key_index) task
 
-        error_msg = f"All providers in chain {chain_uuid} failed"
+        error_msg = f'All providers in chain {chain_uuid} failed'
         if last_error:
-            error_msg += f": {last_error}"
+            error_msg += f': {last_error}'
         raise Exception(error_msg)
 
     async def invoke_chain_llm_stream(
@@ -506,32 +631,34 @@ class APIChainManager:
         """Invoke LLM stream through API chain with per-model/per-API-key failover"""
         chain = self.chains.get(chain_uuid)
         if not chain:
-            raise ValueError(f"Chain {chain_uuid} not found")
+            raise ValueError(f'Chain {chain_uuid} not found')
 
         sorted_items = sorted(chain.chain_config, key=lambda x: x.get('priority', 0))
         last_error: Optional[Exception] = None
+        # True if the stream started yielding and then failed mid-flight.
+        # In this case we must NOT fall through to the next provider because
+        # partial output has already been sent to the caller.
+        failed_mid_stream: bool = False
 
         for item in sorted_items:
             provider_uuid: str = item['provider_uuid']
             is_aggregated: bool = item.get('is_aggregated', False)
+            max_retries: int = item.get('max_retries', 3)
             model_configs: List[Dict] = item.get('model_configs') or []
 
             provider = self.ap.model_mgr.provider_dict.get(provider_uuid)
             if not provider:
-                self.ap.logger.warning(f"Provider {provider_uuid} not found in chain {chain_uuid}")
+                self.ap.logger.warning(f'Provider {provider_uuid} not found in chain {chain_uuid}')
                 continue
 
             tasks = self._build_invoke_tasks(model_configs)
 
             for task_model_name, task_api_key_index in tasks:
-                status = await self._ensure_status(
-                    chain_uuid, provider_uuid, task_model_name, task_api_key_index
-                )
+                status = await self._ensure_status(chain_uuid, provider_uuid, task_model_name, task_api_key_index)
 
                 if status and not status.is_healthy and not is_aggregated:
                     self.ap.logger.debug(
-                        f"Skipping unhealthy: provider={provider_uuid} "
-                        f"model={task_model_name} key={task_api_key_index}"
+                        f'Skipping unhealthy: provider={provider_uuid} model={task_model_name} key={task_api_key_index}'
                     )
                     continue
 
@@ -539,7 +666,7 @@ class APIChainManager:
                 model_entity = self._resolve_model_entity(provider, model, task_model_name)
                 if model_entity is None:
                     self.ap.logger.warning(
-                        f"No model found for provider {provider_uuid} in chain {chain_uuid}, skipping"
+                        f'No model found for provider {provider_uuid} in chain {chain_uuid}, skipping'
                     )
                     continue
                 temp_model = requester.RuntimeLLMModel(
@@ -547,43 +674,84 @@ class APIChainManager:
                     provider=temp_provider,
                 )
 
-                try:
-                    async for chunk in temp_provider.invoke_llm_stream(
-                        query=query,
-                        model=temp_model,
-                        messages=messages,
-                        funcs=funcs,
-                        extra_args=extra_args,
-                        remove_think=remove_think,
-                    ):
-                        yield chunk
+                retry_count = 0 if is_aggregated else max_retries
 
-                    if status:
-                        await self._update_status(
-                            status.uuid,
-                            is_healthy=True,
-                            failure_count=0,
-                            last_success_time=datetime.now(),
+                for attempt in range(max(1, retry_count + 1)):
+                    has_yielded = False
+                    try:
+                        async for chunk in temp_provider.invoke_llm_stream(
+                            query=query,
+                            model=temp_model,
+                            messages=messages,
+                            funcs=funcs,
+                            extra_args=extra_args,
+                            remove_think=remove_think,
+                        ):
+                            has_yielded = True
+                            yield chunk
+
+                        # Advance round-robin token rotation on success
+                        if task_api_key_index is None:
+                            provider.token_mgr.next_token()
+
+                        if status:
+                            await self._update_status(
+                                status.uuid,
+                                is_healthy=True,
+                                failure_count=0,
+                                health_check_last_failed=False,
+                                last_success_time=datetime.now(),
+                            )
+                        return
+
+                    except Exception as e:
+                        last_error = e
+                        self.ap.logger.warning(
+                            f'Chain {chain_uuid} provider={provider_uuid} '
+                            f'model={task_model_name} key={task_api_key_index} '
+                            f'stream attempt {attempt + 1}/{max(1, retry_count + 1)} failed: {e}'
                         )
-                    return
+                        # Advance round-robin token rotation on failure too
+                        if task_api_key_index is None:
+                            provider.token_mgr.next_token()
 
-                except Exception as e:
-                    last_error = e
-                    self.ap.logger.warning(
-                        f"Chain {chain_uuid} provider={provider_uuid} "
-                        f"model={task_model_name} key={task_api_key_index} stream failed: {e}"
-                    )
-                    if status and not is_aggregated:
-                        await self._update_status(
-                            status.uuid,
-                            is_healthy=False,
-                            failure_count=(status.failure_count or 0) + 1,
-                            last_failure_time=datetime.now(),
-                            last_error_message=str(e)[:1024],
-                        )
-                    continue  # Try next (model_name, key_index) task
+                        if has_yielded or attempt + 1 >= max(1, retry_count + 1):
+                            # Cannot retry if chunks were already yielded (would duplicate output),
+                            # or all retries are exhausted for this task
+                            if is_aggregated:
+                                # Aggregated: track failure count but keep is_healthy=True
+                                if status:
+                                    await self._update_status(
+                                        status.uuid,
+                                        failure_count=(status.failure_count or 0) + 1,
+                                        last_failure_time=datetime.now(),
+                                        last_error_message=str(e)[:1024],
+                                    )
+                            else:
+                                if status:
+                                    await self._update_status(
+                                        status.uuid,
+                                        is_healthy=False,
+                                        failure_count=(status.failure_count or 0) + 1,
+                                        health_check_last_failed=False,
+                                        last_failure_time=datetime.now(),
+                                        last_error_message=str(e)[:1024],
+                                    )
+                            if has_yielded:
+                                # Partial output already sent to caller; stop processing
+                                # entirely to avoid mixing output from different providers.
+                                failed_mid_stream = True
+                            break  # Move to next (model_name, key_index) task
+                if failed_mid_stream:
+                    break  # Exit for-task loop
+            if failed_mid_stream:
+                break  # Exit for-item loop
 
-        error_msg = f"All providers in chain {chain_uuid} failed"
+        if failed_mid_stream and last_error:
+            # Re-raise original exception; caller already received partial chunks
+            raise last_error
+
+        error_msg = f'All providers in chain {chain_uuid} failed'
         if last_error:
-            error_msg += f": {last_error}"
+            error_msg += f': {last_error}'
         raise Exception(error_msg)

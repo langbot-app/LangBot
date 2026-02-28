@@ -49,9 +49,7 @@ class PreProcessor(stage.PipelineStage):
                     if chain:
                         use_api_chain_uuid = model_value
                     else:
-                        self.ap.logger.warning(
-                            f'LLM model/chain {model_value} not found or not configured'
-                        )
+                        self.ap.logger.warning(f'LLM model/chain {model_value} not found or not configured')
 
         conversation = await self.ap.sess_mgr.get_conversation(
             query,

@@ -11,7 +11,7 @@ class APIChain(Base):
     uuid = sqlalchemy.Column(String(255), primary_key=True, unique=True)
     name = sqlalchemy.Column(String(255), nullable=False)
     description = sqlalchemy.Column(String(512), nullable=True)
-    
+
     # Chain configuration
     chain_config = sqlalchemy.Column(JSON, nullable=False, default=list)
     """
@@ -40,14 +40,14 @@ class APIChain(Base):
     with round-robin API key rotation. If api_key_indices is empty/absent for a
     model config, round-robin rotation is used for that model.
     """
-    
+
     # Health check configuration
     health_check_interval = sqlalchemy.Column(Integer, nullable=False, default=300)
     """Health check interval in seconds for failed APIs"""
-    
+
     health_check_enabled = sqlalchemy.Column(Boolean, nullable=False, default=True)
     """Whether to enable automatic health check for failed APIs"""
-    
+
     # Metadata
     created_at = sqlalchemy.Column(DateTime, nullable=False, server_default=sqlalchemy.func.now())
     updated_at = sqlalchemy.Column(
@@ -66,24 +66,28 @@ class APIChainStatus(Base):
     uuid = sqlalchemy.Column(String(255), primary_key=True, unique=True)
     chain_uuid = sqlalchemy.Column(String(255), nullable=False, index=True)
     provider_uuid = sqlalchemy.Column(String(255), nullable=False, index=True)
-    
+
     # Granularity: model-level and API-key-level tracking
     model_name = sqlalchemy.Column(String(255), nullable=True, index=True)
     """Model name (from LLMModel.name); NULL means provider-level status"""
 
     api_key_index = sqlalchemy.Column(Integer, nullable=True)
     """Index into the provider's api_keys list; NULL means all/round-robin"""
-    
+
     # Status tracking
     is_healthy = sqlalchemy.Column(Boolean, nullable=False, default=True)
     failure_count = sqlalchemy.Column(Integer, nullable=False, default=0)
     last_failure_time = sqlalchemy.Column(DateTime, nullable=True)
     last_success_time = sqlalchemy.Column(DateTime, nullable=True)
     last_health_check_time = sqlalchemy.Column(DateTime, nullable=True)
-    
+
     # Error information
     last_error_message = sqlalchemy.Column(String(1024), nullable=True)
-    
+
+    health_check_last_failed = sqlalchemy.Column(Boolean, nullable=False, default=False)
+    """True when the last health-check probe itself failed (not a normal request failure).
+    Is_healthy remains False while this is True. Does NOT increment failure_count."""
+
     # Metadata
     created_at = sqlalchemy.Column(DateTime, nullable=False, server_default=sqlalchemy.func.now())
     updated_at = sqlalchemy.Column(

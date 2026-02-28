@@ -123,8 +123,7 @@ class LocalAgentRunner(runner.RequestRunner):
 
         use_api_chain_uuid = (query.variables or {}).get('_use_api_chain_uuid')
         use_llm_model = (
-            None if use_api_chain_uuid
-            else await self.ap.model_mgr.get_model_by_uuid(query.use_llm_model_uuid)
+            None if use_api_chain_uuid else await self.ap.model_mgr.get_model_by_uuid(query.use_llm_model_uuid)
         )
 
         self.ap.logger.debug(
@@ -136,8 +135,13 @@ class LocalAgentRunner(runner.RequestRunner):
             # 非流式输出，直接请求
             if use_api_chain_uuid:
                 msg = await self.ap.api_chain_mgr.invoke_chain_llm(
-                    use_api_chain_uuid, query, None, req_messages, query.use_funcs,
-                    extra_args={}, remove_think=remove_think,
+                    use_api_chain_uuid,
+                    query,
+                    None,
+                    req_messages,
+                    query.use_funcs,
+                    extra_args={},
+                    remove_think=remove_think,
                 )
             else:
                 msg = await use_llm_model.provider.invoke_llm(
@@ -159,8 +163,13 @@ class LocalAgentRunner(runner.RequestRunner):
             msg_sequence = 1
             if use_api_chain_uuid:
                 stream_src = self.ap.api_chain_mgr.invoke_chain_llm_stream(
-                    use_api_chain_uuid, query, None, req_messages, query.use_funcs,
-                    extra_args={}, remove_think=remove_think,
+                    use_api_chain_uuid,
+                    query,
+                    None,
+                    req_messages,
+                    query.use_funcs,
+                    extra_args={},
+                    remove_think=remove_think,
                 )
             else:
                 stream_src = use_llm_model.provider.invoke_llm_stream(
@@ -285,8 +294,13 @@ class LocalAgentRunner(runner.RequestRunner):
 
                 if use_api_chain_uuid:
                     tool_stream_src = self.ap.api_chain_mgr.invoke_chain_llm_stream(
-                        use_api_chain_uuid, query, None, req_messages, query.use_funcs,
-                        extra_args={}, remove_think=remove_think,
+                        use_api_chain_uuid,
+                        query,
+                        None,
+                        req_messages,
+                        query.use_funcs,
+                        extra_args={},
+                        remove_think=remove_think,
                     )
                 else:
                     tool_stream_src = use_llm_model.provider.invoke_llm_stream(
@@ -348,8 +362,13 @@ class LocalAgentRunner(runner.RequestRunner):
                 # 处理完所有调用，再次请求
                 if use_api_chain_uuid:
                     msg = await self.ap.api_chain_mgr.invoke_chain_llm(
-                        use_api_chain_uuid, query, None, req_messages, query.use_funcs,
-                        extra_args={}, remove_think=remove_think,
+                        use_api_chain_uuid,
+                        query,
+                        None,
+                        req_messages,
+                        query.use_funcs,
+                        extra_args={},
+                        remove_think=remove_think,
                     )
                 else:
                     msg = await use_llm_model.provider.invoke_llm(

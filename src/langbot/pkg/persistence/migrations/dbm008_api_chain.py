@@ -1,11 +1,12 @@
 """Database migration for API Chain feature"""
+
 import sqlalchemy
 from sqlalchemy import text
 
 
 async def migrate(ap):
     """Add API chain tables"""
-    
+
     # Create api_chains table
     await ap.persistence_mgr.execute_async(
         text("""
@@ -21,7 +22,7 @@ async def migrate(ap):
         )
         """)
     )
-    
+
     # Create api_chain_status table
     await ap.persistence_mgr.execute_async(
         text("""
@@ -42,5 +43,5 @@ async def migrate(ap):
         )
         """)
     )
-    
-    ap.logger.info("API Chain tables created successfully")
+
+    ap.logger.info('API Chain tables created successfully')

@@ -487,6 +487,8 @@ export interface APIChainStatus {
   last_success_time?: string;
   last_health_check_time?: string;
   last_error_message?: string;
+  /** True when the last health-check probe itself failed (not a normal request failure) */
+  health_check_last_failed?: boolean;
 }
 
 export interface ApiRespAPIChains {

@@ -1003,6 +1003,7 @@ const zhHans = {
     selectModel: '选择模型',
     selectAllModels: '请为所有模型配置条目选择模型',
     advanced: '高级',
+    healthCheckFailed: '健康检查失败',
   },
 };
 

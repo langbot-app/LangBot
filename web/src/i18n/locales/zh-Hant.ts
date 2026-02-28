@@ -977,6 +977,7 @@ const zhHant = {
     selectModel: '選擇模型',
     selectAllModels: '請為所有模型設定條目選擇模型',
     advanced: '進階',
+    healthCheckFailed: '健康檢查失敗',
   },
 };
 

@@ -1043,6 +1043,7 @@ const enUS = {
     selectModel: 'Select Model',
     selectAllModels: 'Please select a model for each model config entry',
     advanced: 'Advanced',
+    healthCheckFailed: 'Health Check Failed',
   },
 };
 

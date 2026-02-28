@@ -1,4 +1,5 @@
 """API Chain HTTP Controller"""
+
 import quart
 
 from ... import group
@@ -21,10 +22,10 @@ class APIChainRouterGroup(group.RouterGroup):
         async def _(chain_uuid: str) -> str:
             if quart.request.method == 'GET':
                 chain = await self.ap.api_chain_service.get_api_chain(chain_uuid)
-                
+
                 if chain is None:
                     return self.http_status(404, -1, 'API chain not found')
-                
+
                 return self.success(data={'chain': chain})
             elif quart.request.method == 'PUT':
                 json_data = await quart.request.json

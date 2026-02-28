@@ -10,18 +10,14 @@ class DBMigrateAPIChainModelAPILevel(migration.DBMigration):
         """Upgrade"""
         try:
             await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text(
-                    'ALTER TABLE api_chain_status ADD COLUMN model_name VARCHAR(255) DEFAULT NULL'
-                )
+                sqlalchemy.text('ALTER TABLE api_chain_status ADD COLUMN model_name VARCHAR(255) DEFAULT NULL')
             )
         except Exception:
             pass
 
         try:
             await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text(
-                    'ALTER TABLE api_chain_status ADD COLUMN api_key_index INTEGER DEFAULT NULL'
-                )
+                sqlalchemy.text('ALTER TABLE api_chain_status ADD COLUMN api_key_index INTEGER DEFAULT NULL')
             )
         except Exception:
             pass

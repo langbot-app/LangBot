@@ -16,10 +16,17 @@ interface APIChainCardProps {
   onDelete: () => void;
 }
 
-function calculateHealthPercentage(statuses: APIChainStatus[] | undefined, totalProviders: number): number {
-  if (!statuses || statuses.length === 0 || totalProviders === 0) return 100;
-  const healthyCount = statuses.filter(s => s.is_healthy).length;
-  return Math.round((healthyCount / statuses.length) * 100);
+function calculateHealthPercentage(statuses: APIChainStatus[] | undefined, chainConfig: APIChain['chain_config']): number {
+  if (!statuses || statuses.length === 0 || chainConfig.length === 0) return 100;
+  // Collect UUIDs of aggregated providers so their statuses are excluded from
+  // the unhealthy calculation (they never become unhealthy by design).
+  const aggregatedUuids = new Set(
+    chainConfig.filter(c => c.is_aggregated).map(c => c.provider_uuid)
+  );
+  const trackable = statuses.filter(s => !aggregatedUuids.has(s.provider_uuid));
+  if (trackable.length === 0) return 100;
+  const healthyCount = trackable.filter(s => s.is_healthy).length;
+  return Math.round((healthyCount / trackable.length) * 100);
 }
 
 function getErrorStats(statuses: APIChainStatus[] | undefined): { totalFailures: number } {
@@ -48,8 +55,8 @@ export default function APIChainCard({ chain, providers, llmModels, onEdit, onDe
   const sortedConfigs = [...chain.chain_config].sort((a, b) => a.priority - b.priority);
 
   const healthPercentage = useMemo(
-    () => calculateHealthPercentage(chain.statuses, chain.chain_config.length),
-    [chain.statuses, chain.chain_config.length],
+    () => calculateHealthPercentage(chain.statuses, chain.chain_config),
+    [chain.statuses, chain.chain_config],
   );
 
   const { totalFailures } = useMemo(() => getErrorStats(chain.statuses), [chain.statuses]);
@@ -74,7 +81,9 @@ export default function APIChainCard({ chain, providers, llmModels, onEdit, onDe
   }
 
   /** Compute provider-level health summary */
-  function providerHealthSummary(providerUuid: string): { healthy: number; total: number } {
+  function providerHealthSummary(providerUuid: string, isAggregated: boolean): { healthy: number; total: number } {
+    // Aggregated providers never become unhealthy by design; always report full health.
+    if (isAggregated) return { healthy: 1, total: 1 };
     const ss = getProviderStatuses(providerUuid);
     if (ss.length === 0) return { healthy: 1, total: 1 }; // assume healthy if no data
     return { healthy: ss.filter((s) => s.is_healthy).length, total: ss.length };
@@ -122,7 +131,7 @@ export default function APIChainCard({ chain, providers, llmModels, onEdit, onDe
         {expanded && (
           <div className="mt-3 ml-6 space-y-2 border-l-2 border-border pl-3">
             {sortedConfigs.map((config, index) => {
-              const { healthy, total } = providerHealthSummary(config.provider_uuid);
+              const { healthy, total } = providerHealthSummary(config.provider_uuid, config.is_aggregated);
               const providerHealthy = healthy === total;
               const modelConfigs = config.model_configs ?? [];
 
@@ -156,11 +165,55 @@ export default function APIChainCard({ chain, providers, llmModels, onEdit, onDe
                   {modelConfigs.length > 0 ? (
                     <div className="mt-1 space-y-1 pl-3 border-l border-border">
                       {[...modelConfigs].sort((a, b) => a.priority - b.priority).map((mc, mi) => {
-                        const st = getStatus(config.provider_uuid, mc.model_name, null);
-                        const modelHealthy = st ? st.is_healthy : true;
+                        // ── Aggregated mode ──────────────────────────────────────────
+                        // Aggregated providers never become unhealthy and are not subject
+                        // to health checks. After retries are exhausted the chain simply
+                        // moves to the next model. Always render a green "healthy" badge
+                        // and omit the per-key sub-list (not meaningful here).
+                        if (config.is_aggregated) {
+                          // Sum failure counts across all key variants for display.
+                          const aggStatuses = [
+                            getStatus(config.provider_uuid, mc.model_name, null),
+                            ...(mc.api_key_indices ?? []).map(k =>
+                              getStatus(config.provider_uuid, mc.model_name, k.index)
+                            ),
+                          ].filter(Boolean) as APIChainStatus[];
+                          const aggFailures = aggStatuses.reduce((sum, s) => sum + (s.failure_count || 0), 0);
+                          return (
+                            <div key={mi} className="text-xs">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-muted-foreground">#{mi + 1}</span>
+                                <span className="font-mono">{mc.model_name}</span>
+                                <span className="px-1.5 py-0.5 rounded bg-green-500/10 text-green-600">
+                                  {t('apiChains.healthy')}
+                                </span>
+                                {aggFailures > 0 && (
+                                  <span className="text-muted-foreground">
+                                    {t('apiChains.failureCount')}: {aggFailures}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        // ── Non-aggregated mode ──────────────────────────────────────
+                        // When api_key_indices are configured, look up the status for
+                        // each specific key; otherwise fall back to the round-robin
+                        // (api_key_index=null) record.
+                        const apiKeyIndices = mc.api_key_indices ?? [];
+                        const relevantStatuses: APIChainStatus[] = apiKeyIndices.length > 0
+                          ? (apiKeyIndices
+                              .map(k => getStatus(config.provider_uuid, mc.model_name, k.index))
+                              .filter(Boolean) as APIChainStatus[])
+                          : ([getStatus(config.provider_uuid, mc.model_name, null)].filter(Boolean) as APIChainStatus[]);
+                        const modelHealthy = relevantStatuses.length === 0 || relevantStatuses.every(s => s.is_healthy);
+                        const totalFailures = relevantStatuses.reduce((sum, s) => sum + (s.failure_count || 0), 0);
+                        const modelHcFailed = relevantStatuses.some(s => !s.is_healthy && !!s.health_check_last_failed);
+                        const modelLastError = relevantStatuses.find(s => s.last_error_message && !s.health_check_last_failed)?.last_error_message;
                         return (
                           <div key={mi} className="text-xs">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="text-muted-foreground">#{mi + 1}</span>
                               <span className="font-mono">{mc.model_name}</span>
                               <span className={cn(
@@ -169,14 +222,48 @@ export default function APIChainCard({ chain, providers, llmModels, onEdit, onDe
                               )}>
                                 {modelHealthy ? t('apiChains.healthy') : t('apiChains.unhealthy')}
                               </span>
-                              {st && st.failure_count > 0 && (
-                                <span className="text-destructive">{t('apiChains.failureCount')}: {st.failure_count}</span>
+                              {/* health check failed badge */}
+                              {!modelHealthy && modelHcFailed && (
+                                <span className="px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-600">
+                                  {t('apiChains.healthCheckFailed')}
+                                </span>
+                              )}
+                              {totalFailures > 0 && (
+                                <span className="text-destructive">{t('apiChains.failureCount')}: {totalFailures}</span>
                               )}
                             </div>
-                            {st?.last_error_message && (
-                              <p className="text-destructive pl-4 truncate" title={st.last_error_message}>
-                                {t('apiChains.lastError')}: {st.last_error_message}
+                            {modelLastError && (
+                              <p className="text-destructive pl-4 truncate" title={modelLastError}>
+                                {t('apiChains.lastError')}: {modelLastError}
                               </p>
+                            )}
+                            {/* Per-key sub-list when api_key_indices are configured */}
+                            {apiKeyIndices.length > 0 && (
+                              <div className="mt-0.5 ml-3 space-y-0.5 border-l border-border pl-2">
+                                {[...apiKeyIndices].sort((a, b) => a.priority - b.priority).map((k) => {
+                                  const kst = getStatus(config.provider_uuid, mc.model_name, k.index);
+                                  const keyHealthy = kst ? kst.is_healthy : true;
+                                  return (
+                                    <div key={k.index} className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="text-muted-foreground font-mono">key[{k.index}]</span>
+                                      <span className={cn(
+                                        'px-1.5 py-0.5 rounded',
+                                        keyHealthy ? 'bg-green-500/10 text-green-600' : 'bg-destructive/10 text-destructive',
+                                      )}>
+                                        {keyHealthy ? t('apiChains.healthy') : t('apiChains.unhealthy')}
+                                      </span>
+                                      {kst && !kst.is_healthy && kst.health_check_last_failed && (
+                                        <span className="px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-600">
+                                          {t('apiChains.healthCheckFailed')}
+                                        </span>
+                                      )}
+                                      {kst && kst.failure_count > 0 && (
+                                        <span className="text-destructive">{kst.failure_count}×</span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             )}
                           </div>
                         );
@@ -192,12 +279,18 @@ export default function APIChainCard({ chain, providers, llmModels, onEdit, onDe
                         if (!st) return null;
                         return (
                           <>
+                            {/* health check failed badge (only for non-aggregated unhealthy) */}
+                            {!st.is_healthy && st.health_check_last_failed && (
+                              <div className="text-yellow-600 font-medium">
+                                ⚠ {t('apiChains.healthCheckFailed')}
+                              </div>
+                            )}
                             {st.failure_count > 0 && (
                               <div className="text-destructive">
                                 {t('apiChains.failureCount')}: {st.failure_count}
                               </div>
                             )}
-                            {st.last_error_message && (
+                            {st.last_error_message && !st.health_check_last_failed && (
                               <div className="text-destructive truncate" title={st.last_error_message}>
                                 {t('apiChains.lastError')}: {st.last_error_message}
                               </div>

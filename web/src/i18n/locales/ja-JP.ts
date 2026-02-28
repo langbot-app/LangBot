@@ -1030,6 +1030,7 @@
     selectModel: 'モデルを選択',
     selectAllModels: 'すべてのモデル設定にモデルを選択してください',
     advanced: '詳細',
+    healthCheckFailed: 'ヘルスチェック失敗',
   },
 };
 
