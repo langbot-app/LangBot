@@ -124,12 +124,6 @@ export default function BotForm({
   const currentAdapter = form.watch('adapter');
   const currentAdapterConfig = form.watch('adapter_config');
 
-  // Serialize adapter_config to a stable string so it can be used as a
-  // useEffect dependency without triggering on every render.  form.watch()
-  // returns a new object reference each time, which would otherwise cause
-  // the filtering effect below to loop indefinitely.
-  const adapterConfigJson = JSON.stringify(currentAdapterConfig);
-
   useEffect(() => {
     setBotFormValues();
   }, []);
@@ -153,7 +147,7 @@ export default function BotForm({
       // For non-Lark adapters, show all fields
       setFilteredDynamicFormConfigList(dynamicFormConfigList);
     }
-  }, [currentAdapter, adapterConfigJson, dynamicFormConfigList]);
+  }, [currentAdapter, currentAdapterConfig, dynamicFormConfigList]);
 
   // 复制到剪贴板的辅助函数 - 使用页面上的真实input元素
   const copyToClipboard = () => {
