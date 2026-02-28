@@ -7,8 +7,9 @@ on:
 jobs:
   build-dev-image:
     runs-on: ubuntu-latest
-    # 如果是tag则跳过
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    env:
+      IMAGE_REPO: ${{ secrets.DOCKER_USERNAME }}/langbot
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -18,12 +19,14 @@ jobs:
       - name: Generate Tag
         id: generate_tag
         run: |
-          # 获取分支名称，把/替换为-
-          echo ${{ github.ref }} | sed 's/refs\/heads\///g' | sed 's/\//-/g'
-          echo ::set-output name=tag::$(echo ${{ github.ref }} | sed 's/refs\/heads\///g' | sed 's/\//-/g')
+          TAG=$(echo ${{ github.ref }} | sed 's/refs\/heads\///g' | sed 's/\//-/g')
+          echo "$TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
       - name: Login to Registry
         run: docker login --username=${{ secrets.DOCKER_USERNAME }} --password ${{ secrets.DOCKER_PASSWORD }}
+
       - name: Build Docker Image
         run: |
           docker buildx create --name mybuilder --use
-          docker build -t rockchin/langbot:${{ steps.generate_tag.outputs.tag }} . --push
+          docker buildx build --platform linux/arm64,linux/amd64 -t ${IMAGE_REPO}:${{ steps.generate_tag.outputs.tag }} . --push

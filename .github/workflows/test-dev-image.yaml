@@ -11,12 +11,11 @@ on:
 jobs:
   test-dev-image:
     runs-on: ubuntu-latest
-    # Only run if the build workflow succeeded
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    
     permissions:
       contents: read
-    
+    env:
+      IMAGE_REPO: ${{ secrets.DOCKER_USERNAME }}/langbot
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,8 +23,7 @@ jobs:
       - name: Update Docker Compose to use master tag
         working-directory: ./docker
         run: |
-          # Replace 'latest' with 'master' tag for testing the dev image
-          sed -i 's/rockchin\/langbot:latest/rockchin\/langbot:master/g' docker-compose.yaml
+          sed -i "s|rockchin/langbot:latest|${IMAGE_REPO}:master|g" docker-compose.yaml
           echo "Updated docker-compose.yaml to use master tag:"
           cat docker-compose.yaml
 
@@ -35,21 +33,20 @@ jobs:
 
       - name: Wait and Test API
         run: |
-          # Function to test API endpoint
           test_api() {
             echo "Testing API endpoint..."
             response=$(curl -s --connect-timeout 10 --max-time 30 -w "\n%{http_code}" http://localhost:5300/api/v1/system/info 2>&1)
             curl_exit_code=$?
-            
+
             if [ $curl_exit_code -ne 0 ]; then
               echo "Curl failed with exit code: $curl_exit_code"
               echo "Error: $response"
               return 1
             fi
-            
+
             http_code=$(echo "$response" | tail -n 1)
             response_body=$(echo "$response" | head -n -1)
-            
+
             if [ "$http_code" = "200" ]; then
               echo "API is healthy! Response code: $http_code"
               echo "Response: $response_body"
@@ -61,31 +58,28 @@ jobs:
             fi
           }
 
-          # Wait 30 seconds before first attempt
           echo "Waiting 30 seconds for services to start..."
           sleep 30
 
-          # Try up to 3 times with 30-second intervals
           max_attempts=3
           attempt=1
 
           while [ $attempt -le $max_attempts ]; do
             echo "Attempt $attempt of $max_attempts"
-            
+
             if test_api; then
               echo "Success! API is responding correctly."
               exit 0
             fi
-            
+
             if [ $attempt -lt $max_attempts ]; then
               echo "Retrying in 30 seconds..."
               sleep 30
             fi
-            
+
             attempt=$((attempt + 1))
           done
 
-          # All attempts failed
           echo "Failed to get healthy response after $max_attempts attempts"
           exit 1
 
