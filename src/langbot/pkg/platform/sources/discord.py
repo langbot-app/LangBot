@@ -14,7 +14,7 @@ import io
 import asyncio
 from enum import Enum
 
-import aiohttp
+from langbot.pkg.utils import httpclient
 import pydantic
 
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
@@ -622,23 +622,23 @@ class DiscordMessageConverter(abstract_platform_adapter.AbstractMessageConverter
                     image_bytes = base64.b64decode(base64_data)
                 elif ele.url:
                     # 从URL下载图片
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(ele.url) as response:
-                            image_bytes = await response.read()
-                            # 从URL或Content-Type推断文件类型
-                            content_type = response.headers.get('Content-Type', '')
-                            if 'jpeg' in content_type or 'jpg' in content_type:
-                                filename = f'{uuid.uuid4()}.jpg'
-                            elif 'gif' in content_type:
-                                filename = f'{uuid.uuid4()}.gif'
-                            elif 'webp' in content_type:
-                                filename = f'{uuid.uuid4()}.webp'
-                            elif ele.url.lower().endswith(('.jpg', '.jpeg')):
-                                filename = f'{uuid.uuid4()}.jpg'
-                            elif ele.url.lower().endswith('.gif'):
-                                filename = f'{uuid.uuid4()}.gif'
-                            elif ele.url.lower().endswith('.webp'):
-                                filename = f'{uuid.uuid4()}.webp'
+                    session = httpclient.get_session()
+                    async with session.get(ele.url) as response:
+                        image_bytes = await response.read()
+                        # 从URL或Content-Type推断文件类型
+                        content_type = response.headers.get('Content-Type', '')
+                        if 'jpeg' in content_type or 'jpg' in content_type:
+                            filename = f'{uuid.uuid4()}.jpg'
+                        elif 'gif' in content_type:
+                            filename = f'{uuid.uuid4()}.gif'
+                        elif 'webp' in content_type:
+                            filename = f'{uuid.uuid4()}.webp'
+                        elif ele.url.lower().endswith(('.jpg', '.jpeg')):
+                            filename = f'{uuid.uuid4()}.jpg'
+                        elif ele.url.lower().endswith('.gif'):
+                            filename = f'{uuid.uuid4()}.gif'
+                        elif ele.url.lower().endswith('.webp'):
+                            filename = f'{uuid.uuid4()}.webp'
                 elif ele.path:
                     # 从文件路径读取图片
                     # 确保路径没有空字节
@@ -702,9 +702,9 @@ class DiscordMessageConverter(abstract_platform_adapter.AbstractMessageConverter
                     file_base64 = ele.base64.split(',')[-1]
                     file_bytes = base64.b64decode(file_base64)
                 elif ele.url:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(ele.url) as response:
-                            file_bytes = await response.read()
+                    session = httpclient.get_session()
+                    async with session.get(ele.url) as response:
+                        file_bytes = await response.read()
                 if file_bytes:
                     files.append(discord.File(fp=io.BytesIO(file_bytes), filename=filename))
             elif isinstance(ele, platform_message.File):
@@ -717,9 +717,9 @@ class DiscordMessageConverter(abstract_platform_adapter.AbstractMessageConverter
                     else:
                         file_bytes = base64.b64decode(ele.base64)
                 elif ele.url:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(ele.url) as response:
-                            file_bytes = await response.read()
+                    session = httpclient.get_session()
+                    async with session.get(ele.url) as response:
+                        file_bytes = await response.read()
                 if file_bytes:
                     files.append(discord.File(fp=io.BytesIO(file_bytes), filename=filename))
             elif isinstance(ele, platform_message.Forward):
@@ -775,12 +775,12 @@ class DiscordMessageConverter(abstract_platform_adapter.AbstractMessageConverter
 
         # attachments
         for attachment in message.attachments:
-            async with aiohttp.ClientSession(trust_env=True) as session:
-                async with session.get(attachment.url) as response:
-                    image_data = await response.read()
-                    image_base64 = base64.b64encode(image_data).decode('utf-8')
-                    image_format = response.headers['Content-Type']
-                    element_list.append(platform_message.Image(base64=f'data:{image_format};base64,{image_base64}'))
+            session = httpclient.get_session(trust_env=True)
+            async with session.get(attachment.url) as response:
+                image_data = await response.read()
+                image_base64 = base64.b64encode(image_data).decode('utf-8')
+                image_format = response.headers['Content-Type']
+                element_list.append(platform_message.Image(base64=f'data:{image_format};base64,{image_base64}'))
 
         return platform_message.MessageChain(element_list)
 
