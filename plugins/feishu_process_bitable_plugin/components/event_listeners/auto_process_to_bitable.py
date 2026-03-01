@@ -32,6 +32,11 @@ class AutoProcessToBitableListener(EventListener):
         self._tenant_access_token: str = ""
         self._tenant_access_token_expire_at: float = 0.0
         self._token_lock = asyncio.Lock()
+        self._table_lock = asyncio.Lock()
+        self._field_lock = asyncio.Lock()
+        self._route_table_cache: dict[str, str] = {}
+        self._table_name_to_id_cache: dict[str, str] = {}
+        self._table_field_types_cache: dict[str, dict[str, int]] = {}
 
     async def initialize(self) -> None:
         await super().initialize()
@@ -82,6 +87,297 @@ class AutoProcessToBitableListener(EventListener):
             except Exception:
                 return default
         return default
+
+    def _get_bitable_app_token(self) -> str:
+        return self._get_str_config("bitable_app_token", "")
+
+    @staticmethod
+    def _default_table_names() -> dict[str, str]:
+        return {
+            "spray.A": "A线喷雾汇总",
+            "spray.B": "B线喷雾汇总",
+            "feeding.A": "A线投料汇总",
+            "feeding.B": "B线投料汇总",
+            "sintering.A": "A线烧结汇总",
+            "sintering.B": "B线烧结汇总",
+            "crushing.A": "A线粉碎压实汇总",
+            "crushing.B": "B线粉碎压实汇总",
+            "pure_water.A": "A线纯水PH汇总",
+            "pure_water.B": "B线纯水PH汇总",
+            "pure_water": "车间纯水PH汇总",
+            "custom": "自定义消息汇总",
+            "raw": "原始消息汇总",
+        }
+
+    def _resolve_table_name(self, route_key: str) -> str:
+        routing = self._get_json_config("table_name_routing_json", {})
+        if route_key in routing and str(routing.get(route_key, "")).strip():
+            return str(routing.get(route_key, "")).strip()
+
+        prefix = route_key.split(".", 1)[0]
+        if prefix in routing and str(routing.get(prefix, "")).strip():
+            return str(routing.get(prefix, "")).strip()
+
+        defaults = self._default_table_names()
+        if route_key in defaults:
+            return defaults[route_key]
+        if prefix in defaults:
+            return defaults[prefix]
+
+        if "." in route_key:
+            part_a, part_b = route_key.split(".", 1)
+            if part_b in {"A", "B"}:
+                return f"{part_b}线{part_a}汇总"
+        return f"{route_key}-汇总"
+
+    async def _call_feishu_json_api(
+        self,
+        method: str,
+        endpoint: str,
+        headers: dict[str, str],
+        payload: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        timeout = self._get_timeout_seconds()
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.request(method=method, url=endpoint, headers=headers, json=payload, params=params)
+
+        if response.status_code != 200:
+            raise RuntimeError(f"HTTP {response.status_code}: {response.text[:300]}")
+
+        try:
+            body = response.json()
+        except Exception as exc:
+            raise RuntimeError("Non-JSON response from Feishu API.") from exc
+
+        code = int(body.get("code", 0))
+        if code != 0:
+            raise RuntimeError(f"code={code}, msg={body.get('msg', '')}")
+
+        data = body.get("data", {}) or {}
+        if not isinstance(data, dict):
+            return {}
+        return data
+
+    async def _list_all_bitable_tables(self) -> list[dict[str, Any]]:
+        app_token = self._get_bitable_app_token()
+        if not app_token:
+            return []
+
+        token = await self._get_tenant_access_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8",
+        }
+
+        endpoint = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables"
+        page_token = ""
+        tables: list[dict[str, Any]] = []
+
+        while True:
+            query: dict[str, Any] = {"page_size": 200}
+            if page_token:
+                query["page_token"] = page_token
+            data = await self._call_feishu_json_api("GET", endpoint, headers=headers, params=query)
+            items = data.get("items", []) or []
+            for item in items:
+                if isinstance(item, dict):
+                    tables.append(item)
+            has_more = bool(data.get("has_more", False))
+            if not has_more:
+                break
+            page_token = str(data.get("page_token", "")).strip()
+            if not page_token:
+                break
+
+        return tables
+
+    async def _create_bitable_table(self, table_name: str) -> str:
+        app_token = self._get_bitable_app_token()
+        if not app_token:
+            return ""
+
+        token = await self._get_tenant_access_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8",
+        }
+        endpoint = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables"
+        payload = {"table": {"name": table_name}}
+        data = await self._call_feishu_json_api("POST", endpoint, headers=headers, payload=payload)
+
+        table_id = str(data.get("table_id", "")).strip()
+        if table_id:
+            return table_id
+
+        # Compatible fallback for response shapes like {"table": {"table_id": "..."}}
+        table_obj = data.get("table", {}) or {}
+        if isinstance(table_obj, dict):
+            return str(table_obj.get("table_id", "")).strip()
+        return ""
+
+    async def _get_or_create_table_id_by_name(self, table_name: str) -> str:
+        if not table_name:
+            return ""
+
+        cached = self._table_name_to_id_cache.get(table_name)
+        if cached:
+            return cached
+
+        async with self._table_lock:
+            cached = self._table_name_to_id_cache.get(table_name)
+            if cached:
+                return cached
+
+            tables = await self._list_all_bitable_tables()
+            for table in tables:
+                name = str(table.get("name", "")).strip()
+                tid = str(table.get("table_id", "")).strip()
+                if name and tid:
+                    self._table_name_to_id_cache[name] = tid
+
+            cached = self._table_name_to_id_cache.get(table_name, "")
+            if cached:
+                return cached
+
+            if not self._get_bool_config("auto_create_table_by_route", True):
+                return ""
+
+            created = await self._create_bitable_table(table_name)
+            if created:
+                self._table_name_to_id_cache[table_name] = created
+                return created
+
+            # Best-effort retry by re-listing once (handles concurrent creation by other workers)
+            tables = await self._list_all_bitable_tables()
+            for table in tables:
+                name = str(table.get("name", "")).strip()
+                tid = str(table.get("table_id", "")).strip()
+                if name and tid:
+                    self._table_name_to_id_cache[name] = tid
+            return self._table_name_to_id_cache.get(table_name, "")
+
+    async def _list_all_table_fields(self, table_id: str) -> dict[str, int]:
+        app_token = self._get_bitable_app_token()
+        if not app_token or not table_id:
+            return {}
+
+        token = await self._get_tenant_access_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8",
+        }
+        endpoint = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/fields"
+
+        page_token = ""
+        field_types: dict[str, int] = {}
+        while True:
+            query: dict[str, Any] = {"page_size": 500}
+            if page_token:
+                query["page_token"] = page_token
+            data = await self._call_feishu_json_api("GET", endpoint, headers=headers, params=query)
+            items = data.get("items", []) or []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                field_name = str(item.get("field_name", "")).strip()
+                raw_type = item.get("type", 0)
+                if not field_name:
+                    continue
+                try:
+                    field_types[field_name] = int(raw_type)
+                except Exception:
+                    field_types[field_name] = 0
+
+            has_more = bool(data.get("has_more", False))
+            if not has_more:
+                break
+            page_token = str(data.get("page_token", "")).strip()
+            if not page_token:
+                break
+
+        return field_types
+
+    def _resolve_auto_field_type(self, value: Any) -> int:
+        # Feishu Bitable field type: use text field as safe default.
+        # Optionally enable numeric field auto type (2) by config.
+        if self._get_bool_config("auto_numeric_field", False):
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                return 2
+        return 1
+
+    async def _create_table_field(self, table_id: str, field_name: str, field_type: int) -> bool:
+        app_token = self._get_bitable_app_token()
+        if not app_token or not table_id or not field_name:
+            return False
+
+        token = await self._get_tenant_access_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8",
+        }
+        endpoint = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/fields"
+        payload = {
+            "field_name": field_name,
+            "type": field_type,
+        }
+
+        await self._call_feishu_json_api("POST", endpoint, headers=headers, payload=payload)
+        return True
+
+    async def _ensure_table_fields(self, table_id: str, write_fields: dict[str, Any]) -> tuple[bool, str, dict[str, int]]:
+        if not table_id:
+            return False, "table_id is empty", {}
+
+        async with self._field_lock:
+            field_types = self._table_field_types_cache.get(table_id)
+            if field_types is None:
+                try:
+                    field_types = await self._list_all_table_fields(table_id)
+                except Exception as exc:
+                    return False, f"list fields failed: {exc}", {}
+                self._table_field_types_cache[table_id] = field_types
+
+            if not self._get_bool_config("auto_create_fields", True):
+                return True, "", field_types
+
+            missing = [name for name in write_fields.keys() if name and name not in field_types]
+            for field_name in missing:
+                try:
+                    field_type = self._resolve_auto_field_type(write_fields.get(field_name))
+                    await self._create_table_field(table_id, field_name, field_type)
+                    field_types[field_name] = field_type
+                except Exception as exc:
+                    return False, f"create field failed: {field_name}, {exc}", field_types
+
+            self._table_field_types_cache[table_id] = field_types
+            return True, "", field_types
+
+    @staticmethod
+    def _stringify_value(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, (dict, list)):
+            try:
+                return json.dumps(value, ensure_ascii=False)
+            except Exception:
+                return str(value)
+        return str(value)
+
+    def _normalize_write_fields(self, write_fields: dict[str, Any], field_types: dict[str, int]) -> dict[str, Any]:
+        stringify = self._get_bool_config("stringify_text_field_values", True)
+        normalized: dict[str, Any] = {}
+        for key, value in write_fields.items():
+            if value is None:
+                continue
+            ftype = field_types.get(key)
+            if stringify and ftype == 1:
+                normalized[key] = self._stringify_value(value)
+            else:
+                normalized[key] = value
+        return normalized
 
     @staticmethod
     def _strip_data_url_prefix(data: str) -> str:
@@ -621,6 +917,26 @@ class AutoProcessToBitableListener(EventListener):
         if prefix in routing and str(routing.get(prefix, "")).strip():
             return str(routing[prefix]).strip()
 
+        return ""
+
+    async def _resolve_or_create_table_id(self, route_key: str) -> str:
+        explicit_table_id = self._resolve_table_id(route_key)
+        if explicit_table_id:
+            return explicit_table_id
+
+        cached = self._route_table_cache.get(route_key, "")
+        if cached:
+            return cached
+
+        if not self._get_bool_config("auto_create_table_by_route", True):
+            return ""
+
+        table_name = self._resolve_table_name(route_key)
+        table_id = await self._get_or_create_table_id_by_name(table_name)
+        if table_id:
+            self._route_table_cache[route_key] = table_id
+            return table_id
+
         return self._get_str_config("bitable_default_table_id", "")
 
     async def _write_record_to_bitable(self, table_id: str, fields: dict[str, Any]) -> tuple[bool, str]:
@@ -781,15 +1097,20 @@ class AutoProcessToBitableListener(EventListener):
         errors: list[str] = []
 
         for record in records:
-            table_id = self._resolve_table_id(record.route_key)
+            table_id = await self._resolve_or_create_table_id(record.route_key)
             if not table_id:
-                errors.append(f"route={record.route_key}, table_id not configured")
+                errors.append(f"route={record.route_key}, table_id not configured and auto-create disabled/failed")
                 continue
 
             write_fields = dict(record.fields)
             self._apply_builtin_fields(write_fields, record, event_ctx, plain_text, ocr_text, message_time)
+            ok_fields, detail_fields, field_types = await self._ensure_table_fields(table_id, write_fields)
+            if not ok_fields:
+                errors.append(f"route={record.route_key}, {detail_fields}")
+                continue
+            normalized_write_fields = self._normalize_write_fields(write_fields, field_types)
 
-            ok, detail = await self._write_record_to_bitable(table_id, write_fields)
+            ok, detail = await self._write_record_to_bitable(table_id, normalized_write_fields)
             if ok:
                 success_count += 1
             else:

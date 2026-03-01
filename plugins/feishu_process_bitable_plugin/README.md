@@ -18,6 +18,9 @@
 - `bitable_app_token`
 - `bitable_default_table_id`
 - `table_routing_json`：把不同路由写入不同表
+- `auto_create_table_by_route`：未配置 `table_id` 时按路由自动建表
+- `table_name_routing_json`：路由 -> 表名（用于自动建表）
+- `auto_create_fields`：缺列自动创建
 - `enable_ocr_for_images`
 - `process_switch_json`
 
@@ -40,7 +43,40 @@
 说明：
 - 先匹配完整路由键（如 `spray.A`）
 - 未命中时匹配前缀键（如 `spray`）
-- 仍未命中则使用 `bitable_default_table_id`
+- 若未配置到 `table_id`，可按 `table_name_routing_json` / 默认表名自动建表
+- 自动建表仍失败时，最后回退到 `bitable_default_table_id`
+
+## 自动建表与自动补列
+
+- 默认开启 `auto_create_table_by_route=true`、`auto_create_fields=true`
+- 当 `table_routing_json` 没有命中时，插件会按路由自动找表/建表
+- 默认表名（可被 `table_name_routing_json` 覆盖）：
+  - `spray.A` -> `A线喷雾汇总`
+  - `spray.B` -> `B线喷雾汇总`
+  - `feeding.A` -> `A线投料汇总`
+  - `feeding.B` -> `B线投料汇总`
+  - `sintering.A` -> `A线烧结汇总`
+  - `sintering.B` -> `B线烧结汇总`
+  - `crushing.A` -> `A线粉碎压实汇总`
+  - `crushing.B` -> `B线粉碎压实汇总`
+  - `pure_water` -> `车间纯水PH汇总`
+- 写入前会检查字段，缺失字段自动创建（默认文本列）
+
+`table_name_routing_json` 示例：
+
+```json
+{
+  "spray.A": "A线喷雾汇总",
+  "spray.B": "B线喷雾汇总",
+  "feeding.A": "A线分散罐汇总",
+  "feeding.B": "B线分散罐汇总",
+  "sintering.A": "A线烧结压实汇总",
+  "sintering.B": "B线烧结压实汇总",
+  "crushing.A": "A线粉碎压实汇总",
+  "crushing.B": "B线粉碎压实汇总",
+  "pure_water": "车间纯水PH汇总"
+}
+```
 
 ## 事件行为
 

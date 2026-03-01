@@ -4,7 +4,7 @@ metadata:
   author: local
   name: feishu_process_bitable_plugin
   repository: 'https://open.feishu.cn/'
-  version: 0.1.0
+  version: 0.2.1
   description:
     en_US: Parse process messages with OCR and write structured records into Feishu Bitable.
     zh_Hans: 解析工艺消息并支持OCR，把结构化结果写入飞书多维表格。
@@ -75,11 +75,55 @@ spec:
         en_US: Table Routing JSON
         zh_Hans: 路由表(JSON)
       description:
-        en_US: 'Map route keys to table_id, e.g. {"spray.A":"tblxxx","spray.B":"tblyyy","pure_water":"tblzzz"}'
-        zh_Hans: '按路由键映射table_id，例如 {"spray.A":"tblxxx","spray.B":"tblyyy","pure_water":"tblzzz"}'
+        en_US: 'Map route keys to table_id. This has highest priority over auto-create table.'
+        zh_Hans: '按路由键映射 table_id。该配置优先级高于自动建表。'
       type: json
       required: false
       default: '{}'
+    - name: auto_create_table_by_route
+      label:
+        en_US: Auto Create Table By Route
+        zh_Hans: 按路由自动建表
+      type: boolean
+      required: false
+      default: true
+    - name: table_name_routing_json
+      label:
+        en_US: Table Name Routing JSON
+        zh_Hans: 路由表名(JSON)
+      description:
+        en_US: 'Map route keys to table names when table_id is not configured, e.g. {"spray.A":"A线喷雾汇总"}'
+        zh_Hans: '未配置 table_id 时，按路由映射到表名并自动创建，例如 {"spray.A":"A线喷雾汇总"}'
+      type: json
+      required: false
+      default: '{}'
+    - name: auto_create_fields
+      label:
+        en_US: Auto Create Missing Fields
+        zh_Hans: 自动创建缺失字段
+      type: boolean
+      required: false
+      default: true
+    - name: auto_numeric_field
+      label:
+        en_US: Auto Numeric Field
+        zh_Hans: 自动数值字段
+      description:
+        en_US: Try creating numeric fields (type=2) for int/float values.
+        zh_Hans: 对 int/float 字段尝试创建数值列(type=2)。
+      type: boolean
+      required: false
+      default: false
+    - name: stringify_text_field_values
+      label:
+        en_US: Stringify Text Field Values
+        zh_Hans: 文本字段转字符串
+      description:
+        en_US: Convert non-string values to string when writing to text fields.
+        zh_Hans: 写入文本字段(type=1)时将非字符串值转为字符串。
+      type: boolean
+      required: false
+      default: true
     - name: bitable_endpoint_template
       label:
         en_US: Bitable Endpoint Template
