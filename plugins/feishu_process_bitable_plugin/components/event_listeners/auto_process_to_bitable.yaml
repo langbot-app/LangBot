@@ -1,0 +1,16 @@
+﻿apiVersion: v1
+kind: EventListener
+metadata:
+  name: auto_process_to_bitable
+  label:
+    en_US: AutoProcessToBitable
+    zh_Hans: 自动处理并写入飞书表格
+  description:
+    en_US: Parse process messages (with optional OCR) and write records to Feishu Bitable.
+    zh_Hans: 自动解析工艺消息（可选 OCR）并写入飞书多维表格。
+spec:
+execution:
+  python:
+    path: auto_process_to_bitable.py
+    attr: AutoProcessToBitableListener
+
