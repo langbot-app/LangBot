@@ -1,6 +1,5 @@
 """Database migration for API Chain feature"""
 
-import sqlalchemy
 from sqlalchemy import text
 
 

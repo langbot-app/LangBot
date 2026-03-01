@@ -220,12 +220,12 @@ class APIChainManager:
             api_chain_entity.APIChainStatus.provider_uuid == provider_uuid,
         ]
         if model_name is None:
-            conditions.append(api_chain_entity.APIChainStatus.model_name == None)
+            conditions.append(api_chain_entity.APIChainStatus.model_name == None)  # noqa: E711
         else:
             conditions.append(api_chain_entity.APIChainStatus.model_name == model_name)
 
         if api_key_index is None:
-            conditions.append(api_chain_entity.APIChainStatus.api_key_index == None)
+            conditions.append(api_chain_entity.APIChainStatus.api_key_index == None)  # noqa: E711
         else:
             conditions.append(api_chain_entity.APIChainStatus.api_key_index == api_key_index)
 
