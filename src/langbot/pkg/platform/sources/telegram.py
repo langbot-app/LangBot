@@ -10,9 +10,9 @@ import telegramify_markdown
 import typing
 import traceback
 import base64
+import aiohttp
 import pydantic
 
-from langbot.pkg.utils import httpclient
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
@@ -34,9 +34,9 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
                 if component.base64:
                     photo_bytes = base64.b64decode(component.base64)
                 elif component.url:
-                    session = httpclient.get_session()
-                    async with session.get(component.url) as response:
-                        photo_bytes = await response.read()
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(component.url) as response:
+                            photo_bytes = await response.read()
                 elif component.path:
                     with open(component.path, 'rb') as f:
                         photo_bytes = f.read()
@@ -75,9 +75,10 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
             file_bytes = None
             file_format = ''
 
-            async with httpclient.get_session(trust_env=True).get(file.file_path) as response:
-                file_bytes = await response.read()
-                file_format = 'image/jpeg'
+            async with aiohttp.ClientSession(trust_env=True) as session:
+                async with session.get(file.file_path) as response:
+                    file_bytes = await response.read()
+                    file_format = 'image/jpeg'
 
             message_components.append(
                 platform_message.Image(
@@ -94,8 +95,9 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
             file_bytes = None
             file_format = message.voice.mime_type or 'audio/ogg'
 
-            async with httpclient.get_session(trust_env=True).get(file.file_path) as response:
-                file_bytes = await response.read()
+            async with aiohttp.ClientSession(trust_env=True) as session:
+                async with session.get(file.file_path) as response:
+                    file_bytes = await response.read()
 
             message_components.append(
                 platform_message.Voice(
@@ -193,31 +195,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         )
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
-        components = await TelegramMessageConverter.yiri2target(message, self.bot)
-
-        chat_id_str, _, thread_id_str = str(target_id).partition('#')
-        chat_id: int | str = int(chat_id_str) if chat_id_str.lstrip('-').isdigit() else chat_id_str
-        message_thread_id = int(thread_id_str) if thread_id_str and thread_id_str.isdigit() else None
-
-        for component in components:
-            component_type = component.get('type')
-            args = {'chat_id': chat_id}
-            if message_thread_id is not None:
-                args['message_thread_id'] = message_thread_id
-
-            if component_type == 'text':
-                text = component.get('text', '')
-                if self.config['markdown_card'] is True:
-                    text = telegramify_markdown.markdownify(content=text)
-                    args['parse_mode'] = 'MarkdownV2'
-                args['text'] = text
-                await self.bot.send_message(**args)
-            elif component_type == 'photo':
-                photo = component.get('photo')
-                if photo is None:
-                    continue
-                args['photo'] = telegram.InputFile(photo)
-                await self.bot.send_photo(**args)
+        pass
 
     async def reply_message(
         self,

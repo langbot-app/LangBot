@@ -41,6 +41,9 @@ import {
   ApiRespKnowledgeEngines,
   ApiRespParsers,
   RagMigrationStatusResp,
+  ApiRespAPIChains,
+  ApiRespAPIChain,
+  APIChain,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
@@ -102,6 +105,32 @@ export class BackendClient extends BaseHttpClient {
 
   public deleteModelProvider(uuid: string): Promise<object> {
     return this.delete(`/api/v1/provider/providers/${uuid}`);
+  }
+
+  // ============ API Chains ============
+  public getAPIChains(): Promise<ApiRespAPIChains> {
+    return this.get('/api/v1/provider/api-chains');
+  }
+
+  public getAPIChain(uuid: string): Promise<ApiRespAPIChain> {
+    return this.get(`/api/v1/provider/api-chains/${uuid}`);
+  }
+
+  public createAPIChain(
+    chain: Omit<APIChain, 'uuid'>,
+  ): Promise<{ uuid: string }> {
+    return this.post('/api/v1/provider/api-chains', chain);
+  }
+
+  public updateAPIChain(
+    uuid: string,
+    chain: Partial<APIChain>,
+  ): Promise<object> {
+    return this.put(`/api/v1/provider/api-chains/${uuid}`, chain);
+  }
+
+  public deleteAPIChain(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/provider/api-chains/${uuid}`);
   }
 
   // ============ Provider Model LLM ============

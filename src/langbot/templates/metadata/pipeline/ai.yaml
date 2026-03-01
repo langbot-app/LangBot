@@ -57,9 +57,9 @@ stages:
     config:
       - name: model
         label:
-          en_US: Model
-          zh_Hans: 模型
-        type: llm-model-selector
+          en_US: Model / API Chain
+          zh_Hans: 模型 / API 链
+        type: model-or-api-chain-selector
         required: true
       - name: max-round
         label:
