@@ -906,8 +906,6 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         tenant_key = getattr(getattr(event, 'header', None), 'tenant_key', None)
         if not tenant_key:
-            tenant_key = getattr(sender, 'tenant_key', None)
-        if not tenant_key:
             tenant_key = self.lark_tenant_key or self.config.get('lark_tenant_key') or None
 
         req_opt = self._build_request_option(tenant_key)
@@ -924,27 +922,14 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 response: GetUserResponse = self.api_client.contact.v3.user.get(request, req_opt)
 
                 if not response.success():
-                    await self.logger.debug(
-                        'Lark resolve sender name failed '
-                        f'id_type={query_id_type} id={query_id} tenant_key={tenant_key} '
-                        f'code={response.code} msg={response.msg}'
-                    )
                     continue
 
                 user = response.data.user if response.data else None
                 if user is None:
-                    await self.logger.debug(
-                        'Lark resolve sender name returned empty user '
-                        f'id_type={query_id_type} id={query_id} tenant_key={tenant_key}'
-                    )
                     continue
 
                 user_name = (getattr(user, 'name', None) or getattr(user, 'nickname', None) or '').strip()
                 if not user_name:
-                    await self.logger.debug(
-                        'Lark resolve sender name got empty name '
-                        f'id_type={query_id_type} id={query_id} tenant_key={tenant_key}'
-                    )
                     continue
 
                 resolved_id_map = {
@@ -954,11 +939,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 }
                 self._set_cached_user_name(resolved_id_map, user_name)
                 return user_name
-            except Exception as e:
-                await self.logger.debug(
-                    'Lark resolve sender name exception '
-                    f'id_type={query_id_type} id={query_id} tenant_key={tenant_key}: {e}'
-                )
+            except Exception:
                 continue
 
         return None
@@ -974,8 +955,6 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         tenant_key = None
         if event is not None:
             tenant_key = getattr(getattr(event, 'header', None), 'tenant_key', None)
-            if not tenant_key:
-                tenant_key = getattr(getattr(getattr(event, 'event', None), 'sender', None), 'tenant_key', None)
         if not tenant_key:
             tenant_key = self.lark_tenant_key or self.config.get('lark_tenant_key') or None
 
@@ -985,26 +964,16 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             request: GetChatRequest = GetChatRequest.builder().chat_id(str(chat_id)).build()
             response: GetChatResponse = self.api_client.im.v1.chat.get(request, req_opt)
             if not response.success():
-                await self.logger.debug(
-                    'Lark resolve chat name failed '
-                    f'chat_id={chat_id} tenant_key={tenant_key} code={response.code} msg={response.msg}'
-                )
                 return None
 
             chat = response.data.chat if response.data else None
             chat_name = (getattr(chat, 'name', None) or '').strip() if chat else ''
             if not chat_name:
-                await self.logger.debug(
-                    'Lark resolve chat name got empty name ' f'chat_id={chat_id} tenant_key={tenant_key}'
-                )
                 return None
 
             self._set_cached_chat_name(chat_id, chat_name)
             return chat_name
-        except Exception as e:
-            await self.logger.debug(
-                'Lark resolve chat name exception ' f'chat_id={chat_id} tenant_key={tenant_key}: {e}'
-            )
+        except Exception:
             return None
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
