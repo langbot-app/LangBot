@@ -1,3 +1,4 @@
+import importlib.util
 import pip
 import os
 from ...utils import pkgmgr
@@ -49,9 +50,10 @@ async def check_deps() -> list[str]:
 
     missing_deps = []
     for dep in required_deps:
-        try:
-            __import__(dep)
-        except ImportError:
+        # Use find_spec instead of __import__ to avoid actually loading
+        # all modules into memory. find_spec only checks if the module
+        # can be found, without executing module-level code.
+        if importlib.util.find_spec(dep) is None:
             missing_deps.append(dep)
     return missing_deps
 
