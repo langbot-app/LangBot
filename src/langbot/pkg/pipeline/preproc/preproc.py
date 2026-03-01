@@ -36,17 +36,20 @@ class PreProcessor(stage.PipelineStage):
         session = await self.ap.sess_mgr.get_session(query)
 
         # When not local-agent, llm_model is None
-        try:
-            llm_model = (
-                await self.ap.model_mgr.get_model_by_uuid(query.pipeline_config['ai']['local-agent']['model'])
-                if selected_runner == 'local-agent'
-                else None
-            )
-        except ValueError:
-            self.ap.logger.warning(
-                f'LLM model {query.pipeline_config["ai"]["local-agent"]["model"] + " "}not found or not configured'
-            )
-            llm_model = None
+        llm_model = None
+        use_api_chain_uuid = None
+        if selected_runner == 'local-agent':
+            model_value = query.pipeline_config['ai']['local-agent'].get('model', '')
+            if model_value:
+                try:
+                    llm_model = await self.ap.model_mgr.get_model_by_uuid(model_value)
+                except ValueError:
+                    # Not a model UUID — try as API chain UUID
+                    chain = await self.ap.api_chain_mgr.get_chain(model_value)
+                    if chain:
+                        use_api_chain_uuid = model_value
+                    else:
+                        self.ap.logger.warning(f'LLM model/chain {model_value} not found or not configured')
 
         conversation = await self.ap.sess_mgr.get_conversation(
             query,
@@ -61,19 +64,28 @@ class PreProcessor(stage.PipelineStage):
         query.prompt = conversation.prompt.copy()
         query.messages = conversation.messages.copy()
 
-        if selected_runner == 'local-agent' and llm_model:
+        if selected_runner == 'local-agent':
             query.use_funcs = []
-            query.use_llm_model_uuid = llm_model.model_entity.uuid
+            if llm_model:
+                query.use_llm_model_uuid = llm_model.model_entity.uuid
 
-            if llm_model.model_entity.abilities.__contains__('func_call'):
-                # Get bound plugins and MCP servers for filtering tools
+                if llm_model.model_entity.abilities.__contains__('func_call'):
+                    # Get bound plugins and MCP servers for filtering tools
+                    bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+                    bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
+                    query.use_funcs = await self.ap.tool_mgr.get_all_tools(bound_plugins, bound_mcp_servers)
+
+                    self.ap.logger.debug(f'Bound plugins: {bound_plugins}')
+                    self.ap.logger.debug(f'Bound MCP servers: {bound_mcp_servers}')
+                    self.ap.logger.debug(f'Use funcs: {query.use_funcs}')
+
+            elif use_api_chain_uuid:
+                query.variables['_use_api_chain_uuid'] = use_api_chain_uuid
+                # Enable all tools for chain; individual models will decide capability
                 bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
                 bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
                 query.use_funcs = await self.ap.tool_mgr.get_all_tools(bound_plugins, bound_mcp_servers)
-
-                self.ap.logger.debug(f'Bound plugins: {bound_plugins}')
-                self.ap.logger.debug(f'Bound MCP servers: {bound_mcp_servers}')
-                self.ap.logger.debug(f'Use funcs: {query.use_funcs}')
+                self.ap.logger.debug(f'Using API chain {use_api_chain_uuid} for local-agent')
 
         sender_name = ''
 

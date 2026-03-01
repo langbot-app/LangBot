@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Boxes } from 'lucide-react';
+import { Plus, Boxes, Link2 } from 'lucide-react';
 import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
 import { ModelProvider } from '@/app/infra/entities/api';
+import APIChainsDialog from '../api-chains-dialog/APIChainsDialog';
 import {
   Dialog,
   DialogContent,
@@ -69,6 +70,9 @@ export default function ModelsDialog({
   const [editingProviderId, setEditingProviderId] = useState<string | null>(
     null,
   );
+
+  // API Chains dialog
+  const [apiChainsDialogOpen, setApiChainsDialogOpen] = useState(false);
 
   // Popover states
   const [addModelPopoverOpen, setAddModelPopoverOpen] = useState<string | null>(
@@ -463,14 +467,24 @@ export default function ModelsDialog({
                     )
                   : t('models.providerCount', { count: otherProviders.length })}
               </span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleCreateProvider}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                {t('models.addProvider')}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setApiChainsDialogOpen(true)}
+                >
+                  <Link2 className="h-4 w-4 mr-1" />
+                  {t('apiChains.manageChains')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCreateProvider}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  {t('models.addProvider')}
+                </Button>
+              </div>
             </div>
 
             {/* Provider List */}
@@ -502,6 +516,11 @@ export default function ModelsDialog({
           />
         </DialogContent>
       </Dialog>
+
+      <APIChainsDialog
+        open={apiChainsDialogOpen}
+        onOpenChange={setApiChainsDialogOpen}
+      />
     </>
   );
 }

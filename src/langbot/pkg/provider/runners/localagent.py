@@ -121,23 +121,37 @@ class LocalAgentRunner(runner.RequestRunner):
 
         remove_think = query.pipeline_config['output'].get('misc', '').get('remove-think')
 
-        use_llm_model = await self.ap.model_mgr.get_model_by_uuid(query.use_llm_model_uuid)
+        use_api_chain_uuid = (query.variables or {}).get('_use_api_chain_uuid')
+        use_llm_model = (
+            None if use_api_chain_uuid else await self.ap.model_mgr.get_model_by_uuid(query.use_llm_model_uuid)
+        )
 
         self.ap.logger.debug(
-            f'localagent req: query={query.query_id} req_messages={req_messages} use_llm_model={query.use_llm_model_uuid}'
+            f'localagent req: query={query.query_id} req_messages={req_messages} '
+            f'use_llm_model={query.use_llm_model_uuid} use_api_chain={use_api_chain_uuid}'
         )
 
         if not is_stream:
             # 非流式输出，直接请求
-
-            msg = await use_llm_model.provider.invoke_llm(
-                query,
-                use_llm_model,
-                req_messages,
-                query.use_funcs,
-                extra_args=use_llm_model.model_entity.extra_args,
-                remove_think=remove_think,
-            )
+            if use_api_chain_uuid:
+                msg = await self.ap.api_chain_mgr.invoke_chain_llm(
+                    use_api_chain_uuid,
+                    query,
+                    None,
+                    req_messages,
+                    query.use_funcs,
+                    extra_args={},
+                    remove_think=remove_think,
+                )
+            else:
+                msg = await use_llm_model.provider.invoke_llm(
+                    query,
+                    use_llm_model,
+                    req_messages,
+                    query.use_funcs,
+                    extra_args=use_llm_model.model_entity.extra_args,
+                    remove_think=remove_think,
+                )
             yield msg
             final_msg = msg
         else:
@@ -147,14 +161,26 @@ class LocalAgentRunner(runner.RequestRunner):
             accumulated_content = ''  # 从开始累积的所有内容
             last_role = 'assistant'
             msg_sequence = 1
-            async for msg in use_llm_model.provider.invoke_llm_stream(
-                query,
-                use_llm_model,
-                req_messages,
-                query.use_funcs,
-                extra_args=use_llm_model.model_entity.extra_args,
-                remove_think=remove_think,
-            ):
+            if use_api_chain_uuid:
+                stream_src = self.ap.api_chain_mgr.invoke_chain_llm_stream(
+                    use_api_chain_uuid,
+                    query,
+                    None,
+                    req_messages,
+                    query.use_funcs,
+                    extra_args={},
+                    remove_think=remove_think,
+                )
+            else:
+                stream_src = use_llm_model.provider.invoke_llm_stream(
+                    query,
+                    use_llm_model,
+                    req_messages,
+                    query.use_funcs,
+                    extra_args=use_llm_model.model_entity.extra_args,
+                    remove_think=remove_think,
+                )
+            async for msg in stream_src:
                 msg_idx = msg_idx + 1
 
                 # 记录角色
@@ -255,7 +281,8 @@ class LocalAgentRunner(runner.RequestRunner):
                     req_messages.append(err_msg)
 
             self.ap.logger.debug(
-                f'localagent req: query={query.query_id} req_messages={req_messages} use_llm_model={query.use_llm_model_uuid}'
+                f'localagent req: query={query.query_id} req_messages={req_messages} '
+                f'use_llm_model={query.use_llm_model_uuid} use_api_chain={use_api_chain_uuid}'
             )
 
             if is_stream:
@@ -265,14 +292,26 @@ class LocalAgentRunner(runner.RequestRunner):
                 last_role = 'assistant'
                 msg_sequence = first_end_sequence
 
-                async for msg in use_llm_model.provider.invoke_llm_stream(
-                    query,
-                    use_llm_model,
-                    req_messages,
-                    query.use_funcs,
-                    extra_args=use_llm_model.model_entity.extra_args,
-                    remove_think=remove_think,
-                ):
+                if use_api_chain_uuid:
+                    tool_stream_src = self.ap.api_chain_mgr.invoke_chain_llm_stream(
+                        use_api_chain_uuid,
+                        query,
+                        None,
+                        req_messages,
+                        query.use_funcs,
+                        extra_args={},
+                        remove_think=remove_think,
+                    )
+                else:
+                    tool_stream_src = use_llm_model.provider.invoke_llm_stream(
+                        query,
+                        use_llm_model,
+                        req_messages,
+                        query.use_funcs,
+                        extra_args=use_llm_model.model_entity.extra_args,
+                        remove_think=remove_think,
+                    )
+                async for msg in tool_stream_src:
                     msg_idx += 1
 
                     # 记录角色
@@ -321,14 +360,25 @@ class LocalAgentRunner(runner.RequestRunner):
                 )
             else:
                 # 处理完所有调用，再次请求
-                msg = await use_llm_model.provider.invoke_llm(
-                    query,
-                    use_llm_model,
-                    req_messages,
-                    query.use_funcs,
-                    extra_args=use_llm_model.model_entity.extra_args,
-                    remove_think=remove_think,
-                )
+                if use_api_chain_uuid:
+                    msg = await self.ap.api_chain_mgr.invoke_chain_llm(
+                        use_api_chain_uuid,
+                        query,
+                        None,
+                        req_messages,
+                        query.use_funcs,
+                        extra_args={},
+                        remove_think=remove_think,
+                    )
+                else:
+                    msg = await use_llm_model.provider.invoke_llm(
+                        query,
+                        use_llm_model,
+                        req_messages,
+                        query.use_funcs,
+                        extra_args=use_llm_model.model_entity.extra_args,
+                        remove_think=remove_think,
+                    )
 
                 yield msg
                 final_msg = msg
