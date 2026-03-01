@@ -1038,7 +1038,8 @@ const enUS = {
     errorCount: 'Errors',
     // Model configuration
     modelConfigs: 'Model Configuration',
-    modelConfigsHint: 'Optional: specify model priority for this provider. Without this the original query model is used and API keys are rotated per provider settings.',
+    modelConfigsHint:
+      'Optional: specify model priority for this provider. Without this the original query model is used and API keys are rotated per provider settings.',
     addModelConfig: 'Add Model',
     selectModel: 'Select Model',
     selectAllModels: 'Please select a model for each model config entry',

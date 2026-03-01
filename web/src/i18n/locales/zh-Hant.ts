@@ -972,7 +972,8 @@ const zhHant = {
     retryCount: '重試次數',
     errorCount: '錯誤次數',
     modelConfigs: '模型設定',
-    modelConfigsHint: '可選：為該供應商指定模型優先級。不設定時使用請求的原始模型，API 將依廠商設定輪詢',
+    modelConfigsHint:
+      '可選：為該供應商指定模型優先級。不設定時使用請求的原始模型，API 將依廠商設定輪詢',
     addModelConfig: '新增模型',
     selectModel: '選擇模型',
     selectAllModels: '請為所有模型設定條目選擇模型',

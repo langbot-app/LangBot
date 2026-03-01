@@ -116,11 +116,16 @@ export class BackendClient extends BaseHttpClient {
     return this.get(`/api/v1/provider/api-chains/${uuid}`);
   }
 
-  public createAPIChain(chain: Omit<APIChain, 'uuid'>): Promise<{ uuid: string }> {
+  public createAPIChain(
+    chain: Omit<APIChain, 'uuid'>,
+  ): Promise<{ uuid: string }> {
     return this.post('/api/v1/provider/api-chains', chain);
   }
 
-  public updateAPIChain(uuid: string, chain: Partial<APIChain>): Promise<object> {
+  public updateAPIChain(
+    uuid: string,
+    chain: Partial<APIChain>,
+  ): Promise<object> {
     return this.put(`/api/v1/provider/api-chains/${uuid}`, chain);
   }
 

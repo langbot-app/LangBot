@@ -998,7 +998,8 @@ const zhHans = {
     errorCount: '错误次数',
     // Model configuration
     modelConfigs: '模型配置',
-    modelConfigsHint: '可选：为该供应商指定模型优先级。不配置时使用请求的原始模型，API 将按厂商配置轮询',
+    modelConfigsHint:
+      '可选：为该供应商指定模型优先级。不配置时使用请求的原始模型，API 将按厂商配置轮询',
     addModelConfig: '添加模型',
     selectModel: '选择模型',
     selectAllModels: '请为所有模型配置条目选择模型',

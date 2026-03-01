@@ -126,11 +126,7 @@ export default function APIChainsDialog({
                   ? t('apiChains.addChainHint')
                   : t('apiChains.chainCount', { count: chains.length })}
               </span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleCreateChain}
-              >
+              <Button size="sm" variant="outline" onClick={handleCreateChain}>
                 <Plus className="h-4 w-4 mr-1" />
                 {t('apiChains.addChain')}
               </Button>
@@ -181,4 +177,3 @@ export default function APIChainsDialog({
     </>
   );
 }
-
