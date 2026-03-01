@@ -9,6 +9,8 @@ import traceback
 import time
 
 import aiohttp
+
+from langbot.pkg.utils import httpclient
 import websockets
 import pydantic
 
@@ -120,16 +122,16 @@ class KookMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
             if content:
                 # Download image and convert to base64
                 try:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(content) as response:
-                            if response.status == 200:
-                                image_bytes = await response.read()
-                                image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-                                # Detect image format
-                                content_type = response.headers.get('Content-Type', 'image/png')
-                                components.append(
-                                    platform_message.Image(base64=f'data:{content_type};base64,{image_base64}')
-                                )
+                    session = httpclient.get_session()
+                    async with session.get(content) as response:
+                        if response.status == 200:
+                            image_bytes = await response.read()
+                            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+                            # Detect image format
+                            content_type = response.headers.get('Content-Type', 'image/png')
+                            components.append(
+                                platform_message.Image(base64=f'data:{content_type};base64,{image_base64}')
+                            )
                 except Exception:
                     # If download fails, just add as plain text
                     components.append(platform_message.Plain(text=f'[Image: {content}]'))
@@ -295,17 +297,17 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             'Authorization': f'Bot {self.config["token"]}',
         }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(base_url, params=params, headers=headers) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if data.get('code') == 0:
-                        gateway_url = data['data']['url']
-                        return gateway_url
-                    else:
-                        raise Exception(f'Failed to get gateway URL: {data.get("message")}')
+        session = httpclient.get_session()
+        async with session.get(base_url, params=params, headers=headers) as response:
+            if response.status == 200:
+                data = await response.json()
+                if data.get('code') == 0:
+                    gateway_url = data['data']['url']
+                    return gateway_url
                 else:
-                    raise Exception(f'Failed to get gateway URL: HTTP {response.status}')
+                    raise Exception(f'Failed to get gateway URL: {data.get("message")}')
+            else:
+                raise Exception(f'Failed to get gateway URL: HTTP {response.status}')
 
     async def _get_bot_user_info(self) -> dict:
         """Get bot's own user information from KOOK API"""
@@ -315,17 +317,17 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             'Authorization': f'Bot {self.config["token"]}',
         }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(base_url, headers=headers) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if data.get('code') == 0:
-                        user_info = data['data']
-                        return user_info
-                    else:
-                        raise Exception(f'Failed to get bot user info: {data.get("message")}')
+        session = httpclient.get_session()
+        async with session.get(base_url, headers=headers) as response:
+            if response.status == 200:
+                data = await response.json()
+                if data.get('code') == 0:
+                    user_info = data['data']
+                    return user_info
                 else:
-                    raise Exception(f'Failed to get bot user info: HTTP {response.status}')
+                    raise Exception(f'Failed to get bot user info: {data.get("message")}')
+            else:
+                raise Exception(f'Failed to get bot user info: HTTP {response.status}')
 
     async def _handle_hello(self, data: dict):
         """Handle HELLO signal (signal 1)"""
@@ -510,7 +512,7 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         try:
             if not self.http_session:
-                self.http_session = aiohttp.ClientSession()
+                self.http_session = httpclient.get_session()
 
             async with self.http_session.post(url, json=payload, headers=headers) as response:
                 if response.status == 200:
@@ -576,7 +578,7 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         try:
             if not self.http_session:
-                self.http_session = aiohttp.ClientSession()
+                self.http_session = httpclient.get_session()
 
             async with self.http_session.post(url, json=payload, headers=headers) as response:
                 if response.status == 200:
@@ -624,7 +626,7 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         try:
             # Create HTTP session
-            self.http_session = aiohttp.ClientSession()
+            self.http_session = httpclient.get_session()
 
             await self.logger.info('Starting KOOK adapter')
 

@@ -17,7 +17,7 @@ import tempfile
 import os
 import mimetypes
 
-import aiohttp
+from langbot.pkg.utils import httpclient
 import lark_oapi.ws.exception
 import quart
 from lark_oapi.api.im.v1 import *
@@ -78,13 +78,13 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                 return None
         elif msg.url:
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(msg.url) as response:
-                        if response.status == 200:
-                            image_bytes = await response.read()
-                        else:
-                            print(f'Failed to download image from {msg.url}: HTTP {response.status}')
-                            return None
+                session = httpclient.get_session()
+                async with session.get(msg.url) as response:
+                    if response.status == 200:
+                        image_bytes = await response.read()
+                    else:
+                        print(f'Failed to download image from {msg.url}: HTTP {response.status}')
+                        return None
             except Exception as e:
                 print(f'Failed to download image from {msg.url}: {e}')
                 traceback.print_exc()
@@ -208,10 +208,10 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                 pass
         elif msg.url:
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(msg.url) as resp:
-                        if resp.status == 200:
-                            data = await resp.read()
+                session = httpclient.get_session()
+                async with session.get(msg.url) as resp:
+                    if resp.status == 200:
+                        data = await resp.read()
             except Exception:
                 pass
         elif msg.path:
