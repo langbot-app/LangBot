@@ -24,6 +24,7 @@ from lark_oapi.api.im.v1 import *
 import pydantic
 from lark_oapi.api.cardkit.v1 import *
 from lark_oapi.api.auth.v3 import *
+from lark_oapi.api.contact.v3 import GetUserRequest, GetUserResponse
 from lark_oapi.core.model import *
 
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
@@ -583,15 +584,28 @@ class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
     @staticmethod
     async def target2yiri(
-        event: lark_oapi.im.v1.P2ImMessageReceiveV1, api_client: lark_oapi.Client
+        event: lark_oapi.im.v1.P2ImMessageReceiveV1,
+        api_client: lark_oapi.Client,
+        adapter: LarkAdapter | None = None,
     ) -> platform_events.Event:
         message_chain = await LarkMessageConverter.target2yiri(event.event.message, api_client)
+        sender_id = event.event.sender.sender_id
+        sender_open_id = getattr(sender_id, 'open_id', '')
+        sender_union_id = getattr(sender_id, 'union_id', '')
+        sender_user_id = getattr(sender_id, 'user_id', '')
+        sender_primary_id = sender_open_id or sender_user_id or sender_union_id
+        sender_name = sender_union_id or sender_user_id or sender_open_id
+
+        if adapter is not None:
+            resolved_name = await adapter.resolve_event_sender_name(event)
+            if resolved_name:
+                sender_name = resolved_name
 
         if event.event.message.chat_type == 'p2p':
             return platform_events.FriendMessage(
                 sender=platform_entities.Friend(
-                    id=event.event.sender.sender_id.open_id,
-                    nickname=event.event.sender.sender_id.union_id,
+                    id=sender_primary_id,
+                    nickname=sender_name,
                     remark='',
                 ),
                 message_chain=message_chain,
@@ -601,8 +615,8 @@ class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
         elif event.event.message.chat_type == 'group':
             return platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
-                    id=event.event.sender.sender_id.open_id,
-                    member_name=event.event.sender.sender_id.union_id,
+                    id=sender_primary_id,
+                    member_name=sender_name,
                     permission=platform_entities.Permission.Member,
                     group=platform_entities.Group(
                         id=event.event.message.chat_id,
@@ -619,6 +633,8 @@ class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
 CARD_ID_CACHE_SIZE = 500
 CARD_ID_CACHE_MAX_LIFETIME = 20 * 60  # 20分钟
+USER_NAME_CACHE_SIZE = 2000
+USER_NAME_CACHE_MAX_LIFETIME = 24 * 60 * 60  # 24小时
 
 
 class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
@@ -647,12 +663,13 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     app_access_token: str = None  # 商店应用用到
     app_access_token_expire_at: int = None
     tenant_access_tokens: dict[str, dict[str, str]] = {}  # 租户access_token映射
+    user_name_cache: dict[str, dict[str, typing.Any]] = {}
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
         quart_app = quart.Quart(__name__)
 
         async def on_message(event: lark_oapi.im.v1.P2ImMessageReceiveV1):
-            lb_event = await self.event_converter.target2yiri(event, self.api_client)
+            lb_event = await self.event_converter.target2yiri(event, self.api_client, self)
 
             await self.listeners[type(lb_event)](lb_event, self)
 
@@ -682,6 +699,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             api_client=api_client,
             bot_account_id=bot_account_id,
             cipher=cipher,
+            user_name_cache={},
             **kwargs,
         )
 
@@ -779,6 +797,114 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 lark_oapi.Client.builder().app_id(app_id).app_secret(app_secret).app_type(lark_oapi.AppType.ISV).build()
             )
         return api_client
+
+    def _get_cached_user_name(self, id_type: str, id_value: str) -> str | None:
+        cache_key = f'{id_type}:{id_value}'
+        cache_item = self.user_name_cache.get(cache_key)
+        if cache_item is None:
+            return None
+
+        expire_at = cache_item.get('expire_at', 0)
+        if int(time.time()) >= expire_at:
+            self.user_name_cache.pop(cache_key, None)
+            return None
+
+        cached_name = cache_item.get('name')
+        if isinstance(cached_name, str) and cached_name:
+            return cached_name
+        return None
+
+    def _set_cached_user_name(self, id_map: dict[str, str], user_name: str):
+        if not user_name:
+            return
+
+        # Avoid unbounded memory growth when running for a long time.
+        if len(self.user_name_cache) > USER_NAME_CACHE_SIZE:
+            self.user_name_cache.clear()
+
+        expire_at = int(time.time()) + USER_NAME_CACHE_MAX_LIFETIME
+        for id_type, id_value in id_map.items():
+            if not isinstance(id_value, str) or not id_value:
+                continue
+            self.user_name_cache[f'{id_type}:{id_value}'] = {
+                'name': user_name,
+                'expire_at': expire_at,
+            }
+
+    def _build_request_option(self, tenant_key: str | None) -> RequestOption:
+        app_access_token = self.get_app_access_token()
+        tenant_access_token = self.get_tenant_access_token(tenant_key)
+        return (
+            RequestOption.builder()
+            .app_ticket(self.app_ticket)
+            .tenant_key(tenant_key)
+            .app_access_token(app_access_token)
+            .tenant_access_token(tenant_access_token)
+            .build()
+        )
+
+    async def resolve_event_sender_name(self, event: lark_oapi.im.v1.P2ImMessageReceiveV1) -> str | None:
+        sender = getattr(getattr(event, 'event', None), 'sender', None)
+        sender_id = getattr(sender, 'sender_id', None)
+        if sender_id is None:
+            return None
+
+        id_map: dict[str, str] = {}
+        for id_type in ('open_id', 'user_id', 'union_id'):
+            value = getattr(sender_id, id_type, None)
+            if isinstance(value, str) and value:
+                id_map[id_type] = value
+
+        if not id_map:
+            return None
+
+        for id_type in ('open_id', 'user_id', 'union_id'):
+            id_value = id_map.get(id_type)
+            if not id_value:
+                continue
+            cached_name = self._get_cached_user_name(id_type, id_value)
+            if cached_name:
+                return cached_name
+
+        tenant_key = getattr(getattr(event, 'header', None), 'tenant_key', None)
+        if not tenant_key:
+            tenant_key = self.lark_tenant_key or self.config.get('lark_tenant_key') or None
+
+        req_opt = self._build_request_option(tenant_key)
+
+        for query_id_type in ('open_id', 'user_id', 'union_id'):
+            query_id = id_map.get(query_id_type)
+            if not query_id:
+                continue
+
+            try:
+                request: GetUserRequest = (
+                    GetUserRequest.builder().user_id_type(query_id_type).user_id(str(query_id)).build()
+                )
+                response: GetUserResponse = self.api_client.contact.v3.user.get(request, req_opt)
+
+                if not response.success():
+                    continue
+
+                user = response.data.user if response.data else None
+                if user is None:
+                    continue
+
+                user_name = (getattr(user, 'name', None) or getattr(user, 'nickname', None) or '').strip()
+                if not user_name:
+                    continue
+
+                resolved_id_map = {
+                    'open_id': getattr(user, 'open_id', None) or id_map.get('open_id', ''),
+                    'user_id': getattr(user, 'user_id', None) or id_map.get('user_id', ''),
+                    'union_id': getattr(user, 'union_id', None) or id_map.get('union_id', ''),
+                }
+                self._set_cached_user_name(resolved_id_map, user_name)
+                return user_name
+            except Exception:
+                continue
+
+        return None
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         # Map generic target types used by plugin/runtime to Lark receive_id_type.
@@ -1385,7 +1511,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     event.sender = EventSender(context.event['sender'])
                     p2v1.event = event
                     p2v1.schema = context.schema
-                    event = await self.event_converter.target2yiri(p2v1, self.api_client)
+                    event = await self.event_converter.target2yiri(p2v1, self.api_client, self)
                 except Exception:
                     await self.logger.error(f'Error in lark callback: {traceback.format_exc()}')
 
