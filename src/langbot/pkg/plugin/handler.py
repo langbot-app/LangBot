@@ -557,6 +557,30 @@ class RuntimeConnectionHandler(handler.Handler):
             except Exception as e:
                 return _make_rag_error_response(e, 'FileServiceError', storage_path=storage_path)
 
+        @self.action(PluginToRuntimeAction.INVOKE_PARSER)
+        async def invoke_parser(data: dict[str, Any]) -> handler.ActionResponse:
+            """Plugin requests host to invoke a parser plugin."""
+            plugin_author = data['plugin_author']
+            plugin_name = data['plugin_name']
+            storage_path = data['storage_path']
+            mime_type = data.get('mime_type', 'application/octet-stream')
+            filename = data.get('filename', '')
+            metadata = data.get('metadata', {})
+            try:
+                # Read file from storage
+                file_bytes = await self.ap.rag_runtime_service.get_file_stream(storage_path)
+                context_data = {
+                    'mime_type': mime_type,
+                    'filename': filename,
+                    'metadata': metadata,
+                }
+                result = await self.ap.plugin_connector.call_parser(
+                    f'{plugin_author}/{plugin_name}', context_data, file_bytes
+                )
+                return handler.ActionResponse.success(data=result)
+            except Exception as e:
+                return _make_rag_error_response(e, 'ParserError')
+
         @self.action(CommonAction.PING)
         async def ping(data: dict[str, Any]) -> handler.ActionResponse:
             """Ping"""
@@ -913,3 +937,31 @@ class RuntimeConnectionHandler(handler.Handler):
         """List all available RAG engines from plugins."""
         result = await self.call_action(LangBotToRuntimeAction.LIST_RAG_ENGINES, {}, timeout=60)
         return result.get('engines', [])
+
+    # ================= Parser Capability Callers (LangBot -> Runtime) =================
+
+    async def list_parsers(self) -> list[dict[str, Any]]:
+        """List all available parsers from plugins."""
+        result = await self.call_action(LangBotToRuntimeAction.LIST_PARSERS, {}, timeout=60)
+        return result.get('parsers', [])
+
+    async def parse_document(
+        self, plugin_author: str, plugin_name: str, context_data: dict[str, Any], file_bytes: bytes
+    ) -> dict[str, Any]:
+        """Send PARSE_DOCUMENT action to runtime.
+
+        Sends file content via chunked FILE_CHUNK transfer, then invokes
+        the PARSE_DOCUMENT action with a file_key reference.
+        """
+        # Send file to runtime via chunked transfer
+        file_key = await self.send_file(file_bytes, "")
+
+        # Include file_key in context_data for the runtime to read
+        context_data["file_key"] = file_key
+
+        result = await self.call_action(
+            LangBotToRuntimeAction.PARSE_DOCUMENT,
+            {'plugin_author': plugin_author, 'plugin_name': plugin_name, 'context': context_data},
+            timeout=300,
+        )
+        return result

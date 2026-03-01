@@ -187,6 +187,17 @@ export interface ApiRespRAGEngines {
   engines: RAGEngine[];
 }
 
+export interface ParserInfo {
+  plugin_id: string;
+  name: I18nObject;
+  description?: I18nObject;
+  supported_mime_types: string[];
+}
+
+export interface ApiRespParsers {
+  parsers: ParserInfo[];
+}
+
 export interface ApiRespKnowledgeBaseFiles {
   files: KnowledgeBaseFile[];
 }
