@@ -70,6 +70,28 @@ class AutoProcessToBitableListener(EventListener):
     def _get_str_config(self, key: str, default: str = "") -> str:
         return str(self.plugin.get_config().get(key, default)).strip()
 
+    def _get_int_config(
+        self,
+        key: str,
+        default: int,
+        min_value: int | None = None,
+        max_value: int | None = None,
+    ) -> int:
+        raw = self.plugin.get_config().get(key, default)
+        try:
+            if isinstance(raw, str):
+                value = int(raw.strip())
+            else:
+                value = int(raw)
+        except Exception:
+            value = default
+
+        if min_value is not None:
+            value = max(min_value, value)
+        if max_value is not None:
+            value = min(max_value, value)
+        return value
+
     def _get_json_config(self, key: str, default: dict[str, Any] | None = None) -> dict[str, Any]:
         if default is None:
             default = {}
@@ -436,6 +458,97 @@ class AutoProcessToBitableListener(EventListener):
             pass
 
         return str(candidate)
+
+    @staticmethod
+    def _is_group_event(event_ctx: context.EventContext) -> bool:
+        launcher_type = str(getattr(event_ctx.event, "launcher_type", "")).strip().lower()
+        return launcher_type == "group"
+
+    @staticmethod
+    def _is_person_event(event_ctx: context.EventContext) -> bool:
+        launcher_type = str(getattr(event_ctx.event, "launcher_type", "")).strip().lower()
+        return launcher_type == "person"
+
+    async def _resolve_bot_uuid(self, event_ctx: context.EventContext) -> str:
+        try:
+            if hasattr(event_ctx, "get_bot_uuid"):
+                bot_uuid = await event_ctx.get_bot_uuid()  # type: ignore[attr-defined]
+                if bot_uuid:
+                    return str(bot_uuid).strip()
+        except Exception:
+            pass
+
+        query = getattr(event_ctx.event, "query", None)
+        if query is not None:
+            return str(getattr(query, "bot_uuid", "")).strip()
+        return ""
+
+    async def _notify_private(self, event_ctx: context.EventContext, text: str) -> bool:
+        target_user_id = self._get_str_config("private_notify_user_id", "")
+        if not target_user_id and self._get_bool_config("private_notify_sender_when_group", False):
+            target_user_id = str(getattr(event_ctx.event, "sender_id", "")).strip()
+        if not target_user_id:
+            return False
+
+        bot_uuid = await self._resolve_bot_uuid(event_ctx)
+        if not bot_uuid:
+            return False
+
+        try:
+            await self.plugin.send_message(
+                bot_uuid=bot_uuid,
+                target_type="person",
+                target_id=target_user_id,
+                message_chain=platform_message.MessageChain([platform_message.Plain(text=text)]),
+            )
+            return True
+        except Exception:
+            return False
+
+    async def _send_feedback(
+        self,
+        event_ctx: context.EventContext,
+        text: str,
+        is_error: bool,
+    ) -> None:
+        if not text:
+            return
+
+        in_group = self._is_group_event(event_ctx)
+        in_person = self._is_person_event(event_ctx)
+
+        allow_group_reply = self._get_bool_config("reply_in_group", False)
+        allow_person_reply = self._get_bool_config("reply_in_person", True)
+
+        should_reply_origin = (in_group and allow_group_reply) or (in_person and allow_person_reply)
+        if should_reply_origin:
+            event_ctx.event.reply_message_chain = platform_message.MessageChain([platform_message.Plain(text=text)])
+
+        if in_group:
+            if is_error and self._get_bool_config("private_notify_on_error", True):
+                await self._notify_private(event_ctx, text)
+            if (not is_error) and self._get_bool_config("private_notify_on_write", True):
+                await self._notify_private(event_ctx, text)
+
+    @staticmethod
+    def _build_record_brief(record: ParsedRecord) -> str:
+        key_order = ["D10", "D50", "D90", "D99", "PH值"]
+        parts: list[str] = []
+        for key in key_order:
+            if key in record.fields:
+                parts.append(f"{key}={record.fields.get(key)}")
+        if not parts:
+            for key, value in record.fields.items():
+                if key in {"消息时间", "原始文本", "OCR文本"}:
+                    continue
+                parts.append(f"{key}={value}")
+                if len(parts) >= 4:
+                    break
+
+        detail = ", ".join(parts)
+        if detail:
+            return f"{record.route_key} | {record.batch_id} | {detail}"
+        return f"{record.route_key} | {record.batch_id}"
 
     # ===== OCR =====
 
@@ -1202,7 +1315,12 @@ class AutoProcessToBitableListener(EventListener):
         if not records:
             return
 
+        if self._get_bool_config("prevent_default_on_match", True):
+            event_ctx.prevent_default()
+            event_ctx.prevent_postorder()
+
         success_count = 0
+        success_records: list[ParsedRecord] = []
         errors: list[str] = []
 
         for record in records:
@@ -1222,25 +1340,48 @@ class AutoProcessToBitableListener(EventListener):
             ok, detail = await self._write_record_to_bitable(table_id, normalized_write_fields)
             if ok:
                 success_count += 1
+                success_records.append(record)
             else:
                 errors.append(f"route={record.route_key}, {detail}")
 
         if success_count > 0:
-            if self._get_bool_config("reply_on_write", False):
+            need_success_feedback = self._get_bool_config("reply_on_write", False)
+            if self._is_group_event(event_ctx) and self._get_bool_config("private_notify_on_write", True):
+                need_success_feedback = True
+
+            if need_success_feedback:
+                detail_limit = self._get_int_config("feedback_detail_limit", 5, min_value=1, max_value=20)
+                detail_lines = [f"{idx + 1}. {self._build_record_brief(record)}" for idx, record in enumerate(success_records)]
+                detail_text = "\n".join(detail_lines[:detail_limit])
+
                 template = self._get_str_config("reply_text_template", "已写入飞书表格。")
-                reply_text = template.replace("{count}", str(success_count))
-                event_ctx.event.reply_message_chain = platform_message.MessageChain(
-                    [platform_message.Plain(text=reply_text)]
-                )
+                if not template:
+                    template = "已写入飞书表格。"
+                feedback_text = template.replace("{count}", str(success_count))
+                if "{details}" in feedback_text:
+                    feedback_text = feedback_text.replace("{details}", detail_text)
+                elif detail_text:
+                    feedback_text = f"{feedback_text}\n{detail_text}"
+
+                need_error_feedback = self._get_bool_config("reply_on_error", False)
+                if self._is_group_event(event_ctx) and self._get_bool_config("private_notify_on_error", True):
+                    need_error_feedback = True
+                if errors and need_error_feedback:
+                    error_text = self._truncate_text("; ".join(errors), 500)
+                    feedback_text = f"{feedback_text}\n失败 {len(errors)} 条: {error_text}"
+
+                await self._send_feedback(event_ctx, self._truncate_text(feedback_text, 1800), is_error=False)
 
             if self._get_bool_config("prevent_default_on_write", False):
                 event_ctx.prevent_default()
                 event_ctx.prevent_postorder()
 
-        if errors and self._get_bool_config("reply_on_error", True):
-            err = self._truncate_text("; ".join(errors), 1000)
-            event_ctx.event.reply_message_chain = platform_message.MessageChain(
-                [platform_message.Plain(text=f"写入飞书表格失败: {err}")]
-            )
+        if errors and success_count <= 0:
+            need_error_feedback = self._get_bool_config("reply_on_error", False)
+            if self._is_group_event(event_ctx) and self._get_bool_config("private_notify_on_error", True):
+                need_error_feedback = True
+            if need_error_feedback:
+                err = self._truncate_text("; ".join(errors), 1000)
+                await self._send_feedback(event_ctx, f"写入飞书表格失败: {err}", is_error=True)
 
 

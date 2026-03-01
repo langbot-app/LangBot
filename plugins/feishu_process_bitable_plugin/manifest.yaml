@@ -4,7 +4,7 @@ metadata:
   author: local
   name: feishu_process_bitable_plugin
   repository: 'https://open.feishu.cn/'
-  version: 0.3.2
+  version: 0.3.3
   description:
     en_US: Parse process messages with OCR and write structured records into Feishu Bitable.
     zh_Hans: 解析工艺消息并支持OCR，把结构化结果写入飞书多维表格。
@@ -168,6 +168,16 @@ spec:
       type: boolean
       required: false
       default: false
+    - name: prevent_default_on_match
+      label:
+        en_US: Prevent Default On Match
+        zh_Hans: 命中规则后阻断默认流程
+      description:
+        en_US: Prevent default pipeline once this plugin matched and started processing.
+        zh_Hans: 只要命中规则并进入插件处理，即阻断默认流程（避免继续走LLM）。
+      type: boolean
+      required: false
+      default: true
     - name: reply_on_write
       label:
         en_US: Reply On Write
@@ -182,6 +192,61 @@ spec:
       type: string
       required: false
       default: '已写入飞书表格。'
+    - name: feedback_detail_limit
+      label:
+        en_US: Feedback Detail Limit
+        zh_Hans: 反馈明细条数上限
+      type: string
+      required: false
+      default: '5'
+    - name: reply_in_group
+      label:
+        en_US: Reply In Group
+        zh_Hans: 允许在群聊回复
+      type: boolean
+      required: false
+      default: false
+    - name: reply_in_person
+      label:
+        en_US: Reply In Person
+        zh_Hans: 允许在私聊回复
+      type: boolean
+      required: false
+      default: true
+    - name: private_notify_on_write
+      label:
+        en_US: Private Notify On Write
+        zh_Hans: 群消息写入成功后私聊通知
+      type: boolean
+      required: false
+      default: true
+    - name: private_notify_on_error
+      label:
+        en_US: Private Notify On Error
+        zh_Hans: 群消息处理失败后私聊通知
+      type: boolean
+      required: false
+      default: true
+    - name: private_notify_user_id
+      label:
+        en_US: Private Notify User ID
+        zh_Hans: 私聊通知用户ID
+      description:
+        en_US: Feishu user open_id/union_id for private notification target.
+        zh_Hans: 私聊通知目标用户ID（建议填 open_id，例如 ou_xxx）。
+      type: string
+      required: false
+      default: ''
+    - name: private_notify_sender_when_group
+      label:
+        en_US: Private Notify Group Sender
+        zh_Hans: 群聊时通知消息发送人
+      description:
+        en_US: If private_notify_user_id is empty, fallback to the group message sender.
+        zh_Hans: 当未设置 private_notify_user_id 时，回退私聊群消息发送人。
+      type: boolean
+      required: false
+      default: false
     - name: reply_on_error
       label:
         en_US: Reply On Error

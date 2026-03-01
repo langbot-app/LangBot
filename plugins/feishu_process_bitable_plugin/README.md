@@ -27,6 +27,11 @@
 - `auto_create_fields`：缺列自动创建
 - `enable_ocr_for_images`
 - `process_switch_json`
+- `prevent_default_on_match`：命中规则即拦截默认流程（建议保持 `true`）
+- `private_notify_user_id`：群消息处理结果私聊通知对象（填你的 `ou_xxx`）
+- `reply_in_group`：是否允许在群聊直接回消息（工作群建议 `false`）
+- `reply_in_person`：是否允许在私聊直接回复（建议 `true`）
+- `private_notify_on_write` / `private_notify_on_error`：群消息成功/失败时是否私聊通知
 
 ## table_routing_json 示例
 
@@ -94,9 +99,26 @@
 
 ## 事件行为
 
-- 默认不阻断 LangBot 主流程（`prevent_default_on_write=false`）
+- 默认命中规则后阻断 LangBot 主流程（`prevent_default_on_match=true`）
+- 写入成功后是否额外阻断由 `prevent_default_on_write` 控制（默认 `false`）
 - 默认不回复（`reply_on_write=false`）
 - 失败时默认也不回复（`reply_on_error=false`）
+- 默认不在群回复（`reply_in_group=false`），允许私聊回复（`reply_in_person=true`）
+- 群消息默认会私聊通知（`private_notify_on_write=true` / `private_notify_on_error=true`），通知对象由 `private_notify_user_id` 指定
+
+推荐配置（工作群静默 + 私聊通知你）：
+
+```json
+{
+  "prevent_default_on_match": true,
+  "reply_in_group": false,
+  "reply_in_person": true,
+  "private_notify_on_write": true,
+  "private_notify_on_error": true,
+  "private_notify_user_id": "ou_xxx",
+  "reply_text_template": "已写入飞书表格，共{count}条。\\n{details}"
+}
+```
 
 ## 打包
 
