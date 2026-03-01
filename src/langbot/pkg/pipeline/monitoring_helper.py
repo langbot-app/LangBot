@@ -20,6 +20,11 @@ class MonitoringHelper:
     """Helper class for monitoring operations"""
 
     @staticmethod
+    def _build_session_id(query: pipeline_query.Query) -> str:
+        launcher_type = query.launcher_type.value if hasattr(query.launcher_type, 'value') else str(query.launcher_type)
+        return f'{launcher_type}_{query.launcher_id}'
+
+    @staticmethod
     def _extract_sender_name(query: pipeline_query.Query) -> str | None:
         """Extract session display name from query message event.
 
@@ -78,7 +83,7 @@ class MonitoringHelper:
         """Record the start of query processing, returns message_id"""
         try:
             # Check if session exists, if not, record session start
-            session_id = f'{query.launcher_type}_{query.launcher_id}'
+            session_id = MonitoringHelper._build_session_id(query)
             platform = query.launcher_type.value if hasattr(query.launcher_type, 'value') else str(query.launcher_type)
             sender_name = MonitoringHelper._extract_sender_name(query)
 
@@ -174,7 +179,7 @@ class MonitoringHelper:
     ):
         """Record bot response message to monitoring"""
         try:
-            session_id = f'{query.launcher_type}_{query.launcher_id}'
+            session_id = MonitoringHelper._build_session_id(query)
 
             # Extract response content from resp_message_chain
             if hasattr(query, 'resp_message_chain') and query.resp_message_chain:
@@ -229,7 +234,7 @@ class MonitoringHelper:
     ) -> str:
         """Record query processing error, returns message_id"""
         try:
-            session_id = f'{query.launcher_type}_{query.launcher_id}'
+            session_id = MonitoringHelper._build_session_id(query)
 
             # Record error message
             message_id = await ap.monitoring_service.record_message(
@@ -285,7 +290,7 @@ class MonitoringHelper:
     ):
         """Record LLM call"""
         try:
-            session_id = f'{query.launcher_type}_{query.launcher_id}'
+            session_id = MonitoringHelper._build_session_id(query)
 
             await ap.monitoring_service.record_llm_call(
                 bot_id=bot_id,

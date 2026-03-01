@@ -280,6 +280,16 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
   };
 
   const getSessionDisplayId = (session: SessionInfo): string => {
+    if (session.session_id.startsWith('LauncherTypes.GROUP_')) {
+      const groupId = session.session_id.slice('LauncherTypes.GROUP_'.length);
+      return groupId || session.session_id.slice(0, 12);
+    }
+
+    if (session.session_id.startsWith('LauncherTypes.PERSON_')) {
+      const personId = session.session_id.slice('LauncherTypes.PERSON_'.length);
+      return personId || session.user_id || session.session_id.slice(0, 12);
+    }
+
     if (session.session_id.startsWith('group_')) {
       const groupId = session.session_id.slice('group_'.length);
       return groupId || session.session_id.slice(0, 12);
@@ -293,8 +303,12 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
     return session.user_id || session.session_id.slice(0, 12);
   };
 
+  const isLikelyPlatformId = (value: string): boolean =>
+    /^(on|ou|oc|open_id|union_id|chat_id|user_id)_/i.test(value);
+
   const getSessionDisplayName = (session: SessionInfo): string => {
-    const userName = session.user_name?.trim();
+    const rawName = session.user_name?.trim() || '';
+    const userName = rawName && !isLikelyPlatformId(rawName) ? rawName : '';
     const displayId = getSessionDisplayId(session);
     return userName ? `${userName} (${displayId})` : displayId;
   };
