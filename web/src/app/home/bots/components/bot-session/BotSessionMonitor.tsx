@@ -279,8 +279,19 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
     return `${diffDays}d`;
   };
 
-  const getSessionDisplayId = (session: SessionInfo): string =>
-    session.user_id || session.session_id.slice(0, 12);
+  const getSessionDisplayId = (session: SessionInfo): string => {
+    if (session.session_id.startsWith('group_')) {
+      const groupId = session.session_id.slice('group_'.length);
+      return groupId || session.session_id.slice(0, 12);
+    }
+
+    if (session.session_id.startsWith('person_')) {
+      const personId = session.session_id.slice('person_'.length);
+      return personId || session.user_id || session.session_id.slice(0, 12);
+    }
+
+    return session.user_id || session.session_id.slice(0, 12);
+  };
 
   const getSessionDisplayName = (session: SessionInfo): string => {
     const userName = session.user_name?.trim();

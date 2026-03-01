@@ -613,14 +613,21 @@ class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 source_platform_object=event,
             )
         elif event.event.message.chat_type == 'group':
+            group_id = event.event.message.chat_id
+            group_name = ''
+            if adapter is not None:
+                resolved_group_name = await adapter.resolve_chat_name(group_id, event)
+                if resolved_group_name:
+                    group_name = resolved_group_name
+
             return platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
                     id=sender_primary_id,
                     member_name=sender_name,
                     permission=platform_entities.Permission.Member,
                     group=platform_entities.Group(
-                        id=event.event.message.chat_id,
-                        name='',
+                        id=group_id,
+                        name=group_name,
                         permission=platform_entities.Permission.Member,
                     ),
                     special_title='',
@@ -635,6 +642,8 @@ CARD_ID_CACHE_SIZE = 500
 CARD_ID_CACHE_MAX_LIFETIME = 20 * 60  # 20分钟
 USER_NAME_CACHE_SIZE = 2000
 USER_NAME_CACHE_MAX_LIFETIME = 24 * 60 * 60  # 24小时
+CHAT_NAME_CACHE_SIZE = 1000
+CHAT_NAME_CACHE_MAX_LIFETIME = 24 * 60 * 60  # 24小时
 
 
 class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
@@ -664,6 +673,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     app_access_token_expire_at: int = None
     tenant_access_tokens: dict[str, dict[str, str]] = {}  # 租户access_token映射
     user_name_cache: dict[str, dict[str, typing.Any]] = {}
+    chat_name_cache: dict[str, dict[str, typing.Any]] = {}
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
         quart_app = quart.Quart(__name__)
@@ -700,6 +710,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             bot_account_id=bot_account_id,
             cipher=cipher,
             user_name_cache={},
+            chat_name_cache={},
             **kwargs,
         )
 
@@ -831,6 +842,33 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 'expire_at': expire_at,
             }
 
+    def _get_cached_chat_name(self, chat_id: str) -> str | None:
+        cache_item = self.chat_name_cache.get(chat_id)
+        if cache_item is None:
+            return None
+
+        expire_at = cache_item.get('expire_at', 0)
+        if int(time.time()) >= expire_at:
+            self.chat_name_cache.pop(chat_id, None)
+            return None
+
+        cached_name = cache_item.get('name')
+        if isinstance(cached_name, str) and cached_name:
+            return cached_name
+        return None
+
+    def _set_cached_chat_name(self, chat_id: str, chat_name: str):
+        if not chat_id or not chat_name:
+            return
+
+        if len(self.chat_name_cache) > CHAT_NAME_CACHE_SIZE:
+            self.chat_name_cache.clear()
+
+        self.chat_name_cache[chat_id] = {
+            'name': chat_name,
+            'expire_at': int(time.time()) + CHAT_NAME_CACHE_MAX_LIFETIME,
+        }
+
     def _build_request_option(self, tenant_key: str | None) -> RequestOption:
         app_access_token = self.get_app_access_token()
         tenant_access_token = self.get_tenant_access_token(tenant_key)
@@ -905,6 +943,38 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 continue
 
         return None
+
+    async def resolve_chat_name(self, chat_id: str, event: lark_oapi.im.v1.P2ImMessageReceiveV1 | None = None) -> str | None:
+        if not chat_id:
+            return None
+
+        cached_name = self._get_cached_chat_name(chat_id)
+        if cached_name:
+            return cached_name
+
+        tenant_key = None
+        if event is not None:
+            tenant_key = getattr(getattr(event, 'header', None), 'tenant_key', None)
+        if not tenant_key:
+            tenant_key = self.lark_tenant_key or self.config.get('lark_tenant_key') or None
+
+        req_opt = self._build_request_option(tenant_key)
+
+        try:
+            request: GetChatRequest = GetChatRequest.builder().chat_id(str(chat_id)).build()
+            response: GetChatResponse = self.api_client.im.v1.chat.get(request, req_opt)
+            if not response.success():
+                return None
+
+            chat = response.data.chat if response.data else None
+            chat_name = (getattr(chat, 'name', None) or '').strip() if chat else ''
+            if not chat_name:
+                return None
+
+            self._set_cached_chat_name(chat_id, chat_name)
+            return chat_name
+        except Exception:
+            return None
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         # Map generic target types used by plugin/runtime to Lark receive_id_type.

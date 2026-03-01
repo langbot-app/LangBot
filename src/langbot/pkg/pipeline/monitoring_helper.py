@@ -21,10 +21,19 @@ class MonitoringHelper:
 
     @staticmethod
     def _extract_sender_name(query: pipeline_query.Query) -> str | None:
-        """Extract sender display name from query message event"""
+        """Extract session display name from query message event.
+
+        For group sessions, prefer group name.
+        For person sessions, use sender display name.
+        """
         sender_name: str | None = None
 
         message_event = getattr(query, 'message_event', None)
+        group = getattr(message_event, 'group', None)
+        group_name = getattr(group, 'name', None) if group is not None else None
+        if isinstance(group_name, str) and group_name.strip():
+            return group_name.strip()
+
         sender = getattr(message_event, 'sender', None)
 
         if sender is not None:
