@@ -4,7 +4,7 @@ metadata:
   author: local
   name: feishu_process_bitable_plugin
   repository: 'https://open.feishu.cn/'
-  version: 0.2.1
+  version: 0.3.1
   description:
     en_US: Parse process messages with OCR and write structured records into Feishu Bitable.
     zh_Hans: 解析工艺消息并支持OCR，把结构化结果写入飞书多维表格。
@@ -75,8 +75,8 @@ spec:
         en_US: Table Routing JSON
         zh_Hans: 路由表(JSON)
       description:
-        en_US: 'Map route keys to table_id. This has highest priority over auto-create table.'
-        zh_Hans: '按路由键映射 table_id。该配置优先级高于自动建表。'
+        en_US: 'Map route keys to table_id, e.g. {"particle_size.FS":"tblxxx","spray.A":"tblyyy"}. This has highest priority.'
+        zh_Hans: '按路由键映射 table_id，例如 {"particle_size.FS":"tblxxx","spray.A":"tblyyy"}。该配置优先级最高。'
       type: json
       required: false
       default: '{}'
@@ -139,11 +139,11 @@ spec:
         en_US: Process Switch JSON
         zh_Hans: 工艺开关(JSON)
       description:
-        en_US: 'Enable/disable built-in parsers, e.g. {"spray":true,"feeding":true,"sintering":true,"crushing":true,"pure_water":true}'
-        zh_Hans: '内置解析开关，例如 {"spray":true,"feeding":true,"sintering":true,"crushing":true,"pure_water":true}'
+        en_US: 'Enable/disable built-in parsers, e.g. {"particle_size":true,"spray":true,"feeding":true,"sintering":true,"crushing":true,"pure_water":true}'
+        zh_Hans: '内置解析开关，例如 {"particle_size":true,"spray":true,"feeding":true,"sintering":true,"crushing":true,"pure_water":true}'
       type: json
       required: false
-      default: '{"spray":true,"feeding":true,"sintering":true,"crushing":true,"pure_water":true}'
+      default: '{"particle_size":true,"spray":true,"feeding":true,"sintering":true,"crushing":true,"pure_water":true}'
     - name: rules_json
       label:
         en_US: Extra Rules JSON

@@ -102,6 +102,12 @@ class AutoProcessToBitableListener(EventListener):
             "sintering.B": "B线烧结汇总",
             "crushing.A": "A线粉碎压实汇总",
             "crushing.B": "B线粉碎压实汇总",
+            "particle_size.FS": "粉碎工序粒度汇总",
+            "particle_size.CM": "粗磨工序粒度汇总",
+            "particle_size.XM": "细磨工序粒度汇总",
+            "particle_size.HP": "合批工序粒度汇总",
+            "particle_size.QQT": "喷雾工序粒度汇总",
+            "particle_size": "粒度数据汇总",
             "pure_water.A": "A线纯水PH汇总",
             "pure_water.B": "B线纯水PH汇总",
             "pure_water": "车间纯水PH汇总",
@@ -557,6 +563,7 @@ class AutoProcessToBitableListener(EventListener):
                 "feeding": True,
                 "sintering": True,
                 "crushing": True,
+                "particle_size": True,
                 "pure_water": True,
             },
         )
@@ -804,6 +811,90 @@ class AutoProcessToBitableListener(EventListener):
             )
         ]
 
+    @staticmethod
+    def _particle_process_name_map() -> dict[str, str]:
+        return {
+            "FS": "粉碎工序",
+            "CM": "粗磨工序",
+            "XM": "细磨工序",
+            "HP": "合批工序",
+            "QQT": "喷雾工序",
+        }
+
+    @staticmethod
+    def _extract_particle_d_values(text: str) -> dict[str, float]:
+        values: dict[str, float] = {}
+        for label in ("10", "50", "90", "99"):
+            pattern = re.compile(
+                rf"(?i)\bD\s*[\(\[]?\s*{label}\s*[\)\]]?\b\s*[:：=]?\s*(-?\d+(?:[.,]\d+)?)"
+            )
+            match = pattern.search(text)
+            if not match:
+                continue
+            raw = str(match.group(1)).strip().replace(",", ".")
+            try:
+                values[f"D{label}"] = float(raw)
+            except Exception:
+                continue
+        return values
+
+    def _parse_particle_size(self, text: str, message_time: str) -> list[ParsedRecord]:
+        if not self._process_switch("particle_size", True):
+            return []
+
+        normalized_text = self._normalize_dash(text)
+        process_name_map = self._particle_process_name_map()
+        # Support material ids like S18, S006, S1234...
+        batch_regex = re.compile(r"(S\d+)-([A-Z]{2,3})-D([AB])(\d{4})-(\d+)", re.IGNORECASE)
+
+        matches = list(batch_regex.finditer(normalized_text))
+        if not matches:
+            return []
+
+        whole_d_values = self._extract_particle_d_values(normalized_text)
+        records: list[ParsedRecord] = []
+
+        for idx, match in enumerate(matches):
+            material_type = str(match.group(1)).upper().strip()
+            process_code = str(match.group(2)).upper().strip()
+            line = str(match.group(3)).upper().strip()
+            date_code = str(match.group(4)).strip()
+            seq = str(match.group(5)).strip()
+
+            if process_code not in process_name_map:
+                continue
+
+            batch_id = f"{material_type}-{process_code}-D{line}{date_code}-{seq}"
+
+            start_pos = match.start()
+            end_pos = matches[idx + 1].start() if idx + 1 < len(matches) else len(normalized_text)
+            block_text = normalized_text[start_pos:end_pos]
+            d_values = self._extract_particle_d_values(block_text)
+            if not d_values and len(matches) == 1:
+                d_values = dict(whole_d_values)
+            if not d_values:
+                continue
+
+            fields: dict[str, Any] = {
+                "物料类型": material_type,
+                "工序代码": process_code,
+                "工序名称": process_name_map[process_code],
+                "消息时间": message_time,
+            }
+            fields.update(d_values)
+
+            records.append(
+                ParsedRecord(
+                    scenario="particle_size",
+                    line=line,
+                    batch_id=batch_id,
+                    route_key=f"particle_size.{process_code}",
+                    fields=fields,
+                )
+            )
+
+        return records
+
     # ===== Extra rule parser (optional) =====
 
     @staticmethod
@@ -1028,6 +1119,7 @@ class AutoProcessToBitableListener(EventListener):
 
     def _parse_records(self, full_text: str, message_time: str) -> list[ParsedRecord]:
         records: list[ParsedRecord] = []
+        records.extend(self._parse_particle_size(full_text, message_time))
         records.extend(self._parse_spray(full_text, message_time))
         records.extend(self._parse_feeding(full_text, message_time))
         records.extend(self._parse_sintering(full_text, message_time))
