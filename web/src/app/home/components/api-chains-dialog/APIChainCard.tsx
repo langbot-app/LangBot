@@ -74,7 +74,7 @@ function getHealthIcon(healthPercentage: number) {
 export default function APIChainCard({
   chain,
   providers,
-  llmModels: _llmModels,
+  llmModels: _llmModels, // eslint-disable-line @typescript-eslint/no-unused-vars
   onEdit,
   onDelete,
 }: APIChainCardProps) {

@@ -408,7 +408,11 @@ export default function APIChainForm({
                       onClick={() =>
                         setExpandedAdvanced((prev) => {
                           const next = new Set(prev);
-                          if (next.has(idx)) { next.delete(idx); } else { next.add(idx); }
+                          if (next.has(idx)) {
+                            next.delete(idx);
+                          } else {
+                            next.add(idx);
+                          }
                           return next;
                         })
                       }
@@ -486,7 +490,11 @@ export default function APIChainForm({
                           onClick={() =>
                             setExpandedModelConfigs((prev) => {
                               const next = new Set(prev);
-                              if (next.has(idx)) { next.delete(idx); } else { next.add(idx); }
+                              if (next.has(idx)) {
+                                next.delete(idx);
+                              } else {
+                                next.add(idx);
+                              }
                               return next;
                             })
                           }
