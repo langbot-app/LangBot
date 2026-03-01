@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import datetime
+import json
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -39,11 +42,58 @@ class AutoOcrOnImageListener(EventListener):
             timeout = 20.0
         return max(1.0, min(120.0, timeout))
 
+    def _get_bool_config(self, key: str, default: bool) -> bool:
+        value = self.plugin.get_config().get(key, default)
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        return bool(value)
+
+    def _get_str_config(self, key: str, default: str = "") -> str:
+        return str(self.plugin.get_config().get(key, default)).strip()
+
     @staticmethod
     def _strip_data_url_prefix(data: str) -> str:
         if data.startswith("data:") and "," in data:
             return data.split(",", 1)[1]
         return data
+
+    @staticmethod
+    def _truncate_text(text: str, limit: int = 5000) -> str:
+        if len(text) <= limit:
+            return text
+        return text[:limit]
+
+    def _load_rules(self) -> dict[str, Any]:
+        raw = self.plugin.get_config().get("rules_json", {})
+        if isinstance(raw, dict):
+            return raw
+        if isinstance(raw, str):
+            raw = raw.strip()
+            if not raw:
+                return {}
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                return {}
+        return {}
+
+    @staticmethod
+    def _extract_plain_text(message_chain: platform_message.MessageChain) -> str:
+        parts: list[str] = []
+        for component in message_chain:
+            if isinstance(component, platform_message.Plain):
+                txt = str(component.text).strip()
+                if txt:
+                    parts.append(txt)
+        return "\n".join(parts).strip()
+
+    @staticmethod
+    def _extract_images(message_chain: platform_message.MessageChain) -> list[platform_message.Image]:
+        return [component for component in message_chain if isinstance(component, platform_message.Image)]
 
     async def _get_image_bytes(self, image: platform_message.Image) -> bytes:
         if image.base64:
@@ -124,7 +174,7 @@ class AutoOcrOnImageListener(EventListener):
                 return self._tenant_access_token
             return await self._request_tenant_access_token()
 
-    async def _recognize_image_bytes(self, image_bytes: bytes) -> dict[str, Any]:
+    async def _recognize_image_bytes(self, image_bytes: bytes) -> str:
         cfg = self.plugin.get_config()
         ocr_endpoint = str(
             cfg.get(
@@ -146,30 +196,18 @@ class AutoOcrOnImageListener(EventListener):
             response = await client.post(ocr_endpoint, headers=headers, json=payload)
 
         if response.status_code != 200:
-            return {
-                "success": False,
-                "error": f"OCR request failed, HTTP {response.status_code}.",
-                "response_text": response.text[:500],
-            }
+            raise RuntimeError(f"OCR request failed, HTTP {response.status_code}: {response.text[:200]}")
 
         try:
             body = response.json()
-        except Exception:
-            return {
-                "success": False,
-                "error": "OCR response is not JSON.",
-                "response_text": response.text[:500],
-            }
+        except Exception as exc:
+            raise RuntimeError("OCR response is not JSON.") from exc
 
         code = int(body.get("code", 0))
         if code != 0:
-            return {
-                "success": False,
-                "error": "OCR endpoint returned error.",
-                "code": code,
-                "msg": body.get("msg", ""),
-                "log_id": body.get("log_id", ""),
-            }
+            raise RuntimeError(
+                f"OCR endpoint returned error, code={code}, msg={body.get('msg', '')}"
+            )
 
         data = body.get("data", {}) or {}
         text_list = data.get("text_list", []) or []
@@ -178,71 +216,246 @@ class AutoOcrOnImageListener(EventListener):
             if isinstance(item, dict):
                 text = item.get("text")
                 if isinstance(text, str) and text.strip():
-                    lines.append(text)
+                    lines.append(text.strip())
             elif isinstance(item, str) and item.strip():
-                lines.append(item)
+                lines.append(item.strip())
 
-        return {
-            "success": True,
-            "text": "\n".join(lines).strip(),
-            "text_list": text_list,
-        }
+        return "\n".join(lines).strip()
 
     @staticmethod
-    def _format_result_text(result: dict[str, Any]) -> str:
-        if not result.get("success"):
-            error = str(result.get("error", "Unknown OCR error")).strip()
-            msg = str(result.get("msg", "")).strip()
-            if msg:
-                return f"OCR failed: {error} ({msg})"
-            return f"OCR failed: {error}"
+    def _extract_kv_pairs(text: str) -> dict[str, str]:
+        result: dict[str, str] = {}
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
 
-        text = str(result.get("text", "")).strip()
-        if not text:
-            return "OCR completed, but no text was recognized."
+            for sep in ("：", ":", "="):
+                if sep in line:
+                    key, val = line.split(sep, 1)
+                    key = key.strip()
+                    val = val.strip()
+                    if key and val:
+                        result[key.lower()] = val
+                    break
+        return result
 
-        if len(text) > 3000:
-            return f"{text[:3000]}\n...[truncated]"
-        return text
+    @staticmethod
+    def _extract_regex_fields(text: str, rules: list[dict[str, Any]]) -> dict[str, str]:
+        result: dict[str, str] = {}
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+            field = str(rule.get("field", "")).strip()
+            pattern = str(rule.get("pattern", "")).strip()
+            group = rule.get("group", None)
+            if not field or not pattern:
+                continue
 
-    def _build_reply_text(self, result_list: list[dict[str, Any]]) -> str:
-        if not result_list:
-            return "No image was found for OCR."
+            try:
+                match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE | re.DOTALL)
+            except re.error:
+                continue
+            if not match:
+                continue
 
-        if len(result_list) == 1:
-            formatted = self._format_result_text(result_list[0])
-            if result_list[0].get("success"):
-                return f"OCR result:\n{formatted}"
-            return formatted
+            extracted: str | None = None
+            if group is not None:
+                try:
+                    extracted = str(match.group(group)).strip()
+                except Exception:
+                    extracted = None
+            else:
+                named = match.groupdict()
+                if named:
+                    for _, value in named.items():
+                        if value is not None and str(value).strip():
+                            extracted = str(value).strip()
+                            break
+                if extracted is None and match.groups():
+                    extracted = str(match.group(1)).strip()
+                if extracted is None:
+                    extracted = str(match.group(0)).strip()
 
-        parts: list[str] = []
-        for idx, result in enumerate(result_list, start=1):
-            formatted = self._format_result_text(result)
-            parts.append(f"Image {idx}:\n{formatted}")
-        return "\n\n".join(parts)
+            if extracted:
+                result[field] = extracted
+        return result
+
+    def _extract_fields_by_rules(self, full_text: str, rules: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        fields: dict[str, Any] = {}
+        matched_by_rule = False
+
+        constant_fields = rules.get("constant_fields", {})
+        if isinstance(constant_fields, dict):
+            for k, v in constant_fields.items():
+                key = str(k).strip()
+                if key:
+                    fields[key] = v
+                    matched_by_rule = True
+
+        kv_aliases = rules.get("kv_aliases", {})
+        if isinstance(kv_aliases, dict):
+            kv_pairs = self._extract_kv_pairs(full_text)
+            for target_field, aliases_value in kv_aliases.items():
+                tf = str(target_field).strip()
+                if not tf:
+                    continue
+
+                aliases: list[str] = []
+                if isinstance(aliases_value, str):
+                    aliases = [aliases_value]
+                elif isinstance(aliases_value, list):
+                    aliases = [str(item) for item in aliases_value]
+
+                for alias in aliases:
+                    normalized = alias.strip().lower()
+                    if normalized and normalized in kv_pairs:
+                        fields[tf] = kv_pairs[normalized]
+                        matched_by_rule = True
+                        break
+
+        regex_rules = rules.get("regex_extractors", [])
+        if isinstance(regex_rules, list):
+            regex_fields = self._extract_regex_fields(full_text, regex_rules)
+            if regex_fields:
+                fields.update(regex_fields)
+                matched_by_rule = True
+
+        return fields, matched_by_rule
+
+    def _apply_builtin_fields(
+        self,
+        fields: dict[str, Any],
+        event_ctx: context.EventContext,
+        plain_text: str,
+        ocr_text: str,
+        matched_by_rule: bool,
+    ) -> None:
+        write_raw_when_no_match = self._get_bool_config("write_raw_text_when_no_match", True)
+        raw_field = self._get_str_config("raw_text_field", "Raw Text")
+        ocr_field = self._get_str_config("ocr_text_field", "OCR Text")
+        sender_field = self._get_str_config("sender_id_field", "Sender ID")
+        launcher_field = self._get_str_config("launcher_id_field", "Launcher ID")
+        launcher_type_field = self._get_str_config("launcher_type_field", "Launcher Type")
+        timestamp_field = self._get_str_config("message_time_field", "Message Time")
+
+        if raw_field and (matched_by_rule or write_raw_when_no_match):
+            raw_value = self._truncate_text(plain_text)
+            if raw_value:
+                fields[raw_field] = raw_value
+
+        if ocr_field and ocr_text:
+            fields[ocr_field] = self._truncate_text(ocr_text)
+
+        if sender_field:
+            fields[sender_field] = str(event_ctx.event.sender_id)
+        if launcher_field:
+            fields[launcher_field] = str(event_ctx.event.launcher_id)
+        if launcher_type_field:
+            fields[launcher_type_field] = str(event_ctx.event.launcher_type)
+        if timestamp_field:
+            fields[timestamp_field] = datetime.datetime.now(
+                datetime.timezone.utc
+            ).astimezone().isoformat(timespec="seconds")
+
+    async def _write_record_to_bitable(self, fields: dict[str, Any]) -> tuple[bool, str]:
+        app_token = self._get_str_config("bitable_app_token", "")
+        table_id = self._get_str_config("bitable_table_id", "")
+        if not app_token or not table_id:
+            return False, "bitable_app_token/bitable_table_id is empty"
+
+        endpoint_template = self._get_str_config(
+            "bitable_endpoint_template",
+            "https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records",
+        )
+        endpoint = endpoint_template.format(app_token=app_token, table_id=table_id)
+
+        token = await self._get_tenant_access_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8",
+        }
+        payload = {"fields": fields}
+
+        timeout = self._get_timeout_seconds()
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(endpoint, headers=headers, json=payload)
+
+        if response.status_code != 200:
+            return False, f"bitable write failed, HTTP {response.status_code}: {response.text[:300]}"
+
+        try:
+            body = response.json()
+        except Exception:
+            return False, f"bitable write failed, non-JSON response: {response.text[:300]}"
+
+        code = int(body.get("code", 0))
+        if code != 0:
+            return False, f"bitable write failed, code={code}, msg={body.get('msg', '')}"
+
+        record_id = ""
+        data = body.get("data", {}) or {}
+        record = data.get("record", {}) or {}
+        if isinstance(record, dict):
+            record_id = str(record.get("record_id", "")).strip()
+
+        return True, record_id
 
     async def _handle_normal_message(self, event_ctx: context.EventContext) -> None:
         message_chain = event_ctx.event.message_chain
-        images = [component for component in message_chain if isinstance(component, platform_message.Image)]
+        plain_text = self._extract_plain_text(message_chain)
+        images = self._extract_images(message_chain)
 
-        if not images:
+        if not plain_text and not images:
             return
 
-        result_list: list[dict[str, Any]] = []
-        for image in images:
-            try:
-                image_bytes = await self._get_image_bytes(image)
-                result = await self._recognize_image_bytes(image_bytes)
-            except Exception as exc:
-                result = {
-                    "success": False,
-                    "error": str(exc),
-                }
-            result_list.append(result)
+        ocr_text = ""
+        if images and self._get_bool_config("enable_ocr_for_images", True):
+            ocr_texts: list[str] = []
+            for image in images:
+                try:
+                    image_bytes = await self._get_image_bytes(image)
+                    text = await self._recognize_image_bytes(image_bytes)
+                    if text:
+                        ocr_texts.append(text)
+                except Exception:
+                    continue
+            if ocr_texts:
+                ocr_text = "\n\n".join(ocr_texts).strip()
 
-        reply_text = self._build_reply_text(result_list)
-        event_ctx.event.reply_message_chain = platform_message.MessageChain(
-            [platform_message.Plain(text=reply_text)]
-        )
-        event_ctx.prevent_default()
-        event_ctx.prevent_postorder()
+        full_text_parts = [plain_text.strip(), ocr_text.strip()]
+        full_text = "\n".join([part for part in full_text_parts if part]).strip()
+        if not full_text:
+            return
+
+        rules = self._load_rules()
+        fields, matched_by_rule = self._extract_fields_by_rules(full_text, rules)
+        write_raw_when_no_match = self._get_bool_config("write_raw_text_when_no_match", True)
+        if not matched_by_rule and not write_raw_when_no_match:
+            return
+
+        self._apply_builtin_fields(fields, event_ctx, plain_text, ocr_text, matched_by_rule)
+
+        if not fields:
+            return
+
+        success, detail = await self._write_record_to_bitable(fields)
+
+        if success:
+            if self._get_bool_config("reply_on_write", False):
+                reply_text = self._get_str_config("reply_text_template", "Recorded to Bitable")
+                if reply_text:
+                    event_ctx.event.reply_message_chain = platform_message.MessageChain(
+                        [platform_message.Plain(text=reply_text)]
+                    )
+
+            if self._get_bool_config("prevent_default_on_write", True):
+                event_ctx.prevent_default()
+                event_ctx.prevent_postorder()
+            return
+
+        if self._get_bool_config("reply_on_error", False):
+            error_text = f"Bitable write failed: {detail}"
+            event_ctx.event.reply_message_chain = platform_message.MessageChain(
+                [platform_message.Plain(text=self._truncate_text(error_text, 1000))]
+            )

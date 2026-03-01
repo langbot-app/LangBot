@@ -20,6 +20,43 @@ class MonitoringHelper:
     """Helper class for monitoring operations"""
 
     @staticmethod
+    def _extract_sender_name(query: pipeline_query.Query) -> str | None:
+        """Extract sender display name from query message event"""
+        sender_name: str | None = None
+
+        message_event = getattr(query, 'message_event', None)
+        sender = getattr(message_event, 'sender', None)
+
+        if sender is not None:
+            get_name = getattr(sender, 'get_name', None)
+            if callable(get_name):
+                try:
+                    sender_name = get_name()
+                except Exception:
+                    sender_name = None
+                else:
+                    if isinstance(sender_name, str):
+                        sender_name = sender_name.strip() or None
+                    else:
+                        sender_name = None
+
+            if not sender_name:
+                for attr in ('member_name', 'nickname', 'remark', 'name'):
+                    value = getattr(sender, attr, None)
+                    if isinstance(value, str) and value.strip():
+                        sender_name = value.strip()
+                        break
+
+        if not sender_name:
+            variables = getattr(query, 'variables', None)
+            if isinstance(variables, dict):
+                var_sender_name = variables.get('sender_name')
+                if isinstance(var_sender_name, str) and var_sender_name.strip():
+                    sender_name = var_sender_name.strip()
+
+        return sender_name if sender_name else None
+
+    @staticmethod
     async def record_query_start(
         ap: app.Application,
         query: pipeline_query.Query,
@@ -33,6 +70,8 @@ class MonitoringHelper:
         try:
             # Check if session exists, if not, record session start
             session_id = f'{query.launcher_type}_{query.launcher_id}'
+            platform = query.launcher_type.value if hasattr(query.launcher_type, 'value') else str(query.launcher_type)
+            sender_name = MonitoringHelper._extract_sender_name(query)
 
             # Try to record message
             # Use JSON serialization to preserve message chain structure (including image URLs, etc.)
@@ -53,9 +92,7 @@ class MonitoringHelper:
                 session_id=session_id,
                 status='pending',
                 level='info',
-                platform=query.launcher_type.value
-                if hasattr(query.launcher_type, 'value')
-                else str(query.launcher_type),
+                platform=platform,
                 user_id=query.sender_id,
                 runner_name=runner_name,
                 variables=None,  # Will be updated in record_query_success
@@ -67,6 +104,9 @@ class MonitoringHelper:
                 session_id,
                 pipeline_id=pipeline_id,
                 pipeline_name=pipeline_name,
+                platform=platform,
+                user_id=query.sender_id,
+                user_name=sender_name,
             )
             if not session_updated:
                 # Session doesn't exist, create it
@@ -76,10 +116,9 @@ class MonitoringHelper:
                     bot_name=bot_name,
                     pipeline_id=pipeline_id,
                     pipeline_name=pipeline_name,
-                    platform=query.launcher_type.value
-                    if hasattr(query.launcher_type, 'value')
-                    else str(query.launcher_type),
+                    platform=platform,
                     user_id=query.sender_id,
+                    user_name=sender_name,
                 )
 
             return message_id

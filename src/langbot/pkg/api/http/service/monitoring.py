@@ -152,6 +152,7 @@ class MonitoringService:
         pipeline_name: str,
         platform: str | None = None,
         user_id: str | None = None,
+        user_name: str | None = None,
     ) -> None:
         """Record a new session"""
         session_data = {
@@ -166,6 +167,7 @@ class MonitoringService:
             'is_active': True,
             'platform': platform,
             'user_id': user_id,
+            'user_name': user_name,
         }
 
         await self.ap.persistence_mgr.execute_async(
@@ -177,6 +179,9 @@ class MonitoringService:
         session_id: str,
         pipeline_id: str | None = None,
         pipeline_name: str | None = None,
+        platform: str | None = None,
+        user_id: str | None = None,
+        user_name: str | None = None,
     ) -> bool:
         """Update session last activity time and increment message count.
 
@@ -195,6 +200,12 @@ class MonitoringService:
             update_values['pipeline_id'] = pipeline_id
         if pipeline_name is not None:
             update_values['pipeline_name'] = pipeline_name
+        if platform is not None:
+            update_values['platform'] = platform
+        if user_id is not None:
+            update_values['user_id'] = user_id
+        if user_name is not None:
+            update_values['user_name'] = user_name
 
         result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_monitoring.MonitoringSession)
@@ -1125,6 +1136,7 @@ class MonitoringService:
                 'is_active': str(row[0].is_active if isinstance(row, tuple) else row.is_active),
                 'platform': row[0].platform if isinstance(row, tuple) else row.platform,
                 'user_id': row[0].user_id if isinstance(row, tuple) else row.user_id,
+                'user_name': row[0].user_name if isinstance(row, tuple) else row.user_name,
             }
             for row in rows
         ]

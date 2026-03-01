@@ -356,6 +356,7 @@ export class BackendClient extends BaseHttpClient {
       is_active: boolean;
       platform: string | null;
       user_id: string | null;
+      user_name: string | null;
     }>;
     total: number;
   }> {
@@ -938,6 +939,7 @@ export class BackendClient extends BaseHttpClient {
       start_time: string;
       platform?: string;
       user_id?: string;
+      user_name?: string;
     }>;
     errors: Array<{
       id: string;

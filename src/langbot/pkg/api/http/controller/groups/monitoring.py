@@ -455,6 +455,7 @@ class MonitoringRouterGroup(group.RouterGroup):
                     'is_active',
                     'platform',
                     'user_id',
+                    'user_name',
                 ]
             else:
                 return self.error(message=f'Invalid export type: {export_type}', code=400)

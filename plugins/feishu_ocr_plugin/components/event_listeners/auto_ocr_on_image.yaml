@@ -6,8 +6,8 @@ metadata:
     en_US: AutoOcrOnImage
     zh_Hans: AutoOcrOnImage
   description:
-    en_US: 'Automatically run OCR and reply when image messages are received.'
-    zh_Hans: 'Automatically run OCR and reply when image messages are received.'
+    en_US: 'Automatically process incoming messages and write structured records to Feishu Bitable.'
+    zh_Hans: 'Automatically process incoming messages and write structured records to Feishu Bitable.'
 spec:
 execution:
   python:

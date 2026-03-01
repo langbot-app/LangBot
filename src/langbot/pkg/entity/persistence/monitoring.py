@@ -64,6 +64,7 @@ class MonitoringSession(Base):
     is_active = sqlalchemy.Column(sqlalchemy.Boolean, nullable=False, default=True, index=True)
     platform = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
     user_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
+    user_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
 
 
 class MonitoringError(Base):

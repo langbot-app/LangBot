@@ -6,52 +6,170 @@ metadata:
   repository: 'https://open.feishu.cn/'
   version: 0.1.0
   description:
-    en_US: 'Use Feishu OCR API to recognize text from images.'
-    zh_Hans: '使用飞书 OCR 接口识别图片文字。'
+    en_US: 'Process incoming messages, optionally OCR images, and write structured records into Feishu Bitable.'
+    zh_Hans: 'Process incoming messages, optionally OCR images, and write structured records into Feishu Bitable.'
   label:
     en_US: Feishu OCR Plugin
-    zh_Hans: 飞书 OCR 插件
+    zh_Hans: Feishu OCR Plugin
   icon: assets/icon.svg
 spec:
   config:
     - name: app_id
       label:
         en_US: App ID
-        zh_Hans: 应用 ID
+        zh_Hans: App ID
       type: string
       required: true
       default: ''
     - name: app_secret
       label:
         en_US: App Secret
-        zh_Hans: 应用密钥
+        zh_Hans: App Secret
       type: string
       required: true
       default: ''
     - name: token_endpoint
       label:
         en_US: Token Endpoint
-        zh_Hans: Token 接口地址
+        zh_Hans: Token Endpoint
       description:
         en_US: 'Default uses tenant_access_token/internal for self-built app.'
-        zh_Hans: '默认使用自建应用 tenant_access_token/internal 接口。'
+        zh_Hans: 'Default uses tenant_access_token/internal for self-built app.'
       type: string
       required: false
       default: 'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal'
     - name: ocr_endpoint
       label:
         en_US: OCR Endpoint
-        zh_Hans: OCR 接口地址
+        zh_Hans: OCR Endpoint
       type: string
       required: false
       default: 'https://open.feishu.cn/open-apis/optical_char_recognition/v1/image/basic_recognize'
     - name: timeout_seconds
       label:
         en_US: Timeout Seconds
-        zh_Hans: 请求超时秒数
+        zh_Hans: Timeout Seconds
       type: string
       required: false
       default: '20'
+    - name: bitable_app_token
+      label:
+        en_US: Bitable App Token
+        zh_Hans: Bitable App Token
+      type: string
+      required: false
+      default: ''
+    - name: bitable_table_id
+      label:
+        en_US: Bitable Table ID
+        zh_Hans: Bitable Table ID
+      type: string
+      required: false
+      default: ''
+    - name: bitable_endpoint_template
+      label:
+        en_US: Bitable Endpoint Template
+        zh_Hans: Bitable Endpoint Template
+      description:
+        en_US: 'Use placeholders {app_token} and {table_id}.'
+        zh_Hans: 'Use placeholders {app_token} and {table_id}.'
+      type: string
+      required: false
+      default: 'https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records'
+    - name: rules_json
+      label:
+        en_US: Rules JSON
+        zh_Hans: Rules JSON
+      description:
+        en_US: 'Rule config with kv_aliases/regex_extractors/constant_fields.'
+        zh_Hans: 'Rule config with kv_aliases/regex_extractors/constant_fields.'
+      type: json
+      required: false
+      default: '{}'
+    - name: enable_ocr_for_images
+      label:
+        en_US: Enable OCR For Images
+        zh_Hans: Enable OCR For Images
+      type: boolean
+      required: false
+      default: true
+    - name: write_raw_text_when_no_match
+      label:
+        en_US: Write Raw Text If No Rule Match
+        zh_Hans: Write Raw Text If No Rule Match
+      type: boolean
+      required: false
+      default: true
+    - name: raw_text_field
+      label:
+        en_US: Raw Text Field
+        zh_Hans: Raw Text Field
+      type: string
+      required: false
+      default: 'Raw Text'
+    - name: ocr_text_field
+      label:
+        en_US: OCR Text Field
+        zh_Hans: OCR Text Field
+      type: string
+      required: false
+      default: 'OCR Text'
+    - name: sender_id_field
+      label:
+        en_US: Sender ID Field
+        zh_Hans: Sender ID Field
+      type: string
+      required: false
+      default: 'Sender ID'
+    - name: launcher_id_field
+      label:
+        en_US: Launcher ID Field
+        zh_Hans: Launcher ID Field
+      type: string
+      required: false
+      default: 'Launcher ID'
+    - name: launcher_type_field
+      label:
+        en_US: Launcher Type Field
+        zh_Hans: Launcher Type Field
+      type: string
+      required: false
+      default: 'Launcher Type'
+    - name: message_time_field
+      label:
+        en_US: Message Time Field
+        zh_Hans: Message Time Field
+      type: string
+      required: false
+      default: 'Message Time'
+    - name: prevent_default_on_write
+      label:
+        en_US: Prevent Default On Write
+        zh_Hans: Prevent Default On Write
+      type: boolean
+      required: false
+      default: true
+    - name: reply_on_write
+      label:
+        en_US: Reply On Write
+        zh_Hans: Reply On Write
+      type: boolean
+      required: false
+      default: false
+    - name: reply_text_template
+      label:
+        en_US: Reply Text Template
+        zh_Hans: Reply Text Template
+      type: string
+      required: false
+      default: 'Recorded to Bitable.'
+    - name: reply_on_error
+      label:
+        en_US: Reply On Error
+        zh_Hans: Reply On Error
+      type: boolean
+      required: false
+      default: false
   components:
     Tool:
       fromDirs:
