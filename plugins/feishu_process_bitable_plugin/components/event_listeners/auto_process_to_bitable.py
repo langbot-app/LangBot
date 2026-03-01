@@ -844,8 +844,16 @@ class AutoProcessToBitableListener(EventListener):
 
         normalized_text = self._normalize_dash(text)
         process_name_map = self._particle_process_name_map()
-        # Support material ids like S18, S006, S1234...
-        batch_regex = re.compile(r"(S\d+)-([A-Z]{2,3})-D([AB])(\d{4})-(\d+)", re.IGNORECASE)
+        # Support formats like:
+        # S18-XM-DA2603-002
+        # S18-XM-DA2603-002-C
+        # S18-XM-DA2603-002-C-120min
+        batch_regex = re.compile(
+            r"(S\d+)-([A-Z]{2,3})-D([AB])(\d{4})-(\d+)"
+            r"(?:-([A-Z0-9]+))?"
+            r"(?:-(\d+)\s*MIN)?",
+            re.IGNORECASE,
+        )
 
         matches = list(batch_regex.finditer(normalized_text))
         if not matches:
@@ -860,6 +868,8 @@ class AutoProcessToBitableListener(EventListener):
             line = str(match.group(3)).upper().strip()
             date_code = str(match.group(4)).strip()
             seq = str(match.group(5)).strip()
+            sample_suffix = str(match.group(6) or "").upper().strip()
+            hold_minutes = str(match.group(7) or "").strip()
 
             if process_code not in process_name_map:
                 continue
@@ -881,6 +891,13 @@ class AutoProcessToBitableListener(EventListener):
                 "工序名称": process_name_map[process_code],
                 "消息时间": message_time,
             }
+            if sample_suffix:
+                fields["样品段"] = sample_suffix
+            if hold_minutes:
+                try:
+                    fields["保温(min)"] = int(hold_minutes)
+                except Exception:
+                    fields["保温(min)"] = hold_minutes
             fields.update(d_values)
 
             records.append(
