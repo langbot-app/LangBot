@@ -1086,6 +1086,7 @@ class AutoProcessToBitableListener(EventListener):
             return []
 
         whole_d_values = self._extract_particle_d_values(normalized_text)
+        xm_suffix_hints: dict[tuple[str, str, str, str, str], tuple[str, str]] = {}
         records: list[ParsedRecord] = []
 
         for idx, match in enumerate(matches):
@@ -1096,6 +1097,19 @@ class AutoProcessToBitableListener(EventListener):
             seq = str(match.group(5)).strip()
             sample_suffix = str(match.group(6) or "").upper().strip()
             hold_minutes = str(match.group(7) or "").strip()
+
+            batch_meta_key = (material_type, process_code, line, date_code, seq)
+            if process_code == "XM":
+                if sample_suffix:
+                    hinted_hold = hold_minutes
+                    if not hinted_hold and batch_meta_key in xm_suffix_hints:
+                        hinted_hold = xm_suffix_hints[batch_meta_key][1]
+                    xm_suffix_hints[batch_meta_key] = (sample_suffix, hinted_hold)
+                elif batch_meta_key in xm_suffix_hints:
+                    hinted_suffix, hinted_hold = xm_suffix_hints[batch_meta_key]
+                    sample_suffix = hinted_suffix
+                    if not hold_minutes and hinted_hold:
+                        hold_minutes = hinted_hold
 
             if process_code not in process_name_map:
                 continue
@@ -1187,6 +1201,7 @@ class AutoProcessToBitableListener(EventListener):
             re.IGNORECASE,
         )
 
+        xm_suffix_hints: dict[tuple[str, str, str, str], tuple[str, str]] = {}
         records: list[ParsedRecord] = []
         for match in solids_regex.finditer(normalized_text):
             material_type = str(match.group(1)).upper().strip()
@@ -1196,6 +1211,18 @@ class AutoProcessToBitableListener(EventListener):
             sample_suffix = str(match.group(5) or "").upper().strip()
             hold_minutes = str(match.group(6) or "").strip()
             solids_raw = str(match.group(7)).strip().replace(",", ".")
+
+            batch_meta_key = (material_type, line, date_code, seq)
+            if sample_suffix:
+                hinted_hold = hold_minutes
+                if not hinted_hold and batch_meta_key in xm_suffix_hints:
+                    hinted_hold = xm_suffix_hints[batch_meta_key][1]
+                xm_suffix_hints[batch_meta_key] = (sample_suffix, hinted_hold)
+            elif batch_meta_key in xm_suffix_hints:
+                hinted_suffix, hinted_hold = xm_suffix_hints[batch_meta_key]
+                sample_suffix = hinted_suffix
+                if not hold_minutes and hinted_hold:
+                    hold_minutes = hinted_hold
 
             try:
                 solids_value = float(solids_raw)
