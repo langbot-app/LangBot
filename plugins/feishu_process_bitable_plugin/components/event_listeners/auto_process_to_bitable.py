@@ -1004,6 +1004,23 @@ class AutoProcessToBitableListener(EventListener):
             "HP": "合批",
         }
 
+    @staticmethod
+    def _resolve_xm_sample_slot(sample_suffix: str) -> str:
+        suffix = sample_suffix.strip().upper()
+        match = re.search(r"[ABCD]", suffix)
+        if not match:
+            return ""
+        return str(match.group(0))
+
+    @classmethod
+    def _resolve_xm_subline(sample_suffix: str) -> str:
+        slot = cls._resolve_xm_sample_slot(sample_suffix)
+        if slot in {"A", "B"}:
+            return "1线"
+        if slot in {"C", "D"}:
+            return "2线"
+        return ""
+
     def _resolve_particle_route_key(self, process_code: str, line: str) -> str:
         code = process_code.strip().upper()
         line_code = line.strip().upper()
@@ -1106,16 +1123,30 @@ class AutoProcessToBitableListener(EventListener):
             if route_key.startswith("wet_process.") and process_code in wet_prefix_map:
                 prefix = wet_prefix_map[process_code]
                 fields["最后更新工序"] = process_name_map[process_code]
-                if sample_suffix:
-                    fields[f"{prefix}样品段"] = sample_suffix
+
+                dynamic_prefix = prefix
+                if process_code == "XM" and sample_suffix:
+                    xm_slot = self._resolve_xm_sample_slot(sample_suffix)
+                    xm_subline = self._resolve_xm_subline(sample_suffix)
+                    if xm_slot:
+                        dynamic_prefix = f"{prefix}{xm_slot}"
+                        fields[f"{dynamic_prefix}段位"] = xm_slot
+                    else:
+                        dynamic_prefix = f"{prefix}{sample_suffix}"
+                    fields[f"{dynamic_prefix}样品段"] = sample_suffix
+                    if xm_subline:
+                        fields[f"{dynamic_prefix}线别"] = xm_subline
+                elif sample_suffix:
+                    fields[f"{dynamic_prefix}样品段"] = sample_suffix
+
                 if hold_minutes:
                     try:
-                        fields[f"{prefix}研磨时间(min)"] = int(hold_minutes)
+                        fields[f"{dynamic_prefix}研磨时间(min)"] = int(hold_minutes)
                     except Exception:
-                        fields[f"{prefix}研磨时间(min)"] = hold_minutes
+                        fields[f"{dynamic_prefix}研磨时间(min)"] = hold_minutes
 
                 for d_key, d_value in d_values.items():
-                    fields[f"{prefix}{d_key}"] = d_value
+                    fields[f"{dynamic_prefix}{d_key}"] = d_value
             else:
                 fields["工序代码"] = process_code
                 fields["工序名称"] = process_name_map[process_code]
