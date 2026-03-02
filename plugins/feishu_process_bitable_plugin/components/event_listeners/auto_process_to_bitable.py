@@ -35,6 +35,7 @@ class AutoProcessToBitableListener(EventListener):
         self._table_lock = asyncio.Lock()
         self._field_lock = asyncio.Lock()
         self._route_table_cache: dict[str, str] = {}
+        self._route_table_override: dict[str, str] = {}
         self._table_name_to_id_cache: dict[str, str] = {}
         self._table_field_types_cache: dict[str, dict[str, int]] = {}
         self._record_lookup_cache: dict[str, str] = {}
@@ -1285,6 +1286,10 @@ class AutoProcessToBitableListener(EventListener):
         return ""
 
     async def _resolve_or_create_table_id(self, route_key: str) -> str:
+        override_table_id = self._route_table_override.get(route_key, "")
+        if override_table_id:
+            return override_table_id
+
         explicit_table_id = self._resolve_table_id(route_key)
         if explicit_table_id:
             return explicit_table_id
@@ -1303,6 +1308,51 @@ class AutoProcessToBitableListener(EventListener):
             return table_id
 
         return self._get_str_config("bitable_default_table_id", "")
+
+    @staticmethod
+    def _is_table_id_not_found_error(detail: str) -> bool:
+        text = str(detail or "").strip().lower()
+        if not text:
+            return False
+        if "tableidnotfound" in text:
+            return True
+        if "code=1254041" in text:
+            return True
+        return False
+
+    def _invalidate_table_runtime_cache(self, route_key: str, table_id: str) -> None:
+        self._route_table_cache.pop(route_key, None)
+        self._route_table_override.pop(route_key, None)
+
+        table_name = self._resolve_table_name(route_key)
+        if table_name:
+            self._table_name_to_id_cache.pop(table_name, None)
+
+        if table_id:
+            stale_names = [name for name, tid in self._table_name_to_id_cache.items() if tid == table_id]
+            for name in stale_names:
+                self._table_name_to_id_cache.pop(name, None)
+
+            self._table_field_types_cache.pop(table_id, None)
+            stale_record_cache_keys = [key for key in self._record_lookup_cache.keys() if key.startswith(f"{table_id}:")]
+            for key in stale_record_cache_keys:
+                self._record_lookup_cache.pop(key, None)
+
+    async def _rebuild_route_table_id(self, route_key: str, table_id: str) -> str:
+        self._invalidate_table_runtime_cache(route_key, table_id)
+
+        table_name = self._resolve_table_name(route_key)
+        rebuilt_table_id = await self._get_or_create_table_id_by_name(table_name)
+        if rebuilt_table_id:
+            # Override stale explicit route mapping at runtime after table recreation.
+            self._route_table_override[route_key] = rebuilt_table_id
+            self._route_table_cache[route_key] = rebuilt_table_id
+            return rebuilt_table_id
+
+        fallback_table_id = self._get_str_config("bitable_default_table_id", "")
+        if fallback_table_id:
+            self._route_table_override[route_key] = fallback_table_id
+        return fallback_table_id
 
     async def _write_record_to_bitable(self, table_id: str, fields: dict[str, Any]) -> tuple[bool, str]:
         app_token = self._get_str_config("bitable_app_token", "")
@@ -1693,19 +1743,37 @@ class AutoProcessToBitableListener(EventListener):
 
             write_fields = dict(record.fields)
             self._apply_builtin_fields(write_fields, record, event_ctx, plain_text, ocr_text, message_time)
-            ok_fields, detail_fields, field_types = await self._ensure_table_fields(table_id, write_fields)
-            if not ok_fields:
-                errors.append(f"route={record.route_key}, {detail_fields}")
-                continue
-            normalized_write_fields = self._normalize_write_fields(write_fields, field_types)
+            retried_after_table_not_found = False
 
-            match_fields = self._build_upsert_match_fields(normalized_write_fields)
-            ok, detail = await self._upsert_record_to_bitable(table_id, normalized_write_fields, match_fields)
-            if ok:
-                success_count += 1
-                success_records.append(record)
-            else:
+            while True:
+                ok_fields, detail_fields, field_types = await self._ensure_table_fields(table_id, write_fields)
+                if not ok_fields:
+                    if (not retried_after_table_not_found) and self._is_table_id_not_found_error(detail_fields):
+                        rebuilt_table_id = await self._rebuild_route_table_id(record.route_key, table_id)
+                        retried_after_table_not_found = True
+                        if rebuilt_table_id and rebuilt_table_id != table_id:
+                            table_id = rebuilt_table_id
+                            continue
+                    errors.append(f"route={record.route_key}, {detail_fields}")
+                    break
+
+                normalized_write_fields = self._normalize_write_fields(write_fields, field_types)
+                match_fields = self._build_upsert_match_fields(normalized_write_fields)
+                ok, detail = await self._upsert_record_to_bitable(table_id, normalized_write_fields, match_fields)
+                if ok:
+                    success_count += 1
+                    success_records.append(record)
+                    break
+
+                if (not retried_after_table_not_found) and self._is_table_id_not_found_error(detail):
+                    rebuilt_table_id = await self._rebuild_route_table_id(record.route_key, table_id)
+                    retried_after_table_not_found = True
+                    if rebuilt_table_id and rebuilt_table_id != table_id:
+                        table_id = rebuilt_table_id
+                        continue
+
                 errors.append(f"route={record.route_key}, {detail}")
+                break
 
         if success_count > 0:
             need_success_feedback = self._get_bool_config("reply_on_write", False)
