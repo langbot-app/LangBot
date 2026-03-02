@@ -989,8 +989,25 @@ class AutoProcessToBitableListener(EventListener):
             "CM": "粗磨工序",
             "XM": "细磨工序",
             "HP": "合批工序",
+            "SC": "烧结工序",
             "QQT": "喷雾工序",
         }
+
+    def _resolve_particle_route_key(self, process_code: str, line: str) -> str:
+        code = process_code.strip().upper()
+        line_code = line.strip().upper()
+        normalized_line = line_code if line_code in {"A", "B"} else ""
+
+        if not self._get_bool_config("merge_particle_size_to_stage_tables", True):
+            return f"particle_size.{code}"
+
+        if code in {"FS", "CM", "XM", "HP"}:
+            return f"crushing.{normalized_line}" if normalized_line else "crushing"
+        if code == "SC":
+            return f"sintering.{normalized_line}" if normalized_line else "sintering"
+        if code == "QQT":
+            return f"spray.{normalized_line}" if normalized_line else "spray"
+        return f"particle_size.{code}"
 
     @staticmethod
     def _extract_particle_d_values(text: str) -> dict[str, float]:
@@ -1082,7 +1099,7 @@ class AutoProcessToBitableListener(EventListener):
                     scenario="particle_size",
                     line=line,
                     batch_id=batch_id,
-                    route_key=f"particle_size.{process_code}",
+                    route_key=self._resolve_particle_route_key(process_code, line),
                     fields=fields,
                 )
             )

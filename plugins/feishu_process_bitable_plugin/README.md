@@ -8,8 +8,11 @@
 
 - `particle_size`：图片/OCR 粒度数据（`D10/D50/D90/D99`）
   - 批次编码示例：`S006-FS-DB2602-117`、`S18-FS-DB2602-117`
-  - 工序代码：`FS`(粉碎) / `CM`(粗磨) / `XM`(细磨) / `HP`(合批) / `QQT`(喷雾)
-  - 按工序自动路由：`particle_size.FS` / `particle_size.CM` / `particle_size.XM` / `particle_size.HP` / `particle_size.QQT`
+  - 工序代码：`FS`(粉碎) / `CM`(粗磨) / `XM`(细磨) / `HP`(合批) / `SC`(烧结) / `QQT`(喷雾)
+  - 默认按工序归并路由：
+    - `FS/CM/XM/HP` -> `crushing.A` / `crushing.B`
+    - `SC` -> `sintering.A` / `sintering.B`
+    - `QQT` -> `spray.A` / `spray.B`
 - `spray`：喷雾（A/B线，批次 + 开度/进出口温度/雾化轮转速/水分）
 - `feeding`：投料（A/B线，批次 + 磷酸铁需补/碳酸锂需补/D5总量/BL总量）
 - `sintering`：烧结（A/B线，批次 + 样品值 + 自动均值）
@@ -27,6 +30,7 @@
 - `auto_create_fields`：缺列自动创建
 - `enable_ocr_for_images`
 - `process_switch_json`
+- `merge_particle_size_to_stage_tables`：粒度数据归并到工序汇总表（默认 `true`）
 - `prevent_default_on_match`：命中规则即拦截默认流程（建议保持 `true`）
 - `private_notify_user_id`：群消息处理结果私聊通知对象（填你的 `ou_xxx`）
 - `reply_in_group`：是否允许在群聊直接回消息（工作群建议 `false`）
@@ -37,11 +41,6 @@
 
 ```json
 {
-  "particle_size.FS": "tblFsxxxx",
-  "particle_size.CM": "tblCmxxxx",
-  "particle_size.XM": "tblXmxxxx",
-  "particle_size.HP": "tblHpxxxx",
-  "particle_size.QQT": "tblQqtxxxx",
   "spray.A": "tblAxxxx",
   "spray.B": "tblByyyy",
   "feeding.A": "tblAxxxx",
@@ -65,11 +64,6 @@
 - 默认开启 `auto_create_table_by_route=true`、`auto_create_fields=true`
 - 当 `table_routing_json` 没有命中时，插件会按路由自动找表/建表
 - 默认表名（可被 `table_name_routing_json` 覆盖）：
-  - `particle_size.FS` -> `粉碎工序粒度汇总`
-  - `particle_size.CM` -> `粗磨工序粒度汇总`
-  - `particle_size.XM` -> `细磨工序粒度汇总`
-  - `particle_size.HP` -> `合批工序粒度汇总`
-  - `particle_size.QQT` -> `喷雾工序粒度汇总`
   - `spray.A` -> `A线喷雾汇总`
   - `spray.B` -> `B线喷雾汇总`
   - `feeding.A` -> `A线投料汇总`
@@ -79,6 +73,7 @@
   - `crushing.A` -> `A线粉碎压实汇总`
   - `crushing.B` -> `B线粉碎压实汇总`
   - `pure_water` -> `车间纯水PH汇总`
+- 若 `merge_particle_size_to_stage_tables=false`，仍可使用 `particle_size.FS/CM/XM/HP/SC/QQT` 独立路由
 - 写入前会检查字段，缺失字段自动创建（默认文本列）
 
 `table_name_routing_json` 示例：
