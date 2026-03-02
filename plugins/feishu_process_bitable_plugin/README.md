@@ -10,9 +10,14 @@
   - 批次编码示例：`S006-FS-DB2602-117`、`S18-FS-DB2602-117`
   - 工序代码：`FS`(粉碎) / `CM`(粗磨) / `XM`(细磨) / `HP`(合批) / `SC`(烧结) / `QQT`(喷雾)
   - 默认按工序归并路由：
-    - `FS/CM/XM/HP` -> `crushing.A` / `crushing.B`
+    - `FS` -> `crushing.A` / `crushing.B`
+    - `CM/XM/HP` -> `wet_process.A` / `wet_process.B`
     - `SC` -> `sintering.A` / `sintering.B`
     - `QQT` -> `spray.A` / `spray.B`
+  - 在 `wet_process` 汇总表内，`CM/XM/HP` 会写入工序前缀列，避免同批次互相覆盖：
+    - 例如 `粗磨D10/粗磨D50/粗磨D90/粗磨D99`、`细磨D10...`、`合批D10...`
+    - 时间列为 `粗磨研磨时间(min)` / `细磨研磨时间(min)` / `合批研磨时间(min)`
+    - `CM/XM/HP` 的批次号会统一归一为 `Sxxx-DA/DBxxxx-xxx`，用于三工序同批次汇总到一行
 - `spray`：喷雾（A/B线，批次 + 开度/进出口温度/雾化轮转速/水分）
 - `feeding`：投料（A/B线，批次 + 磷酸铁需补/碳酸锂需补/D5总量/BL总量）
 - `sintering`：烧结（A/B线，批次 + 样品值 + 自动均值）
@@ -31,6 +36,8 @@
 - `enable_ocr_for_images`
 - `process_switch_json`
 - `merge_particle_size_to_stage_tables`：粒度数据归并到工序汇总表（默认 `true`）
+- `upsert_by_batch`：按批次优先更新已有行（默认 `true`，避免同批次拆成多行）
+- `upsert_match_include_route` / `upsert_match_include_line`：upsert匹配是否包含路由与产线
 - `prevent_default_on_match`：命中规则即拦截默认流程（建议保持 `true`）
 - `private_notify_user_id`：群消息处理结果私聊通知对象（填你的 `ou_xxx`）
 - `reply_in_group`：是否允许在群聊直接回消息（工作群建议 `false`）
@@ -49,6 +56,8 @@
   "sintering.B": "tblByyyy",
   "crushing.A": "tblAxxxx",
   "crushing.B": "tblByyyy",
+  "wet_process.A": "tblWetAxxxx",
+  "wet_process.B": "tblWetByyyy",
   "pure_water": "tblWater"
 }
 ```
@@ -72,6 +81,8 @@
   - `sintering.B` -> `B线烧结汇总`
   - `crushing.A` -> `A线粉碎压实汇总`
   - `crushing.B` -> `B线粉碎压实汇总`
+  - `wet_process.A` -> `A线湿法汇总`
+  - `wet_process.B` -> `B线湿法汇总`
   - `pure_water` -> `车间纯水PH汇总`
 - 若 `merge_particle_size_to_stage_tables=false`，仍可使用 `particle_size.FS/CM/XM/HP/SC/QQT` 独立路由
 - 写入前会检查字段，缺失字段自动创建（默认文本列）
@@ -88,6 +99,8 @@
   "sintering.B": "B线烧结压实汇总",
   "crushing.A": "A线粉碎压实汇总",
   "crushing.B": "B线粉碎压实汇总",
+  "wet_process.A": "A线湿法汇总",
+  "wet_process.B": "B线湿法汇总",
   "pure_water": "车间纯水PH汇总"
 }
 ```
@@ -96,6 +109,7 @@
 
 - 默认命中规则后阻断 LangBot 主流程（`prevent_default_on_match=true`）
 - 写入成功后是否额外阻断由 `prevent_default_on_write` 控制（默认 `false`）
+- 默认按批次 upsert（`upsert_by_batch=true`），同批次压实/粒度会优先合并到同一行
 - 默认不回复（`reply_on_write=false`）
 - 失败时默认也不回复（`reply_on_error=false`）
 - 默认不在群回复（`reply_in_group=false`），允许私聊回复（`reply_in_person=true`）

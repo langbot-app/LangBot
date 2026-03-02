@@ -149,8 +149,8 @@ spec:
         en_US: Merge Particle Size To Stage Tables
         zh_Hans: 粒度数据归并到工序汇总表
       description:
-        en_US: 'When enabled, FS/CM/XM/HP -> crushing.A/B, SC -> sintering.A/B, QQT -> spray.A/B.'
-        zh_Hans: '开启后，FS/CM/XM/HP 写入 crushing.A/B，SC 写入 sintering.A/B，QQT 写入 spray.A/B。'
+        en_US: 'When enabled, FS -> crushing.A/B, CM/XM/HP -> wet_process.A/B, SC -> sintering.A/B, QQT -> spray.A/B.'
+        zh_Hans: '开启后，FS 写入 crushing.A/B，CM/XM/HP 写入 wet_process.A/B，SC 写入 sintering.A/B，QQT 写入 spray.A/B。'
       type: boolean
       required: false
       default: true
@@ -171,6 +171,40 @@ spec:
       type: boolean
       required: false
       default: false
+    - name: upsert_by_batch
+      label:
+        en_US: Upsert By Batch
+        zh_Hans: 按批次更新已有行
+      description:
+        en_US: Update existing row first (match by batch/route/line), create new row only when not found.
+        zh_Hans: 优先按批次/路由/产线匹配并更新已有行，未找到时再新增。
+      type: boolean
+      required: false
+      default: true
+    - name: upsert_match_include_route
+      label:
+        en_US: Upsert Match Include Route
+        zh_Hans: Upsert匹配包含路由
+      type: boolean
+      required: false
+      default: true
+    - name: upsert_match_include_line
+      label:
+        en_US: Upsert Match Include Line
+        zh_Hans: Upsert匹配包含产线
+      type: boolean
+      required: false
+      default: true
+    - name: upsert_scan_limit
+      label:
+        en_US: Upsert Scan Limit
+        zh_Hans: Upsert扫描上限
+      description:
+        en_US: Max records to scan when finding existing row for update.
+        zh_Hans: 查找已有行时最多扫描的记录数。
+      type: string
+      required: false
+      default: '1000'
     - name: prevent_default_on_write
       label:
         en_US: Prevent Default On Write

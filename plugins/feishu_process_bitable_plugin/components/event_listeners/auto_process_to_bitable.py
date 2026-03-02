@@ -37,6 +37,7 @@ class AutoProcessToBitableListener(EventListener):
         self._route_table_cache: dict[str, str] = {}
         self._table_name_to_id_cache: dict[str, str] = {}
         self._table_field_types_cache: dict[str, dict[str, int]] = {}
+        self._record_lookup_cache: dict[str, str] = {}
 
     async def initialize(self) -> None:
         await super().initialize()
@@ -133,6 +134,8 @@ class AutoProcessToBitableListener(EventListener):
             "sintering.B": "B线烧结汇总",
             "crushing.A": "A线粉碎压实汇总",
             "crushing.B": "B线粉碎压实汇总",
+            "wet_process.A": "A线湿法汇总",
+            "wet_process.B": "B线湿法汇总",
             "particle_size.FS": "粉碎工序粒度汇总",
             "particle_size.CM": "粗磨工序粒度汇总",
             "particle_size.XM": "细磨工序粒度汇总",
@@ -993,6 +996,14 @@ class AutoProcessToBitableListener(EventListener):
             "QQT": "喷雾工序",
         }
 
+    @staticmethod
+    def _wet_process_field_prefix_map() -> dict[str, str]:
+        return {
+            "CM": "粗磨",
+            "XM": "细磨",
+            "HP": "合批",
+        }
+
     def _resolve_particle_route_key(self, process_code: str, line: str) -> str:
         code = process_code.strip().upper()
         line_code = line.strip().upper()
@@ -1001,8 +1012,10 @@ class AutoProcessToBitableListener(EventListener):
         if not self._get_bool_config("merge_particle_size_to_stage_tables", True):
             return f"particle_size.{code}"
 
-        if code in {"FS", "CM", "XM", "HP"}:
+        if code == "FS":
             return f"crushing.{normalized_line}" if normalized_line else "crushing"
+        if code in {"CM", "XM", "HP"}:
+            return f"wet_process.{normalized_line}" if normalized_line else "wet_process"
         if code == "SC":
             return f"sintering.{normalized_line}" if normalized_line else "sintering"
         if code == "QQT":
@@ -1038,6 +1051,7 @@ class AutoProcessToBitableListener(EventListener):
 
         normalized_text = self._normalize_dash(text)
         process_name_map = self._particle_process_name_map()
+        wet_prefix_map = self._wet_process_field_prefix_map()
         # Support formats like:
         # S18-XM-DA2603-002
         # S18-XM-DA2603-002-C
@@ -1068,7 +1082,12 @@ class AutoProcessToBitableListener(EventListener):
             if process_code not in process_name_map:
                 continue
 
-            batch_id = f"{material_type}-{process_code}-D{line}{date_code}-{seq}"
+            route_key = self._resolve_particle_route_key(process_code, line)
+            if route_key.startswith("wet_process."):
+                # Wet-process summary table requires one row per production batch.
+                batch_id = f"{material_type}-D{line}{date_code}-{seq}"
+            else:
+                batch_id = f"{material_type}-{process_code}-D{line}{date_code}-{seq}"
 
             start_pos = match.start()
             end_pos = matches[idx + 1].start() if idx + 1 < len(matches) else len(normalized_text)
@@ -1081,25 +1100,40 @@ class AutoProcessToBitableListener(EventListener):
 
             fields: dict[str, Any] = {
                 "物料类型": material_type,
-                "工序代码": process_code,
-                "工序名称": process_name_map[process_code],
                 "消息时间": message_time,
             }
-            if sample_suffix:
-                fields["样品段"] = sample_suffix
-            if hold_minutes:
-                try:
-                    fields["保温(min)"] = int(hold_minutes)
-                except Exception:
-                    fields["保温(min)"] = hold_minutes
-            fields.update(d_values)
+
+            if route_key.startswith("wet_process.") and process_code in wet_prefix_map:
+                prefix = wet_prefix_map[process_code]
+                fields["最后更新工序"] = process_name_map[process_code]
+                if sample_suffix:
+                    fields[f"{prefix}样品段"] = sample_suffix
+                if hold_minutes:
+                    try:
+                        fields[f"{prefix}研磨时间(min)"] = int(hold_minutes)
+                    except Exception:
+                        fields[f"{prefix}研磨时间(min)"] = hold_minutes
+
+                for d_key, d_value in d_values.items():
+                    fields[f"{prefix}{d_key}"] = d_value
+            else:
+                fields["工序代码"] = process_code
+                fields["工序名称"] = process_name_map[process_code]
+                if sample_suffix:
+                    fields["样品段"] = sample_suffix
+                if hold_minutes:
+                    try:
+                        fields["研磨时间(min)"] = int(hold_minutes)
+                    except Exception:
+                        fields["研磨时间(min)"] = hold_minutes
+                fields.update(d_values)
 
             records.append(
                 ParsedRecord(
                     scenario="particle_size",
                     line=line,
                     batch_id=batch_id,
-                    route_key=self._resolve_particle_route_key(process_code, line),
+                    route_key=route_key,
                     fields=fields,
                 )
             )
@@ -1283,6 +1317,194 @@ class AutoProcessToBitableListener(EventListener):
 
         return True, record_id
 
+    async def _update_record_to_bitable(self, table_id: str, record_id: str, fields: dict[str, Any]) -> tuple[bool, str]:
+        app_token = self._get_str_config("bitable_app_token", "")
+        if not app_token or not table_id or not record_id:
+            return False, "bitable_app_token/table_id/record_id is empty"
+
+        endpoint = (
+            f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records/{record_id}"
+        )
+        token = await self._get_tenant_access_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8",
+        }
+        payload = {"fields": fields}
+
+        timeout = self._get_timeout_seconds()
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.put(endpoint, headers=headers, json=payload)
+
+        if response.status_code != 200:
+            return False, f"bitable update failed, HTTP {response.status_code}: {response.text[:300]}"
+
+        try:
+            body = response.json()
+        except Exception:
+            return False, f"bitable update failed, non-JSON response: {response.text[:300]}"
+
+        code = int(body.get("code", 0))
+        if code != 0:
+            return False, f"bitable update failed, code={code}, msg={body.get('msg', '')}"
+
+        return True, record_id
+
+    def _build_record_lookup_cache_key(self, table_id: str, match_fields: dict[str, str]) -> str:
+        return f"{table_id}:{json.dumps(match_fields, ensure_ascii=False, sort_keys=True)}"
+
+    @staticmethod
+    def _field_to_text(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, (dict, list)):
+            try:
+                return json.dumps(value, ensure_ascii=False, sort_keys=True)
+            except Exception:
+                return str(value).strip()
+        return str(value).strip()
+
+    async def _find_existing_record_id(self, table_id: str, match_fields: dict[str, str]) -> str:
+        if not match_fields:
+            return ""
+
+        cache_key = self._build_record_lookup_cache_key(table_id, match_fields)
+        cached = self._record_lookup_cache.get(cache_key, "")
+        if cached:
+            return cached
+
+        app_token = self._get_str_config("bitable_app_token", "")
+        if not app_token:
+            return ""
+
+        token = await self._get_tenant_access_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8",
+        }
+        endpoint = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
+
+        page_token = ""
+        scanned = 0
+        scan_limit = self._get_int_config("upsert_scan_limit", 1000, min_value=100, max_value=5000)
+        page_size = 200
+        expected = {k: self._field_to_text(v) for k, v in match_fields.items() if k}
+
+        while scanned < scan_limit:
+            query: dict[str, Any] = {"page_size": page_size}
+            if page_token:
+                query["page_token"] = page_token
+
+            data = await self._call_feishu_json_api("GET", endpoint, headers=headers, params=query)
+            items = data.get("items", []) or []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                record_id = str(item.get("record_id", "")).strip()
+                fields = item.get("fields", {}) or {}
+                if not record_id or not isinstance(fields, dict):
+                    continue
+
+                matched = True
+                for field_name, expected_value in expected.items():
+                    current_value = self._field_to_text(fields.get(field_name))
+                    if current_value != expected_value:
+                        matched = False
+                        break
+
+                if matched:
+                    self._record_lookup_cache[cache_key] = record_id
+                    return record_id
+
+            scanned += len(items)
+            if not bool(data.get("has_more", False)):
+                break
+            page_token = str(data.get("page_token", "")).strip()
+            if not page_token:
+                break
+
+        return ""
+
+    def _build_upsert_match_fields(self, write_fields: dict[str, Any]) -> dict[str, str]:
+        if not self._get_bool_config("upsert_by_batch", True):
+            return {}
+
+        batch_field = self._get_str_config("batch_field", "批次号")
+        if not batch_field:
+            return {}
+        batch_value = self._field_to_text(write_fields.get(batch_field))
+        if not batch_value:
+            return {}
+
+        match_fields: dict[str, str] = {batch_field: batch_value}
+
+        if self._get_bool_config("upsert_match_include_route", True):
+            route_field = self._get_str_config("route_field", "路由")
+            route_value = self._field_to_text(write_fields.get(route_field))
+            if route_field and route_value:
+                match_fields[route_field] = route_value
+
+        if self._get_bool_config("upsert_match_include_line", True):
+            line_field = self._get_str_config("line_field", "产线")
+            line_value = self._field_to_text(write_fields.get(line_field))
+            if line_field and line_value:
+                match_fields[line_field] = line_value
+
+        return match_fields
+
+    async def _upsert_record_to_bitable(
+        self,
+        table_id: str,
+        fields: dict[str, Any],
+        match_fields: dict[str, str],
+    ) -> tuple[bool, str]:
+        if not self._get_bool_config("upsert_by_batch", True):
+            return await self._write_record_to_bitable(table_id, fields)
+
+        if not match_fields:
+            return await self._write_record_to_bitable(table_id, fields)
+
+        try:
+            existing_id = await self._find_existing_record_id(table_id, match_fields)
+        except Exception as exc:
+            return False, f"find existing record failed: {exc}"
+
+        if existing_id:
+            ok, detail = await self._update_record_to_bitable(table_id, existing_id, fields)
+            if ok:
+                cache_key = self._build_record_lookup_cache_key(table_id, match_fields)
+                self._record_lookup_cache[cache_key] = existing_id
+            return ok, detail
+
+        ok, detail = await self._write_record_to_bitable(table_id, fields)
+        if ok:
+            cache_key = self._build_record_lookup_cache_key(table_id, match_fields)
+            self._record_lookup_cache[cache_key] = detail
+        return ok, detail
+
+    @staticmethod
+    def _merge_records_for_write(records: list[ParsedRecord]) -> list[ParsedRecord]:
+        merged_map: dict[tuple[str, str, str], ParsedRecord] = {}
+        for record in records:
+            key = (record.route_key, record.batch_id, record.line)
+            existing = merged_map.get(key)
+            if existing is None:
+                merged_map[key] = ParsedRecord(
+                    scenario=record.scenario,
+                    line=record.line,
+                    batch_id=record.batch_id,
+                    route_key=record.route_key,
+                    fields=dict(record.fields),
+                )
+                continue
+
+            existing.fields.update(record.fields)
+            if record.scenario and record.scenario not in existing.scenario.split("+"):
+                existing.scenario = f"{existing.scenario}+{record.scenario}" if existing.scenario else record.scenario
+        return list(merged_map.values())
+
     def _apply_builtin_fields(
         self,
         target_fields: dict[str, Any],
@@ -1422,6 +1644,8 @@ class AutoProcessToBitableListener(EventListener):
                 await self._send_feedback(event_ctx, self._truncate_text(error_text, 1800), is_error=True)
             return
 
+        records = self._merge_records_for_write(records)
+
         if self._get_bool_config("prevent_default_on_match", True):
             event_ctx.prevent_default()
             event_ctx.prevent_postorder()
@@ -1446,7 +1670,8 @@ class AutoProcessToBitableListener(EventListener):
                 continue
             normalized_write_fields = self._normalize_write_fields(write_fields, field_types)
 
-            ok, detail = await self._write_record_to_bitable(table_id, normalized_write_fields)
+            match_fields = self._build_upsert_match_fields(normalized_write_fields)
+            ok, detail = await self._upsert_record_to_bitable(table_id, normalized_write_fields, match_fields)
             if ok:
                 success_count += 1
                 success_records.append(record)
