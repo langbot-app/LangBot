@@ -1295,17 +1295,19 @@ class AutoProcessToBitableListener(EventListener):
         if not plain_text and not images:
             return
 
+        ocr_enabled = self._get_bool_config("enable_ocr_for_images", True)
         ocr_text = ""
-        if images and self._get_bool_config("enable_ocr_for_images", True):
+        ocr_errors: list[str] = []
+        if images and ocr_enabled:
             ocr_texts: list[str] = []
-            for image in images:
+            for idx, image in enumerate(images, start=1):
                 try:
                     image_bytes = await self._get_image_bytes(image)
                     text = await self._recognize_image_bytes(image_bytes)
                     if text:
                         ocr_texts.append(text)
-                except Exception:
-                    continue
+                except Exception as exc:
+                    ocr_errors.append(f"image#{idx}: {exc}")
             if ocr_texts:
                 ocr_text = "\n\n".join(ocr_texts).strip()
 
@@ -1343,6 +1345,24 @@ class AutoProcessToBitableListener(EventListener):
             )
 
         if not records:
+            if images:
+                reasons: list[str] = []
+                if not ocr_enabled:
+                    reasons.append("图片OCR已关闭(enable_ocr_for_images=false)")
+                if ocr_errors:
+                    reasons.append(f"OCR失败: {self._truncate_text('; '.join(ocr_errors), 600)}")
+                elif not ocr_text:
+                    reasons.append("OCR未提取到有效文本")
+                reasons.append("未命中任何解析规则")
+
+                error_text = "图片消息解析失败，未写入飞书表格。"
+                if reasons:
+                    error_text = f"{error_text} 原因: {'；'.join(reasons)}"
+
+                # For image messages, block default LLM fallback when parsing failed.
+                event_ctx.prevent_default()
+                event_ctx.prevent_postorder()
+                await self._send_feedback(event_ctx, self._truncate_text(error_text, 1800), is_error=True)
             return
 
         if self._get_bool_config("prevent_default_on_match", True):
@@ -1352,6 +1372,8 @@ class AutoProcessToBitableListener(EventListener):
         success_count = 0
         success_records: list[ParsedRecord] = []
         errors: list[str] = []
+        if ocr_errors:
+            errors.append(f"OCR失败: {self._truncate_text('; '.join(ocr_errors), 600)}")
 
         for record in records:
             table_id = await self._resolve_or_create_table_id(record.route_key)
