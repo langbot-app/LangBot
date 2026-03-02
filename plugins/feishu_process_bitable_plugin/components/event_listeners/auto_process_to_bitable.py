@@ -516,6 +516,34 @@ class AutoProcessToBitableListener(EventListener):
         except Exception:
             return False
 
+    async def _send_origin_message(self, event_ctx: context.EventContext, text: str) -> bool:
+        launcher_type = str(getattr(event_ctx.event, "launcher_type", "")).strip().lower()
+        launcher_id = str(getattr(event_ctx.event, "launcher_id", "")).strip()
+        if launcher_type not in {"person", "group"} or not launcher_id:
+            return False
+
+        bot_uuid = await self._resolve_bot_uuid(event_ctx)
+        if not bot_uuid:
+            return False
+
+        try:
+            await self.plugin.send_message(
+                bot_uuid=bot_uuid,
+                target_type=launcher_type,
+                target_id=launcher_id,
+                message_chain=platform_message.MessageChain([platform_message.Plain(text=text)]),
+            )
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def _event_supports_reply_chain(event_ctx: context.EventContext) -> bool:
+        model_fields = getattr(type(event_ctx.event), "model_fields", {})
+        if isinstance(model_fields, dict) and "reply_message_chain" in model_fields:
+            return True
+        return False
+
     async def _send_feedback(
         self,
         event_ctx: context.EventContext,
@@ -533,7 +561,10 @@ class AutoProcessToBitableListener(EventListener):
 
         should_reply_origin = (in_group and allow_group_reply) or (in_person and allow_person_reply)
         if should_reply_origin:
-            event_ctx.event.reply_message_chain = platform_message.MessageChain([platform_message.Plain(text=text)])
+            if self._event_supports_reply_chain(event_ctx):
+                event_ctx.event.reply_message_chain = platform_message.MessageChain([platform_message.Plain(text=text)])
+            else:
+                await self._send_origin_message(event_ctx, text)
 
         if in_group:
             if is_error and self._get_bool_config("private_notify_on_error", True):
@@ -1353,6 +1384,9 @@ class AutoProcessToBitableListener(EventListener):
                     reasons.append(f"OCR失败: {self._truncate_text('; '.join(ocr_errors), 600)}")
                 elif not ocr_text:
                     reasons.append("OCR未提取到有效文本")
+                else:
+                    ocr_preview = self._truncate_text(ocr_text.replace("\n", " / "), 240)
+                    reasons.append(f"OCR已提取文本但规则未命中(预览: {ocr_preview})")
                 reasons.append("未命中任何解析规则")
 
                 error_text = "图片消息解析失败，未写入飞书表格。"
