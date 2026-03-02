@@ -1126,16 +1126,14 @@ class AutoProcessToBitableListener(EventListener):
 
                 dynamic_prefix = prefix
                 if process_code == "XM" and sample_suffix:
-                    xm_slot = self._resolve_xm_sample_slot(sample_suffix)
                     xm_subline = self._resolve_xm_subline(sample_suffix)
-                    if xm_slot:
-                        dynamic_prefix = f"{prefix}{xm_slot}"
-                        fields[f"{dynamic_prefix}段位"] = xm_slot
-                    else:
-                        dynamic_prefix = f"{prefix}{sample_suffix}"
-                    fields[f"{dynamic_prefix}样品段"] = sample_suffix
+                    xm_slot = self._resolve_xm_sample_slot(sample_suffix)
                     if xm_subline:
+                        dynamic_prefix = f"{prefix}{xm_subline}"
                         fields[f"{dynamic_prefix}线别"] = xm_subline
+                    if xm_slot:
+                        fields[f"{dynamic_prefix}段位"] = xm_slot
+                    fields[f"{dynamic_prefix}样品段"] = sample_suffix
                 elif sample_suffix:
                     fields[f"{dynamic_prefix}样品段"] = sample_suffix
 
