@@ -1170,6 +1170,94 @@ class AutoProcessToBitableListener(EventListener):
 
         return records
 
+    def _parse_xm_solids(self, text: str, message_time: str) -> list[ParsedRecord]:
+        if not self._process_switch("particle_size", True):
+            return []
+
+        normalized_text = self._normalize_dash(text)
+        process_name_map = self._particle_process_name_map()
+        wet_prefix_map = self._wet_process_field_prefix_map()
+        prefix = wet_prefix_map.get("XM", "细磨")
+
+        solids_regex = re.compile(
+            r"(S\d+)-XM-D([AB])(\d{4})-(\d+)"
+            r"(?:-([A-Z0-9]+))?"
+            r"(?:-(\d+)\s*MIN)?"
+            r"\s*[：:]\s*(\d+(?:[.,]\d+)?)\s*%\s*DC",
+            re.IGNORECASE,
+        )
+
+        records: list[ParsedRecord] = []
+        for match in solids_regex.finditer(normalized_text):
+            material_type = str(match.group(1)).upper().strip()
+            line = str(match.group(2)).upper().strip()
+            date_code = str(match.group(3)).strip()
+            seq = str(match.group(4)).strip()
+            sample_suffix = str(match.group(5) or "").upper().strip()
+            hold_minutes = str(match.group(6) or "").strip()
+            solids_raw = str(match.group(7)).strip().replace(",", ".")
+
+            try:
+                solids_value = float(solids_raw)
+            except Exception:
+                continue
+
+            route_key = self._resolve_particle_route_key("XM", line)
+            if route_key.startswith("wet_process."):
+                batch_id = f"{material_type}-D{line}{date_code}-{seq}"
+            else:
+                batch_id = f"{material_type}-XM-D{line}{date_code}-{seq}"
+
+            fields: dict[str, Any] = {
+                "物料类型": material_type,
+                "消息时间": message_time,
+            }
+
+            if route_key.startswith("wet_process."):
+                fields["最后更新工序"] = process_name_map["XM"]
+                dynamic_prefix = prefix
+
+                if sample_suffix:
+                    xm_subline = self._resolve_xm_subline(sample_suffix)
+                    xm_slot = self._resolve_xm_sample_slot(sample_suffix)
+                    if xm_subline:
+                        dynamic_prefix = f"{prefix}{xm_subline}"
+                        fields[f"{dynamic_prefix}线别"] = xm_subline
+                    if xm_slot:
+                        fields[f"{dynamic_prefix}段位"] = xm_slot
+                    fields[f"{dynamic_prefix}样品段"] = sample_suffix
+
+                if hold_minutes:
+                    try:
+                        fields[f"{dynamic_prefix}研磨时间(min)"] = int(hold_minutes)
+                    except Exception:
+                        fields[f"{dynamic_prefix}研磨时间(min)"] = hold_minutes
+
+                fields[f"{dynamic_prefix}固含量(%)"] = solids_value
+            else:
+                fields["工序代码"] = "XM"
+                fields["工序名称"] = process_name_map["XM"]
+                if sample_suffix:
+                    fields["样品段"] = sample_suffix
+                if hold_minutes:
+                    try:
+                        fields["研磨时间(min)"] = int(hold_minutes)
+                    except Exception:
+                        fields["研磨时间(min)"] = hold_minutes
+                fields["固含量(%)"] = solids_value
+
+            records.append(
+                ParsedRecord(
+                    scenario="particle_size",
+                    line=line,
+                    batch_id=batch_id,
+                    route_key=route_key,
+                    fields=fields,
+                )
+            )
+
+        return records
+
     # ===== Extra rule parser (optional) =====
 
     @staticmethod
@@ -1632,6 +1720,7 @@ class AutoProcessToBitableListener(EventListener):
     def _parse_records(self, full_text: str, message_time: str) -> list[ParsedRecord]:
         records: list[ParsedRecord] = []
         records.extend(self._parse_particle_size(full_text, message_time))
+        records.extend(self._parse_xm_solids(full_text, message_time))
         records.extend(self._parse_spray(full_text, message_time))
         records.extend(self._parse_feeding(full_text, message_time))
         records.extend(self._parse_sintering(full_text, message_time))
