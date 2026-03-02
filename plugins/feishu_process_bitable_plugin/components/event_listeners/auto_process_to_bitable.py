@@ -1075,9 +1075,9 @@ class AutoProcessToBitableListener(EventListener):
         # S18-XM-DA2603-002-C
         # S18-XM-DA2603-002-C-120min
         batch_regex = re.compile(
-            r"(S\d+)-([A-Z]{2,3})-D([AB])(\d{4})-(\d+)"
-            r"(?:-([A-Z0-9]+))?"
-            r"(?:-(\d+)\s*MIN)?",
+            r"(S\d+)\s*-\s*([A-Z]{2,3})\s*-\s*D([AB])(\d{4})\s*-\s*(\d+)"
+            r"(?:\s*-\s*([A-Z0-9]+))?"
+            r"(?:\s*-\s*(\d+)\s*MIN)?",
             re.IGNORECASE,
         )
 
@@ -1180,10 +1180,10 @@ class AutoProcessToBitableListener(EventListener):
         prefix = wet_prefix_map.get("XM", "细磨")
 
         solids_regex = re.compile(
-            r"(S\d+)-XM-D([AB])(\d{4})-(\d+)"
-            r"(?:-([A-Z0-9]+))?"
-            r"(?:-(\d+)\s*MIN)?"
-            r"\s*[：:]\s*(\d+(?:[.,]\d+)?)\s*%\s*DC",
+            r"(S\d+)\s*-\s*XM\s*-\s*D([AB])(\d{4})\s*-\s*(\d+)"
+            r"(?:\s*-\s*([A-Z0-9]+))?"
+            r"(?:\s*-\s*(\d+)\s*MIN)?"
+            r"\s*[：:]\s*(\d+(?:[.,]\d+)?)\s*[％%]\s*DC",
             re.IGNORECASE,
         )
 
