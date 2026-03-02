@@ -41,6 +41,15 @@ class AutoProcessToBitableListener(EventListener):
     async def initialize(self) -> None:
         await super().initialize()
 
+        @self.handler(events.PersonMessageReceived)
+        async def _on_person_message(event_ctx: context.EventContext) -> None:
+            await self._handle_normal_message(event_ctx)
+
+        @self.handler(events.GroupMessageReceived)
+        async def _on_group_message(event_ctx: context.EventContext) -> None:
+            await self._handle_normal_message(event_ctx)
+
+        # Keep normal message handlers for backward compatibility with old runtimes.
         @self.handler(events.PersonNormalMessageReceived)
         async def _on_person_normal_message(event_ctx: context.EventContext) -> None:
             await self._handle_normal_message(event_ctx)
@@ -421,7 +430,9 @@ class AutoProcessToBitableListener(EventListener):
 
     @staticmethod
     def _normalize_dash(value: str) -> str:
-        return re.sub(r"[-–—]+", "-", value)
+        # Normalize Unicode dash/minus variants to ASCII hyphen only.
+        # Avoid broad ranges that may accidentally replace non-dash characters.
+        return re.sub(r"[‐‑‒–—−－]+", "-", value)
 
     @staticmethod
     def _extract_plain_text(message_chain: platform_message.MessageChain) -> str:
@@ -549,6 +560,22 @@ class AutoProcessToBitableListener(EventListener):
         if detail:
             return f"{record.route_key} | {record.batch_id} | {detail}"
         return f"{record.route_key} | {record.batch_id}"
+
+    @staticmethod
+    def _mark_query_processed(event_ctx: context.EventContext) -> bool:
+        query = getattr(event_ctx.event, "query", None)
+        if query is None:
+            return False
+
+        variables = getattr(query, "variables", None)
+        if not isinstance(variables, dict):
+            return False
+
+        marker_key = "_feishu_process_bitable_processed"
+        if variables.get(marker_key, False):
+            return True
+        variables[marker_key] = True
+        return False
 
     # ===== OCR =====
 
@@ -1258,6 +1285,9 @@ class AutoProcessToBitableListener(EventListener):
         return records
 
     async def _handle_normal_message(self, event_ctx: context.EventContext) -> None:
+        if self._mark_query_processed(event_ctx):
+            return
+
         message_chain = event_ctx.event.message_chain
         plain_text = self._extract_plain_text(message_chain)
         images = self._extract_images(message_chain)
