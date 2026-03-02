@@ -1014,7 +1014,7 @@ class AutoProcessToBitableListener(EventListener):
         return str(match.group(0))
 
     @classmethod
-    def _resolve_xm_subline(sample_suffix: str) -> str:
+    def _resolve_xm_subline(cls, sample_suffix: str) -> str:
         slot = cls._resolve_xm_sample_slot(sample_suffix)
         if slot in {"A", "B"}:
             return "1线"
