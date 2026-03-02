@@ -996,10 +996,16 @@ class AutoProcessToBitableListener(EventListener):
     def _extract_particle_d_values(text: str) -> dict[str, float]:
         values: dict[str, float] = {}
         for label in ("10", "50", "90", "99"):
-            pattern = re.compile(
-                rf"(?i)\bD\s*[\(\[]?\s*{label}\s*[\)\]]?\b\s*[:：=]?\s*(-?\d+(?:[.,]\d+)?)"
-            )
-            match = pattern.search(text)
+            patterns = [
+                re.compile(rf"(?i)\bD\s*{label}\b\s*[:：=]?\s*(-?\d+(?:[.,]\d+)?)"),
+                re.compile(rf"(?i)\bD\s*V\s*[\(\[]?\s*{label}\s*[\)\]]?\s*[:：=]?\s*(-?\d+(?:[.,]\d+)?)"),
+            ]
+
+            match = None
+            for pattern in patterns:
+                match = pattern.search(text)
+                if match:
+                    break
             if not match:
                 continue
             raw = str(match.group(1)).strip().replace(",", ".")
