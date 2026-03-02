@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
+import rehypeSanitize from 'rehype-sanitize';
 import rehypeHighlight from 'rehype-highlight';
 import i18n from 'i18next';
 import { ExternalLink } from 'lucide-react';
@@ -62,7 +63,7 @@ export default function NewVersionDialog({
           <div className="markdown-body max-w-none text-sm">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeRaw, rehypeHighlight]}
+              rehypePlugins={[rehypeRaw, rehypeSanitize, rehypeHighlight]}
               components={{
                 ul: ({ children }) => <ul className="list-disc">{children}</ul>,
                 ol: ({ children }) => (

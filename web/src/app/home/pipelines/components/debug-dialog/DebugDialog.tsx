@@ -25,6 +25,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeRaw from 'rehype-raw';
+import rehypeSanitize from 'rehype-sanitize';
 import rehypeSlug from 'rehype-slug';
 import rehypeAutolinkHeadings from 'rehype-autolink-headings';
 import '@/styles/github-markdown.css';
@@ -622,6 +623,7 @@ export default function DebugDialog({
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[
                 rehypeRaw,
+                rehypeSanitize,
                 rehypeHighlight,
                 rehypeSlug,
                 [

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..core import app
 from . import provider
-from .providers import localstorage, s3storage
+from .providers import localstorage
 
 
 class StorageMgr:
@@ -21,6 +21,8 @@ class StorageMgr:
         storage_type = storage_config.get('use', 'local')
 
         if storage_type == 's3':
+            from .providers import s3storage
+
             self.storage_provider = s3storage.S3StorageProvider(self.ap)
             self.ap.logger.info('Initialized S3 storage backend.')
         else:

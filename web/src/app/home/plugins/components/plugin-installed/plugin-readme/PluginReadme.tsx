@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
+import rehypeSanitize from 'rehype-sanitize';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeSlug from 'rehype-slug';
 import rehypeAutolinkHeadings from 'rehype-autolink-headings';
@@ -51,6 +52,7 @@ export default function PluginReadme({
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[
               rehypeRaw,
+              rehypeSanitize,
               rehypeHighlight,
               rehypeSlug,
               [
