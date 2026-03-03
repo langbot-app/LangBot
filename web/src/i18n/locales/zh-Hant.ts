@@ -690,6 +690,11 @@ const zhHant = {
       processing: '處理中',
       completed: '完成',
       failed: '失敗',
+      selectParser: '選擇解析器',
+      builtInParser: '由 RAG 引擎提供',
+      noParserAvailable: '沒有解析器支援此檔案類型，請安裝支援該格式的解析器插件。',
+      confirmUpload: '上傳',
+      cancelUpload: '取消',
     },
     deleteKnowledgeBaseConfirmation:
       '您確定要刪除這個知識庫嗎？此知識庫下的所有文檔將被刪除。',

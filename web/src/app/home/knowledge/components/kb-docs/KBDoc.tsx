@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { KnowledgeBaseFile } from '@/app/infra/entities/api';
+import { I18nObject, KnowledgeBaseFile } from '@/app/infra/entities/api';
 import { columns, DocumentFile } from './documents/columns';
 import { DataTable } from './documents/data-table';
 import FileUploadZone from './FileUploadZone';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 
-export default function KBDoc({ kbId }: { kbId: string }) {
+export default function KBDoc({ kbId, ragEngineName, ragEngineCapabilities }: { kbId: string; ragEngineName?: I18nObject; ragEngineCapabilities?: string[] }) {
   const [documentsList, setDocumentsList] = useState<DocumentFile[]>([]);
   const { t } = useTranslation();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -86,6 +86,8 @@ export default function KBDoc({ kbId }: { kbId: string }) {
     <div className="container mx-auto py-2">
       <FileUploadZone
         kbId={kbId}
+        ragEngineName={ragEngineName}
+        ragEngineCapabilities={ragEngineCapabilities}
         onUploadSuccess={handleUploadSuccess}
         onUploadError={handleUploadError}
       />
