@@ -373,6 +373,7 @@ const jaJP = {
       EventListener: 'イベント監視器',
       Command: 'コマンド',
       RAGEngine: 'RAGエンジン',
+      Parser: 'パーサー',
     },
     uploadLocal: 'ローカルアップロード',
     debugging: 'デバッグ中',

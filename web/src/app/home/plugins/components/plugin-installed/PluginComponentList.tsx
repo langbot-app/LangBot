@@ -1,5 +1,5 @@
 import { TFunction } from 'i18next';
-import { Wrench, AudioWaveform, Hash, Book } from 'lucide-react';
+import { Wrench, AudioWaveform, Hash, Book, FileText } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 export default function PluginComponentList({
@@ -22,6 +22,7 @@ export default function PluginComponentList({
     EventListener: <AudioWaveform className="w-5 h-5" />,
     Command: <Hash className="w-5 h-5" />,
     RAGEngine: <Book className="w-5 h-5" />,
+    Parser: <FileText className="w-5 h-5" />,
   };
 
   const componentKindList = Object.keys(components || {});

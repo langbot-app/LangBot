@@ -8,6 +8,7 @@ import {
   Download,
   ExternalLink,
   Book,
+  FileText,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -42,6 +43,7 @@ export default function PluginMarketCardComponent({
     EventListener: <AudioWaveform className="w-4 h-4" />,
     Command: <Hash className="w-4 h-4" />,
     RAGEngine: <Book className="w-4 h-4" />,
+    Parser: <FileText className="w-4 h-4" />,
   };
 
   return (

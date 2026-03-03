@@ -355,6 +355,7 @@ const zhHans = {
       EventListener: '事件监听器',
       Command: '命令',
       RAGEngine: 'RAG 引擎',
+      Parser: '解析器',
     },
     uploadLocal: '本地上传',
     debugging: '调试中',
@@ -699,7 +700,8 @@ const zhHans = {
       failed: '失败',
       selectParser: '选择解析器',
       builtInParser: '由 RAG 引擎提供',
-      noParserAvailable: '没有解析器支持此文件类型，请安装支持该格式的解析器插件。',
+      noParserAvailable:
+        '没有解析器支持此文件类型，请安装支持该格式的解析器插件。',
       confirmUpload: '上传',
       cancelUpload: '取消',
     },

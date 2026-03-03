@@ -373,6 +373,7 @@ const enUS = {
       EventListener: 'Event Listener',
       Command: 'Command',
       RAGEngine: 'RAG Engine',
+      Parser: 'Parser',
     },
     uploadLocal: 'Upload Local',
     debugging: 'Debugging',

@@ -349,6 +349,7 @@ const zhHant = {
       EventListener: '事件監聽器',
       Command: '命令',
       RAGEngine: 'RAG 引擎',
+      Parser: '解析器',
     },
     uploadLocal: '本地上傳',
     debugging: '調試中',
@@ -692,7 +693,8 @@ const zhHant = {
       failed: '失敗',
       selectParser: '選擇解析器',
       builtInParser: '由 RAG 引擎提供',
-      noParserAvailable: '沒有解析器支援此檔案類型，請安裝支援該格式的解析器插件。',
+      noParserAvailable:
+        '沒有解析器支援此檔案類型，請安裝支援該格式的解析器插件。',
       confirmUpload: '上傳',
       cancelUpload: '取消',
     },
