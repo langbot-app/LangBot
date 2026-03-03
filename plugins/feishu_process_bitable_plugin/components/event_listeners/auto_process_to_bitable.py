@@ -754,7 +754,7 @@ class AutoProcessToBitableListener(EventListener):
         normalized_text = self._normalize_dash(text)
         main_regex = re.compile(
             r"([AB])\s*线\s*喷雾\s*批次(?:号)?\s*[:：]?\s*"
-            r"(S\d+(?:-[A-Z]{2})?-D[AB]\d{4}-\d+(?:-?[AB]\d)?)",
+            r"(S\d+(?:-[A-Z]{2,3})?-D[AB]\d{4}-\d+(?:-?[AB]\d)?)",
             re.IGNORECASE,
         )
         params_regex = re.compile(r"([\u4e00-\u9fa5]+)\s*[:：]?\s*(\d+\.?\d*)")
@@ -764,6 +764,7 @@ class AutoProcessToBitableListener(EventListener):
         for match in main_regex.finditer(normalized_text):
             line = str(match.group(1)).upper()
             batch_id = self._normalize_dash(str(match.group(2))).upper().strip()
+            batch_id = re.sub(r"^(S\d+)-QQT-(D[AB]\d{4}-\d+(?:-?[AB]\d)?)$", r"\1-\2", batch_id, flags=re.IGNORECASE)
             fields: dict[str, Any] = {}
             for key, value in params_regex.findall(normalized_text):
                 if key in required_params:
@@ -781,6 +782,62 @@ class AutoProcessToBitableListener(EventListener):
                     fields=fields,
                 )
             )
+        return records
+
+    def _parse_qqt_moisture(self, text: str, message_time: str) -> list[ParsedRecord]:
+        if not self._process_switch("spray", True):
+            return []
+
+        normalized_text = self._normalize_dash(text)
+        # Example:
+        # 快速水分
+        # S006-QQT-DB2602-130-B-60min：1.08％MC
+        moisture_regex = re.compile(
+            r"(S\d+)\s*-\s*QQT\s*-\s*D([AB])(\d{4})\s*-\s*(\d+)"
+            r"(?:\s*-\s*([A-Z0-9]+))?"
+            r"(?:\s*-\s*(\d+)\s*MIN)?"
+            r"\s*[：:]\s*(-?\d+(?:[.,]\d+)?)\s*[％%]\s*MC",
+            re.IGNORECASE,
+        )
+
+        records: list[ParsedRecord] = []
+        for match in moisture_regex.finditer(normalized_text):
+            material_type = str(match.group(1)).upper().strip()
+            line = str(match.group(2)).upper().strip()
+            date_code = str(match.group(3)).strip()
+            seq = str(match.group(4)).strip()
+            sample_suffix = str(match.group(5) or "").upper().strip()
+            hold_minutes = str(match.group(6) or "").strip()
+            moisture_raw = str(match.group(7)).strip().replace(",", ".")
+
+            try:
+                moisture_value = float(moisture_raw)
+            except Exception:
+                continue
+
+            batch_id = f"{material_type}-D{line}{date_code}-{seq}"
+            fields: dict[str, Any] = {
+                "水分": moisture_value,
+                "消息时间": message_time,
+            }
+            if sample_suffix:
+                fields["样品段"] = sample_suffix
+            if hold_minutes:
+                try:
+                    fields["喷雾时间(min)"] = int(hold_minutes)
+                except Exception:
+                    fields["喷雾时间(min)"] = hold_minutes
+
+            records.append(
+                ParsedRecord(
+                    scenario="spray",
+                    line=line,
+                    batch_id=batch_id,
+                    route_key=f"spray.{line}",
+                    fields=fields,
+                )
+            )
+
         return records
 
     def _parse_feeding(self, text: str, message_time: str) -> list[ParsedRecord]:
@@ -897,18 +954,69 @@ class AutoProcessToBitableListener(EventListener):
 
         return sample_id, None
 
+    @staticmethod
+    def _normalize_hyphen_token(value: str) -> str:
+        return re.sub(r"\s*-\s*", "-", value.strip())
+
+    @staticmethod
+    def _resolve_fs_slot(sample_text: str) -> str:
+        text = sample_text.strip().upper()
+        match = re.search(r"\b([AB][12])\b", text)
+        if not match:
+            return ""
+        return str(match.group(1))
+
+    @classmethod
+    def _resolve_fs_subline(cls, sample_text: str) -> str:
+        slot = cls._resolve_fs_slot(sample_text)
+        if slot.endswith("1"):
+            return "1线"
+        if slot.endswith("2"):
+            return "2线"
+        return ""
+
+    @staticmethod
+    def _extract_minutes_from_sample(sample_text: str) -> int | None:
+        match = re.search(r"(?i)(\d+)\s*MIN", sample_text)
+        if not match:
+            return None
+        try:
+            return int(match.group(1))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _extract_number(value: str) -> float | None:
+        match = re.search(r"-?\d+(?:\.\d+)?", value)
+        if not match:
+            return None
+        try:
+            return float(match.group(0))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _normalize_crushing_batch_id(batch_id: str) -> str:
+        normalized = re.sub(r"\s*-\s*", "-", batch_id.strip()).upper()
+        if re.fullmatch(r"S\d+-D[AB]\d{4}-\d+", normalized, re.IGNORECASE):
+            return re.sub(r"^(S\d+)-", r"\1-FS-", normalized, flags=re.IGNORECASE)
+        return normalized
+
     def _parse_crushing(self, text: str, message_time: str) -> list[ParsedRecord]:
         if not self._process_switch("crushing", True):
             return []
 
         normalized_text = self._normalize_dash(text)
-        regex = re.compile(r"(S\d+-FS-[A-Z]{2}\d{4}-\d+)-([AB]\d-[^：:\n]+)[：:]\s*([\d\.]+)", re.IGNORECASE)
+        regex = re.compile(
+            r"(S\d+\s*-\s*FS\s*-\s*[A-Z]{2}\d{4}\s*-\s*\d+)\s*-\s*([AB][12][^：:\n]*)[：:]\s*(-?\d+(?:\.\d+)?)",
+            re.IGNORECASE,
+        )
 
         grouped: dict[tuple[str, str], dict[str, Any]] = {}
         for match in regex.finditer(normalized_text):
             base_id, sample_id, value = match.groups()
-            base_id = base_id.upper().strip()
-            sample_id = sample_id.upper().strip()
+            base_id = self._normalize_crushing_batch_id(base_id)
+            sample_id = self._normalize_hyphen_token(sample_id).upper().strip()
             sample_key, freq = self._split_sample_id(sample_id)
 
             if "-DA" in base_id:
@@ -932,6 +1040,77 @@ class AutoProcessToBitableListener(EventListener):
             grouped[key][sample_key] = float(value)
             if freq:
                 grouped[key][f"{sample_key}_频率"] = freq
+
+            fs_subline = self._resolve_fs_subline(sample_key)
+            fs_slot = self._resolve_fs_slot(sample_key)
+            if fs_subline:
+                prefix = f"粉碎{fs_subline}"
+                grouped[key][f"{prefix}线别"] = fs_subline
+            else:
+                prefix = "粉碎"
+            if fs_slot:
+                grouped[key][f"{prefix}机位"] = fs_slot
+            grouped[key][f"{prefix}压实值"] = float(value)
+            hold_minutes = self._extract_minutes_from_sample(sample_key)
+            if hold_minutes is not None:
+                grouped[key][f"{prefix}粉碎时间（min）"] = hold_minutes
+            if freq:
+                freq_value = self._extract_number(freq)
+                grouped[key][f"{prefix}频率(HZ)"] = freq_value if freq_value is not None else freq
+
+        operation_head_regex = re.compile(
+            r"([AB][12])\s*粉碎\s*[:：]\s*(S\d+\s*-\s*D[AB]\d{4}\s*-\s*\d+)",
+            re.IGNORECASE,
+        )
+        operation_matches = list(operation_head_regex.finditer(normalized_text))
+        operation_param_rules: list[tuple[str, re.Pattern[str]]] = [
+            ("分级电机(HZ)", re.compile(r"分级电机\s*[:：]?\s*(-?\d+(?:\.\d+)?)\s*HZ", re.IGNORECASE)),
+            ("喂料频率(HZ)", re.compile(r"喂料频率\s*[:：]?\s*(-?\d+(?:\.\d+)?)\s*HZ", re.IGNORECASE)),
+            ("研磨压力(KPa)", re.compile(r"研磨压力\s*[:：]?\s*(-?\d+(?:\.\d+)?)\s*KPA", re.IGNORECASE)),
+            ("密封气压(Pa)", re.compile(r"密封气压\s*[:：]?\s*(-?\d+(?:\.\d+)?)\s*PA", re.IGNORECASE)),
+            ("收尘差压(KPa)", re.compile(r"收尘差压\s*[:：]?\s*(-?\d+(?:\.\d+)?)\s*KPA", re.IGNORECASE)),
+            ("过滤器压(Pa)", re.compile(r"过滤器压\s*[:：]?\s*(-?\d+(?:\.\d+)?)\s*PA", re.IGNORECASE)),
+            ("露点(°C)", re.compile(r"露点\s*[:：]?\s*(-?\d+(?:\.\d+)?)\s*°?\s*C", re.IGNORECASE)),
+        ]
+
+        for idx, match in enumerate(operation_matches):
+            fs_slot = str(match.group(1)).upper().strip()
+            batch_id_raw = str(match.group(2))
+            batch_id = self._normalize_crushing_batch_id(batch_id_raw)
+
+            if "-DA" in batch_id:
+                line = "A"
+            elif "-DB" in batch_id:
+                line = "B"
+            elif fs_slot.startswith("A"):
+                line = "A"
+            elif fs_slot.startswith("B"):
+                line = "B"
+            else:
+                continue
+
+            start_pos = match.end()
+            end_pos = operation_matches[idx + 1].start() if idx + 1 < len(operation_matches) else len(normalized_text)
+            block_text = normalized_text[start_pos:end_pos]
+
+            key = (batch_id, line)
+            if key not in grouped:
+                grouped[key] = {"消息时间": message_time}
+
+            fs_subline = self._resolve_fs_subline(fs_slot)
+            prefix = f"粉碎{fs_subline}" if fs_subline else "粉碎"
+            if fs_subline:
+                grouped[key][f"{prefix}线别"] = fs_subline
+            grouped[key][f"{prefix}机位"] = fs_slot
+
+            for field_name, pattern in operation_param_rules:
+                param_match = pattern.search(block_text)
+                if not param_match:
+                    continue
+                try:
+                    grouped[key][f"{prefix}{field_name}"] = float(param_match.group(1))
+                except Exception:
+                    grouped[key][f"{prefix}{field_name}"] = str(param_match.group(1)).strip()
 
         records: list[ParsedRecord] = []
         for (batch_id, line), fields in grouped.items():
@@ -1118,6 +1297,9 @@ class AutoProcessToBitableListener(EventListener):
             if route_key.startswith("wet_process."):
                 # Wet-process summary table requires one row per production batch.
                 batch_id = f"{material_type}-D{line}{date_code}-{seq}"
+            elif route_key.startswith("spray.") and process_code == "QQT":
+                # Align QQT particle-size with spray process batch id for upsert merge.
+                batch_id = f"{material_type}-D{line}{date_code}-{seq}"
             else:
                 batch_id = f"{material_type}-{process_code}-D{line}{date_code}-{seq}"
 
@@ -1160,6 +1342,31 @@ class AutoProcessToBitableListener(EventListener):
 
                 for d_key, d_value in d_values.items():
                     fields[f"{dynamic_prefix}{d_key}"] = d_value
+            elif route_key.startswith("crushing.") and process_code == "FS":
+                fields["工序代码"] = process_code
+                fields["工序名称"] = process_name_map[process_code]
+
+                dynamic_prefix = "粉碎"
+                if sample_suffix:
+                    fs_subline = self._resolve_fs_subline(sample_suffix)
+                    fs_slot = self._resolve_fs_slot(sample_suffix)
+                    if fs_subline:
+                        dynamic_prefix = f"{dynamic_prefix}{fs_subline}"
+                        fields[f"{dynamic_prefix}线别"] = fs_subline
+                    if fs_slot:
+                        fields[f"{dynamic_prefix}机位"] = fs_slot
+                    fields[f"{dynamic_prefix}样品段"] = sample_suffix
+
+                if hold_minutes:
+                    try:
+                        fields[f"{dynamic_prefix}研磨时间(min)"] = int(hold_minutes)
+                    except Exception:
+                        fields[f"{dynamic_prefix}研磨时间(min)"] = hold_minutes
+
+                for d_key, d_value in d_values.items():
+                    fields[f"{dynamic_prefix}{d_key}"] = d_value
+                # Keep legacy columns for backward compatibility.
+                fields.update(d_values)
             else:
                 fields["工序代码"] = process_code
                 fields["工序名称"] = process_name_map[process_code]
@@ -1749,6 +1956,7 @@ class AutoProcessToBitableListener(EventListener):
         records.extend(self._parse_particle_size(full_text, message_time))
         records.extend(self._parse_xm_solids(full_text, message_time))
         records.extend(self._parse_spray(full_text, message_time))
+        records.extend(self._parse_qqt_moisture(full_text, message_time))
         records.extend(self._parse_feeding(full_text, message_time))
         records.extend(self._parse_sintering(full_text, message_time))
         records.extend(self._parse_crushing(full_text, message_time))
