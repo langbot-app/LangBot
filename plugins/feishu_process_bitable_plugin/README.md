@@ -136,6 +136,16 @@
 }
 ```
 
+## 撤回回滚（方案B）
+
+- 平台接入飞书撤回事件后，插件可按 `source_message_id_field`（默认 `源消息ID`）定位并回滚。  
+- 回滚方式为“标记撤回”（默认更新字段）：`是否撤回=是`、`撤回时间`、`撤回类型`。  
+- 关键配置：
+  - `enable_recall_revert`：是否启用撤回回滚（默认 `true`）
+  - `prevent_default_on_recall`：撤回事件是否阻断默认流程（默认 `true`）
+  - `recall_scan_all_tables`：找不到路由缓存时是否扫描全部表（默认 `true`）
+  - `reply_on_recall`：撤回处理完成后是否反馈（默认 `false`）
+
 ## 打包
 
 ```bash

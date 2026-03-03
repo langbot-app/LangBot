@@ -18,6 +18,7 @@ import os
 import mimetypes
 
 from langbot.pkg.utils import httpclient
+from langbot.pkg.platform import custom_events
 import lark_oapi.ws.exception
 import quart
 from lark_oapi.api.im.v1 import *
@@ -31,6 +32,7 @@ import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platf
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
+import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 
 
@@ -644,6 +646,8 @@ USER_NAME_CACHE_SIZE = 2000
 USER_NAME_CACHE_MAX_LIFETIME = 24 * 60 * 60  # 24小时
 CHAT_NAME_CACHE_SIZE = 1000
 CHAT_NAME_CACHE_MAX_LIFETIME = 24 * 60 * 60  # 24小时
+MESSAGE_RECALL_CACHE_SIZE = 4000
+MESSAGE_RECALL_CACHE_MAX_LIFETIME = 24 * 60 * 60
 
 
 class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
@@ -674,20 +678,37 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     tenant_access_tokens: dict[str, dict[str, str]] = {}  # 租户access_token映射
     user_name_cache: dict[str, dict[str, typing.Any]] = {}
     chat_name_cache: dict[str, dict[str, typing.Any]] = {}
+    message_recall_cache: dict[str, dict[str, typing.Any]] = {}
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
         quart_app = quart.Quart(__name__)
 
         async def on_message(event: lark_oapi.im.v1.P2ImMessageReceiveV1):
             lb_event = await self.event_converter.target2yiri(event, self.api_client, self)
+            self._cache_message_for_recall(lb_event)
 
-            await self.listeners[type(lb_event)](lb_event, self)
+            if lb_event.__class__ in self.listeners:
+                await self.listeners[lb_event.__class__](lb_event, self)
+
+        async def on_message_recalled(event: lark_oapi.im.v1.P2ImMessageRecalledV1):
+            recalled_event = self._build_recalled_platform_event(event)
+            if recalled_event is None:
+                return
+
+            if recalled_event.__class__ in self.listeners:
+                await self.listeners[recalled_event.__class__](recalled_event, self)
 
         def sync_on_message(event: lark_oapi.im.v1.P2ImMessageReceiveV1):
             asyncio.create_task(on_message(event))
 
+        def sync_on_message_recalled(event: lark_oapi.im.v1.P2ImMessageRecalledV1):
+            asyncio.create_task(on_message_recalled(event))
+
         event_handler = (
-            lark_oapi.EventDispatcherHandler.builder('', '').register_p2_im_message_receive_v1(sync_on_message).build()
+            lark_oapi.EventDispatcherHandler.builder('', '')
+            .register_p2_im_message_receive_v1(sync_on_message)
+            .register_p2_im_message_recalled_v1(sync_on_message_recalled)
+            .build()
         )
 
         bot_account_id = config['bot_name']
@@ -711,7 +732,138 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             cipher=cipher,
             user_name_cache={},
             chat_name_cache={},
+            message_recall_cache={},
             **kwargs,
+        )
+
+    @staticmethod
+    def _get_chat_id_from_source_event(message_event: platform_events.MessageEvent) -> str:
+        source_obj = getattr(message_event, 'source_platform_object', None)
+        if source_obj is None:
+            return ''
+
+        try:
+            return str(source_obj.event.message.chat_id).strip()
+        except Exception:
+            return ''
+
+    def _cleanup_message_recall_cache(self) -> None:
+        now_ts = time.time()
+        expired_keys = [
+            key
+            for key, item in self.message_recall_cache.items()
+            if now_ts - float(item.get('created_at', now_ts)) > MESSAGE_RECALL_CACHE_MAX_LIFETIME
+        ]
+        for key in expired_keys:
+            self.message_recall_cache.pop(key, None)
+
+        if len(self.message_recall_cache) <= MESSAGE_RECALL_CACHE_SIZE:
+            return
+
+        sorted_items = sorted(
+            self.message_recall_cache.items(),
+            key=lambda kv: float(kv[1].get('created_at', now_ts)),
+        )
+        overflow_count = len(self.message_recall_cache) - MESSAGE_RECALL_CACHE_SIZE
+        for key, _ in sorted_items[:overflow_count]:
+            self.message_recall_cache.pop(key, None)
+
+    def _cache_message_for_recall(self, message_event: platform_events.Event) -> None:
+        if not isinstance(message_event, (platform_events.FriendMessage, platform_events.GroupMessage)):
+            return
+
+        message_id = str(message_event.message_chain.message_id).strip()
+        if not message_id or message_id == '-1':
+            return
+
+        if isinstance(message_event, platform_events.GroupMessage):
+            launcher_type = provider_session.LauncherTypes.GROUP
+            launcher_id = message_event.group.id
+            sender_id = message_event.sender.id
+            chat_id = str(message_event.group.id)
+        else:
+            launcher_type = provider_session.LauncherTypes.PERSON
+            launcher_id = message_event.sender.id
+            sender_id = message_event.sender.id
+            chat_id = self._get_chat_id_from_source_event(message_event)
+
+        self.message_recall_cache[message_id] = {
+            'created_at': time.time(),
+            'launcher_type': launcher_type,
+            'launcher_id': str(launcher_id),
+            'sender_id': str(sender_id),
+            'chat_id': chat_id,
+            'message_event': message_event,
+        }
+        self._cleanup_message_recall_cache()
+
+    @staticmethod
+    def _parse_recall_time(recall_time_raw: typing.Any) -> datetime.datetime:
+        recall_time_text = str(recall_time_raw or '').strip()
+        if not recall_time_text:
+            return datetime.datetime.now()
+
+        try:
+            ts = float(recall_time_text)
+            if ts > 1e12:
+                ts = ts / 1000.0
+            return datetime.datetime.fromtimestamp(ts)
+        except Exception:
+            pass
+
+        try:
+            return datetime.datetime.fromisoformat(recall_time_text)
+        except Exception:
+            return datetime.datetime.now()
+
+    def _build_recalled_platform_event(
+        self, recalled_event: lark_oapi.api.im.v1.P2ImMessageRecalledV1
+    ) -> custom_events.MessageRecalled | None:
+        event_data = getattr(recalled_event, 'event', None)
+        if event_data is None:
+            return None
+
+        message_id = str(getattr(event_data, 'message_id', '')).strip()
+        if not message_id:
+            return None
+
+        chat_id = str(getattr(event_data, 'chat_id', '')).strip()
+        cached = self.message_recall_cache.pop(message_id, None)
+        if cached is None and chat_id:
+            fallback_candidates = [
+                item
+                for item in self.message_recall_cache.values()
+                if str(item.get('chat_id', '')).strip() == chat_id
+            ]
+            if fallback_candidates:
+                cached = max(fallback_candidates, key=lambda item: float(item.get('created_at', 0.0)))
+        if cached is None:
+            return None
+
+        recall_time = str(getattr(event_data, 'recall_time', '')).strip()
+        recall_type = str(getattr(event_data, 'recall_type', '')).strip()
+        chat_id = chat_id or str(cached.get('chat_id', '')).strip()
+        recall_dt = self._parse_recall_time(recall_time)
+        recall_chain = platform_message.MessageChain([platform_message.Source(id=message_id, time=recall_dt)])
+
+        launcher_type = cached.get('launcher_type')
+        if not isinstance(launcher_type, provider_session.LauncherTypes):
+            return None
+
+        original_event = cached.get('message_event')
+        if not isinstance(original_event, platform_events.MessageEvent):
+            return None
+
+        return custom_events.MessageRecalled(
+            message_id=message_id,
+            chat_id=chat_id,
+            recall_time=recall_time,
+            recall_type=recall_type,
+            launcher_type=launcher_type,
+            launcher_id=str(cached.get('launcher_id', '')),
+            sender_id=str(cached.get('sender_id', '')),
+            message_event=original_event,
+            message_chain=recall_chain,
         )
 
     def request_app_ticket(self, api_client, config):
@@ -1573,6 +1725,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             elif 'app_ticket' == type:
                 self.app_ticket = context.event['app_ticket']
             elif 'im.message.receive_v1' == type:
+                event = None
                 try:
                     p2v1 = P2ImMessageReceiveV1()
                     p2v1.header = context.header
@@ -1582,11 +1735,29 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     p2v1.event = event
                     p2v1.schema = context.schema
                     event = await self.event_converter.target2yiri(p2v1, self.api_client, self)
+                    self._cache_message_for_recall(event)
                 except Exception:
                     await self.logger.error(f'Error in lark callback: {traceback.format_exc()}')
 
-                if event.__class__ in self.listeners:
+                if event is not None and event.__class__ in self.listeners:
                     await self.listeners[event.__class__](event, self)
+            elif 'im.message.recalled_v1' == type:
+                try:
+                    recalled_event = P2ImMessageRecalledV1()
+                    recalled_event.header = context.header
+                    recalled_data = P2ImMessageRecalledV1Data()
+                    recalled_data.message_id = context.event.get('message_id')
+                    recalled_data.chat_id = context.event.get('chat_id')
+                    recalled_data.recall_time = context.event.get('recall_time')
+                    recalled_data.recall_type = context.event.get('recall_type')
+                    recalled_event.event = recalled_data
+                    recalled_event.schema = context.schema
+
+                    event = self._build_recalled_platform_event(recalled_event)
+                    if event is not None and event.__class__ in self.listeners:
+                        await self.listeners[event.__class__](event, self)
+                except Exception:
+                    await self.logger.error(f'Error in lark callback: {traceback.format_exc()}')
             elif 'im.chat.member.bot.added_v1' == type:
                 try:
                     bot_added_welcome_msg = self.config.get('bot_added_welcome', '')

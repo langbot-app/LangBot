@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import typing
+from copy import deepcopy
 
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
@@ -41,6 +42,7 @@ class QueryPool:
         message_chain: platform_message.MessageChain,
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         pipeline_uuid: typing.Optional[str] = None,
+        variables: typing.Optional[dict[str, typing.Any]] = None,
     ) -> pipeline_query.Query:
         async with self.condition:
             query_id = self.query_id_counter
@@ -52,7 +54,7 @@ class QueryPool:
                 sender_id=sender_id,
                 message_event=message_event,
                 message_chain=message_chain,
-                variables={},
+                variables=deepcopy(variables) if variables is not None else {},
                 resp_messages=[],
                 resp_message_chain=[],
                 adapter=adapter,
@@ -62,6 +64,7 @@ class QueryPool:
             self.cached_queries[query_id] = query
             self.query_id_counter += 1
             self.condition.notify_all()
+            return query
 
     async def __aenter__(self):
         await self.pool_lock.acquire()

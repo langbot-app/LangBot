@@ -4,7 +4,7 @@ metadata:
   author: local
   name: feishu_process_bitable_plugin
   repository: 'https://open.feishu.cn/'
-  version: 0.3.16
+  version: 0.3.17
   description:
     en_US: Parse process messages with OCR and write structured records into Feishu Bitable.
     zh_Hans: 解析工艺消息并支持OCR，把结构化结果写入飞书多维表格。
@@ -368,6 +368,93 @@ spec:
       type: string
       required: false
       default: '消息时间'
+    - name: source_message_id_field
+      label:
+        en_US: Source Message ID Field
+        zh_Hans: 源消息ID字段名
+      type: string
+      required: false
+      default: '源消息ID'
+    - name: enable_recall_revert
+      label:
+        en_US: Enable Recall Revert
+        zh_Hans: 启用撤回回滚
+      description:
+        en_US: Mark records as recalled when source message is recalled.
+        zh_Hans: 当源消息被撤回时，将匹配记录标记为已撤回。
+      type: boolean
+      required: false
+      default: true
+    - name: prevent_default_on_recall
+      label:
+        en_US: Prevent Default On Recall
+        zh_Hans: 撤回事件阻断默认流程
+      type: boolean
+      required: false
+      default: true
+    - name: recalled_flag_field
+      label:
+        en_US: Recalled Flag Field
+        zh_Hans: 撤回标记字段名
+      type: string
+      required: false
+      default: '是否撤回'
+    - name: recalled_flag_value
+      label:
+        en_US: Recalled Flag Value
+        zh_Hans: 撤回标记值
+      type: string
+      required: false
+      default: '是'
+    - name: recalled_time_field
+      label:
+        en_US: Recalled Time Field
+        zh_Hans: 撤回时间字段名
+      type: string
+      required: false
+      default: '撤回时间'
+    - name: recalled_type_field
+      label:
+        en_US: Recalled Type Field
+        zh_Hans: 撤回类型字段名
+      type: string
+      required: false
+      default: '撤回类型'
+    - name: recall_scan_limit
+      label:
+        en_US: Recall Scan Limit
+        zh_Hans: 撤回扫描上限
+      type: string
+      required: false
+      default: '1000'
+    - name: recall_match_limit
+      label:
+        en_US: Recall Match Limit
+        zh_Hans: 撤回匹配条数上限
+      type: string
+      required: false
+      default: '50'
+    - name: recall_scan_all_tables
+      label:
+        en_US: Recall Scan All Tables
+        zh_Hans: 撤回时扫描全部数据表
+      type: boolean
+      required: false
+      default: true
+    - name: source_record_cache_size
+      label:
+        en_US: Source Record Cache Size
+        zh_Hans: 源消息缓存大小
+      type: string
+      required: false
+      default: '5000'
+    - name: reply_on_recall
+      label:
+        en_US: Reply On Recall
+        zh_Hans: 撤回处理后反馈
+      type: boolean
+      required: false
+      default: false
   components:
     EventListener:
       fromDirs:

@@ -39,6 +39,7 @@ class AutoProcessToBitableListener(EventListener):
         self._table_name_to_id_cache: dict[str, str] = {}
         self._table_field_types_cache: dict[str, dict[str, int]] = {}
         self._record_lookup_cache: dict[str, str] = {}
+        self._source_record_cache: dict[str, list[tuple[str, str]]] = {}
 
     async def initialize(self) -> None:
         await super().initialize()
@@ -611,6 +612,66 @@ class AutoProcessToBitableListener(EventListener):
             return True
         variables[marker_key] = True
         return False
+
+    @staticmethod
+    def _extract_message_source_id(message_chain: platform_message.MessageChain | None) -> str:
+        if message_chain is None:
+            return ""
+        raw = str(getattr(message_chain, "message_id", "")).strip()
+        if not raw or raw == "-1":
+            return ""
+        return raw
+
+    async def _safe_get_query_vars(self, event_ctx: context.EventContext) -> dict[str, Any]:
+        try:
+            vars_obj = await event_ctx.get_query_vars()
+            if isinstance(vars_obj, dict):
+                return vars_obj
+        except Exception:
+            pass
+
+        query = getattr(event_ctx.event, "query", None)
+        variables = getattr(query, "variables", None) if query is not None else None
+        if isinstance(variables, dict):
+            return variables
+        return {}
+
+    async def _extract_recall_meta(self, event_ctx: context.EventContext) -> dict[str, str] | None:
+        vars_obj = await self._safe_get_query_vars(event_ctx)
+        if str(vars_obj.get("_system_event", "")).strip().lower() != "message_recalled":
+            return None
+
+        recalled_message_id = str(vars_obj.get("_recalled_message_id", "")).strip()
+        if not recalled_message_id:
+            recalled_message_id = self._extract_message_source_id(getattr(event_ctx.event, "message_chain", None))
+        if not recalled_message_id:
+            return None
+
+        return {
+            "message_id": recalled_message_id,
+            "chat_id": str(vars_obj.get("_recalled_chat_id", "")).strip(),
+            "recall_time": str(vars_obj.get("_recalled_time", "")).strip(),
+            "recall_type": str(vars_obj.get("_recalled_type", "")).strip(),
+        }
+
+    def _remember_written_record(self, source_message_id: str, table_id: str, record_id: str) -> None:
+        source_id = source_message_id.strip()
+        if not source_id or not table_id or not record_id:
+            return
+
+        records = self._source_record_cache.setdefault(source_id, [])
+        pair = (table_id, record_id)
+        if pair not in records:
+            records.append(pair)
+
+        max_source_cache = self._get_int_config("source_record_cache_size", 5000, min_value=100, max_value=20000)
+        if len(self._source_record_cache) <= max_source_cache:
+            return
+
+        # Keep recently written entries only.
+        overflow = len(self._source_record_cache) - max_source_cache
+        for stale_key in list(self._source_record_cache.keys())[:overflow]:
+            self._source_record_cache.pop(stale_key, None)
 
     # ===== OCR =====
 
@@ -1767,6 +1828,189 @@ class AutoProcessToBitableListener(EventListener):
                 return str(value).strip()
         return str(value).strip()
 
+    def _collect_recall_candidate_table_ids(self, source_message_id: str) -> list[str]:
+        table_ids: list[str] = []
+        visited: set[str] = set()
+
+        def _append_table_id(raw: Any) -> None:
+            tid = str(raw or "").strip()
+            if not tid or tid in visited:
+                return
+            visited.add(tid)
+            table_ids.append(tid)
+
+        for table_id, _record_id in self._source_record_cache.get(source_message_id, []):
+            _append_table_id(table_id)
+
+        routing = self._get_json_config("table_routing_json", {})
+        for table_id in routing.values():
+            _append_table_id(table_id)
+
+        for table_id in self._route_table_cache.values():
+            _append_table_id(table_id)
+        for table_id in self._route_table_override.values():
+            _append_table_id(table_id)
+        for table_id in self._table_name_to_id_cache.values():
+            _append_table_id(table_id)
+
+        _append_table_id(self._get_str_config("bitable_default_table_id", ""))
+        return table_ids
+
+    async def _find_record_ids_by_field(self, table_id: str, field_name: str, field_value: str) -> list[str]:
+        app_token = self._get_str_config("bitable_app_token", "")
+        if not app_token or not table_id or not field_name or not field_value:
+            return []
+
+        token = await self._get_tenant_access_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8",
+        }
+        endpoint = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
+
+        page_token = ""
+        scanned = 0
+        scan_limit = self._get_int_config("recall_scan_limit", 1000, min_value=100, max_value=5000)
+        match_limit = self._get_int_config("recall_match_limit", 50, min_value=1, max_value=200)
+        page_size = 200
+        expected_value = self._field_to_text(field_value)
+        matched_record_ids: list[str] = []
+
+        while scanned < scan_limit and len(matched_record_ids) < match_limit:
+            query: dict[str, Any] = {"page_size": page_size}
+            if page_token:
+                query["page_token"] = page_token
+
+            data = await self._call_feishu_json_api("GET", endpoint, headers=headers, params=query)
+            items = data.get("items", []) or []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                record_id = str(item.get("record_id", "")).strip()
+                fields = item.get("fields", {}) or {}
+                if not record_id or not isinstance(fields, dict):
+                    continue
+
+                current_value = self._field_to_text(fields.get(field_name))
+                if current_value == expected_value:
+                    matched_record_ids.append(record_id)
+                    if len(matched_record_ids) >= match_limit:
+                        break
+
+            scanned += len(items)
+            if not bool(data.get("has_more", False)):
+                break
+            page_token = str(data.get("page_token", "")).strip()
+            if not page_token:
+                break
+
+        return matched_record_ids
+
+    def _build_recall_write_fields(self, recall_meta: dict[str, str]) -> dict[str, Any]:
+        fields: dict[str, Any] = {}
+
+        flag_field = self._get_str_config("recalled_flag_field", "是否撤回")
+        if flag_field:
+            fields[flag_field] = self._get_str_config("recalled_flag_value", "是")
+
+        time_field = self._get_str_config("recalled_time_field", "撤回时间")
+        if time_field:
+            recall_time = recall_meta.get("recall_time", "").strip()
+            if not recall_time:
+                recall_time = datetime.datetime.now(datetime.timezone.utc).astimezone().isoformat(timespec="seconds")
+            fields[time_field] = recall_time
+
+        type_field = self._get_str_config("recalled_type_field", "撤回类型")
+        if type_field:
+            fields[type_field] = recall_meta.get("recall_type", "").strip() or "unknown"
+
+        return fields
+
+    async def _handle_recalled_message(self, event_ctx: context.EventContext, recall_meta: dict[str, str]) -> None:
+        if not self._get_bool_config("enable_recall_revert", True):
+            return
+
+        source_field = self._get_str_config("source_message_id_field", "源消息ID")
+        source_message_id = recall_meta.get("message_id", "").strip()
+        if not source_field or not source_message_id:
+            return
+
+        candidate_table_ids = self._collect_recall_candidate_table_ids(source_message_id)
+        if self._get_bool_config("recall_scan_all_tables", True):
+            try:
+                all_tables = await self._list_all_bitable_tables()
+                for table in all_tables:
+                    tid = str(table.get("table_id", "")).strip()
+                    if tid and tid not in candidate_table_ids:
+                        candidate_table_ids.append(tid)
+            except Exception:
+                pass
+
+        if not candidate_table_ids:
+            need_error_feedback = self._get_bool_config("reply_on_error", False)
+            if self._is_group_event(event_ctx) and self._get_bool_config("private_notify_on_error", True):
+                need_error_feedback = True
+            if need_error_feedback:
+                await self._send_feedback(
+                    event_ctx,
+                    f"撤回处理失败：未找到可扫描的数据表，message_id={source_message_id}",
+                    is_error=True,
+                )
+            return
+
+        preferred_records = self._source_record_cache.get(source_message_id, [])
+        recall_fields = self._build_recall_write_fields(recall_meta)
+        success_updates = 0
+        errors: list[str] = []
+        matched_records = 0
+
+        for table_id in candidate_table_ids:
+            record_ids = [rid for tid, rid in preferred_records if tid == table_id and rid]
+            if not record_ids:
+                try:
+                    record_ids = await self._find_record_ids_by_field(table_id, source_field, source_message_id)
+                except Exception as exc:
+                    errors.append(f"table={table_id}, find records failed: {exc}")
+                    continue
+
+            if not record_ids:
+                continue
+
+            matched_records += len(record_ids)
+            ok_fields, detail_fields, field_types = await self._ensure_table_fields(table_id, recall_fields)
+            if not ok_fields:
+                errors.append(f"table={table_id}, {detail_fields}")
+                continue
+            normalized_fields = self._normalize_write_fields(recall_fields, field_types)
+
+            for record_id in record_ids:
+                ok, detail = await self._update_record_to_bitable(table_id, record_id, normalized_fields)
+                if ok:
+                    success_updates += 1
+                    self._remember_written_record(source_message_id, table_id, record_id)
+                else:
+                    errors.append(f"table={table_id}, record={record_id}, {detail}")
+
+        if success_updates > 0:
+            need_feedback = self._get_bool_config("reply_on_recall", False)
+            if self._is_group_event(event_ctx) and self._get_bool_config("private_notify_on_write", True):
+                need_feedback = True
+            if need_feedback:
+                text = f"已处理撤回：message_id={source_message_id}，匹配{matched_records}条，更新{success_updates}条。"
+                if errors and self._get_bool_config("reply_on_error", False):
+                    text = f"{text}\n部分失败: {self._truncate_text('; '.join(errors), 500)}"
+                await self._send_feedback(event_ctx, self._truncate_text(text, 1800), is_error=False)
+            return
+
+        if not errors:
+            errors.append(f"未找到可回滚记录，message_id={source_message_id}")
+        need_error_feedback = self._get_bool_config("reply_on_error", False)
+        if self._is_group_event(event_ctx) and self._get_bool_config("private_notify_on_error", True):
+            need_error_feedback = True
+        if need_error_feedback:
+            err_text = self._truncate_text("; ".join(errors), 1000)
+            await self._send_feedback(event_ctx, f"撤回处理失败: {err_text}", is_error=True)
+
     async def _find_existing_record_id(self, table_id: str, match_fields: dict[str, str]) -> str:
         if not match_fields:
             return ""
@@ -1927,6 +2171,7 @@ class AutoProcessToBitableListener(EventListener):
         launcher_field = self._get_str_config("launcher_id_field", "会话ID")
         launcher_type_field = self._get_str_config("launcher_type_field", "会话类型")
         timestamp_field = self._get_str_config("message_time_field", "消息时间")
+        source_message_id_field = self._get_str_config("source_message_id_field", "源消息ID")
 
         if scenario_field:
             target_fields[scenario_field] = record.scenario
@@ -1950,6 +2195,10 @@ class AutoProcessToBitableListener(EventListener):
             target_fields[launcher_type_field] = str(getattr(event_ctx.event, "launcher_type", ""))
         if timestamp_field:
             target_fields[timestamp_field] = message_time
+        if source_message_id_field:
+            source_message_id = self._extract_message_source_id(getattr(event_ctx.event, "message_chain", None))
+            if source_message_id:
+                target_fields[source_message_id_field] = source_message_id
 
     def _parse_records(self, full_text: str, message_time: str) -> list[ParsedRecord]:
         records: list[ParsedRecord] = []
@@ -1965,6 +2214,14 @@ class AutoProcessToBitableListener(EventListener):
 
     async def _handle_normal_message(self, event_ctx: context.EventContext) -> None:
         if self._mark_query_processed(event_ctx):
+            return
+
+        recall_meta = await self._extract_recall_meta(event_ctx)
+        if recall_meta is not None:
+            await self._handle_recalled_message(event_ctx, recall_meta)
+            if self._get_bool_config("prevent_default_on_recall", True):
+                event_ctx.prevent_default()
+                event_ctx.prevent_postorder()
             return
 
         message_chain = event_ctx.event.message_chain
@@ -2067,6 +2324,8 @@ class AutoProcessToBitableListener(EventListener):
 
             write_fields = dict(record.fields)
             self._apply_builtin_fields(write_fields, record, event_ctx, plain_text, ocr_text, message_time)
+            source_message_id_field = self._get_str_config("source_message_id_field", "源消息ID")
+            source_message_id = self._field_to_text(write_fields.get(source_message_id_field)) if source_message_id_field else ""
             retried_after_table_not_found = False
 
             while True:
@@ -2087,6 +2346,8 @@ class AutoProcessToBitableListener(EventListener):
                 if ok:
                     success_count += 1
                     success_records.append(record)
+                    if source_message_id and detail:
+                        self._remember_written_record(source_message_id, table_id, detail)
                     break
 
                 if (not retried_after_table_not_found) and self._is_table_id_not_found_error(detail):

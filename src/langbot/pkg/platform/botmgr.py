@@ -13,6 +13,7 @@ from ..entity.persistence import bot as persistence_bot
 from ..entity.errors import platform as platform_errors
 
 from .logger import EventLogger
+from . import custom_events
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
@@ -138,8 +139,36 @@ class RuntimeBot:
             else:
                 await self.logger.info('Pipeline skipped for group message due to webhook response')
 
+        async def on_message_recalled(
+            event: custom_events.MessageRecalled,
+            adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        ):
+            await self.logger.info(
+                f'[MessageRecalled] message_id={event.message_id}, chat_id={event.chat_id}, recall_type={event.recall_type}',
+                message_session_id=f'{event.launcher_type.value}_{event.launcher_id}',
+            )
+
+            await self.ap.query_pool.add_query(
+                bot_uuid=self.bot_entity.uuid,
+                launcher_type=event.launcher_type,
+                launcher_id=event.launcher_id,
+                sender_id=event.sender_id,
+                message_event=event.message_event,
+                message_chain=event.message_chain,
+                adapter=adapter,
+                pipeline_uuid=self.bot_entity.use_pipeline_uuid,
+                variables={
+                    "_system_event": "message_recalled",
+                    "_recalled_message_id": str(event.message_id),
+                    "_recalled_chat_id": str(event.chat_id),
+                    "_recalled_time": str(event.recall_time),
+                    "_recalled_type": str(event.recall_type),
+                },
+            )
+
         self.adapter.register_listener(platform_events.FriendMessage, on_friend_message)
         self.adapter.register_listener(platform_events.GroupMessage, on_group_message)
+        self.adapter.register_listener(custom_events.MessageRecalled, on_message_recalled)
 
     async def run(self):
         async def exception_wrapper():
