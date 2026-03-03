@@ -50,6 +50,8 @@
 - `reply_in_group`：是否允许在群聊直接回消息（工作群建议 `false`）
 - `reply_in_person`：是否允许在私聊直接回复（建议 `true`）
 - `private_notify_on_write` / `private_notify_on_error`：群消息成功/失败时是否私聊通知
+- `time_zone`：时间显示时区（默认 `Asia/Shanghai`）
+- `time_format`：时间显示格式（默认 `%Y-%m-%d %H:%M:%S`）
 
 ## table_routing_json 示例
 

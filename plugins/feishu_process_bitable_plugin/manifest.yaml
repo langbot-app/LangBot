@@ -4,7 +4,7 @@ metadata:
   author: local
   name: feishu_process_bitable_plugin
   repository: 'https://open.feishu.cn/'
-  version: 0.3.17
+  version: 0.3.18
   description:
     en_US: Parse process messages with OCR and write structured records into Feishu Bitable.
     zh_Hans: 解析工艺消息并支持OCR，把结构化结果写入飞书多维表格。
@@ -368,6 +368,26 @@ spec:
       type: string
       required: false
       default: '消息时间'
+    - name: time_zone
+      label:
+        en_US: Time Zone
+        zh_Hans: 时区
+      description:
+        en_US: IANA timezone for message and recall time formatting.
+        zh_Hans: 消息时间与撤回时间使用的 IANA 时区。
+      type: string
+      required: false
+      default: 'Asia/Shanghai'
+    - name: time_format
+      label:
+        en_US: Time Format
+        zh_Hans: 时间格式
+      description:
+        en_US: Python strftime format for message and recall time.
+        zh_Hans: 消息时间与撤回时间输出格式（Python strftime）。
+      type: string
+      required: false
+      default: '%Y-%m-%d %H:%M:%S'
     - name: source_message_id_field
       label:
         en_US: Source Message ID Field

@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -121,6 +122,68 @@ class AutoProcessToBitableListener(EventListener):
             except Exception:
                 return default
         return default
+
+    def _get_time_zone(self) -> datetime.tzinfo:
+        raw_tz = self._get_str_config("time_zone", "Asia/Shanghai")
+        if raw_tz:
+            try:
+                return ZoneInfo(raw_tz)
+            except Exception:
+                pass
+        return datetime.timezone(datetime.timedelta(hours=8))
+
+    def _get_time_format(self) -> str:
+        fmt = self._get_str_config("time_format", "%Y-%m-%d %H:%M:%S")
+        if not fmt:
+            return "%Y-%m-%d %H:%M:%S"
+        return fmt
+
+    @staticmethod
+    def _parse_datetime_value(value: Any) -> datetime.datetime | None:
+        if value is None:
+            return None
+
+        if isinstance(value, datetime.datetime):
+            if value.tzinfo is None:
+                return value.replace(tzinfo=datetime.timezone.utc)
+            return value
+
+        raw = str(value).strip()
+        if not raw:
+            return None
+
+        try:
+            ts = float(raw)
+            if ts > 1e12:
+                ts = ts / 1000.0
+            if ts > 0:
+                return datetime.datetime.fromtimestamp(ts, datetime.timezone.utc)
+        except Exception:
+            pass
+
+        try:
+            normalized = raw.replace("Z", "+00:00")
+            parsed = datetime.datetime.fromisoformat(normalized)
+            if parsed.tzinfo is None:
+                return parsed.replace(tzinfo=datetime.timezone.utc)
+            return parsed
+        except Exception:
+            return None
+
+    def _format_time_value(self, value: Any, *, fallback_now: bool = False) -> str:
+        parsed = self._parse_datetime_value(value)
+        if parsed is None:
+            if fallback_now:
+                parsed = datetime.datetime.now(datetime.timezone.utc)
+            else:
+                return str(value).strip() if value is not None else ""
+
+        local_dt = parsed.astimezone(self._get_time_zone())
+        fmt = self._get_time_format()
+        try:
+            return local_dt.strftime(fmt)
+        except Exception:
+            return local_dt.strftime("%Y-%m-%d %H:%M:%S")
 
     def _get_bitable_app_token(self) -> str:
         return self._get_str_config("bitable_app_token", "")
@@ -458,22 +521,7 @@ class AutoProcessToBitableListener(EventListener):
         message_event = getattr(event_ctx.event, "message_event", None)
         if message_event is not None:
             candidate = getattr(message_event, "time", None)
-
-        if candidate is None:
-            return datetime.datetime.now(datetime.timezone.utc).astimezone().isoformat(timespec="seconds")
-
-        try:
-            ts = float(candidate)
-            if ts > 1e12:
-                ts = ts / 1000.0
-            if ts > 0:
-                return datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).astimezone().isoformat(
-                    timespec="seconds"
-                )
-        except Exception:
-            pass
-
-        return str(candidate)
+        return self._format_time_value(candidate, fallback_now=True)
 
     @staticmethod
     def _is_group_event(event_ctx: context.EventContext) -> bool:
@@ -1915,9 +1963,7 @@ class AutoProcessToBitableListener(EventListener):
 
         time_field = self._get_str_config("recalled_time_field", "撤回时间")
         if time_field:
-            recall_time = recall_meta.get("recall_time", "").strip()
-            if not recall_time:
-                recall_time = datetime.datetime.now(datetime.timezone.utc).astimezone().isoformat(timespec="seconds")
+            recall_time = self._format_time_value(recall_meta.get("recall_time", ""), fallback_now=True)
             fields[time_field] = recall_time
 
         type_field = self._get_str_config("recalled_type_field", "撤回类型")
