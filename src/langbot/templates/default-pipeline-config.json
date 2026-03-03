@@ -99,7 +99,8 @@
             "at-sender": true,
             "quote-origin": true,
             "track-function-calls": false,
-            "remove-think": false
+            "remove-think": false,
+            "block-failed-request-output": false
         }
     }
 }
