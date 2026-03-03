@@ -9,7 +9,7 @@ import copy
 import threading
 
 import quart
-import aiohttp
+from langbot.pkg.utils import httpclient
 
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 from ....core import app
@@ -639,14 +639,14 @@ class GeWeChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     async def run_async(self):
         if not self.config['token']:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f'{self.config["gewechat_url"]}/v2/api/tools/getTokenId',
-                    json={'app_id': self.config['app_id']},
-                ) as response:
-                    if response.status != 200:
-                        raise Exception(f'获取gewechat token失败: {await response.text()}')
-                    self.config['token'] = (await response.json())['data']
+            session = httpclient.get_session()
+            async with session.post(
+                f'{self.config["gewechat_url"]}/v2/api/tools/getTokenId',
+                json={'app_id': self.config['app_id']},
+            ) as response:
+                if response.status != 200:
+                    raise Exception(f'获取gewechat token失败: {await response.text()}')
+                self.config['token'] = (await response.json())['data']
 
         self.bot = gewechat_client.GewechatClient(f'{self.config["gewechat_url"]}/v2/api', self.config['token'])
 

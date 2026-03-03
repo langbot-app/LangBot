@@ -1,5 +1,5 @@
 import requests
-import aiohttp
+from langbot.pkg.utils import httpclient
 
 
 def post_json(base_url, token, data=None):
@@ -63,16 +63,16 @@ async def async_request(
     """
     headers = {'Content-Type': 'application/json'}
     url = f'{base_url}?key={token_key}'
-    async with aiohttp.ClientSession() as session:
-        async with session.request(
-            method=method, url=url, params=params, headers=headers, data=data, json=json
-        ) as response:
-            response.raise_for_status()  # 如果状态码不是200，抛出异常
-            result = await response.json()
-            # print(result)
-            return result
-            # if result.get('Code') == 200:
-            #
-            #     return await result
-            # else:
-            #     raise RuntimeError("请求失败",response.text)
+    session = httpclient.get_session()
+    async with session.request(
+        method=method, url=url, params=params, headers=headers, data=data, json=json
+    ) as response:
+        response.raise_for_status()  # 如果状态码不是200，抛出异常
+        result = await response.json()
+        # print(result)
+        return result
+        # if result.get('Code') == 200:
+        #
+        #     return await result
+        # else:
+        #     raise RuntimeError("请求失败",response.text)

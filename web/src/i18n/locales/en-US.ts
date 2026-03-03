@@ -281,6 +281,25 @@ const enUS = {
     viewDetails: 'Details',
     collapse: 'Collapse',
     imagesAttached: 'image(s) attached',
+    sessionMonitor: {
+      title: 'Sessions',
+      sessions: 'Sessions',
+      noSessions: 'No sessions found',
+      selectSession: 'Select a session to view messages',
+      noMessages: 'No messages in this session',
+      messages: 'messages',
+      messageCount: '{{count}} messages',
+      loading: 'Loading...',
+      loadingSessions: 'Loading sessions...',
+      loadingMessages: 'Loading messages...',
+      user: 'User',
+      variables: 'Variables',
+      platform: 'Platform',
+      lastActive: 'Last active',
+      refresh: 'Refresh',
+      active: 'Active',
+      inactive: 'Inactive',
+    },
   },
   plugins: {
     title: 'Extensions',
@@ -590,6 +609,7 @@ const enUS = {
     copyConfirmTitle: 'Confirm Copy',
     copyConfirmation:
       'Are you sure you want to copy this pipeline? This will create a new pipeline with all configurations.',
+    unsavedChanges: 'You have unsaved changes',
     extensions: {
       title: 'Extensions',
       loadError: 'Failed to load plugins',

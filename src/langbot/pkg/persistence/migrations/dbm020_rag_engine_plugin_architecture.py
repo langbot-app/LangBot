@@ -4,7 +4,7 @@ import sqlalchemy
 from .. import migration
 
 
-@migration.migration_class(19)
+@migration.migration_class(20)
 class DBMigrateRAGEnginePluginArchitecture(migration.DBMigration):
     """Migrate to unified RAG Engine plugin architecture.
 

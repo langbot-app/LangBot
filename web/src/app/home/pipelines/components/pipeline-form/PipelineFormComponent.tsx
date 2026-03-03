@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { GetPipelineResponseData, Pipeline } from '@/app/infra/entities/api';
 import {
@@ -118,6 +118,14 @@ export default function PipelineFormComponent({
     },
   });
 
+  // Track unsaved changes by comparing current form values against a saved snapshot
+  const savedSnapshotRef = useRef<string>('');
+  const watchedValues = form.watch();
+  const hasUnsavedChanges = useMemo(() => {
+    if (!isEditMode || !savedSnapshotRef.current) return false;
+    return JSON.stringify(watchedValues) !== savedSnapshotRef.current;
+  }, [isEditMode, watchedValues]);
+
   useEffect(() => {
     // get config schema from metadata
     httpClient.getGeneralPipelineMetadata().then((resp) => {
@@ -139,7 +147,7 @@ export default function PipelineFormComponent({
         .getPipeline(pipelineId || '')
         .then((resp: GetPipelineResponseData) => {
           setIsDefaultPipeline(resp.pipeline.is_default ?? false);
-          form.reset({
+          const loadedValues = {
             basic: {
               name: resp.pipeline.name,
               description: resp.pipeline.description,
@@ -149,7 +157,9 @@ export default function PipelineFormComponent({
             trigger: resp.pipeline.config.trigger,
             safety: resp.pipeline.config.safety,
             output: resp.pipeline.config.output,
-          });
+          };
+          form.reset(loadedValues);
+          savedSnapshotRef.current = JSON.stringify(loadedValues);
         });
     }
   }, []);
@@ -216,6 +226,7 @@ export default function PipelineFormComponent({
     httpClient
       .updatePipeline(pipelineId || '', pipeline)
       .then(() => {
+        savedSnapshotRef.current = JSON.stringify(form.getValues());
         onFinish();
         toast.success(t('pipelines.saveSuccess'));
       })
@@ -509,7 +520,14 @@ export default function PipelineFormComponent({
           </form>
           {/* 按钮栏移到 Tabs 外部，始终固定底部 */}
           {showButtons && (
-            <div className="flex justify-end gap-2 pt-4 border-t mb-0 bg-white dark:bg-black sticky bottom-0 z-10">
+            <div className="flex justify-end items-center gap-2 pt-4 border-t mb-0 bg-white dark:bg-black sticky bottom-0 z-10">
+              {isEditMode && hasUnsavedChanges && (
+                <div className="text-amber-600 dark:text-amber-400 text-sm flex items-center gap-1.5 mr-auto">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  {t('pipelines.unsavedChanges')}
+                </div>
+              )}
+
               {isEditMode && !isDefaultPipeline && (
                 <Button
                   type="button"

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import aiohttp
+from langbot.pkg.utils import httpclient
 import typing
 import datetime
 import time
@@ -99,49 +99,49 @@ class SpaceService:
         space_config = self._get_space_config()
         space_url = space_config['url']
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f'{space_url}/api/v1/accounts/oauth/token',
-                json={'code': code, 'instance_id': constants.instance_id},
-            ) as response:
-                if response.status != 200:
-                    raise ValueError(f'Failed to exchange OAuth code: {await response.text()}')
-                data = await response.json()
-                if data.get('code') != 0:
-                    raise ValueError(f'Failed to exchange OAuth code: {data.get("msg")}')
-                return data.get('data', {})
+        session = httpclient.get_session()
+        async with session.post(
+            f'{space_url}/api/v1/accounts/oauth/token',
+            json={'code': code, 'instance_id': constants.instance_id},
+        ) as response:
+            if response.status != 200:
+                raise ValueError(f'Failed to exchange OAuth code: {await response.text()}')
+            data = await response.json()
+            if data.get('code') != 0:
+                raise ValueError(f'Failed to exchange OAuth code: {data.get("msg")}')
+            return data.get('data', {})
 
     async def refresh_token(self, refresh_token: str) -> typing.Dict:
         """Refresh Space access token"""
         space_config = self._get_space_config()
         space_url = space_config['url']
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f'{space_url}/api/v1/accounts/token/refresh', json={'refresh_token': refresh_token}
-            ) as response:
-                if response.status != 200:
-                    raise ValueError(f'Failed to refresh token: {await response.text()}')
-                data = await response.json()
-                if data.get('code') != 0:
-                    raise ValueError(f'Failed to refresh token: {data.get("msg")}')
-                return data.get('data', {})
+        session = httpclient.get_session()
+        async with session.post(
+            f'{space_url}/api/v1/accounts/token/refresh', json={'refresh_token': refresh_token}
+        ) as response:
+            if response.status != 200:
+                raise ValueError(f'Failed to refresh token: {await response.text()}')
+            data = await response.json()
+            if data.get('code') != 0:
+                raise ValueError(f'Failed to refresh token: {data.get("msg")}')
+            return data.get('data', {})
 
     async def get_user_info_raw(self, access_token: str) -> typing.Dict:
         """Get user info from Space using access token (no validation)"""
         space_config = self._get_space_config()
         space_url = space_config['url']
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f'{space_url}/api/v1/accounts/me', headers={'Authorization': f'Bearer {access_token}'}
-            ) as response:
-                if response.status != 200:
-                    raise ValueError(f'Failed to get user info: {await response.text()}')
-                data = await response.json()
-                if data.get('code') != 0:
-                    raise ValueError(f'Failed to get user info: {data.get("msg")}')
-                return data.get('data', {})
+        session = httpclient.get_session()
+        async with session.get(
+            f'{space_url}/api/v1/accounts/me', headers={'Authorization': f'Bearer {access_token}'}
+        ) as response:
+            if response.status != 200:
+                raise ValueError(f'Failed to get user info: {await response.text()}')
+            data = await response.json()
+            if data.get('code') != 0:
+                raise ValueError(f'Failed to get user info: {data.get("msg")}')
+            return data.get('data', {})
 
     # === API calls with token validation ===
 
@@ -178,12 +178,12 @@ class SpaceService:
         space_config = self._get_space_config()
         space_url = space_config['url']
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f'{space_url}/api/v1/models') as response:
-                if response.status != 200:
-                    raise ValueError(f'Failed to get models: {await response.text()}')
-                data = await response.json()
-                if data.get('code') != 0:
-                    raise ValueError(f'Failed to get models: {data.get("msg")}')
-                models_data = data.get('data', {}).get('models', [])
-                return [SpaceModel.model_validate(model_dict) for model_dict in models_data]
+        session = httpclient.get_session()
+        async with session.get(f'{space_url}/api/v1/models') as response:
+            if response.status != 200:
+                raise ValueError(f'Failed to get models: {await response.text()}')
+            data = await response.json()
+            if data.get('code') != 0:
+                raise ValueError(f'Failed to get models: {data.get("msg")}')
+            models_data = data.get('data', {}).get('models', [])
+            return [SpaceModel.model_validate(model_dict) for model_dict in models_data]

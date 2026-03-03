@@ -15,6 +15,7 @@ from ..command import cmdmgr
 from ..plugin import connector as plugin_connector
 from ..pipeline import pool
 from ..pipeline import controller, pipelinemgr
+from ..pipeline import aggregator as message_aggregator
 from ..utils import version as version_mgr, proxy as proxy_mgr
 from ..persistence import mgr as persistencemgr
 from ..api.http.controller import main as http_controller
@@ -38,6 +39,7 @@ from ..rag.knowledge import kbmgr as rag_mgr
 from ..rag.service import RAGRuntimeService
 from ..vector import mgr as vectordb_mgr
 from ..telemetry import telemetry as telemetry_module
+from ..survey import manager as survey_module
 
 
 class Application:
@@ -97,6 +99,8 @@ class Application:
 
     query_pool: pool.QueryPool = None
 
+    msg_aggregator: message_aggregator.MessageAggregator = None
+
     ctrl: controller.Controller = None
 
     pipeline_mgr: pipelinemgr.PipelineManager = None
@@ -142,6 +146,8 @@ class Application:
     webhook_service: webhook_service.WebhookService = None
 
     telemetry: telemetry_module.TelemetryManager = None
+
+    survey: survey_module.SurveyManager = None
 
     monitoring_service: monitoring_service.MonitoringService = None
 

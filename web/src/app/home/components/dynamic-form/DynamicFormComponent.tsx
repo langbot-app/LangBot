@@ -11,7 +11,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useTranslation } from 'react-i18next';
 
@@ -155,22 +155,44 @@ export default function DynamicFormComponent({
   // Get reactive form values for conditional rendering
   const watchedValues = form.watch();
 
+  // Stable ref for onSubmit to avoid re-triggering the effect when the
+  // parent passes a new closure on every render.
+  const onSubmitRef = useRef(onSubmit);
+  onSubmitRef.current = onSubmit;
+
+  // Track the last emitted values to avoid emitting identical snapshots,
+  // which would cause the parent to call setValue with an equivalent object,
+  // triggering a re-render loop.
+  const lastEmittedRef = useRef<string>('');
+
+  const emitValues = useCallback(() => {
+    const formValues = form.getValues();
+    const finalValues = itemConfigList.reduce(
+      (acc, item) => {
+        acc[item.name] = formValues[item.name] ?? item.default;
+        return acc;
+      },
+      {} as Record<string, object>,
+    );
+    const serialized = JSON.stringify(finalValues);
+    if (serialized !== lastEmittedRef.current) {
+      lastEmittedRef.current = serialized;
+      onSubmitRef.current?.(finalValues);
+    }
+  }, [form, itemConfigList]);
+
   // 监听表单值变化
   useEffect(() => {
+    // Emit initial form values immediately so the parent always has a valid snapshot,
+    // even if the user saves without modifying any field.
+    // form.watch(callback) only fires on subsequent changes, not on mount.
+    emitValues();
+
     const subscription = form.watch(() => {
-      // 获取完整的表单值，确保包含所有默认值
-      const formValues = form.getValues();
-      const finalValues = itemConfigList.reduce(
-        (acc, item) => {
-          acc[item.name] = formValues[item.name] ?? item.default;
-          return acc;
-        },
-        {} as Record<string, object>,
-      );
-      onSubmit?.(finalValues);
+      emitValues();
     });
     return () => subscription.unsubscribe();
-  }, [form, onSubmit, itemConfigList]);
+  }, [form, itemConfigList, emitValues]);
 
   return (
     <Form {...form}>
@@ -178,8 +200,12 @@ export default function DynamicFormComponent({
         {itemConfigList.map((config) => {
           if (config.show_if) {
             const dependValue =
-              watchedValues[config.show_if.field as keyof typeof watchedValues] !== undefined
-                ? watchedValues[config.show_if.field as keyof typeof watchedValues]
+              watchedValues[
+                config.show_if.field as keyof typeof watchedValues
+              ] !== undefined
+                ? watchedValues[
+                    config.show_if.field as keyof typeof watchedValues
+                  ]
                 : externalDependentValues?.[config.show_if.field];
 
             if (

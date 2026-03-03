@@ -5,6 +5,7 @@ import asyncio
 from .. import stage, app
 from ...utils import version, proxy
 from ...pipeline import pool, controller, pipelinemgr
+from ...pipeline import aggregator as message_aggregator
 from ...plugin import connector as plugin_connector
 from ...command import cmdmgr
 from ...provider.session import sessionmgr as llm_session_mgr
@@ -33,6 +34,7 @@ from ...utils import logcache
 from ...vector import mgr as vectordb_mgr
 from .. import taskmgr
 from ...telemetry import telemetry as telemetry_module
+from ...survey import manager as survey_module
 
 
 @stage.stage_class('BuildAppStage')
@@ -106,6 +108,11 @@ class BuildAppStage(stage.BootingStage):
         await telemetry_inst.initialize()
         ap.telemetry = telemetry_inst
 
+        # Survey manager
+        survey_inst = survey_module.SurveyManager(ap)
+        await survey_inst.initialize()
+        ap.survey = survey_inst
+
         cmd_mgr_inst = cmdmgr.CommandManager(ap)
         await cmd_mgr_inst.initialize()
         ap.cmd_mgr = cmd_mgr_inst
@@ -133,6 +140,10 @@ class BuildAppStage(stage.BootingStage):
         pipeline_mgr = pipelinemgr.PipelineManager(ap)
         await pipeline_mgr.initialize()
         ap.pipeline_mgr = pipeline_mgr
+
+        # Initialize message aggregator (after pipeline_mgr, as it needs pipeline config)
+        msg_aggregator_inst = message_aggregator.MessageAggregator(ap)
+        ap.msg_aggregator = msg_aggregator_inst
 
         rag_mgr_inst = rag_mgr.RAGManager(ap)
         await rag_mgr_inst.initialize()

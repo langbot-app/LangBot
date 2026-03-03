@@ -282,6 +282,25 @@ const jaJP = {
     allLevels: 'すべてのレベル',
     selectLevel: 'レベルを選択',
     levelsSelected: 'レベル選択済み',
+    sessionMonitor: {
+      title: 'セッション監視',
+      sessions: 'セッション一覧',
+      noSessions: 'セッションが見つかりません',
+      selectSession: 'セッションを選択してメッセージを表示',
+      noMessages: 'このセッションにはメッセージがありません',
+      messages: '件のメッセージ',
+      messageCount: '{{count}} 件のメッセージ',
+      loading: '読み込み中...',
+      loadingSessions: 'セッションを読み込み中...',
+      loadingMessages: 'メッセージを読み込み中...',
+      user: 'ユーザー',
+      variables: '変数',
+      platform: 'プラットフォーム',
+      lastActive: '最終アクティブ',
+      refresh: '更新',
+      active: 'アクティブ',
+      inactive: '非アクティブ',
+    },
   },
   plugins: {
     title: '拡張機能',
@@ -592,6 +611,7 @@ const jaJP = {
     copyConfirmTitle: 'コピーの確認',
     copyConfirmation:
       'このパイプラインをコピーしますか？すべての設定を含む新しいパイプラインが作成されます。',
+    unsavedChanges: '未保存の変更があります',
     extensions: {
       title: 'プラグイン統合',
       loadError: 'プラグインリストの読み込みに失敗しました',

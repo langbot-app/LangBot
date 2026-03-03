@@ -1,6 +1,6 @@
 <p align="center">
 <a href="https://langbot.app">
-<img width="130" src="https://docs.langbot.app/langbot-logo.png" alt="LangBot"/>
+<img width="130" src="res/logo-blue.png" alt="LangBot"/>
 </a>
 
 <div align="center">
@@ -31,24 +31,28 @@
 
 ---
 
-## 🚀 LangBot이란?
+## LangBot이란?
 
 LangBot은 AI 기반 인스턴트 메시징 봇을 구축하기 위한 **오픈소스 프로덕션 등급 플랫폼**입니다. 대규모 언어 모델(LLM)을 모든 채팅 플랫폼에 연결하여 대화, 작업 실행, 기존 워크플로우와의 통합이 가능한 지능형 에이전트를 만들 수 있습니다.
 
 ### 핵심 기능
 
-- **💬 AI 대화 및 에이전트** — 멀티턴 대화, 도구 호출, 멀티모달 지원, 스트리밍 출력. 내장 RAG(지식 베이스)와 [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io), [Langflow](https://langflow.org) 심층 통합.
-- **🤖 유니버설 IM 플랫폼 지원** — 단일 코드베이스로 Discord, Telegram, Slack, LINE, QQ, WeChat, WeCom, Lark, DingTalk, KOOK 지원.
-- **🛠️ 프로덕션 레디** — 접근 제어, 속도 제한, 민감어 필터링, 종합 모니터링 및 예외 처리. 기업 환경에서 검증됨.
-- **🧩 플러그인 생태계** — 수백 개의 플러그인, 이벤트 기반 아키텍처, 컴포넌트 확장, [MCP 프로토콜](https://modelcontextprotocol.io/) 지원.
-- **😻 웹 관리 패널** — 직관적인 브라우저 인터페이스로 봇을 구성, 관리 및 모니터링. YAML 편집 불필요.
-- **📊 멀티 파이프라인 아키텍처** — 다양한 시나리오에 맞는 다양한 봇 구성, 종합 모니터링 및 예외 처리.
+- **AI 대화 및 에이전트** — 멀티턴 대화, 도구 호출, 멀티모달 지원, 스트리밍 출력. 내장 RAG(지식 베이스)와 [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io), [Langflow](https://langflow.org) 심층 통합.
+- **유니버설 IM 플랫폼 지원** — 단일 코드베이스로 Discord, Telegram, Slack, LINE, QQ, WeChat, WeCom, Lark, DingTalk, KOOK 지원.
+- **프로덕션 레디** — 접근 제어, 속도 제한, 민감어 필터링, 종합 모니터링 및 예외 처리. 기업 환경에서 검증됨.
+- **플러그인 생태계** — 수백 개의 플러그인, 이벤트 기반 아키텍처, 컴포넌트 확장, [MCP 프로토콜](https://modelcontextprotocol.io/) 지원.
+- **웹 관리 패널** — 직관적인 브라우저 인터페이스로 봇을 구성, 관리 및 모니터링. YAML 편집 불필요.
+- **멀티 파이프라인 아키텍처** — 다양한 시나리오에 맞는 다양한 봇 구성, 종합 모니터링 및 예외 처리.
 
 [→ 모든 기능 자세히 보기](https://docs.langbot.app/en/insight/features.html)
 
 ---
 
-## 📦 빠른 시작
+## 빠른 시작
+
+### ☁️ LangBot Cloud (추천)
+
+**[LangBot Cloud](https://space.langbot.app/cloud)** — 배포 없이 바로 사용.
 
 ### 원라인 실행
 
@@ -75,7 +79,7 @@ docker compose up -d
 
 ---
 
-## ✨ 지원 플랫폼
+## 지원 플랫폼
 
 | 플랫폼 | 상태 | 비고 |
 |--------|------|------|
@@ -93,7 +97,7 @@ docker compose up -d
 
 ---
 
-## 🤖 지원 LLM 및 통합
+## 지원 LLM 및 통합
 
 | 제공자 | 유형 | 상태 |
 |--------|------|------|
@@ -123,7 +127,7 @@ docker compose up -d
 
 ---
 
-## 🌟 왜 LangBot인가?
+## 왜 LangBot인가?
 
 | 사용 사례 | LangBot 활용 방법 |
 |-----------|-------------------|
@@ -134,7 +138,7 @@ docker compose up -d
 
 ---
 
-## 🎮 라이브 데모
+## 라이브 데모
 
 **지금 체험:** https://demo.langbot.dev/
 - 이메일: `demo@langbot.app`
@@ -144,21 +148,21 @@ docker compose up -d
 
 ---
 
-## 🤝 커뮤니티
+## 커뮤니티
 
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&label=Discord)](https://discord.gg/wdNEHETs87)
 
-- 💬 [Discord 커뮤니티](https://discord.gg/wdNEHETs87)
+- [Discord 커뮤니티](https://discord.gg/wdNEHETs87)
 
 ---
 
-## ⭐ Star 추이
+## Star 추이
 
 [![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
 
 ---
 
-## 😘 기여자
+## 기여자
 
 LangBot을 더 나은 프로젝트로 만들어 주신 모든 [기여자](https://github.com/langbot-app/LangBot/graphs/contributors)분들께 감사드립니다:
 

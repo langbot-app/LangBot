@@ -93,7 +93,7 @@ class SeekDBVectorDatabase(VectorDatabase):
             {
                 '\x00': '',
                 '\\': '\\\\',
-                "'": "''",    # Standard SQL escaping (OceanBase NO_BACKSLASH_ESCAPES)
+                "'": "''",  # Standard SQL escaping (OceanBase NO_BACKSLASH_ESCAPES)
                 '"': '\\"',
                 '\n': '\\n',
                 '\r': '\\r',
@@ -118,7 +118,7 @@ class SeekDBVectorDatabase(VectorDatabase):
         if vector_size is None:
             raise ValueError(
                 f"Cannot create SeekDB collection '{collection}' without knowing the vector dimension. "
-                "Ensure add_embeddings is called before any standalone get_or_create_collection."
+                'Ensure add_embeddings is called before any standalone get_or_create_collection.'
             )
 
         # Create HNSW configuration

@@ -3,6 +3,8 @@ import {
   ApiRespMarketplacePluginDetail,
   ApiRespMarketplacePlugins,
 } from '@/app/infra/entities/api';
+import { PluginV4 } from '@/app/infra/entities/plugin';
+import { I18nObject } from '@/app/infra/entities/common';
 
 /**
  * 云服务客户端
@@ -98,6 +100,19 @@ export class CloudServiceClient extends BaseHttpClient {
   public getAllTags(): Promise<{ tags: PluginTag[] }> {
     return this.get<{ tags: PluginTag[] }>('/api/v1/marketplace/tags');
   }
+
+  public getRecommendationLists(): Promise<{ lists: RecommendationList[] }> {
+    return this.get<{ lists: RecommendationList[] }>(
+      '/api/v1/marketplace/recommendation-lists',
+    );
+  }
+}
+
+export interface RecommendationList {
+  uuid: string;
+  label: I18nObject;
+  sort_order: number;
+  plugins: PluginV4[];
 }
 
 export interface PluginTag {

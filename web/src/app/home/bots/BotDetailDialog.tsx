@@ -5,6 +5,7 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
+  DialogDescription,
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
@@ -21,6 +22,7 @@ import {
 import { Button } from '@/components/ui/button';
 import BotForm from '@/app/home/bots/components/bot-form/BotForm';
 import { BotLogListComponent } from '@/app/home/bots/components/bot-log/view/BotLogListComponent';
+import BotSessionMonitor from '@/app/home/bots/components/bot-session/BotSessionMonitor';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 import { httpClient } from '@/app/infra/http/HttpClient';
@@ -82,6 +84,19 @@ export default function BotDetailDialog({
         </svg>
       ),
     },
+    {
+      key: 'sessions',
+      label: t('bots.sessionMonitor.title'),
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+        >
+          <path d="M2 22C2 17.5817 5.58172 14 10 14C14.4183 14 18 17.5817 18 22H16C16 18.6863 13.3137 16 10 16C6.68629 16 4 18.6863 4 22H2ZM10 13C6.685 13 4 10.315 4 7C4 3.685 6.685 1 10 1C13.315 1 16 3.685 16 7C16 10.315 13.315 13 10 13ZM10 11C12.21 11 14 9.21 14 7C14 4.79 12.21 3 10 3C7.79 3 6 4.79 6 7C6 9.21 7.79 11 10 11ZM18.2837 14.7028C21.0644 15.9561 23 18.752 23 22H21C21 19.564 19.5483 17.4671 17.4628 16.5271L18.2837 14.7028ZM17.5962 3.41321C19.5944 4.23703 21 6.20361 21 8.5C21 11.3702 18.8042 13.7252 16 13.9776V11.9646C17.6967 11.7222 19 10.264 19 8.5C19 7.11935 18.2016 5.92603 17.041 5.35635L17.5962 3.41321Z"></path>
+        </svg>
+      ),
+    },
   ];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -122,6 +137,9 @@ export default function BotDetailDialog({
             <main className="flex flex-1 flex-col h-[70vh]">
               <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
                 <DialogTitle>{t('bots.createBot')}</DialogTitle>
+                <DialogDescription className="sr-only">
+                  {t('bots.createBot')}
+                </DialogDescription>
               </DialogHeader>
               <div className="flex-1 overflow-y-auto px-6 pb-6">
                 <BotForm
@@ -155,7 +173,7 @@ export default function BotDetailDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="overflow-hidden p-0 !max-w-[50rem] max-h-[75vh] flex">
+        <DialogContent className="overflow-hidden p-0 !max-w-[70rem] max-h-[75vh] flex">
           <SidebarProvider className="items-start w-full flex">
             <Sidebar
               collapsible="none"
@@ -189,10 +207,25 @@ export default function BotDetailDialog({
                 <DialogTitle>
                   {activeMenu === 'config'
                     ? t('bots.editBot')
-                    : t('bots.botLogTitle')}
+                    : activeMenu === 'logs'
+                      ? t('bots.botLogTitle')
+                      : t('bots.sessionMonitor.title')}
                 </DialogTitle>
+                <DialogDescription className="sr-only">
+                  {activeMenu === 'config'
+                    ? t('bots.editBot')
+                    : activeMenu === 'logs'
+                      ? t('bots.botLogTitle')
+                      : t('bots.sessionMonitor.title')}
+                </DialogDescription>
               </DialogHeader>
-              <div className="flex-1 overflow-y-auto px-6 pb-6">
+              <div
+                className={
+                  activeMenu === 'sessions'
+                    ? 'flex-1 min-h-0'
+                    : 'flex-1 overflow-y-auto px-6 pb-6'
+                }
+              >
                 {activeMenu === 'config' && (
                   <BotForm
                     initBotId={botId}
@@ -203,6 +236,9 @@ export default function BotDetailDialog({
                 )}
                 {activeMenu === 'logs' && botId && (
                   <BotLogListComponent botId={botId} />
+                )}
+                {activeMenu === 'sessions' && botId && (
+                  <BotSessionMonitor botId={botId} />
                 )}
               </div>
               {activeMenu === 'config' && (
@@ -238,6 +274,9 @@ export default function BotDetailDialog({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t('common.confirmDelete')}</DialogTitle>
+            <DialogDescription className="sr-only">
+              {t('bots.deleteConfirmation')}
+            </DialogDescription>
           </DialogHeader>
           <div className="py-4">{t('bots.deleteConfirmation')}</div>
           <DialogFooter>

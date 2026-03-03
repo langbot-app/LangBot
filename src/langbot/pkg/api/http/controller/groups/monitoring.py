@@ -52,6 +52,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse query parameters
             bot_ids = quart.request.args.getlist('botId')
             pipeline_ids = quart.request.args.getlist('pipelineId')
+            session_ids = quart.request.args.getlist('sessionId')
             start_time_str = quart.request.args.get('startTime')
             end_time_str = quart.request.args.get('endTime')
             limit = int(quart.request.args.get('limit', 100))
@@ -64,6 +65,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             messages, total = await self.ap.monitoring_service.get_messages(
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
+                session_ids=session_ids if session_ids else None,
                 start_time=start_time,
                 end_time=end_time,
                 limit=limit,

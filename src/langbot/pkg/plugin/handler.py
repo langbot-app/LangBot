@@ -293,6 +293,7 @@ class RuntimeConnectionHandler(handler.Handler):
             target_id = data['target_id']
             message_chain = data['message_chain']
 
+            # Use custom deserializer that properly handles Forward messages
             message_chain_obj = platform_message.MessageChain.model_validate(message_chain)
 
             bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
@@ -552,7 +553,7 @@ class RuntimeConnectionHandler(handler.Handler):
             storage_path = data['storage_path']
             try:
                 content_bytes = await self.ap.rag_runtime_service.get_file_stream(storage_path)
-                file_key = await self.send_file(content_bytes, "")
+                file_key = await self.send_file(content_bytes, '')
                 return handler.ActionResponse.success(data={'file_key': file_key})
             except Exception as e:
                 return _make_rag_error_response(e, 'FileServiceError', storage_path=storage_path)

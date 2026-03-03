@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.8.3"
+version = "4.8.6"
 description = "Production-grade platform for building agentic IM bots"
 readme = "README.md"
 license-files = ["LICENSE"]
@@ -71,6 +71,7 @@ dependencies = [
     "boto3>=1.35.0",
     "pymilvus>=2.6.4",
     "pgvector>=0.4.1",
+    "botocore>=1.42.39",
 ]
 keywords = [
     "bot",

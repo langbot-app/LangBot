@@ -1,6 +1,6 @@
 <p align="center">
 <a href="https://langbot.app">
-<img width="130" src="https://docs.langbot.app/langbot-logo.png" alt="LangBot"/>
+<img width="130" src="res/logo-blue.png" alt="LangBot"/>
 </a>
 
 <div align="center">
@@ -19,9 +19,10 @@ English / [简体中文](README_CN.md) / [繁體中文](README_TW.md) / [日本�
 [![GitHub stars](https://img.shields.io/github/stars/langbot-app/LangBot?style=social)](https://github.com/langbot-app/LangBot/stargazers)
 
 <a href="https://langbot.app">Website</a> ｜
-<a href="https://docs.langbot.app/en/insight/features.html">Features</a> ｜
-<a href="https://docs.langbot.app/en/insight/guide.html">Docs</a> ｜
-<a href="https://docs.langbot.app/en/tags/readme.html">API</a> ｜
+<a href="https://docs.langbot.app/en/insight/features">Features</a> ｜
+<a href="https://docs.langbot.app/en/insight/guide">Docs</a> ｜
+<a href="https://docs.langbot.app/en/tags/readme">API</a> ｜
+<a href="https://space.langbot.app/cloud">Cloud</a> ｜
 <a href="https://space.langbot.app">Plugin Market</a> ｜
 <a href="https://langbot.featurebase.app/roadmap">Roadmap</a>
 
@@ -31,24 +32,28 @@ English / [简体中文](README_CN.md) / [繁體中文](README_TW.md) / [日本�
 
 ---
 
-## 🚀 What is LangBot?
+## What is LangBot?
 
 LangBot is an **open-source, production-grade platform** for building AI-powered instant messaging bots. It connects Large Language Models (LLMs) to any chat platform, enabling you to create intelligent agents that can converse, execute tasks, and integrate with your existing workflows.
 
 ### Key Capabilities
 
-- **💬 AI Conversations & Agents** — Multi-turn dialogues, tool calling, multi-modal support, streaming output. Built-in RAG (knowledge base) with deep integration to [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io), [Langflow](https://langflow.org).
-- **🤖 Universal IM Platform Support** — One codebase for Discord, Telegram, Slack, LINE, QQ, WeChat, WeCom, Lark, DingTalk, KOOK.
-- **🛠️ Production-Ready** — Access control, rate limiting, sensitive word filtering, comprehensive monitoring, and exception handling. Trusted by enterprises.
-- **🧩 Plugin Ecosystem** — Hundreds of plugins, event-driven architecture, component extensions, and [MCP protocol](https://modelcontextprotocol.io/) support.
-- **😻 Web Management Panel** — Configure, manage, and monitor your bots through an intuitive browser interface. No YAML editing required.
-- **📊 Multi-Pipeline Architecture** — Different bots for different scenarios, with comprehensive monitoring and exception handling.
+- **AI Conversations & Agents** — Multi-turn dialogues, tool calling, multi-modal support, streaming output. Built-in RAG (knowledge base) with deep integration to [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io), [Langflow](https://langflow.org).
+- **Universal IM Platform Support** — One codebase for Discord, Telegram, Slack, LINE, QQ, WeChat, WeCom, Lark, DingTalk, KOOK.
+- **Production-Ready** — Access control, rate limiting, sensitive word filtering, comprehensive monitoring, and exception handling. Trusted by enterprises.
+- **Plugin Ecosystem** — Hundreds of plugins, event-driven architecture, component extensions, and [MCP protocol](https://modelcontextprotocol.io/) support.
+- **Web Management Panel** — Configure, manage, and monitor your bots through an intuitive browser interface. No YAML editing required.
+- **Multi-Pipeline Architecture** — Different bots for different scenarios, with comprehensive monitoring and exception handling.
 
-[→ Learn more about all features](https://docs.langbot.app/en/insight/features.html)
+[→ Learn more about all features](https://docs.langbot.app/en/insight/features)
 
 ---
 
-## 📦 Quick Start
+## Quick Start
+
+### ☁️ LangBot Cloud (Recommended)
+
+**[LangBot Cloud](https://space.langbot.app/cloud)** — Zero deployment, ready to use.
 
 ### One-Line Launch
 
@@ -71,11 +76,11 @@ docker compose up -d
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/en-US/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
-**More options:** [Docker](https://docs.langbot.app/en/deploy/langbot/docker.html) · [Manual](https://docs.langbot.app/en/deploy/langbot/manual.html) · [BTPanel](https://docs.langbot.app/en/deploy/langbot/one-click/bt.html) · [Kubernetes](./docker/README_K8S.md)
+**More options:** [Docker](https://docs.langbot.app/en/deploy/langbot/docker) · [Manual](https://docs.langbot.app/en/deploy/langbot/manual) · [BTPanel](https://docs.langbot.app/en/deploy/langbot/one-click/bt) · [Kubernetes](./docker/README_K8S.md)
 
 ---
 
-## ✨ Supported Platforms
+## Supported Platforms
 
 | Platform | Status | Notes |
 |----------|--------|-------|
@@ -93,7 +98,7 @@ docker compose up -d
 
 ---
 
-## 🤖 Supported LLMs & Integrations
+## Supported LLMs & Integrations
 
 | Provider | Type | Status |
 |----------|------|--------|
@@ -119,11 +124,11 @@ docker compose up -d
 | [接口 AI](https://jiekou.ai/) | Gateway | ✅ |
 | [302.AI](https://share.302.ai/SuTG99) | Gateway | ✅ |
 
-[→ View all integrations](https://docs.langbot.app/en/insight/features.html)
+[→ View all integrations](https://docs.langbot.app/en/insight/features)
 
 ---
 
-## 🌟 Why LangBot?
+## Why LangBot?
 
 | Use Case | How LangBot Helps |
 |----------|-------------------|
@@ -134,7 +139,7 @@ docker compose up -d
 
 ---
 
-## 🎮 Live Demo
+## Live Demo
 
 **Try it now:** https://demo.langbot.dev/
 - Email: `demo@langbot.app`
@@ -144,21 +149,21 @@ docker compose up -d
 
 ---
 
-## 🤝 Community
+## Community
 
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&label=Discord)](https://discord.gg/wdNEHETs87)
 
-- 💬 [Discord Community](https://discord.gg/wdNEHETs87)
+- [Discord Community](https://discord.gg/wdNEHETs87)
 
 ---
 
-## ⭐ Star History
+## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
 
 ---
 
-## 😘 Contributors
+## Contributors
 
 Thanks to all [contributors](https://github.com/langbot-app/LangBot/graphs/contributors) who have helped make LangBot better:
 

@@ -375,12 +375,108 @@ class AiocqhttpAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             self.bot = aiocqhttp.CQHttp()
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
+        # Check if message contains a Forward component
+        forward_msg = message.get_first(platform_message.Forward)
+        if forward_msg:
+            if target_type == 'group':
+                # Send as merged forward message via OneBot API
+                await self._send_forward_message(int(target_id), forward_msg)
+                return
+            else:
+                await self.logger.warning(
+                    f'Forward message is only supported for group targets, got target_type={target_type}. Falling through to normal send.'
+                )
+
         aiocq_msg = (await AiocqhttpMessageConverter.yiri2target(message))[0]
 
         if target_type == 'group':
             await self.bot.send_group_msg(group_id=int(target_id), message=aiocq_msg)
         elif target_type == 'person':
             await self.bot.send_private_msg(user_id=int(target_id), message=aiocq_msg)
+
+    async def _send_forward_message(self, group_id: int, forward: platform_message.Forward):
+        """Send a merged forward message to a group using NapCat extended API."""
+        messages = []
+
+        for node in forward.node_list:
+            # Build content for each node
+            content = []
+            if node.message_chain:
+                for component in node.message_chain:
+                    if isinstance(component, platform_message.Plain):
+                        if component.text:
+                            content.append({'type': 'text', 'data': {'text': component.text}})
+                    elif isinstance(component, platform_message.Image):
+                        img_data = {}
+                        if component.base64:
+                            b64 = component.base64
+                            if b64.startswith('data:'):
+                                b64 = b64.split(',', 1)[-1] if ',' in b64 else b64
+                            img_data['file'] = f'base64://{b64}'
+                        elif component.url:
+                            img_data['file'] = component.url
+                        elif component.path:
+                            img_data['file'] = str(component.path)
+
+                        if img_data:
+                            content.append({'type': 'image', 'data': img_data})
+
+            if not content:
+                continue
+
+            # Build node data - use user_id and nickname format for NapCat
+            user_id = str(node.sender_id) if node.sender_id else str(self.bot_account_id or '10000')
+            node_data = {
+                'type': 'node',
+                'data': {
+                    'user_id': user_id,
+                    'nickname': node.sender_name or '未知',
+                    'content': content,
+                },
+            }
+
+            messages.append(node_data)
+
+        if not messages:
+            return
+
+        # Build the full message payload for NapCat's send_forward_msg API
+        # This matches the format used by GiveMeSetuPlugin
+        bot_id = str(self.bot_account_id) if self.bot_account_id else '10000'
+        payload = {
+            'group_id': group_id,
+            'user_id': bot_id,  # Required by NapCat for display
+            'messages': messages,
+        }
+
+        # Add display settings if available
+        if forward.display:
+            if forward.display.title:
+                payload['news'] = [{'text': forward.display.title}]
+            if forward.display.brief:
+                payload['prompt'] = forward.display.brief
+            if forward.display.summary:
+                payload['summary'] = forward.display.summary
+            if forward.display.source:
+                payload['source'] = forward.display.source
+
+        try:
+            # Use send_forward_msg (NapCat extended API) instead of send_group_forward_msg
+            await self.logger.info(
+                f'Sending forward message to group {group_id} with {len(messages)} nodes, payload keys: {list(payload.keys())}'
+            )
+            result = await self.bot.call_action('send_forward_msg', **payload)
+            await self.logger.info(f'Forward message sent to group {group_id}, result: {result}')
+        except Exception as e:
+            await self.logger.error(f'Failed to send forward message to group {group_id}: {e}')
+            # Fallback: try standard OneBot API with integer group_id
+            try:
+                await self.logger.info('Trying fallback API send_group_forward_msg')
+                await self.bot.call_action('send_group_forward_msg', group_id=group_id, messages=messages)
+                await self.logger.info(f'Forward message sent via fallback API to group {group_id}')
+            except Exception as e2:
+                await self.logger.error(f'Fallback also failed: {e2}')
+                raise
 
     async def reply_message(
         self,

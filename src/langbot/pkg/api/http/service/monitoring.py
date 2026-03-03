@@ -32,6 +32,7 @@ class MonitoringService:
         user_id: str | None = None,
         runner_name: str | None = None,
         variables: str | None = None,
+        role: str = 'user',
     ) -> str:
         """Record a message"""
         message_id = str(uuid.uuid4())
@@ -50,6 +51,7 @@ class MonitoringService:
             'user_id': user_id,
             'runner_name': runner_name,
             'variables': variables,
+            'role': role,
         }
 
         await self.ap.persistence_mgr.execute_async(
@@ -355,6 +357,7 @@ class MonitoringService:
         self,
         bot_ids: list[str] | None = None,
         pipeline_ids: list[str] | None = None,
+        session_ids: list[str] | None = None,
         start_time: datetime.datetime | None = None,
         end_time: datetime.datetime | None = None,
         limit: int = 100,
@@ -367,6 +370,8 @@ class MonitoringService:
             conditions.append(persistence_monitoring.MonitoringMessage.bot_id.in_(bot_ids))
         if pipeline_ids:
             conditions.append(persistence_monitoring.MonitoringMessage.pipeline_id.in_(pipeline_ids))
+        if session_ids:
+            conditions.append(persistence_monitoring.MonitoringMessage.session_id.in_(session_ids))
         if start_time:
             conditions.append(persistence_monitoring.MonitoringMessage.timestamp >= start_time)
         if end_time:

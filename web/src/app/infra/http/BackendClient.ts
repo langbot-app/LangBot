@@ -337,6 +337,64 @@ export class BackendClient extends BaseHttpClient {
     return this.post(`/api/v1/platform/bots/${botId}/logs`, request);
   }
 
+  public getBotSessions(
+    botId: string,
+    limit: number = 100,
+    offset: number = 0,
+  ): Promise<{
+    sessions: Array<{
+      session_id: string;
+      bot_id: string;
+      bot_name: string;
+      pipeline_id: string;
+      pipeline_name: string;
+      message_count: number;
+      start_time: string;
+      last_activity: string;
+      is_active: boolean;
+      platform: string | null;
+      user_id: string | null;
+    }>;
+    total: number;
+  }> {
+    const queryParams = new URLSearchParams();
+    queryParams.append('botId', botId);
+    queryParams.append('limit', limit.toString());
+    queryParams.append('offset', offset.toString());
+    return this.get(`/api/v1/monitoring/sessions?${queryParams.toString()}`);
+  }
+
+  public getSessionMessages(
+    sessionId: string,
+    limit: number = 200,
+    offset: number = 0,
+  ): Promise<{
+    messages: Array<{
+      id: string;
+      timestamp: string;
+      bot_id: string;
+      bot_name: string;
+      pipeline_id: string;
+      pipeline_name: string;
+      message_content: string;
+      session_id: string;
+      status: string;
+      level: string;
+      platform: string | null;
+      user_id: string | null;
+      runner_name: string | null;
+      variables: string | null;
+      role: string | null;
+    }>;
+    total: number;
+  }> {
+    const queryParams = new URLSearchParams();
+    queryParams.append('sessionId', sessionId);
+    queryParams.append('limit', limit.toString());
+    queryParams.append('offset', offset.toString());
+    return this.get(`/api/v1/monitoring/messages?${queryParams.toString()}`);
+  }
+
   // ============ File management API ============
   public uploadDocumentFile(file: File): Promise<{ file_id: string }> {
     const formData = new FormData();
@@ -915,4 +973,50 @@ export class BackendClient extends BaseHttpClient {
 
     return this.get(`/api/v1/monitoring/overview?${queryParams.toString()}`);
   }
+
+  // ============ Survey API ============
+  public getSurveyPending(): Promise<{
+    survey: {
+      survey_id: string;
+      version: number;
+      title: Record<string, string>;
+      description: Record<string, string>;
+      questions: SurveyQuestion[];
+    } | null;
+  }> {
+    return this.get('/api/v1/survey/pending');
+  }
+
+  public submitSurveyResponse(
+    surveyId: string,
+    answers: Record<string, unknown>,
+    completed: boolean = true,
+  ): Promise<object> {
+    return this.post('/api/v1/survey/respond', {
+      survey_id: surveyId,
+      answers,
+      completed,
+    });
+  }
+
+  public dismissSurvey(surveyId: string): Promise<object> {
+    return this.post('/api/v1/survey/dismiss', { survey_id: surveyId });
+  }
+}
+
+export interface SurveyQuestion {
+  id: string;
+  type: 'single_select' | 'multi_select' | 'text';
+  title: Record<string, string>;
+  subtitle?: Record<string, string>;
+  required: boolean;
+  options?: SurveyOption[];
+  placeholder?: Record<string, string>;
+  max_length?: number;
+}
+
+export interface SurveyOption {
+  id: string;
+  label: Record<string, string>;
+  has_input?: boolean;
 }

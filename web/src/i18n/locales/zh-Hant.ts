@@ -265,6 +265,25 @@ const zhHant = {
     allLevels: '全部級別',
     selectLevel: '選擇級別',
     levelsSelected: '個級別已選',
+    sessionMonitor: {
+      title: '會話監控',
+      sessions: '會話列表',
+      noSessions: '暫無會話',
+      selectSession: '選擇一個會話查看訊息',
+      noMessages: '該會話暫無訊息',
+      messages: '條訊息',
+      messageCount: '{{count}} 條訊息',
+      loading: '載入中...',
+      loadingSessions: '載入會話中...',
+      loadingMessages: '載入訊息中...',
+      user: '用戶',
+      variables: '變數',
+      platform: '平台',
+      lastActive: '最近活躍',
+      refresh: '重新整理',
+      active: '活躍',
+      inactive: '不活躍',
+    },
   },
   plugins: {
     title: '外掛擴展',
@@ -559,6 +578,7 @@ const zhHant = {
     copyConfirmTitle: '確認複製',
     copyConfirmation:
       '確定要複製這個流程線嗎？複製將創建一個包含完整配置的新流程線。',
+    unsavedChanges: '有未儲存的變更',
     extensions: {
       title: '擴展集成',
       loadError: '載入插件清單失敗',

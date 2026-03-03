@@ -270,6 +270,25 @@ const zhHans = {
     viewDetails: '详情',
     collapse: '收起',
     imagesAttached: '张图片',
+    sessionMonitor: {
+      title: '会话监控',
+      sessions: '会话列表',
+      noSessions: '暂无会话',
+      selectSession: '选择一个会话查看消息',
+      noMessages: '该会话暂无消息',
+      messages: '条消息',
+      messageCount: '{{count}} 条消息',
+      loading: '加载中...',
+      loadingSessions: '加载会话中...',
+      loadingMessages: '加载消息中...',
+      user: '用户',
+      variables: '变量',
+      platform: '平台',
+      lastActive: '最近活跃',
+      refresh: '刷新',
+      active: '活跃',
+      inactive: '不活跃',
+    },
   },
   plugins: {
     title: '插件扩展',
@@ -566,6 +585,7 @@ const zhHans = {
     copyConfirmTitle: '确认复制',
     copyConfirmation:
       '确定要复制这个流水线吗？复制将创建一个包含完整配置的新流水线。',
+    unsavedChanges: '有未保存的更改',
     extensions: {
       title: '扩展集成',
       loadError: '加载插件列表失败',

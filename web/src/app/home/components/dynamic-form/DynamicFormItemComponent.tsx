@@ -171,7 +171,12 @@ export default function DynamicFormItemComponent({
       return <Textarea {...field} className="min-h-[120px]" />;
 
     case DynamicFormItemType.BOOLEAN:
-      return <Switch checked={field.value} onCheckedChange={field.onChange} />;
+      return (
+        <Switch
+          checked={field.value ?? false}
+          onCheckedChange={field.onChange}
+        />
+      );
 
     case DynamicFormItemType.STRING_ARRAY:
       return (
@@ -222,7 +227,7 @@ export default function DynamicFormItemComponent({
 
     case DynamicFormItemType.SELECT:
       return (
-        <Select value={field.value} onValueChange={field.onChange}>
+        <Select value={field.value ?? ''} onValueChange={field.onChange}>
           <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
             <SelectValue placeholder={t('common.select')} />
           </SelectTrigger>

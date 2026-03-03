@@ -92,9 +92,9 @@ export default function KBForm({
   const [configSettings, setConfigSettings] = useState<Record<string, unknown>>(
     {},
   );
-  const [retrievalSettings, setRetrievalSettings] = useState<Record<string, unknown>>(
-    {},
-  );
+  const [retrievalSettings, setRetrievalSettings] = useState<
+    Record<string, unknown>
+  >({});
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -237,7 +237,9 @@ export default function KBForm({
   const configFormItems = parseCreationSchema(selectedEngine?.creation_schema);
 
   // Convert retrieval schema to dynamic form items
-  const retrievalFormItems = parseCreationSchema(selectedEngine?.retrieval_schema);
+  const retrievalFormItems = parseCreationSchema(
+    selectedEngine?.retrieval_schema,
+  );
 
   // Show loading state
   if (loading) {

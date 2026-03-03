@@ -1,6 +1,6 @@
 <p align="center">
 <a href="https://langbot.app">
-<img width="130" src="https://docs.langbot.app/langbot-logo.png" alt="LangBot"/>
+<img width="130" src="res/logo-blue.png" alt="LangBot"/>
 </a>
 
 <div align="center">
@@ -33,24 +33,28 @@
 
 ---
 
-## 🚀 什麼是 LangBot？
+## 什麼是 LangBot？
 
 LangBot 是一個**開源的生產級平台**，用於建構 AI 驅動的即時通訊機器人。它將大語言模型（LLM）連接到各種聊天平台，幫助你創建能夠對話、執行任務、並整合到現有工作流程中的智能 Agent。
 
 ### 核心能力
 
-- **💬 AI 對話與 Agent** — 多輪對話、工具調用、多模態、流式輸出。自帶 RAG（知識庫），深度整合 [Dify](https://dify.ai)、[Coze](https://coze.com)、[n8n](https://n8n.io)、[Langflow](https://langflow.org) 等 LLMOps 平台。
-- **🤖 全平台支援** — 一套程式碼，覆蓋 QQ、微信、企業微信、飛書、釘釘、Discord、Telegram、Slack、LINE、KOOK 等平台。
-- **🛠️ 生產就緒** — 存取控制、限速、敏感詞過濾、全面監控與異常處理，已被多家企業採用。
-- **🧩 外掛生態** — 數百個外掛，事件驅動架構，組件擴展，適配 [MCP 協議](https://modelcontextprotocol.io/)。
-- **😻 Web 管理面板** — 透過瀏覽器直觀地配置、管理和監控機器人，無需手動編輯設定檔。
-- **📊 多流水線架構** — 不同機器人用於不同場景，具備全面的監控和異常處理能力。
+- **AI 對話與 Agent** — 多輪對話、工具調用、多模態、流式輸出。自帶 RAG（知識庫），深度整合 [Dify](https://dify.ai)、[Coze](https://coze.com)、[n8n](https://n8n.io)、[Langflow](https://langflow.org) 等 LLMOps 平台。
+- **全平台支援** — 一套程式碼，覆蓋 QQ、微信、企業微信、飛書、釘釘、Discord、Telegram、Slack、LINE、KOOK 等平台。
+- **生產就緒** — 存取控制、限速、敏感詞過濾、全面監控與異常處理，已被多家企業採用。
+- **外掛生態** — 數百個外掛，事件驅動架構，組件擴展，適配 [MCP 協議](https://modelcontextprotocol.io/)。
+- **Web 管理面板** — 透過瀏覽器直觀地配置、管理和監控機器人，無需手動編輯設定檔。
+- **多流水線架構** — 不同機器人用於不同場景，具備全面的監控和異常處理能力。
 
 [→ 了解更多功能特性](https://docs.langbot.app/zh/insight/features.html)
 
 ---
 
-## 📦 快速開始
+## 快速開始
+
+### ☁️ LangBot Cloud（推薦）
+
+**[LangBot Cloud](https://space.langbot.app/cloud)** — 免部署，開箱即用。
 
 ### 一鍵啟動
 
@@ -77,7 +81,7 @@ docker compose up -d
 
 ---
 
-## ✨ 支援的平台
+## 支援的平台
 
 | 平台 | 狀態 | 備註 |
 |------|------|------|
@@ -95,7 +99,7 @@ docker compose up -d
 
 ---
 
-## 🤖 支援的大模型與整合
+## 支援的大模型與整合
 
 | 提供商 | 類型 | 狀態 |
 |--------|------|------|
@@ -139,7 +143,7 @@ docker compose up -d
 
 ---
 
-## 🌟 為什麼選擇 LangBot？
+## 為什麼選擇 LangBot？
 
 | 使用場景 | LangBot 如何幫助 |
 |----------|------------------|
@@ -150,7 +154,7 @@ docker compose up -d
 
 ---
 
-## 🎮 線上演示
+## 線上演示
 
 **立即體驗：** https://demo.langbot.dev/
 - 信箱：`demo@langbot.app`
@@ -160,23 +164,23 @@ docker compose up -d
 
 ---
 
-## 🤝 社群
+## 社群
 
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&label=Discord)](https://discord.gg/wdNEHETs87)
 [![QQ Group](https://img.shields.io/badge/%E7%A4%BE%E5%8C%BAQQ%E7%BE%A4-966235608-blue)](https://qm.qq.com/q/JLi38whHum)
 
-- 💬 [Discord 社群](https://discord.gg/wdNEHETs87)
-- 💬 [QQ 社群群](https://qm.qq.com/q/JLi38whHum)
+- [Discord 社群](https://discord.gg/wdNEHETs87)
+- [QQ 社群群](https://qm.qq.com/q/JLi38whHum)
 
 ---
 
-## ⭐ Star 趨勢
+## Star 趨勢
 
 [![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
 
 ---
 
-## 😘 貢獻者
+## 貢獻者
 
 感謝所有[貢獻者](https://github.com/langbot-app/LangBot/graphs/contributors)對 LangBot 的幫助：
 
