@@ -150,11 +150,12 @@ class ChatMessageHandler(handler.MessageHandler):
                 traceback.print_exc()
 
                 hide_exception_info = query.pipeline_config['output']['misc']['hide-exception']
+                block_failed_output = query.pipeline_config['output']['misc'].get('block-failed-request-output', False)
 
                 yield entities.StageProcessResult(
                     result_type=entities.ResultType.INTERRUPT,
                     new_query=query,
-                    user_notice='请求失败' if hide_exception_info else f'{e}',
+                    user_notice=None if block_failed_output else ('请求失败' if hide_exception_info else f'{e}'),
                     error_notice=f'{e}',
                     debug_notice=traceback.format_exc(),
                 )
