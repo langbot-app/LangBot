@@ -185,10 +185,23 @@ class ChatMessageHandler(handler.MessageHandler):
 
                     pipeline_plugins = query.variables.get('_pipeline_bound_plugins', None)
 
+                    runner_url = None
+                    if runner and hasattr(runner, 'pipeline_config'):
+                        ai_config = runner.pipeline_config.get('ai', {})
+                        if runner_name == 'dify-service-api':
+                            runner_url = ai_config.get('dify-service-api', {}).get('base-url')
+                        elif runner_name == 'n8n-service-api':
+                            runner_url = ai_config.get('n8n-service-api', {}).get('webhook-url')
+                        elif runner_name == 'coze-api':
+                            runner_url = ai_config.get('coze-api', {}).get('api-base')
+                        elif runner_name == 'langflow-api':
+                            runner_url = ai_config.get('langflow-api', {}).get('base-url')
+
                     payload = {
                         'query_id': query.query_id,
                         'adapter': adapter_name,
                         'runner': runner_name,
+                        'runner_url': runner_url,
                         'duration_ms': duration_ms,
                         'model_name': model_name,
                         'version': constants.semantic_version,
