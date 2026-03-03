@@ -119,3 +119,13 @@ stages:
         type: boolean
         required: true
         default: false
+      - name: block-failed-request-output
+        label:
+          en_US: Block Failed Request Output
+          zh_Hans: 阻止返回请求失败
+        description:
+          en_US: If enabled, when an AI request fails, no message will be sent to the user instead of the default failure notice.
+          zh_Hans: 启用后，当 AI 请求失败时，不向用户发送任何消息，而非默认的请求失败提示
+        type: boolean
+        required: true
+        default: false
