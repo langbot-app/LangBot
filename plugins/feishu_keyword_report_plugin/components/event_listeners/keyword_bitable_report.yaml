@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: EventListener
+metadata:
+  name: keyword_bitable_report
+  label:
+    en_US: KeywordBitableReport
+    zh_Hans: 口令查询飞书表
+  description:
+    en_US: Listen keyword commands and reply latest sintering batch/compression from Feishu Bitable.
+    zh_Hans: 监听口令并回复飞书多维表中的最新出窑批次与烧结压实。
+spec:
+execution:
+  python:
+    path: keyword_bitable_report.py
+    attr: KeywordBitableReportListener
+

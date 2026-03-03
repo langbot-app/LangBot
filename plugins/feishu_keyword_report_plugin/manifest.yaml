@@ -1,0 +1,146 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: local
+  name: feishu_keyword_report_plugin
+  repository: "https://open.feishu.cn/"
+  version: 0.1.0
+  description:
+    en_US: Reply keyword command with latest sintering batch/compression from Feishu Bitable.
+    zh_Hans: 通过口令查询飞书多维表，回复最新出窑批次及烧结压实。
+  label:
+    en_US: Feishu Keyword Report Plugin
+    zh_Hans: 飞书口令查询插件
+  icon: assets/icon.svg
+spec:
+  config:
+    - name: app_id
+      label:
+        en_US: App ID
+        zh_Hans: App ID
+      type: string
+      required: true
+      default: ""
+    - name: app_secret
+      label:
+        en_US: App Secret
+        zh_Hans: App Secret
+      type: string
+      required: true
+      default: ""
+    - name: token_endpoint
+      label:
+        en_US: Token Endpoint
+        zh_Hans: Token Endpoint
+      type: string
+      required: false
+      default: "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
+    - name: timeout_seconds
+      label:
+        en_US: Timeout Seconds
+        zh_Hans: 超时秒数
+      type: string
+      required: false
+      default: "20"
+    - name: bitable_app_token
+      label:
+        en_US: Bitable App Token
+        zh_Hans: 多维表格 App Token
+      type: string
+      required: true
+      default: ""
+    - name: keyword_commands
+      label:
+        en_US: Keyword Commands
+        zh_Hans: 触发口令
+      description:
+        en_US: Comma separated commands, e.g. 摸料,出窑.
+        zh_Hans: 逗号分隔口令，例如 摸料,出窑。
+      type: string
+      required: false
+      default: "摸料"
+    - name: sintering_table_ids
+      label:
+        en_US: Sintering Table IDs
+        zh_Hans: 烧结表ID列表
+      description:
+        en_US: Comma separated table IDs. Highest priority.
+        zh_Hans: 逗号分隔的 table_id，优先级最高。
+      type: string
+      required: false
+      default: ""
+    - name: sintering_table_names
+      label:
+        en_US: Sintering Table Names
+        zh_Hans: 烧结表名列表
+      description:
+        en_US: Comma separated table names to resolve when IDs are not configured.
+        zh_Hans: 未配置 table_id 时按表名查找（逗号分隔）。
+      type: string
+      required: false
+      default: "A线烧结汇总,B线烧结汇总"
+    - name: route_field
+      label:
+        en_US: Route Field
+        zh_Hans: 路由字段名
+      type: string
+      required: false
+      default: "路由"
+    - name: batch_field
+      label:
+        en_US: Batch Field
+        zh_Hans: 批次字段名
+      type: string
+      required: false
+      default: "批次号"
+    - name: message_time_field
+      label:
+        en_US: Message Time Field
+        zh_Hans: 消息时间字段名
+      type: string
+      required: false
+      default: "消息时间"
+    - name: detail_max_fields
+      label:
+        en_US: Detail Max Fields
+        zh_Hans: 明细字段上限
+      type: string
+      required: false
+      default: "4"
+    - name: scan_limit
+      label:
+        en_US: Scan Limit
+        zh_Hans: 扫描上限
+      type: string
+      required: false
+      default: "1000"
+    - name: reply_in_group
+      label:
+        en_US: Reply In Group
+        zh_Hans: 允许群聊回复
+      type: boolean
+      required: false
+      default: true
+    - name: reply_in_person
+      label:
+        en_US: Reply In Person
+        zh_Hans: 允许私聊回复
+      type: boolean
+      required: false
+      default: true
+    - name: no_data_text
+      label:
+        en_US: No Data Text
+        zh_Hans: 无数据回复文案
+      type: string
+      required: false
+      default: "未查到出窑批次或烧结压实数据。"
+  components:
+    EventListener:
+      fromDirs:
+        - path: components/event_listeners/
+execution:
+  python:
+    path: main.py
+    attr: FeishuKeywordReportPlugin
+
