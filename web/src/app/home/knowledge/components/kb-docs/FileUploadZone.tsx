@@ -44,7 +44,8 @@ export default function FileUploadZone({
   // Fine-grained MIME type declaration (e.g. supported_parse_mime_types on the engine)
   // would require changes across the SDK, backend, and frontend prop chain;
   // using an engine-level capability flag keeps the change minimal.
-  const ragEngineCanParse = ragEngineCapabilities?.includes('doc_parsing') ?? false;
+  const ragEngineCanParse =
+    ragEngineCapabilities?.includes('doc_parsing') ?? false;
 
   // When a file is selected, check for available parsers
   useEffect(() => {
@@ -130,10 +131,21 @@ export default function FileUploadZone({
 
   // Auto-upload if RAG engine can parse and no external parsers available
   useEffect(() => {
-    if (pendingFile && !loadingParsers && ragEngineCanParse && availableParsers.length === 0) {
+    if (
+      pendingFile &&
+      !loadingParsers &&
+      ragEngineCanParse &&
+      availableParsers.length === 0
+    ) {
       doUpload(pendingFile);
     }
-  }, [pendingFile, loadingParsers, ragEngineCanParse, availableParsers, doUpload]);
+  }, [
+    pendingFile,
+    loadingParsers,
+    ragEngineCanParse,
+    availableParsers,
+    doUpload,
+  ]);
 
   const handleConfirmUpload = useCallback(() => {
     if (!pendingFile) return;
@@ -185,7 +197,9 @@ export default function FileUploadZone({
 
   // Show parser selection UI when there are choices to make, or when no parser is available
   const showParserSelector =
-    pendingFile && !loadingParsers && (availableParsers.length > 0 || !ragEngineCanParse);
+    pendingFile &&
+    !loadingParsers &&
+    (availableParsers.length > 0 || !ragEngineCanParse);
 
   const noParserAvailable = !ragEngineCanParse && availableParsers.length === 0;
 
@@ -236,11 +250,7 @@ export default function FileUploadZone({
               </div>
             )}
             <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCancelUpload}
-              >
+              <Button variant="outline" size="sm" onClick={handleCancelUpload}>
                 {t('knowledge.documentsTab.cancelUpload')}
               </Button>
               {!noParserAvailable && (

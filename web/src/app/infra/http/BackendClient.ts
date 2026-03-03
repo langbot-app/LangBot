@@ -477,9 +477,7 @@ export class BackendClient extends BaseHttpClient {
 
   // ============ Parsers API ============
   public listParsers(mimeType?: string): Promise<ApiRespParsers> {
-    const params = mimeType
-      ? `?mime_type=${encodeURIComponent(mimeType)}`
-      : '';
+    const params = mimeType ? `?mime_type=${encodeURIComponent(mimeType)}` : '';
     return this.get(`/api/v1/knowledge/parsers${params}`);
   }
 

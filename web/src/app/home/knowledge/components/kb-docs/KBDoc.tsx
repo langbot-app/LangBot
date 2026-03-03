@@ -7,7 +7,15 @@ import FileUploadZone from './FileUploadZone';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 
-export default function KBDoc({ kbId, ragEngineName, ragEngineCapabilities }: { kbId: string; ragEngineName?: I18nObject; ragEngineCapabilities?: string[] }) {
+export default function KBDoc({
+  kbId,
+  ragEngineName,
+  ragEngineCapabilities,
+}: {
+  kbId: string;
+  ragEngineName?: I18nObject;
+  ragEngineCapabilities?: string[];
+}) {
   const [documentsList, setDocumentsList] = useState<DocumentFile[]>([]);
   const { t } = useTranslation();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);

@@ -228,7 +228,11 @@ export default function KBDetailDialog({
                   />
                 )}
                 {activeMenu === 'documents' && hasDocumentCapability() && (
-                  <KBDoc kbId={kbId} ragEngineName={kbInfo?.rag_engine?.name} ragEngineCapabilities={kbInfo?.rag_engine?.capabilities} />
+                  <KBDoc
+                    kbId={kbId}
+                    ragEngineName={kbInfo?.rag_engine?.name}
+                    ragEngineCapabilities={kbInfo?.rag_engine?.capabilities}
+                  />
                 )}
                 {activeMenu === 'retrieve' && (
                   <KBRetrieveGeneric
