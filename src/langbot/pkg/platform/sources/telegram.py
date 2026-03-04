@@ -1,4 +1,5 @@
 from __future__ import annotations
+import time
 
 
 import telegram
@@ -10,7 +11,6 @@ import typing
 import traceback
 import base64
 import pydantic
-import random
 
 from langbot.pkg.utils import httpclient
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
@@ -272,7 +272,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         message_thread_id = update.message.message_thread_id
 
         if chat_type == 'private':
-            draft_id = random.randint(1, 1000000)
+            draft_id = int(time.time() * 1000)
             self.msg_stream_id[message_id] = ('private', draft_id)
 
             args = self._build_message_args(chat_id, 'Thinking...', message_thread_id, draft_id=draft_id)
@@ -315,6 +315,10 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if chat_mode == 'private':
             args = self._build_message_args(chat_id, content, message_thread_id, draft_id=draft_id)
             await self.bot.send_message_draft(**args)
+            if is_final and bot_message.tool_calls is None:
+                del args['draft_id']
+                await self.bot.send_message(**args)
+                self.msg_stream_id.pop(message_id)
         else:
             stream_id = draft_id
             if (msg_seq - 1) % 8 == 0 or is_final:
@@ -327,8 +331,8 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     args['parse_mode'] = 'MarkdownV2'
                 await self.bot.edit_message_text(**args)
 
-        if is_final and bot_message.tool_calls is None:
-            self.msg_stream_id.pop(message_id)
+            if is_final and bot_message.tool_calls is None:
+                self.msg_stream_id.pop(message_id)
 
     def get_launcher_id(self, event: platform_events.MessageEvent) -> str | None:
         if not isinstance(event.source_platform_object, Update):
