@@ -870,12 +870,18 @@ class AutoProcessToBitableListener(EventListener):
         required_params = {"开度", "进口温度", "出口温度", "雾化轮转速", "水分"}
 
         records: list[ParsedRecord] = []
-        for match in main_regex.finditer(normalized_text):
+        batch_matches = list(main_regex.finditer(normalized_text))
+        for idx, match in enumerate(batch_matches):
             line = str(match.group(1)).upper()
             batch_id = self._normalize_dash(str(match.group(2))).upper().strip()
             batch_id = re.sub(r"^(S\d+)-QQT-(D[AB]\d{4}-\d+(?:-?[AB]\d)?)$", r"\1-\2", batch_id, flags=re.IGNORECASE)
+
+            block_start = match.end()
+            block_end = batch_matches[idx + 1].start() if idx + 1 < len(batch_matches) else len(normalized_text)
+            block_text = normalized_text[block_start:block_end]
+
             fields: dict[str, Any] = {}
-            for key, value in params_regex.findall(normalized_text):
+            for key, value in params_regex.findall(block_text):
                 if key in required_params:
                     try:
                         fields[key] = float(value)
@@ -966,23 +972,29 @@ class AutoProcessToBitableListener(EventListener):
             ("BL总量(kg)", re.compile(r"BL(?:总量)?\s*[:：]?\s*(\d+\.?\d*)\s*(?:kg)?", re.IGNORECASE)),
         ]
 
-        extracted_values: dict[str, Any] = {}
-        for field, pattern in value_regexes:
-            match = pattern.search(normalized_text)
-            if match:
-                try:
-                    extracted_values[field] = float(match.group(1))
-                except Exception:
-                    extracted_values[field] = match.group(1)
-
-        if not extracted_values:
-            return []
-
         records: list[ParsedRecord] = []
-        for match in batch_regex.finditer(normalized_text):
+        batch_matches = list(batch_regex.finditer(normalized_text))
+        for idx, match in enumerate(batch_matches):
             batch_id = self._normalize_dash(str(match.group(1))).upper().strip()
             line = "A" if "-DA" in batch_id else "B" if "-DB" in batch_id else "UNKNOWN"
-            fields = dict(extracted_values)
+
+            block_start = match.end()
+            block_end = batch_matches[idx + 1].start() if idx + 1 < len(batch_matches) else len(normalized_text)
+            block_text = normalized_text[block_start:block_end]
+
+            fields: dict[str, Any] = {}
+            for field_name, pattern in value_regexes:
+                value_match = pattern.search(block_text)
+                if not value_match:
+                    continue
+                try:
+                    fields[field_name] = float(value_match.group(1))
+                except Exception:
+                    fields[field_name] = value_match.group(1)
+
+            if not fields:
+                continue
+
             fields["消息时间"] = message_time
             route_key = f"feeding.{line}" if line in {"A", "B"} else "feeding"
             records.append(
@@ -1351,7 +1363,13 @@ class AutoProcessToBitableListener(EventListener):
                 continue
         return values
 
-    def _parse_particle_size(self, text: str, message_time: str) -> list[ParsedRecord]:
+    def _parse_particle_size(
+        self,
+        text: str,
+        message_time: str,
+        *,
+        allow_empty_d_values: bool = False,
+    ) -> list[ParsedRecord]:
         if not self._process_switch("particle_size", True):
             return []
 
@@ -1418,7 +1436,7 @@ class AutoProcessToBitableListener(EventListener):
             d_values = self._extract_particle_d_values(block_text)
             if not d_values and len(matches) == 1:
                 d_values = dict(whole_d_values)
-            if not d_values:
+            if not d_values and not allow_empty_d_values:
                 continue
 
             fields: dict[str, Any] = {
@@ -1751,6 +1769,21 @@ class AutoProcessToBitableListener(EventListener):
             return True
         return False
 
+    @staticmethod
+    def _is_record_id_not_found_error(detail: str) -> bool:
+        text = str(detail or "").strip().lower()
+        if not text:
+            return False
+        if "recordidnotfound" in text:
+            return True
+        if "record id not found" in text:
+            return True
+        if "record_id not found" in text:
+            return True
+        if "record not found" in text:
+            return True
+        return False
+
     def _invalidate_table_runtime_cache(self, route_key: str, table_id: str) -> None:
         self._route_table_cache.pop(route_key, None)
         self._route_table_override.pop(route_key, None)
@@ -2057,14 +2090,21 @@ class AutoProcessToBitableListener(EventListener):
             err_text = self._truncate_text("; ".join(errors), 1000)
             await self._send_feedback(event_ctx, f"撤回处理失败: {err_text}", is_error=True)
 
-    async def _find_existing_record_id(self, table_id: str, match_fields: dict[str, str]) -> str:
+    async def _find_existing_record_id(
+        self,
+        table_id: str,
+        match_fields: dict[str, str],
+        *,
+        use_cache: bool = True,
+    ) -> str:
         if not match_fields:
             return ""
 
         cache_key = self._build_record_lookup_cache_key(table_id, match_fields)
-        cached = self._record_lookup_cache.get(cache_key, "")
-        if cached:
-            return cached
+        if use_cache:
+            cached = self._record_lookup_cache.get(cache_key, "")
+            if cached:
+                return cached
 
         app_token = self._get_str_config("bitable_app_token", "")
         if not app_token:
@@ -2167,12 +2207,37 @@ class AutoProcessToBitableListener(EventListener):
             if ok:
                 cache_key = self._build_record_lookup_cache_key(table_id, match_fields)
                 self._record_lookup_cache[cache_key] = existing_id
-            return ok, detail
+                return ok, detail
+
+            if not self._is_record_id_not_found_error(detail):
+                return ok, detail
+
+            cache_key = self._build_record_lookup_cache_key(table_id, match_fields)
+            self._record_lookup_cache.pop(cache_key, None)
+
+            try:
+                refreshed_existing_id = await self._find_existing_record_id(
+                    table_id,
+                    match_fields,
+                    use_cache=False,
+                )
+            except Exception as exc:
+                return False, f"refresh existing record failed: {exc}"
+
+            if refreshed_existing_id:
+                ok_retry, detail_retry = await self._update_record_to_bitable(table_id, refreshed_existing_id, fields)
+                if ok_retry:
+                    self._record_lookup_cache[cache_key] = refreshed_existing_id
+                    return ok_retry, detail_retry
+                if not self._is_record_id_not_found_error(detail_retry):
+                    return ok_retry, detail_retry
+                self._record_lookup_cache.pop(cache_key, None)
 
         ok, detail = await self._write_record_to_bitable(table_id, fields)
         if ok:
             cache_key = self._build_record_lookup_cache_key(table_id, match_fields)
-            self._record_lookup_cache[cache_key] = detail
+            if detail:
+                self._record_lookup_cache[cache_key] = detail
         return ok, detail
 
     @staticmethod
@@ -2258,6 +2323,221 @@ class AutoProcessToBitableListener(EventListener):
         records.extend(self._parse_pure_water(full_text, message_time))
         return records
 
+    @staticmethod
+    def _particle_d_labels() -> tuple[str, str, str, str]:
+        return ("D10", "D50", "D90", "D99")
+
+    def _extract_particle_d_values_from_fields(self, fields: dict[str, Any]) -> dict[str, Any]:
+        d_values: dict[str, Any] = {}
+        labels = self._particle_d_labels()
+
+        for label in labels:
+            if label in fields:
+                d_values[label] = fields[label]
+
+        for key, value in fields.items():
+            upper_key = str(key).upper()
+            for label in labels:
+                if upper_key.endswith(label) and label not in d_values:
+                    d_values[label] = value
+        return d_values
+
+    def _has_particle_d_values_in_fields(self, fields: dict[str, Any]) -> bool:
+        return bool(self._extract_particle_d_values_from_fields(fields))
+
+    def _resolve_fs_d_prefix_from_fields(self, fields: dict[str, Any]) -> str:
+        for prefix in ("粉碎1线", "粉碎2线"):
+            if any(str(key).startswith(prefix) for key in fields.keys()):
+                return prefix
+
+        for candidate in (fields.get("粉碎样品段"), fields.get("样品段")):
+            if candidate is None:
+                continue
+            fs_subline = self._resolve_fs_subline(str(candidate))
+            if fs_subline:
+                return f"粉碎{fs_subline}"
+        return "粉碎"
+
+    def _apply_particle_d_values_to_record_fields(
+        self,
+        record: ParsedRecord,
+        target_fields: dict[str, Any],
+        d_values: dict[str, Any],
+    ) -> None:
+        if not d_values:
+            return
+
+        for label, value in d_values.items():
+            if label not in target_fields:
+                target_fields[label] = value
+
+        process_code = str(target_fields.get("工序代码", "")).strip().upper()
+        is_fs_record = process_code == "FS" or record.route_key.startswith("crushing")
+        if not is_fs_record:
+            return
+
+        prefix = self._resolve_fs_d_prefix_from_fields(target_fields)
+        for label, value in d_values.items():
+            prefixed_key = f"{prefix}{label}"
+            if prefixed_key not in target_fields:
+                target_fields[prefixed_key] = value
+
+    def _supplement_particle_records_with_ocr(
+        self,
+        records: list[ParsedRecord],
+        ocr_text: str,
+        message_time: str,
+    ) -> list[ParsedRecord]:
+        if not ocr_text.strip():
+            return records
+
+        ocr_particle_records = self._parse_particle_size(ocr_text, message_time)
+        ocr_particle_map = {
+            (item.route_key, item.batch_id, item.line): item for item in ocr_particle_records
+        }
+        global_ocr_d_values = self._extract_particle_d_values(ocr_text)
+
+        supplemented: list[ParsedRecord] = []
+        for record in records:
+            if record.scenario != "particle_size":
+                supplemented.append(record)
+                continue
+
+            merged_fields = dict(record.fields)
+            key = (record.route_key, record.batch_id, record.line)
+            source_record = ocr_particle_map.get(key)
+            source_d_values: dict[str, Any] = {}
+            if source_record is not None:
+                source_d_values = self._extract_particle_d_values_from_fields(source_record.fields)
+            if not source_d_values:
+                source_d_values = dict(global_ocr_d_values)
+
+            self._apply_particle_d_values_to_record_fields(record, merged_fields, source_d_values)
+            supplemented.append(
+                ParsedRecord(
+                    scenario=record.scenario,
+                    line=record.line,
+                    batch_id=record.batch_id,
+                    route_key=record.route_key,
+                    fields=merged_fields,
+                )
+            )
+        return supplemented
+
+    def _merge_particle_anchor_records_with_ocr(
+        self,
+        anchor_records: list[ParsedRecord],
+        ocr_text: str,
+        message_time: str,
+    ) -> list[ParsedRecord]:
+        if not anchor_records:
+            return []
+
+        ocr_particle_records = self._parse_particle_size(ocr_text, message_time)
+        ocr_particle_map = {
+            (item.route_key, item.batch_id, item.line): item for item in ocr_particle_records
+        }
+        global_ocr_d_values = self._extract_particle_d_values(ocr_text)
+
+        merged_records: list[ParsedRecord] = []
+        for anchor in anchor_records:
+            merged_fields = dict(anchor.fields)
+            key = (anchor.route_key, anchor.batch_id, anchor.line)
+            source_record = ocr_particle_map.get(key)
+            source_d_values: dict[str, Any] = {}
+            if source_record is not None:
+                source_d_values = self._extract_particle_d_values_from_fields(source_record.fields)
+            if not source_d_values:
+                source_d_values = dict(global_ocr_d_values)
+
+            self._apply_particle_d_values_to_record_fields(anchor, merged_fields, source_d_values)
+            if not self._has_particle_d_values_in_fields(merged_fields):
+                continue
+
+            merged_records.append(
+                ParsedRecord(
+                    scenario=anchor.scenario,
+                    line=anchor.line,
+                    batch_id=anchor.batch_id,
+                    route_key=anchor.route_key,
+                    fields=merged_fields,
+                )
+            )
+        return merged_records
+
+    @staticmethod
+    def _drop_crushing_records_if_particle_exists(records: list[ParsedRecord]) -> list[ParsedRecord]:
+        particle_keys = {
+            (record.route_key, record.batch_id, record.line)
+            for record in records
+            if record.scenario == "particle_size" and record.route_key.startswith("crushing")
+        }
+        if not particle_keys:
+            return records
+
+        filtered: list[ParsedRecord] = []
+        for record in records:
+            key = (record.route_key, record.batch_id, record.line)
+            if record.scenario == "crushing" and key in particle_keys:
+                continue
+            filtered.append(record)
+        return filtered
+
+    def _parse_records_with_text_priority(
+        self,
+        plain_text: str,
+        ocr_text: str,
+        message_time: str,
+    ) -> list[ParsedRecord]:
+        plain_text = plain_text.strip()
+        ocr_text = ocr_text.strip()
+
+        plain_records = self._parse_records(plain_text, message_time) if plain_text else []
+        if plain_records:
+            if ocr_text:
+                plain_records = self._supplement_particle_records_with_ocr(plain_records, ocr_text, message_time)
+
+                plain_particle_anchors = self._parse_particle_size(
+                    plain_text,
+                    message_time,
+                    allow_empty_d_values=True,
+                )
+                existing_particle_keys = {
+                    (item.route_key, item.batch_id, item.line)
+                    for item in plain_records
+                    if item.scenario == "particle_size"
+                }
+                extra_anchors = [
+                    anchor
+                    for anchor in plain_particle_anchors
+                    if (anchor.route_key, anchor.batch_id, anchor.line) not in existing_particle_keys
+                ]
+                if extra_anchors:
+                    plain_records.extend(
+                        self._merge_particle_anchor_records_with_ocr(extra_anchors, ocr_text, message_time)
+                    )
+            return self._drop_crushing_records_if_particle_exists(plain_records)
+
+        if plain_text and ocr_text:
+            plain_particle_anchors = self._parse_particle_size(
+                plain_text,
+                message_time,
+                allow_empty_d_values=True,
+            )
+            if plain_particle_anchors:
+                merged_records = self._merge_particle_anchor_records_with_ocr(
+                    plain_particle_anchors,
+                    ocr_text,
+                    message_time,
+                )
+                if merged_records:
+                    return self._drop_crushing_records_if_particle_exists(merged_records)
+
+        if ocr_text:
+            ocr_records = self._parse_records(ocr_text, message_time)
+            return self._drop_crushing_records_if_particle_exists(ocr_records)
+        return []
+
     async def _handle_normal_message(self, event_ctx: context.EventContext) -> None:
         if self._mark_query_processed(event_ctx):
             return
@@ -2299,7 +2579,7 @@ class AutoProcessToBitableListener(EventListener):
             return
 
         message_time = self._resolve_message_time(event_ctx)
-        records = self._parse_records(full_text, message_time)
+        records = self._parse_records_with_text_priority(plain_text, ocr_text, message_time)
 
         # Fallback using extra rules_json if built-in parsers found nothing.
         if not records:
