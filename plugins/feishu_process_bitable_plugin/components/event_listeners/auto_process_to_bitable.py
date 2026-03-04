@@ -1322,6 +1322,19 @@ class AutoProcessToBitableListener(EventListener):
             return "2线"
         return ""
 
+    @staticmethod
+    def _normalize_sample_suffix_and_hold_minutes(sample_suffix: str, hold_minutes: str) -> tuple[str, str]:
+        normalized_suffix = sample_suffix.strip().upper()
+        normalized_minutes = hold_minutes.strip()
+
+        if normalized_suffix and not normalized_minutes:
+            minute_match = re.fullmatch(r"(\d+)\s*MIN", normalized_suffix, re.IGNORECASE)
+            if minute_match:
+                normalized_suffix = ""
+                normalized_minutes = str(minute_match.group(1)).strip()
+
+        return normalized_suffix, normalized_minutes
+
     def _resolve_particle_route_key(self, process_code: str, line: str) -> str:
         code = process_code.strip().upper()
         line_code = line.strip().upper()
@@ -1403,6 +1416,7 @@ class AutoProcessToBitableListener(EventListener):
             seq = str(match.group(5)).strip()
             sample_suffix = str(match.group(6) or "").upper().strip()
             hold_minutes = str(match.group(7) or "").strip()
+            sample_suffix, hold_minutes = self._normalize_sample_suffix_and_hold_minutes(sample_suffix, hold_minutes)
 
             batch_meta_key = (material_type, process_code, line, date_code, seq)
             if process_code == "XM":
@@ -1544,6 +1558,7 @@ class AutoProcessToBitableListener(EventListener):
             seq = str(match.group(4)).strip()
             sample_suffix = str(match.group(5) or "").upper().strip()
             hold_minutes = str(match.group(6) or "").strip()
+            sample_suffix, hold_minutes = self._normalize_sample_suffix_and_hold_minutes(sample_suffix, hold_minutes)
             solids_raw = str(match.group(7)).strip().replace(",", ".")
 
             batch_meta_key = (material_type, line, date_code, seq)
@@ -2358,6 +2373,27 @@ class AutoProcessToBitableListener(EventListener):
                 return f"粉碎{fs_subline}"
         return "粉碎"
 
+    def _resolve_wet_process_d_prefix_from_fields(self, fields: dict[str, Any]) -> str:
+        for prefix in ("细磨1线", "细磨2线", "细磨", "粗磨", "合批"):
+            if any(str(key).startswith(prefix) for key in fields.keys()):
+                return prefix
+
+        process_name = str(fields.get("最后更新工序", "")).strip()
+        if "细磨" in process_name:
+            for candidate in (fields.get("细磨样品段"), fields.get("样品段")):
+                if candidate is None:
+                    continue
+                xm_subline = self._resolve_xm_subline(str(candidate))
+                if xm_subline:
+                    return f"细磨{xm_subline}"
+            return "细磨"
+        if "粗磨" in process_name:
+            return "粗磨"
+        if "合批" in process_name:
+            return "合批"
+
+        return ""
+
     def _apply_particle_d_values_to_record_fields(
         self,
         record: ParsedRecord,
@@ -2365,6 +2401,15 @@ class AutoProcessToBitableListener(EventListener):
         d_values: dict[str, Any],
     ) -> None:
         if not d_values:
+            return
+
+        is_wet_process_record = record.route_key.startswith("wet_process")
+        if is_wet_process_record:
+            wet_prefix = self._resolve_wet_process_d_prefix_from_fields(target_fields)
+            for label, value in d_values.items():
+                key = f"{wet_prefix}{label}" if wet_prefix else label
+                if key not in target_fields:
+                    target_fields[key] = value
             return
 
         for label, value in d_values.items():

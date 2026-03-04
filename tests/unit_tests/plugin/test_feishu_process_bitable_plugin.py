@@ -184,3 +184,94 @@ def test_particle_text_d_values_not_overridden_by_ocr() -> None:
     assert record.fields["粉碎2线D50"] == 8.8
     assert record.fields["粉碎2线D90"] == 7.7
     assert record.fields["粉碎2线D99"] == 6.6
+
+
+def test_xm_text_anchor_uses_ocr_d_values_on_prefixed_fields() -> None:
+    listener = _build_listener({"merge_particle_size_to_stage_tables": True})
+    plain_text = "S006-XM-DB2602-130-B-160min"
+    ocr_text = "S006-XM-DB2602-130-B-160min D10:1.1 D50:2.2 D90:3.3 D99:4.4"
+
+    records = listener._parse_records_with_text_priority(
+        plain_text,
+        ocr_text,
+        "2026-03-04 08:00:00",
+    )
+    records = listener._merge_records_for_write(records)
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.scenario == "particle_size"
+    assert record.route_key == "wet_process.B"
+    assert record.batch_id == "S006-DB2602-130"
+    assert record.fields["细磨1线D10"] == 1.1
+    assert record.fields["细磨1线D50"] == 2.2
+    assert record.fields["细磨1线D90"] == 3.3
+    assert record.fields["细磨1线D99"] == 4.4
+    assert "D10" not in record.fields
+    assert "D50" not in record.fields
+    assert "D90" not in record.fields
+    assert "D99" not in record.fields
+
+
+def test_xm_text_d_values_not_overridden_by_ocr() -> None:
+    listener = _build_listener({"merge_particle_size_to_stage_tables": True})
+    plain_text = "S006-XM-DB2602-130-B-160min D10:9.9 D50:8.8 D90:7.7 D99:6.6"
+    ocr_text = "S006-XM-DB2602-130-B-160min D10:1.1 D50:2.2 D90:3.3 D99:4.4"
+
+    records = listener._parse_records_with_text_priority(
+        plain_text,
+        ocr_text,
+        "2026-03-04 08:00:00",
+    )
+    records = listener._merge_records_for_write(records)
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.scenario == "particle_size"
+    assert record.route_key == "wet_process.B"
+    assert record.batch_id == "S006-DB2602-130"
+    assert record.fields["细磨1线D10"] == 9.9
+    assert record.fields["细磨1线D50"] == 8.8
+    assert record.fields["细磨1线D90"] == 7.7
+    assert record.fields["细磨1线D99"] == 6.6
+    assert "D10" not in record.fields
+    assert "D50" not in record.fields
+    assert "D90" not in record.fields
+    assert "D99" not in record.fields
+
+
+def test_xm_without_sample_suffix_parses_minutes_as_time_not_sample() -> None:
+    listener = _build_listener({"merge_particle_size_to_stage_tables": True})
+    records = listener._parse_particle_size(
+        "S006-XM-DB2602-130-160min D10:1.1 D50:2.2 D90:3.3 D99:4.4",
+        "2026-03-04 08:00:00",
+    )
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.scenario == "particle_size"
+    assert record.route_key == "wet_process.B"
+    assert record.batch_id == "S006-DB2602-130"
+    assert record.fields["细磨研磨时间(min)"] == 160
+    assert record.fields["细磨D10"] == 1.1
+    assert record.fields["细磨D50"] == 2.2
+    assert record.fields["细磨D90"] == 3.3
+    assert record.fields["细磨D99"] == 4.4
+    assert "细磨样品段" not in record.fields
+
+
+def test_xm_solids_without_sample_suffix_parses_minutes_as_time_not_sample() -> None:
+    listener = _build_listener({"merge_particle_size_to_stage_tables": True})
+    records = listener._parse_xm_solids(
+        "S006-XM-DB2602-130-160min：40.89%DC",
+        "2026-03-04 08:00:00",
+    )
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.scenario == "particle_size"
+    assert record.route_key == "wet_process.B"
+    assert record.batch_id == "S006-DB2602-130"
+    assert record.fields["细磨研磨时间(min)"] == 160
+    assert record.fields["细磨固含量(%)"] == 40.89
+    assert "细磨样品段" not in record.fields
