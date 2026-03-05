@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { I18nObject, KnowledgeBaseFile } from '@/app/infra/entities/api';
+import { KnowledgeBaseFile } from '@/app/infra/entities/api';
+import { I18nObject } from '@/app/infra/entities/common';
 import { columns, DocumentFile } from './documents/columns';
 import { DataTable } from './documents/data-table';
 import FileUploadZone from './FileUploadZone';
