@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+
 import typing
 from typing import Any
 import base64
 import traceback
 
 import sqlalchemy
+
 
 from langbot_plugin.runtime.io import handler
 from langbot_plugin.runtime.io.connection import Connection
@@ -278,6 +280,7 @@ class RuntimeConnectionHandler(handler.Handler):
             target_type = data['target_type']
             target_id = data['target_id']
             message_chain = data['message_chain']
+
 
             # Use custom deserializer that properly handles Forward messages
             message_chain_obj = platform_message.MessageChain.model_validate(message_chain)

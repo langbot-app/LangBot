@@ -282,6 +282,9 @@ class PlatformManager:
         return runtime_bot
 
     async def get_bot_by_uuid(self, bot_uuid: str) -> RuntimeBot | None:
+        # Check websocket proxy bot first
+        if self.websocket_proxy_bot and self.websocket_proxy_bot.bot_entity.uuid == bot_uuid:
+            return self.websocket_proxy_bot
         for bot in self.bots:
             if bot.bot_entity.uuid == bot_uuid:
                 return bot

@@ -144,15 +144,18 @@ class WebSocketConnectionManager:
         """
         connections = await self.get_connections_by_pipeline(pipeline_uuid)
 
+
         # 如果指定了session_type，只向匹配的连接广播
         if session_type is not None:
-            connections = [conn for conn in connections if conn.session_type == session_type]
+            connections = [conn for conn in connections if conn.session_type == session_type]   
 
         tasks = []
         for conn in connections:
             tasks.append(self.send_to_connection(conn.connection_id, message))
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        else:
+            logger.warning(f'[WS_MANAGER] No connections to broadcast to for pipeline {pipeline_uuid}')
 
     async def send_to_connection(self, connection_id: str, message: dict):
         """向指定连接发送消息"""
