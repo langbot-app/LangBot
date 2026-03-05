@@ -110,6 +110,36 @@ class KeywordBitableReportListener(EventListener):
         configured = self._split_csv(self._get_str_config("sheets_sheet_names", ""))
         return configured
 
+    @staticmethod
+    def _strip_trend_sections(text: str, show_process_trend: bool, show_product_trend: bool) -> str:
+        if not text or (show_process_trend and show_product_trend):
+            return text
+
+        section_markers: list[str] = []
+        if not show_process_trend:
+            section_markers.append("制程趋势（")
+        if not show_product_trend:
+            section_markers.append("成品趋势（")
+
+        lines = text.splitlines()
+        result: list[str] = []
+        skipping = False
+
+        for line in lines:
+            stripped = line.strip()
+            if not skipping and any(marker in stripped for marker in section_markers):
+                skipping = True
+                continue
+
+            if skipping:
+                if line.startswith("    "):
+                    continue
+                skipping = False
+
+            result.append(line)
+
+        return "\n".join(result).strip()
+
     # ===== Message helpers =====
 
     @staticmethod
@@ -296,6 +326,11 @@ class KeywordBitableReportListener(EventListener):
             auto_fix_quality=False,
         )
         text = str(report.get("text", "")).strip()
+        text = self._strip_trend_sections(
+            text=text,
+            show_process_trend=self._get_bool_config("report_show_process_trend", True),
+            show_product_trend=self._get_bool_config("report_show_product_trend", True),
+        )
         line_errors = report.get("line_errors", [])
         if isinstance(line_errors, list) and line_errors:
             text = f"{text}\n\n提示：以下线别未纳入日报：{'；'.join(str(x) for x in line_errors)}"

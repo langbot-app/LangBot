@@ -107,6 +107,26 @@ spec:
       type: string
       required: false
       default: "7"
+    - name: report_show_process_trend
+      label:
+        en_US: Show Process Trend
+        zh_Hans: 显示制程趋势
+      description:
+        en_US: Whether to include process trend section in report text.
+        zh_Hans: 是否在日报中输出制程趋势段落。
+      type: boolean
+      required: false
+      default: true
+    - name: report_show_product_trend
+      label:
+        en_US: Show Product Trend
+        zh_Hans: 显示成品趋势
+      description:
+        en_US: Whether to include product trend section in report text.
+        zh_Hans: 是否在日报中输出成品趋势段落。
+      type: boolean
+      required: false
+      default: true
     - name: stale_threshold_process
       label:
         en_US: Process Stale Threshold

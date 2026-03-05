@@ -76,6 +76,8 @@
 - `date_mode`：`global|per-line`（默认 `global`）
 - `report_show_placeholder_sections`：是否显示“原料bom/配方/下一步/工艺验证”占位段（默认 `false`）
 - `lookback_days` / `trend_days`
+- `report_show_process_trend`：是否显示“制程趋势”段（默认 `true`）
+- `report_show_product_trend`：是否显示“成品趋势”段（默认 `true`）
 - `stale_threshold_process` / `stale_threshold_product` / `stale_threshold_electrochem`
 - `spec_registry_json`：可选 JSON 字符串，未配置时使用内置规格
 
