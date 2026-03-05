@@ -21,7 +21,7 @@ export default function PluginComponentList({
     Tool: <Wrench className="w-5 h-5" />,
     EventListener: <AudioWaveform className="w-5 h-5" />,
     Command: <Hash className="w-5 h-5" />,
-    RAGEngine: <Book className="w-5 h-5" />,
+    KnowledgeEngine: <Book className="w-5 h-5" />,
     Parser: <FileText className="w-5 h-5" />,
   };
 

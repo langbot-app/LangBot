@@ -170,7 +170,7 @@ function MarketPageContent({
         setTotal(total);
         setHasMore(
           data.plugins.length === pageSize &&
-            plugins.length + newPlugins.length < total,
+          plugins.length + newPlugins.length < total,
         );
       } catch (error) {
         console.error('Failed to fetch plugins:', error);
@@ -506,12 +506,12 @@ function MarketPageContent({
                 {t('plugins.componentName.EventListener')}
               </ToggleGroupItem>
               <ToggleGroupItem
-                value="RAGEngine"
-                aria-label="RAGEngine"
+                value="KnowledgeEngine"
+                aria-label="KnowledgeEngine"
                 className="text-xs sm:text-sm cursor-pointer"
               >
                 <Book className="h-4 w-4 mr-1" />
-                {t('plugins.componentName.RAGEngine')}
+                {t('plugins.componentName.KnowledgeEngine')}
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="Parser"

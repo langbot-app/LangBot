@@ -42,7 +42,7 @@ export default function PluginMarketCardComponent({
     Tool: <Wrench className="w-4 h-4" />,
     EventListener: <AudioWaveform className="w-4 h-4" />,
     Command: <Hash className="w-4 h-4" />,
-    RAGEngine: <Book className="w-4 h-4" />,
+    KnowledgeEngine: <Book className="w-4 h-4" />,
     Parser: <FileText className="w-4 h-4" />,
   };
 
@@ -173,15 +173,13 @@ export default function PluginMarketCardComponent({
 
       {/* Hover overlay with action buttons */}
       <div
-        className={`absolute inset-0 bg-gray-100/55 dark:bg-black/35 rounded-[10px] flex items-center justify-center gap-3 transition-all duration-200 ${
-          isHovered ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
+        className={`absolute inset-0 bg-gray-100/55 dark:bg-black/35 rounded-[10px] flex items-center justify-center gap-3 transition-all duration-200 ${isHovered ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
       >
         <Button
           onClick={handleInstallClick}
-          className={`bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 transition-all duration-200 ${
-            isHovered ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
-          }`}
+          className={`bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 transition-all duration-200 ${isHovered ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
+            }`}
           style={{ transitionDelay: isHovered ? '10ms' : '0ms' }}
         >
           <Download className="w-4 h-4" />
@@ -190,9 +188,8 @@ export default function PluginMarketCardComponent({
         <Button
           onClick={handleViewDetailsClick}
           variant="outline"
-          className={`bg-white hover:bg-gray-100 text-gray-900 dark:bg-white dark:hover:bg-gray-100 dark:text-gray-900 px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 transition-all duration-200 ${
-            isHovered ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
-          }`}
+          className={`bg-white hover:bg-gray-100 text-gray-900 dark:bg-white dark:hover:bg-gray-100 dark:text-gray-900 px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 transition-all duration-200 ${isHovered ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
+            }`}
           style={{ transitionDelay: isHovered ? '20ms' : '0ms' }}
         >
           <ExternalLink className="w-4 h-4" />

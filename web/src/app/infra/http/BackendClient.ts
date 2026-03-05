@@ -38,7 +38,7 @@ import {
   ApiRespModelProviders,
   ApiRespModelProvider,
   ModelProvider,
-  ApiRespRAGEngines,
+  ApiRespKnowledgeEngines,
   ApiRespParsers,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
@@ -470,8 +470,8 @@ export class BackendClient extends BaseHttpClient {
     });
   }
 
-  // ============ RAG Engines API ============
-  public getRagEngines(): Promise<ApiRespRAGEngines> {
+  // ============ Knowledge Engines API ============
+  public getKnowledgeEngines(): Promise<ApiRespKnowledgeEngines> {
     return this.get('/api/v1/knowledge/engines');
   }
 

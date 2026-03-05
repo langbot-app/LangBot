@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { KnowledgeBase, RAGEngine } from '@/app/infra/entities/api';
+import { KnowledgeBase, KnowledgeEngine } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
@@ -43,7 +43,7 @@ const getFormSchema = (t: (key: string) => string) =>
     emoji: z.string().optional(),
     ragEngineId: z
       .string()
-      .min(1, { message: t('knowledge.ragEngineRequired') }),
+      .min(1, { message: t('knowledge.knowledgeEngineRequired') }),
   });
 
 /**
@@ -87,7 +87,7 @@ export default function KBForm({
   onKbUpdated: (kbId: string) => void;
 }) {
   const { t } = useTranslation();
-  const [ragEngines, setRagEngines] = useState<RAGEngine[]>([]);
+  const [ragEngines, setRagEngines] = useState<KnowledgeEngine[]>([]);
   const [selectedEngineId, setSelectedEngineId] = useState<string>('');
   const [configSettings, setConfigSettings] = useState<Record<string, unknown>>(
     {},
@@ -144,7 +144,7 @@ export default function KBForm({
   const loadRagEngines = async () => {
     setLoading(true);
     try {
-      const resp = await httpClient.getRagEngines();
+      const resp = await httpClient.getKnowledgeEngines();
       setRagEngines(resp.engines);
     } catch (err) {
       console.error('Failed to load RAG engines:', err);
@@ -280,7 +280,7 @@ export default function KBForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {t('knowledge.ragEngine')}
+                    {t('knowledge.knowledgeEngine')}
                     <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
@@ -294,7 +294,7 @@ export default function KBForm({
                     >
                       <SelectTrigger className="w-full bg-[#ffffff] dark:bg-[#2a2a2e]">
                         <SelectValue
-                          placeholder={t('knowledge.selectRagEngine')}
+                          placeholder={t('knowledge.selectKnowledgeEngine')}
                         />
                       </SelectTrigger>
                       <SelectContent className="fixed z-[1000]">
@@ -316,7 +316,7 @@ export default function KBForm({
                   )}
                   {isEditing && (
                     <FormDescription>
-                      {t('knowledge.cannotChangeRagEngine')}
+                      {t('knowledge.cannotChangeKnowledgeEngine')}
                     </FormDescription>
                   )}
                   <FormMessage />

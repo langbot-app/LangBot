@@ -4,7 +4,7 @@ from ... import group
 
 
 @group.group_class('rag_engines', '/api/v1/knowledge/engines')
-class RAGEnginesRouterGroup(group.RouterGroup):
+class KnowledgeEnginesRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def list_rag_engines() -> quart.Response:

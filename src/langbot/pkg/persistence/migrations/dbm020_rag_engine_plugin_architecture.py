@@ -5,7 +5,7 @@ from .. import migration
 
 
 @migration.migration_class(20)
-class DBMigrateRAGEnginePluginArchitecture(migration.DBMigration):
+class DBMigrateKnowledgeEnginePluginArchitecture(migration.DBMigration):
     """Migrate to unified RAG Engine plugin architecture.
 
     Changes:

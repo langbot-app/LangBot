@@ -1,4 +1,4 @@
-import { RAGEngineInfo } from '@/app/infra/entities/api';
+import { KnowledgeEngineInfo } from '@/app/infra/entities/api';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 
 export interface IKnowledgeBaseVO {
@@ -7,7 +7,7 @@ export interface IKnowledgeBaseVO {
   description: string;
   lastUpdatedTimeAgo: string;
   emoji?: string;
-  ragEngine?: RAGEngineInfo;
+  ragEngine?: KnowledgeEngineInfo;
   ragEnginePluginId?: string;
 }
 
@@ -17,7 +17,7 @@ export class KnowledgeBaseVO implements IKnowledgeBaseVO {
   description: string;
   lastUpdatedTimeAgo: string;
   emoji?: string;
-  ragEngine?: RAGEngineInfo;
+  ragEngine?: KnowledgeEngineInfo;
   ragEnginePluginId?: string;
 
   constructor(props: IKnowledgeBaseVO) {

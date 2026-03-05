@@ -170,7 +170,7 @@ class KnowledgeService:
         if not self.ap.plugin_connector.is_enable_plugin:
             return engines
 
-        # Get RAGEngine plugins
+        # Get KnowledgeEngine plugins
         try:
             rag_engines = await self.ap.plugin_connector.list_rag_engines()
             engines.extend(rag_engines)

@@ -162,17 +162,17 @@ export interface KnowledgeBase {
   rag_engine_plugin_id?: string;
   creation_settings?: Record<string, unknown>;
   retrieval_settings?: Record<string, unknown>;
-  rag_engine?: RAGEngineInfo;
+  rag_engine?: KnowledgeEngineInfo;
 }
 
 // RAG Engine types
-export interface RAGEngineInfo {
+export interface KnowledgeEngineInfo {
   plugin_id: string | null;
   name: I18nObject;
   capabilities: string[];
 }
 
-export interface RAGEngine {
+export interface KnowledgeEngine {
   plugin_id: string;
   name: I18nObject;
   description?: I18nObject;
@@ -183,8 +183,8 @@ export interface RAGEngine {
   retrieval_schema?: unknown[];
 }
 
-export interface ApiRespRAGEngines {
-  engines: RAGEngine[];
+export interface ApiRespKnowledgeEngines {
+  engines: KnowledgeEngine[];
 }
 
 export interface ParserInfo {

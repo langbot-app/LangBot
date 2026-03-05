@@ -372,7 +372,7 @@ const jaJP = {
       Tool: 'ツール',
       EventListener: 'イベント監視器',
       Command: 'コマンド',
-      RAGEngine: 'RAGエンジン',
+      KnowledgeEngine: '知識エンジン',
       Parser: 'パーサー',
     },
     uploadLocal: 'ローカルアップロード',
@@ -732,7 +732,7 @@ const jaJP = {
       completed: '完了',
       failed: '失敗',
       selectParser: 'パーサーを選択',
-      builtInParser: 'RAGエンジンが提供',
+      builtInParser: '知識エンジンが提供',
       noParserAvailable:
         'このファイル形式に対応するパーサーがありません。対応するパーサープラグインをインストールしてください。',
       confirmUpload: 'アップロード',

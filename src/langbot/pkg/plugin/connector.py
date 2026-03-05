@@ -463,7 +463,7 @@ class PluginRuntimeConnector:
         retriever_name: str,
         retrieval_context: dict[str, Any],
     ) -> dict[str, Any]:
-        """Retrieve knowledge using a RAGEngine instance."""
+        """Retrieve knowledge using a KnowledgeEngine instance."""
         if not self.is_enable_plugin:
             return {'results': []}
 

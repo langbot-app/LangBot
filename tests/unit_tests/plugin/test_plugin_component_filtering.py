@@ -42,7 +42,7 @@ async def test_plugin_list_filter_by_component_kinds():
                     }
                 }
             },
-            'components': [{'manifest': {'manifest': {'kind': 'RAGEngine', 'metadata': {'name': 'retriever1'}}}}],
+            'components': [{'manifest': {'manifest': {'kind': 'KnowledgeEngine', 'metadata': {'name': 'retriever1'}}}}],
         },
         {
             'debug': False,
@@ -79,7 +79,7 @@ async def test_plugin_list_filter_by_component_kinds():
                 }
             },
             'components': [
-                {'manifest': {'manifest': {'kind': 'RAGEngine', 'metadata': {'name': 'retriever2'}}}},
+                {'manifest': {'manifest': {'kind': 'KnowledgeEngine', 'metadata': {'name': 'retriever2'}}}},
                 {'manifest': {'manifest': {'kind': 'Tool', 'metadata': {'name': 'tool2'}}}},
             ],
         },
@@ -106,7 +106,7 @@ async def test_plugin_list_filter_by_component_kinds():
     assert 'plugin_with_command' in plugin_names
     assert 'plugin_with_event_listener' in plugin_names
     assert 'plugin_with_mixed_components' in plugin_names
-    # Plugin with only RAGEngine should NOT be included
+    # Plugin with only KnowledgeEngine should NOT be included
     assert 'plugin_with_rag_engine_only' not in plugin_names
 
 
@@ -148,7 +148,7 @@ async def test_plugin_list_filter_no_filter():
                     }
                 }
             },
-            'components': [{'manifest': {'manifest': {'kind': 'RAGEngine', 'metadata': {'name': 'retriever1'}}}}],
+            'components': [{'manifest': {'manifest': {'kind': 'KnowledgeEngine', 'metadata': {'name': 'retriever1'}}}}],
         },
     ]
 
@@ -185,7 +185,7 @@ async def test_plugin_list_filter_empty_result():
     connector = PluginRuntimeConnector(mock_app, AsyncMock())
     connector.handler = MagicMock()
 
-    # Mock plugin data - only RAGEngine plugins
+    # Mock plugin data - only KnowledgeEngine plugins
     mock_plugins = [
         {
             'debug': False,
@@ -197,7 +197,7 @@ async def test_plugin_list_filter_empty_result():
                     }
                 }
             },
-            'components': [{'manifest': {'manifest': {'kind': 'RAGEngine', 'metadata': {'name': 'retriever1'}}}}],
+            'components': [{'manifest': {'manifest': {'kind': 'KnowledgeEngine', 'metadata': {'name': 'retriever1'}}}}],
         },
     ]
 
