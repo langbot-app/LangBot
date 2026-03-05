@@ -38,7 +38,7 @@ async def test_plugin_list_filter_by_component_kinds():
                 'manifest': {
                     'metadata': {
                         'author': 'author2',
-                        'name': 'plugin_with_rag_engine_only',
+                        'name': 'plugin_with_knowledge_engine_only',
                     }
                 }
             },
@@ -107,7 +107,7 @@ async def test_plugin_list_filter_by_component_kinds():
     assert 'plugin_with_event_listener' in plugin_names
     assert 'plugin_with_mixed_components' in plugin_names
     # Plugin with only KnowledgeEngine should NOT be included
-    assert 'plugin_with_rag_engine_only' not in plugin_names
+    assert 'plugin_with_knowledge_engine_only' not in plugin_names
 
 
 @pytest.mark.asyncio

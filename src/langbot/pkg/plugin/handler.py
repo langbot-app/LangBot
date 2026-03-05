@@ -548,8 +548,8 @@ class RuntimeConnectionHandler(handler.Handler):
             except Exception as e:
                 return _make_rag_error_response(e, 'VectorStoreError', collection_id=collection_id)
 
-        @self.action(PluginToRuntimeAction.GET_RAG_FILE_STREAM)
-        async def get_rag_file_stream(data: dict[str, Any]) -> handler.ActionResponse:
+        @self.action(PluginToRuntimeAction.GET_KNOWLEDEGE_FILE_STREAM)
+        async def get_knowledge_file_stream(data: dict[str, Any]) -> handler.ActionResponse:
             storage_path = data['storage_path']
             try:
                 content_bytes = await self.ap.rag_runtime_service.get_file_stream(storage_path)
@@ -934,9 +934,9 @@ class RuntimeConnectionHandler(handler.Handler):
             timeout=10,
         )
 
-    async def list_rag_engines(self) -> list[dict[str, Any]]:
-        """List all available RAG engines from plugins."""
-        result = await self.call_action(LangBotToRuntimeAction.LIST_RAG_ENGINES, {}, timeout=60)
+    async def list_knowledge_engines(self) -> list[dict[str, Any]]:
+        """List all available Knowledge Engines from plugins."""
+        result = await self.call_action(LangBotToRuntimeAction.LIST_KNOWLEDGE_ENGINES, {}, timeout=60)
         return result.get('engines', [])
 
     # ================= Parser Capability Callers (LangBot -> Runtime) =================

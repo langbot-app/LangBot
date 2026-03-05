@@ -47,7 +47,7 @@ const getFormSchema = (t: (key: string) => string) =>
   });
 
 /**
- * Parse creation schema from RAG engine to IDynamicFormItemSchema[]
+ * Parse creation schema from Knowledge Engine to IDynamicFormItemSchema[]
  * Same pattern as ExternalKBForm uses for retriever config
  */
 function parseCreationSchema(
@@ -147,7 +147,7 @@ export default function KBForm({
       const resp = await httpClient.getKnowledgeEngines();
       setRagEngines(resp.engines);
     } catch (err) {
-      console.error('Failed to load RAG engines:', err);
+      console.error('Failed to load Knowledge Engines:', err);
     } finally {
       setLoading(false);
     }
@@ -160,7 +160,7 @@ export default function KBForm({
       const res = await httpClient.getKnowledgeBase(kbId);
       const kb = res.base;
 
-      const engineId = kb.rag_engine_plugin_id || '';
+      const engineId = kb.knowledge_engine_plugin_id || '';
       setSelectedEngineId(engineId);
 
       form.setValue('name', kb.name);
@@ -202,7 +202,7 @@ export default function KBForm({
       name: data.name,
       description: data.description,
       emoji: data.emoji,
-      rag_engine_plugin_id: selectedEngineId,
+      knowledge_engine_plugin_id: selectedEngineId,
       creation_settings: configSettings,
       retrieval_settings: retrievalSettings,
     };
@@ -273,7 +273,7 @@ export default function KBForm({
           className="space-y-8"
         >
           <div className="space-y-4">
-            {/* RAG Engine Selector */}
+            {/* Knowledge Engine Selector */}
             <FormField
               control={form.control}
               name="ragEngineId"

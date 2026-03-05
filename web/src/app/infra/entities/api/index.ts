@@ -159,13 +159,13 @@ export interface KnowledgeBase {
   updated_at?: string;
   emoji?: string;
   // New unified fields
-  rag_engine_plugin_id?: string;
+  knowledge_engine_plugin_id?: string;
   creation_settings?: Record<string, unknown>;
   retrieval_settings?: Record<string, unknown>;
-  rag_engine?: KnowledgeEngineInfo;
+  knowledge_engine?: KnowledgeEngineInfo;
 }
 
-// RAG Engine types
+// Knowledge Engine types
 export interface KnowledgeEngineInfo {
   plugin_id: string | null;
   name: I18nObject;

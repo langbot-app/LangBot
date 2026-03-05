@@ -542,15 +542,15 @@ class PluginRuntimeConnector:
         plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
         return await self.handler.retrieve_knowledge(plugin_author, plugin_name, '', retrieval_context)
 
-    async def list_rag_engines(self) -> list[dict[str, Any]]:
-        """List all available RAG engines from plugins.
+    async def list_knowledge_engines(self) -> list[dict[str, Any]]:
+        """List all available Knowledge Engines from plugins.
 
-        Returns a list of RAG engines with their capabilities and configuration schemas.
+        Returns a list of Knowledge Engines with their capabilities and configuration schemas.
         """
         if not self.is_enable_plugin:
             return []
 
-        return await self.handler.list_rag_engines()
+        return await self.handler.list_knowledge_engines()
 
     async def list_parsers(self) -> list[dict[str, Any]]:
         """List all available parsers from plugins."""

@@ -40,7 +40,7 @@ export default function FileUploadZone({
   const [selectedParser, setSelectedParser] = useState<string>('builtin');
   const [loadingParsers, setLoadingParsers] = useState(false);
 
-  // Whether the RAG engine natively supports document parsing.
+  // Whether the Knowledge Engine natively supports document parsing.
   // This is a coarse-grained capability check rather than per-MIME-type filtering.
   // Fine-grained MIME type declaration (e.g. supported_parse_mime_types on the engine)
   // would require changes across the SDK, backend, and frontend prop chain;
@@ -130,7 +130,7 @@ export default function FileUploadZone({
     [isUploading, t],
   );
 
-  // Auto-upload if RAG engine can parse and no external parsers available
+  // Auto-upload if Knowledge Engine can parse and no external parsers available
   useEffect(() => {
     if (
       pendingFile &&

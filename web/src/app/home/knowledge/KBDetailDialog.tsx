@@ -74,10 +74,12 @@ export default function KBDetailDialog({
 
   // Check if this KB supports document management
   const hasDocumentCapability = (): boolean => {
-    if (!kbInfo || !kbInfo.rag_engine) {
+    if (!kbInfo || !kbInfo.knowledge_engine) {
       return false;
     }
-    return kbInfo.rag_engine.capabilities?.includes('doc_ingestion') ?? false;
+    return (
+      kbInfo.knowledge_engine.capabilities?.includes('doc_ingestion') ?? false
+    );
   };
 
   // Build menu based on KB capabilities
@@ -230,8 +232,10 @@ export default function KBDetailDialog({
                 {activeMenu === 'documents' && hasDocumentCapability() && (
                   <KBDoc
                     kbId={kbId}
-                    ragEngineName={kbInfo?.rag_engine?.name}
-                    ragEngineCapabilities={kbInfo?.rag_engine?.capabilities}
+                    ragEngineName={kbInfo?.knowledge_engine?.name}
+                    ragEngineCapabilities={
+                      kbInfo?.knowledge_engine?.capabilities
+                    }
                   />
                 )}
                 {activeMenu === 'retrieve' && (

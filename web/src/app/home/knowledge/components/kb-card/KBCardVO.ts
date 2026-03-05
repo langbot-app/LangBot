@@ -41,7 +41,7 @@ export class KnowledgeBaseVO implements IKnowledgeBaseVO {
   }
 
   /**
-   * Get display name for the RAG engine
+   * Get display name for the Knowledge Engine
    */
   getEngineName(): string {
     if (!this.ragEngine) {

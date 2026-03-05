@@ -27,13 +27,13 @@ class KnowledgeService:
         # In new architecture, we delegate entirely to RAGManager which uses plugins.
         # Legacy internal KB creation is removed.
 
-        rag_engine_plugin_id = kb_data.get('rag_engine_plugin_id')
-        if not rag_engine_plugin_id:
-            raise ValueError('rag_engine_plugin_id is required')
+        knowledge_engine_plugin_id = kb_data.get('knowledge_engine_plugin_id')
+        if not knowledge_engine_plugin_id:
+            raise ValueError('knowledge_engine_plugin_id is required')
 
         kb = await self.ap.rag_mgr.create_knowledge_base(
             name=kb_data.get('name', 'Untitled'),
-            rag_engine_plugin_id=rag_engine_plugin_id,
+            knowledge_engine_plugin_id=knowledge_engine_plugin_id,
             creation_settings=kb_data.get('creation_settings', {}),
             retrieval_settings=kb_data.get('retrieval_settings', {}),
             description=kb_data.get('description', ''),
@@ -62,7 +62,7 @@ class KnowledgeService:
         await self.ap.rag_mgr.load_knowledge_base(kb)
 
     async def _check_doc_capability(self, kb_uuid: str, operation: str) -> None:
-        """Check if the KB's RAG engine supports document operations.
+        """Check if the KB's Knowledge Engine supports document operations.
 
         Args:
             kb_uuid: Knowledge base UUID.
@@ -74,7 +74,7 @@ class KnowledgeService:
         kb_info = await self.ap.rag_mgr.get_knowledge_base_details(kb_uuid)
         if not kb_info:
             raise Exception('Knowledge base not found')
-        capabilities = kb_info.get('rag_engine', {}).get('capabilities', [])
+        capabilities = kb_info.get('knowledge_engine', {}).get('capabilities', [])
         if 'doc_ingestion' not in capabilities:
             raise Exception(f'This knowledge base does not support {operation}')
 
@@ -144,7 +144,7 @@ class KnowledgeService:
 
         # delete files
         # NOTE: Chunk cleanup is for legacy (pre-plugin) KBs that stored chunks locally.
-        # For plugin-based RAG engines, the Chunk table is not populated, so this is a no-op.
+        # For plugin-based Knowledge Engines, the Chunk table is not populated, so this is a no-op.
         files = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.select(persistence_rag.File).where(persistence_rag.File.kb_id == kb_uuid)
         )
@@ -161,10 +161,10 @@ class KnowledgeService:
         # Remove from runtime and notify plugin (best-effort, DB is already cleaned up)
         await self.ap.rag_mgr.delete_knowledge_base(kb_uuid)
 
-    # ================= RAG Engine Discovery =================
+    # ================= Knowledge Engine Discovery =================
 
-    async def list_rag_engines(self) -> list[dict]:
-        """List all available RAG engines from plugins."""
+    async def list_knowledge_engines(self) -> list[dict]:
+        """List all available Knowledge Engines from plugins."""
         engines = []
 
         if not self.ap.plugin_connector.is_enable_plugin:
@@ -172,10 +172,10 @@ class KnowledgeService:
 
         # Get KnowledgeEngine plugins
         try:
-            rag_engines = await self.ap.plugin_connector.list_rag_engines()
-            engines.extend(rag_engines)
+            knowledge_engines = await self.ap.plugin_connector.list_knowledge_engines()
+            engines.extend(knowledge_engines)
         except Exception as e:
-            self.ap.logger.warning(f'Failed to list RAG engines from plugins: {e}')
+            self.ap.logger.warning(f'Failed to list Knowledge Engines from plugins: {e}')
 
         return engines
 
@@ -193,7 +193,7 @@ class KnowledgeService:
             return []
 
     async def get_engine_creation_schema(self, plugin_id: str) -> dict:
-        """Get creation settings schema for a specific RAG engine."""
+        """Get creation settings schema for a specific Knowledge Engine."""
         try:
             return await self.ap.plugin_connector.get_rag_creation_schema(plugin_id)
         except Exception as e:
@@ -201,7 +201,7 @@ class KnowledgeService:
             return {}
 
     async def get_engine_retrieval_schema(self, plugin_id: str) -> dict:
-        """Get retrieval settings schema for a specific RAG engine."""
+        """Get retrieval settings schema for a specific Knowledge Engine."""
         try:
             return await self.ap.plugin_connector.get_rag_retrieval_schema(plugin_id)
         except Exception as e:

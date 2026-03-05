@@ -6,10 +6,10 @@ from .. import migration
 
 @migration.migration_class(20)
 class DBMigrateKnowledgeEnginePluginArchitecture(migration.DBMigration):
-    """Migrate to unified RAG Engine plugin architecture.
+    """Migrate to unified Knowledge Engine plugin architecture.
 
     Changes:
-    - Add rag_engine_plugin_id, collection_id, creation_settings, retrieval_settings columns to knowledge_bases
+    - Add knowledge_engine_plugin_id, collection_id, creation_settings, retrieval_settings columns to knowledge_bases
     - Migrate existing top_k values into retrieval_settings JSON
     - Migrate existing embedding_model_uuid into creation_settings JSON
     - Drop embedding_model_uuid and top_k columns (PostgreSQL only; SQLite leaves them unmapped)
@@ -62,7 +62,7 @@ class DBMigrateKnowledgeEnginePluginArchitecture(migration.DBMigration):
         columns = await self._get_table_columns('knowledge_bases')
 
         new_columns = {
-            'rag_engine_plugin_id': 'VARCHAR',
+            'knowledge_engine_plugin_id': 'VARCHAR',
             'collection_id': 'VARCHAR',
             'creation_settings': 'TEXT',  # JSON stored as TEXT for SQLite compatibility
             'retrieval_settings': 'TEXT',
@@ -74,7 +74,7 @@ class DBMigrateKnowledgeEnginePluginArchitecture(migration.DBMigration):
                     sqlalchemy.text(f'ALTER TABLE knowledge_bases ADD COLUMN {col_name} {col_type};')
                 )
 
-        # For existing knowledge bases without rag_engine_plugin_id,
+        # For existing knowledge bases without knowledge_engine_plugin_id,
         # set collection_id = uuid (same default as new KBs)
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.text('UPDATE knowledge_bases SET collection_id = uuid WHERE collection_id IS NULL;')

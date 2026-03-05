@@ -101,7 +101,7 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
             if not query or not query.strip():
                 return self.http_status(400, -1, 'Query is required and cannot be empty')
 
-            # Extract retrieval_settings to allow dynamic control over RAG engine behavior (e.g. top_k, filters)
+            # Extract retrieval_settings to allow dynamic control over Knowledge Engine behavior (e.g. top_k, filters)
             retrieval_settings = json_data.get('retrieval_settings', {})
             results = await self.ap.knowledge_service.retrieve_knowledge_base(
                 knowledge_base_uuid, query, retrieval_settings

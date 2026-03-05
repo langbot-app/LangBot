@@ -229,9 +229,9 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         """Get the name of the knowledge base"""
         return self.knowledge_base_entity.name
 
-    def get_rag_engine_plugin_id(self) -> str:
-        """Get the RAG engine plugin ID"""
-        return self.knowledge_base_entity.rag_engine_plugin_id or ''
+    def get_knowledge_engine_plugin_id(self) -> str:
+        """Get the Knowledge Engine plugin ID"""
+        return self.knowledge_base_entity.knowledge_engine_plugin_id or ''
 
     async def dispose(self):
         """Dispose the knowledge base, notifying the plugin to cleanup."""
@@ -241,7 +241,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
 
     async def _on_kb_create(self) -> None:
         """Notify plugin about KB creation."""
-        plugin_id = self.knowledge_base_entity.rag_engine_plugin_id
+        plugin_id = self.knowledge_base_entity.knowledge_engine_plugin_id
         if not plugin_id:
             return
 
@@ -257,7 +257,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
 
     async def _on_kb_delete(self) -> None:
         """Notify plugin about KB deletion."""
-        plugin_id = self.knowledge_base_entity.rag_engine_plugin_id
+        plugin_id = self.knowledge_base_entity.knowledge_engine_plugin_id
         if not plugin_id:
             return
 
@@ -277,7 +277,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
     ) -> dict[str, Any]:
         """Call plugin to ingest document."""
         kb = self.knowledge_base_entity
-        plugin_id = kb.rag_engine_plugin_id
+        plugin_id = kb.knowledge_engine_plugin_id
         if not plugin_id:
             self.ap.logger.error(f'No RAG plugin ID configured for KB {kb.uuid}. Ingestion failed.')
             raise ValueError('RAG Plugin ID required')
@@ -317,7 +317,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             Exception: If the plugin retrieval call fails.
         """
         kb = self.knowledge_base_entity
-        plugin_id = kb.rag_engine_plugin_id
+        plugin_id = kb.knowledge_engine_plugin_id
         if not plugin_id:
             raise ValueError(f'No RAG plugin ID configured for KB {kb.uuid}. Retrieval failed.')
 
@@ -339,7 +339,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
     async def _delete_document(self, document_id: str) -> bool:
         """Call plugin to delete document."""
         kb = self.knowledge_base_entity
-        plugin_id = kb.rag_engine_plugin_id
+        plugin_id = kb.knowledge_engine_plugin_id
         if not plugin_id:
             return False
 
@@ -365,19 +365,19 @@ class RAGManager:
         await self.load_knowledge_bases_from_db()
 
     async def get_all_knowledge_base_details(self) -> list[dict]:
-        """Get all knowledge bases with enriched RAG engine details."""
+        """Get all knowledge bases with enriched Knowledge Engine details."""
         # 1. Get raw KBs from DB
         result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_rag.KnowledgeBase))
         knowledge_bases = result.all()
 
-        # 2. Get all available RAG engines for enrichment
+        # 2. Get all available Knowledge Engines for enrichment
         engine_map = {}
         if self.ap.plugin_connector.is_enable_plugin:
             try:
-                engines = await self.ap.plugin_connector.list_rag_engines()
+                engines = await self.ap.plugin_connector.list_knowledge_engines()
                 engine_map = {e['plugin_id']: e for e in engines}
             except Exception as e:
-                self.ap.logger.warning(f'Failed to list RAG engines: {e}')
+                self.ap.logger.warning(f'Failed to list Knowledge Engines: {e}')
 
         # 3. Serialize and enrich
         kb_list = []
@@ -389,7 +389,7 @@ class RAGManager:
         return kb_list
 
     async def get_knowledge_base_details(self, kb_uuid: str) -> dict | None:
-        """Get specific knowledge base with enriched RAG engine details."""
+        """Get specific knowledge base with enriched Knowledge Engine details."""
         result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.select(persistence_rag.KnowledgeBase).where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
         )
@@ -403,10 +403,10 @@ class RAGManager:
         engine_map = {}
         if self.ap.plugin_connector.is_enable_plugin:
             try:
-                engines = await self.ap.plugin_connector.list_rag_engines()
+                engines = await self.ap.plugin_connector.list_knowledge_engines()
                 engine_map = {e['plugin_id']: e for e in engines}
             except Exception as e:
-                self.ap.logger.warning(f'Failed to list RAG engines: {e}')
+                self.ap.logger.warning(f'Failed to list Knowledge Engines: {e}')
 
         self._enrich_kb_dict(kb_dict, engine_map)
         return kb_dict
@@ -425,7 +425,7 @@ class RAGManager:
 
     def _enrich_kb_dict(self, kb_dict: dict, engine_map: dict) -> None:
         """Helper to inject engine info into KB dict."""
-        plugin_id = kb_dict.get('rag_engine_plugin_id')
+        plugin_id = kb_dict.get('knowledge_engine_plugin_id')
 
         # Default fallback structure — name must be I18nObject for frontend compatibility
         fallback_name = self._to_i18n_name(plugin_id or 'Internal (Legacy)')
@@ -436,39 +436,39 @@ class RAGManager:
         }
 
         if not plugin_id:
-            kb_dict['rag_engine'] = fallback_info
+            kb_dict['knowledge_engine'] = fallback_info
             return
 
         engine_info = engine_map.get(plugin_id)
         if engine_info:
-            kb_dict['rag_engine'] = {
+            kb_dict['knowledge_engine'] = {
                 'plugin_id': plugin_id,
                 'name': self._to_i18n_name(engine_info.get('name', plugin_id)),
                 'capabilities': engine_info.get('capabilities', []),
             }
         else:
-            kb_dict['rag_engine'] = fallback_info
+            kb_dict['knowledge_engine'] = fallback_info
 
     async def create_knowledge_base(
         self,
         name: str,
-        rag_engine_plugin_id: str,
+        knowledge_engine_plugin_id: str,
         creation_settings: dict,
         retrieval_settings: dict | None = None,
         description: str = '',
     ) -> persistence_rag.KnowledgeBase:
         """Create a new knowledge base using a RAG plugin."""
-        # Validate that the RAG engine plugin exists
+        # Validate that the Knowledge Engine plugin exists
         if self.ap.plugin_connector.is_enable_plugin:
             try:
-                engines = await self.ap.plugin_connector.list_rag_engines()
+                engines = await self.ap.plugin_connector.list_knowledge_engines()
                 engine_ids = [e.get('plugin_id') for e in engines]
-                if rag_engine_plugin_id not in engine_ids:
-                    raise ValueError(f'RAG engine plugin {rag_engine_plugin_id} not found')
+                if knowledge_engine_plugin_id not in engine_ids:
+                    raise ValueError(f'Knowledge Engine plugin {knowledge_engine_plugin_id} not found')
             except ValueError:
                 raise
             except Exception as e:
-                self.ap.logger.warning(f'Failed to validate RAG engine plugin existence: {e}')
+                self.ap.logger.warning(f'Failed to validate Knowledge Engine plugin existence: {e}')
 
         kb_uuid = str(uuid.uuid4())
         # Use UUID as collection ID by default for isolation
@@ -478,7 +478,7 @@ class RAGManager:
             'uuid': kb_uuid,
             'name': name,
             'description': description,
-            'rag_engine_plugin_id': rag_engine_plugin_id,
+            'knowledge_engine_plugin_id': knowledge_engine_plugin_id,
             'collection_id': collection_id,
             'creation_settings': creation_settings,
             'retrieval_settings': retrieval_settings or {},
@@ -503,7 +503,7 @@ class RAGManager:
             )
             raise
 
-        self.ap.logger.info(f'Created new Knowledge Base {name} ({kb_uuid}) using plugin {rag_engine_plugin_id}')
+        self.ap.logger.info(f'Created new Knowledge Base {name} ({kb_uuid}) using plugin {knowledge_engine_plugin_id}')
         return kb
 
     async def load_knowledge_bases_from_db(self):
@@ -531,7 +531,7 @@ class RAGManager:
             # Safe access to _mapping for SQLAlchemy 1.4+
             knowledge_base_entity = persistence_rag.KnowledgeBase(**knowledge_base_entity._mapping)
         elif isinstance(knowledge_base_entity, dict):
-            # Filter out non-database fields (like rag_engine which is computed)
+            # Filter out non-database fields (like knowledge_engine which is computed)
             filtered_dict = {
                 k: v for k, v in knowledge_base_entity.items() if k in persistence_rag.KnowledgeBase.ALL_DB_FIELDS
             }

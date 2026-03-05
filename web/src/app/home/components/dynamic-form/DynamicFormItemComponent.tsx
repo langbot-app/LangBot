@@ -319,11 +319,11 @@ export default function DynamicFormItemComponent({
       );
 
     case DynamicFormItemType.KNOWLEDGE_BASE_SELECTOR:
-      // Group KBs by RAG engine name
+      // Group KBs by Knowledge Engine name
       const kbsByEngine = knowledgeBases.reduce(
         (acc, kb) => {
-          const engineName = kb.rag_engine?.name
-            ? extractI18nObject(kb.rag_engine.name)
+          const engineName = kb.knowledge_engine?.name
+            ? extractI18nObject(kb.knowledge_engine.name)
             : t('knowledge.unknownEngine');
           if (!acc[engineName]) {
             acc[engineName] = [];
@@ -359,11 +359,11 @@ export default function DynamicFormItemComponent({
       );
 
     case DynamicFormItemType.KNOWLEDGE_BASE_MULTI_SELECTOR:
-      // Group KBs by RAG engine name for multi-selector
+      // Group KBs by Knowledge Engine name for multi-selector
       const multiKbsByEngine = knowledgeBases.reduce(
         (acc, kb) => {
-          const engineName = kb.rag_engine?.name
-            ? extractI18nObject(kb.rag_engine.name)
+          const engineName = kb.knowledge_engine?.name
+            ? extractI18nObject(kb.knowledge_engine.name)
             : t('knowledge.unknownEngine');
           if (!acc[engineName]) {
             acc[engineName] = [];
@@ -394,9 +394,11 @@ export default function DynamicFormItemComponent({
                         <div className="flex-1 min-w-0">
                           <div className="font-medium flex items-center gap-2">
                             {currentKb.name}
-                            {currentKb.rag_engine?.name && (
+                            {currentKb.knowledge_engine?.name && (
                               <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300">
-                                {extractI18nObject(currentKb.rag_engine.name)}
+                                {extractI18nObject(
+                                  currentKb.knowledge_engine.name,
+                                )}
                               </span>
                             )}
                           </div>

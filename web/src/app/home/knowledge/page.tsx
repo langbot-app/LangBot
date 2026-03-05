@@ -48,8 +48,8 @@ export default function KnowledgePage() {
         description: kb.description,
         emoji: kb.emoji,
         lastUpdatedTimeAgo: lastUpdatedTimeAgoText,
-        ragEngine: kb.rag_engine,
-        ragEnginePluginId: kb.rag_engine_plugin_id,
+        ragEngine: kb.knowledge_engine,
+        ragEnginePluginId: kb.knowledge_engine_plugin_id,
       });
     });
 

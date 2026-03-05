@@ -45,8 +45,8 @@ class KnowledgeBaseInterface(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def get_rag_engine_plugin_id(self) -> str:
-        """Get the RAG engine plugin ID"""
+    def get_knowledge_engine_plugin_id(self) -> str:
+        """Get the Knowledge Engine plugin ID"""
         pass
 
     @abc.abstractmethod

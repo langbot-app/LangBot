@@ -3,24 +3,24 @@ from urllib.parse import unquote
 from ... import group
 
 
-@group.group_class('rag_engines', '/api/v1/knowledge/engines')
+@group.group_class('knowledge_engines', '/api/v1/knowledge/engines')
 class KnowledgeEnginesRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def list_rag_engines() -> quart.Response:
-            """List all available RAG engines from plugins.
+        async def list_knowledge_engines() -> quart.Response:
+            """List all available Knowledge Engines from plugins.
 
-            Returns a list of RAG engines with their capabilities and configuration schemas.
+            Returns a list of Knowledge Engines with their capabilities and configuration schemas.
             This is used by the frontend to render the knowledge base creation wizard.
             """
-            engines = await self.ap.knowledge_service.list_rag_engines()
+            engines = await self.ap.knowledge_service.list_knowledge_engines()
             return self.success(data={'engines': engines})
 
         @self.route(
             '/<path:plugin_id>/creation-schema', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
         )
         async def get_engine_creation_schema(plugin_id: str) -> quart.Response:
-            """Get creation settings schema for a specific RAG engine.
+            """Get creation settings schema for a specific Knowledge Engine.
 
             plugin_id is in 'author/name' format, captured via <path:> converter.
             """
@@ -34,7 +34,7 @@ class KnowledgeEnginesRouterGroup(group.RouterGroup):
             '/<path:plugin_id>/retrieval-schema', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
         )
         async def get_engine_retrieval_schema(plugin_id: str) -> quart.Response:
-            """Get retrieval settings schema for a specific RAG engine.
+            """Get retrieval settings schema for a specific Knowledge Engine.
 
             plugin_id is in 'author/name' format, captured via <path:> converter.
             """

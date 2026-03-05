@@ -11,7 +11,7 @@ class KnowledgeBase(Base):
     created_at = sqlalchemy.Column(sqlalchemy.DateTime, default=sqlalchemy.func.now())
     updated_at = sqlalchemy.Column(sqlalchemy.DateTime, default=sqlalchemy.func.now(), onupdate=sqlalchemy.func.now())
     # New fields for plugin-based RAG
-    rag_engine_plugin_id = sqlalchemy.Column(sqlalchemy.String, nullable=True)
+    knowledge_engine_plugin_id = sqlalchemy.Column(sqlalchemy.String, nullable=True)
     collection_id = sqlalchemy.Column(sqlalchemy.String, nullable=True)
     creation_settings = sqlalchemy.Column(sqlalchemy.JSON, nullable=True, default=None)
     retrieval_settings = sqlalchemy.Column(sqlalchemy.JSON, nullable=True, default=None)
@@ -20,7 +20,7 @@ class KnowledgeBase(Base):
     MUTABLE_FIELDS = {'name', 'description', 'retrieval_settings'}
     """Fields that can be updated after creation."""
 
-    CREATE_FIELDS = MUTABLE_FIELDS | {'uuid', 'rag_engine_plugin_id', 'collection_id', 'creation_settings'}
+    CREATE_FIELDS = MUTABLE_FIELDS | {'uuid', 'knowledge_engine_plugin_id', 'collection_id', 'creation_settings'}
     """Fields used when creating a new knowledge base."""
 
     ALL_DB_FIELDS = CREATE_FIELDS | {'emoji', 'created_at', 'updated_at'}
