@@ -1,8 +1,6 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
-import datetime
-import json
 import re
 import time
 from typing import Any
@@ -13,6 +11,10 @@ from langbot_plugin.api.definition.components.common.event_listener import Event
 from langbot_plugin.api.entities import context, events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
+from components.command_parser import parse_report_command
+from components.data_sources import FeishuBitableSource, FeishuSheetsSource
+from components.report_core import day_metrics
+
 
 class KeywordBitableReportListener(EventListener):
     def __init__(self):
@@ -20,6 +22,9 @@ class KeywordBitableReportListener(EventListener):
         self._tenant_access_token: str = ""
         self._tenant_access_token_expire_at: float = 0.0
         self._token_lock = asyncio.Lock()
+
+        self._bitable_source = FeishuBitableSource(self._call_feishu_json_api)
+        self._sheets_source = FeishuSheetsSource(self._call_feishu_json_api)
 
     async def initialize(self) -> None:
         await super().initialize()
@@ -81,28 +86,29 @@ class KeywordBitableReportListener(EventListener):
         return [item.strip() for item in parts if item.strip()]
 
     @staticmethod
-    def _dedupe_keep_order(items: list[str]) -> list[str]:
-        result: list[str] = []
-        seen: set[str] = set()
-        for item in items:
-            if item in seen:
-                continue
-            seen.add(item)
-            result.append(item)
-        return result
-
-    @staticmethod
     def _normalize_command_text(text: str) -> str:
         normalized = re.sub(r"\s+", "", text.strip())
         normalized = normalized.strip("，,。.!！？?；;：:")
         return normalized
 
     def _resolve_commands(self) -> set[str]:
-        raw = self._get_str_config("keyword_commands", "摸料")
+        raw = self._get_str_config("keyword_commands", "日报")
         commands = self._split_csv(raw)
         if not commands:
-            commands = ["摸料"]
+            commands = ["日报"]
         return {self._normalize_command_text(item) for item in commands if self._normalize_command_text(item)}
+
+    def _resolve_data_source_mode(self) -> str:
+        mode = self._get_str_config("data_source_mode", "auto").lower()
+        if mode not in {"auto", "sheets", "bitable"}:
+            return "auto"
+        return mode
+
+    def _resolve_target_sheets(self, command_sheets: list[str]) -> list[str]:
+        if command_sheets:
+            return command_sheets
+        configured = self._split_csv(self._get_str_config("sheets_sheet_names", ""))
+        return configured
 
     # ===== Message helpers =====
 
@@ -182,27 +188,27 @@ class KeywordBitableReportListener(EventListener):
             "token_endpoint", "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
         )
         if not app_id or not app_secret:
-            raise ValueError("Plugin config app_id/app_secret is required.")
+            raise ValueError("插件配置 app_id/app_secret 必填。")
 
         payload = {"app_id": app_id, "app_secret": app_secret}
         timeout = self._get_timeout_seconds()
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(token_endpoint, json=payload)
         if response.status_code != 200:
-            raise RuntimeError(f"Token endpoint failed, HTTP {response.status_code}: {response.text[:300]}")
+            raise RuntimeError(f"Token 获取失败，HTTP {response.status_code}: {response.text[:300]}")
 
         try:
             body = response.json()
         except Exception as exc:
-            raise RuntimeError("Token endpoint returned non-JSON response.") from exc
+            raise RuntimeError("Token 接口返回非 JSON。") from exc
 
         code = int(body.get("code", 0))
         if code != 0:
-            raise RuntimeError(f"Token endpoint failed, code={code}, msg={body.get('msg', '')}")
+            raise RuntimeError(f"Token 获取失败，code={code}，msg={body.get('msg', '')}")
 
         token = str(body.get("tenant_access_token", "")).strip()
         if not token:
-            raise RuntimeError("tenant_access_token is empty.")
+            raise RuntimeError("tenant_access_token 为空。")
 
         expire = int(body.get("expire", 7200))
         self._tenant_access_token = token
@@ -216,6 +222,13 @@ class KeywordBitableReportListener(EventListener):
             if self._tenant_access_token and time.time() < self._tenant_access_token_expire_at:
                 return self._tenant_access_token
             return await self._request_tenant_access_token()
+
+    async def _build_auth_headers(self) -> dict[str, str]:
+        token = await self._get_tenant_access_token()
+        return {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8",
+        }
 
     async def _call_feishu_json_api(
         self,
@@ -234,7 +247,7 @@ class KeywordBitableReportListener(EventListener):
         try:
             body = response.json()
         except Exception as exc:
-            raise RuntimeError("Non-JSON response from Feishu API.") from exc
+            raise RuntimeError("飞书接口返回非 JSON。") from exc
 
         code = int(body.get("code", 0))
         if code != 0:
@@ -245,219 +258,86 @@ class KeywordBitableReportListener(EventListener):
             return {}
         return data
 
-    async def _list_all_tables(self) -> list[dict[str, Any]]:
+    # ===== Data source orchestration =====
+
+    async def _run_sheets_report(self, date_arg: str | None, command_sheets: list[str]) -> str:
+        spreadsheet_token = self._get_str_config("sheets_spreadsheet_token", "")
+        if not spreadsheet_token:
+            raise ValueError("未配置 sheets_spreadsheet_token。")
+
+        target_sheets = self._resolve_target_sheets(command_sheets)
+        cell_range = self._get_str_config("sheets_range", "A1:ZZ2000") or "A1:ZZ2000"
+        headers = await self._build_auth_headers()
+
+        matrices, available_titles, missing = await self._sheets_source.fetch_line_matrices(
+            spreadsheet_token=spreadsheet_token,
+            headers=headers,
+            target_sheet_names=target_sheets,
+            cell_range=cell_range,
+        )
+
+        if command_sheets and missing:
+            available = "、".join(available_titles) if available_titles else "无"
+            raise ValueError(f"指定线别不存在：{'、'.join(missing)}；可选：{available}")
+
+        selected_sheets = target_sheets if target_sheets else available_titles
+        report = day_metrics.build_standard_report_from_matrices(
+            sheet_matrices=matrices,
+            selected_sheets=selected_sheets,
+            date_arg=date_arg,
+            date_mode=self._get_str_config("date_mode", "global"),
+            lookback_days=self._get_int_config("lookback_days", 7, 0, 60),
+            trend_days=self._get_int_config("trend_days", 7, 0, 30),
+            stale_threshold_process=self._get_int_config("stale_threshold_process", 2, 0, 30),
+            stale_threshold_product=self._get_int_config("stale_threshold_product", 3, 0, 30),
+            stale_threshold_electrochem=self._get_int_config("stale_threshold_electrochem", 5, 0, 30),
+            report_show_placeholder_sections=self._get_bool_config("report_show_placeholder_sections", False),
+            spec_registry_json=self._get_str_config("spec_registry_json", ""),
+            auto_fix_quality=False,
+        )
+        text = str(report.get("text", "")).strip()
+        line_errors = report.get("line_errors", [])
+        if isinstance(line_errors, list) and line_errors:
+            text = f"{text}\n\n提示：以下线别未纳入日报：{'；'.join(str(x) for x in line_errors)}"
+        return text
+
+    async def _run_bitable_brief_report(self, title_text: str) -> str:
         app_token = self._get_str_config("bitable_app_token", "")
         if not app_token:
-            return []
-        token = await self._get_tenant_access_token()
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json; charset=utf-8",
-        }
-        endpoint = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables"
+            raise ValueError("未配置 bitable_app_token。")
 
-        page_token = ""
-        tables: list[dict[str, Any]] = []
-        while True:
-            query: dict[str, Any] = {"page_size": 200}
-            if page_token:
-                query["page_token"] = page_token
-            data = await self._call_feishu_json_api("GET", endpoint, headers=headers, params=query)
-            items = data.get("items", []) or []
-            for item in items:
-                if isinstance(item, dict):
-                    tables.append(item)
-            if not bool(data.get("has_more", False)):
-                break
-            page_token = str(data.get("page_token", "")).strip()
-            if not page_token:
-                break
-        return tables
+        headers = await self._build_auth_headers()
+        return await self._bitable_source.query_latest_brief(
+            app_token=app_token,
+            headers=headers,
+            table_ids_raw=self._get_str_config("sintering_table_ids", ""),
+            table_names_raw=self._get_str_config("sintering_table_names", "A线烧结汇总,B线烧结汇总"),
+            route_field=self._get_str_config("route_field", "路由"),
+            batch_field=self._get_str_config("batch_field", "批次号"),
+            message_time_field=self._get_str_config("message_time_field", "消息时间"),
+            scan_limit=self._get_int_config("scan_limit", 1000, min_value=50, max_value=5000),
+            detail_max_fields=self._get_int_config("detail_max_fields", 4, min_value=1, max_value=10),
+            no_data_text=self._get_str_config("no_data_text", "未查到出窑批次或烧结压实数据。"),
+            title_text=title_text,
+        )
 
-    async def _resolve_sintering_table_ids(self) -> list[str]:
-        explicit_ids = self._split_csv(self._get_str_config("sintering_table_ids", ""))
-        if explicit_ids:
-            return self._dedupe_keep_order(explicit_ids)
+    async def _dispatch_report(self, date_arg: str | None, command_sheets: list[str]) -> str:
+        mode = self._resolve_data_source_mode()
+        if mode == "sheets":
+            return await self._run_sheets_report(date_arg=date_arg, command_sheets=command_sheets)
 
-        target_names = self._split_csv(self._get_str_config("sintering_table_names", "A线烧结汇总,B线烧结汇总"))
-        if not target_names:
-            return []
+        if mode == "bitable":
+            return await self._run_bitable_brief_report(title_text="当前出窑批次及烧结压实（多维表模式）：")
 
-        tables = await self._list_all_tables()
-        name_to_id: dict[str, str] = {}
-        for table in tables:
-            name = str(table.get("name", "")).strip()
-            table_id = str(table.get("table_id", "")).strip()
-            if name and table_id:
-                name_to_id[name] = table_id
-
-        resolved: list[str] = []
-        for name in target_names:
-            table_id = name_to_id.get(name, "")
-            if table_id:
-                resolved.append(table_id)
-        return self._dedupe_keep_order(resolved)
-
-    async def _list_table_records(self, table_id: str, scan_limit: int) -> list[dict[str, Any]]:
-        app_token = self._get_str_config("bitable_app_token", "")
-        if not app_token or not table_id:
-            return []
-
-        token = await self._get_tenant_access_token()
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json; charset=utf-8",
-        }
-        endpoint = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
-
-        records: list[dict[str, Any]] = []
-        page_token = ""
-        scanned = 0
-        while scanned < scan_limit:
-            page_size = min(200, scan_limit - scanned)
-            query: dict[str, Any] = {"page_size": page_size}
-            if page_token:
-                query["page_token"] = page_token
-            data = await self._call_feishu_json_api("GET", endpoint, headers=headers, params=query)
-            items = data.get("items", []) or []
-            for item in items:
-                if isinstance(item, dict):
-                    records.append(item)
-            scanned += len(items)
-            if not bool(data.get("has_more", False)):
-                break
-            page_token = str(data.get("page_token", "")).strip()
-            if not page_token:
-                break
-        return records
-
-    # ===== Data extraction =====
-
-    @staticmethod
-    def _field_to_text(value: Any) -> str:
-        if value is None:
-            return ""
-        if isinstance(value, str):
-            return value.strip()
-        if isinstance(value, (dict, list)):
-            try:
-                return json.dumps(value, ensure_ascii=False)
-            except Exception:
-                return str(value).strip()
-        return str(value).strip()
-
-    def _is_sintering_record(self, fields: dict[str, Any], route_field: str, batch_field: str) -> bool:
-        route = self._field_to_text(fields.get(route_field)).lower()
-        batch = self._field_to_text(fields.get(batch_field)).upper()
-        return ("sintering" in route) or ("-SC-" in batch)
-
-    def _infer_line(self, fields: dict[str, Any], route_field: str, batch_field: str) -> str:
-        route = self._field_to_text(fields.get(route_field)).lower()
-        if route.endswith(".a"):
-            return "A"
-        if route.endswith(".b"):
-            return "B"
-
-        batch = self._field_to_text(fields.get(batch_field)).upper()
-        if "-DA" in batch:
-            return "A"
-        if "-DB" in batch:
-            return "B"
-        return ""
-
-    @staticmethod
-    def _time_to_sort_key(raw: str) -> float:
-        text = raw.strip()
-        if not text:
-            return 0.0
+        # auto: 在线表格优先，失败回退多维表。
         try:
-            value = float(text)
-            if value > 1e12:
-                value = value / 1000.0
-            return value
-        except Exception:
-            pass
-
-        iso = text.replace("Z", "+00:00")
-        try:
-            dt = datetime.datetime.fromisoformat(iso)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=datetime.datetime.now().astimezone().tzinfo)
-            return dt.timestamp()
-        except Exception:
-            pass
-
-        fmts = ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S")
-        for fmt in fmts:
+            return await self._run_sheets_report(date_arg=date_arg, command_sheets=command_sheets)
+        except Exception as sheets_exc:
             try:
-                dt = datetime.datetime.strptime(text, fmt)
-                dt = dt.replace(tzinfo=datetime.datetime.now().astimezone().tzinfo)
-                return dt.timestamp()
-            except Exception:
-                continue
-        return 0.0
-
-    def _build_detail_text(self, fields: dict[str, Any]) -> str:
-        detail_max = self._get_int_config("detail_max_fields", 4, min_value=1, max_value=10)
-        ignore_keys = {"消息时间", "原始文本", "OCR文本", "路由", "批次号", "业务类型", "产线"}
-
-        def _value_text(v: Any) -> str:
-            if isinstance(v, float):
-                return f"{v:.3f}".rstrip("0").rstrip(".")
-            return self._field_to_text(v)
-
-        avg_items = [(k, v) for k, v in fields.items() if "均值" in str(k)]
-        if not avg_items:
-            avg_items = [(k, v) for k, v in fields.items() if ("压实" in str(k) and str(k) not in ignore_keys)]
-        if not avg_items:
-            avg_items = [(k, v) for k, v in fields.items() if str(k) not in ignore_keys]
-
-        parts: list[str] = []
-        for key, value in avg_items:
-            k = str(key).strip()
-            if not k:
-                continue
-            vt = _value_text(value)
-            if not vt:
-                continue
-            parts.append(f"{k}={vt}")
-            if len(parts) >= detail_max:
-                break
-        return ", ".join(parts)
-
-    def _build_reply_text(
-        self,
-        latest_by_line: dict[str, dict[str, Any]],
-        batch_field: str,
-        message_time_field: str,
-    ) -> str:
-        no_data_text = self._get_str_config("no_data_text", "未查到出窑批次或烧结压实数据。")
-        if not latest_by_line:
-            return no_data_text
-
-        lines = ["当前出窑批次及烧结压实："]
-        for line_code in ("A", "B"):
-            item = latest_by_line.get(line_code)
-            if item is None:
-                lines.append(f"{line_code}线：暂无数据")
-                continue
-
-            fields = item.get("fields", {}) or {}
-            if not isinstance(fields, dict):
-                lines.append(f"{line_code}线：暂无数据")
-                continue
-
-            batch_id = self._field_to_text(fields.get(batch_field))
-            msg_time = self._field_to_text(fields.get(message_time_field))
-            detail = self._build_detail_text(fields)
-
-            line_text = f"{line_code}线：{batch_id or '暂无批次'}"
-            if detail:
-                line_text = f"{line_text} | {detail}"
-            if msg_time:
-                line_text = f"{line_text} | 时间 {msg_time}"
-            lines.append(line_text)
-        return "\n".join(lines)
+                fallback = await self._run_bitable_brief_report(title_text="当前出窑批次及烧结压实（多维表回退）：")
+            except Exception as bitable_exc:
+                raise RuntimeError(f"在线表格失败：{sheets_exc}；多维表回退失败：{bitable_exc}") from bitable_exc
+            return f"【在线表格查询失败，已回退多维表】{sheets_exc}\n{fallback}"
 
     # ===== Entry =====
 
@@ -466,10 +346,8 @@ class KeywordBitableReportListener(EventListener):
         if not plain_text:
             return
 
-        command = self._normalize_command_text(plain_text)
-        if not command:
-            return
-        if command not in self._resolve_commands():
+        parse_result = parse_report_command(plain_text, self._resolve_commands())
+        if not parse_result.triggered:
             return
 
         in_group = self._is_group_event(event_ctx)
@@ -482,42 +360,19 @@ class KeywordBitableReportListener(EventListener):
         event_ctx.prevent_default()
         event_ctx.prevent_postorder()
 
-        route_field = self._get_str_config("route_field", "路由")
-        batch_field = self._get_str_config("batch_field", "批次号")
-        message_time_field = self._get_str_config("message_time_field", "消息时间")
-        scan_limit = self._get_int_config("scan_limit", 1000, min_value=50, max_value=5000)
+        if parse_result.error:
+            await self._reply_text(event_ctx, parse_result.error)
+            return
+
+        command = parse_result.value
+        if command is None:
+            return
 
         try:
-            table_ids = await self._resolve_sintering_table_ids()
-            if not table_ids:
-                await self._reply_text(event_ctx, self._get_str_config("no_data_text", "未查到出窑批次或烧结压实数据。"))
-                return
-
-            latest_by_line: dict[str, dict[str, Any]] = {}
-            for table_id in table_ids:
-                records = await self._list_table_records(table_id, scan_limit)
-                for item in records:
-                    fields = item.get("fields", {}) or {}
-                    if not isinstance(fields, dict):
-                        continue
-                    if not self._is_sintering_record(fields, route_field, batch_field):
-                        continue
-
-                    line = self._infer_line(fields, route_field, batch_field)
-                    if line not in {"A", "B"}:
-                        continue
-
-                    current_time_text = self._field_to_text(fields.get(message_time_field))
-                    current_sort = self._time_to_sort_key(current_time_text)
-                    existing = latest_by_line.get(line)
-                    if existing is None:
-                        latest_by_line[line] = {"sort": current_sort, "fields": fields}
-                        continue
-                    if current_sort >= float(existing.get("sort", 0.0)):
-                        latest_by_line[line] = {"sort": current_sort, "fields": fields}
-
-            reply_text = self._build_reply_text(latest_by_line, batch_field, message_time_field)
-            await self._reply_text(event_ctx, reply_text)
+            text = await self._dispatch_report(
+                date_arg=command.date_arg,
+                command_sheets=command.sheet_names,
+            )
+            await self._reply_text(event_ctx, text)
         except Exception as exc:
-            await self._reply_text(event_ctx, f"口令查询失败：{exc}")
-
+            await self._reply_text(event_ctx, f"日报查询失败：{exc}")

@@ -3,14 +3,13 @@ kind: EventListener
 metadata:
   name: keyword_bitable_report
   label:
-    en_US: KeywordBitableReport
-    zh_Hans: 口令查询飞书表
+    en_US: KeywordDailyReport
+    zh_Hans: 口令日报查询
   description:
-    en_US: Listen keyword commands and reply latest sintering batch/compression from Feishu Bitable.
-    zh_Hans: 监听口令并回复飞书多维表中的最新出窑批次与烧结压实。
+    en_US: Listen keyword command and reply daily report from Feishu Sheets with Bitable fallback.
+    zh_Hans: 监听口令并回复飞书在线表格日报，失败时回退多维表简报。
 spec:
 execution:
   python:
     path: keyword_bitable_report.py
     attr: KeywordBitableReportListener
-
