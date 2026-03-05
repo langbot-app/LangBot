@@ -4,44 +4,44 @@ from urllib.parse import urlparse
 
 
 class RunnerCategory:
-    LOCAL = "local"
-    CLOUD = "cloud"
-    UNKNOWN = "unknown"
+    LOCAL = 'local'
+    CLOUD = 'cloud'
+    UNKNOWN = 'unknown'
 
 
 CLOUD_DOMAINS = [
-    ".n8n.cloud",
-    ".n8n.io",
-    "api.dify.ai",
-    "cloud.dify.ai",
-    ".coze.com",
-    ".coze.cn",
-    "cloud.langflow.ai",
-    ".langflow.org",
+    '.n8n.cloud',
+    '.n8n.io',
+    'api.dify.ai',
+    'cloud.dify.ai',
+    '.coze.com',
+    '.coze.cn',
+    'cloud.langflow.ai',
+    '.langflow.org',
 ]
 
 LOCAL_PATTERNS = [
-    "localhost",
-    "127.0.0.1",
-    "0.0.0.0",
-    "192.168.",
-    "10.",
-    "172.16.",
-    "172.17.",
-    "172.18.",
-    "172.19.",
-    "172.20.",
-    "172.21.",
-    "172.22.",
-    "172.23.",
-    "172.24.",
-    "172.25.",
-    "172.26.",
-    "172.27.",
-    "172.28.",
-    "172.29.",
-    "172.30.",
-    "172.31.",
+    'localhost',
+    '127.0.0.1',
+    '0.0.0.0',
+    '192.168.',
+    '10.',
+    '172.16.',
+    '172.17.',
+    '172.18.',
+    '172.19.',
+    '172.20.',
+    '172.21.',
+    '172.22.',
+    '172.23.',
+    '172.24.',
+    '172.25.',
+    '172.26.',
+    '172.27.',
+    '172.28.',
+    '172.29.',
+    '172.30.',
+    '172.31.',
 ]
 
 
@@ -51,7 +51,7 @@ def get_runner_category(runner_name: str, runner_url: str) -> str:
 
     try:
         parsed_url = urlparse(runner_url)
-        host = parsed_url.hostname.lower() if parsed_url.hostname else ""
+        host = parsed_url.hostname.lower() if parsed_url.hostname else ''
     except Exception:
         return RunnerCategory.UNKNOWN
 
@@ -68,9 +68,9 @@ def get_runner_category(runner_name: str, runner_url: str) -> str:
 
 def get_runner_info(runner_name: str, runner_url: str) -> dict:
     return {
-        "name": runner_name,
-        "url": runner_url,
-        "category": get_runner_category(runner_name, runner_url),
+        'name': runner_name,
+        'url': runner_url,
+        'category': get_runner_category(runner_name, runner_url),
     }
 
 

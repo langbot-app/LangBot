@@ -186,9 +186,7 @@ class ChatMessageHandler(handler.MessageHandler):
                     pipeline_plugins = query.variables.get('_pipeline_bound_plugins', None)
 
                     runner_category = runner_utils.get_runner_category_from_runner(
-                        runner_name,
-                        runner,
-                        query.pipeline_config
+                        runner_name, runner, query.pipeline_config
                     )
 
                     payload = {
