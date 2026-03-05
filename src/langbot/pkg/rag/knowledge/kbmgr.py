@@ -28,7 +28,9 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
     async def initialize(self):
         pass
 
-    async def _store_file_task(self, file: persistence_rag.File, task_context: taskmgr.TaskContext, parser_plugin_id: str | None = None):
+    async def _store_file_task(
+        self, file: persistence_rag.File, task_context: taskmgr.TaskContext, parser_plugin_id: str | None = None
+    ):
         try:
             # set file status to processing
             await self.ap.persistence_mgr.execute_async(

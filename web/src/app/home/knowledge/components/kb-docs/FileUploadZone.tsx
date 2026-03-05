@@ -265,9 +265,10 @@ export default function FileUploadZone({
           <div
             className={`
               relative border-2 border-dashed rounded-lg p-4 text-center transition-colors
-              ${isDragOver
-                ? 'border-blue-500 bg-blue-50'
-                : 'border-gray-300 hover:border-gray-400'
+              ${
+                isDragOver
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-300 hover:border-gray-400'
               }
               ${isUploading || loadingParsers ? 'opacity-50 pointer-events-none' : ''}
             `}

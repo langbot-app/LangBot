@@ -751,7 +751,8 @@ const enUS = {
     knowledgeEngineRequired: 'Knowledge engine is required',
     selectKnowledgeEngine: 'Select Knowledge Engine',
     builtInEngine: 'Built-in Engine',
-    cannotChangeKnowledgeEngine: 'Knowledge engine cannot be changed after creation',
+    cannotChangeKnowledgeEngine:
+      'Knowledge engine cannot be changed after creation',
     engineSettings: 'Engine Settings',
     engineSettingsReadonly: 'read-only in edit mode',
     retrievalSettings: 'Retrieval Settings',

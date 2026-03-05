@@ -170,7 +170,7 @@ function MarketPageContent({
         setTotal(total);
         setHasMore(
           data.plugins.length === pageSize &&
-          plugins.length + newPlugins.length < total,
+            plugins.length + newPlugins.length < total,
         );
       } catch (error) {
         console.error('Failed to fetch plugins:', error);

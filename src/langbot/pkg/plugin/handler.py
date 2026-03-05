@@ -955,10 +955,10 @@ class RuntimeConnectionHandler(handler.Handler):
         the PARSE_DOCUMENT action with a file_key reference.
         """
         # Send file to runtime via chunked transfer
-        file_key = await self.send_file(file_bytes, "")
+        file_key = await self.send_file(file_bytes, '')
 
         # Include file_key in context_data for the runtime to read
-        context_data["file_key"] = file_key
+        context_data['file_key'] = file_key
 
         result = await self.call_action(
             LangBotToRuntimeAction.PARSE_DOCUMENT,

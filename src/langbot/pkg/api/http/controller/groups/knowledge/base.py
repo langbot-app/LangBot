@@ -71,7 +71,9 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
                 parser_plugin_id = json_data.get('parser_plugin_id')
 
                 # 调用服务层方法将文件与知识库关联
-                task_id = await self.ap.knowledge_service.store_file(knowledge_base_uuid, file_id, parser_plugin_id=parser_plugin_id)
+                task_id = await self.ap.knowledge_service.store_file(
+                    knowledge_base_uuid, file_id, parser_plugin_id=parser_plugin_id
+                )
                 return self.success(
                     {
                         'task_id': task_id,
