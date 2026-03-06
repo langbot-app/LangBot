@@ -210,6 +210,7 @@ class AutoProcessToBitableListener(EventListener):
             "pure_water.A": "A线纯水PH汇总",
             "pure_water.B": "B线纯水PH汇总",
             "pure_water": "车间纯水PH汇总",
+            "kiln_batch_io": "窑炉批次进窑出窑表",
             "custom": "自定义消息汇总",
             "raw": "原始消息汇总",
         }
@@ -849,6 +850,7 @@ class AutoProcessToBitableListener(EventListener):
                 "crushing": True,
                 "particle_size": True,
                 "pure_water": True,
+                "kiln_batch_io": True,
             },
         )
         value = switch.get(key, default)
@@ -1285,6 +1287,132 @@ class AutoProcessToBitableListener(EventListener):
                 fields=fields,
             )
         ]
+
+    @staticmethod
+    def _preferred_kiln_segments() -> set[str]:
+        return {"A1", "A2", "B1", "B2", "C1", "C2", "D1", "D2", "E1", "E2"}
+
+    @classmethod
+    def _normalize_kiln_segment(cls, segment_text: str) -> str:
+        segment = segment_text.strip().upper()
+        if not segment:
+            return ""
+        if segment in cls._preferred_kiln_segments():
+            return segment
+        if re.fullmatch(r"[A-Z]{1,4}\d?", segment):
+            return segment
+        return ""
+
+    def _resolve_kiln_message_date(self, message_time: str) -> datetime.date:
+        raw_message_time = str(message_time).strip()
+        time_format = self._get_time_format()
+        if raw_message_time and time_format:
+            try:
+                return datetime.datetime.strptime(raw_message_time, time_format).date()
+            except Exception:
+                pass
+
+        date_match = re.search(r"(\d{4})-(\d{2})-(\d{2})", raw_message_time)
+        if date_match:
+            try:
+                return datetime.date(
+                    year=int(date_match.group(1)),
+                    month=int(date_match.group(2)),
+                    day=int(date_match.group(3)),
+                )
+            except Exception:
+                pass
+
+        return datetime.datetime.now(self._get_time_zone()).date()
+
+    def _compose_kiln_event_time(self, message_time: str, hour: int, minute: int) -> str:
+        base_date = self._resolve_kiln_message_date(message_time)
+        event_dt = datetime.datetime(
+            year=base_date.year,
+            month=base_date.month,
+            day=base_date.day,
+            hour=hour,
+            minute=minute,
+            second=0,
+            tzinfo=self._get_time_zone(),
+        )
+
+        time_format = self._get_time_format()
+        try:
+            return event_dt.strftime(time_format)
+        except Exception:
+            return event_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    def _parse_kiln_batch_io(self, text: str, message_time: str) -> list[ParsedRecord]:
+        if not self._process_switch("kiln_batch_io", True):
+            return []
+
+        normalized_text = self._normalize_dash(text)
+        batch_header_regex = re.compile(
+            r"([A-Z0-9]+(?:-[A-Z0-9]+)*)\s*批次\s*(开始|结束)\s*(进窑|出窑)",
+            re.IGNORECASE,
+        )
+        detail_line_regex = re.compile(
+            r"(?m)^\s*([A-Z]{1,4}\d?)\s*-+\s*(\d+)\s*-+\s*(\d{1,2})\s*[：:]\s*(\d{2})\s*$",
+            re.IGNORECASE,
+        )
+        action_to_field: dict[tuple[str, str], str] = {
+            ("进窑", "开始"): "进窑开始时间",
+            ("进窑", "结束"): "进窑结束时间",
+            ("出窑", "开始"): "出窑开始时间",
+            ("出窑", "结束"): "出窑结束时间",
+        }
+
+        batch_headers = list(batch_header_regex.finditer(normalized_text))
+        if not batch_headers:
+            return []
+
+        records: list[ParsedRecord] = []
+        for idx, header_match in enumerate(batch_headers):
+            batch_id = self._normalize_dash(str(header_match.group(1))).upper().strip()
+            stage_status = str(header_match.group(2)).strip()
+            stage_action = str(header_match.group(3)).strip()
+            time_field = action_to_field.get((stage_action, stage_status), "")
+            if not batch_id or not time_field:
+                continue
+
+            block_start = header_match.end()
+            block_end = batch_headers[idx + 1].start() if idx + 1 < len(batch_headers) else len(normalized_text)
+            block_text = normalized_text[block_start:block_end]
+
+            for detail_match in detail_line_regex.finditer(block_text):
+                segment = self._normalize_kiln_segment(str(detail_match.group(1)))
+                if not segment:
+                    continue
+
+                position = str(detail_match.group(2)).strip()
+                try:
+                    hour = int(str(detail_match.group(3)).strip())
+                    minute = int(str(detail_match.group(4)).strip())
+                except Exception:
+                    continue
+                if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+                    continue
+
+                line = f"{segment}-{position}"
+                event_time = self._compose_kiln_event_time(message_time, hour, minute)
+                fields: dict[str, Any] = {
+                    "窑炉段": segment,
+                    "窑位": position,
+                    time_field: event_time,
+                    "消息时间": message_time,
+                }
+                records.append(
+                    ParsedRecord(
+                        scenario="kiln_batch_io",
+                        line=line,
+                        batch_id=batch_id,
+                        route_key="kiln_batch_io",
+                        fields=fields,
+                    )
+                )
+
+        return records
 
     @staticmethod
     def _particle_process_name_map() -> dict[str, str]:
@@ -2336,6 +2464,7 @@ class AutoProcessToBitableListener(EventListener):
         records.extend(self._parse_sintering(full_text, message_time))
         records.extend(self._parse_crushing(full_text, message_time))
         records.extend(self._parse_pure_water(full_text, message_time))
+        records.extend(self._parse_kiln_batch_io(full_text, message_time))
         return records
 
     @staticmethod

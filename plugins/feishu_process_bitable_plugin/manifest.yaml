@@ -4,7 +4,7 @@ metadata:
   author: local
   name: feishu_process_bitable_plugin
   repository: 'https://open.feishu.cn/'
-  version: 0.3.20
+  version: 0.3.21
   description:
     en_US: Parse process messages with OCR and write structured records into Feishu Bitable.
     zh_Hans: 解析工艺消息并支持OCR，把结构化结果写入飞书多维表格。
@@ -139,11 +139,11 @@ spec:
         en_US: Process Switch JSON
         zh_Hans: 工艺开关(JSON)
       description:
-        en_US: 'Enable/disable built-in parsers, e.g. {"particle_size":true,"spray":true,"feeding":true,"sintering":true,"crushing":true,"pure_water":true}'
-        zh_Hans: '内置解析开关，例如 {"particle_size":true,"spray":true,"feeding":true,"sintering":true,"crushing":true,"pure_water":true}'
+        en_US: 'Enable/disable built-in parsers, e.g. {"particle_size":true,"spray":true,"feeding":true,"sintering":true,"crushing":true,"pure_water":true,"kiln_batch_io":true}'
+        zh_Hans: '内置解析开关，例如 {"particle_size":true,"spray":true,"feeding":true,"sintering":true,"crushing":true,"pure_water":true,"kiln_batch_io":true}'
       type: json
       required: false
-      default: '{"particle_size":true,"spray":true,"feeding":true,"sintering":true,"crushing":true,"pure_water":true}'
+      default: '{"particle_size":true,"spray":true,"feeding":true,"sintering":true,"crushing":true,"pure_water":true,"kiln_batch_io":true}'
     - name: merge_particle_size_to_stage_tables
       label:
         en_US: Merge Particle Size To Stage Tables

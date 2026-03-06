@@ -30,6 +30,10 @@
 - `sintering`：烧结（A/B线，批次 + 样品值 + 自动均值）
 - `crushing`：粉碎压实（A/B线，批次 + 样品值 + 频率）
 - `pure_water`：纯水（PH + 批次）
+- `kiln_batch_io`：窑炉批次进窑/出窑（批次 + 窑炉段 + 窑位 + 进/出窑开始结束时间）
+  - 头行示例：`DA2603-021批次结束出窑`、`DA2603-027批次开始进窑`
+  - 明细示例：`A2-1--06：23`、`B1--2---01:21`
+  - 窑炉段采用“白名单优先 + 兼容扩展”：优先识别 `A1/A2/B1/B2/C1/C2/D1/D2/E1/E2`，并兼容如 `F1` 等扩展段位
 
 ## 核心配置
 
@@ -67,7 +71,8 @@
   "crushing.B": "tblByyyy",
   "wet_process.A": "tblWetAxxxx",
   "wet_process.B": "tblWetByyyy",
-  "pure_water": "tblWater"
+  "pure_water": "tblWater",
+  "kiln_batch_io": "tblKilnxxxx"
 }
 ```
 
@@ -93,6 +98,7 @@
   - `wet_process.A` -> `A线湿法汇总`
   - `wet_process.B` -> `B线湿法汇总`
   - `pure_water` -> `车间纯水PH汇总`
+  - `kiln_batch_io` -> `窑炉批次进窑出窑表`
 - 若 `merge_particle_size_to_stage_tables=false`，仍可使用 `particle_size.FS/CM/XM/HP/SC/QQT` 独立路由
 - 写入前会检查字段，缺失字段自动创建（默认文本列）
 
@@ -110,7 +116,8 @@
   "crushing.B": "B线粉碎压实汇总",
   "wet_process.A": "A线湿法汇总",
   "wet_process.B": "B线湿法汇总",
-  "pure_water": "车间纯水PH汇总"
+  "pure_water": "车间纯水PH汇总",
+  "kiln_batch_io": "窑炉批次进窑出窑表"
 }
 ```
 

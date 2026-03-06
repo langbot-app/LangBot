@@ -275,3 +275,67 @@ def test_xm_solids_without_sample_suffix_parses_minutes_as_time_not_sample() -> 
     assert record.fields["细磨研磨时间(min)"] == 160
     assert record.fields["细磨固含量(%)"] == 40.89
     assert "细磨样品段" not in record.fields
+
+
+def test_parse_kiln_batch_io_supports_preferred_and_extended_segments() -> None:
+    listener = _build_listener()
+    text = (
+        "DA2603-021\u6279\u6b21\u7ed3\u675f\u51fa\u7a91\n"
+        "A2-1--06\uff1a23\n"
+        "F1-2---06:24"
+    )
+
+    records = listener._parse_kiln_batch_io(text, "2026-03-06 08:00:00")
+
+    assert len(records) == 2
+
+    record_a2 = next(r for r in records if r.line == "A2-1")
+    assert record_a2.scenario == "kiln_batch_io"
+    assert record_a2.route_key == "kiln_batch_io"
+    assert record_a2.batch_id == "DA2603-021"
+    assert record_a2.fields["\u7a91\u7089\u6bb5"] == "A2"
+    assert record_a2.fields["\u7a91\u4f4d"] == "1"
+    assert record_a2.fields["\u51fa\u7a91\u7ed3\u675f\u65f6\u95f4"] == "2026-03-06 06:23:00"
+
+    record_f1 = next(r for r in records if r.line == "F1-2")
+    assert record_f1.fields["\u7a91\u7089\u6bb5"] == "F1"
+    assert record_f1.fields["\u7a91\u4f4d"] == "2"
+    assert record_f1.fields["\u51fa\u7a91\u7ed3\u675f\u65f6\u95f4"] == "2026-03-06 06:24:00"
+
+
+def test_parse_kiln_batch_io_maps_all_time_fields_and_merges_same_slot() -> None:
+    listener = _build_listener()
+    text = (
+        "DA2603-021\u6279\u6b21\u5f00\u59cb\u8fdb\u7a91\n"
+        "A2-1--01:30\n"
+        "DA2603-021\u6279\u6b21\u7ed3\u675f\u8fdb\u7a91\n"
+        "A2-1--01:32\n"
+        "DA2603-021\u6279\u6b21\u5f00\u59cb\u51fa\u7a91\n"
+        "A2-1--06:20\n"
+        "DA2603-021\u6279\u6b21\u7ed3\u675f\u51fa\u7a91\n"
+        "A2-1--06:25"
+    )
+
+    records = listener._parse_kiln_batch_io(text, "2026-03-06 08:00:00")
+    assert len(records) == 4
+
+    merged = listener._merge_records_for_write(records)
+    assert len(merged) == 1
+
+    record = merged[0]
+    assert record.line == "A2-1"
+    assert record.batch_id == "DA2603-021"
+    assert record.route_key == "kiln_batch_io"
+    assert record.fields["\u8fdb\u7a91\u5f00\u59cb\u65f6\u95f4"] == "2026-03-06 01:30:00"
+    assert record.fields["\u8fdb\u7a91\u7ed3\u675f\u65f6\u95f4"] == "2026-03-06 01:32:00"
+    assert record.fields["\u51fa\u7a91\u5f00\u59cb\u65f6\u95f4"] == "2026-03-06 06:20:00"
+    assert record.fields["\u51fa\u7a91\u7ed3\u675f\u65f6\u95f4"] == "2026-03-06 06:25:00"
+
+
+def test_parse_kiln_batch_io_can_be_disabled_by_process_switch() -> None:
+    listener = _build_listener({"process_switch_json": {"kiln_batch_io": False}})
+    text = "DA2603-021\u6279\u6b21\u7ed3\u675f\u51fa\u7a91\nA2-1--06:23"
+
+    records = listener._parse_kiln_batch_io(text, "2026-03-06 08:00:00")
+
+    assert records == []
