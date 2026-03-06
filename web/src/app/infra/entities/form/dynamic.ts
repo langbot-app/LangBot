@@ -26,6 +26,7 @@ export enum DynamicFormItemType {
   FILE_ARRAY = 'array[file]',
   SELECT = 'select',
   LLM_MODEL_SELECTOR = 'llm-model-selector',
+  MODEL_OR_API_CHAIN_SELECTOR = 'model-or-api-chain-selector',
   PROMPT_EDITOR = 'prompt-editor',
   UNKNOWN = 'unknown',
   KNOWLEDGE_BASE_SELECTOR = 'knowledge-base-selector',
