@@ -4,7 +4,7 @@ metadata:
   author: local
   name: feishu_keyword_report_plugin
   repository: "https://open.feishu.cn/"
-  version: 0.1.0
+  version: 0.1.1
   description:
     en_US: Reply keyword command with daily report from Feishu Sheets (fallback to Bitable).
     zh_Hans: 通过口令查询飞书在线表格日报（失败时回退多维表简报）。
