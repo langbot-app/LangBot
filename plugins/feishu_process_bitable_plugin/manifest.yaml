@@ -4,7 +4,7 @@ metadata:
   author: local
   name: feishu_process_bitable_plugin
   repository: 'https://open.feishu.cn/'
-  version: 0.3.21
+  version: 0.3.22
   description:
     en_US: Parse process messages with OCR and write structured records into Feishu Bitable.
     zh_Hans: 解析工艺消息并支持OCR，把结构化结果写入飞书多维表格。
@@ -144,6 +144,16 @@ spec:
       type: json
       required: false
       default: '{"particle_size":true,"spray":true,"feeding":true,"sintering":true,"crushing":true,"pure_water":true,"kiln_batch_io":true}'
+    - name: kiln_batch_io_row_mode
+      label:
+        en_US: Kiln Batch IO Row Mode
+        zh_Hans: 窑炉进出窑行模式
+      description:
+        en_US: 'segment: one row per batch+segment with position-prefixed time fields; slot: one row per batch+segment+position.'
+        zh_Hans: 'segment：按批次+窑段一行（时间列带窑位前缀）；slot：按批次+窑段+窑位一行。'
+      type: string
+      required: false
+      default: 'segment'
     - name: merge_particle_size_to_stage_tables
       label:
         en_US: Merge Particle Size To Stage Tables

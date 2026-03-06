@@ -34,6 +34,8 @@
   - 头行示例：`DA2603-021批次结束出窑`、`DA2603-027批次开始进窑`
   - 明细示例：`A2-1--06：23`、`B1--2---01:21`
   - 窑炉段采用“白名单优先 + 兼容扩展”：优先识别 `A1/A2/B1/B2/C1/C2/D1/D2/E1/E2`，并兼容如 `F1` 等扩展段位
+  - 行模式默认 `segment`：同一批次+窑段仅一行，时间列按窑位展开（如 `1号进窑开始时间`、`2号出窑结束时间`）
+  - 可切换 `slot`：按 `批次+窑段+窑位` 分行写入（旧行为）
 
 ## 核心配置
 
@@ -46,6 +48,7 @@
 - `auto_create_fields`：缺列自动创建
 - `enable_ocr_for_images`
 - `process_switch_json`
+- `kiln_batch_io_row_mode`：`segment|slot`（默认 `segment`）
 - `merge_particle_size_to_stage_tables`：粒度数据归并到工序汇总表（默认 `true`）
 - `upsert_by_batch`：按批次优先更新已有行（默认 `true`，避免同批次拆成多行）
 - `upsert_match_include_route` / `upsert_match_include_line`：upsert匹配是否包含路由与产线

@@ -1343,6 +1343,12 @@ class AutoProcessToBitableListener(EventListener):
         except Exception:
             return event_dt.strftime("%Y-%m-%d %H:%M:%S")
 
+    def _get_kiln_batch_io_row_mode(self) -> str:
+        row_mode = self._get_str_config("kiln_batch_io_row_mode", "segment").lower()
+        if row_mode in {"segment", "slot"}:
+            return row_mode
+        return "segment"
+
     def _parse_kiln_batch_io(self, text: str, message_time: str) -> list[ParsedRecord]:
         if not self._process_switch("kiln_batch_io", True):
             return []
@@ -1362,6 +1368,7 @@ class AutoProcessToBitableListener(EventListener):
             ("出窑", "开始"): "出窑开始时间",
             ("出窑", "结束"): "出窑结束时间",
         }
+        row_mode = self._get_kiln_batch_io_row_mode()
 
         batch_headers = list(batch_header_regex.finditer(normalized_text))
         if not batch_headers:
@@ -1394,14 +1401,23 @@ class AutoProcessToBitableListener(EventListener):
                 if hour < 0 or hour > 23 or minute < 0 or minute > 59:
                     continue
 
-                line = f"{segment}-{position}"
                 event_time = self._compose_kiln_event_time(message_time, hour, minute)
-                fields: dict[str, Any] = {
-                    "窑炉段": segment,
-                    "窑位": position,
-                    time_field: event_time,
-                    "消息时间": message_time,
-                }
+                if row_mode == "slot":
+                    line = f"{segment}-{position}"
+                    fields: dict[str, Any] = {
+                        "窑炉段": segment,
+                        "窑位": position,
+                        time_field: event_time,
+                        "消息时间": message_time,
+                    }
+                else:
+                    line = segment
+                    position_time_field = f"{position}号{time_field}"
+                    fields = {
+                        "窑炉段": segment,
+                        position_time_field: event_time,
+                        "消息时间": message_time,
+                    }
                 records.append(
                     ParsedRecord(
                         scenario="kiln_batch_io",
