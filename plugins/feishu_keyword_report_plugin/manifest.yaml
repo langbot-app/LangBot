@@ -4,10 +4,10 @@ metadata:
   author: local
   name: feishu_keyword_report_plugin
   repository: "https://open.feishu.cn/"
-  version: 0.1.1
+  version: 0.1.3
   description:
-    en_US: Reply keyword command with daily report from Feishu Sheets (fallback to Bitable).
-    zh_Hans: 通过口令查询飞书在线表格日报（失败时回退多维表简报）。
+    en_US: Reply keyword commands for daily report and touch-material query with Feishu Sheets + Bitable.
+    zh_Hans: 通过口令查询日报与摸料信息，联动飞书在线表格和多维表。
   label:
     en_US: Feishu Keyword Report Plugin
     zh_Hans: 飞书口令查询插件
@@ -42,16 +42,18 @@ spec:
       type: string
       required: false
       default: "20"
+
     - name: data_source_mode
       label:
         en_US: Data Source Mode
         zh_Hans: 数据源模式
       description:
         en_US: auto/sheets/bitable. auto means sheets first and bitable fallback.
-        zh_Hans: auto/sheets/bitable，auto 表示在线表格优先，失败回退多维表。
+        zh_Hans: auto/sheets/bitable。auto 表示在线表格优先，失败回退多维表。
       type: string
       required: false
       default: "auto"
+
     - name: sheets_spreadsheet_token
       label:
         en_US: Sheets Spreadsheet Token
@@ -62,10 +64,10 @@ spec:
     - name: sheets_sheet_names
       label:
         en_US: Sheets Names
-        zh_Hans: 在线表格线别工作表
+        zh_Hans: 在线表格工作表
       description:
         en_US: Comma separated sheet titles. Empty means all sheets.
-        zh_Hans: 逗号分隔工作表名；为空时默认尝试全部工作表。
+        zh_Hans: 逗号分隔工作表标题；为空时尝试全部工作表。
       type: string
       required: false
       default: "S18-A线,S18-B线,S006-A线,S006-B线"
@@ -82,7 +84,7 @@ spec:
         zh_Hans: 日期策略
       description:
         en_US: global means all lines use one date; per-line means each line uses its own date.
-        zh_Hans: global 全线统一日期；per-line 按线别独立日期。
+        zh_Hans: global 为全线统一日期；per-line 为按线别独立日期。
       type: string
       required: false
       default: "global"
@@ -113,7 +115,7 @@ spec:
         zh_Hans: 显示制程趋势
       description:
         en_US: Whether to include process trend section in report text.
-        zh_Hans: 是否在日报中输出制程趋势段落。
+        zh_Hans: 是否在日报文本中输出制程趋势段落。
       type: boolean
       required: false
       default: true
@@ -123,7 +125,7 @@ spec:
         zh_Hans: 显示成品趋势
       description:
         en_US: Whether to include product trend section in report text.
-        zh_Hans: 是否在日报中输出成品趋势段落。
+        zh_Hans: 是否在日报文本中输出成品趋势段落。
       type: boolean
       required: false
       default: true
@@ -153,35 +155,48 @@ spec:
         en_US: Spec Registry JSON
         zh_Hans: 规格配置 JSON
       description:
-        en_US: Optional JSON string, format like {\"rules\":[{\"model\":\"S18\",\"metric\":\"成品压实\",\"spec\":\">=2.37\"}]}.
-        zh_Hans: 可选 JSON 字符串，格式如 {\"rules\":[{\"model\":\"S18\",\"metric\":\"成品压实\",\"spec\":\">=2.37\"}]}。
+        en_US: Optional JSON string, format like {"rules":[{"model":"S18","metric":"成品压实","spec":">=2.37"}]}.
+        zh_Hans: 可选 JSON 字符串，示例 {"rules":[{"model":"S18","metric":"成品压实","spec":">=2.37"}]}。
       type: string
       required: false
       default: ""
+
     - name: bitable_app_token
       label:
         en_US: Bitable App Token
-        zh_Hans: 多维表格 App Token（回退链路）
+        zh_Hans: 多维表 App Token
       type: string
       required: false
       default: ""
+
     - name: keyword_commands
       label:
         en_US: Keyword Commands
-        zh_Hans: 触发口令
+        zh_Hans: 日报触发口令
       description:
-        en_US: Comma separated commands, e.g. 日报.
-        zh_Hans: 逗号分隔口令，例如 日报。
+        en_US: Comma separated report commands, e.g. 日报.
+        zh_Hans: 逗号分隔日报口令，例如 日报。
       type: string
       required: false
       default: "日报"
+    - name: touch_material_commands
+      label:
+        en_US: Touch Material Commands
+        zh_Hans: 摸料触发口令
+      description:
+        en_US: Comma separated touch-material commands, e.g. 摸料.
+        zh_Hans: 逗号分隔摸料口令，例如 摸料。
+      type: string
+      required: false
+      default: "摸料"
+
     - name: sintering_table_ids
       label:
         en_US: Sintering Table IDs
-        zh_Hans: 烧结表ID列表
+        zh_Hans: 烧结表 ID 列表
       description:
         en_US: Comma separated table IDs. Highest priority.
-        zh_Hans: 逗号分隔的 table_id，优先级最高。
+        zh_Hans: 逗号分隔 table_id，优先级最高。
       type: string
       required: false
       default: ""
@@ -195,6 +210,27 @@ spec:
       type: string
       required: false
       default: "A线烧结汇总,B线烧结汇总"
+    - name: kiln_batch_table_ids
+      label:
+        en_US: Kiln Batch Table IDs
+        zh_Hans: 窑炉批次表 ID 列表
+      description:
+        en_US: Comma separated table IDs for kiln batch in/out records.
+        zh_Hans: 窑炉批次进窑出窑表的 table_id 列表（逗号分隔）。
+      type: string
+      required: false
+      default: ""
+    - name: kiln_batch_table_names
+      label:
+        en_US: Kiln Batch Table Names
+        zh_Hans: 窑炉批次表名列表
+      description:
+        en_US: Table names for kiln batch in/out records when IDs are not configured.
+        zh_Hans: 未配置 table_id 时，用表名查找窑炉批次进窑出窑表。
+      type: string
+      required: false
+      default: "窑炉批次进窑出窑表"
+
     - name: route_field
       label:
         en_US: Route Field
@@ -230,6 +266,38 @@ spec:
       type: string
       required: false
       default: "1000"
+
+    - name: touch_recipe_field_aliases_json
+      label:
+        en_US: Touch Recipe Field Aliases JSON
+        zh_Hans: 摸料配方字段别名 JSON
+      description:
+        en_US: JSON map for recipe fields aliases (include iron-phosphorus ratio, lithium, acid, titanium, sugar, peg, kiln temp).
+        zh_Hans: 配方六项与窑温列名别名映射 JSON，可覆盖默认映射。
+      type: string
+      required: false
+      default: ""
+    - name: touch_material_infer_rules_json
+      label:
+        en_US: Touch Material Infer Rules JSON
+        zh_Hans: 摸料物理性质推断规则 JSON
+      description:
+        en_US: JSON rule object for low/medium/high compaction bands.
+        zh_Hans: 压实均值三档阈值与文案配置 JSON（low/medium/high）。
+      type: string
+      required: false
+      default: ""
+    - name: touch_material_no_data_text
+      label:
+        en_US: Touch Material No Data Text
+        zh_Hans: 摸料无数据文案
+      description:
+        en_US: Reply text when kiln current batch cannot be resolved.
+        zh_Hans: 无法判定当前出窑批次时的回复文案。
+      type: string
+      required: false
+      default: "未查到当前出窑批次或压实数据。"
+
     - name: reply_in_group
       label:
         en_US: Reply In Group
@@ -250,10 +318,11 @@ spec:
         zh_Hans: 无数据回复文案
       description:
         en_US: Used by bitable brief/fallback path.
-        zh_Hans: 多维表回退链路无数据时的回复文案。
+        zh_Hans: 多维表日报回退链路无数据时的回复文案。
       type: string
       required: false
       default: "未查到出窑批次或烧结压实数据。"
+
   components:
     EventListener:
       fromDirs:

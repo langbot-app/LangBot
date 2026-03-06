@@ -1,6 +1,7 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
+import json
 import re
 import time
 from typing import Any
@@ -11,9 +12,38 @@ from langbot_plugin.api.definition.components.common.event_listener import Event
 from langbot_plugin.api.entities import context, events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
-from components.command_parser import parse_report_command
+from components.command_parser import parse_report_command, parse_touch_material_command
 from components.data_sources import FeishuBitableSource, FeishuSheetsSource
 from components.report_core import day_metrics
+
+
+def _default_touch_recipe_field_aliases() -> dict[str, list[str]]:
+    return {
+        "批次号": ["批次号", "批次", "批号", "出窑批次"],
+        "铁磷比": ["铁磷比", "铁锂比", "铁磷"],
+        "锂量": ["锂量", "碳酸锂量", "锂源量"],
+        "酸量": ["酸量", "磷酸量"],
+        "钛量": ["钛量", "二氧化钛量", "钛源量"],
+        "糖量": ["糖量", "葡萄糖量", "蔗糖量"],
+        "peg量": ["peg量", "PEG量", "peg", "PEG"],
+        "窑炉温度": ["窑炉温度", "窑温", "烧结温度", "温度"],
+    }
+
+
+def _default_touch_infer_rules() -> dict[str, dict[str, Any]]:
+    return {
+        "low": {
+            "max": 2.32,
+            "text": "出窑物料偏松散，结块较少，整体硬度偏低。",
+        },
+        "medium": {
+            "max": 2.40,
+            "text": "出窑物料有结块，结块较小，有脆感.个别坩埚紧实度偏弱，整体物料硬度适中",
+        },
+        "high": {
+            "text": "出窑物料结块偏大且较紧实，整体硬度偏高，需关注后续粉碎稳定性。",
+        },
+    }
 
 
 class KeywordBitableReportListener(EventListener):
@@ -78,6 +108,25 @@ class KeywordBitableReportListener(EventListener):
             value = default
         return max(min_value, min(max_value, value))
 
+    def _get_json_config(self, key: str, default: dict[str, Any] | None = None) -> dict[str, Any]:
+        fallback = dict(default) if isinstance(default, dict) else {}
+        raw = self.plugin.get_config().get(key, None)
+        if raw is None:
+            return fallback
+        if isinstance(raw, dict):
+            return raw
+        if not isinstance(raw, str):
+            return fallback
+
+        text = raw.strip()
+        if not text:
+            return fallback
+        try:
+            loaded = json.loads(text)
+        except Exception:
+            return fallback
+        return loaded if isinstance(loaded, dict) else fallback
+
     @staticmethod
     def _split_csv(raw: str) -> list[str]:
         if not raw:
@@ -98,6 +147,13 @@ class KeywordBitableReportListener(EventListener):
             commands = ["日报"]
         return {self._normalize_command_text(item) for item in commands if self._normalize_command_text(item)}
 
+    def _resolve_touch_material_commands(self) -> set[str]:
+        raw = self._get_str_config("touch_material_commands", "摸料")
+        commands = self._split_csv(raw)
+        if not commands:
+            commands = ["摸料"]
+        return {self._normalize_command_text(item) for item in commands if self._normalize_command_text(item)}
+
     def _resolve_data_source_mode(self) -> str:
         mode = self._get_str_config("data_source_mode", "auto").lower()
         if mode not in {"auto", "sheets", "bitable"}:
@@ -109,6 +165,73 @@ class KeywordBitableReportListener(EventListener):
             return command_sheets
         configured = self._split_csv(self._get_str_config("sheets_sheet_names", ""))
         return configured
+
+    def _resolve_touch_recipe_field_aliases(self) -> dict[str, list[str]]:
+        defaults = _default_touch_recipe_field_aliases()
+        configured = self._get_json_config("touch_recipe_field_aliases_json", {})
+        if not configured:
+            return defaults
+
+        merged: dict[str, list[str]] = {}
+        for logical_field, default_aliases in defaults.items():
+            merged[logical_field] = list(default_aliases)
+
+        for key, raw_aliases in configured.items():
+            logical_key = str(key).strip()
+            if not logical_key:
+                continue
+            alias_list: list[str] = []
+            if isinstance(raw_aliases, list):
+                alias_list = [str(item).strip() for item in raw_aliases if str(item).strip()]
+            elif isinstance(raw_aliases, str):
+                alias_list = [x for x in self._split_csv(raw_aliases) if x]
+            if not alias_list:
+                continue
+
+            current = merged.get(logical_key, [])
+            seen: set[str] = set()
+            out: list[str] = []
+            for alias in alias_list + current:
+                if alias in seen:
+                    continue
+                seen.add(alias)
+                out.append(alias)
+            merged[logical_key] = out
+
+        return merged
+
+    def _resolve_touch_infer_rules(self) -> dict[str, dict[str, Any]]:
+        defaults = _default_touch_infer_rules()
+        configured = self._get_json_config("touch_material_infer_rules_json", {})
+        if not configured:
+            return defaults
+
+        out: dict[str, dict[str, Any]] = {}
+        for level in ("low", "medium", "high"):
+            base = dict(defaults.get(level, {}))
+            raw_level = configured.get(level)
+            if isinstance(raw_level, dict):
+                if "text" in raw_level:
+                    base["text"] = str(raw_level.get("text", "")).strip() or base.get("text", "")
+                if "max" in raw_level:
+                    try:
+                        base["max"] = float(raw_level.get("max"))
+                    except Exception:
+                        pass
+            out[level] = base
+        return out
+
+    def _resolve_touch_no_data_text(self) -> str:
+        return self._get_str_config("touch_material_no_data_text", "未查到当前出窑批次或压实数据。")
+
+    @staticmethod
+    def _resolve_touch_prefer_line(segment: str) -> str:
+        segment_text = str(segment).strip().upper()
+        if segment_text.startswith("A"):
+            return "A"
+        if segment_text.startswith("B"):
+            return "B"
+        return ""
 
     @staticmethod
     def _strip_trend_sections(text: str, show_process_trend: bool, show_product_trend: bool) -> str:
@@ -374,6 +497,129 @@ class KeywordBitableReportListener(EventListener):
                 raise RuntimeError(f"在线表格失败：{sheets_exc}；多维表回退失败：{bitable_exc}") from bitable_exc
             return f"【在线表格查询失败，已回退多维表】{sheets_exc}\n{fallback}"
 
+    @staticmethod
+    def _safe_recipe_value(recipe: dict[str, str], field: str) -> str:
+        value = str(recipe.get(field, "")).strip()
+        return value or "--"
+
+    def _infer_material_property(self, avg_compaction: float | None) -> str:
+        if avg_compaction is None:
+            return ""
+        rules = self._resolve_touch_infer_rules()
+
+        low = rules.get("low", {})
+        medium = rules.get("medium", {})
+        high = rules.get("high", {})
+        low_max = float(low.get("max", 2.32))
+        medium_max = float(medium.get("max", 2.40))
+
+        if avg_compaction <= low_max:
+            return str(low.get("text", "")).strip()
+        if avg_compaction <= medium_max:
+            return str(medium.get("text", "")).strip()
+        return str(high.get("text", "")).strip()
+
+    async def _run_touch_material_report(self, segment: str) -> str:
+        app_token = self._get_str_config("bitable_app_token", "")
+        if not app_token:
+            raise ValueError("未配置 bitable_app_token。")
+
+        headers = await self._build_auth_headers()
+        scan_limit = self._get_int_config("scan_limit", 1000, min_value=50, max_value=5000)
+
+        kiln_info = await self._bitable_source.query_latest_kiln_batch_by_segment(
+            app_token=app_token,
+            headers=headers,
+            segment=segment,
+            table_ids_raw=self._get_str_config("kiln_batch_table_ids", ""),
+            table_names_raw=self._get_str_config("kiln_batch_table_names", "窑炉批次进窑出窑表"),
+            batch_field=self._get_str_config("batch_field", "批次号"),
+            scan_limit=scan_limit,
+        )
+        if kiln_info is None:
+            return self._resolve_touch_no_data_text()
+
+        batch_raw = str(kiln_info.get("batch_raw", "")).strip()
+        batch_core = str(kiln_info.get("batch_core", "")).strip()
+        batch_display = batch_raw or batch_core
+        if not batch_display:
+            return self._resolve_touch_no_data_text()
+
+        slots_raw = kiln_info.get("slots", [])
+        slots: list[str] = []
+        if isinstance(slots_raw, list):
+            for item in slots_raw:
+                slot_text = str(item).strip()
+                if slot_text:
+                    slots.append(slot_text)
+        slot_list_text = "/".join(slots) if slots else "--"
+
+        sintering = await self._bitable_source.query_sintering_detail_by_batch_segment(
+            app_token=app_token,
+            headers=headers,
+            batch_core=batch_core or batch_display,
+            segment=segment,
+            table_ids_raw=self._get_str_config("sintering_table_ids", ""),
+            table_names_raw=self._get_str_config("sintering_table_names", "A线烧结汇总,B线烧结汇总"),
+            route_field=self._get_str_config("route_field", "路由"),
+            batch_field=self._get_str_config("batch_field", "批次号"),
+            message_time_field=self._get_str_config("message_time_field", "消息时间"),
+            scan_limit=scan_limit,
+        )
+        detail_lines = sintering.get("details", [])
+        if not isinstance(detail_lines, list):
+            detail_lines = []
+        detail_lines = [str(item).strip() for item in detail_lines if str(item).strip()]
+
+        avg_compaction: float | None = None
+        avg_raw = sintering.get("avg")
+        if isinstance(avg_raw, (int, float)):
+            avg_compaction = float(avg_raw)
+
+        recipe = {
+            "铁磷比": "--",
+            "锂量": "--",
+            "酸量": "--",
+            "钛量": "--",
+            "糖量": "--",
+            "peg量": "--",
+            "窑炉温度": "--",
+        }
+        spreadsheet_token = self._get_str_config("sheets_spreadsheet_token", "")
+        if spreadsheet_token:
+            try:
+                recipe = await self._sheets_source.query_recipe_by_batch(
+                    spreadsheet_token=spreadsheet_token,
+                    headers=headers,
+                    target_sheet_names=self._resolve_target_sheets([]),
+                    cell_range=self._get_str_config("sheets_range", "A1:ZZ2000") or "A1:ZZ2000",
+                    batch_core=batch_core or batch_display,
+                    prefer_line=self._resolve_touch_prefer_line(segment),
+                    field_aliases=self._resolve_touch_recipe_field_aliases(),
+                    placeholder="--",
+                )
+            except Exception:
+                # 触发降级，保留占位符，不影响摸料主链路回复。
+                pass
+
+        recipe_pack = "+".join(
+            [
+                self._safe_recipe_value(recipe, "铁磷比"),
+                self._safe_recipe_value(recipe, "锂量"),
+                self._safe_recipe_value(recipe, "酸量"),
+                self._safe_recipe_value(recipe, "钛量"),
+                self._safe_recipe_value(recipe, "糖量"),
+                self._safe_recipe_value(recipe, "peg量"),
+            ]
+        )
+        kiln_temperature = self._safe_recipe_value(recipe, "窑炉温度")
+        material_text = self._infer_material_property(avg_compaction)
+        main_line = f"{batch_display}（{recipe_pack}）{segment}-{slot_list_text}-{kiln_temperature}{material_text}"
+
+        if detail_lines:
+            return "\n".join([main_line, "压实", *detail_lines])
+        return "\n".join([main_line, "压实未出"])
+
     # ===== Entry =====
 
     async def _handle_command(self, event_ctx: context.EventContext) -> None:
@@ -381,15 +627,34 @@ class KeywordBitableReportListener(EventListener):
         if not plain_text:
             return
 
-        parse_result = parse_report_command(plain_text, self._resolve_commands())
-        if not parse_result.triggered:
-            return
-
         in_group = self._is_group_event(event_ctx)
         in_person = self._is_person_event(event_ctx)
         allow_group = self._get_bool_config("reply_in_group", True)
         allow_person = self._get_bool_config("reply_in_person", True)
         if (in_group and not allow_group) or (in_person and not allow_person):
+            return
+
+        touch_parse = parse_touch_material_command(plain_text, self._resolve_touch_material_commands())
+        if touch_parse.triggered:
+            event_ctx.prevent_default()
+            event_ctx.prevent_postorder()
+
+            if touch_parse.error:
+                await self._reply_text(event_ctx, touch_parse.error)
+                return
+
+            touch_command = touch_parse.value
+            if touch_command is None:
+                return
+            try:
+                text = await self._run_touch_material_report(segment=touch_command.segment)
+                await self._reply_text(event_ctx, text)
+            except Exception as exc:
+                await self._reply_text(event_ctx, f"摸料查询失败：{exc}")
+            return
+
+        parse_result = parse_report_command(plain_text, self._resolve_commands())
+        if not parse_result.triggered:
             return
 
         event_ctx.prevent_default()
