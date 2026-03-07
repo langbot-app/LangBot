@@ -346,6 +346,28 @@ def test_parse_kiln_batch_io_slot_mode_keeps_one_row_per_position() -> None:
     assert record.fields["\u51fa\u7a91\u7ed3\u675f\u65f6\u95f4"] == "2026-03-06 06:23:00"
 
 
+def test_parse_kiln_batch_io_rolls_back_to_previous_day_after_midnight() -> None:
+    listener = _build_listener()
+    text = "DA2603-021\u6279\u6b21\u7ed3\u675f\u51fa\u7a91\nA2-1--23:55"
+
+    records = listener._parse_kiln_batch_io(text, "2026-03-06 00:10:00")
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.fields["1\u53f7\u51fa\u7a91\u7ed3\u675f\u65f6\u95f4"] == "2026-03-05 23:55:00"
+
+
+def test_parse_kiln_batch_io_rolls_forward_to_next_day_before_midnight() -> None:
+    listener = _build_listener()
+    text = "DA2603-021\u6279\u6b21\u5f00\u59cb\u8fdb\u7a91\nA2-1--00:10"
+
+    records = listener._parse_kiln_batch_io(text, "2026-03-06 23:55:00")
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.fields["1\u53f7\u8fdb\u7a91\u5f00\u59cb\u65f6\u95f4"] == "2026-03-07 00:10:00"
+
+
 def test_parse_kiln_batch_io_can_be_disabled_by_process_switch() -> None:
     listener = _build_listener({"process_switch_json": {"kiln_batch_io": False}})
     text = "DA2603-021\u6279\u6b21\u7ed3\u675f\u51fa\u7a91\nA2-1--06:23"

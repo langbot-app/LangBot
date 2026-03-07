@@ -1303,39 +1303,60 @@ class AutoProcessToBitableListener(EventListener):
             return segment
         return ""
 
-    def _resolve_kiln_message_date(self, message_time: str) -> datetime.date:
+    def _resolve_kiln_message_datetime(self, message_time: str) -> datetime.datetime:
         raw_message_time = str(message_time).strip()
+        time_zone = self._get_time_zone()
         time_format = self._get_time_format()
         if raw_message_time and time_format:
             try:
-                return datetime.datetime.strptime(raw_message_time, time_format).date()
+                parsed = datetime.datetime.strptime(raw_message_time, time_format)
+                return parsed.replace(tzinfo=time_zone)
             except Exception:
                 pass
 
-        date_match = re.search(r"(\d{4})-(\d{2})-(\d{2})", raw_message_time)
-        if date_match:
+        datetime_match = re.search(
+            r"(\d{4})-(\d{2})-(\d{2})(?:\D+(\d{1,2}):(\d{2})(?::(\d{2}))?)?",
+            raw_message_time,
+        )
+        if datetime_match:
             try:
-                return datetime.date(
-                    year=int(date_match.group(1)),
-                    month=int(date_match.group(2)),
-                    day=int(date_match.group(3)),
+                return datetime.datetime(
+                    year=int(datetime_match.group(1)),
+                    month=int(datetime_match.group(2)),
+                    day=int(datetime_match.group(3)),
+                    hour=int(datetime_match.group(4) or 0),
+                    minute=int(datetime_match.group(5) or 0),
+                    second=int(datetime_match.group(6) or 0),
+                    tzinfo=time_zone,
                 )
             except Exception:
                 pass
 
-        return datetime.datetime.now(self._get_time_zone()).date()
+        return datetime.datetime.now(time_zone)
+
+    def _resolve_kiln_message_date(self, message_time: str) -> datetime.date:
+        return self._resolve_kiln_message_datetime(message_time).date()
 
     def _compose_kiln_event_time(self, message_time: str, hour: int, minute: int) -> str:
-        base_date = self._resolve_kiln_message_date(message_time)
+        message_dt = self._resolve_kiln_message_datetime(message_time)
         event_dt = datetime.datetime(
-            year=base_date.year,
-            month=base_date.month,
-            day=base_date.day,
+            year=message_dt.year,
+            month=message_dt.month,
+            day=message_dt.day,
             hour=hour,
             minute=minute,
             second=0,
             tzinfo=self._get_time_zone(),
         )
+
+        # Kiln messages only carry HH:mm, so correct obvious midnight crossings
+        # without changing normal same-day records.
+        cross_day_threshold = datetime.timedelta(hours=18)
+        delta = event_dt - message_dt
+        if delta >= cross_day_threshold:
+            event_dt -= datetime.timedelta(days=1)
+        elif delta <= -cross_day_threshold:
+            event_dt += datetime.timedelta(days=1)
 
         time_format = self._get_time_format()
         try:
