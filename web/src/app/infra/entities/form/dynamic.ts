@@ -1,5 +1,12 @@
 import { I18nObject } from '@/app/infra/entities/common';
 
+export interface IShowIfCondition {
+  field: string;
+  operator: 'eq' | 'neq' | 'in';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  value: any;
+}
+
 export interface IDynamicFormItemSchema {
   id: string;
   default: string | number | boolean | Array<unknown>;
@@ -9,6 +16,7 @@ export interface IDynamicFormItemSchema {
   type: DynamicFormItemType;
   description?: I18nObject;
   options?: IDynamicFormItemOption[];
+  show_if?: IShowIfCondition;
 
   /** when type is PLUGIN_SELECTOR, the scopes is the scopes of components(plugin contains), the default is all */
   scopes?: string[];
@@ -26,6 +34,7 @@ export enum DynamicFormItemType {
   FILE_ARRAY = 'array[file]',
   SELECT = 'select',
   LLM_MODEL_SELECTOR = 'llm-model-selector',
+  EMBEDDING_MODEL_SELECTOR = 'embedding-model-selector',
   PROMPT_EDITOR = 'prompt-editor',
   UNKNOWN = 'unknown',
   KNOWLEDGE_BASE_SELECTOR = 'knowledge-base-selector',

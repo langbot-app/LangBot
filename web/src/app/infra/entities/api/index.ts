@@ -70,17 +70,6 @@ export interface LLMModel {
   extra_args?: object;
 }
 
-export interface KnowledgeBase {
-  uuid?: string;
-  name: string;
-  description: string;
-  embedding_model_uuid: string;
-  created_at?: string;
-  updated_at?: string;
-  top_k: number;
-  emoji?: string;
-}
-
 export interface ApiRespProviderEmbeddingModels {
   models: EmbeddingModel[];
 }
@@ -166,31 +155,47 @@ export interface KnowledgeBase {
   uuid?: string;
   name: string;
   description: string;
-  embedding_model_uuid: string;
-  top_k: number;
   created_at?: string;
   updated_at?: string;
   emoji?: string;
+  // New unified fields
+  knowledge_engine_plugin_id?: string;
+  creation_settings?: Record<string, unknown>;
+  retrieval_settings?: Record<string, unknown>;
+  knowledge_engine?: KnowledgeEngineInfo;
 }
 
-export interface ExternalKnowledgeBase {
-  uuid?: string;
-  name: string;
-  description: string;
-  created_at?: string;
-  plugin_author: string;
-  plugin_name: string;
-  retriever_name: string;
-  retriever_config?: Record<string, unknown>;
-  emoji?: string;
+// Knowledge Engine types
+export interface KnowledgeEngineInfo {
+  plugin_id: string | null;
+  name: I18nObject;
+  capabilities: string[];
 }
 
-export interface ApiRespExternalKnowledgeBases {
-  bases: ExternalKnowledgeBase[];
+export interface KnowledgeEngine {
+  plugin_id: string;
+  name: I18nObject;
+  description?: I18nObject;
+  capabilities: string[];
+  // Schema format: Array of form field definitions (IDynamicFormItemSchema-like)
+  // Each item: { name, label, type, required, default, description?, options? }
+  creation_schema?: unknown[];
+  retrieval_schema?: unknown[];
 }
 
-export interface ApiRespExternalKnowledgeBase {
-  base: ExternalKnowledgeBase;
+export interface ApiRespKnowledgeEngines {
+  engines: KnowledgeEngine[];
+}
+
+export interface ParserInfo {
+  plugin_id: string;
+  name: I18nObject;
+  description?: I18nObject;
+  supported_mime_types: string[];
+}
+
+export interface ApiRespParsers {
+  parsers: ParserInfo[];
 }
 
 export interface ApiRespKnowledgeBaseFiles {

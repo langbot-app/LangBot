@@ -26,6 +26,20 @@ from ..core import app
 from ..utils import constants
 
 
+def _make_rag_error_response(error: Exception, error_type: str, **extra_context) -> handler.ActionResponse:
+    """Create a clean error response for RAG operations.
+
+    Args:
+        error: The caught exception.
+        error_type: A category string like 'EmbeddingError', 'VectorStoreError'.
+        **extra_context: Additional context fields for the error message.
+    """
+    context_parts = [f'{k}={v}' for k, v in extra_context.items()]
+    context_str = f' [{", ".join(context_parts)}]' if context_parts else ''
+    message = f'[{error_type}/{type(error).__name__}]{context_str} {str(error)}'
+    return handler.ActionResponse.error(message=message)
+
+
 class RuntimeConnectionHandler(handler.Handler):
     """Runtime connection handler"""
 
@@ -439,7 +453,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 },
             )
 
-        @self.action(RuntimeToLangBotAction.GET_CONFIG_FILE)
+        @self.action(PluginToRuntimeAction.GET_CONFIG_FILE)
         async def get_config_file(data: dict[str, Any]) -> handler.ActionResponse:
             """Get a config file by file key"""
             file_key = data['file_key']
@@ -457,6 +471,125 @@ class RuntimeConnectionHandler(handler.Handler):
                 return handler.ActionResponse.error(
                     message=f'Failed to load config file {file_key}: {e}',
                 )
+
+        # ================= RAG Capability Handlers =================
+
+        @self.action(PluginToRuntimeAction.INVOKE_EMBEDDING)
+        async def invoke_embedding(data: dict[str, Any]) -> handler.ActionResponse:
+            embedding_model_uuid = data['embedding_model_uuid']
+            texts = data['texts']
+
+            embedding_model = await self.ap.model_mgr.get_embedding_model_by_uuid(embedding_model_uuid)
+            if embedding_model is None:
+                return handler.ActionResponse.error(
+                    message=f'Embedding model with embedding_model_uuid {embedding_model_uuid} not found',
+                )
+
+            try:
+                vectors = await embedding_model.provider.invoke_embedding(embedding_model, texts)
+                return handler.ActionResponse.success(data={'vectors': vectors})
+            except Exception as e:
+                return _make_rag_error_response(e, 'EmbeddingError', embedding_model_uuid=embedding_model_uuid)
+
+        @self.action(PluginToRuntimeAction.VECTOR_UPSERT)
+        async def vector_upsert(data: dict[str, Any]) -> handler.ActionResponse:
+            collection_id = data['collection_id']
+            vectors = data['vectors']
+            ids = data['ids']
+            metadata = data.get('metadata')
+            documents = data.get('documents')
+            if len(vectors) != len(ids):
+                return handler.ActionResponse.error(message='vectors and ids must have same length')
+            if metadata and len(metadata) != len(vectors):
+                return handler.ActionResponse.error(message='metadata must match vectors length')
+            if documents and len(documents) != len(vectors):
+                return handler.ActionResponse.error(message='documents must match vectors length')
+            try:
+                await self.ap.rag_runtime_service.vector_upsert(
+                    collection_id,
+                    vectors,
+                    ids,
+                    metadata,
+                    documents,
+                )
+                return handler.ActionResponse.success(data={})
+            except Exception as e:
+                return _make_rag_error_response(e, 'VectorStoreError', collection_id=collection_id)
+
+        @self.action(PluginToRuntimeAction.VECTOR_SEARCH)
+        async def vector_search(data: dict[str, Any]) -> handler.ActionResponse:
+            collection_id = data['collection_id']
+            query_vector = data['query_vector']
+            top_k = data['top_k']
+            filters = data.get('filters')
+            search_type = data.get('search_type', 'vector')
+            query_text = data.get('query_text', '')
+            try:
+                results = await self.ap.rag_runtime_service.vector_search(
+                    collection_id,
+                    query_vector,
+                    top_k,
+                    filters,
+                    search_type,
+                    query_text,
+                )
+                return handler.ActionResponse.success(data={'results': results})
+            except Exception as e:
+                return _make_rag_error_response(e, 'VectorStoreError', collection_id=collection_id)
+
+        @self.action(PluginToRuntimeAction.VECTOR_DELETE)
+        async def vector_delete(data: dict[str, Any]) -> handler.ActionResponse:
+            collection_id = data['collection_id']
+            file_ids = data.get('file_ids')
+            filters = data.get('filters')
+            try:
+                count = await self.ap.rag_runtime_service.vector_delete(collection_id, file_ids, filters)
+                return handler.ActionResponse.success(data={'count': count})
+            except Exception as e:
+                return _make_rag_error_response(e, 'VectorStoreError', collection_id=collection_id)
+
+        @self.action(PluginToRuntimeAction.GET_KNOWLEDEGE_FILE_STREAM)
+        async def get_knowledge_file_stream(data: dict[str, Any]) -> handler.ActionResponse:
+            storage_path = data['storage_path']
+            try:
+                content_bytes = await self.ap.rag_runtime_service.get_file_stream(storage_path)
+                file_key = await self.send_file(content_bytes, '')
+                return handler.ActionResponse.success(data={'file_key': file_key})
+            except Exception as e:
+                return _make_rag_error_response(e, 'FileServiceError', storage_path=storage_path)
+
+        @self.action(PluginToRuntimeAction.INVOKE_PARSER)
+        async def invoke_parser(data: dict[str, Any]) -> handler.ActionResponse:
+            """Plugin requests host to invoke a parser plugin."""
+            plugin_author = data['plugin_author']
+            plugin_name = data['plugin_name']
+            storage_path = data['storage_path']
+            mime_type = data.get('mime_type', 'application/octet-stream')
+            filename = data.get('filename', '')
+            metadata = data.get('metadata', {})
+            try:
+                # Read file from storage
+                file_bytes = await self.ap.rag_runtime_service.get_file_stream(storage_path)
+                context_data = {
+                    'mime_type': mime_type,
+                    'filename': filename,
+                    'metadata': metadata,
+                }
+                result = await self.ap.plugin_connector.call_parser(
+                    f'{plugin_author}/{plugin_name}', context_data, file_bytes
+                )
+                return handler.ActionResponse.success(data=result)
+            except Exception as e:
+                return _make_rag_error_response(e, 'ParserError')
+
+        @self.action(CommonAction.PING)
+        async def ping(data: dict[str, Any]) -> handler.ActionResponse:
+            """Ping"""
+            return handler.ActionResponse.success(
+                data={
+                    'pong': 'pong',
+                },
+            )
 
     async def ping(self) -> dict[str, Any]:
         """Ping the runtime"""
@@ -717,26 +850,13 @@ class RuntimeConnectionHandler(handler.Handler):
         async for ret in gen:
             yield ret
 
-    # KnowledgeRetriever methods
-    async def list_knowledge_retrievers(self, include_plugins: list[str] | None = None) -> list[dict[str, Any]]:
-        """List knowledge retrievers"""
-        result = await self.call_action(
-            LangBotToRuntimeAction.LIST_KNOWLEDGE_RETRIEVERS,
-            {
-                'include_plugins': include_plugins,
-            },
-            timeout=10,
-        )
-        return result['retrievers']
-
     async def retrieve_knowledge(
         self,
         plugin_author: str,
         plugin_name: str,
         retriever_name: str,
-        instance_id: str,
         retrieval_context: dict[str, Any],
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, Any]:
         """Retrieve knowledge"""
         result = await self.call_action(
             LangBotToRuntimeAction.RETRIEVE_KNOWLEDGE,
@@ -744,19 +864,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 'plugin_author': plugin_author,
                 'plugin_name': plugin_name,
                 'retriever_name': retriever_name,
-                'instance_id': instance_id,
                 'retrieval_context': retrieval_context,
-            },
-            timeout=30,
-        )
-        return result['retrieval_results']
-
-    async def sync_polymorphic_component_instances(self, required_instances: list[dict[str, Any]]) -> dict[str, Any]:
-        """Sync polymorphic component instances with runtime"""
-        result = await self.call_action(
-            LangBotToRuntimeAction.SYNC_POLYMORPHIC_COMPONENT_INSTANCES,
-            {
-                'required_instances': required_instances,
             },
             timeout=30,
         )
@@ -768,5 +876,93 @@ class RuntimeConnectionHandler(handler.Handler):
             LangBotToRuntimeAction.GET_DEBUG_INFO,
             {},
             timeout=10,
+        )
+        return result
+
+    # ================= RAG Capability Callers (LangBot -> Runtime) =================
+
+    async def rag_ingest_document(
+        self, plugin_author: str, plugin_name: str, context_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Send INGEST_DOCUMENT action to runtime."""
+        result = await self.call_action(
+            LangBotToRuntimeAction.RAG_INGEST_DOCUMENT,
+            {'plugin_author': plugin_author, 'plugin_name': plugin_name, 'context': context_data},
+            timeout=300,  # Ingestion can be slow
+        )
+        return result
+
+    async def rag_delete_document(self, plugin_author: str, plugin_name: str, document_id: str, kb_id: str) -> bool:
+        result = await self.call_action(
+            LangBotToRuntimeAction.RAG_DELETE_DOCUMENT,
+            {'plugin_author': plugin_author, 'plugin_name': plugin_name, 'document_id': document_id, 'kb_id': kb_id},
+            timeout=30,
+        )
+        return result.get('success', False)
+
+    async def rag_on_kb_create(
+        self, plugin_author: str, plugin_name: str, kb_id: str, config: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Notify plugin about KB creation."""
+        result = await self.call_action(
+            LangBotToRuntimeAction.RAG_ON_KB_CREATE,
+            {'plugin_author': plugin_author, 'plugin_name': plugin_name, 'kb_id': kb_id, 'config': config},
+            timeout=30,
+        )
+        return result
+
+    async def rag_on_kb_delete(self, plugin_author: str, plugin_name: str, kb_id: str) -> dict[str, Any]:
+        """Notify plugin about KB deletion."""
+        result = await self.call_action(
+            LangBotToRuntimeAction.RAG_ON_KB_DELETE,
+            {'plugin_author': plugin_author, 'plugin_name': plugin_name, 'kb_id': kb_id},
+            timeout=30,
+        )
+        return result
+
+    async def get_rag_creation_schema(self, plugin_author: str, plugin_name: str) -> dict[str, Any]:
+        return await self.call_action(
+            LangBotToRuntimeAction.GET_RAG_CREATION_SETTINGS_SCHEMA,
+            {'plugin_author': plugin_author, 'plugin_name': plugin_name},
+            timeout=10,
+        )
+
+    async def get_rag_retrieval_schema(self, plugin_author: str, plugin_name: str) -> dict[str, Any]:
+        return await self.call_action(
+            LangBotToRuntimeAction.GET_RAG_RETRIEVAL_SETTINGS_SCHEMA,
+            {'plugin_author': plugin_author, 'plugin_name': plugin_name},
+            timeout=10,
+        )
+
+    async def list_knowledge_engines(self) -> list[dict[str, Any]]:
+        """List all available Knowledge Engines from plugins."""
+        result = await self.call_action(LangBotToRuntimeAction.LIST_KNOWLEDGE_ENGINES, {}, timeout=60)
+        return result.get('engines', [])
+
+    # ================= Parser Capability Callers (LangBot -> Runtime) =================
+
+    async def list_parsers(self) -> list[dict[str, Any]]:
+        """List all available parsers from plugins."""
+        result = await self.call_action(LangBotToRuntimeAction.LIST_PARSERS, {}, timeout=60)
+        return result.get('parsers', [])
+
+    async def parse_document(
+        self, plugin_author: str, plugin_name: str, context_data: dict[str, Any], file_bytes: bytes
+    ) -> dict[str, Any]:
+        """Send PARSE_DOCUMENT action to runtime.
+
+        Sends file content via chunked FILE_CHUNK transfer, then invokes
+        the PARSE_DOCUMENT action with a file_key reference.
+        """
+        # Send file to runtime via chunked transfer
+        file_key = await self.send_file(file_bytes, '')
+
+        # Include file_key in context_data for the runtime to read
+        context_data['file_key'] = file_key
+
+        result = await self.call_action(
+            LangBotToRuntimeAction.PARSE_DOCUMENT,
+            {'plugin_author': plugin_author, 'plugin_name': plugin_name, 'context': context_data},
+            timeout=300,
         )
         return result

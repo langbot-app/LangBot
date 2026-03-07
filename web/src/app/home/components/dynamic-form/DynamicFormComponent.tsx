@@ -13,20 +13,26 @@ import {
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
 import { useCallback, useEffect, useRef } from 'react';
 import { extractI18nObject } from '@/i18n/I18nProvider';
+import { useTranslation } from 'react-i18next';
 
 export default function DynamicFormComponent({
   itemConfigList,
   onSubmit,
   initialValues,
   onFileUploaded,
+  isEditing,
+  externalDependentValues,
 }: {
   itemConfigList: IDynamicFormItemSchema[];
   onSubmit?: (val: object) => unknown;
   initialValues?: Record<string, object>;
   onFileUploaded?: (fileKey: string) => void;
+  isEditing?: boolean;
+  externalDependentValues?: Record<string, unknown>;
 }) {
   const isInitialMount = useRef(true);
   const previousInitialValues = useRef(initialValues);
+  const { t } = useTranslation();
 
   // 根据 itemConfigList 动态生成 zod schema
   const formSchema = z.object(
@@ -55,6 +61,9 @@ export default function DynamicFormComponent({
           case 'llm-model-selector':
             fieldSchema = z.string();
             break;
+          case 'embedding-model-selector':
+            fieldSchema = z.string();
+            break;
           case 'knowledge-base-selector':
             fieldSchema = z.string();
             break;
@@ -81,7 +90,9 @@ export default function DynamicFormComponent({
           (fieldSchema instanceof z.ZodString ||
             fieldSchema instanceof z.ZodArray)
         ) {
-          fieldSchema = fieldSchema.min(1, { message: '此字段为必填项' });
+          fieldSchema = fieldSchema.min(1, {
+            message: t('common.fieldRequired'),
+          });
         }
 
         return {
@@ -141,6 +152,9 @@ export default function DynamicFormComponent({
     }
   }, [initialValues, form, itemConfigList]);
 
+  // Get reactive form values for conditional rendering
+  const watchedValues = form.watch();
+
   // Stable ref for onSubmit to avoid re-triggering the effect when the
   // parent passes a new closure on every render.
   const onSubmitRef = useRef(onSubmit);
@@ -183,34 +197,75 @@ export default function DynamicFormComponent({
   return (
     <Form {...form}>
       <div className="space-y-4">
-        {itemConfigList.map((config) => (
-          <FormField
-            key={config.id}
-            control={form.control}
-            name={config.name as keyof FormValues}
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  {extractI18nObject(config.label)}{' '}
-                  {config.required && <span className="text-red-500">*</span>}
-                </FormLabel>
-                <FormControl>
-                  <DynamicFormItemComponent
-                    config={config}
-                    field={field}
-                    onFileUploaded={onFileUploaded}
-                  />
-                </FormControl>
-                {config.description && (
-                  <p className="text-sm text-muted-foreground">
-                    {extractI18nObject(config.description)}
-                  </p>
-                )}
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        ))}
+        {itemConfigList.map((config) => {
+          if (config.show_if) {
+            const dependValue =
+              watchedValues[
+                config.show_if.field as keyof typeof watchedValues
+              ] !== undefined
+                ? watchedValues[
+                    config.show_if.field as keyof typeof watchedValues
+                  ]
+                : externalDependentValues?.[config.show_if.field];
+
+            if (
+              config.show_if.operator === 'eq' &&
+              dependValue !== config.show_if.value
+            ) {
+              return null;
+            }
+            if (
+              config.show_if.operator === 'neq' &&
+              dependValue === config.show_if.value
+            ) {
+              return null;
+            }
+            if (
+              config.show_if.operator === 'in' &&
+              Array.isArray(config.show_if.value) &&
+              !config.show_if.value.includes(dependValue)
+            ) {
+              return null;
+            }
+          }
+
+          // All fields are disabled when editing (creation_settings are immutable)
+          const isFieldDisabled = !!isEditing;
+          return (
+            <FormField
+              key={config.id}
+              control={form.control}
+              name={config.name as keyof FormValues}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {extractI18nObject(config.label)}{' '}
+                    {config.required && <span className="text-red-500">*</span>}
+                  </FormLabel>
+                  <FormControl>
+                    <div
+                      className={
+                        isFieldDisabled ? 'pointer-events-none opacity-60' : ''
+                      }
+                    >
+                      <DynamicFormItemComponent
+                        config={config}
+                        field={field}
+                        onFileUploaded={onFileUploaded}
+                      />
+                    </div>
+                  </FormControl>
+                  {config.description && (
+                    <p className="text-sm text-muted-foreground">
+                      {extractI18nObject(config.description)}
+                    </p>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          );
+        })}
       </div>
     </Form>
   );

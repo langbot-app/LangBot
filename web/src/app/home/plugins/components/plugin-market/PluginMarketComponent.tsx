@@ -17,7 +17,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { Search, Wrench, AudioWaveform, Hash, Book } from 'lucide-react';
+import {
+  Search,
+  Wrench,
+  AudioWaveform,
+  Hash,
+  Book,
+  FileText,
+} from 'lucide-react';
 import PluginMarketCardComponent from './plugin-market-card/PluginMarketCardComponent';
 import { PluginMarketCardVO } from './plugin-market-card/PluginMarketCardVO';
 import { getCloudServiceClientSync } from '@/app/infra/http';
@@ -499,12 +506,20 @@ function MarketPageContent({
                 {t('plugins.componentName.EventListener')}
               </ToggleGroupItem>
               <ToggleGroupItem
-                value="KnowledgeRetriever"
-                aria-label="KnowledgeRetriever"
+                value="KnowledgeEngine"
+                aria-label="KnowledgeEngine"
                 className="text-xs sm:text-sm cursor-pointer"
               >
                 <Book className="h-4 w-4 mr-1" />
-                {t('plugins.componentName.KnowledgeRetriever')}
+                {t('plugins.componentName.KnowledgeEngine')}
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="Parser"
+                aria-label="Parser"
+                className="text-xs sm:text-sm cursor-pointer"
+              >
+                <FileText className="h-4 w-4 mr-1" />
+                {t('plugins.componentName.Parser')}
               </ToggleGroupItem>
             </ToggleGroup>
           </div>

@@ -4,7 +4,50 @@ from typing import Any, Dict
 from pymilvus import MilvusClient, DataType, CollectionSchema, FieldSchema
 from pymilvus.milvus_client.index import IndexParams
 from langbot.pkg.vector.vdb import VectorDatabase
+from langbot.pkg.vector.filter_utils import normalize_filter, strip_unsupported_fields
 from langbot.pkg.core import app
+
+# Milvus schema only stores these metadata fields; filter on other fields is
+# silently dropped with a warning.
+_MILVUS_SUPPORTED_FIELDS = {'text', 'file_id', 'chunk_uuid'}
+
+
+def _build_milvus_expr(filter_dict: dict[str, Any]) -> str:
+    """Translate canonical filter dict into a Milvus boolean expression string."""
+    triples = normalize_filter(filter_dict)
+    triples = strip_unsupported_fields(triples, _MILVUS_SUPPORTED_FIELDS)
+    if not triples:
+        return ''
+
+    parts: list[str] = []
+    for field, op, value in triples:
+        if op == '$eq':
+            parts.append(f'{field} == {_milvus_literal(value)}')
+        elif op == '$ne':
+            parts.append(f'{field} != {_milvus_literal(value)}')
+        elif op == '$gt':
+            parts.append(f'{field} > {_milvus_literal(value)}')
+        elif op == '$gte':
+            parts.append(f'{field} >= {_milvus_literal(value)}')
+        elif op == '$lt':
+            parts.append(f'{field} < {_milvus_literal(value)}')
+        elif op == '$lte':
+            parts.append(f'{field} <= {_milvus_literal(value)}')
+        elif op == '$in':
+            items = ', '.join(_milvus_literal(v) for v in value)
+            parts.append(f'{field} in [{items}]')
+        elif op == '$nin':
+            items = ', '.join(_milvus_literal(v) for v in value)
+            parts.append(f'{field} not in [{items}]')
+    return ' and '.join(parts)
+
+
+def _milvus_literal(value: Any) -> str:
+    """Format a Python value as a Milvus expression literal."""
+    if isinstance(value, str):
+        escaped = value.replace('\\', '\\\\').replace('"', '\\"')
+        return f'"{escaped}"'
+    return str(value)
 
 
 class MilvusVectorDatabase(VectorDatabase):
@@ -155,6 +198,7 @@ class MilvusVectorDatabase(VectorDatabase):
         ids: list[str],
         embeddings_list: list[list[float]],
         metadatas: list[dict[str, Any]],
+        documents: list[str] | None = None,
     ) -> None:
         """Add vector embeddings to Milvus collection
 
@@ -200,7 +244,15 @@ class MilvusVectorDatabase(VectorDatabase):
 
         self.ap.logger.info(f"Added {len(ids)} embeddings to Milvus collection '{collection}'")
 
-    async def search(self, collection: str, query_embedding: list[float], k: int = 5) -> Dict[str, Any]:
+    async def search(
+        self,
+        collection: str,
+        query_embedding: list[float],
+        k: int = 5,
+        search_type: str = 'vector',
+        query_text: str = '',
+        filter: dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
         """Search for similar vectors in Milvus collection
 
         Args:
@@ -217,14 +269,19 @@ class MilvusVectorDatabase(VectorDatabase):
         # Perform search
         search_params = {'metric_type': 'COSINE', 'params': {}}
 
-        results = await asyncio.to_thread(
-            self.client.search,
+        search_kwargs: dict[str, Any] = dict(
             collection_name=collection,
             data=[query_embedding],
             limit=k,
             search_params=search_params,
             output_fields=['text', 'file_id', 'chunk_uuid'],
         )
+        if filter:
+            expr = _build_milvus_expr(filter)
+            if expr:
+                search_kwargs['filter'] = expr
+
+        results = await asyncio.to_thread(self.client.search, **search_kwargs)
 
         # Convert results to Chroma-compatible format
         # Milvus returns: [[ {id, distance, entity: {...}} ]]
@@ -267,6 +324,21 @@ class MilvusVectorDatabase(VectorDatabase):
         # Delete entities matching the file_id
         await asyncio.to_thread(self.client.delete, collection_name=collection, filter=f'file_id == "{file_id}"')
         self.ap.logger.info(f"Deleted embeddings from Milvus collection '{collection}' with file_id: {file_id}")
+
+    async def delete_by_filter(self, collection: str, filter: dict[str, Any]) -> int:
+        collection = self._normalize_collection_name(collection)
+        await self.get_or_create_collection(collection)
+
+        expr = _build_milvus_expr(filter)
+        if not expr:
+            self.ap.logger.warning(
+                f"Milvus delete_by_filter on '{collection}': filter produced empty expression, skipping"
+            )
+            return 0
+
+        await asyncio.to_thread(self.client.delete, collection_name=collection, filter=expr)
+        self.ap.logger.info(f"Deleted embeddings from Milvus collection '{collection}' by filter")
+        return 0  # Milvus delete does not return a count
 
     async def delete_collection(self, collection: str):
         """Delete a Milvus collection

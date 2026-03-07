@@ -29,7 +29,6 @@ from ..api.http.service import knowledge as knowledge_service
 from ..api.http.service import mcp as mcp_service
 from ..api.http.service import apikey as apikey_service
 from ..api.http.service import webhook as webhook_service
-from ..api.http.service import external_kb as external_kb_service
 from ..api.http.service import monitoring as monitoring_service
 from ..discover import engine as discover_engine
 from ..storage import mgr as storagemgr
@@ -37,6 +36,7 @@ from ..utils import logcache
 from . import taskmgr
 from . import entities as core_entities
 from ..rag.knowledge import kbmgr as rag_mgr
+from ..rag.service import RAGRuntimeService
 from ..vector import mgr as vectordb_mgr
 from ..telemetry import telemetry as telemetry_module
 from ..survey import manager as survey_module
@@ -63,6 +63,7 @@ class Application:
     model_mgr: llm_model_mgr.ModelManager = None
 
     rag_mgr: rag_mgr.RAGManager = None
+    rag_runtime_service: RAGRuntimeService = None
 
     # TODO move to pipeline
     tool_mgr: llm_tool_mgr.ToolManager = None
@@ -137,8 +138,6 @@ class Application:
     bot_service: bot_service.BotService = None
 
     knowledge_service: knowledge_service.KnowledgeService = None
-
-    external_kb_service: external_kb_service.ExternalKBService = None
 
     mcp_service: mcp_service.MCPService = None
 

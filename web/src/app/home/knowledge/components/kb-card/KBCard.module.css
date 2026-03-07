@@ -169,3 +169,18 @@
   width: 1.2rem;
   height: 1.2rem;
 }
+
+.engineBadge {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  background-color: #f3e8ff;
+  color: #7e22ce;
+  white-space: nowrap;
+}
+
+:global(.dark) .engineBadge {
+  background-color: #581c87;
+  color: #d8b4fe;
+}

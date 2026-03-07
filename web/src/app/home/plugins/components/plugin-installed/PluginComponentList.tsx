@@ -1,5 +1,5 @@
 import { TFunction } from 'i18next';
-import { Wrench, AudioWaveform, Hash, Book } from 'lucide-react';
+import { Wrench, AudioWaveform, Hash, Book, FileText } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 export default function PluginComponentList({
@@ -21,7 +21,8 @@ export default function PluginComponentList({
     Tool: <Wrench className="w-5 h-5" />,
     EventListener: <AudioWaveform className="w-5 h-5" />,
     Command: <Hash className="w-5 h-5" />,
-    KnowledgeRetriever: <Book className="w-5 h-5" />,
+    KnowledgeEngine: <Book className="w-5 h-5" />,
+    Parser: <FileText className="w-5 h-5" />,
   };
 
   const componentKindList = Object.keys(components || {});
@@ -32,45 +33,39 @@ export default function PluginComponentList({
       {componentKindList.length > 0 && (
         <>
           {componentKindList.map((kind) => {
-            return (
-              <>
-                {useBadge && (
-                  <Badge
-                    key={kind}
-                    variant="outline"
-                    className="flex items-center gap-1"
-                  >
-                    {kindIconMap[kind]}
-                    {/* 响应式显示组件名称：在中等屏幕以上显示 */}
-                    {responsive ? (
-                      <span className="hidden md:inline">
-                        {t('plugins.componentName.' + kind)}
-                      </span>
-                    ) : (
-                      showComponentName && t('plugins.componentName.' + kind)
-                    )}
-                    <span className="ml-1">{components[kind]}</span>
-                  </Badge>
+            return useBadge ? (
+              <Badge
+                key={kind}
+                variant="outline"
+                className="flex items-center gap-1"
+              >
+                {kindIconMap[kind]}
+                {/* 响应式显示组件名称：在中等屏幕以上显示 */}
+                {responsive ? (
+                  <span className="hidden md:inline">
+                    {t('plugins.componentName.' + kind)}
+                  </span>
+                ) : (
+                  showComponentName && t('plugins.componentName.' + kind)
                 )}
-
-                {!useBadge && (
-                  <div
-                    key={kind}
-                    className="flex flex-row items-center justify-start gap-[0.2rem]"
-                  >
-                    {kindIconMap[kind]}
-                    {/* 响应式显示组件名称：在中等屏幕以上显示 */}
-                    {responsive ? (
-                      <span className="hidden md:inline">
-                        {t('plugins.componentName.' + kind)}
-                      </span>
-                    ) : (
-                      showComponentName && t('plugins.componentName.' + kind)
-                    )}
-                    <span className="ml-1">{components[kind]}</span>
-                  </div>
+                <span className="ml-1">{components[kind]}</span>
+              </Badge>
+            ) : (
+              <div
+                key={kind}
+                className="flex flex-row items-center justify-start gap-[0.2rem]"
+              >
+                {kindIconMap[kind]}
+                {/* 响应式显示组件名称：在中等屏幕以上显示 */}
+                {responsive ? (
+                  <span className="hidden md:inline">
+                    {t('plugins.componentName.' + kind)}
+                  </span>
+                ) : (
+                  showComponentName && t('plugins.componentName.' + kind)
                 )}
-              </>
+                <span className="ml-1">{components[kind]}</span>
+              </div>
             );
           })}
         </>

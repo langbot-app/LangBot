@@ -319,6 +319,7 @@ export default function BotForm({
               required: item.required,
               type: parseDynamicFormItemType(item.type),
               options: item.options,
+              show_if: item.show_if,
             }),
         ),
       );

@@ -12,7 +12,7 @@ from ... import entities
 from ....provider import runner as runner_module
 
 import langbot_plugin.api.entities.events as events
-from ....utils import importutil, constants
+from ....utils import importutil, constants, runner as runner_utils
 from ....provider import runners
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -186,10 +186,15 @@ class ChatMessageHandler(handler.MessageHandler):
 
                     pipeline_plugins = query.variables.get('_pipeline_bound_plugins', None)
 
+                    runner_category = runner_utils.get_runner_category_from_runner(
+                        runner_name, runner, query.pipeline_config
+                    )
+
                     payload = {
                         'query_id': query.query_id,
                         'adapter': adapter_name,
                         'runner': runner_name,
+                        'runner_category': runner_category,
                         'duration_ms': duration_ms,
                         'model_name': model_name,
                         'version': constants.semantic_version,
