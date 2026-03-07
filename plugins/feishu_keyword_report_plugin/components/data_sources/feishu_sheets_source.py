@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import math
 import re
 from typing import Any
 from urllib.parse import quote
+
+from components.report_core import day_metrics
 
 
 class FeishuSheetsSource:
@@ -118,54 +121,128 @@ class FeishuSheetsSource:
     def field_to_text(value: Any) -> str:
         if value is None:
             return ""
+        if isinstance(value, float) and math.isnan(value):
+            return ""
         if isinstance(value, str):
-            return value.strip()
-        return str(value).strip()
+            text = value.strip()
+        else:
+            text = str(value).strip()
+        return "" if text.lower() == "nan" else text
 
     @staticmethod
     def normalize_key(text: str) -> str:
         raw = FeishuSheetsSource.field_to_text(text).lower()
-        return re.sub(r"[\s_\-()（）【】\[\]/]+", "", raw)
+        return re.sub(r"[\s_\-()（）【】\[\]/.%+]+", "", raw)
 
     @staticmethod
     def normalize_batch_core(batch_text: str) -> str:
         normalized = re.sub(r"\s*-\s*", "-", FeishuSheetsSource.field_to_text(batch_text).upper())
         if not normalized:
             return ""
-        match = re.search(r"(D[AB]\d{4}-\d+)", normalized)
+        match = re.search(r"(D[ABC]\d{4}-\d+)", normalized)
         if match:
             return str(match.group(1))
-        match = re.search(r"([AB]\d{4}-\d+)", normalized)
+        match = re.search(r"([ABC]\d{4}-\d+)", normalized)
         if match:
             return f"D{match.group(1)}"
         return normalized
 
     @staticmethod
-    def _build_field_index_map(header_row: list[Any], alias_map: dict[str, list[str]]) -> dict[str, int]:
-        normalized_headers = [FeishuSheetsSource.normalize_key(str(item)) for item in header_row]
-        index_map: dict[str, int] = {}
+    def _format_number(value: Any) -> str:
+        text = FeishuSheetsSource.field_to_text(value)
+        if not text:
+            return ""
+        try:
+            number = float(text)
+        except Exception:
+            return text
+        return f"{number:.3f}".rstrip("0").rstrip(".")
 
-        for logical_field, aliases in alias_map.items():
-            normalized_aliases = [FeishuSheetsSource.normalize_key(alias) for alias in aliases if alias]
-            matched_index = -1
+    @staticmethod
+    def _infer_prefer_model(batch_core: str) -> str:
+        normalized = FeishuSheetsSource.normalize_batch_core(batch_core)
+        if normalized.startswith("DA"):
+            return "S18"
+        if normalized.startswith("DB"):
+            return "S006"
+        if normalized.startswith("DC"):
+            return "C"
+        return ""
 
-            for idx, header in enumerate(normalized_headers):
-                if header and header in normalized_aliases:
-                    matched_index = idx
-                    break
+    @classmethod
+    def _order_sheet_titles(cls, titles: list[str], batch_core: str, prefer_line: str, prefer_model: str) -> list[str]:
+        model_hint = (prefer_model or cls._infer_prefer_model(batch_core)).upper()
+        line_hint = prefer_line.upper().strip()
 
-            if matched_index < 0:
-                for idx, header in enumerate(normalized_headers):
-                    if not header:
-                        continue
-                    if any(alias and (alias in header or header in alias) for alias in normalized_aliases):
-                        matched_index = idx
-                        break
+        def sort_key(item: tuple[int, str]) -> tuple[int, int, int]:
+            index, title = item
+            title_upper = title.upper()
+            model_rank = 0 if model_hint and model_hint in title_upper else 1
+            line_rank = 0 if line_hint and f"{line_hint}线" in title else 1
+            return (model_rank, line_rank, index)
 
-            if matched_index >= 0:
-                index_map[logical_field] = matched_index
+        return [title for _, title in sorted(enumerate(titles), key=sort_key)]
 
-        return index_map
+    @classmethod
+    def _find_best_column(cls, columns: list[str], aliases: list[str]) -> str:
+        normalized_columns = [(column, cls.normalize_key(column)) for column in columns]
+        normalized_aliases = [(alias, cls.normalize_key(alias)) for alias in aliases if cls.normalize_key(alias)]
+
+        for _alias_raw, alias_key in normalized_aliases:
+            for column, column_key in normalized_columns:
+                if column_key == alias_key:
+                    return column
+
+        for _alias_raw, alias_key in normalized_aliases:
+            for column, column_key in normalized_columns:
+                if alias_key and column_key and (alias_key in column_key or column_key in alias_key):
+                    return column
+
+        return ""
+
+    @classmethod
+    def _format_recipe_field_value(cls, logical_field: str, column_name: str, value: Any, placeholder: str) -> str:
+        raw = cls.field_to_text(value)
+        if not raw:
+            return placeholder
+
+        normalized_column = cls.normalize_key(column_name)
+        if logical_field == "酸量" and ("百分含量" in column_name or "百分含量" in normalized_column):
+            try:
+                number = float(raw)
+            except Exception:
+                return raw if raw.endswith("%") else raw
+            if number <= 1:
+                number *= 100
+            return f"{number:.3f}".rstrip("0").rstrip(".") + "%"
+
+        formatted = cls._format_number(raw)
+        return formatted or placeholder
+
+    @classmethod
+    def _extract_recipe_from_row(
+        cls,
+        row_map: dict[str, Any],
+        field_aliases: dict[str, list[str]],
+        placeholder: str,
+    ) -> dict[str, str]:
+        result_fields = ("铁磷比", "锂量", "酸量", "钛量", "糖量", "peg量", "窑炉温度")
+        result: dict[str, str] = {field: placeholder for field in result_fields}
+        columns = list(row_map.keys())
+
+        for field in result_fields:
+            aliases = field_aliases.get(field, [field])
+            matched_column = cls._find_best_column(columns, aliases)
+            if not matched_column:
+                continue
+            result[field] = cls._format_recipe_field_value(
+                logical_field=field,
+                column_name=matched_column,
+                value=row_map.get(matched_column),
+                placeholder=placeholder,
+            )
+
+        return result
 
     async def query_recipe_by_batch(
         self,
@@ -177,6 +254,7 @@ class FeishuSheetsSource:
         prefer_line: str,
         field_aliases: dict[str, list[str]],
         placeholder: str = "--",
+        prefer_model: str = "",
     ) -> dict[str, str]:
         result_fields = ("铁磷比", "锂量", "酸量", "钛量", "糖量", "peg量", "窑炉温度")
         result: dict[str, str] = {field: placeholder for field in result_fields}
@@ -200,44 +278,35 @@ class FeishuSheetsSource:
             )
 
         all_titles = [title for title in available_titles if title in matrices]
-        preferred_titles: list[str] = []
-        if prefer_line in {"A", "B"}:
-            preferred_tag = f"{prefer_line}线"
-            preferred_titles = [title for title in all_titles if preferred_tag in title]
-        search_titles = preferred_titles + [title for title in all_titles if title not in preferred_titles]
+        search_titles = self._order_sheet_titles(
+            titles=all_titles,
+            batch_core=normalized_batch,
+            prefer_line=prefer_line,
+            prefer_model=prefer_model,
+        )
 
-        alias_map = dict(field_aliases)
-        alias_map["批次号"] = field_aliases.get("批次号", ["批次号", "批次", "批号", "出窑批次"])
-
+        batch_aliases = field_aliases.get("批次号", ["批次号", "批次", "批号", "出窑批次"])
         for sheet_title in search_titles:
             matrix = matrices.get(sheet_title, [])
             if not matrix:
                 continue
-            header = matrix[0]
-            if not isinstance(header, list):
+
+            try:
+                table = day_metrics.load_sheet_table_from_matrix(matrix)
+            except Exception:
+                continue
+            if table.empty:
                 continue
 
-            index_map = self._build_field_index_map(header, alias_map)
-            batch_idx = index_map.get("批次号", -1)
-            if batch_idx < 0:
+            batch_column = self._find_best_column(list(table.columns), batch_aliases)
+            if not batch_column:
                 continue
 
-            for row in reversed(matrix[1:]):
-                if not isinstance(row, list):
-                    continue
-                if batch_idx >= len(row):
-                    continue
-                row_batch = self.normalize_batch_core(self.field_to_text(row[batch_idx]))
+            for _, row in table.iloc[::-1].iterrows():
+                row_batch = self.normalize_batch_core(row.get(batch_column))
                 if not row_batch or row_batch != normalized_batch:
                     continue
-
-                for field in result_fields:
-                    col_idx = index_map.get(field, -1)
-                    if col_idx < 0 or col_idx >= len(row):
-                        result[field] = placeholder
-                    else:
-                        value = self.field_to_text(row[col_idx])
-                        result[field] = value if value else placeholder
-                return result
+                row_map = {str(column): row.get(column) for column in table.columns}
+                return self._extract_recipe_from_row(row_map, field_aliases=field_aliases, placeholder=placeholder)
 
         return result

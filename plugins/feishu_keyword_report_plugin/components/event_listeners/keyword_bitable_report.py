@@ -20,13 +20,13 @@ from components.report_core import day_metrics
 def _default_touch_recipe_field_aliases() -> dict[str, list[str]]:
     return {
         "批次号": ["批次号", "批次", "批号", "出窑批次"],
-        "铁磷比": ["铁磷比", "铁锂比", "铁磷"],
-        "锂量": ["锂量", "碳酸锂量", "锂源量"],
-        "酸量": ["酸量", "磷酸量"],
-        "钛量": ["钛量", "二氧化钛量", "钛源量"],
-        "糖量": ["糖量", "葡萄糖量", "蔗糖量"],
-        "peg量": ["peg量", "PEG量", "peg", "PEG"],
-        "窑炉温度": ["窑炉温度", "窑温", "烧结温度", "温度"],
+        "铁磷比": ["铁磷比", "铁锂比", "铁磷", "Fe/p", "Fe/p(5滴)"],
+        "锂量": ["锂量", "碳酸锂量", "锂源量", "锂量kg/t", "Li2CO3", "Li2CO3_kg/t"],
+        "酸量": ["酸量", "磷酸量", "硼酸量", "百分含量", "H3PO4", "H3BO3"],
+        "钛量": ["钛量", "二氧化钛量", "钛源量", "TiO2", "TiO2_kg/t"],
+        "糖量": ["糖量", "葡萄糖量", "蔗糖量", "ZT", "BF"],
+        "peg量": ["peg量", "PEG量", "peg", "PEG", "CI", "CD"],
+        "窑炉温度": ["窑炉温度", "窑温", "烧结温度", "温度", "℃"],
     }
 
 
@@ -163,8 +163,7 @@ class KeywordBitableReportListener(EventListener):
     def _resolve_target_sheets(self, command_sheets: list[str]) -> list[str]:
         if command_sheets:
             return command_sheets
-        configured = self._split_csv(self._get_str_config("sheets_sheet_names", ""))
-        return configured
+        return self._split_csv(self._get_str_config("sheets_sheet_names", ""))
 
     def _resolve_touch_recipe_field_aliases(self) -> dict[str, list[str]]:
         defaults = _default_touch_recipe_field_aliases()
@@ -172,19 +171,18 @@ class KeywordBitableReportListener(EventListener):
         if not configured:
             return defaults
 
-        merged: dict[str, list[str]] = {}
-        for logical_field, default_aliases in defaults.items():
-            merged[logical_field] = list(default_aliases)
-
+        merged: dict[str, list[str]] = {key: list(value) for key, value in defaults.items()}
         for key, raw_aliases in configured.items():
             logical_key = str(key).strip()
             if not logical_key:
                 continue
-            alias_list: list[str] = []
+
             if isinstance(raw_aliases, list):
                 alias_list = [str(item).strip() for item in raw_aliases if str(item).strip()]
             elif isinstance(raw_aliases, str):
-                alias_list = [x for x in self._split_csv(raw_aliases) if x]
+                alias_list = [item for item in self._split_csv(raw_aliases) if item]
+            else:
+                alias_list = []
             if not alias_list:
                 continue
 
@@ -231,6 +229,17 @@ class KeywordBitableReportListener(EventListener):
             return "A"
         if segment_text.startswith("B"):
             return "B"
+        return ""
+
+    @staticmethod
+    def _resolve_touch_prefer_model(batch_core: str) -> str:
+        normalized = FeishuSheetsSource.normalize_batch_core(batch_core)
+        if normalized.startswith("DA"):
+            return "S18"
+        if normalized.startswith("DB"):
+            return "S006"
+        if normalized.startswith("DC"):
+            return "C"
         return ""
 
     @staticmethod
@@ -338,7 +347,8 @@ class KeywordBitableReportListener(EventListener):
         app_id = self._get_str_config("app_id", "")
         app_secret = self._get_str_config("app_secret", "")
         token_endpoint = self._get_str_config(
-            "token_endpoint", "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
+            "token_endpoint",
+            "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
         )
         if not app_id or not app_secret:
             raise ValueError("插件配置 app_id/app_secret 必填。")
@@ -487,7 +497,6 @@ class KeywordBitableReportListener(EventListener):
         if mode == "bitable":
             return await self._run_bitable_brief_report(title_text="当前出窑批次及烧结压实（多维表模式）：")
 
-        # auto: 在线表格优先，失败回退多维表。
         try:
             return await self._run_sheets_report(date_arg=date_arg, command_sheets=command_sheets)
         except Exception as sheets_exc:
@@ -595,11 +604,11 @@ class KeywordBitableReportListener(EventListener):
                     cell_range=self._get_str_config("sheets_range", "A1:ZZ2000") or "A1:ZZ2000",
                     batch_core=batch_core or batch_display,
                     prefer_line=self._resolve_touch_prefer_line(segment),
+                    prefer_model=self._resolve_touch_prefer_model(batch_core or batch_display),
                     field_aliases=self._resolve_touch_recipe_field_aliases(),
                     placeholder="--",
                 )
             except Exception:
-                # 触发降级，保留占位符，不影响摸料主链路回复。
                 pass
 
         recipe_pack = "+".join(

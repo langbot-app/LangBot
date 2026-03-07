@@ -80,6 +80,96 @@ class SheetsSourceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["peg量"], "80")
         self.assertEqual(data["窑炉温度"], "778.5")
 
+    async def test_query_recipe_by_batch_with_multirow_header(self) -> None:
+        async def fake_api(method, endpoint, headers, payload=None, params=None):
+            if endpoint.endswith("/sheets/query"):
+                return {
+                    "sheets": [
+                        {"title": "S18-A线", "sheet_id": "sheetA"},
+                        {"title": "S006-B线", "sheet_id": "sheetB"},
+                    ]
+                }
+            if "sheetA%21A1%3AZZ2000" in endpoint:
+                return {
+                    "valueRange": {
+                        "values": [
+                            ["是否为验证批次", "投料日期", "批次", "原料D5", "", "", "", "", "", "", "原料BL", "", "", "", "", "", "LiH2PO4", "", "", "TiO2", "BF", "ZT", "CI", "批次铁的重量", "窑炉线别", "窑炉温度"],
+                            ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "百分含量", "Li2CO3", "H3PO4", "H3PO4", "H3PO4", "H3PO4", "H3PO4", "H3PO4", "H3PO4", "H3PO4"],
+                            ["", "", "", "", "", "Fe/p(5滴)", "", "", "", "", "", "", "锂量kg/t", "", "", "", "%", "kg/t", "kg/t", "kg/t", "kg/t", "kg/t", "kg/t", "t", "B1/B2", "℃"],
+                            ["是", "2026-01-01", "DA2601-005", "", "", "97.4", "", "", "", "", "", "", "253.125", "", "", "", "0.012", "2.7", "8.405", "3.2", "", "40", "83", "16", "A2", "778.5"],
+                        ]
+                    }
+                }
+            if "sheetB%21A1%3AZZ2000" in endpoint:
+                return {
+                    "valueRange": {
+                        "values": [
+                            ["投料日期", "批次", "原料D5", "", "", "", "", "", "", "", "", "", "原料BL", "", "", "", "", "H3BO3", "TiO2", "BF", "CD", "CI", "批次铁的重量", "窑炉线别", "窑炉温度"],
+                            ["", "", "", "", "Fe/p(5滴)", "", "", "", "", "", "", "", "", "锂量kg/t", "", "", "", "kg/t", "kg/t", "kg/t", "kg/t", "kg/t", "t", "B1/B2", "℃"],
+                            ["2026-02-03", "DB2602-013", "", "", "96.1", "", "", "", "", "", "", "", "", "251.3", "", "", "", "1.088", "2.915", "87.38", "2.66", "19.067", "12", "B1", "813"],
+                        ]
+                    }
+                }
+            raise AssertionError(f"Unexpected endpoint: {endpoint}")
+
+        source = FeishuSheetsSource(fake_api)
+
+        data_a = await source.query_recipe_by_batch(
+            spreadsheet_token="sp_token",
+            headers={"Authorization": "Bearer test"},
+            target_sheet_names=["S18-A线", "S006-B线"],
+            cell_range="A1:ZZ2000",
+            batch_core="DA2601-005",
+            prefer_line="A",
+            prefer_model="S18",
+            field_aliases={
+                "批次号": ["批次号", "批次"],
+                "铁磷比": ["铁磷比", "Fe/p"],
+                "锂量": ["锂量", "锂量kg/t"],
+                "酸量": ["酸量", "百分含量", "H3PO4", "H3BO3"],
+                "钛量": ["钛量", "TiO2"],
+                "糖量": ["糖量", "ZT", "BF"],
+                "peg量": ["peg量", "CI", "CD"],
+                "窑炉温度": ["窑炉温度", "窑温", "℃"],
+            },
+            placeholder="--",
+        )
+        self.assertEqual(data_a["铁磷比"], "97.4")
+        self.assertEqual(data_a["锂量"], "253.125")
+        self.assertEqual(data_a["酸量"], "1.2%")
+        self.assertEqual(data_a["钛量"], "3.2")
+        self.assertEqual(data_a["糖量"], "40")
+        self.assertEqual(data_a["peg量"], "83")
+        self.assertEqual(data_a["窑炉温度"], "778.5")
+
+        data_b = await source.query_recipe_by_batch(
+            spreadsheet_token="sp_token",
+            headers={"Authorization": "Bearer test"},
+            target_sheet_names=["S18-A线", "S006-B线"],
+            cell_range="A1:ZZ2000",
+            batch_core="DB2602-013",
+            prefer_line="B",
+            prefer_model="S006",
+            field_aliases={
+                "批次号": ["批次号", "批次"],
+                "铁磷比": ["铁磷比", "Fe/p"],
+                "锂量": ["锂量", "锂量kg/t"],
+                "酸量": ["酸量", "百分含量", "H3PO4", "H3BO3"],
+                "钛量": ["钛量", "TiO2"],
+                "糖量": ["糖量", "ZT", "BF"],
+                "peg量": ["peg量", "CI", "CD"],
+                "窑炉温度": ["窑炉温度", "窑温", "℃"],
+            },
+            placeholder="--",
+        )
+        self.assertEqual(data_b["铁磷比"], "96.1")
+        self.assertEqual(data_b["锂量"], "251.3")
+        self.assertEqual(data_b["酸量"], "1.088")
+        self.assertEqual(data_b["钛量"], "2.915")
+        self.assertEqual(data_b["糖量"], "87.38")
+        self.assertEqual(data_b["peg量"], "19.067")
+        self.assertEqual(data_b["窑炉温度"], "813")
+
     async def test_query_recipe_by_batch_missing_fields(self) -> None:
         async def fake_api(method, endpoint, headers, payload=None, params=None):
             if endpoint.endswith("/sheets/query"):
