@@ -78,13 +78,29 @@ stages:
       en_US: Misc
       zh_Hans: 杂项
     config:
-      - name: hide-exception
+      - name: exception-handling
         label:
-          en_US: Hide Exception
-          zh_Hans: 不输出异常信息给用户
-        type: boolean
+          en_US: Exception Handling Strategy
+          zh_Hans: 异常处理策略
+        description:
+          en_US: Controls how error messages are displayed to the user when an AI request fails
+          zh_Hans: 控制 AI 请求失败时向用户展示错误信息的方式
+        type: select
         required: true
-        default: true
+        default: show-hint
+        options:
+          - name: show-error
+            label:
+              en_US: Show Full Error
+              zh_Hans: 显示完整报错信息
+          - name: show-hint
+            label:
+              en_US: Show Failure Hint
+              zh_Hans: 仅文字提示
+          - name: hide
+            label:
+              en_US: Hide All
+              zh_Hans: 不显示任何异常信息
       - name: at-sender
         label:
           en_US: At Sender
@@ -119,13 +135,4 @@ stages:
         type: boolean
         required: true
         default: false
-      - name: block-failed-request-output
-        label:
-          en_US: Block Failed Request Output
-          zh_Hans: 阻止返回请求失败
-        description:
-          en_US: If enabled, when an AI request fails, no message will be sent to the user instead of the default failure notice.
-          zh_Hans: 启用后，当 AI 请求失败时，不向用户发送任何消息，而非默认的请求失败提示
-        type: boolean
-        required: true
-        default: false
+
