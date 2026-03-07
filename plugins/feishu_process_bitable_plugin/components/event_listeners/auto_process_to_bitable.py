@@ -1254,7 +1254,11 @@ class AutoProcessToBitableListener(EventListener):
             return []
 
         normalized_text = self._normalize_dash(text)
-        ph_match = re.search(r"车间[A/B]*线?纯水\s*PH\s*[:：]\s*(\d+\.?\d*)", normalized_text, re.IGNORECASE)
+        ph_match = re.search(
+            r"车间\s*(?:[AB](?:\s*[/／、&]\s*[AB])?|AB)?\s*线?\s*纯水\s*PH(?:值)?\s*[:：]\s*(\d+\.?\d*)",
+            normalized_text,
+            re.IGNORECASE,
+        )
         if not ph_match:
             return []
 

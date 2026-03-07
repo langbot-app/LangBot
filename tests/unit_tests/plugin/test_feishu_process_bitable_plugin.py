@@ -375,3 +375,19 @@ def test_parse_kiln_batch_io_can_be_disabled_by_process_switch() -> None:
     records = listener._parse_kiln_batch_io(text, "2026-03-06 08:00:00")
 
     assert records == []
+
+
+def test_parse_pure_water_supports_ab_line_header_with_single_batch() -> None:
+    listener = _build_listener()
+    text = "车间A/B线纯水PH：6.47\nS18-TL-DA2603-032"
+
+    records = listener._parse_pure_water(text, "2026-03-07 08:00:00")
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.scenario == "pure_water"
+    assert record.line == "A"
+    assert record.batch_id == "S18-TL-DA2603-032"
+    assert record.route_key == "pure_water.A"
+    assert record.fields["PH值"] == 6.47
+    assert record.fields["消息时间"] == "2026-03-07 08:00:00"
