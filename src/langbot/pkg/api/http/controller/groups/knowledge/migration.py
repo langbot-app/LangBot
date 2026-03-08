@@ -1,6 +1,7 @@
 import asyncio
 import json
 
+import httpx
 import sqlalchemy
 
 from ... import group
@@ -11,6 +12,7 @@ from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 LANGRAG_PLUGIN_AUTHOR = 'langbot-team'
 LANGRAG_PLUGIN_NAME = 'LangRAG'
 LANGRAG_PLUGIN_ID = f'{LANGRAG_PLUGIN_AUTHOR}/{LANGRAG_PLUGIN_NAME}'
+DEFAULT_SPACE_URL = 'https://space.langbot.app'
 
 
 @group.group_class('knowledge/migration', '/api/v1/knowledge/migration')
@@ -57,10 +59,22 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
         # Step 1: Install langrag plugin from marketplace
         task_context.trace('Installing LangRAG plugin from marketplace...', action='install-plugin')
         try:
+            # Query marketplace for latest version
+            space_url = self.ap.instance_config.data.get('space', {}).get('url', DEFAULT_SPACE_URL).rstrip('/')
+            async with httpx.AsyncClient(trust_env=True, timeout=15) as client:
+                resp = await client.get(
+                    f'{space_url}/api/v1/marketplace/plugins/{LANGRAG_PLUGIN_AUTHOR}/{LANGRAG_PLUGIN_NAME}'
+                )
+                resp.raise_for_status()
+                plugin_data = resp.json().get('data', {}).get('plugin', {})
+                plugin_version = plugin_data.get('latest_version')
+                if not plugin_version:
+                    raise Exception('Could not determine latest LangRAG version from marketplace')
+
             install_info = {
                 'plugin_author': LANGRAG_PLUGIN_AUTHOR,
                 'plugin_name': LANGRAG_PLUGIN_NAME,
-                'plugin_version': 'latest',
+                'plugin_version': plugin_version,
             }
             await self.ap.plugin_connector.install_plugin(
                 PluginInstallSource.MARKETPLACE, install_info, task_context=task_context
