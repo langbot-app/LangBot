@@ -727,9 +727,10 @@ const zhHant = {
       description: '檢測到舊版知識庫資料，需要遷移到新的插件化 RAG 架構。',
       detected:
         '共檢測到 {{total}} 個知識庫需要遷移（{{internal}} 個內建知識庫，{{external}} 個外部知識庫）。',
-      installHint:
-        '遷移將自動安裝 LangRAG 插件並恢復您的知識庫資料，文件和向量資料將被保留。',
-      start: '立即遷移',
+      startWithInstall: '自動安裝插件並遷移',
+      startDataOnly: '僅遷移資料',
+      dataOnlyHint:
+        '「僅遷移資料」適合內網環境使用，請自行安裝 LangRAG 插件後再遷移。',
       dismiss: '暫不遷移',
       running: '正在遷移知識庫，請稍候...',
       success: '知識庫遷移完成',

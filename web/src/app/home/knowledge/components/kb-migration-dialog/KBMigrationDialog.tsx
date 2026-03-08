@@ -45,9 +45,9 @@ export default function KBMigrationDialog({
     },
   });
 
-  const handleStartMigration = async () => {
+  const handleMigration = async (installPlugin: boolean) => {
     try {
-      const resp = await httpClient.executeRagMigration();
+      const resp = await httpClient.executeRagMigration(installPlugin);
       asyncTask.startTask(resp.task_id);
     } catch {
       toast.error(t('knowledge.migration.error'));
@@ -77,7 +77,7 @@ export default function KBMigrationDialog({
         if (!isRunning) onOpenChange(v);
       }}
     >
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{t('knowledge.migration.title')}</DialogTitle>
           <DialogDescription>
@@ -87,18 +87,13 @@ export default function KBMigrationDialog({
 
         <div className="py-4 space-y-3">
           {!isRunning && !isError && (
-            <>
-              <p className="text-sm text-muted-foreground">
-                {t('knowledge.migration.detected', {
-                  total: totalCount,
-                  internal: internalKbCount,
-                  external: externalKbCount,
-                })}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {t('knowledge.migration.installHint')}
-              </p>
-            </>
+            <p className="text-sm text-muted-foreground">
+              {t('knowledge.migration.detected', {
+                total: totalCount,
+                internal: internalKbCount,
+                external: externalKbCount,
+              })}
+            </p>
           )}
 
           {isRunning && (
@@ -122,24 +117,37 @@ export default function KBMigrationDialog({
           )}
         </div>
 
-        <DialogFooter>
-          {!isRunning && (
-            <Button
-              variant="outline"
-              onClick={handleDismiss}
-              disabled={dismissing}
-            >
-              {t('knowledge.migration.dismiss')}
-            </Button>
-          )}
+        <DialogFooter className="flex flex-col gap-2 sm:flex-col">
           {!isRunning && !isError && (
-            <Button onClick={handleStartMigration}>
-              {t('knowledge.migration.start')}
-            </Button>
+            <>
+              <Button onClick={() => handleMigration(true)} className="w-full">
+                {t('knowledge.migration.startWithInstall')}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleMigration(false)}
+                className="w-full"
+              >
+                {t('knowledge.migration.startDataOnly')}
+              </Button>
+              <p className="text-xs text-muted-foreground text-center">
+                {t('knowledge.migration.dataOnlyHint')}
+              </p>
+            </>
           )}
           {isError && (
-            <Button onClick={handleStartMigration}>
+            <Button onClick={() => handleMigration(true)} className="w-full">
               {t('knowledge.migration.retry')}
+            </Button>
+          )}
+          {!isRunning && (
+            <Button
+              variant="ghost"
+              onClick={handleDismiss}
+              disabled={dismissing}
+              className="w-full"
+            >
+              {t('knowledge.migration.dismiss')}
             </Button>
           )}
         </DialogFooter>

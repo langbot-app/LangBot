@@ -747,9 +747,9 @@ const zhHans = {
       description: '检测到旧版知识库数据，需要迁移到新的插件化 RAG 架构。',
       detected:
         '共检测到 {{total}} 个知识库需要迁移（{{internal}} 个内置知识库，{{external}} 个外部知识库）。',
-      installHint:
-        '迁移将自动安装 LangRAG 插件并恢复您的知识库数据，文档和向量数据将被保留。',
-      start: '立即迁移',
+      startWithInstall: '自动安装插件并迁移',
+      startDataOnly: '仅迁移数据',
+      dataOnlyHint: '「仅迁移数据」适合内网环境使用，请自行安装 LangRAG 插件后再迁移。',
       dismiss: '暂不迁移',
       running: '正在迁移知识库，请稍候...',
       success: '知识库迁移完成',

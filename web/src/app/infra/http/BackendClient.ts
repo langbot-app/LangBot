@@ -716,8 +716,12 @@ export class BackendClient extends BaseHttpClient {
     return this.get('/api/v1/knowledge/migration/status');
   }
 
-  public executeRagMigration(): Promise<AsyncTaskCreatedResp> {
-    return this.post('/api/v1/knowledge/migration/execute');
+  public executeRagMigration(
+    installPlugin: boolean = true,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.post('/api/v1/knowledge/migration/execute', {
+      install_plugin: installPlugin,
+    });
   }
 
   public dismissRagMigration(): Promise<object> {
