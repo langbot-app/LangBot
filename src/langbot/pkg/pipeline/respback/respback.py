@@ -30,29 +30,48 @@ class SendResponseBackStage(stage.PipelineStage):
 
         await asyncio.sleep(random_delay)
 
-        if query.pipeline_config['output']['misc']['at-sender'] and isinstance(
-            query.message_event, platform_events.GroupMessage
-        ):
-            query.resp_message_chain[-1].insert(0, platform_message.At(target=query.message_event.sender.id))
-
         quote_origin = query.pipeline_config['output']['misc']['quote-origin']
 
-        has_chunks = any(isinstance(msg, provider_message.MessageChunk) for msg in query.resp_messages)
-        # TODO 命令与流式的兼容性问题
-        if await query.adapter.is_stream_output_supported() and has_chunks:
-            is_final = [msg.is_final for msg in query.resp_messages][0]
-            await query.adapter.reply_message_chunk(
-                message_source=query.message_event,
-                bot_message=query.resp_messages[-1],
-                message=query.resp_message_chain[-1],
-                quote_origin=quote_origin,
-                is_final=is_final,
-            )
+        if len(query.resp_message_chain) > 1:
+            # Multiple chains (split strategy): send each sequentially
+            for i, chain in enumerate(query.resp_message_chain):
+                is_first = i == 0
+
+                if (
+                    is_first
+                    and query.pipeline_config['output']['misc']['at-sender']
+                    and isinstance(query.message_event, platform_events.GroupMessage)
+                ):
+                    chain.insert(0, platform_message.At(target=query.message_event.sender.id))
+
+                await query.adapter.reply_message(
+                    message_source=query.message_event,
+                    message=chain,
+                    quote_origin=quote_origin if is_first else False,
+                )
+
         else:
-            await query.adapter.reply_message(
-                message_source=query.message_event,
-                message=query.resp_message_chain[-1],
-                quote_origin=quote_origin,
-            )
+            if query.pipeline_config['output']['misc']['at-sender'] and isinstance(
+                query.message_event, platform_events.GroupMessage
+            ):
+                query.resp_message_chain[-1].insert(0, platform_message.At(target=query.message_event.sender.id))
+
+            has_chunks = any(isinstance(msg, provider_message.MessageChunk) for msg in query.resp_messages)
+            # TODO 命令与流式的兼容性问题
+            if await query.adapter.is_stream_output_supported() and has_chunks:
+                is_final = [msg.is_final for msg in query.resp_messages][0]
+                await query.adapter.reply_message_chunk(
+                    message_source=query.message_event,
+                    bot_message=query.resp_messages[-1],
+                    message=query.resp_message_chain[-1],
+                    quote_origin=quote_origin,
+                    is_final=is_final,
+                )
+            else:
+                await query.adapter.reply_message(
+                    message_source=query.message_event,
+                    message=query.resp_message_chain[-1],
+                    quote_origin=quote_origin,
+                )
 
         return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)

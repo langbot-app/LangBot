@@ -22,9 +22,12 @@ class LongTextProcessStage(stage.PipelineStage):
     """
 
     strategy_impl: strategy.LongTextStrategy | None
+    is_split: bool
 
     async def initialize(self, pipeline_config: dict):
         config = pipeline_config['output']['long-text-processing']
+
+        self.is_split = config['strategy'] == 'split'
 
         if config['strategy'] == 'none':
             self.strategy_impl = None
@@ -90,8 +93,18 @@ class LongTextProcessStage(stage.PipelineStage):
             len(str(query.resp_message_chain[-1]))
             > query.pipeline_config['output']['long-text-processing']['threshold']
         ):
-            query.resp_message_chain[-1] = platform_message.MessageChain(
-                await self.strategy_impl.process(str(query.resp_message_chain[-1]), query)
-            )
+            if self.is_split:
+                original_text = str(query.resp_message_chain[-1])
+                threshold = query.pipeline_config['output']['long-text-processing']['threshold']
+                segments = self.strategy_impl.split_text(original_text, threshold)
+                query.resp_message_chain.pop()
+                for segment in segments:
+                    query.resp_message_chain.append(
+                        platform_message.MessageChain([platform_message.Plain(text=segment)])
+                    )
+            else:
+                query.resp_message_chain[-1] = platform_message.MessageChain(
+                    await self.strategy_impl.process(str(query.resp_message_chain[-1]), query)
+                )
 
         return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
