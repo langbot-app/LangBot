@@ -13,6 +13,7 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.events as events
 from ..utils import importutil
+from .config_coercion import coerce_pipeline_config
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -419,6 +420,14 @@ class PipelineManager:
             pipeline_entity = persistence_pipeline.LegacyPipeline(**pipeline_entity._mapping)
         elif isinstance(pipeline_entity, dict):
             pipeline_entity = persistence_pipeline.LegacyPipeline(**pipeline_entity)
+
+        coerce_pipeline_config(
+            pipeline_entity.config,
+            getattr(self.ap, "pipeline_config_meta_trigger", {"name": "trigger", "stages": []}),
+            getattr(self.ap, "pipeline_config_meta_safety", {"name": "safety", "stages": []}),
+            getattr(self.ap, "pipeline_config_meta_ai", {"name": "ai", "stages": []}),
+            getattr(self.ap, "pipeline_config_meta_output", {"name": "output", "stages": []}),
+        )
 
         # initialize stage containers according to pipeline_entity.stages
         stage_containers: list[StageInstContainer] = []
