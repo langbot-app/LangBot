@@ -762,6 +762,22 @@ const jaJP = {
     retrieverConfiguration: '検索器設定',
     retrieverInstallInfo: 'ナレッジ検索器プラグインは',
     retrieverMarketLink: 'こちらからインストールできます',
+    migration: {
+      title: 'ナレッジベースの移行',
+      description:
+        '旧バージョンのナレッジベースデータが検出されました。新しいプラグインベースのRAGアーキテクチャへの移行が必要です。',
+      detected:
+        '移行が必要なナレッジベースが{{total}}件見つかりました（内部{{internal}}件、外部{{external}}件）。',
+      installHint:
+        '移行により LangRAG プラグインが自動的にインストールされ、ナレッジベースデータが復元されます。ドキュメントとベクトルデータは保持されます。',
+      start: '今すぐ移行',
+      dismiss: '後で',
+      running: 'ナレッジベースを移行中です。しばらくお待ちください...',
+      success: 'ナレッジベースの移行が完了しました',
+      error: 'ナレッジベースの移行に失敗しました：',
+      dismissError: '操作に失敗しました',
+      retry: 'リトライ',
+    },
   },
   register: {
     title: 'LangBot を初期化 👋',

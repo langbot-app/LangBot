@@ -773,6 +773,22 @@ const enUS = {
     retrieverConfiguration: 'Retriever Configuration',
     retrieverInstallInfo: 'You can install Knowledge Retriever plugins from',
     retrieverMarketLink: 'here',
+    migration: {
+      title: 'Knowledge Base Migration',
+      description:
+        'Legacy knowledge base data detected. Migration to the new plugin-based RAG architecture is required.',
+      detected:
+        'Found {{total}} knowledge base(s) to migrate ({{internal}} internal, {{external}} external).',
+      installHint:
+        'Migration will automatically install the LangRAG plugin and restore your knowledge base data. Documents and vector data will be preserved.',
+      start: 'Migrate Now',
+      dismiss: 'Skip for Now',
+      running: 'Migrating knowledge bases, please wait...',
+      success: 'Knowledge base migration completed',
+      error: 'Knowledge base migration failed: ',
+      dismissError: 'Operation failed',
+      retry: 'Retry',
+    },
   },
   register: {
     title: 'Initialize LangBot 👋',

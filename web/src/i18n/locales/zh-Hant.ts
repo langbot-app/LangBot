@@ -722,6 +722,21 @@ const zhHant = {
     retrieverConfiguration: '檢索器配置',
     retrieverInstallInfo: '您可以從',
     retrieverMarketLink: '此處安裝知識檢索器插件',
+    migration: {
+      title: '知識庫遷移',
+      description: '檢測到舊版知識庫資料，需要遷移到新的插件化 RAG 架構。',
+      detected:
+        '共檢測到 {{total}} 個知識庫需要遷移（{{internal}} 個內建知識庫，{{external}} 個外部知識庫）。',
+      installHint:
+        '遷移將自動安裝 LangRAG 插件並恢復您的知識庫資料，文件和向量資料將被保留。',
+      start: '立即遷移',
+      dismiss: '暫不遷移',
+      running: '正在遷移知識庫，請稍候...',
+      success: '知識庫遷移完成',
+      error: '知識庫遷移失敗：',
+      dismissError: '操作失敗',
+      retry: '重試',
+    },
   },
   register: {
     title: '初始化 LangBot 👋',
