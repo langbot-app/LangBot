@@ -90,19 +90,39 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         message: platform_message.MessageChain,
     ) -> dict:
         """发送消息 - 这里用于主动推送消息到前端"""
-        message_data = {
-            'type': 'bot_message',
-            'target_type': target_type,
-            'target_id': target_id,
-            'content': str(message),
-            'message_chain': [component.__dict__ for component in message],
-            'timestamp': datetime.now().isoformat(),
-        }
+        pipeline_uuid = self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid
+        session_type = 'group' if target_type == 'group' else 'person'
 
-        # 推送到所有相关连接
-        await self.outbound_message_queue.put(message_data)
+        # 选择会话
+        session = self.websocket_group_session if session_type == 'group' else self.websocket_person_session
 
-        return message_data
+        # 生成唯一消息ID
+        msg_id = len(session.get_message_list(pipeline_uuid)) + 1
+
+        message_data = WebSocketMessage(
+            id=msg_id,
+            role='assistant',
+            content=str(message),
+            message_chain=[component.__dict__ for component in message],
+            timestamp=datetime.now().isoformat(),
+            is_final=True,
+        )
+
+        # 保存到历史记录
+        session.get_message_list(pipeline_uuid).append(message_data)
+
+        # 直接广播到当前pipeline的连接
+        await ws_connection_manager.broadcast_to_pipeline(
+            pipeline_uuid,
+            {
+                'type': 'response',
+                'session_type': session_type,
+                'data': message_data.model_dump(),
+            },
+            session_type=session_type,
+        )
+
+        return message_data.model_dump()
 
     async def reply_message(
         self,
