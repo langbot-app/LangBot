@@ -18,6 +18,7 @@ import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
+import langbot_plugin.api.entities.events as events
 
 
 class RuntimeBot:
@@ -140,6 +141,56 @@ class RuntimeBot:
 
         self.adapter.register_listener(platform_events.FriendMessage, on_friend_message)
         self.adapter.register_listener(platform_events.GroupMessage, on_group_message)
+
+        async def on_notice(
+            event: platform_events.NoticeEvent,
+            adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        ):
+            await self.logger.info(f'Notice event: {event.notice_type} {event.sub_type}')
+
+            try:
+                event_obj = events.NoticeReceived(
+                    notice_type=event.notice_type,
+                    sub_type=event.sub_type,
+                    group_id=event.group_id,
+                    user_id=event.user_id,
+                    operator_id=event.operator_id,
+                    target_id=event.target_id,
+                    message_id=event.message_id,
+                    duration=event.duration,
+                    file=event.file,
+                    honor_type=event.honor_type,
+                )
+
+                if hasattr(self.ap, 'plugin_connector') and self.ap.plugin_connector:
+                    await self.ap.plugin_connector.emit_event(event_obj)
+            except Exception:
+                await self.logger.error(f'Error emitting notice event: {traceback.format_exc()}')
+
+        self.adapter.register_listener(platform_events.NoticeEvent, on_notice)
+
+        async def on_request(
+            event: platform_events.RequestEvent,
+            adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        ):
+            await self.logger.info(f'Request event: {event.request_type} {event.sub_type}')
+
+            try:
+                event_obj = events.RequestReceived(
+                    request_type=event.request_type,
+                    sub_type=event.sub_type,
+                    user_id=event.user_id,
+                    group_id=event.group_id,
+                    comment=event.comment,
+                    flag=event.flag,
+                )
+
+                if hasattr(self.ap, 'plugin_connector') and self.ap.plugin_connector:
+                    await self.ap.plugin_connector.emit_event(event_obj)
+            except Exception:
+                await self.logger.error(f'Error emitting request event: {traceback.format_exc()}')
+
+        self.adapter.register_listener(platform_events.RequestEvent, on_request)
 
     async def run(self):
         async def exception_wrapper():
