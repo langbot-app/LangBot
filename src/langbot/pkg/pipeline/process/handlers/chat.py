@@ -149,12 +149,30 @@ class ChatMessageHandler(handler.MessageHandler):
                 self.ap.logger.error(f'Conversation({query.query_id}) Request Failed: {error_info}')
                 traceback.print_exc()
 
-                hide_exception_info = query.pipeline_config['output']['misc']['hide-exception']
+                exception_handling = query.pipeline_config['output']['misc'].get('exception-handling', 'show-hint')
+
+                # Backward compatibility: handle legacy boolean fields
+                if 'hide-exception' in query.pipeline_config['output']['misc']:
+                    hide_exc = query.pipeline_config['output']['misc']['hide-exception']
+                    block_out = query.pipeline_config['output']['misc'].get('block-failed-request-output', False)
+                    if block_out:
+                        exception_handling = 'hide'
+                    elif hide_exc:
+                        exception_handling = 'show-hint'
+                    else:
+                        exception_handling = 'show-error'
+
+                if exception_handling == 'show-error':
+                    user_notice = f'{e}'
+                elif exception_handling == 'show-hint':
+                    user_notice = '请求失败'
+                else:  # hide
+                    user_notice = None
 
                 yield entities.StageProcessResult(
                     result_type=entities.ResultType.INTERRUPT,
                     new_query=query,
-                    user_notice='请求失败' if hide_exception_info else f'{e}',
+                    user_notice=user_notice,
                     error_notice=f'{e}',
                     debug_notice=traceback.format_exc(),
                 )

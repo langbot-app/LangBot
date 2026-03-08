@@ -95,7 +95,7 @@
             "max": 0
         },
         "misc": {
-            "hide-exception": true,
+            "exception-handling": "show-hint",
             "at-sender": true,
             "quote-origin": true,
             "track-function-calls": false,
