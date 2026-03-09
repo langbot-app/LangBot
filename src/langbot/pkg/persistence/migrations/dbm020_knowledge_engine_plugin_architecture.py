@@ -59,18 +59,14 @@ class DBMigrateKnowledgeEnginePluginArchitecture(migration.DBMigration):
 
     async def _backup_knowledge_bases(self) -> bool:
         """Backup knowledge_bases data. Returns True if data was backed up."""
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.text('SELECT COUNT(*) FROM knowledge_bases;')
-        )
+        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.text('SELECT COUNT(*) FROM knowledge_bases;'))
         count = result.scalar()
         if count == 0:
             return False
 
         # Drop backup table if it already exists (from a previous failed migration)
         if await self._table_exists('knowledge_bases_backup'):
-            await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text('DROP TABLE knowledge_bases_backup;')
-            )
+            await self.ap.persistence_mgr.execute_async(sqlalchemy.text('DROP TABLE knowledge_bases_backup;'))
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.text('CREATE TABLE knowledge_bases_backup AS SELECT * FROM knowledge_bases;')
@@ -103,9 +99,7 @@ class DBMigrateKnowledgeEnginePluginArchitecture(migration.DBMigration):
 
     async def _clear_knowledge_bases(self):
         """Clear all rows from knowledge_bases table (preserve table structure)."""
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.text('DELETE FROM knowledge_bases;')
-        )
+        await self.ap.persistence_mgr.execute_async(sqlalchemy.text('DELETE FROM knowledge_bases;'))
 
     async def _add_columns_to_knowledge_bases(self):
         """Add new RAG plugin architecture columns to knowledge_bases table."""
@@ -154,15 +148,11 @@ class DBMigrateKnowledgeEnginePluginArchitecture(migration.DBMigration):
         row = result.first()
         if row is not None:
             await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text(
-                    "UPDATE metadata SET value = 'true' WHERE key = 'rag_plugin_migration_needed';"
-                )
+                sqlalchemy.text("UPDATE metadata SET value = 'true' WHERE key = 'rag_plugin_migration_needed';")
             )
         else:
             await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text(
-                    "INSERT INTO metadata (key, value) VALUES ('rag_plugin_migration_needed', 'true');"
-                )
+                sqlalchemy.text("INSERT INTO metadata (key, value) VALUES ('rag_plugin_migration_needed', 'true');")
             )
         self.ap.logger.info('Set rag_plugin_migration_needed=true in metadata.')
 

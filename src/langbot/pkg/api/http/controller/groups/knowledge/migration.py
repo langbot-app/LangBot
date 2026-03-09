@@ -47,9 +47,9 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
             return result.scalar()
         else:
             result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name=:table_name;"
-                ).bindparams(table_name=table_name)
+                sqlalchemy.text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table_name;").bindparams(
+                    table_name=table_name
+                )
             )
             return result.first() is not None
 
@@ -231,9 +231,7 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
                 )
 
                 try:
-                    await self.ap.plugin_connector.rag_on_kb_create(
-                        external_plugin_id, kb_uuid, retriever_config
-                    )
+                    await self.ap.plugin_connector.rag_on_kb_create(external_plugin_id, kb_uuid, retriever_config)
                     task_context.trace(f'Restored external KB: {name} ({kb_uuid})')
                 except Exception as e:
                     warning = f'Failed to notify plugin for external KB {name} ({kb_uuid}): {e}'
