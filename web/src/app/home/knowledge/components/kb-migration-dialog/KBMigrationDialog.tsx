@@ -145,7 +145,7 @@ export default function KBMigrationDialog({
               variant="ghost"
               onClick={handleDismiss}
               disabled={dismissing}
-              className="w-full"
+              className="w-full text-destructive hover:text-destructive"
             >
               {t('knowledge.migration.dismiss')}
             </Button>

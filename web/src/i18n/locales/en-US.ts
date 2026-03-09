@@ -783,7 +783,7 @@ const enUS = {
       startDataOnly: 'Migrate Data Only',
       dataOnlyHint:
         '"Migrate Data Only" is for offline/intranet environments. Please install the LangRAG plugin manually before migrating.',
-      dismiss: 'Skip for Now',
+      dismiss: 'Discard Original Data',
       running: 'Migrating knowledge bases, please wait...',
       success: 'Knowledge base migration completed',
       error: 'Knowledge base migration failed: ',

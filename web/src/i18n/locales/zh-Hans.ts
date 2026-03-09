@@ -750,7 +750,7 @@ const zhHans = {
       startWithInstall: '自动安装插件并迁移',
       startDataOnly: '仅迁移数据',
       dataOnlyHint: '「仅迁移数据」适合内网环境使用，请自行安装 LangRAG 插件后再迁移。',
-      dismiss: '暂不迁移',
+      dismiss: '丢弃原数据',
       running: '正在迁移知识库，请稍候...',
       success: '知识库迁移完成',
       error: '知识库迁移失败：',

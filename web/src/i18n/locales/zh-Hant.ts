@@ -731,7 +731,7 @@ const zhHant = {
       startDataOnly: '僅遷移資料',
       dataOnlyHint:
         '「僅遷移資料」適合內網環境使用，請自行安裝 LangRAG 插件後再遷移。',
-      dismiss: '暫不遷移',
+      dismiss: '丟棄原數據',
       running: '正在遷移知識庫，請稍候...',
       success: '知識庫遷移完成',
       error: '知識庫遷移失敗：',
