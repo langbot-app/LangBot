@@ -194,6 +194,8 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
             except Exception:
                 engine_id_set = set()
 
+            task_context.trace(f'Found {len(rows)} external KB(s) to restore. Available engines: {engine_id_set}')
+
             for row in rows:
                 row_dict = dict(zip(columns, row))
                 kb_uuid = row_dict.get('uuid')
@@ -209,14 +211,10 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
                 mapped_plugin_name = EXTERNAL_PLUGIN_NAME_MAPPING.get(plugin_name, plugin_name)
                 external_plugin_id = f'{plugin_author}/{mapped_plugin_name}'
 
-                if external_plugin_id not in engine_id_set:
-                    warning = (
-                        f'External KB "{name}" ({kb_uuid}) uses plugin {external_plugin_id} '
-                        f'which is not available as a Knowledge Engine. Skipped.'
-                    )
-                    warnings.append(warning)
-                    task_context.trace(warning)
-                    continue
+                task_context.trace(
+                    f'Processing external KB "{name}" ({kb_uuid}): '
+                    f'old_plugin={plugin_author}/{plugin_name}, mapped={external_plugin_id}'
+                )
 
                 # Parse retriever_config
                 if isinstance(retriever_config, str):
@@ -235,6 +233,14 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
                     creation_settings_dict = {k: v for k, v in retriever_config.items() if k in creation_fields}
                     retrieval_settings_dict = {k: v for k, v in retriever_config.items() if k not in creation_fields}
 
+                task_context.trace(
+                    f'Inserting external KB "{name}" into knowledge_bases table '
+                    f'(plugin_id={external_plugin_id}, creation_settings={json.dumps(creation_settings_dict)}, '
+                    f'retrieval_settings={json.dumps(retrieval_settings_dict)})'
+                )
+
+                # Always insert the KB record so it shows in frontend,
+                # even if the connector plugin is not yet installed.
                 await self.ap.persistence_mgr.execute_async(
                     sqlalchemy.text(
                         'INSERT INTO knowledge_bases '
@@ -256,13 +262,23 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
                     )
                 )
 
-                try:
-                    await self.ap.plugin_connector.rag_on_kb_create(external_plugin_id, kb_uuid, creation_settings_dict)
-                    task_context.trace(f'Restored external KB: {name} ({kb_uuid})')
-                except Exception as e:
-                    warning = f'Failed to notify plugin for external KB {name} ({kb_uuid}): {e}'
+                if external_plugin_id not in engine_id_set:
+                    warning = (
+                        f'External KB "{name}" ({kb_uuid}) record saved, but plugin {external_plugin_id} '
+                        f'is not installed yet. Install the connector plugin to use it.'
+                    )
                     warnings.append(warning)
                     task_context.trace(warning)
+                else:
+                    try:
+                        await self.ap.plugin_connector.rag_on_kb_create(
+                            external_plugin_id, kb_uuid, creation_settings_dict
+                        )
+                        task_context.trace(f'Restored external KB: {name} ({kb_uuid})')
+                    except Exception as e:
+                        warning = f'Failed to notify plugin for external KB {name} ({kb_uuid}): {e}'
+                        warnings.append(warning)
+                        task_context.trace(warning)
 
             # Reload again after external KBs
             await self.ap.rag_mgr.load_knowledge_bases_from_db()
