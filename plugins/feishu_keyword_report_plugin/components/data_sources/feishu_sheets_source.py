@@ -63,7 +63,10 @@ class FeishuSheetsSource:
     ) -> list[list[Any]]:
         range_expr = f"{sheet_id}!{cell_range}"
         encoded_range = quote(range_expr, safe="")
-        endpoint = f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{spreadsheet_token}/values/{encoded_range}"
+        endpoint = (
+            f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{spreadsheet_token}/values/{encoded_range}"
+            "?valueRenderOption=UnformattedValue"
+        )
         data = await self._api_call("GET", endpoint, headers=headers)
 
         value_range = data.get("valueRange")

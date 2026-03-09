@@ -12,6 +12,7 @@ class SheetsSourceTest(unittest.IsolatedAsyncioTestCase):
                 return {"sheets": [{"title": "S18-A线", "sheet_id": "sheetA"}]}
             if "/values/" in endpoint:
                 self.assertIn("sheetA%21A1%3AZZ2000", endpoint)
+                self.assertIn("valueRenderOption=UnformattedValue", endpoint)
                 return {
                     "valueRange": {
                         "values": [

@@ -328,6 +328,11 @@ def _parse_num(value: Any) -> Optional[float]:
     text = str(value).strip()
     if not text or text.lower() == "nan":
         return None
+    upper_text = text.upper()
+    if upper_text.startswith("="):
+        return None
+    if re.match(r"^[A-Z]{2,}[A-Z0-9_]*\(", upper_text):
+        return None
     parts = text.split("/")
     nums: list[float] = []
     for part in parts:

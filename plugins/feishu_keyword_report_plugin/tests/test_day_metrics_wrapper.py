@@ -61,6 +61,62 @@ class DayMetricsWrapperTest(unittest.TestCase):
         df = day_metrics.load_sheet_table_from_matrix(matrix)
         self.assertEqual(df["投料日期"].iloc[0], dt.date(2025, 1, 1))
 
+    def test_parse_num_should_ignore_formula_text(self) -> None:
+        formula = "VLOOKUP($C:$C,'S18-A线成品数据源'!$C:$CW,23,FALSE)"
+        self.assertIsNone(day_metrics._parse_num(formula))
+        self.assertIsNone(day_metrics._parse_num(f"={formula}"))
+        self.assertEqual(day_metrics._parse_num("2.384"), 2.384)
+
+    def test_build_report_should_ignore_formula_text_cells(self) -> None:
+        matrix = [
+            ["", "批次", "投料日期", "烧结压实", "粉碎压实", "成品压实", "扣电", "扣电", "扣电", "Li+含量", "碳含量", "粉末电阻", "麦克比表", "3.2V平台效率"],
+            ["", "", "", "", "", "", "0.1C充", "0.1C放", "0.1C首效", "", "", "", "", ""],
+            ["", "", "", "", "", "", ">=155", ">=150", ">=96", "", "", "", "", ""],
+            [
+                "2026-03-05",
+                "DA2603-022",
+                "2026-03-05",
+                2.33,
+                2.35,
+                "VLOOKUP($C:$C,'S18-A线成品数据源'!$C:$CW,23,FALSE)",
+                161.74,
+                156.99,
+                97.07,
+                "VLOOKUP($C:$C,'S18-A线成品数据源'!$C:$CW,10,FALSE)",
+                "VLOOKUP($C:$C,'S18-A线成品数据源'!$C:$CW,21,FALSE)",
+                "VLOOKUP($C:$C,'S18-A线成品数据源'!$C:$CW,25,FALSE)",
+                "VLOOKUP($C:$C,'S18-A线成品数据源'!$C:$CW,7,FALSE)",
+                87.72,
+            ],
+            ["2026-03-05", "DA2603-025", "2026-03-05", 2.34, 2.38, 2.384, 161.70, 156.85, 97.00, 0.0304, 1.361, 14.1, 10.3589, 85.7],
+            ["2026-03-05", "DA2603-026", "2026-03-05", 2.33, 2.37, 2.380, 161.20, 156.17, 96.88, 0.0316, 1.359, 14.9, 10.3456, 86.3],
+        ]
+
+        out = day_metrics.build_standard_report_from_matrices(
+            sheet_matrices={"S18-A线": matrix},
+            selected_sheets=["S18-A线"],
+            date_arg="2026-03-05",
+            date_mode="global",
+            lookback_days=7,
+            trend_days=3,
+            stale_threshold_process=2,
+            stale_threshold_product=3,
+            stale_threshold_electrochem=5,
+            report_show_placeholder_sections=False,
+            spec_registry_json="",
+        )
+
+        product_metrics = out["line_reports"][0]["metrics"]["成品"]
+        self.assertAlmostEqual(product_metrics["成品压实"]["min"], 2.38, places=3)
+        self.assertAlmostEqual(product_metrics["成品压实"]["max"], 2.384, places=3)
+        self.assertAlmostEqual(product_metrics["残碱(Li+)"]["min"], 304.0, places=3)
+        self.assertAlmostEqual(product_metrics["残碱(Li+)"]["max"], 316.0, places=3)
+        self.assertAlmostEqual(product_metrics["碳含量"]["max"], 1.361, places=3)
+        self.assertAlmostEqual(product_metrics["粉阻(粉末电阻)"]["max"], 14.9, places=3)
+        self.assertAlmostEqual(product_metrics["比表(麦克比表)"]["max"], 10.3589, places=4)
+        self.assertNotIn("18.000", out["text"])
+        self.assertNotIn("180000", out["text"])
+
 
 if __name__ == "__main__":
     unittest.main()
