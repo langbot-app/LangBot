@@ -776,13 +776,13 @@ const enUS = {
     migration: {
       title: 'Knowledge Base Migration',
       description:
-        'Legacy knowledge base data detected. Migration to the new plugin-based RAG architecture is required.',
+        'The new version has refactored the knowledge base into a plugin-based architecture, unifying built-in and external knowledge bases as "Knowledge Engine" plugins. Migration of legacy knowledge base data is required. Your old data has been automatically backed up in the database.',
       detected:
         'Found {{total}} knowledge base(s) to migrate ({{internal}} internal, {{external}} external).',
       startWithInstall: 'Auto-install Plugin & Migrate',
       startDataOnly: 'Migrate Data Only',
       dataOnlyHint:
-        '"Migrate Data Only" is for offline/intranet environments. Please install the LangRAG plugin manually before migrating.',
+        '"Migrate Data Only" is for offline/intranet environments. Please install the corresponding plugin manually after migration.',
       dismiss: 'Discard Original Data',
       running: 'Migrating knowledge bases, please wait...',
       success: 'Knowledge base migration completed',

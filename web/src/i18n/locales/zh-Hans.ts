@@ -744,13 +744,14 @@ const zhHans = {
     retrieverMarketLink: '此处安装知识检索器插件',
     migration: {
       title: '知识库迁移',
-      description: '检测到旧版知识库数据，需要迁移到新的插件化 RAG 架构。',
+      description:
+        '新版本已将知识库重构为插件化架构，并统一内置知识库和外部知识库为「知识引擎」插件，需要对旧知识库数据进行迁移。您的旧数据已自动备份在数据库中。',
       detected:
         '共检测到 {{total}} 个知识库需要迁移（{{internal}} 个内置知识库，{{external}} 个外部知识库）。',
       startWithInstall: '自动安装插件并迁移',
       startDataOnly: '仅迁移数据',
       dataOnlyHint:
-        '「仅迁移数据」适合内网环境使用，请自行安装 LangRAG 插件后再迁移。',
+        '「仅迁移数据」适合内网环境使用，请在迁移完成后自行安装对应插件',
       dismiss: '丢弃原数据',
       running: '正在迁移知识库，请稍候...',
       success: '知识库迁移完成',

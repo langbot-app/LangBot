@@ -724,13 +724,14 @@ const zhHant = {
     retrieverMarketLink: '此處安裝知識檢索器插件',
     migration: {
       title: '知識庫遷移',
-      description: '檢測到舊版知識庫資料，需要遷移到新的插件化 RAG 架構。',
+      description:
+        '新版本已將知識庫重構為插件化架構，並統一內建知識庫和外部知識庫為「知識引擎」插件，需要對舊知識庫資料進行遷移。您的舊資料已自動備份在資料庫中。',
       detected:
         '共檢測到 {{total}} 個知識庫需要遷移（{{internal}} 個內建知識庫，{{external}} 個外部知識庫）。',
       startWithInstall: '自動安裝插件並遷移',
       startDataOnly: '僅遷移資料',
       dataOnlyHint:
-        '「僅遷移資料」適合內網環境使用，請自行安裝 LangRAG 插件後再遷移。',
+        '「僅遷移資料」適合內網環境使用，請在遷移完成後自行安裝對應插件',
       dismiss: '丟棄原數據',
       running: '正在遷移知識庫，請稍候...',
       success: '知識庫遷移完成',
