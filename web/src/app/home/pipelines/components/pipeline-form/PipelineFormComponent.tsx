@@ -120,6 +120,8 @@ export default function PipelineFormComponent({
 
   // Track unsaved changes by comparing current form values against a saved snapshot
   const savedSnapshotRef = useRef<string>('');
+  // Track which dynamic form stages have completed their initial mount emission.
+  const initializedStagesRef = useRef<Set<string>>(new Set());
   const watchedValues = form.watch();
   const hasUnsavedChanges = useMemo(() => {
     if (!isEditMode || !savedSnapshotRef.current) return false;
@@ -160,6 +162,7 @@ export default function PipelineFormComponent({
           };
           form.reset(loadedValues);
           savedSnapshotRef.current = JSON.stringify(loadedValues);
+          initializedStagesRef.current.clear();
         });
     }
   }, []);
@@ -235,6 +238,33 @@ export default function PipelineFormComponent({
       });
   }
 
+  // Called from DynamicFormComponent/N8nAuthFormComponent onSubmit callbacks.
+  // On the first emission for a stage (mount-time default filling), the
+  // snapshot is synchronously re-captured so that hasUnsavedChanges stays false.
+  function handleDynamicFormEmit(
+    formName: keyof FormValues,
+    stageName: string,
+    values: object,
+  ) {
+    const stageKey = `${String(formName)}.${stageName}`;
+    const isFirstEmission = !initializedStagesRef.current.has(stageKey);
+
+    const currentValues =
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (form.getValues(formName) as Record<string, any>) || {};
+    form.setValue(formName, {
+      ...currentValues,
+      [stageName]: values,
+    });
+
+    if (isFirstEmission) {
+      initializedStagesRef.current.add(stageKey);
+      // Synchronously re-capture snapshot so that the useMemo comparison
+      // in the same render cycle still returns false.
+      savedSnapshotRef.current = JSON.stringify(form.getValues());
+    }
+  }
+
   function renderDynamicForms(
     stage: PipelineConfigStage,
     formName: keyof FormValues,
@@ -264,13 +294,7 @@ export default function PipelineFormComponent({
                 {}
               }
               onSubmit={(values) => {
-                const currentValues =
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  (form.getValues(formName) as Record<string, any>) || {};
-                form.setValue(formName, {
-                  ...currentValues,
-                  [stage.name]: values,
-                });
+                handleDynamicFormEmit(formName, stage.name, values);
               }}
             />
           </div>
@@ -302,13 +326,7 @@ export default function PipelineFormComponent({
                 {}
               }
               onSubmit={(values) => {
-                const currentValues =
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  (form.getValues(formName) as Record<string, any>) || {};
-                form.setValue(formName, {
-                  ...currentValues,
-                  [stage.name]: values,
-                });
+                handleDynamicFormEmit(formName, stage.name, values);
               }}
             />
           </div>
@@ -333,13 +351,7 @@ export default function PipelineFormComponent({
             (form.watch(formName) as Record<string, any>)?.[stage.name] || {}
           }
           onSubmit={(values) => {
-            const currentValues =
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (form.getValues(formName) as Record<string, any>) || {};
-            form.setValue(formName, {
-              ...currentValues,
-              [stage.name]: values,
-            });
+            handleDynamicFormEmit(formName, stage.name, values);
           }}
         />
       </div>

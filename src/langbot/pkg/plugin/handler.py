@@ -337,7 +337,14 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
 
             messages_obj = [provider_message.Message.model_validate(message) for message in messages]
-            funcs_obj = [resource_tool.LLMTool.model_validate(func) for func in funcs]
+
+            # The func field is excluded during model_dump() in plugin side (marked as exclude=True),
+            # but it's a required field for LLMTool validation. We need to provide a placeholder
+            # function when reconstructing the LLMTool objects from serialized data.
+            async def _placeholder_func(**kwargs):
+                pass
+
+            funcs_obj = [resource_tool.LLMTool.model_validate({**func, 'func': _placeholder_func}) for func in funcs]
 
             result = await llm_model.provider.invoke_llm(
                 query=None,
