@@ -15,6 +15,22 @@ LANGRAG_PLUGIN_NAME = 'LangRAG'
 LANGRAG_PLUGIN_ID = f'{LANGRAG_PLUGIN_AUTHOR}/{LANGRAG_PLUGIN_NAME}'
 DEFAULT_SPACE_URL = 'https://space.langbot.app'
 
+# Old Retriever plugin_name -> New Connector plugin_name
+EXTERNAL_PLUGIN_NAME_MAPPING = {
+    'DifyDatasetsRetriever': 'DifyDatasetsConnector',
+    'RAGFlowRetriever': 'RAGFlowConnector',
+    'FastGPTRetriever': 'FastGPTConnector',
+}
+
+# Per-plugin: which old retriever_config fields belong to creation_settings.
+# Remaining fields go to retrieval_settings.
+# None means ALL fields go to creation_settings (no retrieval_schema).
+EXTERNAL_PLUGIN_CREATION_FIELDS: dict[str, set[str] | None] = {
+    'langbot-team/DifyDatasetsConnector': {'api_base_url', 'dify_apikey', 'dataset_id'},
+    'langbot-team/RAGFlowConnector': {'api_base_url', 'api_key', 'dataset_ids'},
+    'langbot-team/FastGPTConnector': None,  # all fields -> creation_settings
+}
+
 
 @group.group_class('knowledge/migration', '/api/v1/knowledge/migration')
 class KnowledgeMigrationRouterGroup(group.RouterGroup):
@@ -189,7 +205,9 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
                 retriever_config = row_dict.get('retriever_config', {})
                 created_at = row_dict.get('created_at')
 
-                external_plugin_id = f'{plugin_author}/{plugin_name}'
+                # Map old Retriever plugin name to new Connector plugin name
+                mapped_plugin_name = EXTERNAL_PLUGIN_NAME_MAPPING.get(plugin_name, plugin_name)
+                external_plugin_id = f'{plugin_author}/{mapped_plugin_name}'
 
                 if external_plugin_id not in engine_id_set:
                     warning = (
@@ -207,7 +225,15 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
                     except (json.JSONDecodeError, TypeError):
                         retriever_config = {}
 
-                creation_settings = json.dumps(retriever_config)
+                # Split retriever_config into creation_settings and retrieval_settings
+                creation_fields = EXTERNAL_PLUGIN_CREATION_FIELDS.get(external_plugin_id)
+                if creation_fields is None:
+                    # All fields go to creation_settings (e.g. FastGPT has no retrieval_schema)
+                    creation_settings_dict = retriever_config
+                    retrieval_settings_dict = {}
+                else:
+                    creation_settings_dict = {k: v for k, v in retriever_config.items() if k in creation_fields}
+                    retrieval_settings_dict = {k: v for k, v in retriever_config.items() if k not in creation_fields}
 
                 await self.ap.persistence_mgr.execute_async(
                     sqlalchemy.text(
@@ -225,13 +251,13 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
                         updated_at=created_at,
                         plugin_id=external_plugin_id,
                         collection_id=kb_uuid,
-                        creation_settings=creation_settings,
-                        retrieval_settings=json.dumps({}),
+                        creation_settings=json.dumps(creation_settings_dict),
+                        retrieval_settings=json.dumps(retrieval_settings_dict),
                     )
                 )
 
                 try:
-                    await self.ap.plugin_connector.rag_on_kb_create(external_plugin_id, kb_uuid, retriever_config)
+                    await self.ap.plugin_connector.rag_on_kb_create(external_plugin_id, kb_uuid, creation_settings_dict)
                     task_context.trace(f'Restored external KB: {name} ({kb_uuid})')
                 except Exception as e:
                     warning = f'Failed to notify plugin for external KB {name} ({kb_uuid}): {e}'
