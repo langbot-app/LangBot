@@ -423,10 +423,10 @@ class PipelineManager:
 
         coerce_pipeline_config(
             pipeline_entity.config,
-            getattr(self.ap, "pipeline_config_meta_trigger", {"name": "trigger", "stages": []}),
-            getattr(self.ap, "pipeline_config_meta_safety", {"name": "safety", "stages": []}),
-            getattr(self.ap, "pipeline_config_meta_ai", {"name": "ai", "stages": []}),
-            getattr(self.ap, "pipeline_config_meta_output", {"name": "output", "stages": []}),
+            getattr(self.ap, 'pipeline_config_meta_trigger', {'name': 'trigger', 'stages': []}),
+            getattr(self.ap, 'pipeline_config_meta_safety', {'name': 'safety', 'stages': []}),
+            getattr(self.ap, 'pipeline_config_meta_ai', {'name': 'ai', 'stages': []}),
+            getattr(self.ap, 'pipeline_config_meta_output', {'name': 'output', 'stages': []}),
         )
 
         # initialize stage containers according to pipeline_entity.stages

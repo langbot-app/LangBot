@@ -20,7 +20,7 @@ def _coerce_bool(v):
             return True
         if v.lower() == 'false':
             return False
-        raise ValueError(f"Cannot convert string {v!r} to bool")
+        raise ValueError(f'Cannot convert string {v!r} to bool')
     return bool(v)
 
 
@@ -95,7 +95,11 @@ def coerce_pipeline_config(
                         stage_config[field_name] = new_value
                 except (ValueError, TypeError) as e:
                     logger.warning(
-                        "Failed to coerce config %s.%s.%s (%r) to %s: %s",
-                        section_name, stage_name, field_name,
-                        old_value, field_type, e,
+                        'Failed to coerce config %s.%s.%s (%r) to %s: %s',
+                        section_name,
+                        stage_name,
+                        field_name,
+                        old_value,
+                        field_type,
+                        e,
                     )

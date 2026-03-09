@@ -91,6 +91,7 @@ class TestCoercePipelineConfig:
         config = {'trigger': {'misc': {'timeout': 'abc'}}}
         meta = self._make_meta('trigger', 'misc', [{'name': 'timeout', 'type': 'integer'}])
         import logging
+
         with caplog.at_level(logging.WARNING):
             coerce_pipeline_config(config, meta)
         assert config['trigger']['misc']['timeout'] == 'abc'  # unchanged
