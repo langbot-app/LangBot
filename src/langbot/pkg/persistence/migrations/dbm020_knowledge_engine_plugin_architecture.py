@@ -1,5 +1,3 @@
-import json
-
 import sqlalchemy
 from .. import migration
 
