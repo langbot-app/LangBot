@@ -20,6 +20,7 @@ class MonitoringMessage(Base):
     level = sqlalchemy.Column(sqlalchemy.String(50), nullable=False)  # info, warning, error, debug
     platform = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
     user_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
+    user_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)  # User display name
     runner_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)  # Runner name for this query
     variables = sqlalchemy.Column(sqlalchemy.Text, nullable=True)  # Query variables as JSON string
     role = sqlalchemy.Column(sqlalchemy.String(50), nullable=True, default='user')  # user, assistant
@@ -64,6 +65,7 @@ class MonitoringSession(Base):
     is_active = sqlalchemy.Column(sqlalchemy.Boolean, nullable=False, default=True, index=True)
     platform = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
     user_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
+    user_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)  # User display name
 
 
 class MonitoringError(Base):

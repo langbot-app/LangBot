@@ -27,6 +27,7 @@ interface SessionInfo {
   is_active: boolean;
   platform?: string | null;
   user_id?: string | null;
+  user_name?: string | null;
 }
 
 interface SessionMessage {
@@ -338,7 +339,7 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
                   >
                     <div className="flex items-center justify-between mb-0.5">
                       <span className="text-sm font-medium truncate mr-2">
-                        {session.user_id || session.session_id.slice(0, 12)}
+                        {session.user_name || session.user_id || session.session_id.slice(0, 12)}
                       </span>
                       <span className="text-[11px] text-muted-foreground tabular-nums flex-shrink-0">
                         {formatRelativeTime(session.last_activity)}
@@ -377,7 +378,7 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
             <div className="px-6 py-3 border-b shrink-0 flex items-center justify-between">
               <div className="min-w-0">
                 <div className="text-sm font-medium truncate">
-                  {selectedSession?.user_id || selectedSessionId.slice(0, 20)}
+                  {selectedSession?.user_name || selectedSession?.user_id || selectedSessionId.slice(0, 20)}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   {selectedSession?.platform && (

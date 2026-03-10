@@ -34,6 +34,15 @@ class MonitoringHelper:
             # Check if session exists, if not, record session start
             session_id = f'{query.launcher_type}_{query.launcher_id}'
 
+            # Get sender name from message event
+            sender_name = None
+            if hasattr(query, 'message_event'):
+                if hasattr(query.message_event, 'sender'):
+                    if hasattr(query.message_event.sender, 'nickname'):
+                        sender_name = query.message_event.sender.nickname
+                    elif hasattr(query.message_event.sender, 'member_name'):
+                        sender_name = query.message_event.sender.member_name
+
             # Try to record message
             # Use JSON serialization to preserve message chain structure (including image URLs, etc.)
             if hasattr(query, 'message_chain') and hasattr(query.message_chain, 'model_dump'):
@@ -57,6 +66,7 @@ class MonitoringHelper:
                 if hasattr(query.launcher_type, 'value')
                 else str(query.launcher_type),
                 user_id=query.sender_id,
+                user_name=sender_name,
                 runner_name=runner_name,
                 variables=None,  # Will be updated in record_query_success
             )
@@ -80,6 +90,7 @@ class MonitoringHelper:
                     if hasattr(query.launcher_type, 'value')
                     else str(query.launcher_type),
                     user_id=query.sender_id,
+                    user_name=sender_name,
                 )
 
             return message_id
@@ -128,6 +139,15 @@ class MonitoringHelper:
         try:
             session_id = f'{query.launcher_type}_{query.launcher_id}'
 
+            # Get sender name from message event
+            sender_name = None
+            if hasattr(query, 'message_event'):
+                if hasattr(query.message_event, 'sender'):
+                    if hasattr(query.message_event.sender, 'nickname'):
+                        sender_name = query.message_event.sender.nickname
+                    elif hasattr(query.message_event.sender, 'member_name'):
+                        sender_name = query.message_event.sender.member_name
+
             # Extract response content from resp_message_chain
             if hasattr(query, 'resp_message_chain') and query.resp_message_chain:
                 # Serialize the last response message chain
@@ -162,6 +182,7 @@ class MonitoringHelper:
                 if hasattr(query.launcher_type, 'value')
                 else str(query.launcher_type),
                 user_id=query.sender_id,
+                user_name=sender_name,
                 runner_name=runner_name,
                 role='assistant',
             )
@@ -183,6 +204,15 @@ class MonitoringHelper:
         try:
             session_id = f'{query.launcher_type}_{query.launcher_id}'
 
+            # Get sender name from message event
+            sender_name = None
+            if hasattr(query, 'message_event'):
+                if hasattr(query.message_event, 'sender'):
+                    if hasattr(query.message_event.sender, 'nickname'):
+                        sender_name = query.message_event.sender.nickname
+                    elif hasattr(query.message_event.sender, 'member_name'):
+                        sender_name = query.message_event.sender.member_name
+
             # Record error message
             message_id = await ap.monitoring_service.record_message(
                 bot_id=bot_id,
@@ -197,6 +227,7 @@ class MonitoringHelper:
                 if hasattr(query.launcher_type, 'value')
                 else str(query.launcher_type),
                 user_id=query.sender_id,
+                user_name=sender_name,
                 runner_name=runner_name,
             )
 

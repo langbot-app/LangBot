@@ -356,6 +356,7 @@ export class BackendClient extends BaseHttpClient {
       is_active: boolean;
       platform: string | null;
       user_id: string | null;
+      user_name: string | null;
     }>;
     total: number;
   }> {
@@ -384,6 +385,7 @@ export class BackendClient extends BaseHttpClient {
       level: string;
       platform: string | null;
       user_id: string | null;
+      user_name: string | null;
       runner_name: string | null;
       variables: string | null;
       role: string | null;
