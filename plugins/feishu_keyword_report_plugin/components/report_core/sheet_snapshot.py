@@ -4,7 +4,6 @@ import base64
 import io
 import json
 import math
-import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -42,39 +41,77 @@ def _col_label(index: int) -> str:
     return out
 
 
-def _wrap_text(text: str, width_chars: int) -> list[str]:
+def _measure_text_width(font: ImageFont.FreeTypeFont | ImageFont.ImageFont, text: str) -> int:
+    if not text:
+        return 0
+    if hasattr(font, "getlength"):
+        return int(math.ceil(float(font.getlength(text))))
+    bbox = font.getbbox(text)
+    return int(bbox[2] - bbox[0])
+
+
+def _wrap_text_to_width(
+    text: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont, max_width: int
+) -> list[str]:
     if not text:
         return [""]
-    lines: list[str] = []
-    for raw_line in text.split("\n"):
-        wrapped = textwrap.wrap(raw_line, width=width_chars, break_long_words=True, break_on_hyphens=False)
-        lines.extend(wrapped or [""])
-    return lines or [""]
+
+    wrapped_lines: list[str] = []
+    for source_line in text.split("\n"):
+        if not source_line:
+            wrapped_lines.append("")
+            continue
+
+        current = ""
+        for ch in source_line:
+            candidate = current + ch
+            if current and _measure_text_width(font, candidate) > max_width:
+                wrapped_lines.append(current)
+                current = ch
+            else:
+                current = candidate
+        wrapped_lines.append(current or "")
+
+    return wrapped_lines or [""]
 
 
 def _pick_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    plugin_root = Path(__file__).resolve().parents[2]
     candidates = [
-        "C:/Windows/Fonts/msyh.ttc",
-        "C:/Windows/Fonts/simsun.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        plugin_root / "assets" / "fonts" / "NotoSansCJKsc-Regular.otf",
+        Path("C:/Windows/Fonts/msyh.ttc"),
+        Path("C:/Windows/Fonts/simsun.ttc"),
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+        Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
+        Path("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"),
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
     ]
     for path in candidates:
-        if Path(path).exists():
-            try:
-                return ImageFont.truetype(path, size)
-            except Exception:
-                continue
+        if not path.exists():
+            continue
+        try:
+            return ImageFont.truetype(str(path), size)
+        except Exception:
+            continue
     return ImageFont.load_default()
 
 
 def _nonempty_row_indices(values: list[list[Any]]) -> list[int]:
-    rows: list[int] = []
+    row_indices: list[int] = []
     for row_index, row in enumerate(values, start=1):
         if any(_cell_to_text(item).strip() for item in row):
-            rows.append(row_index)
-    return rows
+            row_indices.append(row_index)
+    return row_indices
+
+
+def _preferred_col_width(
+    texts: list[str], font: ImageFont.FreeTypeFont | ImageFont.ImageFont, min_width: int, max_width: int
+) -> int:
+    width = min_width
+    for text in texts:
+        for line in text.split("\n"):
+            width = max(width, _measure_text_width(font, line[:60]) + 18)
+    return min(max_width, max(min_width, width))
 
 
 def render_sheet_snapshot(
@@ -84,9 +121,11 @@ def render_sheet_snapshot(
     tail_nonempty_rows: int = 20,
     chunk_size: int = 18,
 ) -> SheetSnapshotImage:
+    del chunk_size
+
     nonempty_rows = _nonempty_row_indices(values)
     if not nonempty_rows:
-        raise ValueError(f"{sheet_title} 没有可截图的数据。")
+        raise ValueError(f"{sheet_title} has no data to capture.")
 
     last_rows = nonempty_rows[-max(0, int(tail_nonempty_rows)) :] if tail_nonempty_rows > 0 else []
     selected_rows: list[int] = []
@@ -103,7 +142,7 @@ def render_sheet_snapshot(
                 last_nonempty = col_index
         max_col = max(max_col, last_nonempty)
     if max_col <= 0:
-        raise ValueError(f"{sheet_title} 没有可截图的数据。")
+        raise ValueError(f"{sheet_title} has no data to capture.")
 
     text_map: dict[tuple[int, int], str] = {}
     for row_index in selected_rows:
@@ -112,32 +151,28 @@ def render_sheet_snapshot(
             value = row[col_index - 1] if col_index - 1 < len(row) else ""
             text_map[(row_index, col_index)] = _cell_to_text(value)
 
+    title_font = _pick_font(22)
+    header_font = _pick_font(14)
+    body_font = _pick_font(13)
+    meta_font = _pick_font(12)
+
+    row_num_width = 72
+    min_col_width = 72
+    max_col_width = 180
+    cell_padding_x = 8
+    cell_padding_y = 6
+    line_height = 17
+    row_min_height = 28
+    title_height = 74
+    header_height = 44
+    separator_height = 30
+    margin = 24
+
     col_widths: dict[int, int] = {}
     for col_index in range(1, max_col + 1):
-        max_len = len(_col_label(col_index))
-        for row_index in selected_rows:
-            max_len = max(max_len, len(text_map.get((row_index, col_index), "")))
-        col_widths[col_index] = min(200, max(90, 18 + max_len * 7))
-
-    chunks: list[tuple[int, int]] = []
-    start_col = 1
-    while start_col <= max_col:
-        end_col = min(max_col, start_col + max(1, int(chunk_size)) - 1)
-        chunks.append((start_col, end_col))
-        start_col = end_col + 1
-
-    title_font = _pick_font(24)
-    body_font = _pick_font(15)
-    small_font = _pick_font(13)
-
-    margin = 24
-    sheet_title_height = 72
-    chunk_title_height = 28
-    header_height = 46
-    separator_height = 34
-    row_num_width = 70
-    row_base_height = 28
-    panel_gap = 28
+        texts = [_col_label(col_index)]
+        texts.extend(text_map.get((row_index, col_index), "") for row_index in selected_rows)
+        col_widths[col_index] = _preferred_col_width(texts, body_font, min_col_width, max_col_width)
 
     row_blocks: list[tuple[str, int | str]] = [("data", row_index) for row_index in range(1, header_rows + 1)]
     if last_rows:
@@ -146,29 +181,25 @@ def render_sheet_snapshot(
         if row_index > header_rows:
             row_blocks.append(("data", row_index))
 
-    panel_specs: list[tuple[int, int, int, int, list[int]]] = []
-    for start_col, end_col in chunks:
-        panel_width = row_num_width + sum(col_widths[col] for col in range(start_col, end_col + 1))
-        panel_height = chunk_title_height + header_height
-        row_heights: list[int] = []
-        for block_type, payload in row_blocks:
-            if block_type == "separator":
-                row_heights.append(separator_height)
-                panel_height += separator_height
-                continue
-            row_index = int(payload)
-            max_lines = 1
-            for col_index in range(start_col, end_col + 1):
-                width_chars = max(6, int((col_widths[col_index] - 12) / 7))
-                lines = _wrap_text(text_map.get((row_index, col_index), ""), width_chars)
-                max_lines = max(max_lines, len(lines))
-            row_height = max(row_base_height, 10 + max_lines * 18)
-            row_heights.append(row_height)
-            panel_height += row_height
-        panel_specs.append((start_col, end_col, panel_width, panel_height, row_heights))
+    row_heights: list[int] = []
+    for block_type, payload in row_blocks:
+        if block_type == "separator":
+            row_heights.append(separator_height)
+            continue
 
-    image_width = max(margin * 2 + spec[2] for spec in panel_specs)
-    image_height = sheet_title_height + margin * 2 + sum(spec[3] for spec in panel_specs) + panel_gap * (len(panel_specs) - 1)
+        row_index = int(payload)
+        max_lines = 1
+        for col_index in range(1, max_col + 1):
+            width = max(20, col_widths[col_index] - cell_padding_x * 2)
+            lines = _wrap_text_to_width(text_map.get((row_index, col_index), ""), body_font, width)
+            max_lines = max(max_lines, len(lines))
+        row_heights.append(max(row_min_height, cell_padding_y * 2 + max_lines * line_height))
+
+    table_width = row_num_width + sum(col_widths[col_index] for col_index in range(1, max_col + 1))
+    table_height = header_height + sum(row_heights)
+    image_width = margin * 2 + table_width
+    image_height = margin * 2 + title_height + table_height
+
     image = Image.new("RGB", (image_width, image_height), "white")
     draw = ImageDraw.Draw(image)
 
@@ -177,71 +208,74 @@ def render_sheet_snapshot(
     grid = "#cbd5e1"
     header_bg = "#e2e8f0"
     row_header_bg = "#f1f5f9"
-    section_bg = "#f8fafc"
+    top_header_bg = "#f8fafc"
     separator_bg = "#fff7ed"
 
-    draw.text((margin, margin), f"Feishu Sheets 内容截图 - {sheet_title}", fill=text_color, font=title_font)
+    draw.text((margin, margin), f"Sheet Snapshot - {sheet_title}", fill=text_color, font=title_font)
     draw.text(
-        (margin, margin + 32),
-        f"范围: 前 {header_rows} 行表头 + 最后 {tail_nonempty_rows} 行非空数据",
+        (margin, margin + 30),
+        f"Rows: first {header_rows} header rows + last {tail_nonempty_rows} non-empty rows",
         fill=muted,
-        font=small_font,
+        font=meta_font,
     )
     draw.text(
-        (margin, margin + 50),
-        f"原始行号: {', '.join(str(item) for item in selected_rows)}",
+        (margin, margin + 48),
+        f"Original rows: {', '.join(str(item) for item in selected_rows)}",
         fill=muted,
-        font=small_font,
+        font=meta_font,
     )
 
-    current_y = margin + sheet_title_height
-    for start_col, end_col, panel_width, panel_height, row_heights in panel_specs:
-        panel_x = margin
-        draw.text((panel_x, current_y), f"列 {_col_label(start_col)}-{_col_label(end_col)}", fill=text_color, font=body_font)
-        y = current_y + chunk_title_height
+    table_x = margin
+    table_y = margin + title_height
 
-        x = panel_x
-        draw.rectangle([x, y, x + row_num_width, y + header_height], fill=row_header_bg, outline=grid, width=1)
-        draw.text((x + 10, y + 12), "#", fill=text_color, font=body_font)
+    x = table_x
+    draw.rectangle([x, table_y, x + row_num_width, table_y + header_height], fill=row_header_bg, outline=grid, width=1)
+    draw.text((x + 10, table_y + 12), "#", fill=text_color, font=header_font)
+    x += row_num_width
+    for col_index in range(1, max_col + 1):
+        width = col_widths[col_index]
+        draw.rectangle([x, table_y, x + width, table_y + header_height], fill=header_bg, outline=grid, width=1)
+        draw.text((x + cell_padding_x, table_y + 12), _col_label(col_index), fill=text_color, font=header_font)
+        x += width
+
+    current_y = table_y + header_height
+    row_height_iter = iter(row_heights)
+    for block_type, payload in row_blocks:
+        row_height = next(row_height_iter)
+        if block_type == "separator":
+            draw.rectangle(
+                [table_x, current_y, table_x + table_width, current_y + row_height],
+                fill=separator_bg,
+                outline=grid,
+                width=1,
+            )
+            draw.text((table_x + 12, current_y + 8), str(payload), fill=muted, font=meta_font)
+            current_y += row_height
+            continue
+
+        row_index = int(payload)
+        row_fill = top_header_bg if row_index <= header_rows else "white"
+        x = table_x
+        draw.rectangle([x, current_y, x + row_num_width, current_y + row_height], fill=row_header_bg, outline=grid, width=1)
+        draw.text((x + 8, current_y + 7), str(row_index), fill=text_color, font=header_font)
         x += row_num_width
-        for col_index in range(start_col, end_col + 1):
+        for col_index in range(1, max_col + 1):
             width = col_widths[col_index]
-            draw.rectangle([x, y, x + width, y + header_height], fill=header_bg, outline=grid, width=1)
-            draw.text((x + 8, y + 12), _col_label(col_index), fill=text_color, font=body_font)
+            draw.rectangle([x, current_y, x + width, current_y + row_height], fill=row_fill, outline=grid, width=1)
+            lines = _wrap_text_to_width(
+                text_map.get((row_index, col_index), ""),
+                body_font,
+                max(20, width - cell_padding_x * 2),
+            )
+            text_y = current_y + cell_padding_y
+            max_visible_lines = max(1, (row_height - cell_padding_y * 2) // line_height)
+            for line in lines[:max_visible_lines]:
+                draw.text((x + cell_padding_x, text_y), line, fill=text_color, font=body_font)
+                text_y += line_height
             x += width
-        y += header_height
-
-        row_height_iter = iter(row_heights)
-        for block_type, payload in row_blocks:
-            row_height = next(row_height_iter)
-            if block_type == "separator":
-                draw.rectangle([panel_x, y, panel_x + panel_width, y + row_height], fill=separator_bg, outline=grid, width=1)
-                draw.text((panel_x + 12, y + 8), str(payload), fill=muted, font=small_font)
-                y += row_height
-                continue
-
-            row_index = int(payload)
-            row_fill = section_bg if row_index <= header_rows else "white"
-            x = panel_x
-            draw.rectangle([x, y, x + row_num_width, y + row_height], fill=row_header_bg, outline=grid, width=1)
-            draw.text((x + 8, y + 8), str(row_index), fill=text_color, font=body_font)
-            x += row_num_width
-            for col_index in range(start_col, end_col + 1):
-                width = col_widths[col_index]
-                draw.rectangle([x, y, x + width, y + row_height], fill=row_fill, outline=grid, width=1)
-                width_chars = max(6, int((width - 12) / 7))
-                lines = _wrap_text(text_map.get((row_index, col_index), ""), width_chars)
-                text_y = y + 6
-                max_visible_lines = max(1, (row_height - 10) // 18)
-                for line in lines[:max_visible_lines]:
-                    draw.text((x + 6, text_y), line, fill=text_color, font=small_font)
-                    text_y += 18
-                x += width
-            y += row_height
-        current_y += panel_height + panel_gap
+        current_y += row_height
 
     buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
-    png_bytes = buffer.getvalue()
-    data_url = "data:image/png;base64," + base64.b64encode(png_bytes).decode("ascii")
+    image.save(buffer, format="PNG", optimize=True, compress_level=6)
+    data_url = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
     return SheetSnapshotImage(data_url=data_url, selected_rows=selected_rows, max_col=max_col)
