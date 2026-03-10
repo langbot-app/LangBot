@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from components.command_parser import parse_report_command, parse_touch_material_command
+from components.command_parser import parse_report_command, parse_sheet_image_command, parse_touch_material_command
 
 
 class CommandParserTest(unittest.TestCase):
@@ -62,6 +62,18 @@ class CommandParserTest(unittest.TestCase):
         result = parse_touch_material_command("摸料 A3", {"摸料"})
         self.assertTrue(result.triggered)
         self.assertIn("摸料参数无效", result.error)
+
+    def test_parse_sheet_image_basic(self) -> None:
+        result = parse_sheet_image_command("图片 S18-A线", {"图片"})
+        self.assertTrue(result.triggered)
+        self.assertEqual(result.error, "")
+        assert result.value is not None
+        self.assertEqual(result.value.sheet_name, "S18-A线")
+
+    def test_parse_sheet_image_without_sheet_name(self) -> None:
+        result = parse_sheet_image_command("图片", {"图片"})
+        self.assertTrue(result.triggered)
+        self.assertIn("图片参数无效", result.error)
 
 
 if __name__ == "__main__":

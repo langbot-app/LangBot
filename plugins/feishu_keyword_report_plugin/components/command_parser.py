@@ -31,10 +31,17 @@ class TouchMaterialCommand:
 
 
 @dataclass(frozen=True)
+class SheetImageCommand:
+    raw_text: str
+    command: str
+    sheet_name: str
+
+
+@dataclass(frozen=True)
 class CommandParseResult:
     triggered: bool
     error: str = ""
-    value: Optional[ReportCommand | TouchMaterialCommand] = None
+    value: Optional[ReportCommand | TouchMaterialCommand | SheetImageCommand] = None
 
 
 def _normalize_token(text: str) -> str:
@@ -147,4 +154,28 @@ def parse_touch_material_command(text: str, allowed_commands: set[str]) -> Comma
     return CommandParseResult(
         triggered=True,
         value=TouchMaterialCommand(raw_text=raw_text, command=matched_command, segment=tail),
+    )
+
+
+def parse_sheet_image_command(text: str, allowed_commands: set[str]) -> CommandParseResult:
+    raw_text = (text or "").strip()
+    if not raw_text:
+        return CommandParseResult(triggered=False)
+
+    parts = [p for p in re.split(r"\s+", raw_text) if p]
+    if not parts:
+        return CommandParseResult(triggered=False)
+
+    cmd = _normalize_token(parts[0])
+    if not cmd or cmd not in allowed_commands:
+        return CommandParseResult(triggered=False)
+
+    sheet_name = raw_text[len(parts[0]) :].strip()
+    sheet_name = _normalize_token(sheet_name)
+    if not sheet_name:
+        return CommandParseResult(triggered=True, error="图片参数无效，请使用：图片 表名。")
+
+    return CommandParseResult(
+        triggered=True,
+        value=SheetImageCommand(raw_text=raw_text, command=cmd, sheet_name=sheet_name),
     )

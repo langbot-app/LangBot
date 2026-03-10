@@ -60,12 +60,13 @@ class FeishuSheetsSource:
         sheet_id: str,
         cell_range: str,
         headers: dict[str, str],
+        value_render_option: str = "UnformattedValue",
     ) -> list[list[Any]]:
         range_expr = f"{sheet_id}!{cell_range}"
         encoded_range = quote(range_expr, safe="")
         endpoint = (
             f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{spreadsheet_token}/values/{encoded_range}"
-            "?valueRenderOption=UnformattedValue"
+            f"?valueRenderOption={quote(value_render_option, safe='')}"
         )
         data = await self._api_call("GET", endpoint, headers=headers)
 
@@ -91,6 +92,7 @@ class FeishuSheetsSource:
         headers: dict[str, str],
         target_sheet_names: list[str],
         cell_range: str,
+        value_render_option: str = "UnformattedValue",
     ) -> tuple[dict[str, list[list[Any]]], list[str], list[str]]:
         pairs = await self.list_sheet_title_id_pairs(spreadsheet_token, headers)
 
@@ -117,6 +119,7 @@ class FeishuSheetsSource:
                 sheet_id=sheet_id,
                 cell_range=cell_range,
                 headers=headers,
+                value_render_option=value_render_option,
             )
         return matrices, available_titles, missing
 

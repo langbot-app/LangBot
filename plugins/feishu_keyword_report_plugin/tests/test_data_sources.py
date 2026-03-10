@@ -34,6 +34,21 @@ class SheetsSourceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(missing, ["S006-B线"])
         self.assertIn("S18-A线", matrices)
 
+    async def test_get_sheet_values_supports_custom_render_option(self) -> None:
+        async def fake_api(method, endpoint, headers, payload=None, params=None):
+            self.assertIn("valueRenderOption=FormattedValue", endpoint)
+            return {"valueRange": {"values": [["表头"], ["值"]]}}
+
+        source = FeishuSheetsSource(fake_api)
+        values = await source.get_sheet_values(
+            spreadsheet_token="sp_token",
+            sheet_id="sheetA",
+            cell_range="A1:A2",
+            headers={"Authorization": "Bearer test"},
+            value_render_option="FormattedValue",
+        )
+        self.assertEqual(values, [["表头"], ["值"]])
+
     async def test_query_recipe_by_batch_alias_match(self) -> None:
         async def fake_api(method, endpoint, headers, payload=None, params=None):
             if endpoint.endswith("/sheets/query"):

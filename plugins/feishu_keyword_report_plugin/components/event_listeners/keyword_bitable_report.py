@@ -12,9 +12,10 @@ from langbot_plugin.api.definition.components.common.event_listener import Event
 from langbot_plugin.api.entities import context, events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
-from components.command_parser import parse_report_command, parse_touch_material_command
+from components.command_parser import parse_report_command, parse_sheet_image_command, parse_touch_material_command
 from components.data_sources import FeishuBitableSource, FeishuSheetsSource
 from components.report_core import day_metrics
+from components.report_core.sheet_snapshot import render_sheet_snapshot
 
 
 def _default_touch_recipe_field_aliases() -> dict[str, list[str]]:
@@ -153,6 +154,10 @@ class KeywordBitableReportListener(EventListener):
         if not commands:
             commands = ["摸料"]
         return {self._normalize_command_text(item) for item in commands if self._normalize_command_text(item)}
+
+    @staticmethod
+    def _resolve_image_commands() -> set[str]:
+        return {"图片"}
 
     def _resolve_data_source_mode(self) -> str:
         mode = self._get_str_config("data_source_mode", "auto").lower()
@@ -312,7 +317,9 @@ class KeywordBitableReportListener(EventListener):
             return str(getattr(query, "bot_uuid", "")).strip()
         return ""
 
-    async def _send_origin_message(self, event_ctx: context.EventContext, text: str) -> bool:
+    async def _send_origin_message_chain(
+        self, event_ctx: context.EventContext, message_chain: platform_message.MessageChain
+    ) -> bool:
         launcher_type = str(getattr(event_ctx.event, "launcher_type", "")).strip().lower()
         if launcher_type not in {"group", "person"}:
             return False
@@ -329,17 +336,24 @@ class KeywordBitableReportListener(EventListener):
             bot_uuid=bot_uuid,
             target_type=launcher_type,
             target_id=launcher_id,
-            message_chain=platform_message.MessageChain([platform_message.Plain(text=text)]),
+            message_chain=message_chain,
         )
         return True
+
+    async def _reply_message_chain(
+        self, event_ctx: context.EventContext, message_chain: platform_message.MessageChain
+    ) -> None:
+        if len(message_chain) <= 0:
+            return
+        if self._event_supports_reply_chain(event_ctx):
+            event_ctx.event.reply_message_chain = message_chain
+            return
+        await self._send_origin_message_chain(event_ctx, message_chain)
 
     async def _reply_text(self, event_ctx: context.EventContext, text: str) -> None:
         if not text:
             return
-        if self._event_supports_reply_chain(event_ctx):
-            event_ctx.event.reply_message_chain = platform_message.MessageChain([platform_message.Plain(text=text)])
-            return
-        await self._send_origin_message(event_ctx, text)
+        await self._reply_message_chain(event_ctx, platform_message.MessageChain([platform_message.Plain(text=text)]))
 
     # ===== Feishu API =====
 
@@ -506,6 +520,36 @@ class KeywordBitableReportListener(EventListener):
                 raise RuntimeError(f"在线表格失败：{sheets_exc}；多维表回退失败：{bitable_exc}") from bitable_exc
             return f"【在线表格查询失败，已回退多维表】{sheets_exc}\n{fallback}"
 
+    async def _run_sheet_snapshot_reply(self, sheet_name: str) -> platform_message.MessageChain:
+        spreadsheet_token = self._get_str_config("sheets_spreadsheet_token", "")
+        if not spreadsheet_token:
+            raise ValueError("未配置 sheets_spreadsheet_token。")
+
+        cell_range = self._get_str_config("sheets_range", "A1:ZZ2000") or "A1:ZZ2000"
+        headers = await self._build_auth_headers()
+        matrices, available_titles, missing = await self._sheets_source.fetch_line_matrices(
+            spreadsheet_token=spreadsheet_token,
+            headers=headers,
+            target_sheet_names=[sheet_name],
+            cell_range=cell_range,
+            value_render_option="FormattedValue",
+        )
+        if missing:
+            available = "、".join(available_titles) if available_titles else "无"
+            raise ValueError(f"指定表名不存在：{'、'.join(missing)}；可选：{available}")
+
+        values = matrices.get(sheet_name)
+        if not isinstance(values, list) or not values:
+            raise ValueError(f"{sheet_name} 没有可截图的数据。")
+
+        snapshot = render_sheet_snapshot(sheet_title=sheet_name, values=values, header_rows=3, tail_nonempty_rows=20)
+        return platform_message.MessageChain(
+            [
+                platform_message.Plain(text=f"{sheet_name} 表格内容截图：前3行表头 + 最后20行非空数据"),
+                platform_message.Image(base64=snapshot.data_url),
+            ]
+        )
+
     @staticmethod
     def _safe_recipe_value(recipe: dict[str, str], field: str) -> str:
         value = str(recipe.get(field, "")).strip()
@@ -660,6 +704,26 @@ class KeywordBitableReportListener(EventListener):
                 await self._reply_text(event_ctx, text)
             except Exception as exc:
                 await self._reply_text(event_ctx, f"摸料查询失败：{exc}")
+            return
+
+        image_parse = parse_sheet_image_command(plain_text, self._resolve_image_commands())
+        if image_parse.triggered:
+            event_ctx.prevent_default()
+            event_ctx.prevent_postorder()
+
+            if image_parse.error:
+                await self._reply_text(event_ctx, image_parse.error)
+                return
+
+            image_command = image_parse.value
+            if image_command is None:
+                return
+
+            try:
+                reply_chain = await self._run_sheet_snapshot_reply(sheet_name=image_command.sheet_name)
+                await self._reply_message_chain(event_ctx, reply_chain)
+            except Exception as exc:
+                await self._reply_text(event_ctx, f"图片查询失败：{exc}")
             return
 
         parse_result = parse_report_command(plain_text, self._resolve_commands())
