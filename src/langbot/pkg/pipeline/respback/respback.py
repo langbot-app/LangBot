@@ -19,16 +19,21 @@ class SendResponseBackStage(stage.PipelineStage):
     async def process(self, query: pipeline_query.Query, stage_inst_name: str) -> entities.StageProcessResult:
         """处理"""
 
-        random_range = (
-            query.pipeline_config['output']['force-delay']['min'],
-            query.pipeline_config['output']['force-delay']['max'],
-        )
+        has_chunks = any(isinstance(msg, provider_message.MessageChunk) for msg in query.resp_messages)
+        is_stream_mode = await query.adapter.is_stream_output_supported() and has_chunks
 
-        random_delay = random.uniform(*random_range)
+        # 流式模式下跳过强制延迟，确保首字快速响应
+        if not is_stream_mode:
+            random_range = (
+                query.pipeline_config['output']['force-delay']['min'],
+                query.pipeline_config['output']['force-delay']['max'],
+            )
 
-        self.ap.logger.debug('根据规则强制延迟回复: %s s', random_delay)
+            random_delay = random.uniform(*random_range)
 
-        await asyncio.sleep(random_delay)
+            self.ap.logger.debug('根据规则强制延迟回复: %s s', random_delay)
+
+            await asyncio.sleep(random_delay)
 
         if query.pipeline_config['output']['misc']['at-sender'] and isinstance(
             query.message_event, platform_events.GroupMessage
@@ -37,16 +42,18 @@ class SendResponseBackStage(stage.PipelineStage):
 
         quote_origin = query.pipeline_config['output']['misc']['quote-origin']
 
-        has_chunks = any(isinstance(msg, provider_message.MessageChunk) for msg in query.resp_messages)
         # TODO 命令与流式的兼容性问题
-        if await query.adapter.is_stream_output_supported() and has_chunks:
-            is_final = [msg.is_final for msg in query.resp_messages][0]
+        if is_stream_mode:
+            latest_chunk = next(
+                (msg for msg in reversed(query.resp_messages) if isinstance(msg, provider_message.MessageChunk)),
+                None,
+            )
             await query.adapter.reply_message_chunk(
                 message_source=query.message_event,
                 bot_message=query.resp_messages[-1],
                 message=query.resp_message_chain[-1],
                 quote_origin=quote_origin,
-                is_final=is_final,
+                is_final=latest_chunk.is_final if latest_chunk else False,
             )
         else:
             await query.adapter.reply_message(

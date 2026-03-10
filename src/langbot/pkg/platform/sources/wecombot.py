@@ -16,11 +16,26 @@ from langbot.libs.wecom_ai_bot_api.api import WecomBotClient
 class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
     async def yiri2target(message_chain: platform_message.MessageChain):
-        content = ''
+        content_parts: list[str] = []
         for msg in message_chain:
-            if type(msg) is platform_message.Plain:
-                content += msg.text
-        return content
+            if isinstance(msg, platform_message.Plain):
+                content_parts.append(msg.text)
+                continue
+
+            if isinstance(msg, platform_message.Quote):
+                quote_text = await WecomBotMessageConverter.yiri2target(msg.origin)
+                if quote_text:
+                    content_parts.append(quote_text)
+                continue
+
+            if isinstance(msg, (platform_message.Source, platform_message.At, platform_message.AtAll)):
+                continue
+
+            rendered_text = str(msg).strip()
+            if rendered_text:
+                content_parts.append(rendered_text)
+
+        return ''.join(content_parts)
 
     @staticmethod
     async def target2yiri(event: WecomBotEvent):
@@ -257,6 +272,10 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         Example:
             流水线执行阶段会调用此方法以确认是否启用流式。"""
         return True
+
+    async def create_message_card(self, message_id: str, event) -> bool:
+        """企微智能机器人不需要创建卡片，流式消息直接通过 stream 协议推送。"""
+        return False
 
     async def send_message(self, target_type, target_id, message):
         pass

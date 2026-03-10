@@ -135,6 +135,13 @@ class StreamSessionManager:
         session.last_access = time.time()
         session.last_chunk = chunk
 
+        # 企业微信消费的是当前完整快照，保留最新片段即可，避免旧片段堆积导致显示延迟。
+        while not session.queue.empty():
+            try:
+                session.queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+
         try:
             session.queue.put_nowait(chunk)
         except asyncio.QueueFull:
@@ -234,7 +241,7 @@ class WecomBotClient:
         self.generated_content: dict[str, str] = {}
         self.msg_id_map: dict[str, int] = {}
         self.stream_sessions = StreamSessionManager(logger=logger)
-        self.stream_poll_timeout = 0.5
+        self.stream_poll_timeout = 0.15
 
     @staticmethod
     def _build_stream_payload(stream_id: str, content: str, finish: bool) -> dict[str, Any]:
@@ -430,6 +437,12 @@ class WecomBotClient:
         """处理企业微信的 POST 回调请求。"""
 
         self.stream_sessions.cleanup()
+
+        # 清理过期的消息ID记录，保留最近1000条，防止内存无限增长
+        if len(self.msg_id_map) > 1000:
+            # 只保留最近的500条记录
+            recent_items = list(self.msg_id_map.items())[-500:]
+            self.msg_id_map = dict(recent_items)
 
         msg_signature = unquote(req.args.get('msg_signature', ''))
         timestamp = unquote(req.args.get('timestamp', ''))
