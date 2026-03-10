@@ -15,9 +15,11 @@ COPY . .
 COPY --from=node /app/web/out ./web/out
 
 RUN apt update \
-    && apt install gcc -y \
+    && apt install -y --no-install-recommends gcc fontconfig fonts-noto-cjk \
     && python -m pip install --no-cache-dir uv \
     && uv sync \
+    && fc-cache -fv \
+    && rm -rf /var/lib/apt/lists/* \
     && touch /.dockerenv
 
 CMD [ "uv", "run", "--no-sync", "main.py" ]
