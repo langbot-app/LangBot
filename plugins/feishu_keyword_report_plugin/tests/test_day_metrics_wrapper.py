@@ -38,6 +38,7 @@ class DayMetricsWrapperTest(unittest.TestCase):
             spec_registry_json="",
         )
         text = out["text"]
+        self.assertTrue(text.startswith("2026.03.04数据表更新"))
         self.assertIn("制程", text)
         self.assertIn("1、制程", text)
         self.assertIn("2、成品", text)
@@ -89,6 +90,11 @@ class DayMetricsWrapperTest(unittest.TestCase):
         self.assertIsNone(day_metrics._parse_num(formula))
         self.assertIsNone(day_metrics._parse_num(f"={formula}"))
         self.assertEqual(day_metrics._parse_num("2.384"), 2.384)
+
+    def test_fmt_range_should_show_data_not_ready_when_no_data(self) -> None:
+        stat = {"状态": day_metrics.STAT_NO_DATA, "有数据": False}
+        self.assertEqual(day_metrics._fmt_range(stat, 3), "数据未出")
+        self.assertEqual(day_metrics._with_unit("数据未出", "ppm"), "数据未出")
 
     def test_build_report_should_ignore_formula_text_cells(self) -> None:
         matrix = [

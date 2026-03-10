@@ -124,7 +124,6 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
         )
         listener._build_sheet_snapshot_components = AsyncMock(  # type: ignore[method-assign]
             return_value=[
-                platform_message.Plain(text="S18-A线表格内容截图"),
                 platform_message.Image(base64="data:image/png;base64,ZmFrZQ=="),
             ]
         )
@@ -137,8 +136,7 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
         listener._dispatch_report.assert_awaited_once()  # type: ignore[attr-defined]
         listener._build_sheet_snapshot_components.assert_awaited_once_with(["S18-A线"], strict=False)  # type: ignore[attr-defined]
         plain_texts = self._extract_plain_texts(ctx.event)
-        self.assertEqual(plain_texts[0], "S18-A线表格内容截图")
-        self.assertEqual(plain_texts[-1], "report-ok")
+        self.assertEqual(plain_texts, ["report-ok"])
         self.assertTrue(self._has_reply_image(ctx.event))
 
     async def test_image_command_reply_image(self) -> None:
@@ -148,7 +146,6 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
         listener._run_sheet_snapshot_reply = AsyncMock(  # type: ignore[method-assign]
             return_value=platform_message.MessageChain(
                 [
-                    platform_message.Plain(text="S18-A线表格内容截图"),
                     platform_message.Image(base64="data:image/png;base64,ZmFrZQ=="),
                 ]
             )
@@ -162,7 +159,7 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
         listener._run_touch_material_report.assert_not_called()  # type: ignore[attr-defined]
         listener._dispatch_report.assert_not_called()  # type: ignore[attr-defined]
         listener._run_sheet_snapshot_reply.assert_awaited_once_with(sheet_name="S18-A线")  # type: ignore[attr-defined]
-        self.assertEqual(self._extract_reply_text(ctx.event), "S18-A线表格内容截图")
+        self.assertEqual(self._extract_plain_texts(ctx.event), [])
         self.assertTrue(self._has_reply_image(ctx.event))
 
     async def test_touch_invalid_segment_reply_usage(self) -> None:

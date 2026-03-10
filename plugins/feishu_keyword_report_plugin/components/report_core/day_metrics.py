@@ -24,6 +24,7 @@ LINE_B_LABEL = "S006-B线"
 STAT_HAS_DATA = "有数据"
 STAT_NO_DATA = "无数据"
 STAT_UNCONFIGURED = "未配置"
+STAT_NO_DATA_TEXT = "数据未出"
 STAT_STALE = "滞后"
 STAT_UNCONFIGURED_TEXT = "本线未配置指标"
 
@@ -1438,7 +1439,7 @@ def _fmt_range(stat: dict[str, Any], decimals: int = 3) -> str:
     if state == STAT_UNCONFIGURED:
         return STAT_UNCONFIGURED_TEXT
     if not _state_has_data(state):
-        return "未找到有效数据"
+        return STAT_NO_DATA_TEXT
     mn = float(stat["min"])
     mx = float(stat["max"])
     if mn == mx:
@@ -1501,7 +1502,11 @@ def _fmt_source_date(stat: dict[str, Any]) -> str:
 
 
 def _with_unit(value: str, unit: str) -> str:
-    return value if value in ("未找到有效数据", STAT_UNCONFIGURED_TEXT) else f"{value}{unit}"
+    return value if value in (STAT_NO_DATA_TEXT, STAT_UNCONFIGURED_TEXT) else f"{value}{unit}"
+
+
+def _fmt_report_date(report_date: dt.date) -> str:
+    return (report_date + dt.timedelta(days=1)).strftime("%Y.%m.%d")
 
 
 def _fmt_metric(
@@ -1641,7 +1646,7 @@ def _fmt_trend(trend: dict[str, Any], decimals: int, unit: str = "") -> str:
 
 
 def build_wecom_text(report_date: dt.date, a: dict[str, Any], b: dict[str, Any]) -> str:
-    date_str = report_date.strftime("%Y.%m.%d")
+    date_str = _fmt_report_date(report_date)
 
     a_sinter_stat = a["制程"]["烧结压实"]
     b_sinter_stat = b["制程"]["烧结压实"]
@@ -1768,7 +1773,7 @@ def build_wecom_text_single(
     quality_issues: Optional[list[dict[str, Any]]] = None,
     show_spec_attention: bool = True,
 ) -> str:
-    date_str = report_date.strftime("%Y.%m.%d")
+    date_str = _fmt_report_date(report_date)
 
     process = metrics["制程"]
     product = metrics["成品"]
@@ -1903,9 +1908,13 @@ def build_wecom_text_multi(line_reports: list[dict[str, Any]], show_spec_attenti
     report_dates = [r.get("report_date") for r in valid_reports if isinstance(r.get("report_date"), dt.date)]
     date_set = sorted({d for d in report_dates if isinstance(d, dt.date)})
     if len(date_set) == 1:
-        date_str = date_set[0].strftime("%Y.%m.%d")
+        date_str = _fmt_report_date(date_set[0])
     else:
-        date_str = "/".join(d.strftime("%Y.%m.%d") for d in date_set) if date_set else dt.date.today().strftime("%Y.%m.%d")
+        date_str = (
+            "/".join(_fmt_report_date(d) for d in date_set)
+            if date_set
+            else _fmt_report_date(dt.date.today())
+        )
 
     def _metric_parts(section: str, key: str, decimals: int) -> str:
         parts: list[str] = []

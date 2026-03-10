@@ -483,7 +483,6 @@ class KeywordBitableReportListener(EventListener):
                 header_rows=3,
                 tail_nonempty_rows=20,
             )
-            components.append(platform_message.Plain(text=f"{sheet_name} 表格内容截图：前3行表头 + 最后20行非空数据"))
             components.append(platform_message.Image(base64=snapshot.data_url))
 
         if strict and not components:
@@ -650,12 +649,7 @@ class KeywordBitableReportListener(EventListener):
             raise ValueError(f"{sheet_name} 没有可截图的数据。")
 
         snapshot = render_sheet_snapshot(sheet_title=sheet_name, values=values, header_rows=3, tail_nonempty_rows=20)
-        return platform_message.MessageChain(
-            [
-                platform_message.Plain(text=f"{sheet_name} 表格内容截图：前3行表头 + 最后20行非空数据"),
-                platform_message.Image(base64=snapshot.data_url),
-            ]
-        )
+        return platform_message.MessageChain([platform_message.Image(base64=snapshot.data_url)])
 
     @staticmethod
     def _safe_recipe_value(recipe: dict[str, str], field: str) -> str:
