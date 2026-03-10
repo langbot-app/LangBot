@@ -459,7 +459,8 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 is_final = True
 
             # 确保 is_final=True 时一定会 yield，即使 basic_mode_pending_chunk 为空也要发送最终标记
-            if is_final or (basic_mode_pending_chunk and (message_idx == 1 or message_idx % 8 == 0)):
+            # 优化：降低 yield 频率条件，从每 8 个 chunk 改为每 2 个，提升流式响应流畅度
+            if is_final or (basic_mode_pending_chunk and (message_idx == 1 or message_idx % 2 == 0)):
                 yield provider_message.MessageChunk(
                     role='assistant',
                     content=basic_mode_pending_chunk,
@@ -583,7 +584,8 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 if chunk['event'] == 'error':
                     raise errors.DifyAPIError('dify 服务错误: ' + chunk['message'])
             # 确保 is_final=True 时一定会 yield，即使内容为空也要发送最终标记
-            if is_final or (pending_agent_message and (message_idx == 1 or message_idx % 8 == 0)):
+            # 优化：降低 yield 频率条件，从每 8 个 chunk 改为每 2 个，提升流式响应流畅度
+            if is_final or (pending_agent_message and (message_idx == 1 or message_idx % 2 == 0)):
                 yield provider_message.MessageChunk(
                     role='assistant',
                     content=pending_agent_message,
@@ -689,7 +691,8 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 yield msg
 
             # 确保 is_final=True 时一定会 yield，即使内容为空也要发送最终标记
-            if is_final or (workflow_contents and (messsage_idx == 1 or messsage_idx % 8 == 0)):
+            # 优化：降低 yield 频率条件，从每 8 个 chunk 改为每 2 个，提升流式响应流畅度
+            if is_final or (workflow_contents and (messsage_idx == 1 or messsage_idx % 2 == 0)):
                 yield provider_message.MessageChunk(
                     role='assistant',
                     content=workflow_contents,

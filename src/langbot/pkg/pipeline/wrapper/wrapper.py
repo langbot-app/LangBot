@@ -8,6 +8,7 @@ from .. import stage
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.events as events
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 
 @stage.stage_class('ResponseWrapper')
@@ -50,7 +51,9 @@ class ResponseWrapper(stage.PipelineStage):
             else:
                 if query.resp_messages[-1].role == 'assistant':
                     result = query.resp_messages[-1]
-                    session = await self.ap.sess_mgr.get_session(query)
+
+                    # 判断是否为流式中间 chunk（非最终 chunk），跳过插件事件以提升性能
+                    is_streaming_chunk = isinstance(result, provider_message.MessageChunk) and not result.is_final
 
                     reply_text = ''
 
@@ -58,40 +61,49 @@ class ResponseWrapper(stage.PipelineStage):
                         reply_text = str(result.get_content_platform_message_chain())
 
                         # ============= 触发插件事件 ===============
-                        event = events.NormalMessageResponded(
-                            launcher_type=query.launcher_type.value,
-                            launcher_id=query.launcher_id,
-                            sender_id=query.sender_id,
-                            session=session,
-                            prefix='',
-                            response_text=reply_text,
-                            finish_reason='stop',
-                            funcs_called=[fc.function.name for fc in result.tool_calls]
-                            if result.tool_calls is not None
-                            else [],
-                            query=query,
-                        )
-
-                        # Get bound plugins for filtering
-                        bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
-                        event_ctx = await self.ap.plugin_connector.emit_event(event, bound_plugins)
-
-                        if event_ctx.is_prevented_default():
-                            yield entities.StageProcessResult(
-                                result_type=entities.ResultType.INTERRUPT,
-                                new_query=query,
-                            )
-                        else:
-                            if event_ctx.event.reply_message_chain is not None:
-                                query.resp_message_chain.append(event_ctx.event.reply_message_chain)
-
-                            else:
-                                query.resp_message_chain.append(result.get_content_platform_message_chain())
-
+                        # 流式中间 chunk 跳过插件事件，只在最终 chunk 或非流式消息时触发
+                        if is_streaming_chunk:
+                            query.resp_message_chain.append(result.get_content_platform_message_chain())
                             yield entities.StageProcessResult(
                                 result_type=entities.ResultType.CONTINUE,
                                 new_query=query,
                             )
+                        else:
+                            session = await self.ap.sess_mgr.get_session(query)
+                            event = events.NormalMessageResponded(
+                                launcher_type=query.launcher_type.value,
+                                launcher_id=query.launcher_id,
+                                sender_id=query.sender_id,
+                                session=session,
+                                prefix='',
+                                response_text=reply_text,
+                                finish_reason='stop',
+                                funcs_called=[fc.function.name for fc in result.tool_calls]
+                                if result.tool_calls is not None
+                                else [],
+                                query=query,
+                            )
+
+                            # Get bound plugins for filtering
+                            bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+                            event_ctx = await self.ap.plugin_connector.emit_event(event, bound_plugins)
+
+                            if event_ctx.is_prevented_default():
+                                yield entities.StageProcessResult(
+                                    result_type=entities.ResultType.INTERRUPT,
+                                    new_query=query,
+                                )
+                            else:
+                                if event_ctx.event.reply_message_chain is not None:
+                                    query.resp_message_chain.append(event_ctx.event.reply_message_chain)
+
+                                else:
+                                    query.resp_message_chain.append(result.get_content_platform_message_chain())
+
+                                yield entities.StageProcessResult(
+                                    result_type=entities.ResultType.CONTINUE,
+                                    new_query=query,
+                                )
 
                     if result.tool_calls is not None and len(result.tool_calls) > 0:  # 有函数调用
                         function_names = [tc.function.name for tc in result.tool_calls]
@@ -102,7 +114,9 @@ class ResponseWrapper(stage.PipelineStage):
                             platform_message.MessageChain([platform_message.Plain(text=reply_text)])
                         )
 
-                        if query.pipeline_config['output']['misc']['track-function-calls']:
+                        # 流式中间 chunk 跳过函数调用追踪事件
+                        if not is_streaming_chunk and query.pipeline_config['output']['misc']['track-function-calls']:
+                            session = await self.ap.sess_mgr.get_session(query)
                             event = events.NormalMessageResponded(
                                 launcher_type=query.launcher_type.value,
                                 launcher_id=query.launcher_id,

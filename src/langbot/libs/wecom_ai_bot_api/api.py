@@ -241,7 +241,7 @@ class WecomBotClient:
         self.generated_content: dict[str, str] = {}
         self.msg_id_map: dict[str, int] = {}
         self.stream_sessions = StreamSessionManager(logger=logger)
-        self.stream_poll_timeout = 0.15
+        self.stream_poll_timeout = 0.05  # 缩短轮询超时，提升流式响应速度
 
     @staticmethod
     def _build_stream_payload(stream_id: str, content: str, finish: bool) -> dict[str, Any]:
