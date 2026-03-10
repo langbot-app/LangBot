@@ -4,6 +4,7 @@ import base64
 import io
 import json
 import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,61 @@ class SheetSnapshotImage:
     max_col: int
 
 
+def _decode_json_string_fragment(value: str) -> str:
+    try:
+        return json.loads(f"\"{value}\"")
+    except Exception:
+        return value.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
+
+
+def _extract_rich_text(value: Any) -> str | None:
+    if isinstance(value, dict):
+        text = value.get("text")
+        if isinstance(text, str):
+            return text
+        for key in ("segments", "elements", "children", "content"):
+            nested = value.get(key)
+            nested_text = _extract_rich_text(nested)
+            if nested_text is not None:
+                return nested_text
+        return None
+
+    if isinstance(value, list):
+        parts: list[str] = []
+        matched = False
+        for item in value:
+            part = _extract_rich_text(item)
+            if part is None:
+                continue
+            matched = True
+            parts.append(part)
+        return "".join(parts) if matched else None
+
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return ""
+        if not any(token in text for token in ('"text"', "'text'", "segmentStyle")):
+            return None
+        if text[:1] in ("[", "{"):
+            try:
+                parsed = json.loads(text)
+            except Exception:
+                parsed = None
+            parsed_text = _extract_rich_text(parsed)
+            if parsed_text is not None:
+                return parsed_text
+        matches = re.findall(r'"text"\s*:\s*"((?:\\.|[^"\\])*)"', text, flags=re.S)
+        if matches:
+            return "".join(_decode_json_string_fragment(item) for item in matches)
+        matches = re.findall(r"'text'\s*:\s*'((?:\\.|[^'\\])*)'", text, flags=re.S)
+        if matches:
+            return "".join(item.replace("\\n", "\n").replace("\\'", "'").replace("\\\\", "\\") for item in matches)
+        return None
+
+    return None
+
+
 def _cell_to_text(value: Any) -> str:
     if value is None:
         return ""
@@ -27,6 +83,9 @@ def _cell_to_text(value: Any) -> str:
         return f"{value:g}"
     if isinstance(value, int):
         return str(value)
+    rich_text = _extract_rich_text(value)
+    if rich_text is not None:
+        return rich_text.replace("\r\n", "\n").replace("\r", "\n")
     if isinstance(value, (dict, list)):
         return json.dumps(value, ensure_ascii=False)
     return str(value).replace("\r\n", "\n").replace("\r", "\n")

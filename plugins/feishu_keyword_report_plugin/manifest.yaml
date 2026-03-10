@@ -4,7 +4,7 @@ metadata:
   author: local
   name: feishu_keyword_report_plugin
   repository: "https://open.feishu.cn/"
-  version: 0.1.8
+  version: 0.1.9
   description:
     en_US: Reply keyword commands for daily report and touch-material query with Feishu Sheets + Bitable.
     zh_Hans: 通过口令查询日报与摸料信息，联动飞书在线表格和多维表。
