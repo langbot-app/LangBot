@@ -151,21 +151,10 @@ class ChatMessageHandler(handler.MessageHandler):
 
                 exception_handling = query.pipeline_config['output']['misc'].get('exception-handling', 'show-hint')
 
-                # Backward compatibility: handle legacy boolean fields
-                if 'hide-exception' in query.pipeline_config['output']['misc']:
-                    hide_exc = query.pipeline_config['output']['misc']['hide-exception']
-                    block_out = query.pipeline_config['output']['misc'].get('block-failed-request-output', False)
-                    if block_out:
-                        exception_handling = 'hide'
-                    elif hide_exc:
-                        exception_handling = 'show-hint'
-                    else:
-                        exception_handling = 'show-error'
-
                 if exception_handling == 'show-error':
                     user_notice = f'{e}'
                 elif exception_handling == 'show-hint':
-                    user_notice = '请求失败'
+                    user_notice = query.pipeline_config['output']['misc'].get('failure-hint', 'Request failed.')
                 else:  # hide
                     user_notice = None
 

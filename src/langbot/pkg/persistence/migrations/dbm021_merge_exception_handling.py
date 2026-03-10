@@ -6,7 +6,8 @@ import json
 
 @migration.migration_class(21)
 class DBMigrateMergeExceptionHandling(migration.DBMigration):
-    """Merge hide-exception and block-failed-request-output into a single exception-handling select option.
+    """Merge hide-exception and block-failed-request-output into a single exception-handling select option,
+    and add failure-hint field.
 
     Conversion logic:
     - block-failed-request-output=true  ->  exception-handling: hide
@@ -47,9 +48,11 @@ class DBMigrateMergeExceptionHandling(migration.DBMigration):
 
             misc['exception-handling'] = exception_handling
 
+            # Add failure-hint with default value
+            misc['failure-hint'] = 'Request failed.'
+
             # Remove legacy fields
             misc.pop('hide-exception', None)
-            misc.pop('block-failed-request-output', None)
 
             if self.ap.persistence_mgr.db.name == 'postgresql':
                 await self.ap.persistence_mgr.execute_async(

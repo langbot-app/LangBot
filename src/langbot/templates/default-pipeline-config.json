@@ -96,6 +96,7 @@
         },
         "misc": {
             "exception-handling": "show-hint",
+            "failure-hint": "Request failed.",
             "at-sender": true,
             "quote-origin": true,
             "track-function-calls": false,

@@ -101,6 +101,16 @@ stages:
             label:
               en_US: Hide All
               zh_Hans: 不显示任何异常信息
+      - name: failure-hint
+        label:
+          en_US: Failure Hint Text
+          zh_Hans: 失败提示文本
+        description:
+          en_US: The text to display when a request fails. Only effective when Exception Handling Strategy is set to "Show Failure Hint"
+          zh_Hans: 请求失败时显示的提示文本，仅在异常处理策略设置为"仅文字提示"时生效
+        type: string
+        required: false
+        default: 'Request failed.'
       - name: at-sender
         label:
           en_US: At Sender
