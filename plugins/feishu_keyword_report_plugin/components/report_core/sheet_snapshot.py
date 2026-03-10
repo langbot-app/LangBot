@@ -76,14 +76,17 @@ def _wrap_text_to_width(
 
 
 def _pick_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    plugin_root = Path(__file__).resolve().parents[2]
     candidates = [
-        plugin_root / "assets" / "fonts" / "NotoSansCJKsc-Regular.otf",
         Path("C:/Windows/Fonts/msyh.ttc"),
+        Path("C:/Windows/Fonts/msyhbd.ttc"),
         Path("C:/Windows/Fonts/simsun.ttc"),
         Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
         Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
+        Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc"),
         Path("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"),
+        Path("/usr/share/fonts/truetype/arphic/ukai.ttc"),
+        Path("/usr/share/fonts/truetype/arphic/uming.ttc"),
         Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
     ]
     for path in candidates:
