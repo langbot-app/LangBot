@@ -576,6 +576,101 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
 
 class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
     @staticmethod
+    def _extract_quote_message_id(message: EventMessage) -> typing.Optional[str]:
+        """
+        Extract the message ID to quote from the given message.
+
+        Rules:
+        - Thread message (thread_id non-empty): return None (no auto-inject Quote)
+        - Non-thread message: return parent_id if valid (non-empty, different from message_id)
+
+        Note: Thread messages are currently not supported for quote injection because:
+        - EventMessage lacks upper_message_id field (only available in Message from API fetch)
+        - root_id and parent_id both point to root message in thread replies
+        - Cannot reliably distinguish first reply vs follow-up replies
+        """
+        parent_id = getattr(message, 'parent_id', None)
+        if not parent_id:
+            return None
+
+        message_id = getattr(message, 'message_id', None)
+        if parent_id == message_id:
+            return None
+
+        thread_id = getattr(message, 'thread_id', None)
+        if thread_id:
+            # Thread message: don't auto-inject Quote (cannot reliably detect quote target)
+            return None
+
+        return parent_id
+
+    @staticmethod
+    def _build_event_message_from_message_item(message_item: Message) -> typing.Optional[EventMessage]:
+        """
+        Build EventMessage from SDK typed Message item.
+
+        Returns None if body or content is missing.
+        """
+        body = getattr(message_item, 'body', None)
+        if not body:
+            return None
+
+        content = getattr(body, 'content', None)
+        if not content:
+            return None
+
+        event_data = {
+            'message_id': message_item.message_id,
+            'message_type': message_item.msg_type,
+            'content': content,
+            'create_time': message_item.create_time,
+            'mentions': getattr(message_item, 'mentions', []) or [],
+        }
+
+        # Preserve thread-related fields
+        if hasattr(message_item, 'parent_id') and message_item.parent_id:
+            event_data['parent_id'] = message_item.parent_id
+        if hasattr(message_item, 'root_id') and message_item.root_id:
+            event_data['root_id'] = message_item.root_id
+        if hasattr(message_item, 'thread_id') and message_item.thread_id:
+            event_data['thread_id'] = message_item.thread_id
+        if hasattr(message_item, 'chat_id') and message_item.chat_id:
+            event_data['chat_id'] = message_item.chat_id
+
+        return EventMessage(event_data)
+
+    @staticmethod
+    async def _fetch_quoted_message(
+        quote_message_id: str,
+        api_client: lark_oapi.Client,
+    ) -> typing.Optional[platform_message.MessageChain]:
+        """
+        Fetch the quoted message and convert to MessageChain.
+
+        Returns None if:
+        - API call fails
+        - Response items is empty
+        - Message item normalization fails
+        """
+        request = GetMessageRequest.builder().message_id(quote_message_id).build()
+        response = await api_client.im.v1.message.aget(request)
+
+        if not response.success():
+            return None
+
+        items = getattr(response.data, 'items', None)
+        if not items:
+            return None
+
+        message_item = items[0]
+        event_message = LarkEventConverter._build_event_message_from_message_item(message_item)
+        if event_message is None:
+            return None
+
+        quote_chain = await LarkMessageConverter.target2yiri(event_message, api_client)
+        return quote_chain
+
+    @staticmethod
     async def yiri2target(
         event: platform_events.MessageEvent,
     ) -> lark_oapi.im.v1.P2ImMessageReceiveV1:
@@ -586,6 +681,23 @@ class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
         event: lark_oapi.im.v1.P2ImMessageReceiveV1, api_client: lark_oapi.Client
     ) -> platform_events.Event:
         message_chain = await LarkMessageConverter.target2yiri(event.event.message, api_client)
+
+        # Check for quote/reply message
+        quote_message_id = LarkEventConverter._extract_quote_message_id(event.event.message)
+        if quote_message_id:
+            quote_chain = await LarkEventConverter._fetch_quoted_message(quote_message_id, api_client)
+            if quote_chain:
+                # Filter out Source component from quoted chain, keep only content
+                quote_origin = platform_message.MessageChain(
+                    [comp for comp in quote_chain if not isinstance(comp, platform_message.Source)]
+                )
+                if quote_origin:
+                    message_chain.append(
+                        platform_message.Quote(
+                            message_id=quote_message_id,
+                            origin=quote_origin,
+                        )
+                    )
 
         if event.event.message.chat_type == 'p2p':
             return platform_events.FriendMessage(
@@ -769,6 +881,32 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if tenant_access_token is None or int(time.time()) >= tenant_access_token['expire_at']:
             self.request_tenant_access_token(tenant_key)
         return self.tenant_access_tokens.get(tenant_key)['token'] if self.tenant_access_tokens.get(tenant_key) else None
+
+    def get_launcher_id(self, event: platform_events.MessageEvent) -> str | None:
+        """
+        Get topic-scoped launcher_id for thread-aware session isolation.
+
+        For group thread messages, returns "{group_id}_{thread_id}"
+        to ensure conversation context stays stable per topic.
+
+        Returns None for non-thread messages or P2P messages.
+        """
+        source_event = getattr(event.source_platform_object, 'event', None)
+        if not source_event:
+            return None
+
+        message = getattr(source_event, 'message', None)
+        if not message:
+            return None
+
+        thread_id = getattr(message, 'thread_id', None)
+        if not thread_id:
+            return None
+
+        if isinstance(event, platform_events.GroupMessage):
+            return f'{event.group.id}_{thread_id}'
+
+        return None
 
     def build_api_client(self, config):
         app_id = config['app_id']
