@@ -4,7 +4,7 @@ metadata:
   author: local
   name: feishu_keyword_report_plugin
   repository: "https://open.feishu.cn/"
-  version: 0.1.9
+  version: 0.1.10
   description:
     en_US: Reply keyword commands for daily report and touch-material query with Feishu Sheets + Bitable.
     zh_Hans: 通过口令查询日报与摸料信息，联动飞书在线表格和多维表。
@@ -126,6 +126,16 @@ spec:
       description:
         en_US: Whether to include product trend section in report text.
         zh_Hans: 是否在日报文本中输出成品趋势段落。
+      type: boolean
+      required: false
+      default: true
+    - name: report_show_spec_attention
+      label:
+        en_US: Show Governance Attention
+        zh_Hans: 显示治理关注
+      description:
+        en_US: Whether to include governance attention hints in daily report text.
+        zh_Hans: 是否在日报文本中输出治理关注提示。
       type: boolean
       required: false
       default: true

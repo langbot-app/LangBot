@@ -39,8 +39,31 @@ class DayMetricsWrapperTest(unittest.TestCase):
         )
         text = out["text"]
         self.assertIn("制程", text)
+        self.assertIn("1、制程", text)
+        self.assertIn("2、成品", text)
+        self.assertNotIn("3、制程", text)
         self.assertNotIn("原料bom", text)
         self.assertNotIn("工艺验证", text)
+
+    def test_fmt_status_can_hide_governance_attention(self) -> None:
+        stat = {
+            "状态": day_metrics.STAT_HAS_DATA,
+            "有数据": True,
+            "判异": {"异常": False},
+            "spec_health": {
+                "suspected": True,
+                "abnormal_days": 6,
+                "total_days": 14,
+                "longest_consecutive_abnormal": 6,
+            },
+        }
+
+        shown = day_metrics._fmt_status(stat, force=True, show_spec_attention=True)
+        hidden = day_metrics._fmt_status(stat, force=True, show_spec_attention=False)
+
+        self.assertIn("治理关注", shown)
+        self.assertNotIn("治理关注", hidden)
+        self.assertIn("正常", hidden)
 
     def test_sheet_excel_serial_date_should_not_be_1970(self) -> None:
         matrix = self._sample_matrix()

@@ -437,7 +437,60 @@ class KeywordBitableReportListener(EventListener):
 
     # ===== Data source orchestration =====
 
-    async def _run_sheets_report(self, date_arg: str | None, command_sheets: list[str]) -> str:
+    async def _build_sheet_snapshot_components(
+        self, sheet_names: list[str], strict: bool = False
+    ) -> list[platform_message.Plain | platform_message.Image]:
+        spreadsheet_token = self._get_str_config("sheets_spreadsheet_token", "")
+        if not spreadsheet_token:
+            if strict:
+                raise ValueError("未配置 sheets_spreadsheet_token。")
+            return []
+
+        ordered_sheet_names: list[str] = []
+        seen_sheets: set[str] = set()
+        for sheet_name in sheet_names:
+            normalized = str(sheet_name).strip()
+            if not normalized or normalized in seen_sheets:
+                continue
+            seen_sheets.add(normalized)
+            ordered_sheet_names.append(normalized)
+        if not ordered_sheet_names:
+            return []
+
+        cell_range = self._get_str_config("sheets_range", "A1:ZZ2000") or "A1:ZZ2000"
+        headers = await self._build_auth_headers()
+        matrices, available_titles, missing = await self._sheets_source.fetch_line_matrices(
+            spreadsheet_token=spreadsheet_token,
+            headers=headers,
+            target_sheet_names=ordered_sheet_names,
+            cell_range=cell_range,
+            value_render_option="FormattedValue",
+        )
+        if strict and missing:
+            available = "；".join(available_titles) if available_titles else "无"
+            raise ValueError(f"指定表名不存在：{'；'.join(missing)}；可选：{available}")
+
+        components: list[platform_message.Plain | platform_message.Image] = []
+        for sheet_name in ordered_sheet_names:
+            values = matrices.get(sheet_name)
+            if not isinstance(values, list) or not values:
+                if strict:
+                    raise ValueError(f"{sheet_name} 没有可截图的数据。")
+                continue
+            snapshot = render_sheet_snapshot(
+                sheet_title=sheet_name,
+                values=values,
+                header_rows=3,
+                tail_nonempty_rows=20,
+            )
+            components.append(platform_message.Plain(text=f"{sheet_name} 表格内容截图：前3行表头 + 最后20行非空数据"))
+            components.append(platform_message.Image(base64=snapshot.data_url))
+
+        if strict and not components:
+            raise ValueError("没有可截图的数据。")
+        return components
+
+    async def _run_sheets_report(self, date_arg: str | None, command_sheets: list[str]) -> dict[str, Any]:
         spreadsheet_token = self._get_str_config("sheets_spreadsheet_token", "")
         if not spreadsheet_token:
             raise ValueError("未配置 sheets_spreadsheet_token。")
@@ -469,6 +522,7 @@ class KeywordBitableReportListener(EventListener):
             stale_threshold_product=self._get_int_config("stale_threshold_product", 3, 0, 30),
             stale_threshold_electrochem=self._get_int_config("stale_threshold_electrochem", 5, 0, 30),
             report_show_placeholder_sections=self._get_bool_config("report_show_placeholder_sections", False),
+            show_spec_attention=self._get_bool_config("report_show_spec_attention", True),
             spec_registry_json=self._get_str_config("spec_registry_json", ""),
             auto_fix_quality=False,
         )
@@ -481,7 +535,17 @@ class KeywordBitableReportListener(EventListener):
         line_errors = report.get("line_errors", [])
         if isinstance(line_errors, list) and line_errors:
             text = f"{text}\n\n提示：以下线别未纳入日报：{'；'.join(str(x) for x in line_errors)}"
-        return text
+        used_sheets_raw = report.get("used_sheets", [])
+        used_sheets = (
+            [str(item).strip() for item in used_sheets_raw if str(item).strip()]
+            if isinstance(used_sheets_raw, list)
+            else []
+        )
+        return {
+            "text": text,
+            "used_sheets": used_sheets,
+            "source": "sheets",
+        }
 
     async def _run_bitable_brief_report(self, title_text: str) -> str:
         app_token = self._get_str_config("bitable_app_token", "")
@@ -503,10 +567,17 @@ class KeywordBitableReportListener(EventListener):
             title_text=title_text,
         )
 
-    async def _dispatch_report(self, date_arg: str | None, command_sheets: list[str]) -> str:
+    async def _dispatch_report(self, date_arg: str | None, command_sheets: list[str]) -> dict[str, Any]:
         mode = self._resolve_data_source_mode()
         if mode == "sheets":
             return await self._run_sheets_report(date_arg=date_arg, command_sheets=command_sheets)
+
+        if mode == "bitable":
+            return {
+                "text": await self._run_bitable_brief_report(title_text="当前出窑批次及烧结压实（多维表模式）："),
+                "used_sheets": [],
+                "source": "bitable",
+            }
 
         if mode == "bitable":
             return await self._run_bitable_brief_report(title_text="当前出窑批次及烧结压实（多维表模式）：")
@@ -518,9 +589,45 @@ class KeywordBitableReportListener(EventListener):
                 fallback = await self._run_bitable_brief_report(title_text="当前出窑批次及烧结压实（多维表回退）：")
             except Exception as bitable_exc:
                 raise RuntimeError(f"在线表格失败：{sheets_exc}；多维表回退失败：{bitable_exc}") from bitable_exc
+            return {
+                "text": f"【在线表格查询失败，已回退多维表】{sheets_exc}\n{fallback}",
+                "used_sheets": [],
+                "source": "bitable_fallback",
+            }
+
+        try:
+            return await self._run_sheets_report(date_arg=date_arg, command_sheets=command_sheets)
+        except Exception as sheets_exc:
+            try:
+                fallback = await self._run_bitable_brief_report(title_text="当前出窑批次及烧结压实（多维表回退）：")
+            except Exception as bitable_exc:
+                raise RuntimeError(f"在线表格失败：{sheets_exc}；多维表回退失败：{bitable_exc}") from bitable_exc
             return f"【在线表格查询失败，已回退多维表】{sheets_exc}\n{fallback}"
 
+    async def _build_report_reply_chain(self, payload: dict[str, Any]) -> platform_message.MessageChain:
+        components: list[platform_message.Plain | platform_message.Image] = []
+        used_sheets_raw = payload.get("used_sheets", []) if isinstance(payload, dict) else []
+        used_sheets = (
+            [str(item).strip() for item in used_sheets_raw if str(item).strip()]
+            if isinstance(used_sheets_raw, list)
+            else []
+        )
+        source = str(payload.get("source", "")).strip() if isinstance(payload, dict) else ""
+        if source == "sheets" and used_sheets:
+            try:
+                components.extend(await self._build_sheet_snapshot_components(used_sheets, strict=False))
+            except Exception:
+                pass
+
+        text = str(payload.get("text", "")).strip() if isinstance(payload, dict) else ""
+        if text:
+            components.append(platform_message.Plain(text=text))
+        return platform_message.MessageChain(components)
+
     async def _run_sheet_snapshot_reply(self, sheet_name: str) -> platform_message.MessageChain:
+        components = await self._build_sheet_snapshot_components([sheet_name], strict=True)
+        return platform_message.MessageChain(components)
+
         spreadsheet_token = self._get_str_config("sheets_spreadsheet_token", "")
         if not spreadsheet_token:
             raise ValueError("未配置 sheets_spreadsheet_token。")
@@ -742,10 +849,11 @@ class KeywordBitableReportListener(EventListener):
             return
 
         try:
-            text = await self._dispatch_report(
+            payload = await self._dispatch_report(
                 date_arg=command.date_arg,
                 command_sheets=command.sheet_names,
             )
-            await self._reply_text(event_ctx, text)
+            reply_chain = await self._build_report_reply_chain(payload)
+            await self._reply_message_chain(event_ctx, reply_chain)
         except Exception as exc:
             await self._reply_text(event_ctx, f"日报查询失败：{exc}")

@@ -1446,13 +1446,13 @@ def _fmt_range(stat: dict[str, Any], decimals: int = 3) -> str:
     return f"{mn:.{decimals}f}-{mx:.{decimals}f}"
 
 
-def _fmt_status(stat: dict[str, Any], force: bool = False) -> str:
+def _fmt_status(stat: dict[str, Any], force: bool = False, show_spec_attention: bool = True) -> str:
     state = _stat_state(stat)
     if not _state_has_data(state):
         return ""
     parts: list[str] = []
 
-    if _spec_health_is_suspect(stat):
+    if show_spec_attention and _spec_health_is_suspect(stat):
         parts.append(_spec_health_text(stat))
     else:
         judge = stat.get("判异") if isinstance(stat, dict) else None
@@ -1504,8 +1504,17 @@ def _with_unit(value: str, unit: str) -> str:
     return value if value in ("未找到有效数据", STAT_UNCONFIGURED_TEXT) else f"{value}{unit}"
 
 
-def _fmt_metric(stat: dict[str, Any], decimals: int, force_status: bool = False) -> str:
-    return _fmt_range(stat, decimals) + _fmt_status(stat, force=force_status) + _fmt_source_date(stat)
+def _fmt_metric(
+    stat: dict[str, Any],
+    decimals: int,
+    force_status: bool = False,
+    show_spec_attention: bool = True,
+) -> str:
+    return (
+        _fmt_range(stat, decimals)
+        + _fmt_status(stat, force=force_status, show_spec_attention=show_spec_attention)
+        + _fmt_source_date(stat)
+    )
 
 
 def _fmt_li_status(stat: dict[str, Any]) -> str:
@@ -1757,26 +1766,33 @@ def build_wecom_text_single(
     model: str,
     enable_spec: bool = True,
     quality_issues: Optional[list[dict[str, Any]]] = None,
+    show_spec_attention: bool = True,
 ) -> str:
     date_str = report_date.strftime("%Y.%m.%d")
 
     process = metrics["制程"]
     product = metrics["成品"]
 
-    sinter = _fmt_metric(process["烧结压实"], 3, force_status=True)
-    crush = _fmt_metric(process["粉碎压实"], 3, force_status=True)
+    sinter = _fmt_metric(process["烧结压实"], 3, force_status=True, show_spec_attention=show_spec_attention)
+    crush = _fmt_metric(process["粉碎压实"], 3, force_status=True, show_spec_attention=show_spec_attention)
 
-    prod_density = _fmt_metric(product["成品压实"], 3, force_status=True)
-    charge = _fmt_metric(product["0.1C充电"], 1, force_status=True)
-    discharge = _fmt_metric(product["0.1C放电"], 1, force_status=True)
-    eff = _fmt_metric(product["首效"], 2, force_status=True)
-    plat = _fmt_metric(product["平台效率"], 1, force_status=True)
+    prod_density = _fmt_metric(product["成品压实"], 3, force_status=True, show_spec_attention=show_spec_attention)
+    charge = _fmt_metric(product["0.1C充电"], 1, force_status=True, show_spec_attention=show_spec_attention)
+    discharge = _fmt_metric(product["0.1C放电"], 1, force_status=True, show_spec_attention=show_spec_attention)
+    eff = _fmt_metric(product["首效"], 2, force_status=True, show_spec_attention=show_spec_attention)
+    plat = _fmt_metric(product["平台效率"], 1, force_status=True, show_spec_attention=show_spec_attention)
 
     li_stat = product["残碱(Li+)"]
-    li = _with_unit(_fmt_range(li_stat, 0), "ppm") + _fmt_status(li_stat, force=True) + _fmt_source_date(li_stat)
-    carbon = _fmt_metric(product["碳含量"], 2, force_status=True)
-    powder_r = _fmt_metric(product["粉阻(粉末电阻)"], 1, force_status=True)
-    bet = _fmt_metric(product["比表(麦克比表)"], 1, force_status=True)
+    li = (
+        _with_unit(_fmt_range(li_stat, 0), "ppm")
+        + _fmt_status(li_stat, force=True, show_spec_attention=show_spec_attention)
+        + _fmt_source_date(li_stat)
+    )
+    carbon = _fmt_metric(product["碳含量"], 2, force_status=True, show_spec_attention=show_spec_attention)
+    powder_r = _fmt_metric(
+        product["粉阻(粉末电阻)"], 1, force_status=True, show_spec_attention=show_spec_attention
+    )
+    bet = _fmt_metric(product["比表(麦克比表)"], 1, force_status=True, show_spec_attention=show_spec_attention)
 
     sinter_trend = _fmt_trend_layered(process["烧结压实趋势"], 3, "", _TREND_SIGNIFICANT_REL, None)
     crush_trend = _fmt_trend_layered(process["粉碎压实趋势"], 3, "", _TREND_SIGNIFICANT_REL, None)
@@ -1868,7 +1884,7 @@ def build_wecom_text_single(
     return "\n".join(lines)
 
 
-def build_wecom_text_multi(line_reports: list[dict[str, Any]]) -> str:
+def build_wecom_text_multi(line_reports: list[dict[str, Any]], show_spec_attention: bool = True) -> str:
     if not line_reports:
         return ""
 
@@ -1895,7 +1911,15 @@ def build_wecom_text_multi(line_reports: list[dict[str, Any]]) -> str:
         parts: list[str] = []
         for label in line_labels:
             st = line_metrics[label][section][key]
-            parts.append(f"{label} {_fmt_metric(st, decimals, force_status=line_enable_spec[label])}")
+            parts.append(
+                f"{label} "
+                + _fmt_metric(
+                    st,
+                    decimals,
+                    force_status=line_enable_spec[label],
+                    show_spec_attention=show_spec_attention,
+                )
+            )
         return "；".join(parts)
 
     def _trend_parts(section: str, key: str, decimals: int, unit: str, rel: float, abs_v: Optional[float]) -> str:
@@ -2076,7 +2100,7 @@ def _leader_key_metric_line(line_label: str, metrics: dict[str, Any]) -> str:
     return f"{line_label} " + "，".join(parts)
 
 
-def build_wecom_text_leader(line_reports: list[dict[str, Any]]) -> str:
+def build_wecom_text_leader(line_reports: list[dict[str, Any]], show_spec_attention: bool = True) -> str:
     valid_reports = [
         r
         for r in line_reports
@@ -2102,7 +2126,7 @@ def build_wecom_text_leader(line_reports: list[dict[str, Any]]) -> str:
         key_metric_lines.append(_leader_key_metric_line(line_label, metrics))
         for section, key in _LEADER_ABNORMAL_KEYS:
             st = metrics.get(section, {}).get(key)
-            if _spec_health_is_suspect(st):
+            if show_spec_attention and _spec_health_is_suspect(st):
                 spec_attention_items.append(f"{line_label} {key}")
             elif _stat_is_abnormal(st):
                 abnormal_items.append(f"{line_label} {key}（{_stat_source_batch_text(st)}）")
@@ -2116,11 +2140,11 @@ def build_wecom_text_leader(line_reports: list[dict[str, Any]]) -> str:
     if abnormal_items:
         conclusion = f"关注（{len(abnormal_items)}项异常）"
         abnormal_text = "；".join(abnormal_items)
-        if spec_attention_items:
+        if show_spec_attention and spec_attention_items:
             abnormal_text += f"；治理关注（{len(spec_attention_items)}项口径疑似）：" + "；".join(spec_attention_items[:3])
             if len(spec_attention_items) > 3:
                 abnormal_text += f"；其余{len(spec_attention_items) - 3}项省略"
-    elif spec_attention_items:
+    elif show_spec_attention and spec_attention_items:
         conclusion = f"治理关注（{len(spec_attention_items)}项口径疑似）"
         abnormal_text = "；".join(spec_attention_items[:3])
         if len(spec_attention_items) > 3:
@@ -2472,7 +2496,15 @@ def strip_placeholder_sections(text: str) -> str:
         if any(line.strip().startswith(prefix) for prefix in _PLACEHOLDER_PREFIXES):
             continue
         lines.append(line)
-    return "\n".join(lines).strip()
+
+    renumbered: list[str] = []
+    section_index = 1
+    for line in lines:
+        if re.match(r"^\d+、", line):
+            line = re.sub(r"^\d+、", f"{section_index}、", line, count=1)
+            section_index += 1
+        renumbered.append(line)
+    return "\n".join(renumbered).strip()
 
 
 def build_standard_report_from_matrices(
@@ -2486,7 +2518,8 @@ def build_standard_report_from_matrices(
     stale_threshold_product: int,
     stale_threshold_electrochem: int,
     report_show_placeholder_sections: bool,
-    spec_registry_json: str,
+    show_spec_attention: bool = True,
+    spec_registry_json: str = "",
     auto_fix_quality: bool = False,
 ) -> dict[str, Any]:
     target_sheets = list(selected_sheets or sheet_matrices.keys())
@@ -2563,9 +2596,10 @@ def build_standard_report_from_matrices(
             model=str(report.get("model", "UNKNOWN")),
             enable_spec=bool(report.get("enable_spec", True)),
             quality_issues=report.get("quality_issues"),
+            show_spec_attention=show_spec_attention,
         )
     else:
-        text = build_wecom_text_multi(line_reports)
+        text = build_wecom_text_multi(line_reports, show_spec_attention=show_spec_attention)
 
     if not report_show_placeholder_sections:
         text = strip_placeholder_sections(text)

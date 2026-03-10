@@ -70,6 +70,16 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
         return ""
 
     @staticmethod
+    def _extract_plain_texts(event: DummyEvent) -> list[str]:
+        if not event.reply_message_chain:
+            return []
+        out: list[str] = []
+        for item in event.reply_message_chain:
+            if isinstance(item, platform_message.Plain):
+                out.append(str(item.text))
+        return out
+
+    @staticmethod
     def _has_reply_image(event: DummyEvent) -> bool:
         if not event.reply_message_chain:
             return False
@@ -78,7 +88,7 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
     async def test_touch_command_has_higher_priority_than_report(self) -> None:
         listener = self._build_listener()
         listener._run_touch_material_report = AsyncMock(return_value="touch-ok")  # type: ignore[method-assign]
-        listener._dispatch_report = AsyncMock(return_value="report-ok")  # type: ignore[method-assign]
+        listener._dispatch_report = AsyncMock(return_value={"text": "report-ok"})  # type: ignore[method-assign]
 
         ctx = DummyEventContext(DummyEvent("摸料 A2"))
         await listener._handle_command(ctx)
@@ -92,7 +102,9 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
     async def test_report_command_keeps_original_flow(self) -> None:
         listener = self._build_listener()
         listener._run_touch_material_report = AsyncMock(return_value="touch-ok")  # type: ignore[method-assign]
-        listener._dispatch_report = AsyncMock(return_value="report-ok")  # type: ignore[method-assign]
+        listener._dispatch_report = AsyncMock(  # type: ignore[method-assign]
+            return_value={"text": "report-ok", "used_sheets": [], "source": "bitable"}
+        )
 
         ctx = DummyEventContext(DummyEvent("日报"))
         await listener._handle_command(ctx)
@@ -102,15 +114,41 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
         listener._run_touch_material_report.assert_not_called()  # type: ignore[attr-defined]
         listener._dispatch_report.assert_awaited_once()  # type: ignore[attr-defined]
         self.assertEqual(self._extract_reply_text(ctx.event), "report-ok")
+        self.assertFalse(self._has_reply_image(ctx.event))
+
+    async def test_report_command_reply_sheet_snapshots_before_text(self) -> None:
+        listener = self._build_listener()
+        listener._run_touch_material_report = AsyncMock(return_value="touch-ok")  # type: ignore[method-assign]
+        listener._dispatch_report = AsyncMock(  # type: ignore[method-assign]
+            return_value={"text": "report-ok", "used_sheets": ["S18-A线"], "source": "sheets"}
+        )
+        listener._build_sheet_snapshot_components = AsyncMock(  # type: ignore[method-assign]
+            return_value=[
+                platform_message.Plain(text="S18-A线表格内容截图"),
+                platform_message.Image(base64="data:image/png;base64,ZmFrZQ=="),
+            ]
+        )
+
+        ctx = DummyEventContext(DummyEvent("日报"))
+        await listener._handle_command(ctx)
+
+        self.assertTrue(ctx.default_prevented)
+        self.assertTrue(ctx.postorder_prevented)
+        listener._dispatch_report.assert_awaited_once()  # type: ignore[attr-defined]
+        listener._build_sheet_snapshot_components.assert_awaited_once_with(["S18-A线"], strict=False)  # type: ignore[attr-defined]
+        plain_texts = self._extract_plain_texts(ctx.event)
+        self.assertEqual(plain_texts[0], "S18-A线表格内容截图")
+        self.assertEqual(plain_texts[-1], "report-ok")
+        self.assertTrue(self._has_reply_image(ctx.event))
 
     async def test_image_command_reply_image(self) -> None:
         listener = self._build_listener()
         listener._run_touch_material_report = AsyncMock(return_value="touch-ok")  # type: ignore[method-assign]
-        listener._dispatch_report = AsyncMock(return_value="report-ok")  # type: ignore[method-assign]
+        listener._dispatch_report = AsyncMock(return_value={"text": "report-ok"})  # type: ignore[method-assign]
         listener._run_sheet_snapshot_reply = AsyncMock(  # type: ignore[method-assign]
             return_value=platform_message.MessageChain(
                 [
-                    platform_message.Plain(text="S18-A线 表格内容截图"),
+                    platform_message.Plain(text="S18-A线表格内容截图"),
                     platform_message.Image(base64="data:image/png;base64,ZmFrZQ=="),
                 ]
             )
@@ -124,7 +162,7 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
         listener._run_touch_material_report.assert_not_called()  # type: ignore[attr-defined]
         listener._dispatch_report.assert_not_called()  # type: ignore[attr-defined]
         listener._run_sheet_snapshot_reply.assert_awaited_once_with(sheet_name="S18-A线")  # type: ignore[attr-defined]
-        self.assertEqual(self._extract_reply_text(ctx.event), "S18-A线 表格内容截图")
+        self.assertEqual(self._extract_reply_text(ctx.event), "S18-A线表格内容截图")
         self.assertTrue(self._has_reply_image(ctx.event))
 
     async def test_touch_invalid_segment_reply_usage(self) -> None:
