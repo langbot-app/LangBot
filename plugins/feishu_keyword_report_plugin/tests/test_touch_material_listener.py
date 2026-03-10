@@ -229,8 +229,10 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
 
         text = await listener._run_touch_material_report("A2")
         self.assertIn("DA2603-005（97.4+253.125+3.2+40+83+80）A2-1/2/3-778.5", text)
-        self.assertIn("压实", text)
-        self.assertIn("S18-SC-DA2603-005-A2-1-60min：2.345", text)
+        self.assertIn("烧结压实", text)
+        self.assertIn("A2-1：2.345", text)
+        self.assertIn("A2-2：2.337", text)
+        self.assertNotIn("S18-SC-DA2603-005-A2-1-60min", text)
 
 
 if __name__ == "__main__":

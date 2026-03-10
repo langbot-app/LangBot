@@ -4,7 +4,7 @@ metadata:
   author: local
   name: feishu_keyword_report_plugin
   repository: "https://open.feishu.cn/"
-  version: 0.1.11
+  version: 0.1.12
   description:
     en_US: Reply keyword commands for daily report and touch-material query with Feishu Sheets + Bitable.
     zh_Hans: 通过口令查询日报与摸料信息，联动飞书在线表格和多维表。
@@ -306,7 +306,7 @@ spec:
         zh_Hans: 无法判定当前出窑批次时的回复文案。
       type: string
       required: false
-      default: "未查到当前出窑批次或压实数据。"
+      default: "未查到当前出窑批次或烧结压实数据。"
 
     - name: reply_in_group
       label:

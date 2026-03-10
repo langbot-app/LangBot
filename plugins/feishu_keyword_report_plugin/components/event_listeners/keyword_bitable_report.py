@@ -225,7 +225,7 @@ class KeywordBitableReportListener(EventListener):
         return out
 
     def _resolve_touch_no_data_text(self) -> str:
-        return self._get_str_config("touch_material_no_data_text", "未查到当前出窑批次或压实数据。")
+        return self._get_str_config("touch_material_no_data_text", "未查到当前出窑批次或烧结压实数据。")
 
     @staticmethod
     def _resolve_touch_prefer_line(segment: str) -> str:
@@ -673,6 +673,29 @@ class KeywordBitableReportListener(EventListener):
             return str(medium.get("text", "")).strip()
         return str(high.get("text", "")).strip()
 
+    @staticmethod
+    def _format_touch_detail_line(segment: str, detail_line: str) -> str:
+        raw = str(detail_line).strip()
+        if not raw:
+            return ""
+
+        parts = re.split(r"[：:]", raw, maxsplit=1)
+        if len(parts) != 2:
+            return raw
+
+        label_raw, value_raw = parts
+        label = str(label_raw).strip()
+        value = str(value_raw).strip()
+        if not label or not value:
+            return raw
+
+        target_segment = str(segment).strip().upper()
+        label_upper = label.upper()
+        match = re.search(rf"({re.escape(target_segment)}-\d+)(?:-\d+\s*MIN)?$", label_upper)
+        if match:
+            return f"{match.group(1)}：{value}"
+        return f"{label}：{value}"
+
     async def _run_touch_material_report(self, segment: str) -> str:
         app_token = self._get_str_config("bitable_app_token", "")
         if not app_token:
@@ -723,7 +746,8 @@ class KeywordBitableReportListener(EventListener):
         detail_lines = sintering.get("details", [])
         if not isinstance(detail_lines, list):
             detail_lines = []
-        detail_lines = [str(item).strip() for item in detail_lines if str(item).strip()]
+        detail_lines = [self._format_touch_detail_line(segment, str(item)) for item in detail_lines if str(item).strip()]
+        detail_lines = [item for item in detail_lines if item]
 
         avg_compaction: float | None = None
         avg_raw = sintering.get("avg")
@@ -771,8 +795,8 @@ class KeywordBitableReportListener(EventListener):
         main_line = f"{batch_display}（{recipe_pack}）{segment}-{slot_list_text}-{kiln_temperature}{material_text}"
 
         if detail_lines:
-            return "\n".join([main_line, "压实", *detail_lines])
-        return "\n".join([main_line, "压实未出"])
+            return "\n".join([main_line, "烧结压实", *detail_lines])
+        return "\n".join([main_line, "烧结压实未出"])
 
     # ===== Entry =====
 
