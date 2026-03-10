@@ -17,6 +17,17 @@ class DayMetricsWrapperTest(unittest.TestCase):
             ["2026-03-02", "DA2603-000", "2026-03-02", 2.30, 2.35, 2.39, 159.0, 155.0, 97.1, 0.035, 1.25, 82.0, 10.3, 81.5],
         ]
 
+    @staticmethod
+    def _sample_matrix_for_date(base_date: dt.date) -> list[list[object]]:
+        prev_date = base_date - dt.timedelta(days=1)
+        return [
+            ["", "批次", "投料日期", "烧结压实", "粉碎压实", "成品压实", "扣电", "扣电", "扣电", "Li+含量", "碳含量", "粉末电阻", "麦克比表", "3.2V平台效率"],
+            ["", "", "", "", "", "", "0.1C充", "0.1C放", "0.1C首效", "", "", "", "", ""],
+            ["", "", "", "", "", "", ">=155", ">=150", ">=96", "", "", "", "", ""],
+            [base_date.strftime("%Y-%m-%d"), "DA2603-001", base_date.strftime("%Y-%m-%d"), 2.31, 2.37, 2.40, 160.0, 156.0, 97.5, 0.03, 1.20, 80.0, 10.5, 82.0],
+            [prev_date.strftime("%Y-%m-%d"), "DA2603-000", prev_date.strftime("%Y-%m-%d"), 2.30, 2.35, 2.39, 159.0, 155.0, 97.1, 0.035, 1.25, 82.0, 10.3, 81.5],
+        ]
+
     def test_load_sheet_table_from_matrix(self) -> None:
         df = day_metrics.load_sheet_table_from_matrix(self._sample_matrix())
         self.assertIn("投料日期", df.columns)
@@ -27,7 +38,7 @@ class DayMetricsWrapperTest(unittest.TestCase):
         out = day_metrics.build_standard_report_from_matrices(
             sheet_matrices={"S18-A线": self._sample_matrix()},
             selected_sheets=["S18-A线"],
-            date_arg=None,
+            date_arg="2026-03-03",
             date_mode="global",
             lookback_days=7,
             trend_days=3,
@@ -145,6 +156,53 @@ class DayMetricsWrapperTest(unittest.TestCase):
         self.assertAlmostEqual(product_metrics["比表(麦克比表)"]["max"], 10.3589, places=4)
         self.assertNotIn("18.000", out["text"])
         self.assertNotIn("180000", out["text"])
+
+    def test_build_report_should_skip_sheet_if_feed_date_stale_for_six_days(self) -> None:
+        today = dt.date.today()
+        recent_matrix = self._sample_matrix_for_date(today)
+        stale_matrix = self._sample_matrix_for_date(today - dt.timedelta(days=6))
+
+        out = day_metrics.build_standard_report_from_matrices(
+            sheet_matrices={"S18-A线": recent_matrix, "S006-B线": stale_matrix},
+            selected_sheets=["S18-A线", "S006-B线"],
+            date_arg=None,
+            date_mode="global",
+            lookback_days=7,
+            trend_days=3,
+            stale_threshold_process=2,
+            stale_threshold_product=3,
+            stale_threshold_electrochem=5,
+            report_show_placeholder_sections=False,
+            spec_registry_json="",
+        )
+
+        self.assertEqual(out["used_sheets"], ["S18-A线"])
+        self.assertEqual(len(out["line_reports"]), 1)
+        self.assertEqual(out["line_reports"][0]["line_label"], "S18-A线")
+        self.assertTrue(any("S006-B线" in str(item) and "未纳入日报" in str(item) for item in out["line_errors"]))
+
+    def test_build_report_should_return_empty_text_when_all_sheets_stale(self) -> None:
+        stale_date = dt.date.today() - dt.timedelta(days=6)
+        stale_matrix = self._sample_matrix_for_date(stale_date)
+
+        out = day_metrics.build_standard_report_from_matrices(
+            sheet_matrices={"S18-A线": stale_matrix},
+            selected_sheets=["S18-A线"],
+            date_arg=None,
+            date_mode="global",
+            lookback_days=7,
+            trend_days=3,
+            stale_threshold_process=2,
+            stale_threshold_product=3,
+            stale_threshold_electrochem=5,
+            report_show_placeholder_sections=False,
+            spec_registry_json="",
+        )
+
+        self.assertEqual(out["used_sheets"], [])
+        self.assertEqual(out["line_reports"], [])
+        self.assertIn("当前无6天内更新的数据表", out["text"])
+        self.assertTrue(any("S18-A线" in str(item) and "未纳入日报" in str(item) for item in out["line_errors"]))
 
 
 if __name__ == "__main__":

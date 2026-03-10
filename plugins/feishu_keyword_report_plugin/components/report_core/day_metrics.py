@@ -20,6 +20,7 @@ LINE_A_SHEET = "S18-A线"
 LINE_B_SHEET = "S006-B线"
 LINE_A_LABEL = "S18-A线"
 LINE_B_LABEL = "S006-B线"
+STALE_SHEET_SKIP_DAYS = 6
 
 STAT_HAS_DATA = "有数据"
 STAT_NO_DATA = "无数据"
@@ -796,6 +797,19 @@ def pick_date_from_dfs(dfs: Iterable[pd.DataFrame], date_arg: Optional[str]) -> 
 
 def pick_date(df_a: pd.DataFrame, df_b: pd.DataFrame, date_arg: Optional[str]) -> dt.date:
     return pick_date_from_dfs([df_a, df_b], date_arg)
+
+
+def _latest_feed_date(df: pd.DataFrame) -> Optional[dt.date]:
+    if "投料日期" not in df.columns:
+        return None
+    dates = [d for d in df["投料日期"].dropna().tolist() if isinstance(d, dt.date)]
+    return max(dates) if dates else None
+
+
+def _resolve_stale_sheet_anchor_date(date_arg: Optional[str]) -> dt.date:
+    if date_arg:
+        return pd.to_datetime(date_arg).date()
+    return dt.date.today()
 
 
 def _stat_for_cols(
@@ -2553,6 +2567,32 @@ def build_standard_report_from_matrices(
     if not line_dfs:
         detail = "；".join(line_errors) if line_errors else "无可用数据"
         raise ValueError(f"没有可生成日报的线别：{detail}")
+
+    anchor_date = _resolve_stale_sheet_anchor_date(date_arg)
+    filtered_line_dfs: dict[str, pd.DataFrame] = {}
+    for sheet_name, df in line_dfs.items():
+        latest_date = _latest_feed_date(df)
+        if not isinstance(latest_date, dt.date):
+            filtered_line_dfs[sheet_name] = df
+            continue
+
+        lag_days = (anchor_date - latest_date).days
+        if lag_days >= STALE_SHEET_SKIP_DAYS:
+            line_errors.append(
+                f"{sheet_name}: 最新投料日期{latest_date.strftime('%Y.%m.%d')}，距基准日{anchor_date.strftime('%Y.%m.%d')}已{lag_days}天，未纳入日报"
+            )
+            continue
+
+        filtered_line_dfs[sheet_name] = df
+
+    line_dfs = filtered_line_dfs
+    if not line_dfs:
+        return {
+            "text": "当前无6天内更新的数据表，暂无可汇报数据。",
+            "line_reports": [],
+            "line_errors": line_errors,
+            "used_sheets": [],
+        }
 
     stale_cfg = StaleThresholdConfig(
         process_days=max(0, int(stale_threshold_process)),
