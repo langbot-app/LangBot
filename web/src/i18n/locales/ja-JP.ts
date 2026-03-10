@@ -491,6 +491,9 @@ const jaJP = {
       noTags: 'タグがありません',
     },
     viewDetails: '詳細を表示',
+    deprecated: '非推奨',
+    deprecatedTooltip:
+      '対応する「ナレッジエンジン」プラグインをインストールしてください。',
   },
   mcp: {
     title: 'MCP',
@@ -709,7 +712,7 @@ const jaJP = {
     cannotChangeEmbeddingModel:
       '知識ベース作成後は埋め込みモデルを変更できません',
     updateKnowledgeBaseSuccess: '知識ベースの更新に成功しました',
-    updateKnowledgeBaseFailed: '知識ベースの更新に失敗しました',
+    updateKnowledgeBaseFailed: '知識ベースの更新に失敗しました：',
     documentsTab: {
       name: '名前',
       status: 'ステータス',
@@ -720,14 +723,14 @@ const jaJP = {
       supportedFormats:
         'PDF、Word、TXT、Markdownなどのドキュメントファイルをサポートしています',
       uploadSuccess: 'ファイルのアップロードに成功しました！',
-      uploadError: 'ファイルのアップロードに失敗しました。再度お試しください',
+      uploadError: 'ファイルのアップロードに失敗しました：',
       uploadingFile: 'ファイルをアップロード中...',
       fileSizeExceeded:
         'ファイルサイズが10MBの制限を超えています。より小さいファイルに分割してください。',
       actions: 'アクション',
       delete: 'ドキュメントを削除',
       fileDeleteSuccess: 'ドキュメントの削除に成功しました',
-      fileDeleteFailed: 'ドキュメントの削除に失敗しました',
+      fileDeleteFailed: 'ドキュメントの削除に失敗しました：',
       processing: '処理中',
       completed: '完了',
       failed: '失敗',
@@ -748,10 +751,13 @@ const jaJP = {
     content: '内容',
     fileName: 'ファイル名',
     noResults: '検索結果がありません',
-    retrieveError: '検索に失敗しました',
+    retrieveError: '検索に失敗しました：',
+    noEnginesAvailable: '利用可能なナレッジエンジンがありません',
+    installEngineHint:
+      '先に「ナレッジエンジン」プラグインをインストールしてください',
     unknownEngine: '不明なエンジン',
-    loadKnowledgeBaseFailed: 'ナレッジベースの読み込みに失敗しました',
-    deleteKnowledgeBaseFailed: 'ナレッジベースの削除に失敗しました',
+    loadKnowledgeBaseFailed: 'ナレッジベースの読み込みに失敗しました：',
+    deleteKnowledgeBaseFailed: 'ナレッジベースの削除に失敗しました：',
     getKnowledgeBaseListError: 'ナレッジベース一覧の取得に失敗しました：',
     addExternal: '外部ナレッジベースを追加',
     createExternalSuccess: '外部ナレッジベースが正常に作成されました',
@@ -762,6 +768,23 @@ const jaJP = {
     retrieverConfiguration: '検索器設定',
     retrieverInstallInfo: 'ナレッジ検索器プラグインは',
     retrieverMarketLink: 'こちらからインストールできます',
+    migration: {
+      title: 'ナレッジベースの移行',
+      description:
+        '新バージョンではナレッジベースをプラグインベースのアーキテクチャに再構築し、内蔵ナレッジベースと外部ナレッジベースを「ナレッジエンジン」プラグインとして統合しました。旧ナレッジベースデータの移行が必要です。旧データはデータベースに自動的にバックアップされています。',
+      detected:
+        '移行が必要なナレッジベースが{{total}}件見つかりました（内部{{internal}}件、外部{{external}}件）。',
+      startWithInstall: 'プラグインを自動インストールして移行',
+      startDataOnly: 'データのみ移行',
+      dataOnlyHint:
+        '「データのみ移行」はオフライン環境向けです。移行完了後に対応するプラグインを手動でインストールしてください。',
+      dismiss: '元データを破棄',
+      running: 'ナレッジベースを移行中です。しばらくお待ちください...',
+      success: 'ナレッジベースの移行が完了しました',
+      error: 'ナレッジベースの移行に失敗しました：',
+      dismissError: '操作に失敗しました',
+      retry: 'リトライ',
+    },
   },
   register: {
     title: 'LangBot を初期化 👋',

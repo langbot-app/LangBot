@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { KnowledgeBaseFile } from '@/app/infra/entities/api';
-import { I18nObject } from '@/app/infra/entities/common';
+import { I18nObject, CustomApiError } from '@/app/infra/entities/common';
 import { columns, DocumentFile } from './documents/columns';
 import { DataTable } from './documents/data-table';
 import FileUploadZone from './FileUploadZone';
@@ -87,7 +87,10 @@ export default function KBDoc({
       })
       .catch((error) => {
         console.error('Delete failed:', error);
-        toast.error(t('knowledge.documentsTab.fileDeleteFailed'));
+        toast.error(
+          t('knowledge.documentsTab.fileDeleteFailed') +
+            (error as CustomApiError).msg,
+        );
       });
   };
 

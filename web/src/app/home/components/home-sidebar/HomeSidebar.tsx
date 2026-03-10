@@ -422,12 +422,12 @@ export default function HomeSidebar({
                   const language = localStorage.getItem('langbot_language');
                   if (language === 'zh-Hans' || language === 'zh-Hant') {
                     window.open(
-                      'https://docs.langbot.app/zh/insight/guide.html',
+                      'https://docs.langbot.app/zh/insight/guide',
                       '_blank',
                     );
                   } else {
                     window.open(
-                      'https://docs.langbot.app/en/insight/guide.html',
+                      'https://docs.langbot.app/en/insight/guide',
                       '_blank',
                     );
                   }

@@ -562,8 +562,7 @@ function MarketPageContent({
         {/* Recommendation Lists */}
         {!searchQuery &&
           componentFilter === 'all' &&
-          selectedTags.length === 0 &&
-          currentPage === 1 && (
+          selectedTags.length === 0 && (
             <div className="pt-4">
               <RecommendationLists
                 lists={recommendationLists}

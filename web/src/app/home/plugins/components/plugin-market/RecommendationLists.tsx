@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import PluginMarketCardComponent from './plugin-market-card/PluginMarketCardComponent';
@@ -18,7 +18,7 @@ export interface RecommendationList {
   plugins: PluginV4[];
 }
 
-const PAGE_SIZE = 4; // plugins per page in a recommendation row
+// Match the main plugin grid: grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4
 
 function pluginToVO(
   plugin: PluginV4,
@@ -54,11 +54,44 @@ function RecommendationListRow({
 }) {
   const { t } = useTranslation();
   const [page, setPage] = useState(0);
+  const [perPage, setPerPage] = useState(4);
+  const gridRef = useRef<HTMLDivElement>(null);
 
   const plugins = list.plugins || [];
-  const totalPages = Math.ceil(plugins.length / PAGE_SIZE);
-  const start = page * PAGE_SIZE;
-  const visiblePlugins = plugins.slice(start, start + PAGE_SIZE);
+
+  // Measure how many columns the CSS grid actually renders
+  const measureCols = useCallback(() => {
+    if (!gridRef.current) return;
+    const style = window.getComputedStyle(gridRef.current);
+    const cols = style.gridTemplateColumns.split(' ').length;
+    setPerPage(cols);
+  }, []);
+
+  useEffect(() => {
+    measureCols();
+    const observer = new ResizeObserver(measureCols);
+    if (gridRef.current) observer.observe(gridRef.current);
+    return () => observer.disconnect();
+  }, [measureCols]);
+
+  // Auto-advance every 5 seconds
+  useEffect(() => {
+    if (plugins.length <= perPage) return;
+    const timer = setInterval(() => {
+      setPage((p) => {
+        const tp = Math.max(1, Math.ceil(plugins.length / perPage));
+        return p >= tp - 1 ? 0 : p + 1;
+      });
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [plugins.length, perPage]);
+
+  const totalPages = Math.max(1, Math.ceil(plugins.length / perPage));
+  const safePage = Math.min(page, totalPages - 1);
+  if (safePage !== page) setPage(safePage);
+
+  const start = safePage * perPage;
+  const visiblePlugins = plugins.slice(start, start + perPage);
 
   if (plugins.length === 0) return null;
 
@@ -77,19 +110,19 @@ function RecommendationListRow({
               variant="ghost"
               size="sm"
               onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0}
+              disabled={safePage === 0}
               className="h-7 w-7 p-0"
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>
             <span className="text-xs text-muted-foreground px-1">
-              {page + 1} / {totalPages}
+              {safePage + 1} / {totalPages}
             </span>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-              disabled={page >= totalPages - 1}
+              disabled={safePage >= totalPages - 1}
               className="h-7 w-7 p-0"
             >
               <ChevronRight className="w-4 h-4" />
@@ -97,7 +130,10 @@ function RecommendationListRow({
           </div>
         )}
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6">
+      <div
+        ref={gridRef}
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6"
+      >
         {visiblePlugins.map((plugin) => (
           <PluginMarketCardComponent
             key={plugin.author + ' / ' + plugin.name}

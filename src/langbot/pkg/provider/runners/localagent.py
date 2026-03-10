@@ -74,7 +74,13 @@ class LocalAgentRunner(runner.RequestRunner):
                     self.ap.logger.warning(f'Knowledge base {kb_uuid} not found, skipping')
                     continue
 
-                result = await kb.retrieve(user_message_text)
+                result = await kb.retrieve(
+                    user_message_text,
+                    settings={
+                        'sender_id': str(query.sender_id),
+                        'session_name': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+                    },
+                )
 
                 if result:
                     all_results.extend(result)

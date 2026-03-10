@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.8.7"
+version = "4.9.0"
 description = "Production-grade platform for building agentic IM bots"
 readme = "README.md"
 license-files = ["LICENSE"]
@@ -63,8 +63,8 @@ dependencies = [
     "langchain-text-splitters>=0.0.1",
     "chromadb>=0.4.24",
     "qdrant-client (>=1.15.1,<2.0.0)",
-    "pyseekdb==1.0.0b7",
-    "langbot-plugin==0.3.0rc1",
+    "pyseekdb==1.1.0.post3",
+    "langbot-plugin==0.3.0",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "tboxsdk>=0.0.10",

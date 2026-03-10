@@ -483,6 +483,9 @@ const enUS = {
     allComponents: 'All Components',
     requestPlugin: 'Request Plugin',
     viewDetails: 'View Details',
+    deprecated: 'Deprecated',
+    deprecatedTooltip:
+      'Please install the corresponding Knowledge Engine plugin.',
     tags: {
       filterByTags: 'Filter by Tags',
       selected: 'selected',
@@ -707,7 +710,7 @@ const enUS = {
     cannotChangeEmbeddingModel:
       'Knowledge base created cannot be modified embedding model',
     updateKnowledgeBaseSuccess: 'Knowledge base updated successfully',
-    updateKnowledgeBaseFailed: 'Knowledge base update failed',
+    updateKnowledgeBaseFailed: 'Knowledge base update failed: ',
     documentsTab: {
       name: 'Name',
       status: 'Status',
@@ -717,14 +720,14 @@ const enUS = {
       supportedFormats:
         'Supports PDF, Word, TXT, Markdown, HTML, ZIP and other document formats',
       uploadSuccess: 'File uploaded successfully!',
-      uploadError: 'File upload failed, please try again',
+      uploadError: 'File upload failed: ',
       uploadingFile: 'Uploading file...',
       fileSizeExceeded:
         'File size exceeds 10MB limit. Please split into smaller files.',
       actions: 'Actions',
       delete: 'Delete File',
       fileDeleteSuccess: 'File deleted successfully',
-      fileDeleteFailed: 'File deletion failed',
+      fileDeleteFailed: 'File deletion failed: ',
       processing: 'Processing',
       completed: 'Completed',
       failed: 'Failed',
@@ -745,7 +748,7 @@ const enUS = {
     content: 'Content',
     fileName: 'File Name',
     noResults: 'No results',
-    retrieveError: 'Retrieve failed',
+    retrieveError: 'Retrieve failed: ',
     unknownEngine: 'Unknown Engine',
     knowledgeEngine: 'Knowledge Engine',
     knowledgeEngineRequired: 'Knowledge engine is required',
@@ -757,10 +760,10 @@ const enUS = {
     engineSettingsReadonly: 'read-only in edit mode',
     retrievalSettings: 'Retrieval Settings',
     noEnginesAvailable: 'No knowledge base engines available',
-    installEngineHint: 'Please install a knowledge base plugin first',
-    createKnowledgeBaseFailed: 'Failed to create knowledge base',
-    loadKnowledgeBaseFailed: 'Failed to load knowledge base',
-    deleteKnowledgeBaseFailed: 'Failed to delete knowledge base',
+    installEngineHint: 'Please install a "Knowledge Engine" plugin first',
+    createKnowledgeBaseFailed: 'Failed to create knowledge base: ',
+    loadKnowledgeBaseFailed: 'Failed to load knowledge base: ',
+    deleteKnowledgeBaseFailed: 'Failed to delete knowledge base: ',
     getKnowledgeBaseListError: 'Failed to get knowledge base list: ',
     embeddingModel: 'Embedding Model',
     embeddingModelRequired: 'Embedding model is required for this engine',
@@ -773,6 +776,23 @@ const enUS = {
     retrieverConfiguration: 'Retriever Configuration',
     retrieverInstallInfo: 'You can install Knowledge Retriever plugins from',
     retrieverMarketLink: 'here',
+    migration: {
+      title: 'Knowledge Base Migration',
+      description:
+        'The new version has refactored the knowledge base into a plugin-based architecture, unifying built-in and external knowledge bases as "Knowledge Engine" plugins. Migration of legacy knowledge base data is required. Your old data has been automatically backed up in the database.',
+      detected:
+        'Found {{total}} knowledge base(s) to migrate ({{internal}} internal, {{external}} external).',
+      startWithInstall: 'Auto-install Plugin & Migrate',
+      startDataOnly: 'Migrate Data Only',
+      dataOnlyHint:
+        '"Migrate Data Only" is for offline/intranet environments. Please install the corresponding plugin manually after migration.',
+      dismiss: 'Discard Original Data',
+      running: 'Migrating knowledge bases, please wait...',
+      success: 'Knowledge base migration completed',
+      error: 'Knowledge base migration failed: ',
+      dismissError: 'Operation failed',
+      retry: 'Retry',
+    },
   },
   register: {
     title: 'Initialize LangBot 👋',

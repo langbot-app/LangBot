@@ -262,6 +262,12 @@ export interface ApiRespSystemInfo {
   limitation: SystemLimitation;
 }
 
+export interface RagMigrationStatusResp {
+  needed: boolean;
+  internal_kb_count: number;
+  external_kb_count: number;
+}
+
 export interface ApiRespPluginSystemStatus {
   is_enable: boolean;
   is_connected: boolean;

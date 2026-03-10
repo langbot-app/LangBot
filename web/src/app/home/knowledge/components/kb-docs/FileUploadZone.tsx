@@ -12,7 +12,7 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { ParserInfo } from '@/app/infra/entities/api';
-import { I18nObject } from '@/app/infra/entities/common';
+import { CustomApiError, I18nObject } from '@/app/infra/entities/common';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 
 interface FileUploadZoneProps {
@@ -97,7 +97,9 @@ export default function FileUploadZone({
         onUploadSuccess();
       } catch (error) {
         console.error('File upload failed:', error);
-        const errorMessage = t('knowledge.documentsTab.uploadError');
+        const errorMessage =
+          t('knowledge.documentsTab.uploadError') +
+          (error as CustomApiError).msg;
         toast.error(errorMessage, { id: toastId });
         onUploadError(errorMessage);
       } finally {
