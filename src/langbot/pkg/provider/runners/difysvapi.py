@@ -74,28 +74,21 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
     @staticmethod
     def _get_stream_chunk_batch_size(query: pipeline_query.Query) -> int:
-        pipeline_config = getattr(query, 'pipeline_config', {}) or {}
-        output_config = pipeline_config.get('output', {}) or {}
-        wecom_stream_config = output_config.get('wecom-stream', {}) or {}
-        value = wecom_stream_config.get('chunk-batch-size')
-
-        if value is None:
-            adapter = getattr(query, 'adapter', None)
-            adapter_config = getattr(adapter, 'config', {}) or {}
-            value = adapter_config.get('PullChunkBatchSize', 2)
+        adapter = getattr(query, 'adapter', None)
+        adapter_config = getattr(adapter, 'config', {}) or {}
+        value = adapter_config.get('PullChunkBatchSize', 4)
 
         try:
             value = int(value)
         except (TypeError, ValueError):
-            value = 2
+            value = 4
         return max(1, min(20, value))
 
     @staticmethod
     def _get_stream_flush_window_ms(query: pipeline_query.Query) -> int:
-        pipeline_config = getattr(query, 'pipeline_config', {}) or {}
-        output_config = pipeline_config.get('output', {}) or {}
-        wecom_stream_config = output_config.get('wecom-stream', {}) or {}
-        value = wecom_stream_config.get('flush-window-ms', 2000)
+        adapter = getattr(query, 'adapter', None)
+        adapter_config = getattr(adapter, 'config', {}) or {}
+        value = adapter_config.get('PullFlushWindowMs', 2000)
 
         try:
             value = int(value)
@@ -471,6 +464,8 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         chunk = None  # 初始化chunk变量，防止在没有响应时引用错误
 
         is_final = False
+        stream_completed = False
+        final_snapshot_emitted = False
         think_start = False
         think_end = False
         last_emitted_content = ''
@@ -497,28 +492,31 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             # elif mode == 'basic':
             # 因为都只是返回的 message也没有工具调用什么的，暂时不分类
             if chunk['event'] == 'message':
-                message_idx += 1
-                pending_chunk_count += 1
-                if remove_think:
-                    if '<think>' in chunk['answer'] and not think_start:
-                        think_start = True
-                        continue
-                    if '</think>' in chunk['answer'] and not think_end:
-                        import re
+                answer = chunk.get('answer', '')
+                if answer != '':
+                    message_idx += 1
+                    pending_chunk_count += 1
+                    if remove_think:
+                        if '<think>' in answer and not think_start:
+                            think_start = True
+                            continue
+                        if '</think>' in answer and not think_end:
+                            import re
 
-                        content = re.sub(r'^\n</think>', '', chunk['answer'])
-                        basic_mode_pending_chunk += content
-                        think_end = True
-                    elif think_end:
-                        basic_mode_pending_chunk += chunk['answer']
-                    if think_start:
-                        continue
+                            content = re.sub(r'^\n</think>', '', answer)
+                            basic_mode_pending_chunk += content
+                            think_end = True
+                        elif think_end:
+                            basic_mode_pending_chunk += answer
+                        if think_start:
+                            continue
 
-                else:
-                    basic_mode_pending_chunk += chunk['answer']
+                    else:
+                        basic_mode_pending_chunk += answer
 
-            if chunk['event'] == 'message_end':
+            if chunk['event'] in ('message_end', 'workflow_finished'):
                 is_final = True
+                stream_completed = True
 
             if self._should_emit_stream_snapshot(
                 content=basic_mode_pending_chunk,
@@ -534,12 +532,24 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     content=basic_mode_pending_chunk,
                     is_final=is_final,
                 )
+                if is_final:
+                    final_snapshot_emitted = True
                 last_emitted_content = basic_mode_pending_chunk
                 pending_chunk_count = 0
                 last_emit_at = time.monotonic()
 
         if chunk is None:
             raise errors.DifyAPIError('Dify API 没有返回任何响应，请检查网络连接和API配置')
+
+        if stream_completed and not final_snapshot_emitted:
+            final_content = basic_mode_pending_chunk or last_emitted_content
+            if final_content:
+                self.ap.logger.debug('dify-chat-stream: emit final snapshot fallback')
+                yield provider_message.MessageChunk(
+                    role='assistant',
+                    content=final_content,
+                    is_final=True,
+                )
 
         query.session.using_conversation.uuid = chunk['conversation_id']
 
@@ -572,6 +582,8 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         chunk = None  # 初始化chunk变量，防止在没有响应时引用错误
         message_idx = 0
         is_final = False
+        stream_completed = False
+        final_snapshot_emitted = False
         think_start = False
         think_end = False
         last_emitted_content = ''
@@ -597,27 +609,30 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 continue
 
             if chunk['event'] == 'agent_message':
-                message_idx += 1
-                pending_chunk_count += 1
-                if remove_think:
-                    if '<think>' in chunk['answer'] and not think_start:
-                        think_start = True
-                        continue
-                    if '</think>' in chunk['answer'] and not think_end:
-                        import re
+                answer = chunk.get('answer', '')
+                if answer != '':
+                    message_idx += 1
+                    pending_chunk_count += 1
+                    if remove_think:
+                        if '<think>' in answer and not think_start:
+                            think_start = True
+                            continue
+                        if '</think>' in answer and not think_end:
+                            import re
 
-                        content = re.sub(r'^\n</think>', '', chunk['answer'])
-                        pending_agent_message += content
-                        think_end = True
-                    elif think_end or not think_start:
-                        pending_agent_message += chunk['answer']
-                    if think_start and not think_end:
-                        continue
+                            content = re.sub(r'^\n</think>', '', answer)
+                            pending_agent_message += content
+                            think_end = True
+                        elif think_end or not think_start:
+                            pending_agent_message += answer
+                        if think_start and not think_end:
+                            continue
 
-                else:
-                    pending_agent_message += chunk['answer']
-            elif chunk['event'] == 'message_end':
+                    else:
+                        pending_agent_message += answer
+            elif chunk['event'] in ('message_end', 'workflow_finished'):
                 is_final = True
+                stream_completed = True
             else:
                 if chunk['event'] == 'agent_thought':
                     if chunk['tool'] != '' and chunk['observation'] != '':  # 工具调用结果，跳过
@@ -674,12 +689,24 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     content=pending_agent_message,
                     is_final=is_final,
                 )
+                if is_final:
+                    final_snapshot_emitted = True
                 last_emitted_content = pending_agent_message
                 pending_chunk_count = 0
                 last_emit_at = time.monotonic()
 
         if chunk is None:
             raise errors.DifyAPIError('Dify API 没有返回任何响应，请检查网络连接和API配置')
+
+        if stream_completed and not final_snapshot_emitted:
+            final_content = pending_agent_message or last_emitted_content
+            if final_content:
+                self.ap.logger.debug('dify-agent-stream: emit final snapshot fallback')
+                yield provider_message.MessageChunk(
+                    role='assistant',
+                    content=final_content,
+                    is_final=True,
+                )
 
         query.session.using_conversation.uuid = chunk['conversation_id']
 
@@ -716,6 +743,8 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         inputs.update(query.variables)
         messsage_idx = 0
         is_final = False
+        stream_completed = False
+        final_snapshot_emitted = False
         think_start = False
         think_end = False
         workflow_contents = ''
@@ -737,29 +766,32 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 continue
             if chunk['event'] == 'workflow_finished':
                 is_final = True
+                stream_completed = True
                 if chunk['data']['error']:
                     raise errors.DifyAPIError(chunk['data']['error'])
 
             if chunk['event'] == 'text_chunk':
-                messsage_idx += 1
-                pending_chunk_count += 1
-                if remove_think:
-                    if '<think>' in chunk['data']['text'] and not think_start:
-                        think_start = True
-                        continue
-                    if '</think>' in chunk['data']['text'] and not think_end:
-                        import re
+                text = chunk['data'].get('text', '')
+                if text != '':
+                    messsage_idx += 1
+                    pending_chunk_count += 1
+                    if remove_think:
+                        if '<think>' in text and not think_start:
+                            think_start = True
+                            continue
+                        if '</think>' in text and not think_end:
+                            import re
 
-                        content = re.sub(r'^\n</think>', '', chunk['data']['text'])
-                        workflow_contents += content
-                        think_end = True
-                    elif think_end:
-                        workflow_contents += chunk['data']['text']
-                    if think_start:
-                        continue
+                            content = re.sub(r'^\n</think>', '', text)
+                            workflow_contents += content
+                            think_end = True
+                        elif think_end:
+                            workflow_contents += text
+                        if think_start:
+                            continue
 
-                else:
-                    workflow_contents += chunk['data']['text']
+                    else:
+                        workflow_contents += text
 
             if chunk['event'] == 'node_started':
                 if chunk['data']['node_type'] == 'start' or chunk['data']['node_type'] == 'end':
@@ -796,9 +828,21 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     content=workflow_contents,
                     is_final=is_final,
                 )
+                if is_final:
+                    final_snapshot_emitted = True
                 last_emitted_content = workflow_contents
                 pending_chunk_count = 0
                 last_emit_at = time.monotonic()
+
+        if stream_completed and not final_snapshot_emitted:
+            final_content = workflow_contents or last_emitted_content
+            if final_content:
+                self.ap.logger.debug('dify-workflow-stream: emit final snapshot fallback')
+                yield provider_message.MessageChunk(
+                    role='assistant',
+                    content=final_content,
+                    is_final=True,
+                )
 
     async def run(self, query: pipeline_query.Query) -> typing.AsyncGenerator[provider_message.Message, None]:
         """运行请求"""
