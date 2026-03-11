@@ -73,46 +73,44 @@ stages:
         type: integer
         required: true
         default: 0
-  - name: wecom-stream
-    label:
-      en_US: WeCom Stream
-      zh_Hans: 企微流式
-    description:
-      en_US: Stream tuning options for WeCom pull mode. Larger chunk batch size reduces refresh frequency and lowers the risk of rate limiting.
-      zh_Hans: 企业微信 Pull 流式的调优选项。Chunk 批大小越大，刷新越少，越不容易触发企微限流。
-    config:
-      - name: chunk-batch-size
-        label:
-          en_US: Chunk Batch Size
-          zh_Hans: Chunk 批大小
-        description:
-          en_US: Merge every N model chunks into one refreshed snapshot.
-          zh_Hans: 每累计 N 个模型 chunk 再输出一次新的流式快照。
-        type: integer
-        required: true
-        default: 2
-      - name: flush-window-ms
-        label:
-          en_US: Flush Window (ms)
-          zh_Hans: 时间窗口（毫秒）
-        description:
-          en_US: Emit a refreshed snapshot when content changed and the window elapsed, even if chunk batch size is not reached.
-          zh_Hans: 当内容有变化且时间窗口到达时，即使未达到 chunk 批大小，也会主动输出新的流式快照。
-        type: integer
-        required: true
-        default: 2000
   - name: misc
     label:
       en_US: Misc
       zh_Hans: 杂项
     config:
-      - name: hide-exception
+      - name: exception-handling
         label:
-          en_US: Hide Exception
-          zh_Hans: 不输出异常信息给用户
-        type: boolean
+          en_US: Exception Handling Strategy
+          zh_Hans: 异常处理策略
+        description:
+          en_US: Controls how error messages are displayed to the user when an AI request fails
+          zh_Hans: 控制 AI 请求失败时向用户展示错误信息的方式
+        type: select
         required: true
-        default: true
+        default: show-hint
+        options:
+          - name: show-error
+            label:
+              en_US: Show Full Error
+              zh_Hans: 显示完整报错信息
+          - name: show-hint
+            label:
+              en_US: Show Failure Hint
+              zh_Hans: 仅文字提示
+          - name: hide
+            label:
+              en_US: Hide All
+              zh_Hans: 不显示任何异常信息
+      - name: failure-hint
+        label:
+          en_US: Failure Hint Text
+          zh_Hans: 失败提示文本
+        description:
+          en_US: The text to display when a request fails. Only effective when Exception Handling Strategy is set to "Show Failure Hint"
+          zh_Hans: 请求失败时显示的提示文本，仅在异常处理策略设置为"仅文字提示"时生效
+        type: string
+        required: false
+        default: 'Request failed.'
       - name: at-sender
         label:
           en_US: At Sender
@@ -147,3 +145,4 @@ stages:
         type: boolean
         required: true
         default: false
+

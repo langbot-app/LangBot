@@ -94,12 +94,9 @@
             "min": 0,
             "max": 0
         },
-        "wecom-stream": {
-            "chunk-batch-size": 2,
-            "flush-window-ms": 2000
-        },
         "misc": {
-            "hide-exception": true,
+            "exception-handling": "show-hint",
+            "failure-hint": "Request failed.",
             "at-sender": true,
             "quote-origin": true,
             "track-function-calls": false,
