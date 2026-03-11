@@ -2,7 +2,6 @@ import asyncio
 import base64
 import json
 import time
-import hashlib
 import traceback
 import uuid
 import xml.etree.ElementTree as ET
@@ -17,17 +16,6 @@ from quart import Quart, request, Response, jsonify
 from langbot.libs.wecom_ai_bot_api import wecombotevent
 from langbot.libs.wecom_ai_bot_api.WXBizMsgCrypt3 import WXBizMsgCrypt
 from langbot.pkg.platform.logger import EventLogger
-
-
-def _summarize_stream_text(content: str, tail_length: int = 32) -> dict[str, str | int]:
-    text = content or ""
-    encoded = text.encode('utf-8')
-    return {
-        "chars": len(text),
-        "bytes": len(encoded),
-        "tail_repr": repr(text[-tail_length:]),
-        "md5": hashlib.md5(encoded).hexdigest()[:12] if encoded else "0" * 12,
-    }
 
 
 @dataclass
@@ -74,9 +62,6 @@ class StreamSession:
 
     # 缓存最近一次片段，处理重试或超时兜底
     last_chunk: Optional[StreamChunk] = None
-
-    # 发布到企业微信 stream 的快照序号，便于串联日志
-    publish_seq: int = 0
 
 
 class StreamSessionManager:
@@ -148,16 +133,12 @@ class StreamSessionManager:
             return False
 
         session.last_access = time.time()
-        session.publish_seq += 1
-        chunk.meta.setdefault('seq', session.publish_seq)
         session.last_chunk = chunk
 
         # 企业微信消费的是当前完整快照，保留最新片段即可，避免旧片段堆积导致显示延迟。
-        cleared_count = 0
         while not session.queue.empty():
             try:
                 session.queue.get_nowait()
-                cleared_count += 1
             except asyncio.QueueEmpty:
                 break
 
@@ -169,22 +150,6 @@ class StreamSessionManager:
 
         if chunk.is_final:
             session.finished = True
-
-        summary = _summarize_stream_text(chunk.content)
-        await self.logger.debug(
-            '[wecom-stream] '
-            f'action=publish '
-            f'stream_id={stream_id or "-"} '
-            f'msg_id={session.msg_id or "-"} '
-            f'seq={chunk.meta.get("seq", -1)} '
-            f'finish={str(chunk.is_final).lower()} '
-            f'cleared={cleared_count} '
-            f'queue_size={session.queue.qsize()} '
-            f'content_chars={summary["chars"]} '
-            f'content_bytes={summary["bytes"]} '
-            f'content_tail={summary["tail_repr"]} '
-            f'content_md5={summary["md5"]}'
-        )
 
         return True
 
@@ -213,46 +178,11 @@ class StreamSessionManager:
             if chunk.is_final:
                 session.finished = True
 
-            summary = _summarize_stream_text(chunk.content)
-            await self.logger.debug(
-                '[wecom-stream] '
-                f'action=consume '
-                f'stream_id={stream_id or "-"} '
-                f'msg_id={session.msg_id or "-"} '
-                f'seq={chunk.meta.get("seq", -1)} '
-                f'finish={str(chunk.is_final).lower()} '
-                f'queue_size={session.queue.qsize()} '
-                f'content_chars={summary["chars"]} '
-                f'content_bytes={summary["bytes"]} '
-                f'content_tail={summary["tail_repr"]} '
-                f'content_md5={summary["md5"]}'
-            )
             return chunk
         except asyncio.TimeoutError:
             if session.finished and session.last_chunk:
-                summary = _summarize_stream_text(session.last_chunk.content)
-                await self.logger.debug(
-                    '[wecom-stream] '
-                    f'action=consume_timeout_last_chunk '
-                    f'stream_id={stream_id or "-"} '
-                    f'msg_id={session.msg_id or "-"} '
-                    f'seq={session.last_chunk.meta.get("seq", -1)} '
-                    f'finish={str(session.last_chunk.is_final).lower()} '
-                    f'queue_size={session.queue.qsize()} '
-                    f'content_chars={summary["chars"]} '
-                    f'content_bytes={summary["bytes"]} '
-                    f'content_tail={summary["tail_repr"]} '
-                    f'content_md5={summary["md5"]}'
-                )
                 return session.last_chunk
 
-            await self.logger.debug(
-                '[wecom-stream] '
-                f'action=consume_timeout_empty '
-                f'stream_id={stream_id or "-"} '
-                f'msg_id={session.msg_id or "-"} '
-                f'queue_size={session.queue.qsize()}'
-            )
             return None
 
     def mark_finished(self, stream_id: str) -> None:
@@ -331,47 +261,6 @@ class WecomBotClient:
         self.stream_timeout_final_text = '抱歉，处理超时，请稍后重试。'
         self.stream_error_final_text = '抱歉，处理失败，请稍后重试。'
 
-    async def _log_stream_debug(
-        self,
-        action: str,
-        stream_id: str,
-        session: Optional[StreamSession] = None,
-        source: str = '',
-        chunk: Optional[StreamChunk] = None,
-    ) -> None:
-        """记录流式会话关键路径日志，便于在消息记录中排查轮询与收口问题。"""
-        age_ms = -1
-        msg_id = ''
-        if session:
-            msg_id = session.msg_id
-            age_ms = int((time.time() - session.created_at) * 1000)
-
-        finish = False
-        seq = -1
-        summary = _summarize_stream_text('')
-        if chunk:
-            finish = chunk.is_final
-            seq = int(chunk.meta.get('seq', -1))
-            summary = _summarize_stream_text(chunk.content)
-
-        queue_size = session.queue.qsize() if session else -1
-
-        await self.logger.debug(
-            '[wecom-stream] '
-            f'action={action} '
-            f'stream_id={stream_id or "-"} '
-            f'msg_id={msg_id or "-"} '
-            f'source={source or "-"} '
-            f'seq={seq} '
-            f'finish={str(finish).lower()} '
-            f'age_ms={age_ms} '
-            f'queue_size={queue_size} '
-            f'content_chars={summary["chars"]} '
-            f'content_bytes={summary["bytes"]} '
-            f'content_tail={summary["tail_repr"]} '
-            f'content_md5={summary["md5"]}'
-        )
-
     def _is_stream_lifetime_exceeded(self, session: StreamSession) -> bool:
         """判断当前 stream 是否已经超过最大生命周期。"""
         if session.finished:
@@ -398,13 +287,6 @@ class WecomBotClient:
             session.finished = True
             session.last_access = time.time()
 
-        await self._log_stream_debug(
-            action='force_finish',
-            stream_id=stream_id,
-            session=session,
-            source=reason if published else f'{reason}_no_queue',
-            chunk=chunk,
-        )
         return chunk
 
     def _resolve_followup_chunk(
@@ -535,12 +417,6 @@ class WecomBotClient:
                 if is_new:
                     asyncio.create_task(self._dispatch_event(event))
 
-        await self._log_stream_debug(
-            action='initial_response',
-            stream_id=session.stream_id,
-            session=session,
-            source='new' if is_new else 'reuse',
-        )
 
         payload = self._build_stream_payload(session.stream_id, '', False)
         return await self._encrypt_and_reply(payload, nonce)
@@ -567,12 +443,6 @@ class WecomBotClient:
         session = self.stream_sessions.get_session(stream_id)
         if not session:
             chunk = StreamChunk(content=self.stream_error_final_text, is_final=True, meta={'reason': 'missing_session'})
-            await self._log_stream_debug(
-                action='followup_response',
-                stream_id=stream_id,
-                source='missing_session',
-                chunk=chunk,
-            )
             payload = self._build_stream_payload(stream_id, chunk.content, chunk.is_final)
             return await self._encrypt_and_reply(payload, nonce)
 
@@ -601,22 +471,9 @@ class WecomBotClient:
             if not chunk:
                 chunk = self._resolve_followup_chunk(session, cached_content)
             if not chunk:
-                await self._log_stream_debug(
-                    action='followup_response',
-                    stream_id=stream_id,
-                    session=session,
-                    source='empty_response',
-                )
                 payload = self._build_stream_payload(stream_id, '', False)
                 return await self._encrypt_and_reply(payload, nonce)
 
-        await self._log_stream_debug(
-            action='followup_response',
-            stream_id=stream_id,
-            session=session,
-            source=chunk.meta.get('reason', 'queue'),
-            chunk=chunk,
-        )
         payload = self._build_stream_payload(stream_id, chunk.content, chunk.is_final)
         if chunk.is_final:
             self.stream_sessions.mark_finished(stream_id)
@@ -944,19 +801,6 @@ class WecomBotClient:
         # 根据 msg_id 找到对应 stream 会话，如果不存在说明当前消息非流式
         stream_id = self.stream_sessions.get_stream_id_by_msg(msg_id)
         if not stream_id:
-            summary = _summarize_stream_text(content)
-            await self.logger.debug(
-                '[wecom-stream] '
-                f'action=push_stream_chunk_missing_session '
-                f'stream_id=- '
-                f'msg_id={msg_id or "-"} '
-                f'seq=-1 '
-                f'finish={str(is_final).lower()} '
-                f'content_chars={summary["chars"]} '
-                f'content_bytes={summary["bytes"]} '
-                f'content_tail={summary["tail_repr"]} '
-                f'content_md5={summary["md5"]}'
-            )
             return False
 
         chunk = StreamChunk(content=content, is_final=is_final)

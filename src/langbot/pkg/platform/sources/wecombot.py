@@ -2,7 +2,6 @@ from __future__ import annotations
 import typing
 import asyncio
 import traceback
-import hashlib
 
 import datetime
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
@@ -12,17 +11,6 @@ import langbot_plugin.api.entities.builtin.platform.entities as platform_entitie
 from ..logger import EventLogger
 from langbot.libs.wecom_ai_bot_api.wecombotevent import WecomBotEvent
 from langbot.libs.wecom_ai_bot_api.api import WecomBotClient
-
-
-def _summarize_stream_text(content: str, tail_length: int = 32) -> dict[str, str | int]:
-    text = content or ''
-    encoded = text.encode('utf-8')
-    return {
-        'chars': len(text),
-        'bytes': len(encoded),
-        'tail_repr': repr(text[-tail_length:]),
-        'md5': hashlib.md5(encoded).hexdigest()[:12] if encoded else '0' * 12,
-    }
 
 
 class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -158,7 +146,6 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
 
         return chain
 
-
 class WecomBotEventConverter(abstract_platform_adapter.AbstractEventConverter):
     @staticmethod
     async def yiri2target(event: platform_events.MessageEvent):
@@ -200,7 +187,6 @@ class WecomBotEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 )
             except Exception:
                 print(traceback.format_exc())
-
 
 class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot: WecomBotClient
@@ -297,35 +283,9 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         # 转换为纯文本（智能机器人当前协议仅支持文本流）
         content = await self.message_converter.yiri2target(message)
         msg_id = message_source.source_platform_object.message_id
-        resp_message_id = getattr(bot_message, 'resp_message_id', '') if bot_message is not None else ''
-        summary = _summarize_stream_text(content)
-
-        await self.logger.debug(
-            '[wecom-stream] '
-            f'action=adapter_reply_chunk '
-            f'msg_id={msg_id or "-"} '
-            f'resp_message_id={resp_message_id or "-"} '
-            f'finish={str(is_final).lower()} '
-            f'content_chars={summary["chars"]} '
-            f'content_bytes={summary["bytes"]} '
-            f'content_tail={summary["tail_repr"]} '
-            f'content_md5={summary["md5"]}'
-        )
-
         # 将片段推送到 WecomBotClient 中的队列，返回值用于判断是否走降级逻辑
         success = await self.bot.push_stream_chunk(msg_id, content, is_final=is_final)
         if not success and is_final:
-            await self.logger.debug(
-                '[wecom-stream] '
-                f'action=adapter_reply_chunk_fallback '
-                f'msg_id={msg_id or "-"} '
-                f'resp_message_id={resp_message_id or "-"} '
-                f'finish=true '
-                f'content_chars={summary["chars"]} '
-                f'content_bytes={summary["bytes"]} '
-                f'content_tail={summary["tail_repr"]} '
-                f'content_md5={summary["md5"]}'
-            )
             # 未命中流式队列时使用旧有 set_message 兜底
             await self.bot.set_message(msg_id, content)
         return {'stream': success}

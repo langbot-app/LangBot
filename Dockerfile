@@ -10,12 +10,10 @@ FROM python:3.12.7-slim
 
 WORKDIR /app
 
-ENV PYTHONPATH=/app/src
+# 先复制依赖文件和后端运行必需源代码，尽量利用 Docker 层缓存
+COPY pyproject.toml uv.lock README.md LICENSE main.py ./
+COPY src ./src
 
-# 先复制依赖文件，利用 Docker 层缓存
-COPY pyproject.toml uv.lock ./
-
-# 安装系统依赖和 Python 依赖（排除开发依赖）
 RUN apt update \
     && apt install gcc -y \
     && python -m pip install --no-cache-dir uv \
@@ -25,9 +23,9 @@ RUN apt update \
     && rm -rf /var/lib/apt/lists/* \
     && touch /.dockerenv
 
-# 再复制源代码，代码变化不会触发依赖重装
+# 再复制其余运行时文件，避免无关文件变更导致依赖重装
 COPY . .
 
 COPY --from=node /app/web/out ./web/out
 
-CMD [ "uv", "run", "--no-sync", "python", "-m", "langbot" ]
+CMD [ "uv", "run", "--no-sync", "main.py" ]
