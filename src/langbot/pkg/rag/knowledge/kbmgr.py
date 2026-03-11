@@ -321,13 +321,19 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         if not plugin_id:
             raise ValueError(f'No RAG plugin ID configured for KB {kb.uuid}. Retrieval failed.')
 
+        # Session context (e.g. session_name) stays in retrieval_settings
+        # for plugins that need it. Do NOT move them into filters, as filters
+        # are passed directly to vector_search by some plugins (e.g. LangRAG)
+        # and would cause empty results when the metadata field doesn't exist.
+        filters = settings.pop('filters', {})
+
         retrieval_context = {
             'query': query,
             'knowledge_base_id': kb.uuid,
             'collection_id': kb.collection_id or kb.uuid,
             'retrieval_settings': settings,
             'creation_settings': kb.creation_settings or {},
-            'filters': settings.pop('filters', {}),
+            'filters': filters,
         }
 
         result = await self.ap.plugin_connector.call_rag_retrieve(

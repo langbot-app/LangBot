@@ -40,6 +40,7 @@ import {
   ModelProvider,
   ApiRespKnowledgeEngines,
   ApiRespParsers,
+  RagMigrationStatusResp,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
@@ -708,6 +709,23 @@ export class BackendClient extends BaseHttpClient {
 
   public getPluginSystemStatus(): Promise<ApiRespPluginSystemStatus> {
     return this.get('/api/v1/system/status/plugin-system');
+  }
+
+  // ============ RAG Migration API ============
+  public getRagMigrationStatus(): Promise<RagMigrationStatusResp> {
+    return this.get('/api/v1/knowledge/migration/status');
+  }
+
+  public executeRagMigration(
+    installPlugin: boolean = true,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.post('/api/v1/knowledge/migration/execute', {
+      install_plugin: installPlugin,
+    });
+  }
+
+  public dismissRagMigration(): Promise<object> {
+    return this.post('/api/v1/knowledge/migration/dismiss');
   }
 
   public getPluginDebugInfo(): Promise<{

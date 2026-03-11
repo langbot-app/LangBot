@@ -36,11 +36,11 @@ export default function NewVersionDialog({
   const getUpdateDocsUrl = () => {
     const language = i18n.language;
     if (language === 'zh-Hans' || language === 'zh-Hant') {
-      return 'https://docs.langbot.app/zh/deploy/update.html';
+      return 'https://docs.langbot.app/zh/deploy/update';
     } else if (language === 'ja-JP') {
-      return 'https://docs.langbot.app/ja/deploy/update.html';
+      return 'https://docs.langbot.app/ja/deploy/update';
     } else {
-      return 'https://docs.langbot.app/en/deploy/update.html';
+      return 'https://docs.langbot.app/en/deploy/update';
     }
   };
 

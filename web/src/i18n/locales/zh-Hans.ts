@@ -468,6 +468,8 @@ const zhHans = {
       noTags: '暂无标签',
     },
     viewDetails: '查看详情',
+    deprecated: '已弃用',
+    deprecatedTooltip: '请安装对应「知识引擎」插件',
   },
   mcp: {
     title: 'MCP',
@@ -726,7 +728,7 @@ const zhHans = {
     engineSettingsReadonly: '编辑模式下不可修改',
     retrievalSettings: '检索设置',
     noEnginesAvailable: '没有可用的知识库引擎',
-    installEngineHint: '请先安装知识库插件',
+    installEngineHint: '请先安装「知识引擎」插件',
     createKnowledgeBaseFailed: '知识库创建失败：',
     loadKnowledgeBaseFailed: '知识库加载失败：',
     deleteKnowledgeBaseFailed: '知识库删除失败：',
@@ -742,6 +744,23 @@ const zhHans = {
     retrieverConfiguration: '检索器配置',
     retrieverInstallInfo: '您可以从',
     retrieverMarketLink: '此处安装知识检索器插件',
+    migration: {
+      title: '知识库迁移',
+      description:
+        '新版本已将知识库重构为插件化架构，并统一内置知识库和外部知识库为「知识引擎」插件，需要对旧知识库数据进行迁移。您的旧数据已自动备份在数据库中。',
+      detected:
+        '共检测到 {{total}} 个知识库需要迁移（{{internal}} 个内置知识库，{{external}} 个外部知识库）。',
+      startWithInstall: '自动安装插件并迁移',
+      startDataOnly: '仅迁移数据',
+      dataOnlyHint:
+        '「仅迁移数据」适合内网环境使用，请在迁移完成后自行安装对应插件',
+      dismiss: '丢弃原数据',
+      running: '正在迁移知识库，请稍候...',
+      success: '知识库迁移完成',
+      error: '知识库迁移失败：',
+      dismissError: '操作失败',
+      retry: '重试',
+    },
   },
   register: {
     title: '初始化 LangBot 👋',

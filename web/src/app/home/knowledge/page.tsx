@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { KnowledgeBaseVO } from '@/app/home/knowledge/components/kb-card/KBCardVO';
 import KBCard from '@/app/home/knowledge/components/kb-card/KBCard';
 import KBDetailDialog from '@/app/home/knowledge/KBDetailDialog';
+import KBMigrationDialog from '@/app/home/knowledge/components/kb-migration-dialog/KBMigrationDialog';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { KnowledgeBase } from '@/app/infra/entities/api';
 
@@ -18,9 +19,28 @@ export default function KnowledgePage() {
   const [selectedKbId, setSelectedKbId] = useState<string>('');
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
 
+  // Migration dialog state
+  const [migrationDialogOpen, setMigrationDialogOpen] = useState(false);
+  const [migrationInternalCount, setMigrationInternalCount] = useState(0);
+  const [migrationExternalCount, setMigrationExternalCount] = useState(0);
+
   useEffect(() => {
     getKnowledgeBaseList();
+    checkMigrationStatus();
   }, []);
+
+  async function checkMigrationStatus() {
+    try {
+      const resp = await httpClient.getRagMigrationStatus();
+      if (resp.needed) {
+        setMigrationInternalCount(resp.internal_kb_count);
+        setMigrationExternalCount(resp.external_kb_count);
+        setMigrationDialogOpen(true);
+      }
+    } catch {
+      // Silently ignore - migration check is non-critical
+    }
+  }
 
   async function getKnowledgeBaseList() {
     const resp = await httpClient.getKnowledgeBases();
@@ -85,8 +105,20 @@ export default function KnowledgePage() {
     getKnowledgeBaseList();
   };
 
+  const handleMigrationComplete = () => {
+    getKnowledgeBaseList();
+  };
+
   return (
     <div>
+      <KBMigrationDialog
+        open={migrationDialogOpen}
+        onOpenChange={setMigrationDialogOpen}
+        internalKbCount={migrationInternalCount}
+        externalKbCount={migrationExternalCount}
+        onMigrationComplete={handleMigrationComplete}
+      />
+
       <KBDetailDialog
         open={detailDialogOpen}
         onOpenChange={setDetailDialogOpen}

@@ -1,5 +1,3 @@
-import json
-
 import sqlalchemy
 from .. import migration
 
@@ -9,20 +7,22 @@ class DBMigrateKnowledgeEnginePluginArchitecture(migration.DBMigration):
     """Migrate to unified Knowledge Engine plugin architecture.
 
     Changes:
-    - Add knowledge_engine_plugin_id, collection_id, creation_settings, retrieval_settings columns to knowledge_bases
-    - Migrate existing top_k values into retrieval_settings JSON
-    - Migrate existing embedding_model_uuid into creation_settings JSON
-    - Drop embedding_model_uuid and top_k columns (PostgreSQL only; SQLite leaves them unmapped)
-    - Drop external_knowledge_bases table (no longer needed; external KB data is not migrated)
+    - Backup existing knowledge_bases data to knowledge_bases_backup
+    - Clear knowledge_bases table and add new plugin architecture columns
+    - Drop old columns (PostgreSQL only; SQLite leaves them unmapped)
+    - Preserve external_knowledge_bases table as-is for future migration
+    - Set rag_plugin_migration_needed flag in metadata if old data exists
     """
 
     async def upgrade(self):
         """Upgrade"""
+        has_internal_data = await self._backup_knowledge_bases()
+        has_external_data = await self._check_external_knowledge_bases()
+        await self._clear_knowledge_bases()
         await self._add_columns_to_knowledge_bases()
-        await self._migrate_top_k_to_retrieval_settings()
-        await self._migrate_embedding_model_uuid_to_creation_settings()
         await self._drop_old_columns()
-        await self._drop_external_knowledge_bases_table()
+        if has_internal_data or has_external_data:
+            await self._set_migration_flag()
 
     async def _get_table_columns(self, table_name: str) -> list[str]:
         """Get column names from a table (works for both SQLite and PostgreSQL)."""
@@ -57,6 +57,50 @@ class DBMigrateKnowledgeEnginePluginArchitecture(migration.DBMigration):
             )
             return result.first() is not None
 
+    async def _backup_knowledge_bases(self) -> bool:
+        """Backup knowledge_bases data. Returns True if data was backed up."""
+        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.text('SELECT COUNT(*) FROM knowledge_bases;'))
+        count = result.scalar()
+        if count == 0:
+            return False
+
+        # Drop backup table if it already exists (from a previous failed migration)
+        if await self._table_exists('knowledge_bases_backup'):
+            await self.ap.persistence_mgr.execute_async(sqlalchemy.text('DROP TABLE knowledge_bases_backup;'))
+
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.text('CREATE TABLE knowledge_bases_backup AS SELECT * FROM knowledge_bases;')
+        )
+        self.ap.logger.info(
+            'Backed up %d knowledge base(s) to knowledge_bases_backup table.',
+            count,
+        )
+        return True
+
+    async def _check_external_knowledge_bases(self) -> bool:
+        """Check if external_knowledge_bases table exists and has data.
+
+        The table is preserved as-is (not dropped) for future migration.
+        """
+        if not await self._table_exists('external_knowledge_bases'):
+            return False
+
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.text('SELECT COUNT(*) FROM external_knowledge_bases;')
+        )
+        count = result.scalar()
+        if count > 0:
+            self.ap.logger.info(
+                'Found %d external knowledge base(s) in external_knowledge_bases table. '
+                'Table preserved for future migration.',
+                count,
+            )
+        return count > 0
+
+    async def _clear_knowledge_bases(self):
+        """Clear all rows from knowledge_bases table (preserve table structure)."""
+        await self.ap.persistence_mgr.execute_async(sqlalchemy.text('DELETE FROM knowledge_bases;'))
+
     async def _add_columns_to_knowledge_bases(self):
         """Add new RAG plugin architecture columns to knowledge_bases table."""
         columns = await self._get_table_columns('knowledge_bases')
@@ -72,73 +116,6 @@ class DBMigrateKnowledgeEnginePluginArchitecture(migration.DBMigration):
             if col_name not in columns:
                 await self.ap.persistence_mgr.execute_async(
                     sqlalchemy.text(f'ALTER TABLE knowledge_bases ADD COLUMN {col_name} {col_type};')
-                )
-
-        # For existing knowledge bases without knowledge_engine_plugin_id,
-        # set collection_id = uuid (same default as new KBs)
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.text('UPDATE knowledge_bases SET collection_id = uuid WHERE collection_id IS NULL;')
-        )
-
-    async def _migrate_top_k_to_retrieval_settings(self):
-        """Migrate existing top_k values into retrieval_settings JSON."""
-        columns = await self._get_table_columns('knowledge_bases')
-        if 'top_k' not in columns:
-            return
-
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.text(
-                'SELECT uuid, top_k FROM knowledge_bases WHERE top_k IS NOT NULL AND retrieval_settings IS NULL;'
-            )
-        )
-        rows = result.fetchall()
-
-        for row in rows:
-            kb_uuid = row[0]
-            top_k = row[1]
-            retrieval_settings = json.dumps({'top_k': top_k})
-            await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text('UPDATE knowledge_bases SET retrieval_settings = :rs WHERE uuid = :uuid;').bindparams(
-                    rs=retrieval_settings, uuid=kb_uuid
-                )
-            )
-
-    async def _migrate_embedding_model_uuid_to_creation_settings(self):
-        """Migrate existing embedding_model_uuid into creation_settings JSON."""
-        columns = await self._get_table_columns('knowledge_bases')
-        if 'embedding_model_uuid' not in columns:
-            return
-
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.text(
-                'SELECT uuid, embedding_model_uuid, creation_settings FROM knowledge_bases '
-                "WHERE embedding_model_uuid IS NOT NULL AND embedding_model_uuid != '';"
-            )
-        )
-        rows = result.fetchall()
-
-        for row in rows:
-            kb_uuid = row[0]
-            emb_uuid = row[1]
-            existing_settings = row[2]
-
-            if existing_settings and isinstance(existing_settings, str):
-                try:
-                    settings = json.loads(existing_settings)
-                except (json.JSONDecodeError, TypeError):
-                    settings = {}
-            elif isinstance(existing_settings, dict):
-                settings = existing_settings
-            else:
-                settings = {}
-
-            if 'embedding_model_uuid' not in settings:
-                settings['embedding_model_uuid'] = emb_uuid
-                new_settings = json.dumps(settings)
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.text(
-                        'UPDATE knowledge_bases SET creation_settings = :cs WHERE uuid = :uuid;'
-                    ).bindparams(cs=new_settings, uuid=kb_uuid)
                 )
 
     async def _drop_old_columns(self):
@@ -162,22 +139,22 @@ class DBMigrateKnowledgeEnginePluginArchitecture(migration.DBMigration):
                 sqlalchemy.text('ALTER TABLE knowledge_bases DROP COLUMN top_k;')
             )
 
-    async def _drop_external_knowledge_bases_table(self):
-        """Drop the external_knowledge_bases table if it exists."""
-        if await self._table_exists('external_knowledge_bases'):
-            # Log existing external KBs before dropping, so users are aware of data loss
-            rows = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text('SELECT * FROM external_knowledge_bases;')
+    async def _set_migration_flag(self):
+        """Set rag_plugin_migration_needed flag in metadata table."""
+        # Check if the key already exists
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.text("SELECT value FROM metadata WHERE key = 'rag_plugin_migration_needed';")
+        )
+        row = result.first()
+        if row is not None:
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.text("UPDATE metadata SET value = 'true' WHERE key = 'rag_plugin_migration_needed';")
             )
-            existing = rows.fetchall()
-            if existing:
-                self.ap.logger.warning(
-                    'Dropping external_knowledge_bases table with %d existing record(s). '
-                    'These external KB configurations will be removed: %s',
-                    len(existing),
-                    [dict(row._mapping) for row in existing],
-                )
-            await self.ap.persistence_mgr.execute_async(sqlalchemy.text('DROP TABLE external_knowledge_bases;'))
+        else:
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.text("INSERT INTO metadata (key, value) VALUES ('rag_plugin_migration_needed', 'true');")
+            )
+        self.ap.logger.info('Set rag_plugin_migration_needed=true in metadata.')
 
     async def downgrade(self):
         """Downgrade"""

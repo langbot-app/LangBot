@@ -461,6 +461,8 @@ const zhHant = {
       noTags: '暫無標籤',
     },
     viewDetails: '查看詳情',
+    deprecated: '已棄用',
+    deprecatedTooltip: '請安裝對應「知識引擎」插件',
   },
   mcp: {
     title: 'MCP',
@@ -709,6 +711,8 @@ const zhHant = {
     fileName: '文檔名稱',
     noResults: '暫無結果',
     retrieveError: '檢索失敗：',
+    noEnginesAvailable: '沒有可用的知識庫引擎',
+    installEngineHint: '請先安裝「知識引擎」插件',
     unknownEngine: '未知引擎',
     loadKnowledgeBaseFailed: '知識庫載入失敗：',
     deleteKnowledgeBaseFailed: '知識庫刪除失敗：',
@@ -722,6 +726,23 @@ const zhHant = {
     retrieverConfiguration: '檢索器配置',
     retrieverInstallInfo: '您可以從',
     retrieverMarketLink: '此處安裝知識檢索器插件',
+    migration: {
+      title: '知識庫遷移',
+      description:
+        '新版本已將知識庫重構為插件化架構，並統一內建知識庫和外部知識庫為「知識引擎」插件，需要對舊知識庫資料進行遷移。您的舊資料已自動備份在資料庫中。',
+      detected:
+        '共檢測到 {{total}} 個知識庫需要遷移（{{internal}} 個內建知識庫，{{external}} 個外部知識庫）。',
+      startWithInstall: '自動安裝插件並遷移',
+      startDataOnly: '僅遷移資料',
+      dataOnlyHint:
+        '「僅遷移資料」適合內網環境使用，請在遷移完成後自行安裝對應插件',
+      dismiss: '丟棄原數據',
+      running: '正在遷移知識庫，請稍候...',
+      success: '知識庫遷移完成',
+      error: '知識庫遷移失敗：',
+      dismissError: '操作失敗',
+      retry: '重試',
+    },
   },
   register: {
     title: '初始化 LangBot 👋',

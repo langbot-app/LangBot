@@ -23,9 +23,9 @@ export const sidebarConfigList = [
     route: '/home/bots',
     description: t('bots.description'),
     helpLink: {
-      en_US: 'https://docs.langbot.app/en/usage/platforms/readme.html',
-      zh_Hans: 'https://docs.langbot.app/zh/usage/platforms/readme.html',
-      ja_JP: 'https://docs.langbot.app/ja/usage/platforms/readme.html',
+      en_US: 'https://docs.langbot.app/en/usage/platforms/readme',
+      zh_Hans: 'https://docs.langbot.app/zh/usage/platforms/readme',
+      ja_JP: 'https://docs.langbot.app/ja/usage/platforms/readme',
     },
   }),
   new SidebarChildVO({
@@ -44,9 +44,9 @@ export const sidebarConfigList = [
     route: '/home/pipelines',
     description: t('pipelines.description'),
     helpLink: {
-      en_US: 'https://docs.langbot.app/en/usage/pipelines/readme.html',
-      zh_Hans: 'https://docs.langbot.app/zh/usage/pipelines/readme.html',
-      ja_JP: 'https://docs.langbot.app/ja/usage/pipelines/readme.html',
+      en_US: 'https://docs.langbot.app/en/usage/pipelines/readme',
+      zh_Hans: 'https://docs.langbot.app/zh/usage/pipelines/readme',
+      ja_JP: 'https://docs.langbot.app/ja/usage/pipelines/readme',
     },
   }),
   new SidebarChildVO({
@@ -65,8 +65,8 @@ export const sidebarConfigList = [
     route: '/home/monitoring',
     description: t('monitoring.description'),
     helpLink: {
-      en_US: 'https://docs.langbot.app/en/features/monitoring.html',
-      zh_Hans: 'https://docs.langbot.app/zh/features/monitoring.html',
+      en_US: '',
+      zh_Hans: '',
     },
   }),
   new SidebarChildVO({
@@ -84,9 +84,9 @@ export const sidebarConfigList = [
     route: '/home/knowledge',
     description: t('knowledge.description'),
     helpLink: {
-      en_US: 'https://docs.langbot.app/en/usage/knowledge/readme.html',
-      zh_Hans: 'https://docs.langbot.app/zh/usage/knowledge/readme.html',
-      ja_JP: 'https://docs.langbot.app/ja/usage/knowledge/readme.html',
+      en_US: 'https://docs.langbot.app/en/usage/knowledge/readme',
+      zh_Hans: 'https://docs.langbot.app/zh/usage/knowledge/readme',
+      ja_JP: 'https://docs.langbot.app/ja/usage/knowledge/readme',
     },
   }),
   new SidebarChildVO({
@@ -105,9 +105,9 @@ export const sidebarConfigList = [
     route: '/home/plugins',
     description: t('plugins.description'),
     helpLink: {
-      en_US: 'https://docs.langbot.app/en/usage/plugin/plugin-intro.html',
-      zh_Hans: 'https://docs.langbot.app/zh/usage/plugin/plugin-intro.html',
-      ja_JP: 'https://docs.langbot.app/ja/usage/plugin/plugin-intro.html',
+      en_US: 'https://docs.langbot.app/en/usage/plugin/plugin-intro',
+      zh_Hans: 'https://docs.langbot.app/zh/usage/plugin/plugin-intro',
+      ja_JP: 'https://docs.langbot.app/ja/usage/plugin/plugin-intro',
     },
   }),
 ];

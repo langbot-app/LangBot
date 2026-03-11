@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -264,9 +265,12 @@ export default function KBForm({
         <p className="text-muted-foreground">
           {t('knowledge.noEnginesAvailable')}
         </p>
-        <p className="text-sm text-muted-foreground">
+        <Link
+          href="/home/plugins"
+          className="text-sm text-primary hover:underline"
+        >
           {t('knowledge.installEngineHint')}
-        </p>
+        </Link>
       </div>
     );
   }
