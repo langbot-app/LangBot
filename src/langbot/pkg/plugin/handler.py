@@ -565,6 +565,16 @@ class RuntimeConnectionHandler(handler.Handler):
             except Exception as e:
                 return _make_rag_error_response(e, 'FileServiceError', storage_path=storage_path)
 
+        @self.action(PluginToRuntimeAction.LIST_PARSERS)
+        async def list_parsers(data: dict[str, Any]) -> handler.ActionResponse:
+            """Plugin requests host to list available parser plugins."""
+            mime_type = data.get('mime_type')
+            try:
+                parsers = await self.ap.knowledge_service.list_parsers(mime_type)
+                return handler.ActionResponse.success(data={'parsers': parsers})
+            except Exception as e:
+                return _make_rag_error_response(e, 'ParserDiscoveryError', mime_type=mime_type)
+
         @self.action(PluginToRuntimeAction.INVOKE_PARSER)
         async def invoke_parser(data: dict[str, Any]) -> handler.ActionResponse:
             """Plugin requests host to invoke a parser plugin."""
