@@ -207,7 +207,17 @@ class StreamSessionManager:
 
 
 class WecomBotClient:
-    def __init__(self, Token: str, EnCodingAESKey: str, Corpid: str, logger: EventLogger, unified_mode: bool = False):
+    def __init__(
+        self,
+        Token: str,
+        EnCodingAESKey: str,
+        Corpid: str,
+        logger: EventLogger,
+        unified_mode: bool = False,
+        stream_poll_timeout: float = 0.15,
+        stream_max_lifetime: float = 120,
+        pending_placeholder: str = 'AI 正在思考中，请稍候...',
+    ):
         """企业微信智能机器人客户端。
 
         Args:
@@ -241,7 +251,104 @@ class WecomBotClient:
         self.generated_content: dict[str, str] = {}
         self.msg_id_map: dict[str, int] = {}
         self.stream_sessions = StreamSessionManager(logger=logger)
-        self.stream_poll_timeout = 0.05  # 缩短轮询超时，提升流式响应速度
+        self.stream_poll_timeout = max(0.05, stream_poll_timeout)
+        self.stream_max_lifetime = max(1.0, stream_max_lifetime)
+        self.pending_placeholder = pending_placeholder
+        self.stream_timeout_final_text = '抱歉，处理超时，请稍后重试。'
+        self.stream_error_final_text = '抱歉，处理失败，请稍后重试。'
+
+    async def _log_stream_debug(
+        self,
+        action: str,
+        stream_id: str,
+        session: Optional[StreamSession] = None,
+        source: str = '',
+        chunk: Optional[StreamChunk] = None,
+    ) -> None:
+        """记录流式会话关键路径日志，便于在消息记录中排查轮询与收口问题。"""
+        age_ms = -1
+        msg_id = ''
+        if session:
+            msg_id = session.msg_id
+            age_ms = int((time.time() - session.created_at) * 1000)
+
+        content_bytes = 0
+        finish = False
+        if chunk:
+            finish = chunk.is_final
+            content_bytes = len((chunk.content or '').encode('utf-8'))
+
+        await self.logger.debug(
+            '[wecom-stream] '
+            f'action={action} '
+            f'stream_id={stream_id or "-"} '
+            f'msg_id={msg_id or "-"} '
+            f'source={source or "-"} '
+            f'finish={str(finish).lower()} '
+            f'age_ms={age_ms} '
+            f'content_bytes={content_bytes}'
+        )
+
+    def _is_stream_lifetime_exceeded(self, session: StreamSession) -> bool:
+        """判断当前 stream 是否已经超过最大生命周期。"""
+        if session.finished:
+            return False
+        return time.time() - session.created_at >= self.stream_max_lifetime
+
+    async def _force_finish_stream(
+        self,
+        stream_id: str,
+        content: str,
+        reason: str,
+    ) -> Optional[StreamChunk]:
+        """强制结束未正常收口的 stream，避免企微持续轮询后展示官方兜底文案。"""
+        if not stream_id:
+            return None
+
+        chunk = StreamChunk(content=content, is_final=True, meta={'reason': reason})
+        published = await self.stream_sessions.publish(stream_id, chunk)
+        self.stream_sessions.mark_finished(stream_id)
+
+        session = self.stream_sessions.get_session(stream_id)
+        if session:
+            session.last_chunk = chunk
+            session.finished = True
+            session.last_access = time.time()
+
+        await self._log_stream_debug(
+            action='force_finish',
+            stream_id=stream_id,
+            session=session,
+            source=reason if published else f'{reason}_no_queue',
+            chunk=chunk,
+        )
+        return chunk
+
+    def _resolve_followup_chunk(
+        self,
+        session: Optional[StreamSession],
+        cached_content: Optional[str],
+    ) -> Optional[StreamChunk]:
+        """为 follow-up 请求返回兜底片段，避免企微收到空内容后展示官方兜底文案。"""
+        if cached_content is not None:
+            return StreamChunk(content=cached_content, is_final=True, meta={'reason': 'cached_final'})
+
+        if session and session.last_chunk:
+            if 'reason' not in session.last_chunk.meta:
+                session.last_chunk.meta['reason'] = 'last_snapshot'
+            return session.last_chunk
+
+        if session:
+            placeholder_chunk = StreamChunk(
+                content=self.pending_placeholder,
+                is_final=False,
+                meta={'reason': 'pending_placeholder'},
+            )
+            session.last_chunk = placeholder_chunk
+            session.last_access = time.time()
+            return placeholder_chunk
+
+        return None
 
     @staticmethod
     def _build_stream_payload(stream_id: str, content: str, finish: bool) -> dict[str, Any]:
@@ -304,6 +411,11 @@ class WecomBotClient:
             await self._handle_message(event)
         except Exception:
             await self.logger.error(traceback.format_exc())
+            await self._force_finish_stream(
+                str(event.get('stream_id', '')),
+                self.stream_error_final_text,
+                'dispatch_exception',
+            )
 
     async def _handle_post_initial_response(self, msg_json: dict[str, Any], nonce: str) -> tuple[Response, int]:
         """处理企业微信首次推送的消息，返回 stream_id 并开启流水线。
@@ -327,9 +439,21 @@ class WecomBotClient:
                 event = wecombotevent.WecomBotEvent(message_data)
             except Exception:
                 await self.logger.error(traceback.format_exc())
+                await self._force_finish_stream(
+                    session.stream_id,
+                    self.stream_error_final_text,
+                    'event_build_failed',
+                )
             else:
                 if is_new:
                     asyncio.create_task(self._dispatch_event(event))
+
+        await self._log_stream_debug(
+            action='initial_response',
+            stream_id=session.stream_id,
+            session=session,
+            source='new' if is_new else 'reuse',
+        )
 
         payload = self._build_stream_payload(session.stream_id, '', False)
         return await self._encrypt_and_reply(payload, nonce)
@@ -354,18 +478,46 @@ class WecomBotClient:
             return await self._encrypt_and_reply(self._build_stream_payload('', '', True), nonce)
 
         session = self.stream_sessions.get_session(stream_id)
+        if not session:
+            chunk = StreamChunk(content=self.stream_error_final_text, is_final=True, meta={'reason': 'missing_session'})
+            await self._log_stream_debug(
+                action='followup_response',
+                stream_id=stream_id,
+                source='missing_session',
+                chunk=chunk,
+            )
+            payload = self._build_stream_payload(stream_id, chunk.content, chunk.is_final)
+            return await self._encrypt_and_reply(payload, nonce)
+
+        if self._is_stream_lifetime_exceeded(session):
+            timeout_content = session.last_chunk.content if session.last_chunk else self.stream_timeout_final_text
+            chunk = await self._force_finish_stream(stream_id, timeout_content, 'max_lifetime_exceeded')
+            payload = self._build_stream_payload(stream_id, chunk.content if chunk else '', True)
+            return await self._encrypt_and_reply(payload, nonce)
+
         chunk = await self.stream_sessions.consume(stream_id, timeout=self.stream_poll_timeout)
 
         if not chunk:
+            if self._is_stream_lifetime_exceeded(session):
+                timeout_content = session.last_chunk.content if session.last_chunk else self.stream_timeout_final_text
+                chunk = await self._force_finish_stream(stream_id, timeout_content, 'max_lifetime_exceeded')
+
             cached_content = None
-            if session and session.msg_id:
+            if not chunk and session.msg_id:
                 cached_content = self.generated_content.pop(session.msg_id, None)
-            if cached_content is not None:
-                chunk = StreamChunk(content=cached_content, is_final=True)
-            else:
+            if not chunk:
+                chunk = self._resolve_followup_chunk(session, cached_content)
+            if not chunk:
                 payload = self._build_stream_payload(stream_id, '', False)
                 return await self._encrypt_and_reply(payload, nonce)
 
+        await self._log_stream_debug(
+            action='followup_response',
+            stream_id=stream_id,
+            session=session,
+            source=chunk.meta.get('reason', 'queue'),
+            chunk=chunk,
+        )
         payload = self._build_stream_payload(stream_id, chunk.content, chunk.is_final)
         if chunk.is_final:
             self.stream_sessions.mark_finished(stream_id)

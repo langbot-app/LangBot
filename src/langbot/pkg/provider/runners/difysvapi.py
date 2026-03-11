@@ -72,6 +72,17 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 content = f'<think>\n{thinking_content}\n</think>\n{content}'.strip()
             return content, thinking_content
 
+    @staticmethod
+    def _get_stream_chunk_batch_size(query: pipeline_query.Query) -> int:
+        adapter = getattr(query, 'adapter', None)
+        adapter_config = getattr(adapter, 'config', {}) or {}
+        value = adapter_config.get('PullChunkBatchSize', 2)
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            value = 2
+        return max(1, min(20, value))
+
     async def _preprocess_user_message(self, query: pipeline_query.Query) -> tuple[str, list[dict]]:
         """预处理用户消息，提取纯文本，并将图片/文件上传到 Dify 服务
 
@@ -419,6 +430,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         think_end = False
 
         remove_think = self.pipeline_config['output'].get('misc', '').get('remove-think')
+        chunk_batch_size = self._get_stream_chunk_batch_size(query)
 
         async for chunk in self.dify_client.chat_messages(
             inputs=inputs,
@@ -458,9 +470,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             if chunk['event'] == 'message_end':
                 is_final = True
 
-            # 确保 is_final=True 时一定会 yield，即使 basic_mode_pending_chunk 为空也要发送最终标记
-            # 优化：降低 yield 频率条件，从每 8 个 chunk 改为每 2 个，提升流式响应流畅度
-            if is_final or (basic_mode_pending_chunk and (message_idx == 1 or message_idx % 2 == 0)):
+            if is_final or (basic_mode_pending_chunk and (message_idx == 1 or message_idx % chunk_batch_size == 0)):
                 yield provider_message.MessageChunk(
                     role='assistant',
                     content=basic_mode_pending_chunk,
@@ -505,6 +515,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         think_end = False
 
         remove_think = self.pipeline_config['output'].get('misc', '').get('remove-think')
+        chunk_batch_size = self._get_stream_chunk_batch_size(query)
 
         async for chunk in self.dify_client.chat_messages(
             inputs=inputs,
@@ -583,9 +594,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
                 if chunk['event'] == 'error':
                     raise errors.DifyAPIError('dify 服务错误: ' + chunk['message'])
-            # 确保 is_final=True 时一定会 yield，即使内容为空也要发送最终标记
-            # 优化：降低 yield 频率条件，从每 8 个 chunk 改为每 2 个，提升流式响应流畅度
-            if is_final or (pending_agent_message and (message_idx == 1 or message_idx % 2 == 0)):
+            if is_final or (pending_agent_message and (message_idx == 1 or message_idx % chunk_batch_size == 0)):
                 yield provider_message.MessageChunk(
                     role='assistant',
                     content=pending_agent_message,
@@ -635,6 +644,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         workflow_contents = ''
 
         remove_think = self.pipeline_config['output'].get('misc', '').get('remove-think')
+        chunk_batch_size = self._get_stream_chunk_batch_size(query)
         async for chunk in self.dify_client.workflow_run(
             inputs=inputs,
             user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
@@ -690,9 +700,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
                 yield msg
 
-            # 确保 is_final=True 时一定会 yield，即使内容为空也要发送最终标记
-            # 优化：降低 yield 频率条件，从每 8 个 chunk 改为每 2 个，提升流式响应流畅度
-            if is_final or (workflow_contents and (messsage_idx == 1 or messsage_idx % 2 == 0)):
+            if is_final or (workflow_contents and (messsage_idx == 1 or messsage_idx % chunk_batch_size == 0)):
                 yield provider_message.MessageChunk(
                     role='assistant',
                     content=workflow_contents,

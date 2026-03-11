@@ -39,6 +39,46 @@ spec:
       type: string
       required: false
       default: ""
+    - name: PullChunkBatchSize
+      label:
+        en_US: Pull Chunk Batch Size
+        zh_Hans: Pull 模式 Chunk 批大小
+      description:
+        en_US: In pull mode, merge every N chunks before returning a refreshed snapshot. Larger values reduce update frequency and lower the risk of rate limiting.
+        zh_Hans: Pull 模式下，每累计 N 个 chunk 再返回一次新的流式快照。值越大更新越少，更不容易触发企微限流。
+      type: integer
+      required: true
+      default: 2
+    - name: PullPollTimeoutMs
+      label:
+        en_US: Pull Poll Timeout (ms)
+        zh_Hans: Pull 模式轮询等待时间（毫秒）
+      description:
+        en_US: How long LangBot waits for a new chunk before replying to WeCom follow-up polling. Higher values reduce empty polling and repeated snapshots, but may slightly increase latency.
+        zh_Hans: LangBot 在响应企微 follow-up 轮询前，等待新 chunk 的时间。值越大越不容易出现空轮询和重复快照，但延迟会略增。
+      type: integer
+      required: true
+      default: 150
+    - name: PullStreamMaxLifetimeMs
+      label:
+        en_US: Pull Stream Max Lifetime (ms)
+        zh_Hans: Pull 模式 Stream 最大生命周期（毫秒）
+      description:
+        en_US: Maximum lifetime of a single WeCom pull stream. Once exceeded, LangBot will force finish the stream with the latest snapshot to avoid endless polling.
+        zh_Hans: 单个企微 Pull 流式会话的最大生命周期。超过后 LangBot 会使用最后快照强制 finish，避免企微无休止轮询后展示官方兜底文案。
+      type: integer
+      required: true
+      default: 120000
+    - name: PullPendingPlaceholder
+      label:
+        en_US: Pull Pending Placeholder
+        zh_Hans: Pull 模式等待占位文案
+      description:
+        en_US: Temporary placeholder returned before the first chunk arrives, preventing WeCom from showing its fallback error message.
+        zh_Hans: 首个 chunk 到达前返回的临时占位文案，用于避免企微展示官方兜底错误提示。
+      type: string
+      required: true
+      default: "AI 正在思考中，请稍候..."
 execution:
   python:
     path: ./wecombot.py

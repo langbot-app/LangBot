@@ -198,11 +198,24 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     config: dict
     bot_uuid: str = None
 
+    @staticmethod
+    def _get_int_config(config: dict, key: str, default: int, min_value: int, max_value: int) -> int:
+        value = config.get(key, default)
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            value = default
+        return max(min_value, min(max_value, value))
+
     def __init__(self, config: dict, logger: EventLogger):
         required_keys = ['Token', 'EncodingAESKey', 'Corpid', 'BotId']
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
             raise Exception(f'WecomBot 缺少配置项: {missing_keys}')
+
+        pull_poll_timeout_ms = self._get_int_config(config, 'PullPollTimeoutMs', 150, 50, 2000)
+        pull_stream_max_lifetime_ms = self._get_int_config(config, 'PullStreamMaxLifetimeMs', 120000, 1000, 600000)
+        pending_placeholder = config.get('PullPendingPlaceholder', 'AI 正在思考中，请稍候...')
 
         bot = WecomBotClient(
             Token=config['Token'],
@@ -210,6 +223,9 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             Corpid=config['Corpid'],
             logger=logger,
             unified_mode=True,
+            stream_poll_timeout=pull_poll_timeout_ms / 1000,
+            stream_max_lifetime=pull_stream_max_lifetime_ms / 1000,
+            pending_placeholder=pending_placeholder,
         )
         bot_account_id = config['BotId']
 
