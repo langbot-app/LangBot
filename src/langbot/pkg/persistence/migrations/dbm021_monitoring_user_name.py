@@ -1,28 +1,74 @@
-import sqlalchemy
 from .. import migration
+
+import sqlalchemy
+import json
 
 
 @migration.migration_class(21)
-class DBMigrateMonitoringUserName(migration.DBMigration):
-    """Add user_name column to monitoring_sessions and monitoring_messages tables"""
+class DBMigrateMergeExceptionHandling(migration.DBMigration):
+    """Merge hide-exception and block-failed-request-output into a single exception-handling select option,
+    and add failure-hint field.
+
+    Conversion logic:
+    - block-failed-request-output=true  ->  exception-handling: hide
+    - hide-exception=true               ->  exception-handling: show-hint
+    - hide-exception=false              ->  exception-handling: show-error
+    """
 
     async def upgrade(self):
-        # Add user_name column to monitoring_sessions table
-        try:
-            await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text('ALTER TABLE monitoring_sessions ADD COLUMN user_name VARCHAR(255);')
-            )
-        except Exception:
-            pass  # Column may already exist
+        """Upgrade"""
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.text('SELECT uuid, config FROM legacy_pipelines')
+        )
+        pipelines = result.fetchall()
 
-        # Add user_name column to monitoring_messages table
-        try:
-            await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text('ALTER TABLE monitoring_messages ADD COLUMN user_name VARCHAR(255);')
-            )
-        except Exception:
-            pass  # Column may already exist
+        current_version = self.ap.ver_mgr.get_current_version()
+
+        for pipeline_row in pipelines:
+            uuid = pipeline_row[0]
+            config = json.loads(pipeline_row[1]) if isinstance(pipeline_row[1], str) else pipeline_row[1]
+
+            if 'output' not in config:
+                config['output'] = {}
+            if 'misc' not in config['output']:
+                config['output']['misc'] = {}
+
+            misc = config['output']['misc']
+
+            # Determine new exception-handling value from legacy fields
+            hide_exception = misc.get('hide-exception', True)
+            block_failed = misc.get('block-failed-request-output', False)
+
+            if block_failed:
+                exception_handling = 'hide'
+            elif hide_exception:
+                exception_handling = 'show-hint'
+            else:
+                exception_handling = 'show-error'
+
+            misc['exception-handling'] = exception_handling
+
+            # Add failure-hint with default value
+            misc['failure-hint'] = 'Request failed.'
+
+            # Remove legacy fields
+            misc.pop('hide-exception', None)
+
+            if self.ap.persistence_mgr.db.name == 'postgresql':
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.text(
+                        'UPDATE legacy_pipelines SET config = :config::jsonb, for_version = :for_version WHERE uuid = :uuid'
+                    ),
+                    {'config': json.dumps(config), 'for_version': current_version, 'uuid': uuid},
+                )
+            else:
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.text(
+                        'UPDATE legacy_pipelines SET config = :config, for_version = :for_version WHERE uuid = :uuid'
+                    ),
+                    {'config': json.dumps(config), 'for_version': current_version, 'uuid': uuid},
+                )
 
     async def downgrade(self):
-        # SQLite does not support DROP COLUMN, so we skip downgrade for SQLite
+        """Downgrade"""
         pass
