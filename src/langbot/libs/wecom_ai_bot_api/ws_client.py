@@ -94,6 +94,8 @@ class WecomBotWsClient:
 
         # Stream ID tracking for WebSocket mode
         self._stream_ids: dict[str, str] = {}  # msg_id -> req_id|stream_id
+        # Dedup: skip sending when content hasn't changed
+        self._stream_last_content: dict[str, str] = {}  # msg_id -> last content sent
 
     # ── Public API ──────────────────────────────────────────────────
 
@@ -248,9 +250,14 @@ class WecomBotWsClient:
             return False
         req_id, stream_id = key.split('|', 1)
         try:
+            # Skip sending if content hasn't changed (e.g. during tool call argument streaming)
+            if not is_final and content == self._stream_last_content.get(msg_id):
+                return True
             await self.reply_stream(req_id, stream_id, content, finish=is_final)
+            self._stream_last_content[msg_id] = content
             if is_final:
                 self._stream_ids.pop(msg_id, None)
+                self._stream_last_content.pop(msg_id, None)
             return True
         except Exception:
             await self.logger.error(f'Failed to push stream chunk: {traceback.format_exc()}')
