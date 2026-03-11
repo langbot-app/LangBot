@@ -23,7 +23,6 @@ import {
   Bot,
   KnowledgeBase,
   EmbeddingModel,
-  ApiRespPluginSystemStatus,
 } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
