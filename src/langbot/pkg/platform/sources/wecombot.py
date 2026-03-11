@@ -2,6 +2,7 @@ from __future__ import annotations
 import typing
 import asyncio
 import traceback
+import hashlib
 
 import datetime
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
@@ -11,6 +12,17 @@ import langbot_plugin.api.entities.builtin.platform.entities as platform_entitie
 from ..logger import EventLogger
 from langbot.libs.wecom_ai_bot_api.wecombotevent import WecomBotEvent
 from langbot.libs.wecom_ai_bot_api.api import WecomBotClient
+
+
+def _summarize_stream_text(content: str, tail_length: int = 32) -> dict[str, str | int]:
+    text = content or ''
+    encoded = text.encode('utf-8')
+    return {
+        'chars': len(text),
+        'bytes': len(encoded),
+        'tail_repr': repr(text[-tail_length:]),
+        'md5': hashlib.md5(encoded).hexdigest()[:12] if encoded else '0' * 12,
+    }
 
 
 class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -213,10 +225,26 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if missing_keys:
             raise Exception(f'WecomBot 缺少配置项: {missing_keys}')
 
-        pull_poll_timeout_ms = self._get_int_config(config, 'PullPollTimeoutMs', 150, 50, 2000)
-        pull_stream_max_lifetime_ms = self._get_int_config(config, 'PullStreamMaxLifetimeMs', 120000, 1000, 600000)
-        pending_placeholder_delay_ms = self._get_int_config(config, 'PullPendingPlaceholderDelayMs', 1200, 0, 10000)
+        pull_poll_timeout_ms = self._get_int_config(config, 'PullPollTimeoutMs', 200, 50, 2000)
+        pull_stream_max_lifetime_ms = self._get_int_config(config, 'PullStreamMaxLifetimeMs', 300000, 1000, 600000)
+        pending_placeholder_enabled = config.get('PullPendingPlaceholderEnabled', True)
+        pending_placeholder_delay_ms = self._get_int_config(config, 'PullPendingPlaceholderDelayMs', 3000, 0, 10000)
+        pull_chunk_batch_size = self._get_int_config(config, 'PullChunkBatchSize', 4, 1, 20)
+        pull_flush_window_ms = self._get_int_config(config, 'PullFlushWindowMs', 2000, 200, 10000)
         pending_placeholder = config.get('PullPendingPlaceholder', 'AI 正在思考中，请稍候')
+
+        normalized_config = dict(config)
+        normalized_config['PullPollTimeoutMs'] = pull_poll_timeout_ms
+        normalized_config['PullStreamMaxLifetimeMs'] = pull_stream_max_lifetime_ms
+        normalized_config['PullPendingPlaceholderEnabled'] = pending_placeholder_enabled
+        normalized_config['PullPendingPlaceholderDelayMs'] = pending_placeholder_delay_ms
+        normalized_config['PullChunkBatchSize'] = pull_chunk_batch_size
+        normalized_config['PullFlushWindowMs'] = pull_flush_window_ms
+        normalized_config['PullPendingPlaceholder'] = pending_placeholder
+
+        # 如果未开启首字等待占位，则将延迟设为0且占位文案设为空
+        effective_placeholder_delay = pending_placeholder_delay_ms / 1000 if pending_placeholder_enabled else 0
+        effective_placeholder = pending_placeholder if pending_placeholder_enabled else ''
 
         bot = WecomBotClient(
             Token=config['Token'],
@@ -226,13 +254,13 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             unified_mode=True,
             stream_poll_timeout=pull_poll_timeout_ms / 1000,
             stream_max_lifetime=pull_stream_max_lifetime_ms / 1000,
-            pending_placeholder=pending_placeholder,
-            pending_placeholder_delay=pending_placeholder_delay_ms / 1000,
+            pending_placeholder=effective_placeholder,
+            pending_placeholder_delay=effective_placeholder_delay,
         )
         bot_account_id = config['BotId']
 
         super().__init__(
-            config=config,
+            config=normalized_config,
             logger=logger,
             bot=bot,
             bot_account_id=bot_account_id,
@@ -273,10 +301,35 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         # 转换为纯文本（智能机器人当前协议仅支持文本流）
         content = await self.message_converter.yiri2target(message)
         msg_id = message_source.source_platform_object.message_id
+        resp_message_id = getattr(bot_message, 'resp_message_id', '') if bot_message is not None else ''
+        summary = _summarize_stream_text(content)
+
+        await self.logger.debug(
+            '[wecom-stream] '
+            f'action=adapter_reply_chunk '
+            f'msg_id={msg_id or "-"} '
+            f'resp_message_id={resp_message_id or "-"} '
+            f'finish={str(is_final).lower()} '
+            f'content_chars={summary["chars"]} '
+            f'content_bytes={summary["bytes"]} '
+            f'content_tail={summary["tail_repr"]} '
+            f'content_md5={summary["md5"]}'
+        )
 
         # 将片段推送到 WecomBotClient 中的队列，返回值用于判断是否走降级逻辑
         success = await self.bot.push_stream_chunk(msg_id, content, is_final=is_final)
         if not success and is_final:
+            await self.logger.debug(
+                '[wecom-stream] '
+                f'action=adapter_reply_chunk_fallback '
+                f'msg_id={msg_id or "-"} '
+                f'resp_message_id={resp_message_id or "-"} '
+                f'finish=true '
+                f'content_chars={summary["chars"]} '
+                f'content_bytes={summary["bytes"]} '
+                f'content_tail={summary["tail_repr"]} '
+                f'content_md5={summary["md5"]}'
+            )
             # 未命中流式队列时使用旧有 set_message 兜底
             await self.bot.set_message(msg_id, content)
         return {'stream': success}

@@ -48,7 +48,7 @@ spec:
         zh_Hans: LangBot 在响应企微 follow-up 轮询前，等待新 chunk 的时间。值越大越不容易出现空轮询和重复快照，但延迟会略增。
       type: integer
       required: true
-      default: 150
+      default: 200
     - name: PullStreamMaxLifetimeMs
       label:
         en_US: Pull Stream Max Lifetime (ms)
@@ -58,7 +58,17 @@ spec:
         zh_Hans: 单个企微 Pull 流式会话的最大生命周期。超过后 LangBot 会使用最后快照强制 finish，避免企微无休止轮询后展示官方兜底文案。
       type: integer
       required: true
-      default: 120000
+      default: 300000
+    - name: PullPendingPlaceholderEnabled
+      label:
+        en_US: Pull Pending Placeholder Enabled
+        zh_Hans: Pull 模式首字等待占位开关
+      description:
+        en_US: When enabled, return a pending placeholder if no first chunk arrives within the delay window.
+        zh_Hans: 开启后，若在延迟时间内未收到首字，则返回等待占位文案；关闭则不返回任何占位。
+      type: boolean
+      required: false
+      default: true
     - name: PullPendingPlaceholderDelayMs
       label:
         en_US: Pull Pending Placeholder Delay (ms)
@@ -67,8 +77,9 @@ spec:
         en_US: Only return the pending placeholder if no first token arrives within this delay window.
         zh_Hans: 只有在这段延迟时间内仍未收到首字时，才会返回等待占位文案。
       type: integer
-      required: true
-      default: 1200
+      required: false
+      default: 3000
+      visibleOn: ${PullPendingPlaceholderEnabled} == true
     - name: PullPendingPlaceholder
       label:
         en_US: Pull Pending Placeholder
@@ -77,8 +88,29 @@ spec:
         en_US: Temporary placeholder returned before the first chunk arrives, preventing WeCom from showing its fallback error message.
         zh_Hans: 首个 chunk 到达前返回的临时占位文案，用于避免企微展示官方兜底错误提示。
       type: string
-      required: true
+      required: false
       default: "AI 正在思考中，请稍候"
+      visibleOn: ${PullPendingPlaceholderEnabled} == true
+    - name: PullChunkBatchSize
+      label:
+        en_US: Pull Chunk Batch Size
+        zh_Hans: Pull 模式 Chunk 批大小
+      description:
+        en_US: Merge every N model chunks into one refreshed snapshot for WeCom pull streaming.
+        zh_Hans: 企业微信 Pull 流式下，每累计 N 个模型 chunk 再输出一次新的快照。
+      type: integer
+      required: true
+      default: 4
+    - name: PullFlushWindowMs
+      label:
+        en_US: Pull Flush Window (ms)
+        zh_Hans: Pull 模式时间窗口（毫秒）
+      description:
+        en_US: Emit a refreshed snapshot when content changed and the window elapsed, even if chunk batch size is not reached.
+        zh_Hans: 当内容有变化且时间窗口到达时，即使未达到 chunk 批大小，也会主动输出新的流式快照。
+      type: integer
+      required: true
+      default: 2000
 execution:
   python:
     path: ./wecombot.py
