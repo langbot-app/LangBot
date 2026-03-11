@@ -27,8 +27,11 @@ class DBMigrateWecomBotWebSocketMode(migration.DBMigration):
             if 'enable-webhook' in adapter_config:
                 continue
 
-            # Existing bots were using webhook mode
-            adapter_config['enable-webhook'] = False
+            # Determine mode based on existing config: if webhook fields are present, keep webhook mode
+            has_webhook_config = bool(
+                adapter_config.get('Token') and adapter_config.get('EncodingAESKey') and adapter_config.get('Corpid')
+            )
+            adapter_config['enable-webhook'] = has_webhook_config
 
             if self.ap.persistence_mgr.db.name == 'postgresql':
                 await self.ap.persistence_mgr.execute_async(
