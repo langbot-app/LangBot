@@ -627,11 +627,13 @@ class RuntimeConnectionHandler(handler.Handler):
             for kb_uuid in kb_uuids:
                 kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
                 if kb:
-                    knowledge_bases.append({
-                        'uuid': kb.get_uuid(),
-                        'name': kb.get_name(),
-                        'description': kb.knowledge_base_entity.description or '',
-                    })
+                    knowledge_bases.append(
+                        {
+                            'uuid': kb.get_uuid(),
+                            'name': kb.get_name(),
+                            'description': kb.knowledge_base_entity.description or '',
+                        }
+                    )
 
             return handler.ActionResponse.success(data={'knowledge_bases': knowledge_bases})
 
