@@ -1,11 +1,12 @@
 # Docker Compose configuration for LangBot
 # For Kubernetes deployment, see kubernetes.yaml and README_K8S.md
-version: "3"
-
 services:
 
   langbot_plugin_runtime:
-    image: rockchin/langbot:latest
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: bjhx2003/langbot:feat-wecom
     container_name: langbot_plugin_runtime
     volumes:
       - ./data/plugins:/app/data/plugins
@@ -19,7 +20,10 @@ services:
       - langbot_network
 
   langbot:
-    image: rockchin/langbot:latest
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: bjhx2003/langbot:feat-wecom
     container_name: langbot
     volumes:
       - ./data:/app/data
