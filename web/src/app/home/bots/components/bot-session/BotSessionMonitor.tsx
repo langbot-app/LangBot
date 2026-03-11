@@ -6,6 +6,7 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { Copy, Check } from 'lucide-react';
 import {
   MessageChainComponent,
   Plain,
@@ -61,7 +62,28 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
   const [messages, setMessages] = useState<SessionMessage[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [copiedUserId, setCopiedUserId] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  const parseSessionType = (sessionId: string): string | null => {
+    const idx = sessionId.indexOf('_');
+    if (idx === -1) return null;
+    const type = sessionId.slice(0, idx);
+    if (type === 'person' || type === 'group') return type;
+    return null;
+  };
+
+  const abbreviateId = (id: string): string => {
+    if (id.length <= 10) return id;
+    return `${id.slice(0, 4)}..${id.slice(-4)}`;
+  };
+
+  const copyUserId = (userId: string) => {
+    navigator.clipboard.writeText(userId).then(() => {
+      setCopiedUserId(true);
+      setTimeout(() => setCopiedUserId(false), 2000);
+    });
+  };
 
   const loadSessions = useCallback(async () => {
     setLoadingSessions(true);
@@ -348,9 +370,19 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      {parseSessionType(session.session_id) && (
+                        <span className="px-1 py-0.5 rounded bg-muted text-[10px]">
+                          {parseSessionType(session.session_id)}
+                        </span>
+                      )}
                       {session.platform && (
                         <span className="px-1 py-0.5 rounded bg-muted text-[10px]">
                           {session.platform}
+                        </span>
+                      )}
+                      {session.user_id && (
+                        <span className="truncate text-[10px]">
+                          {abbreviateId(session.user_id)}
                         </span>
                       )}
                       {session.is_active && (
@@ -358,7 +390,7 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
                           <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
                         </span>
                       )}
-                      <span>{session.pipeline_name}</span>
+                      <span className="truncate">{session.pipeline_name}</span>
                     </div>
                   </button>
                 );
@@ -385,12 +417,37 @@ export default function BotSessionMonitor({ botId }: BotSessionMonitorProps) {
                     selectedSessionId.slice(0, 20)}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  {parseSessionType(selectedSessionId) && (
+                    <span>{parseSessionType(selectedSessionId)}</span>
+                  )}
                   {selectedSession?.platform && (
-                    <span>{selectedSession.platform}</span>
+                    <>
+                      {parseSessionType(selectedSessionId) && <span>·</span>}
+                      <span>{selectedSession.platform}</span>
+                    </>
+                  )}
+                  {selectedSession?.user_id && (
+                    <>
+                      <span>·</span>
+                      <span className="font-mono">
+                        {selectedSession.user_id}
+                      </span>
+                      <button
+                        onClick={() => copyUserId(selectedSession.user_id!)}
+                        className="inline-flex items-center text-muted-foreground hover:text-foreground transition-colors"
+                        title={t('common.copy')}
+                      >
+                        {copiedUserId ? (
+                          <Check className="w-3 h-3 text-green-600" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
+                        )}
+                      </button>
+                    </>
                   )}
                   {selectedSession?.pipeline_name && (
                     <>
-                      {selectedSession?.platform && <span>·</span>}
+                      <span>·</span>
                       <span>{selectedSession.pipeline_name}</span>
                     </>
                   )}
