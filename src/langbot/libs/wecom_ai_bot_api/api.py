@@ -216,7 +216,8 @@ class WecomBotClient:
         unified_mode: bool = False,
         stream_poll_timeout: float = 0.15,
         stream_max_lifetime: float = 120,
-        pending_placeholder: str = 'AI 正在思考中，请稍候...',
+        pending_placeholder: str = 'AI 正在思考中，请稍候',
+        pending_placeholder_delay: float = 1.2,
     ):
         """企业微信智能机器人客户端。
 
@@ -254,6 +255,7 @@ class WecomBotClient:
         self.stream_poll_timeout = max(0.05, stream_poll_timeout)
         self.stream_max_lifetime = max(1.0, stream_max_lifetime)
         self.pending_placeholder = pending_placeholder
+        self.pending_placeholder_delay = max(0.0, pending_placeholder_delay)
         self.stream_timeout_final_text = '抱歉，处理超时，请稍后重试。'
         self.stream_error_final_text = '抱歉，处理失败，请稍后重试。'
 
@@ -339,6 +341,10 @@ class WecomBotClient:
             return session.last_chunk
 
         if session:
+            elapsed = time.time() - session.created_at
+            if elapsed < self.pending_placeholder_delay:
+                return None
+
             placeholder_chunk = StreamChunk(
                 content=self.pending_placeholder,
                 is_final=False,
@@ -495,7 +501,13 @@ class WecomBotClient:
             payload = self._build_stream_payload(stream_id, chunk.content if chunk else '', True)
             return await self._encrypt_and_reply(payload, nonce)
 
-        chunk = await self.stream_sessions.consume(stream_id, timeout=self.stream_poll_timeout)
+        consume_timeout = self.stream_poll_timeout
+        if not session.last_chunk and not session.finished and self.pending_placeholder_delay > 0:
+            remaining_delay = self.pending_placeholder_delay - (time.time() - session.created_at)
+            if remaining_delay > 0:
+                consume_timeout = max(consume_timeout, remaining_delay)
+
+        chunk = await self.stream_sessions.consume(stream_id, timeout=consume_timeout)
 
         if not chunk:
             if self._is_stream_lifetime_exceeded(session):

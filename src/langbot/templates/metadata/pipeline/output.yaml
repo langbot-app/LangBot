@@ -73,6 +73,34 @@ stages:
         type: integer
         required: true
         default: 0
+  - name: wecom-stream
+    label:
+      en_US: WeCom Stream
+      zh_Hans: 企微流式
+    description:
+      en_US: Stream tuning options for WeCom pull mode. Larger chunk batch size reduces refresh frequency and lowers the risk of rate limiting.
+      zh_Hans: 企业微信 Pull 流式的调优选项。Chunk 批大小越大，刷新越少，越不容易触发企微限流。
+    config:
+      - name: chunk-batch-size
+        label:
+          en_US: Chunk Batch Size
+          zh_Hans: Chunk 批大小
+        description:
+          en_US: Merge every N model chunks into one refreshed snapshot.
+          zh_Hans: 每累计 N 个模型 chunk 再输出一次新的流式快照。
+        type: integer
+        required: true
+        default: 2
+      - name: flush-window-ms
+        label:
+          en_US: Flush Window (ms)
+          zh_Hans: 时间窗口（毫秒）
+        description:
+          en_US: Emit a refreshed snapshot when content changed and the window elapsed, even if chunk batch size is not reached.
+          zh_Hans: 当内容有变化且时间窗口到达时，即使未达到 chunk 批大小，也会主动输出新的流式快照。
+        type: integer
+        required: true
+        default: 2000
   - name: misc
     label:
       en_US: Misc

@@ -39,16 +39,6 @@ spec:
       type: string
       required: false
       default: ""
-    - name: PullChunkBatchSize
-      label:
-        en_US: Pull Chunk Batch Size
-        zh_Hans: Pull 模式 Chunk 批大小
-      description:
-        en_US: In pull mode, merge every N chunks before returning a refreshed snapshot. Larger values reduce update frequency and lower the risk of rate limiting.
-        zh_Hans: Pull 模式下，每累计 N 个 chunk 再返回一次新的流式快照。值越大更新越少，更不容易触发企微限流。
-      type: integer
-      required: true
-      default: 2
     - name: PullPollTimeoutMs
       label:
         en_US: Pull Poll Timeout (ms)
@@ -69,6 +59,16 @@ spec:
       type: integer
       required: true
       default: 120000
+    - name: PullPendingPlaceholderDelayMs
+      label:
+        en_US: Pull Pending Placeholder Delay (ms)
+        zh_Hans: Pull 模式占位文案延迟（毫秒）
+      description:
+        en_US: Only return the pending placeholder if no first token arrives within this delay window.
+        zh_Hans: 只有在这段延迟时间内仍未收到首字时，才会返回等待占位文案。
+      type: integer
+      required: true
+      default: 1200
     - name: PullPendingPlaceholder
       label:
         en_US: Pull Pending Placeholder
@@ -78,7 +78,7 @@ spec:
         zh_Hans: 首个 chunk 到达前返回的临时占位文案，用于避免企微展示官方兜底错误提示。
       type: string
       required: true
-      default: "AI 正在思考中，请稍候..."
+      default: "AI 正在思考中，请稍候"
 execution:
   python:
     path: ./wecombot.py

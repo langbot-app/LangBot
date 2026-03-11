@@ -215,7 +215,8 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         pull_poll_timeout_ms = self._get_int_config(config, 'PullPollTimeoutMs', 150, 50, 2000)
         pull_stream_max_lifetime_ms = self._get_int_config(config, 'PullStreamMaxLifetimeMs', 120000, 1000, 600000)
-        pending_placeholder = config.get('PullPendingPlaceholder', 'AI 正在思考中，请稍候...')
+        pending_placeholder_delay_ms = self._get_int_config(config, 'PullPendingPlaceholderDelayMs', 1200, 0, 10000)
+        pending_placeholder = config.get('PullPendingPlaceholder', 'AI 正在思考中，请稍候')
 
         bot = WecomBotClient(
             Token=config['Token'],
@@ -226,6 +227,7 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             stream_poll_timeout=pull_poll_timeout_ms / 1000,
             stream_max_lifetime=pull_stream_max_lifetime_ms / 1000,
             pending_placeholder=pending_placeholder,
+            pending_placeholder_delay=pending_placeholder_delay_ms / 1000,
         )
         bot_account_id = config['BotId']
 

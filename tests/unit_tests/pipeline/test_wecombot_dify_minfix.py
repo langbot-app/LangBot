@@ -161,7 +161,63 @@ async def test_dify_stream_respects_configured_pull_chunk_batch_size():
     runner.dify_client = SimpleNamespace(chat_messages=fake_chat_messages, base_url='https://example.com/v1')
 
     query = SimpleNamespace(
-        adapter=SimpleNamespace(config={'PullChunkBatchSize': 3}),
+        pipeline_config={'output': {'wecom-stream': {'chunk-batch-size': 3}}},
+        session=SimpleNamespace(
+            using_conversation=SimpleNamespace(uuid='conv-1'),
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id='user-1',
+        ),
+        variables={},
+        user_message=provider_message.Message(role='user', content='hello'),
+    )
+
+    chunks = [chunk async for chunk in runner._chat_messages_chunk(query)]
+
+    assert [chunk.content for chunk in chunks] == ['你', '你好呀']
+    assert chunks[-1].is_final is True
+
+
+@pytest.mark.asyncio
+async def test_dify_stream_flushes_on_time_window_before_batch_threshold(monkeypatch):
+    dify_module = import_module('langbot.pkg.provider.runners.difysvapi')
+    DifyServiceAPIRunner = dify_module.DifyServiceAPIRunner
+    app = Mock()
+    app.logger = Mock()
+    runner = DifyServiceAPIRunner(
+        app,
+        {
+            'ai': {
+                'dify-service-api': {
+                    'app-type': 'chat',
+                    'api-key': 'test-key',
+                    'base-url': 'https://example.com/v1',
+                    'base-prompt': '',
+                }
+            },
+            'output': {'misc': {'remove-think': False}},
+        },
+    )
+
+    async def fake_chat_messages(**kwargs):
+        yield {'event': 'message', 'answer': '你', 'conversation_id': 'conv-3'}
+        yield {'event': 'message', 'answer': '好', 'conversation_id': 'conv-3'}
+        yield {'event': 'message', 'answer': '呀', 'conversation_id': 'conv-3'}
+        yield {'event': 'message_end', 'conversation_id': 'conv-3'}
+
+    monotonic_values = iter([0.0, 0.1, 0.2, 2.6, 2.7, 2.8])
+
+    def fake_monotonic():
+        try:
+            return next(monotonic_values)
+        except StopIteration:
+            return 3.0
+
+    monkeypatch.setattr(dify_module.time, 'monotonic', fake_monotonic)
+
+    runner.dify_client = SimpleNamespace(chat_messages=fake_chat_messages, base_url='https://example.com/v1')
+
+    query = SimpleNamespace(
+        pipeline_config={'output': {'wecom-stream': {'chunk-batch-size': 8, 'flush-window-ms': 2000}}},
         session=SimpleNamespace(
             using_conversation=SimpleNamespace(uuid='conv-1'),
             launcher_type=provider_session.LauncherTypes.PERSON,
@@ -174,7 +230,7 @@ async def test_dify_stream_respects_configured_pull_chunk_batch_size():
     chunks = [chunk async for chunk in runner._chat_messages_chunk(query)]
 
     assert [chunk.content for chunk in chunks] == ['你', '你好呀', '你好呀']
-    assert chunks[-1].is_final is True
+    assert [chunk.is_final for chunk in chunks] == [False, False, True]
 
 
 @pytest.mark.asyncio
@@ -201,6 +257,7 @@ def test_wecom_followup_uses_placeholder_before_first_chunk():
         Corpid='corp',
         logger=Mock(),
         pending_placeholder='思考中...',
+        pending_placeholder_delay=0,
     )
 
     _, StreamSessionManager = get_stream_types()
@@ -211,6 +268,23 @@ def test_wecom_followup_uses_placeholder_before_first_chunk():
     assert fallback_chunk.content == '思考中...'
     assert fallback_chunk.is_final is False
     assert session.last_chunk is fallback_chunk
+
+
+def test_wecom_followup_delays_placeholder_before_window_expires():
+    WecomBotClient = get_wecom_client()
+    client = WecomBotClient(
+        Token='token',
+        EnCodingAESKey='aes',
+        Corpid='corp',
+        logger=Mock(),
+        pending_placeholder='思考中...',
+        pending_placeholder_delay=2,
+    )
+
+    session, _ = client.stream_sessions.create_or_get({'msgid': 'msg-delay', 'from': {'userid': 'user-delay'}})
+    fallback_chunk = client._resolve_followup_chunk(session, None)
+
+    assert fallback_chunk is None
 
 
 def test_wecom_followup_prefers_latest_snapshot_over_empty_response():
