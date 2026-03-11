@@ -116,6 +116,7 @@ async def test_dify_stream_emits_first_chunk_immediately():
     runner.dify_client = SimpleNamespace(chat_messages=fake_chat_messages, base_url='https://example.com/v1')
 
     query = SimpleNamespace(
+        adapter=SimpleNamespace(config={'PullChunkBatchSize': 4, 'PullFlushWindowMs': 2000}),
         session=SimpleNamespace(
             using_conversation=SimpleNamespace(uuid='conv-1'),
             launcher_type=provider_session.LauncherTypes.PERSON,
@@ -161,7 +162,7 @@ async def test_dify_stream_respects_configured_pull_chunk_batch_size():
     runner.dify_client = SimpleNamespace(chat_messages=fake_chat_messages, base_url='https://example.com/v1')
 
     query = SimpleNamespace(
-        pipeline_config={'output': {'wecom-stream': {'chunk-batch-size': 3}}},
+        adapter=SimpleNamespace(config={'PullChunkBatchSize': 3, 'PullFlushWindowMs': 2000}),
         session=SimpleNamespace(
             using_conversation=SimpleNamespace(uuid='conv-1'),
             launcher_type=provider_session.LauncherTypes.PERSON,
@@ -217,7 +218,7 @@ async def test_dify_stream_flushes_on_time_window_before_batch_threshold(monkeyp
     runner.dify_client = SimpleNamespace(chat_messages=fake_chat_messages, base_url='https://example.com/v1')
 
     query = SimpleNamespace(
-        pipeline_config={'output': {'wecom-stream': {'chunk-batch-size': 8, 'flush-window-ms': 2000}}},
+        adapter=SimpleNamespace(config={'PullChunkBatchSize': 8, 'PullFlushWindowMs': 2000}),
         session=SimpleNamespace(
             using_conversation=SimpleNamespace(uuid='conv-1'),
             launcher_type=provider_session.LauncherTypes.PERSON,
@@ -234,9 +235,54 @@ async def test_dify_stream_flushes_on_time_window_before_batch_threshold(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_dify_chatflow_stream_ignores_empty_message_and_still_emits_final():
+    DifyServiceAPIRunner = get_dify_runner()
+    app = Mock()
+    app.logger = Mock()
+    runner = DifyServiceAPIRunner(
+        app,
+        {
+            'ai': {
+                'dify-service-api': {
+                    'app-type': 'chat',
+                    'api-key': 'test-key',
+                    'base-url': 'https://example.com/v1',
+                    'base-prompt': '',
+                }
+            },
+            'output': {'misc': {'remove-think': False}},
+        },
+    )
+
+    async def fake_chat_messages(**kwargs):
+        for answer in ['你', '好', '！', '有', '什', '么', '我', '可', '以', '帮', '助', '您']:
+            yield {'event': 'message', 'answer': answer, 'conversation_id': 'conv-4'}
+        yield {'event': 'message', 'answer': '', 'conversation_id': 'conv-4'}
+        yield {'event': 'workflow_finished', 'conversation_id': 'conv-4', 'data': {'error': None}}
+
+    runner.dify_client = SimpleNamespace(chat_messages=fake_chat_messages, base_url='https://example.com/v1')
+
+    query = SimpleNamespace(
+        adapter=SimpleNamespace(config={'PullChunkBatchSize': 4, 'PullFlushWindowMs': 2000}),
+        session=SimpleNamespace(
+            using_conversation=SimpleNamespace(uuid='conv-1'),
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id='user-1',
+        ),
+        variables={},
+        user_message=provider_message.Message(role='user', content='hello'),
+    )
+
+    chunks = [chunk async for chunk in runner._chat_messages_chunk(query)]
+
+    assert [chunk.content for chunk in chunks] == ['你', '你好！有什', '你好！有什么我可以', '你好！有什么我可以帮助您']
+    assert [chunk.is_final for chunk in chunks] == [False, False, False, True]
+
+
+@pytest.mark.asyncio
 async def test_stream_session_manager_keeps_latest_snapshot_only():
     StreamChunk, StreamSessionManager = get_stream_types()
-    manager = StreamSessionManager(logger=Mock())
+    manager = StreamSessionManager(logger=make_async_logger())
     session, _ = manager.create_or_get({'msgid': 'msg-1', 'from': {'userid': 'user-1'}})
 
     await manager.publish(session.stream_id, StreamChunk(content='a', is_final=False))
@@ -353,3 +399,11 @@ async def test_wecom_dispatch_exception_forces_finish():
     assert isinstance(chunk, StreamChunk)
     assert chunk.is_final is True
     assert chunk.content == client.stream_error_final_text
+
+
+def test_dify_stream_uses_wecom_adapter_defaults_when_config_missing():
+    DifyServiceAPIRunner = get_dify_runner()
+    query = SimpleNamespace(adapter=SimpleNamespace(config={}))
+
+    assert DifyServiceAPIRunner._get_stream_chunk_batch_size(query) == 4
+    assert DifyServiceAPIRunner._get_stream_flush_window_ms(query) == 2000
