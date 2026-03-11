@@ -189,12 +189,6 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         enable_webhook = config.get('enable-webhook', False)
 
         if not enable_webhook:
-            # WebSocket long connection mode (default)
-            required_keys = ['BotId', 'Secret']
-            missing_keys = [key for key in required_keys if key not in config or not config[key]]
-            if missing_keys:
-                raise Exception(f'WecomBot WebSocket mode missing config: {missing_keys}')
-
             bot = WecomBotWsClient(
                 bot_id=config['BotId'],
                 secret=config['Secret'],
