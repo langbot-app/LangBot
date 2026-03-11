@@ -644,6 +644,7 @@ class RuntimeConnectionHandler(handler.Handler):
             kb_id = data['kb_id']
             query_text = data['query_text']
             top_k = data.get('top_k', 5)
+            filters = data.get('filters', {})
 
             if query_id not in self.ap.query_pool.cached_queries:
                 return handler.ActionResponse.error(
@@ -674,7 +675,13 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
 
             try:
-                entries = await kb.retrieve(query_text, settings={'top_k': top_k})
+                entries = await kb.retrieve(
+                    query_text,
+                    settings={
+                        'top_k': top_k,
+                        'filters': filters,
+                    },
+                )
                 results = [entry.model_dump(mode='json') for entry in entries]
                 return handler.ActionResponse.success(data={'results': results})
             except Exception as e:
