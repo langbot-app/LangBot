@@ -22,3 +22,7 @@ class DBMigrateMonitoringUserName(migration.DBMigration):
             )
         except Exception:
             pass  # Column may already exist
+
+    async def downgrade(self):
+        # SQLite does not support DROP COLUMN, so we skip downgrade for SQLite
+        pass
