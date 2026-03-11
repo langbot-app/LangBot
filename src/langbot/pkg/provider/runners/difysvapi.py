@@ -494,7 +494,11 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     if answer:
                         basic_mode_pending_chunk = answer
 
-            if not yielded_final and (is_final or message_idx % 8 == 0) and (basic_mode_pending_chunk != '' or is_final):
+            if (
+                not yielded_final
+                and (is_final or message_idx % 8 == 0)
+                and (basic_mode_pending_chunk != '' or is_final)
+            ):
                 # content, _ = self._process_thinking_content(basic_mode_pending_chunk)
                 yield provider_message.MessageChunk(
                     role='assistant',
