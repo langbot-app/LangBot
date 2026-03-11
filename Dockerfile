@@ -10,6 +10,8 @@ FROM python:3.12.7-slim
 
 WORKDIR /app
 
+ENV PYTHONPATH=/app/src
+
 # 先复制依赖文件，利用 Docker 层缓存
 COPY pyproject.toml uv.lock ./
 
@@ -28,4 +30,4 @@ COPY . .
 
 COPY --from=node /app/web/out ./web/out
 
-CMD [ "uv", "run", "--no-sync", "main.py" ]
+CMD [ "uv", "run", "--no-sync", "python", "-m", "langbot" ]
