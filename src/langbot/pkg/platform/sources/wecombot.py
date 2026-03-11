@@ -11,6 +11,7 @@ import langbot_plugin.api.entities.builtin.platform.entities as platform_entitie
 from ..logger import EventLogger
 from langbot.libs.wecom_ai_bot_api.wecombotevent import WecomBotEvent
 from langbot.libs.wecom_ai_bot_api.api import WecomBotClient
+from langbot.libs.wecom_ai_bot_api.ws_client import WecomBotWsClient
 
 
 class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -176,27 +177,48 @@ class WecomBotEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
 
 class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
-    bot: WecomBotClient
+    bot: typing.Union[WecomBotClient, WecomBotWsClient]
     bot_account_id: str
     message_converter: WecomBotMessageConverter = WecomBotMessageConverter()
     event_converter: WecomBotEventConverter = WecomBotEventConverter()
     config: dict
     bot_uuid: str = None
+    _ws_mode: bool = False
 
     def __init__(self, config: dict, logger: EventLogger):
-        required_keys = ['Token', 'EncodingAESKey', 'Corpid', 'BotId']
-        missing_keys = [key for key in required_keys if key not in config]
-        if missing_keys:
-            raise Exception(f'WecomBot 缺少配置项: {missing_keys}')
+        enable_webhook = config.get('enable-webhook', False)
 
-        bot = WecomBotClient(
-            Token=config['Token'],
-            EnCodingAESKey=config['EncodingAESKey'],
-            Corpid=config['Corpid'],
-            logger=logger,
-            unified_mode=True,
-        )
-        bot_account_id = config['BotId']
+        if not enable_webhook:
+            # WebSocket long connection mode (default)
+            required_keys = ['BotId', 'Secret']
+            missing_keys = [key for key in required_keys if key not in config or not config[key]]
+            if missing_keys:
+                raise Exception(f'WecomBot WebSocket mode missing config: {missing_keys}')
+
+            bot = WecomBotWsClient(
+                bot_id=config['BotId'],
+                secret=config['Secret'],
+                logger=logger,
+                encoding_aes_key=config.get('EncodingAESKey', ''),
+            )
+            ws_mode = True
+        else:
+            # Webhook callback mode
+            required_keys = ['Token', 'EncodingAESKey', 'Corpid']
+            missing_keys = [key for key in required_keys if key not in config or not config[key]]
+            if missing_keys:
+                raise Exception(f'WecomBot webhook mode missing config: {missing_keys}')
+
+            bot = WecomBotClient(
+                Token=config['Token'],
+                EnCodingAESKey=config['EncodingAESKey'],
+                Corpid=config['Corpid'],
+                logger=logger,
+                unified_mode=True,
+            )
+            ws_mode = False
+
+        bot_account_id = config.get('BotId', '')
 
         super().__init__(
             config=config,
@@ -204,6 +226,7 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             bot=bot,
             bot_account_id=bot_account_id,
         )
+        self._ws_mode = ws_mode
 
     async def reply_message(
         self,
@@ -212,7 +235,15 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         quote_origin: bool = False,
     ):
         content = await self.message_converter.yiri2target(message)
-        await self.bot.set_message(message_source.source_platform_object.message_id, content)
+        if self._ws_mode:
+            event = message_source.source_platform_object
+            req_id = event.get('req_id', '')
+            if req_id:
+                await self.bot.reply_text(req_id, content)
+            else:
+                await self.bot.set_message(event.message_id, content)
+        else:
+            await self.bot.set_message(message_source.source_platform_object.message_id, content)
 
     async def reply_message_chunk(
         self,
@@ -222,31 +253,22 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         quote_origin: bool = False,
         is_final: bool = False,
     ):
-        """将流水线增量输出写入企业微信 stream 会话。
-
-        Args:
-            message_source: 流水线提供的原始消息事件。
-            bot_message: 当前片段对应的模型元信息（未使用）。
-            message: 需要回复的消息链。
-            quote_origin: 是否引用原消息（企业微信暂不支持）。
-            is_final: 标记当前片段是否为最终回复。
-
-        Returns:
-            dict: 包含 `stream` 键，标识写入是否成功。
-
-        Example:
-            在流水线 `reply_message_chunk` 调用中自动触发，无需手动调用。
-        """
-        # 转换为纯文本（智能机器人当前协议仅支持文本流）
         content = await self.message_converter.yiri2target(message)
         msg_id = message_source.source_platform_object.message_id
 
-        # 将片段推送到 WecomBotClient 中的队列，返回值用于判断是否走降级逻辑
-        success = await self.bot.push_stream_chunk(msg_id, content, is_final=is_final)
-        if not success and is_final:
-            # 未命中流式队列时使用旧有 set_message 兜底
-            await self.bot.set_message(msg_id, content)
-        return {'stream': success}
+        if self._ws_mode:
+            success = await self.bot.push_stream_chunk(msg_id, content, is_final=is_final)
+            if not success and is_final:
+                event = message_source.source_platform_object
+                req_id = event.get('req_id', '')
+                if req_id:
+                    await self.bot.reply_text(req_id, content)
+            return {'stream': success}
+        else:
+            success = await self.bot.push_stream_chunk(msg_id, content, is_final=is_final)
+            if not success and is_final:
+                await self.bot.set_message(msg_id, content)
+            return {'stream': success}
 
     async def is_stream_output_supported(self) -> bool:
         """智能机器人侧默认开启流式能力。
@@ -259,7 +281,11 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         return True
 
     async def send_message(self, target_type, target_id, message):
-        pass
+        if self._ws_mode:
+            content = await self.message_converter.yiri2target(message)
+            await self.bot.send_message(target_id, content)
+        else:
+            pass
 
     def register_listener(
         self,
@@ -288,29 +314,25 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         self.bot_uuid = bot_uuid
 
     async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
-        """处理统一 webhook 请求。
-
-        Args:
-            bot_uuid: Bot 的 UUID
-            path: 子路径（如果有的话）
-            request: Quart Request 对象
-
-        Returns:
-            响应数据
-        """
+        if self._ws_mode:
+            return None
         return await self.bot.handle_unified_webhook(request)
 
     async def run_async(self):
-        # 统一 webhook 模式下，不启动独立的 Quart 应用
-        # 保持运行但不启动独立端口
+        if self._ws_mode:
+            await self.bot.connect()
+        else:
 
-        async def keep_alive():
-            while True:
-                await asyncio.sleep(1)
+            async def keep_alive():
+                while True:
+                    await asyncio.sleep(1)
 
-        await keep_alive()
+            await keep_alive()
 
     async def kill(self) -> bool:
+        if self._ws_mode:
+            await self.bot.disconnect()
+            return True
         return False
 
     async def unregister_listener(
