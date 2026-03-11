@@ -441,6 +441,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         is_final = False
         think_start = False
         think_end = False
+        yielded_final = False
 
         remove_think = self.pipeline_config['output'].get('misc', '').get('remove-think')
 
@@ -493,13 +494,15 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     if answer:
                         basic_mode_pending_chunk = answer
 
-            if (is_final or message_idx % 8 == 0) and (basic_mode_pending_chunk != '' or is_final):
+            if not yielded_final and (is_final or message_idx % 8 == 0) and (basic_mode_pending_chunk != '' or is_final):
                 # content, _ = self._process_thinking_content(basic_mode_pending_chunk)
                 yield provider_message.MessageChunk(
                     role='assistant',
                     content=basic_mode_pending_chunk,
                     is_final=is_final,
                 )
+                if is_final:
+                    yielded_final = True
 
         if chunk is None:
             raise errors.DifyAPIError('Dify API 没有返回任何响应，请检查网络连接和API配置')
