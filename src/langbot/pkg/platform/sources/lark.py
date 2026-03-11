@@ -575,19 +575,43 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
 
 
 class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
-    @staticmethod
-    def _extract_quote_message_id(message: EventMessage) -> typing.Optional[str]:
+    _processed_thread_quote_cache: typing.ClassVar[dict[str, float]] = {}
+    _processed_thread_quote_cache_max_size: typing.ClassVar[int] = 4096
+    _processed_thread_quote_cache_ttl_seconds: typing.ClassVar[int] = 86400
+
+    @classmethod
+    def _prune_processed_thread_quote_cache(cls, now: typing.Optional[float] = None) -> None:
+        if now is None:
+            now = time.time()
+
+        expire_before = now - cls._processed_thread_quote_cache_ttl_seconds
+        while cls._processed_thread_quote_cache:
+            oldest_key, oldest_ts = next(iter(cls._processed_thread_quote_cache.items()))
+            if oldest_ts >= expire_before:
+                break
+            cls._processed_thread_quote_cache.pop(oldest_key, None)
+
+        while len(cls._processed_thread_quote_cache) > cls._processed_thread_quote_cache_max_size:
+            oldest_key = next(iter(cls._processed_thread_quote_cache))
+            cls._processed_thread_quote_cache.pop(oldest_key, None)
+
+    @classmethod
+    def _mark_thread_quote_processed(cls, thread_id: str) -> None:
+        now = time.time()
+        cls._prune_processed_thread_quote_cache(now)
+        cls._processed_thread_quote_cache[thread_id] = now
+
+    @classmethod
+    def _extract_quote_message_id(cls, message: EventMessage) -> typing.Optional[str]:
         """
         Extract the message ID to quote from the given message.
 
         Rules:
-        - Thread message (thread_id non-empty): return None (no auto-inject Quote)
+        - First thread reply in a topic: return parent_id and mark topic as processed
+        - Follow-up thread replies in the same topic: return None
         - Non-thread message: return parent_id if valid (non-empty, different from message_id)
 
-        Note: Thread messages are currently not supported for quote injection because:
-        - EventMessage lacks upper_message_id field (only available in Message from API fetch)
-        - root_id and parent_id both point to root message in thread replies
-        - Cannot reliably distinguish first reply vs follow-up replies
+        Thread reply state is kept in a bounded TTL cache to avoid unbounded memory growth.
         """
         parent_id = getattr(message, 'parent_id', None)
         if not parent_id:
@@ -599,8 +623,10 @@ class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
         thread_id = getattr(message, 'thread_id', None)
         if thread_id:
-            # Thread message: don't auto-inject Quote (cannot reliably detect quote target)
-            return None
+            cls._prune_processed_thread_quote_cache()
+            if thread_id in cls._processed_thread_quote_cache:
+                return None
+            cls._mark_thread_quote_processed(thread_id)
 
         return parent_id
 
