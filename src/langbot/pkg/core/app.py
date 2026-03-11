@@ -9,7 +9,7 @@ from ..platform import botmgr as im_mgr
 from ..platform.webhook_pusher import WebhookPusher
 from ..provider.session import sessionmgr as llm_session_mgr
 from ..provider.modelmgr import modelmgr as llm_model_mgr
-from ..provider.modelmgr import api_chain as api_chain_module
+
 from langbot.pkg.provider.tools import toolmgr as llm_tool_mgr
 from ..config import manager as config_mgr
 from ..command import cmdmgr
@@ -31,7 +31,7 @@ from ..api.http.service import mcp as mcp_service
 from ..api.http.service import apikey as apikey_service
 from ..api.http.service import webhook as webhook_service
 from ..api.http.service import monitoring as monitoring_service
-from ..api.http.service import api_chain as api_chain_service
+
 from ..discover import engine as discover_engine
 from ..storage import mgr as storagemgr
 from ..utils import logcache
@@ -63,8 +63,6 @@ class Application:
     sess_mgr: llm_session_mgr.SessionManager = None
 
     model_mgr: llm_model_mgr.ModelManager = None
-
-    api_chain_mgr: api_chain_module.APIChainManager = None
 
     rag_mgr: rag_mgr.RAGManager = None
     rag_runtime_service: RAGRuntimeService = None
@@ -154,8 +152,6 @@ class Application:
     survey: survey_module.SurveyManager = None
 
     monitoring_service: monitoring_service.MonitoringService = None
-
-    api_chain_service: api_chain_service.APIChainService = None
 
     def __init__(self):
         pass

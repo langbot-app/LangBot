@@ -73,6 +73,12 @@ export default function DynamicFormComponent({
           case 'bot-selector':
             fieldSchema = z.string();
             break;
+          case 'model-fallback-selector':
+            fieldSchema = z.object({
+              primary: z.string(),
+              fallbacks: z.array(z.string()),
+            });
+            break;
           case 'prompt-editor':
             fieldSchema = z.array(
               z.object({
@@ -226,6 +232,7 @@ export default function DynamicFormComponent({
 
           // All fields are disabled when editing (creation_settings are immutable)
           const isFieldDisabled = !!isEditing;
+
           return (
             <FormField
               key={config.id}

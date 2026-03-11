@@ -37,19 +37,35 @@ class PreProcessor(stage.PipelineStage):
 
         # When not local-agent, llm_model is None
         llm_model = None
-        use_api_chain_uuid = None
         if selected_runner == 'local-agent':
-            model_value = query.pipeline_config['ai']['local-agent'].get('model', '')
-            if model_value:
+            # Read model config — new format is { primary: str, fallbacks: [str] },
+            # but handle legacy plain string for backward compatibility
+            model_config = query.pipeline_config['ai']['local-agent'].get('model', {})
+            if isinstance(model_config, str):
+                # Legacy format: plain UUID string
+                primary_uuid = model_config
+                fallback_uuids = []
+            else:
+                primary_uuid = model_config.get('primary', '')
+                fallback_uuids = model_config.get('fallbacks', [])
+
+            if primary_uuid:
                 try:
-                    llm_model = await self.ap.model_mgr.get_model_by_uuid(model_value)
+                    llm_model = await self.ap.model_mgr.get_model_by_uuid(primary_uuid)
                 except ValueError:
-                    # Not a model UUID — try as API chain UUID
-                    chain = await self.ap.api_chain_mgr.get_chain(model_value)
-                    if chain:
-                        use_api_chain_uuid = model_value
-                    else:
-                        self.ap.logger.warning(f'LLM model/chain {model_value} not found or not configured')
+                    self.ap.logger.warning(f'LLM model {primary_uuid} not found or not configured')
+
+            # Resolve fallback model UUIDs
+            if fallback_uuids:
+                valid_fallbacks = []
+                for fb_uuid in fallback_uuids:
+                    try:
+                        await self.ap.model_mgr.get_model_by_uuid(fb_uuid)
+                        valid_fallbacks.append(fb_uuid)
+                    except ValueError:
+                        self.ap.logger.warning(f'Fallback model {fb_uuid} not found, skipping')
+                if valid_fallbacks:
+                    query.variables['_fallback_model_uuids'] = valid_fallbacks
 
         conversation = await self.ap.sess_mgr.get_conversation(
             query,
@@ -79,13 +95,12 @@ class PreProcessor(stage.PipelineStage):
                     self.ap.logger.debug(f'Bound MCP servers: {bound_mcp_servers}')
                     self.ap.logger.debug(f'Use funcs: {query.use_funcs}')
 
-            elif use_api_chain_uuid:
-                query.variables['_use_api_chain_uuid'] = use_api_chain_uuid
-                # Enable all tools for chain; individual models will decide capability
+            # If primary model doesn't support func_call but fallback models exist,
+            # load tools anyway since fallback models may support them
+            if not query.use_funcs and query.variables.get('_fallback_model_uuids'):
                 bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
                 bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
                 query.use_funcs = await self.ap.tool_mgr.get_all_tools(bound_plugins, bound_mcp_servers)
-                self.ap.logger.debug(f'Using API chain {use_api_chain_uuid} for local-agent')
 
         sender_name = ''
 

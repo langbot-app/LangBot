@@ -57,10 +57,13 @@ stages:
     config:
       - name: model
         label:
-          en_US: Model / API Chain
-          zh_Hans: 模型 / API 链
-        type: model-or-api-chain-selector
+          en_US: Model
+          zh_Hans: 模型
+        type: model-fallback-selector
         required: true
+        default:
+          primary: ''
+          fallbacks: []
       - name: max-round
         label:
           en_US: Max Round
