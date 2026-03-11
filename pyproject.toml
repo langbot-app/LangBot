@@ -61,7 +61,7 @@ dependencies = [
     "html2text>=2024.2.26",
     "langchain>=0.2.0",
     "langchain-text-splitters>=0.0.1",
-    "chromadb>=0.4.24",
+    "chromadb>=1.0.0,<2.0.0",
     "qdrant-client (>=1.15.1,<2.0.0)",
     "pyseekdb==1.1.0.post3",
     "langbot-plugin==0.3.0",
