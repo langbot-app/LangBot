@@ -229,8 +229,6 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         pull_stream_max_lifetime_ms = self._get_int_config(config, 'PullStreamMaxLifetimeMs', 300000, 1000, 600000)
         pending_placeholder_enabled = config.get('PullPendingPlaceholderEnabled', True)
         pending_placeholder_delay_ms = self._get_int_config(config, 'PullPendingPlaceholderDelayMs', 3000, 0, 10000)
-        pull_chunk_batch_size = self._get_int_config(config, 'PullChunkBatchSize', 4, 1, 20)
-        pull_flush_window_ms = self._get_int_config(config, 'PullFlushWindowMs', 2000, 200, 10000)
         pending_placeholder = config.get('PullPendingPlaceholder', 'AI 正在思考中，请稍候')
 
         normalized_config = dict(config)
@@ -238,8 +236,6 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         normalized_config['PullStreamMaxLifetimeMs'] = pull_stream_max_lifetime_ms
         normalized_config['PullPendingPlaceholderEnabled'] = pending_placeholder_enabled
         normalized_config['PullPendingPlaceholderDelayMs'] = pending_placeholder_delay_ms
-        normalized_config['PullChunkBatchSize'] = pull_chunk_batch_size
-        normalized_config['PullFlushWindowMs'] = pull_flush_window_ms
         normalized_config['PullPendingPlaceholder'] = pending_placeholder
 
         # 如果未开启首字等待占位，则将延迟设为0且占位文案设为空

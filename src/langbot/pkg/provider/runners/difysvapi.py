@@ -74,9 +74,10 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
     @staticmethod
     def _get_stream_chunk_batch_size(query: pipeline_query.Query) -> int:
-        adapter = getattr(query, 'adapter', None)
-        adapter_config = getattr(adapter, 'config', {}) or {}
-        value = adapter_config.get('PullChunkBatchSize', 4)
+        pipeline_config = getattr(query, 'pipeline_config', {}) or {}
+        output_config = pipeline_config.get('output', {}) or {}
+        dify_stream_config = output_config.get('dify-stream', {}) or {}
+        value = dify_stream_config.get('chunk-batch-size', 4)
 
         try:
             value = int(value)
@@ -86,9 +87,10 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
     @staticmethod
     def _get_stream_flush_window_ms(query: pipeline_query.Query) -> int:
-        adapter = getattr(query, 'adapter', None)
-        adapter_config = getattr(adapter, 'config', {}) or {}
-        value = adapter_config.get('PullFlushWindowMs', 2000)
+        pipeline_config = getattr(query, 'pipeline_config', {}) or {}
+        output_config = pipeline_config.get('output', {}) or {}
+        dify_stream_config = output_config.get('dify-stream', {}) or {}
+        value = dify_stream_config.get('flush-window-ms', 2000)
 
         try:
             value = int(value)

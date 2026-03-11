@@ -49,6 +49,26 @@ def make_async_logger():
     )
 
 
+def make_dify_pipeline_config(chunk_batch_size: int = 4, flush_window_ms: int = 2000) -> dict:
+    return {
+        'ai': {
+            'dify-service-api': {
+                'app-type': 'chat',
+                'api-key': 'test-key',
+                'base-url': 'https://example.com/v1',
+                'base-prompt': '',
+            }
+        },
+        'output': {
+            'misc': {'remove-think': False},
+            'dify-stream': {
+                'chunk-batch-size': chunk_batch_size,
+                'flush-window-ms': flush_window_ms,
+            },
+        },
+    }
+
+
 @pytest.mark.asyncio
 async def test_respback_uses_latest_chunk_final_flag(mock_app, sample_query):
     SendResponseBackStage = get_respback_stage()
@@ -96,17 +116,7 @@ async def test_dify_stream_emits_first_chunk_immediately():
     app.logger = Mock()
     runner = DifyServiceAPIRunner(
         app,
-        {
-            'ai': {
-                'dify-service-api': {
-                    'app-type': 'chat',
-                    'api-key': 'test-key',
-                    'base-url': 'https://example.com/v1',
-                    'base-prompt': '',
-                }
-            },
-            'output': {'misc': {'remove-think': False}},
-        },
+        make_dify_pipeline_config(),
     )
 
     async def fake_chat_messages(**kwargs):
@@ -116,13 +126,14 @@ async def test_dify_stream_emits_first_chunk_immediately():
     runner.dify_client = SimpleNamespace(chat_messages=fake_chat_messages, base_url='https://example.com/v1')
 
     query = SimpleNamespace(
-        adapter=SimpleNamespace(config={'PullChunkBatchSize': 4, 'PullFlushWindowMs': 2000}),
+        adapter=SimpleNamespace(config={}),
         session=SimpleNamespace(
             using_conversation=SimpleNamespace(uuid='conv-1'),
             launcher_type=provider_session.LauncherTypes.PERSON,
             launcher_id='user-1',
         ),
         variables={},
+        pipeline_config=runner.pipeline_config,
         user_message=provider_message.Message(role='user', content='hello'),
     )
 
@@ -140,17 +151,7 @@ async def test_dify_stream_respects_configured_pull_chunk_batch_size():
     app.logger = Mock()
     runner = DifyServiceAPIRunner(
         app,
-        {
-            'ai': {
-                'dify-service-api': {
-                    'app-type': 'chat',
-                    'api-key': 'test-key',
-                    'base-url': 'https://example.com/v1',
-                    'base-prompt': '',
-                }
-            },
-            'output': {'misc': {'remove-think': False}},
-        },
+        make_dify_pipeline_config(chunk_batch_size=3),
     )
 
     async def fake_chat_messages(**kwargs):
@@ -162,13 +163,14 @@ async def test_dify_stream_respects_configured_pull_chunk_batch_size():
     runner.dify_client = SimpleNamespace(chat_messages=fake_chat_messages, base_url='https://example.com/v1')
 
     query = SimpleNamespace(
-        adapter=SimpleNamespace(config={'PullChunkBatchSize': 3, 'PullFlushWindowMs': 2000}),
+        adapter=SimpleNamespace(config={}),
         session=SimpleNamespace(
             using_conversation=SimpleNamespace(uuid='conv-1'),
             launcher_type=provider_session.LauncherTypes.PERSON,
             launcher_id='user-1',
         ),
         variables={},
+        pipeline_config=runner.pipeline_config,
         user_message=provider_message.Message(role='user', content='hello'),
     )
 
@@ -186,17 +188,7 @@ async def test_dify_stream_flushes_on_time_window_before_batch_threshold(monkeyp
     app.logger = Mock()
     runner = DifyServiceAPIRunner(
         app,
-        {
-            'ai': {
-                'dify-service-api': {
-                    'app-type': 'chat',
-                    'api-key': 'test-key',
-                    'base-url': 'https://example.com/v1',
-                    'base-prompt': '',
-                }
-            },
-            'output': {'misc': {'remove-think': False}},
-        },
+        make_dify_pipeline_config(chunk_batch_size=8, flush_window_ms=2000),
     )
 
     async def fake_chat_messages(**kwargs):
@@ -218,13 +210,14 @@ async def test_dify_stream_flushes_on_time_window_before_batch_threshold(monkeyp
     runner.dify_client = SimpleNamespace(chat_messages=fake_chat_messages, base_url='https://example.com/v1')
 
     query = SimpleNamespace(
-        adapter=SimpleNamespace(config={'PullChunkBatchSize': 8, 'PullFlushWindowMs': 2000}),
+        adapter=SimpleNamespace(config={}),
         session=SimpleNamespace(
             using_conversation=SimpleNamespace(uuid='conv-1'),
             launcher_type=provider_session.LauncherTypes.PERSON,
             launcher_id='user-1',
         ),
         variables={},
+        pipeline_config=runner.pipeline_config,
         user_message=provider_message.Message(role='user', content='hello'),
     )
 
@@ -241,17 +234,7 @@ async def test_dify_chatflow_stream_ignores_empty_message_and_still_emits_final(
     app.logger = Mock()
     runner = DifyServiceAPIRunner(
         app,
-        {
-            'ai': {
-                'dify-service-api': {
-                    'app-type': 'chat',
-                    'api-key': 'test-key',
-                    'base-url': 'https://example.com/v1',
-                    'base-prompt': '',
-                }
-            },
-            'output': {'misc': {'remove-think': False}},
-        },
+        make_dify_pipeline_config(),
     )
 
     async def fake_chat_messages(**kwargs):
@@ -263,13 +246,14 @@ async def test_dify_chatflow_stream_ignores_empty_message_and_still_emits_final(
     runner.dify_client = SimpleNamespace(chat_messages=fake_chat_messages, base_url='https://example.com/v1')
 
     query = SimpleNamespace(
-        adapter=SimpleNamespace(config={'PullChunkBatchSize': 4, 'PullFlushWindowMs': 2000}),
+        adapter=SimpleNamespace(config={}),
         session=SimpleNamespace(
             using_conversation=SimpleNamespace(uuid='conv-1'),
             launcher_type=provider_session.LauncherTypes.PERSON,
             launcher_id='user-1',
         ),
         variables={},
+        pipeline_config=runner.pipeline_config,
         user_message=provider_message.Message(role='user', content='hello'),
     )
 
@@ -401,9 +385,12 @@ async def test_wecom_dispatch_exception_forces_finish():
     assert chunk.content == client.stream_error_final_text
 
 
-def test_dify_stream_uses_wecom_adapter_defaults_when_config_missing():
+def test_dify_stream_uses_output_defaults_when_config_missing():
     DifyServiceAPIRunner = get_dify_runner()
-    query = SimpleNamespace(adapter=SimpleNamespace(config={}))
+    app = Mock()
+    app.logger = Mock()
+    runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
+    query = SimpleNamespace(pipeline_config={'output': {'misc': {'remove-think': False}}})
 
-    assert DifyServiceAPIRunner._get_stream_chunk_batch_size(query) == 4
-    assert DifyServiceAPIRunner._get_stream_flush_window_ms(query) == 2000
+    assert runner._get_stream_chunk_batch_size(query) == 4
+    assert runner._get_stream_flush_window_ms(query) == 2000

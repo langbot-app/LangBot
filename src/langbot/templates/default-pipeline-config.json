@@ -101,6 +101,10 @@
             "quote-origin": true,
             "track-function-calls": false,
             "remove-think": false
+        },
+        "dify-stream": {
+            "chunk-batch-size": 4,
+            "flush-window-ms": 2000
         }
     }
 }

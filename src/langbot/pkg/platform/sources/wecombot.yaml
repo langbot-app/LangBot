@@ -91,26 +91,6 @@ spec:
       required: false
       default: "AI 正在思考中，请稍候"
       visibleOn: ${PullPendingPlaceholderEnabled} == true
-    - name: PullChunkBatchSize
-      label:
-        en_US: Pull Chunk Batch Size
-        zh_Hans: Pull 模式 Chunk 批大小
-      description:
-        en_US: Merge every N model chunks into one refreshed snapshot for WeCom pull streaming.
-        zh_Hans: 企业微信 Pull 流式下，每累计 N 个模型 chunk 再输出一次新的快照。
-      type: integer
-      required: true
-      default: 4
-    - name: PullFlushWindowMs
-      label:
-        en_US: Pull Flush Window (ms)
-        zh_Hans: Pull 模式时间窗口（毫秒）
-      description:
-        en_US: Emit a refreshed snapshot when content changed and the window elapsed, even if chunk batch size is not reached.
-        zh_Hans: 当内容有变化且时间窗口到达时，即使未达到 chunk 批大小，也会主动输出新的流式快照。
-      type: integer
-      required: true
-      default: 2000
 execution:
   python:
     path: ./wecombot.py

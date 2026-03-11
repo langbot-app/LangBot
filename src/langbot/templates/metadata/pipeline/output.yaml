@@ -73,6 +73,34 @@ stages:
         type: integer
         required: true
         default: 0
+  - name: dify-stream
+    label:
+      en_US: Dify Stream
+      zh_Hans: Dify 流式输出
+    description:
+      en_US: Snapshot throttling strategy used only by the Dify runner when streaming output is enabled.
+      zh_Hans: 仅在使用 Dify Runner 且开启流式输出时生效的快照节流策略。
+    config:
+      - name: chunk-batch-size
+        label:
+          en_US: Chunk Batch Size
+          zh_Hans: Chunk 批大小
+        description:
+          en_US: Merge every N Dify chunks into one refreshed snapshot.
+          zh_Hans: 每累计 N 个 Dify chunk 后刷新一次流式快照。
+        type: integer
+        required: true
+        default: 4
+      - name: flush-window-ms
+        label:
+          en_US: Flush Window (ms)
+          zh_Hans: 时间窗口（毫秒）
+        description:
+          en_US: Force a refreshed snapshot after this window even if the chunk batch size is not reached.
+          zh_Hans: 即使未达到 chunk 批大小，也会在该时间窗口到达后强制刷新一次流式快照。
+        type: integer
+        required: true
+        default: 2000
   - name: misc
     label:
       en_US: Misc
