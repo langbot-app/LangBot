@@ -48,7 +48,7 @@ spec:
         zh_Hans: LangBot 在响应企微 follow-up 轮询前，等待新 chunk 的时间。值越大越不容易出现空轮询和重复快照，但延迟会略增。
       type: integer
       required: true
-      default: 200
+      default: 500
     - name: PullStreamMaxLifetimeMs
       label:
         en_US: Pull Stream Max Lifetime (ms)
@@ -68,7 +68,7 @@ spec:
         zh_Hans: 开启后，若在延迟时间内未收到首字，则返回等待占位文案；关闭则不返回任何占位。
       type: boolean
       required: false
-      default: true
+      default: false
     - name: PullPendingPlaceholderDelayMs
       label:
         en_US: Pull Pending Placeholder Delay (ms)

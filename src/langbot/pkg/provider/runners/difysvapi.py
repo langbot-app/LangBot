@@ -77,12 +77,12 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         pipeline_config = getattr(query, 'pipeline_config', {}) or {}
         output_config = pipeline_config.get('output', {}) or {}
         dify_stream_config = output_config.get('dify-stream', {}) or {}
-        value = dify_stream_config.get('chunk-batch-size', 4)
+        value = dify_stream_config.get('chunk-batch-size', 8)
 
         try:
             value = int(value)
         except (TypeError, ValueError):
-            value = 4
+            value = 8
         return max(1, min(20, value))
 
     @staticmethod
@@ -99,11 +99,19 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         return max(200, min(10000, value))
 
     @staticmethod
+    def _is_stream_flush_window_enabled(query: pipeline_query.Query) -> bool:
+        pipeline_config = getattr(query, 'pipeline_config', {}) or {}
+        output_config = pipeline_config.get('output', {}) or {}
+        dify_stream_config = output_config.get('dify-stream', {}) or {}
+        return bool(dify_stream_config.get('flush-window-enabled', False))
+
+    @staticmethod
     def _should_emit_stream_snapshot(
         content: str,
         is_final: bool,
         pending_chunk_count: int,
         chunk_batch_size: int,
+        flush_window_enabled: bool,
         flush_window_ms: int,
         last_emitted_content: str,
         last_emit_at: float,
@@ -119,6 +127,9 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         if pending_chunk_count >= chunk_batch_size:
             return True
+
+        if not flush_window_enabled:
+            return False
 
         elapsed_ms = (time.monotonic() - last_emit_at) * 1000
         return elapsed_ms >= flush_window_ms
@@ -476,6 +487,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         remove_think = self.pipeline_config['output'].get('misc', '').get('remove-think')
         chunk_batch_size = self._get_stream_chunk_batch_size(query)
+        flush_window_enabled = self._is_stream_flush_window_enabled(query)
         flush_window_ms = self._get_stream_flush_window_ms(query)
 
         async for chunk in self.dify_client.chat_messages(
@@ -525,6 +537,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 is_final=is_final,
                 pending_chunk_count=pending_chunk_count,
                 chunk_batch_size=chunk_batch_size,
+                flush_window_enabled=flush_window_enabled,
                 flush_window_ms=flush_window_ms,
                 last_emitted_content=last_emitted_content,
                 last_emit_at=last_emit_at,
@@ -594,6 +607,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         remove_think = self.pipeline_config['output'].get('misc', '').get('remove-think')
         chunk_batch_size = self._get_stream_chunk_batch_size(query)
+        flush_window_enabled = self._is_stream_flush_window_enabled(query)
         flush_window_ms = self._get_stream_flush_window_ms(query)
 
         async for chunk in self.dify_client.chat_messages(
@@ -682,6 +696,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 is_final=is_final,
                 pending_chunk_count=pending_chunk_count,
                 chunk_batch_size=chunk_batch_size,
+                flush_window_enabled=flush_window_enabled,
                 flush_window_ms=flush_window_ms,
                 last_emitted_content=last_emitted_content,
                 last_emit_at=last_emit_at,
@@ -756,6 +771,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         remove_think = self.pipeline_config['output'].get('misc', '').get('remove-think')
         chunk_batch_size = self._get_stream_chunk_batch_size(query)
+        flush_window_enabled = self._is_stream_flush_window_enabled(query)
         flush_window_ms = self._get_stream_flush_window_ms(query)
         async for chunk in self.dify_client.workflow_run(
             inputs=inputs,
@@ -821,6 +837,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 is_final=is_final,
                 pending_chunk_count=pending_chunk_count,
                 chunk_batch_size=chunk_batch_size,
+                flush_window_enabled=flush_window_enabled,
                 flush_window_ms=flush_window_ms,
                 last_emitted_content=last_emitted_content,
                 last_emit_at=last_emit_at,

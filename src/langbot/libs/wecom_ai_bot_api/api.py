@@ -216,10 +216,10 @@ class WecomBotClient:
         Corpid: str,
         logger: EventLogger,
         unified_mode: bool = False,
-        stream_poll_timeout: float = 0.15,
+        stream_poll_timeout: float = 0.5,
         stream_max_lifetime: float = 120,
-        pending_placeholder: str = 'AI 正在思考中，请稍候',
-        pending_placeholder_delay: float = 1.2,
+        pending_placeholder: str = '',
+        pending_placeholder_delay: float = 0.0,
     ):
         """企业微信智能机器人客户端。
 

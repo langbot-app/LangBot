@@ -103,7 +103,8 @@
             "remove-think": false
         },
         "dify-stream": {
-            "chunk-batch-size": 4,
+            "chunk-batch-size": 8,
+            "flush-window-enabled": false,
             "flush-window-ms": 2000
         }
     }

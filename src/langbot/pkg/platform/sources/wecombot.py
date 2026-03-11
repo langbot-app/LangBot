@@ -13,6 +13,9 @@ from langbot.libs.wecom_ai_bot_api.wecombotevent import WecomBotEvent
 from langbot.libs.wecom_ai_bot_api.api import WecomBotClient
 
 
+DEFAULT_PULL_PENDING_PLACEHOLDER = 'AI 正在思考中，请稍候'
+
+
 class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
     async def yiri2target(message_chain: platform_message.MessageChain):
@@ -211,11 +214,11 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if missing_keys:
             raise Exception(f'WecomBot 缺少配置项: {missing_keys}')
 
-        pull_poll_timeout_ms = self._get_int_config(config, 'PullPollTimeoutMs', 200, 50, 2000)
+        pull_poll_timeout_ms = self._get_int_config(config, 'PullPollTimeoutMs', 500, 50, 2000)
         pull_stream_max_lifetime_ms = self._get_int_config(config, 'PullStreamMaxLifetimeMs', 300000, 1000, 600000)
-        pending_placeholder_enabled = config.get('PullPendingPlaceholderEnabled', True)
+        pending_placeholder_enabled = config.get('PullPendingPlaceholderEnabled', False)
         pending_placeholder_delay_ms = self._get_int_config(config, 'PullPendingPlaceholderDelayMs', 3000, 0, 10000)
-        pending_placeholder = config.get('PullPendingPlaceholder', 'AI 正在思考中，请稍候')
+        pending_placeholder = config.get('PullPendingPlaceholder', DEFAULT_PULL_PENDING_PLACEHOLDER)
 
         normalized_config = dict(config)
         normalized_config['PullPollTimeoutMs'] = pull_poll_timeout_ms

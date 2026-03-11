@@ -49,7 +49,11 @@ def make_async_logger():
     )
 
 
-def make_dify_pipeline_config(chunk_batch_size: int = 4, flush_window_ms: int = 2000) -> dict:
+def make_dify_pipeline_config(
+    chunk_batch_size: int = 8,
+    flush_window_enabled: bool = False,
+    flush_window_ms: int = 2000,
+) -> dict:
     return {
         'ai': {
             'dify-service-api': {
@@ -63,6 +67,7 @@ def make_dify_pipeline_config(chunk_batch_size: int = 4, flush_window_ms: int = 
             'misc': {'remove-think': False},
             'dify-stream': {
                 'chunk-batch-size': chunk_batch_size,
+                'flush-window-enabled': flush_window_enabled,
                 'flush-window-ms': flush_window_ms,
             },
         },
@@ -188,7 +193,7 @@ async def test_dify_stream_flushes_on_time_window_before_batch_threshold(monkeyp
     app.logger = Mock()
     runner = DifyServiceAPIRunner(
         app,
-        make_dify_pipeline_config(chunk_batch_size=8, flush_window_ms=2000),
+        make_dify_pipeline_config(chunk_batch_size=8, flush_window_enabled=True, flush_window_ms=2000),
     )
 
     async def fake_chat_messages(**kwargs):
@@ -259,8 +264,8 @@ async def test_dify_chatflow_stream_ignores_empty_message_and_still_emits_final(
 
     chunks = [chunk async for chunk in runner._chat_messages_chunk(query)]
 
-    assert [chunk.content for chunk in chunks] == ['你', '你好！有什', '你好！有什么我可以', '你好！有什么我可以帮助您']
-    assert [chunk.is_final for chunk in chunks] == [False, False, False, True]
+    assert [chunk.content for chunk in chunks] == ['你', '你好！有什么我可以', '你好！有什么我可以帮助您']
+    assert [chunk.is_final for chunk in chunks] == [False, False, True]
 
 
 @pytest.mark.asyncio
@@ -385,6 +390,22 @@ async def test_wecom_dispatch_exception_forces_finish():
     assert chunk.content == client.stream_error_final_text
 
 
+
+
+def test_wecom_client_defaults_match_master_polling_behavior():
+    WecomBotClient = get_wecom_client()
+    client = WecomBotClient(
+        Token='token',
+        EnCodingAESKey='aes',
+        Corpid='corp',
+        logger=Mock(),
+    )
+
+    assert client.stream_poll_timeout == 0.5
+    assert client.pending_placeholder == ''
+    assert client.pending_placeholder_delay == 0.0
+
+
 def test_dify_stream_uses_output_defaults_when_config_missing():
     DifyServiceAPIRunner = get_dify_runner()
     app = Mock()
@@ -392,5 +413,6 @@ def test_dify_stream_uses_output_defaults_when_config_missing():
     runner = DifyServiceAPIRunner(app, make_dify_pipeline_config())
     query = SimpleNamespace(pipeline_config={'output': {'misc': {'remove-think': False}}})
 
-    assert runner._get_stream_chunk_batch_size(query) == 4
+    assert runner._get_stream_chunk_batch_size(query) == 8
+    assert runner._is_stream_flush_window_enabled(query) is False
     assert runner._get_stream_flush_window_ms(query) == 2000

@@ -90,7 +90,17 @@ stages:
           zh_Hans: 每累计 N 个 Dify chunk 后刷新一次流式快照。
         type: integer
         required: true
-        default: 4
+        default: 8
+      - name: flush-window-enabled
+        label:
+          en_US: Flush Window Enabled
+          zh_Hans: 启用时间窗口刷新
+        description:
+          en_US: Enable time-window based snapshot refresh in addition to chunk batch refresh. Disabled by default for backward compatibility.
+          zh_Hans: 在 chunk 批次刷新之外启用时间窗口刷新。默认关闭，以保持向后兼容。
+        type: boolean
+        required: true
+        default: false
       - name: flush-window-ms
         label:
           en_US: Flush Window (ms)
@@ -101,6 +111,10 @@ stages:
         type: integer
         required: true
         default: 2000
+        show_if:
+          field: flush-window-enabled
+          operator: eq
+          value: true
   - name: misc
     label:
       en_US: Misc
