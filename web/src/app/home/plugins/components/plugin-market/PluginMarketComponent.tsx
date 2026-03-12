@@ -6,7 +6,6 @@ import {
   useCallback,
   useRef,
   Suspense,
-  useMemo,
 } from 'react';
 import { Input } from '@/components/ui/input';
 import {
@@ -70,7 +69,7 @@ function MarketPageContent({
     RecommendationList[]
   >([]);
 
-  const pageSize = 16; // 每页16个，4行x4列
+  const pageSize = 12; // 每页12个
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -330,38 +329,7 @@ function MarketPageContent({
     };
   }, []);
 
-  // 计算所有推荐插件的 ID 集合
-  const recommendedPluginIds = useMemo(() => {
-    const ids = new Set<string>();
-    recommendationLists.forEach((list) => {
-      list.plugins.forEach((plugin) => {
-        ids.add(`${plugin.author} / ${plugin.name}`);
-      });
-    });
-    return ids;
-  }, [recommendationLists]);
-
-  // 过滤掉已在推荐列表中展示的插件
-  // 仅在显示推荐列表的条件下（无搜索、无筛选、第一页或后续页的累积数据中）进行过滤
-  // 注意：如果用户翻页，我们希望一直保持去重，否则推荐过的插件会在第二页出现
-  // 但是推荐列表只在第一页且无筛选时显示。
-  // 如果用户进行了筛选/搜索，推荐列表不显示，此时不需要去重。
-  const visiblePlugins = useMemo(() => {
-    const showRecommendations =
-      !searchQuery && componentFilter === 'all' && selectedTags.length === 0;
-
-    if (!showRecommendations) {
-      return plugins;
-    }
-
-    return plugins.filter((p) => !recommendedPluginIds.has(p.pluginId));
-  }, [
-    plugins,
-    recommendedPluginIds,
-    searchQuery,
-    componentFilter,
-    selectedTags,
-  ]);
+  const visiblePlugins = plugins;
 
   // 加载更多
   const loadMore = useCallback(() => {

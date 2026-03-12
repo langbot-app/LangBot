@@ -47,10 +47,12 @@ function RecommendationListRow({
   list,
   tagNames,
   onInstall,
+  isLast,
 }: {
   list: RecommendationList;
   tagNames: Record<string, string>;
   onInstall: (author: string, pluginName: string) => void;
+  isLast: boolean;
 }) {
   const { t } = useTranslation();
   const [page, setPage] = useState(0);
@@ -143,7 +145,7 @@ function RecommendationListRow({
           />
         ))}
       </div>
-      {totalPages > 1 && <div className="border-b border-border mt-6" />}
+      {totalPages > 1 && !isLast && <div className="border-b border-border mt-6" />}
     </div>
   );
 }
@@ -161,12 +163,13 @@ export function RecommendationLists({
 
   return (
     <div className="mt-6">
-      {lists.map((list) => (
+      {lists.map((list, index) => (
         <RecommendationListRow
           key={list.uuid}
           list={list}
           tagNames={tagNames}
           onInstall={onInstall}
+          isLast={index === lists.length - 1}
         />
       ))}
       <div className="border-b border-border mb-6" />
