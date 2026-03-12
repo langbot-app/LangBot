@@ -97,10 +97,15 @@ class LongTextProcessStage(stage.PipelineStage):
                 original_text = str(query.resp_message_chain[-1])
                 threshold = query.pipeline_config['output']['long-text-processing']['threshold']
                 segments = self.strategy_impl.split_text(original_text, threshold)
-                query.resp_message_chain.pop()
-                for segment in segments:
-                    query.resp_message_chain.append(
-                        platform_message.MessageChain([platform_message.Plain(text=segment)])
+                # Replace the last chain with the first segment, store extra segments separately
+                # to avoid interfering with existing multi-chain scenarios (e.g. agent tool calls)
+                query.resp_message_chain[-1] = platform_message.MessageChain(
+                    [platform_message.Plain(text=segments[0])]
+                )
+                if len(segments) > 1:
+                    query.set_variable(
+                        '_longtext_split_extra_chains',
+                        [platform_message.MessageChain([platform_message.Plain(text=seg)]) for seg in segments[1:]],
                     )
             else:
                 query.resp_message_chain[-1] = platform_message.MessageChain(
