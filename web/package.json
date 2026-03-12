@@ -102,5 +102,10 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.31.1"
   },
-  "packageManager": "pnpm@8.9.2+sha512.b9d35fe91b2a5854dadc43034a3e7b2e675fa4b56e20e8e09ef078fa553c18f8aed44051e7b36e8b8dd435f97eb0c44c4ff3b44fc7c6fa7d21e1fac17bbe661e"
+  "packageManager": "pnpm@8.9.2+sha512.b9d35fe91b2a5854dadc43034a3e7b2e675fa4b56e20e8e09ef078fa553c18f8aed44051e7b36e8b8dd435f97eb0c44c4ff3b44fc7c6fa7d21e1fac17bbe661e",
+  "pnpm": {
+    "overrides": {
+      "minimatch": "3.1.3"
+    }
+  }
 }
