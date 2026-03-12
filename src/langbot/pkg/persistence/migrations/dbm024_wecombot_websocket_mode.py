@@ -4,7 +4,7 @@ import sqlalchemy
 import json
 
 
-@migration.migration_class(22)
+@migration.migration_class(24)
 class DBMigrateWecomBotWebSocketMode(migration.DBMigration):
     """Add enable-webhook field to existing wecombot adapter configs.
 
