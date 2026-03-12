@@ -168,6 +168,7 @@ class LocalAgentRunner(runner.RequestRunner):
                 result = await kb.retrieve(
                     user_message_text,
                     settings={
+                        'bot_uuid': query.bot_uuid or '',
                         'sender_id': str(query.sender_id),
                         'session_name': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
                     },
