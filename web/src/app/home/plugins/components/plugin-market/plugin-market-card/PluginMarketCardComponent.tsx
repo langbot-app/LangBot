@@ -17,7 +17,7 @@ import {
   FileText,
   Info,
 } from 'lucide-react';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 
 export default function PluginMarketCardComponent({
@@ -50,7 +50,10 @@ export default function PluginMarketCardComponent({
       }
       const tagWidth = 80;
       const plusBadgeWidth = 40;
-      const maxTags = Math.max(0, Math.floor((availableForTags - plusBadgeWidth) / tagWidth));
+      const maxTags = Math.max(
+        0,
+        Math.floor((availableForTags - plusBadgeWidth) / tagWidth),
+      );
       if (maxTags >= tags.length) {
         setVisibleTags(tags.length);
       } else {
@@ -169,7 +172,10 @@ export default function PluginMarketCardComponent({
         </div>
 
         {/* 下部分：下载量、标签和组件列表 */}
-        <div ref={bottomRef} className="w-full flex flex-row items-center justify-between gap-2 px-0 sm:px-[0.4rem] flex-shrink-0 overflow-hidden">
+        <div
+          ref={bottomRef}
+          className="w-full flex flex-row items-center justify-between gap-2 px-0 sm:px-[0.4rem] flex-shrink-0 overflow-hidden"
+        >
           <div className="flex flex-row items-center justify-start gap-2 min-w-0 overflow-hidden">
             {/* 下载数量 */}
             <div className="flex flex-row items-center gap-[0.3rem] sm:gap-[0.4rem] flex-shrink-0">
@@ -212,7 +218,9 @@ export default function PluginMarketCardComponent({
                       <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
                       <line x1="7" y1="7" x2="7.01" y2="7" />
                     </svg>
-                    <span className="truncate max-w-[5rem]">{tagNames[tag] || tag}</span>
+                    <span className="truncate max-w-[5rem]">
+                      {tagNames[tag] || tag}
+                    </span>
                   </Badge>
                 ))}
                 {remainingTags > 0 && (
