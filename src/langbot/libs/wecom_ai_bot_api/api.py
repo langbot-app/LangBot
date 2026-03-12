@@ -278,7 +278,7 @@ class WecomBotClient:
             return None
 
         chunk = StreamChunk(content=content, is_final=True, meta={'reason': reason})
-        published = await self.stream_sessions.publish(stream_id, chunk)
+        await self.stream_sessions.publish(stream_id, chunk)
         self.stream_sessions.mark_finished(stream_id)
 
         session = self.stream_sessions.get_session(stream_id)
