@@ -4,7 +4,7 @@ metadata:
   author: local
   name: feishu_process_bitable_plugin
   repository: 'https://open.feishu.cn/'
-  version: 0.3.24
+  version: 0.3.25
   description:
     en_US: Parse process messages with OCR and write structured records into Feishu Bitable.
     zh_Hans: 解析工艺消息并支持OCR，把结构化结果写入飞书多维表格。
@@ -468,6 +468,43 @@ spec:
       label:
         en_US: Recall Scan All Tables
         zh_Hans: 撤回时扫描全部数据表
+      type: boolean
+      required: false
+      default: true
+    - name: enable_recall_restore_previous
+      label:
+        en_US: Restore Previous Version On Recall
+        zh_Hans: 撤回时恢复上一版本
+      description:
+        en_US: Restore the previous snapshot from history table when the recalled message overwrote an existing row.
+        zh_Hans: 当撤回消息覆盖了已有记录时，优先从历史表恢复上一版本快照。
+      type: boolean
+      required: false
+      default: true
+    - name: history_table_id
+      label:
+        en_US: History Table ID
+        zh_Hans: 历史表ID
+      description:
+        en_US: Optional Bitable table ID for mutation history snapshots.
+        zh_Hans: 可选的多维表格历史表ID，用于保存写入快照。
+      type: string
+      required: false
+      default: ''
+    - name: history_table_name
+      label:
+        en_US: History Table Name
+        zh_Hans: 历史表名
+      description:
+        en_US: Table name used when history_table_id is empty and auto_create_history_table is enabled.
+        zh_Hans: 当 history_table_id 为空且开启自动建表时使用的历史表名。
+      type: string
+      required: false
+      default: 'lb_message_history'
+    - name: auto_create_history_table
+      label:
+        en_US: Auto Create History Table
+        zh_Hans: 自动创建历史表
       type: boolean
       required: false
       default: true

@@ -27,6 +27,32 @@ class ParsedRecord:
     fields: dict[str, Any]
 
 
+@dataclass
+class UpsertResult:
+    ok: bool
+    detail: str
+    record_id: str
+    operation: str
+    before_fields: dict[str, Any]
+    after_fields: dict[str, Any]
+
+
+@dataclass
+class RecallHistoryEntry:
+    history_record_id: str
+    source_message_id: str
+    target_table_id: str
+    target_record_id: str
+    operation: str
+    before_fields: dict[str, Any]
+    after_fields: dict[str, Any]
+    route_key: str
+    batch_id: str
+    line: str
+    logged_at_ts: int
+    status: str
+
+
 class AutoProcessToBitableListener(EventListener):
     def __init__(self):
         super().__init__()
@@ -41,6 +67,7 @@ class AutoProcessToBitableListener(EventListener):
         self._table_field_types_cache: dict[str, dict[str, int]] = {}
         self._record_lookup_cache: dict[str, str] = {}
         self._source_record_cache: dict[str, list[tuple[str, str]]] = {}
+        self._history_table_id_cache: str = ""
 
     async def initialize(self) -> None:
         await super().initialize()
@@ -187,6 +214,86 @@ class AutoProcessToBitableListener(EventListener):
 
     def _get_bitable_app_token(self) -> str:
         return self._get_str_config("bitable_app_token", "")
+
+    def _get_history_table_name(self) -> str:
+        table_name = self._get_str_config("history_table_name", "lb_message_history")
+        if not table_name:
+            return "lb_message_history"
+        return table_name
+
+    @staticmethod
+    def _history_field_names() -> dict[str, str]:
+        return {
+            "source_message_id": "history_source_message_id",
+            "target_table_id": "history_target_table_id",
+            "target_record_id": "history_target_record_id",
+            "operation": "history_operation",
+            "before_fields_json": "history_before_fields_json",
+            "after_fields_json": "history_after_fields_json",
+            "route_key": "history_route_key",
+            "batch_id": "history_batch_id",
+            "line": "history_line",
+            "logged_at_ts": "history_logged_at_ts",
+            "status": "history_status",
+            "note": "history_note",
+        }
+
+    async def _resolve_history_table_id(self) -> str:
+        configured_table_id = self._get_str_config("history_table_id", "")
+        if configured_table_id:
+            self._history_table_id_cache = configured_table_id
+            return configured_table_id
+
+        if self._history_table_id_cache:
+            return self._history_table_id_cache
+
+        table_name = self._get_history_table_name()
+        if not table_name:
+            return ""
+
+        cached = self._table_name_to_id_cache.get(table_name, "")
+        if cached:
+            self._history_table_id_cache = cached
+            return cached
+
+        async with self._table_lock:
+            cached = self._table_name_to_id_cache.get(table_name, "")
+            if cached:
+                self._history_table_id_cache = cached
+                return cached
+
+            tables = await self._list_all_bitable_tables()
+            for table in tables:
+                name = str(table.get("name", "")).strip()
+                tid = str(table.get("table_id", "")).strip()
+                if name and tid:
+                    self._table_name_to_id_cache[name] = tid
+
+            cached = self._table_name_to_id_cache.get(table_name, "")
+            if cached:
+                self._history_table_id_cache = cached
+                return cached
+
+            if not self._get_bool_config("auto_create_history_table", True):
+                return ""
+
+            created = await self._create_bitable_table(table_name)
+            if created:
+                self._table_name_to_id_cache[table_name] = created
+                self._history_table_id_cache = created
+                return created
+
+            tables = await self._list_all_bitable_tables()
+            for table in tables:
+                name = str(table.get("name", "")).strip()
+                tid = str(table.get("table_id", "")).strip()
+                if name and tid:
+                    self._table_name_to_id_cache[name] = tid
+
+            resolved = self._table_name_to_id_cache.get(table_name, "")
+            if resolved:
+                self._history_table_id_cache = resolved
+            return resolved
 
     @staticmethod
     def _default_table_names() -> dict[str, str]:
@@ -2093,6 +2200,253 @@ class AutoProcessToBitableListener(EventListener):
                 return str(value).strip()
         return str(value).strip()
 
+    @staticmethod
+    def _dump_json_text(value: Any) -> str:
+        try:
+            return json.dumps(value, ensure_ascii=False, sort_keys=True)
+        except Exception:
+            return "{}"
+
+    @staticmethod
+    def _load_json_object(raw: Any) -> dict[str, Any]:
+        text = str(raw or "").strip()
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+        except Exception:
+            return {}
+        if isinstance(parsed, dict):
+            return parsed
+        return {}
+
+    def _build_history_write_fields(
+        self,
+        source_message_id: str,
+        table_id: str,
+        upsert_result: UpsertResult,
+        record: ParsedRecord,
+        note: str = "",
+    ) -> dict[str, Any]:
+        fields = self._history_field_names()
+        return {
+            fields["source_message_id"]: source_message_id,
+            fields["target_table_id"]: table_id,
+            fields["target_record_id"]: upsert_result.record_id,
+            fields["operation"]: upsert_result.operation or "unknown",
+            fields["before_fields_json"]: self._dump_json_text(upsert_result.before_fields),
+            fields["after_fields_json"]: self._dump_json_text(upsert_result.after_fields),
+            fields["route_key"]: record.route_key,
+            fields["batch_id"]: record.batch_id,
+            fields["line"]: record.line,
+            fields["logged_at_ts"]: str(time.time_ns()),
+            fields["status"]: "applied",
+            fields["note"]: note,
+        }
+
+    async def _find_record_item_by_record_id(self, table_id: str, record_id: str) -> dict[str, Any] | None:
+        app_token = self._get_str_config("bitable_app_token", "")
+        if not app_token or not table_id or not record_id:
+            return None
+
+        token = await self._get_tenant_access_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8",
+        }
+        endpoint = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
+
+        page_token = ""
+        scanned = 0
+        scan_limit = self._get_int_config("upsert_scan_limit", 1000, min_value=100, max_value=5000)
+        page_size = 200
+
+        while scanned < scan_limit:
+            query: dict[str, Any] = {"page_size": page_size}
+            if page_token:
+                query["page_token"] = page_token
+
+            data = await self._call_feishu_json_api("GET", endpoint, headers=headers, params=query)
+            items = data.get("items", []) or []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                current_record_id = str(item.get("record_id", "")).strip()
+                if current_record_id == record_id:
+                    return item
+
+            scanned += len(items)
+            if not bool(data.get("has_more", False)):
+                break
+            page_token = str(data.get("page_token", "")).strip()
+            if not page_token:
+                break
+
+        return None
+
+    async def _find_record_items_by_field(
+        self,
+        table_id: str,
+        field_name: str,
+        field_value: str,
+        *,
+        scan_limit: int,
+        match_limit: int,
+    ) -> list[dict[str, Any]]:
+        app_token = self._get_str_config("bitable_app_token", "")
+        if not app_token or not table_id or not field_name or not field_value:
+            return []
+
+        token = await self._get_tenant_access_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8",
+        }
+        endpoint = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
+
+        page_token = ""
+        scanned = 0
+        page_size = 200
+        expected_value = self._field_to_text(field_value)
+        matched_items: list[dict[str, Any]] = []
+
+        while scanned < scan_limit and len(matched_items) < match_limit:
+            query: dict[str, Any] = {"page_size": page_size}
+            if page_token:
+                query["page_token"] = page_token
+
+            data = await self._call_feishu_json_api("GET", endpoint, headers=headers, params=query)
+            items = data.get("items", []) or []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                fields = item.get("fields", {}) or {}
+                if not isinstance(fields, dict):
+                    continue
+
+                current_value = self._field_to_text(fields.get(field_name))
+                if current_value == expected_value:
+                    matched_items.append(item)
+                    if len(matched_items) >= match_limit:
+                        break
+
+            scanned += len(items)
+            if not bool(data.get("has_more", False)):
+                break
+            page_token = str(data.get("page_token", "")).strip()
+            if not page_token:
+                break
+
+        return matched_items
+
+    async def _record_history_entry(
+        self,
+        source_message_id: str,
+        table_id: str,
+        record: ParsedRecord,
+        upsert_result: UpsertResult,
+    ) -> tuple[bool, str]:
+        if not source_message_id:
+            return False, "source_message_id is empty"
+
+        history_table_id = await self._resolve_history_table_id()
+        if not history_table_id:
+            return False, "history_table_id is empty"
+
+        write_fields = self._build_history_write_fields(source_message_id, table_id, upsert_result, record)
+        ok_fields, detail_fields, field_types = await self._ensure_table_fields(history_table_id, write_fields)
+        if not ok_fields:
+            return False, detail_fields
+
+        normalized_fields = self._normalize_write_fields(write_fields, field_types)
+        return await self._write_record_to_bitable(history_table_id, normalized_fields)
+
+    def _parse_history_entry(self, item: dict[str, Any]) -> RecallHistoryEntry | None:
+        record_id = str(item.get("record_id", "")).strip()
+        fields = item.get("fields", {}) or {}
+        if not record_id or not isinstance(fields, dict):
+            return None
+
+        names = self._history_field_names()
+        raw_logged_at = self._field_to_text(fields.get(names["logged_at_ts"]))
+        try:
+            logged_at_ts = int(raw_logged_at)
+        except Exception:
+            logged_at_ts = 0
+
+        return RecallHistoryEntry(
+            history_record_id=record_id,
+            source_message_id=self._field_to_text(fields.get(names["source_message_id"])),
+            target_table_id=self._field_to_text(fields.get(names["target_table_id"])),
+            target_record_id=self._field_to_text(fields.get(names["target_record_id"])),
+            operation=self._field_to_text(fields.get(names["operation"])).lower(),
+            before_fields=self._load_json_object(fields.get(names["before_fields_json"])),
+            after_fields=self._load_json_object(fields.get(names["after_fields_json"])),
+            route_key=self._field_to_text(fields.get(names["route_key"])),
+            batch_id=self._field_to_text(fields.get(names["batch_id"])),
+            line=self._field_to_text(fields.get(names["line"])),
+            logged_at_ts=logged_at_ts,
+            status=self._field_to_text(fields.get(names["status"])).lower(),
+        )
+
+    async def _find_history_entries_by_source_message_id(self, source_message_id: str) -> tuple[str, list[RecallHistoryEntry]]:
+        history_table_id = await self._resolve_history_table_id()
+        if not history_table_id or not source_message_id:
+            return history_table_id, []
+
+        names = self._history_field_names()
+        items = await self._find_record_items_by_field(
+            history_table_id,
+            names["source_message_id"],
+            source_message_id,
+            scan_limit=self._get_int_config("recall_scan_limit", 1000, min_value=100, max_value=5000),
+            match_limit=self._get_int_config("recall_match_limit", 50, min_value=1, max_value=200),
+        )
+        entries = [entry for entry in (self._parse_history_entry(item) for item in items) if entry is not None]
+        entries.sort(key=lambda item: item.logged_at_ts, reverse=True)
+        return history_table_id, entries
+
+    async def _find_history_entries_by_target_record(
+        self,
+        history_table_id: str,
+        target_table_id: str,
+        target_record_id: str,
+    ) -> list[RecallHistoryEntry]:
+        if not history_table_id or not target_record_id:
+            return []
+
+        names = self._history_field_names()
+        items = await self._find_record_items_by_field(
+            history_table_id,
+            names["target_record_id"],
+            target_record_id,
+            scan_limit=self._get_int_config("recall_scan_limit", 1000, min_value=100, max_value=5000),
+            match_limit=200,
+        )
+        entries = [entry for entry in (self._parse_history_entry(item) for item in items) if entry is not None]
+        entries = [entry for entry in entries if entry.target_table_id == target_table_id]
+        entries.sort(key=lambda item: item.logged_at_ts, reverse=True)
+        return entries
+
+    async def _update_history_entry_status(
+        self,
+        history_table_id: str,
+        history_record_id: str,
+        status: str,
+        note: str = "",
+    ) -> tuple[bool, str]:
+        names = self._history_field_names()
+        write_fields = {
+            names["status"]: status,
+            names["note"]: note,
+        }
+        ok_fields, detail_fields, field_types = await self._ensure_table_fields(history_table_id, write_fields)
+        if not ok_fields:
+            return False, detail_fields
+
+        normalized_fields = self._normalize_write_fields(write_fields, field_types)
+        return await self._update_record_to_bitable(history_table_id, history_record_id, normalized_fields)
+
     def _collect_recall_candidate_table_ids(self, source_message_id: str) -> list[str]:
         table_ids: list[str] = []
         visited: set[str] = set()
@@ -2122,54 +2476,19 @@ class AutoProcessToBitableListener(EventListener):
         return table_ids
 
     async def _find_record_ids_by_field(self, table_id: str, field_name: str, field_value: str) -> list[str]:
-        app_token = self._get_str_config("bitable_app_token", "")
-        if not app_token or not table_id or not field_name or not field_value:
-            return []
-
-        token = await self._get_tenant_access_token()
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json; charset=utf-8",
-        }
-        endpoint = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
-
-        page_token = ""
-        scanned = 0
-        scan_limit = self._get_int_config("recall_scan_limit", 1000, min_value=100, max_value=5000)
-        match_limit = self._get_int_config("recall_match_limit", 50, min_value=1, max_value=200)
-        page_size = 200
-        expected_value = self._field_to_text(field_value)
-        matched_record_ids: list[str] = []
-
-        while scanned < scan_limit and len(matched_record_ids) < match_limit:
-            query: dict[str, Any] = {"page_size": page_size}
-            if page_token:
-                query["page_token"] = page_token
-
-            data = await self._call_feishu_json_api("GET", endpoint, headers=headers, params=query)
-            items = data.get("items", []) or []
-            for item in items:
-                if not isinstance(item, dict):
-                    continue
-                record_id = str(item.get("record_id", "")).strip()
-                fields = item.get("fields", {}) or {}
-                if not record_id or not isinstance(fields, dict):
-                    continue
-
-                current_value = self._field_to_text(fields.get(field_name))
-                if current_value == expected_value:
-                    matched_record_ids.append(record_id)
-                    if len(matched_record_ids) >= match_limit:
-                        break
-
-            scanned += len(items)
-            if not bool(data.get("has_more", False)):
-                break
-            page_token = str(data.get("page_token", "")).strip()
-            if not page_token:
-                break
-
-        return matched_record_ids
+        items = await self._find_record_items_by_field(
+            table_id,
+            field_name,
+            field_value,
+            scan_limit=self._get_int_config("recall_scan_limit", 1000, min_value=100, max_value=5000),
+            match_limit=self._get_int_config("recall_match_limit", 50, min_value=1, max_value=200),
+        )
+        record_ids: list[str] = []
+        for item in items:
+            record_id = str(item.get("record_id", "")).strip()
+            if record_id:
+                record_ids.append(record_id)
+        return record_ids
 
     def _build_recall_write_fields(self, recall_meta: dict[str, str]) -> dict[str, Any]:
         fields: dict[str, Any] = {}
@@ -2189,14 +2508,130 @@ class AutoProcessToBitableListener(EventListener):
 
         return fields
 
-    async def _handle_recalled_message(self, event_ctx: context.EventContext, recall_meta: dict[str, str]) -> None:
-        if not self._get_bool_config("enable_recall_revert", True):
-            return
+    @staticmethod
+    def _is_history_entry_applied(status: str) -> bool:
+        normalized = str(status or "").strip().lower()
+        return normalized in {"", "applied"}
 
+    async def _handle_recalled_message_from_history(
+        self,
+        source_message_id: str,
+        recall_meta: dict[str, str],
+    ) -> tuple[bool, int, int, list[str]]:
+        try:
+            history_table_id, history_entries = await self._find_history_entries_by_source_message_id(source_message_id)
+        except Exception as exc:
+            return False, 0, 0, [f"load recall history failed: {exc}"]
+
+        if not history_table_id or not history_entries:
+            return False, 0, 0, []
+
+        recall_fields = self._build_recall_write_fields(recall_meta)
+        success_updates = 0
+        matched_records = 0
+        errors: list[str] = []
+
+        for entry in history_entries:
+            if not entry.target_table_id or not entry.target_record_id:
+                errors.append(f"history={entry.history_record_id}, target record is empty")
+                continue
+
+            matched_records += 1
+            if not self._is_history_entry_applied(entry.status):
+                errors.append(f"history={entry.history_record_id}, recall history already handled")
+                continue
+
+            try:
+                sibling_entries = await self._find_history_entries_by_target_record(
+                    history_table_id,
+                    entry.target_table_id,
+                    entry.target_record_id,
+                )
+            except Exception as exc:
+                errors.append(
+                    f"table={entry.target_table_id}, record={entry.target_record_id}, load target history failed: {exc}"
+                )
+                continue
+
+            latest_applied = next((item for item in sibling_entries if self._is_history_entry_applied(item.status)), None)
+            if latest_applied is None or latest_applied.history_record_id != entry.history_record_id:
+                note = "skipped restore because newer write exists"
+                ok_status, detail_status = await self._update_history_entry_status(
+                    history_table_id,
+                    entry.history_record_id,
+                    "recalled_skipped_not_latest",
+                    note,
+                )
+                if not ok_status:
+                    errors.append(f"history={entry.history_record_id}, {detail_status}")
+                errors.append(
+                    f"table={entry.target_table_id}, record={entry.target_record_id}, newer write exists, skip restore"
+                )
+                continue
+
+            restore_fields = dict(entry.before_fields)
+            restore_operation = entry.operation == "update" and bool(restore_fields)
+
+            if restore_operation:
+                ok_fields, detail_fields, field_types = await self._ensure_table_fields(entry.target_table_id, restore_fields)
+                if not ok_fields:
+                    errors.append(f"table={entry.target_table_id}, record={entry.target_record_id}, {detail_fields}")
+                    continue
+                normalized_fields = self._normalize_write_fields(restore_fields, field_types)
+                ok_update, detail_update = await self._update_record_to_bitable(
+                    entry.target_table_id,
+                    entry.target_record_id,
+                    normalized_fields,
+                )
+                if not ok_update:
+                    errors.append(f"table={entry.target_table_id}, record={entry.target_record_id}, {detail_update}")
+                    continue
+
+                success_updates += 1
+                ok_status, detail_status = await self._update_history_entry_status(
+                    history_table_id,
+                    entry.history_record_id,
+                    "recalled_restored",
+                    "restored previous fields",
+                )
+                if not ok_status:
+                    errors.append(f"history={entry.history_record_id}, {detail_status}")
+                continue
+
+            ok_fields, detail_fields, field_types = await self._ensure_table_fields(entry.target_table_id, recall_fields)
+            if not ok_fields:
+                errors.append(f"table={entry.target_table_id}, record={entry.target_record_id}, {detail_fields}")
+                continue
+            normalized_recall_fields = self._normalize_write_fields(recall_fields, field_types)
+            ok_mark, detail_mark = await self._update_record_to_bitable(
+                entry.target_table_id,
+                entry.target_record_id,
+                normalized_recall_fields,
+            )
+            if not ok_mark:
+                errors.append(f"table={entry.target_table_id}, record={entry.target_record_id}, {detail_mark}")
+                continue
+
+            success_updates += 1
+            ok_status, detail_status = await self._update_history_entry_status(
+                history_table_id,
+                entry.history_record_id,
+                "recalled_marked",
+                "no previous fields, fallback to recall mark",
+            )
+            if not ok_status:
+                errors.append(f"history={entry.history_record_id}, {detail_status}")
+
+        return True, matched_records, success_updates, errors
+
+    async def _mark_recalled_message_directly(
+        self,
+        source_message_id: str,
+        recall_meta: dict[str, str],
+    ) -> tuple[int, int, list[str]]:
         source_field = self._get_str_config("source_message_id_field", "源消息ID")
-        source_message_id = recall_meta.get("message_id", "").strip()
         if not source_field or not source_message_id:
-            return
+            return 0, 0, []
 
         candidate_table_ids = self._collect_recall_candidate_table_ids(source_message_id)
         if self._get_bool_config("recall_scan_all_tables", True):
@@ -2210,16 +2645,7 @@ class AutoProcessToBitableListener(EventListener):
                 pass
 
         if not candidate_table_ids:
-            need_error_feedback = self._get_bool_config("reply_on_error", False)
-            if self._is_group_event(event_ctx) and self._get_bool_config("private_notify_on_error", True):
-                need_error_feedback = True
-            if need_error_feedback:
-                await self._send_feedback(
-                    event_ctx,
-                    f"撤回处理失败：未找到可扫描的数据表，message_id={source_message_id}",
-                    is_error=True,
-                )
-            return
+            return 0, 0, [f"未找到可扫描的数据表，message_id={source_message_id}"]
 
         preferred_records = self._source_record_cache.get(source_message_id, [])
         recall_fields = self._build_recall_write_fields(recall_meta)
@@ -2253,6 +2679,36 @@ class AutoProcessToBitableListener(EventListener):
                     self._remember_written_record(source_message_id, table_id, record_id)
                 else:
                     errors.append(f"table={table_id}, record={record_id}, {detail}")
+
+        return matched_records, success_updates, errors
+
+    async def _handle_recalled_message(self, event_ctx: context.EventContext, recall_meta: dict[str, str]) -> None:
+        if not self._get_bool_config("enable_recall_revert", True):
+            return
+
+        source_message_id = recall_meta.get("message_id", "").strip()
+        if not source_message_id:
+            return
+
+        matched_records = 0
+        success_updates = 0
+        errors: list[str] = []
+        used_history = False
+
+        if self._get_bool_config("enable_recall_restore_previous", True):
+            used_history, matched_records, success_updates, errors = await self._handle_recalled_message_from_history(
+                source_message_id,
+                recall_meta,
+            )
+
+        if not used_history:
+            direct_matched_records, direct_success_updates, direct_errors = await self._mark_recalled_message_directly(
+                source_message_id,
+                recall_meta,
+            )
+            matched_records = direct_matched_records
+            success_updates = direct_success_updates
+            errors.extend(direct_errors)
 
         if success_updates > 0:
             need_feedback = self._get_bool_config("reply_on_recall", False)
@@ -2374,27 +2830,74 @@ class AutoProcessToBitableListener(EventListener):
         table_id: str,
         fields: dict[str, Any],
         match_fields: dict[str, str],
-    ) -> tuple[bool, str]:
+    ) -> UpsertResult:
         if not self._get_bool_config("upsert_by_batch", True):
-            return await self._write_record_to_bitable(table_id, fields)
+            ok, detail = await self._write_record_to_bitable(table_id, fields)
+            return UpsertResult(
+                ok=ok,
+                detail=detail,
+                record_id=detail if ok else "",
+                operation="create",
+                before_fields={},
+                after_fields=dict(fields),
+            )
 
         if not match_fields:
-            return await self._write_record_to_bitable(table_id, fields)
+            ok, detail = await self._write_record_to_bitable(table_id, fields)
+            return UpsertResult(
+                ok=ok,
+                detail=detail,
+                record_id=detail if ok else "",
+                operation="create",
+                before_fields={},
+                after_fields=dict(fields),
+            )
 
         try:
             existing_id = await self._find_existing_record_id(table_id, match_fields)
         except Exception as exc:
-            return False, f"find existing record failed: {exc}"
+            return UpsertResult(
+                ok=False,
+                detail=f"find existing record failed: {exc}",
+                record_id="",
+                operation="",
+                before_fields={},
+                after_fields=dict(fields),
+            )
 
         if existing_id:
+            before_fields: dict[str, Any] = {}
+            try:
+                record_item = await self._find_record_item_by_record_id(table_id, existing_id)
+                if record_item is not None:
+                    existing_fields = record_item.get("fields", {}) or {}
+                    if isinstance(existing_fields, dict):
+                        before_fields = dict(existing_fields)
+            except Exception:
+                before_fields = {}
+
             ok, detail = await self._update_record_to_bitable(table_id, existing_id, fields)
             if ok:
                 cache_key = self._build_record_lookup_cache_key(table_id, match_fields)
                 self._record_lookup_cache[cache_key] = existing_id
-                return ok, detail
+                return UpsertResult(
+                    ok=True,
+                    detail=detail,
+                    record_id=existing_id,
+                    operation="update",
+                    before_fields=before_fields,
+                    after_fields=dict(fields),
+                )
 
             if not self._is_record_id_not_found_error(detail):
-                return ok, detail
+                return UpsertResult(
+                    ok=ok,
+                    detail=detail,
+                    record_id=existing_id,
+                    operation="update",
+                    before_fields=before_fields,
+                    after_fields=dict(fields),
+                )
 
             cache_key = self._build_record_lookup_cache_key(table_id, match_fields)
             self._record_lookup_cache.pop(cache_key, None)
@@ -2406,15 +2909,46 @@ class AutoProcessToBitableListener(EventListener):
                     use_cache=False,
                 )
             except Exception as exc:
-                return False, f"refresh existing record failed: {exc}"
+                return UpsertResult(
+                    ok=False,
+                    detail=f"refresh existing record failed: {exc}",
+                    record_id="",
+                    operation="",
+                    before_fields={},
+                    after_fields=dict(fields),
+                )
 
             if refreshed_existing_id:
+                before_fields_retry: dict[str, Any] = {}
+                try:
+                    refreshed_item = await self._find_record_item_by_record_id(table_id, refreshed_existing_id)
+                    if refreshed_item is not None:
+                        refreshed_fields = refreshed_item.get("fields", {}) or {}
+                        if isinstance(refreshed_fields, dict):
+                            before_fields_retry = dict(refreshed_fields)
+                except Exception:
+                    before_fields_retry = {}
+
                 ok_retry, detail_retry = await self._update_record_to_bitable(table_id, refreshed_existing_id, fields)
                 if ok_retry:
                     self._record_lookup_cache[cache_key] = refreshed_existing_id
-                    return ok_retry, detail_retry
+                    return UpsertResult(
+                        ok=True,
+                        detail=detail_retry,
+                        record_id=refreshed_existing_id,
+                        operation="update",
+                        before_fields=before_fields_retry,
+                        after_fields=dict(fields),
+                    )
                 if not self._is_record_id_not_found_error(detail_retry):
-                    return ok_retry, detail_retry
+                    return UpsertResult(
+                        ok=ok_retry,
+                        detail=detail_retry,
+                        record_id=refreshed_existing_id,
+                        operation="update",
+                        before_fields=before_fields_retry,
+                        after_fields=dict(fields),
+                    )
                 self._record_lookup_cache.pop(cache_key, None)
 
         ok, detail = await self._write_record_to_bitable(table_id, fields)
@@ -2422,7 +2956,14 @@ class AutoProcessToBitableListener(EventListener):
             cache_key = self._build_record_lookup_cache_key(table_id, match_fields)
             if detail:
                 self._record_lookup_cache[cache_key] = detail
-        return ok, detail
+        return UpsertResult(
+            ok=ok,
+            detail=detail,
+            record_id=detail if ok else "",
+            operation="create",
+            before_fields={},
+            after_fields=dict(fields),
+        )
 
     @staticmethod
     def _merge_records_for_write(records: list[ParsedRecord]) -> list[ParsedRecord]:
@@ -2883,22 +3424,34 @@ class AutoProcessToBitableListener(EventListener):
 
                 normalized_write_fields = self._normalize_write_fields(write_fields, field_types)
                 match_fields = self._build_upsert_match_fields(normalized_write_fields)
-                ok, detail = await self._upsert_record_to_bitable(table_id, normalized_write_fields, match_fields)
-                if ok:
+                upsert_result = await self._upsert_record_to_bitable(table_id, normalized_write_fields, match_fields)
+                if upsert_result.ok:
                     success_count += 1
                     success_records.append(record)
-                    if source_message_id and detail:
-                        self._remember_written_record(source_message_id, table_id, detail)
+                    if source_message_id and upsert_result.record_id:
+                        self._remember_written_record(source_message_id, table_id, upsert_result.record_id)
+                        if self._get_bool_config("enable_recall_restore_previous", True):
+                            try:
+                                ok_history, detail_history = await self._record_history_entry(
+                                    source_message_id,
+                                    table_id,
+                                    record,
+                                    upsert_result,
+                                )
+                                if not ok_history:
+                                    errors.append(f"route={record.route_key}, history={detail_history}")
+                            except Exception as exc:
+                                errors.append(f"route={record.route_key}, history write failed: {exc}")
                     break
 
-                if (not retried_after_table_not_found) and self._is_table_id_not_found_error(detail):
+                if (not retried_after_table_not_found) and self._is_table_id_not_found_error(upsert_result.detail):
                     rebuilt_table_id = await self._rebuild_route_table_id(record.route_key, table_id)
                     retried_after_table_not_found = True
                     if rebuilt_table_id and rebuilt_table_id != table_id:
                         table_id = rebuilt_table_id
                         continue
 
-                errors.append(f"route={record.route_key}, {detail}")
+                errors.append(f"route={record.route_key}, {upsert_result.detail}")
                 break
 
         if success_count > 0:

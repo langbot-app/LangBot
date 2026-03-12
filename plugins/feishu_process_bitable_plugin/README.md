@@ -59,6 +59,9 @@
 - `private_notify_on_write` / `private_notify_on_error`：群消息成功/失败时是否私聊通知
 - `time_zone`：时间显示时区（默认 `Asia/Shanghai`）
 - `time_format`：时间显示格式（默认 `%Y-%m-%d %H:%M:%S`）
+- `enable_recall_restore_previous`：撤回时优先恢复上一版本（默认 `true`）
+- `history_table_id` / `history_table_name`：写入历史快照表，用于撤回恢复
+- `auto_create_history_table`：未指定历史表 ID 时自动创建历史表（默认 `true`）
 
 ## table_routing_json 示例
 
@@ -151,9 +154,13 @@
 ## 撤回回滚（方案B）
 
 - 平台接入飞书撤回事件后，插件可按 `source_message_id_field`（默认 `源消息ID`）定位并回滚。  
-- 回滚方式为“标记撤回”（默认更新字段）：`是否撤回=是`、`撤回时间`、`撤回类型`。  
+- 默认会为每次写入保存历史快照；当后续消息覆盖了同一行时，撤回新消息会优先恢复上一版本。  
+- 若找不到上一版本快照（例如该消息是首次创建该行），则回退为“标记撤回”（默认更新字段）：`是否撤回=是`、`撤回时间`、`撤回类型`。  
 - 关键配置：
   - `enable_recall_revert`：是否启用撤回回滚（默认 `true`）
+  - `enable_recall_restore_previous`：是否启用“恢复上一版本”逻辑（默认 `true`）
+  - `history_table_id` / `history_table_name`：历史快照表配置
+  - `auto_create_history_table`：历史表不存在时是否自动创建（默认 `true`）
   - `prevent_default_on_recall`：撤回事件是否阻断默认流程（默认 `true`）
   - `recall_scan_all_tables`：找不到路由缓存时是否扫描全部表（默认 `true`）
   - `reply_on_recall`：撤回处理完成后是否反馈（默认 `false`）

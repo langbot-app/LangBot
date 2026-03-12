@@ -30,15 +30,188 @@ def test_upsert_refreshes_stale_record_cache_then_creates() -> None:
     )
     listener._write_record_to_bitable = AsyncMock(return_value=(True, "rec_new"))
 
-    ok, detail = asyncio.run(listener._upsert_record_to_bitable(table_id, {"开度": 10.0}, match_fields))
+    result = asyncio.run(listener._upsert_record_to_bitable(table_id, {"开度": 10.0}, match_fields))
 
-    assert ok is True
-    assert detail == "rec_new"
+    assert result.ok is True
+    assert result.detail == "rec_new"
+    assert result.record_id == "rec_new"
+    assert result.operation == "create"
     assert listener._record_lookup_cache[cache_key] == "rec_new"
     assert listener._find_existing_record_id.await_count == 2
     assert listener._find_existing_record_id.await_args_list[1].kwargs["use_cache"] is False
     listener._update_record_to_bitable.assert_awaited_once_with(table_id, "rec_stale", {"开度": 10.0})
     listener._write_record_to_bitable.assert_awaited_once_with(table_id, {"开度": 10.0})
+
+
+class _RecallEvent:
+    def __init__(self, launcher_type: str = "person"):
+        self.launcher_type = launcher_type
+
+
+class _RecallEventContext:
+    def __init__(self, launcher_type: str = "person"):
+        self.event = _RecallEvent(launcher_type=launcher_type)
+
+
+def test_recall_restore_previous_fields_from_history_when_latest() -> None:
+    listener = _build_listener(
+        {
+            "enable_recall_revert": True,
+            "enable_recall_restore_previous": True,
+            "reply_on_recall": False,
+            "private_notify_on_write": False,
+        }
+    )
+    event_ctx = _RecallEventContext()
+
+    history_entry = {
+        "record_id": "hist_1",
+        "fields": {
+            "history_source_message_id": "msg_bad",
+            "history_target_table_id": "tbl_main",
+            "history_target_record_id": "rec_1",
+            "history_operation": "update",
+            "history_before_fields_json": '{"开度": 10.0, "源消息ID": "msg_good"}',
+            "history_after_fields_json": '{"开度": 999.0, "源消息ID": "msg_bad"}',
+            "history_route_key": "spray.A",
+            "history_batch_id": "S006-DA2602-001",
+            "history_line": "A",
+            "history_logged_at_ts": "200",
+            "history_status": "applied",
+        },
+    }
+    older_entry = {
+        "record_id": "hist_0",
+        "fields": {
+            "history_source_message_id": "msg_good",
+            "history_target_table_id": "tbl_main",
+            "history_target_record_id": "rec_1",
+            "history_operation": "update",
+            "history_before_fields_json": '{"开度": 8.0, "源消息ID": "msg_old"}',
+            "history_after_fields_json": '{"开度": 10.0, "源消息ID": "msg_good"}',
+            "history_route_key": "spray.A",
+            "history_batch_id": "S006-DA2602-001",
+            "history_line": "A",
+            "history_logged_at_ts": "100",
+            "history_status": "applied",
+        },
+    }
+
+    listener._find_history_entries_by_source_message_id = AsyncMock(
+        return_value=(
+            "tbl_history",
+            [listener._parse_history_entry(history_entry)],
+        )
+    )
+    listener._find_history_entries_by_target_record = AsyncMock(
+        return_value=[
+            listener._parse_history_entry(history_entry),
+            listener._parse_history_entry(older_entry),
+        ]
+    )
+    listener._ensure_table_fields = AsyncMock(return_value=(True, "", {"开度": 1, "源消息ID": 1}))
+    listener._normalize_write_fields = MagicMock(side_effect=lambda fields, _types: dict(fields))
+    listener._update_record_to_bitable = AsyncMock(return_value=(True, "rec_1"))
+    listener._update_history_entry_status = AsyncMock(return_value=(True, "hist_1"))
+    listener._send_feedback = AsyncMock()
+
+    asyncio.run(
+        listener._handle_recalled_message(
+            event_ctx,
+            {"message_id": "msg_bad", "recall_time": "2026-03-12 10:00:00", "recall_type": "user"},
+        )
+    )
+
+    listener._ensure_table_fields.assert_awaited_once_with(
+        "tbl_main",
+        {"开度": 10.0, "源消息ID": "msg_good"},
+    )
+    listener._update_record_to_bitable.assert_awaited_once_with(
+        "tbl_main",
+        "rec_1",
+        {"开度": 10.0, "源消息ID": "msg_good"},
+    )
+    listener._update_history_entry_status.assert_awaited_once_with(
+        "tbl_history",
+        "hist_1",
+        "recalled_restored",
+        "restored previous fields",
+    )
+    listener._send_feedback.assert_not_awaited()
+
+
+def test_recall_skips_restore_when_newer_write_exists() -> None:
+    listener = _build_listener(
+        {
+            "enable_recall_revert": True,
+            "enable_recall_restore_previous": True,
+            "reply_on_error": True,
+            "private_notify_on_error": False,
+        }
+    )
+    event_ctx = _RecallEventContext()
+
+    recalled_entry = {
+        "record_id": "hist_1",
+        "fields": {
+            "history_source_message_id": "msg_bad",
+            "history_target_table_id": "tbl_main",
+            "history_target_record_id": "rec_1",
+            "history_operation": "update",
+            "history_before_fields_json": '{"开度": 10.0, "源消息ID": "msg_good"}',
+            "history_after_fields_json": '{"开度": 999.0, "源消息ID": "msg_bad"}',
+            "history_route_key": "spray.A",
+            "history_batch_id": "S006-DA2602-001",
+            "history_line": "A",
+            "history_logged_at_ts": "200",
+            "history_status": "applied",
+        },
+    }
+    newer_entry = {
+        "record_id": "hist_2",
+        "fields": {
+            "history_source_message_id": "msg_new",
+            "history_target_table_id": "tbl_main",
+            "history_target_record_id": "rec_1",
+            "history_operation": "update",
+            "history_before_fields_json": '{"开度": 999.0, "源消息ID": "msg_bad"}',
+            "history_after_fields_json": '{"开度": 12.0, "源消息ID": "msg_new"}',
+            "history_route_key": "spray.A",
+            "history_batch_id": "S006-DA2602-001",
+            "history_line": "A",
+            "history_logged_at_ts": "300",
+            "history_status": "applied",
+        },
+    }
+
+    listener._find_history_entries_by_source_message_id = AsyncMock(
+        return_value=("tbl_history", [listener._parse_history_entry(recalled_entry)])
+    )
+    listener._find_history_entries_by_target_record = AsyncMock(
+        return_value=[
+            listener._parse_history_entry(newer_entry),
+            listener._parse_history_entry(recalled_entry),
+        ]
+    )
+    listener._update_history_entry_status = AsyncMock(return_value=(True, "hist_1"))
+    listener._send_feedback = AsyncMock()
+
+    asyncio.run(
+        listener._handle_recalled_message(
+            event_ctx,
+            {"message_id": "msg_bad", "recall_time": "2026-03-12 10:00:00", "recall_type": "user"},
+        )
+    )
+
+    listener._update_history_entry_status.assert_awaited_once_with(
+        "tbl_history",
+        "hist_1",
+        "recalled_skipped_not_latest",
+        "skipped restore because newer write exists",
+    )
+    listener._send_feedback.assert_awaited_once()
+    feedback_text = listener._send_feedback.await_args.args[1]
+    assert "newer write exists" in feedback_text
 
 
 def test_parse_spray_extracts_each_batch_block_without_cross_contamination() -> None:
