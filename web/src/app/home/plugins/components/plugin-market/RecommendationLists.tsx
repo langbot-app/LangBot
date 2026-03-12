@@ -145,7 +145,9 @@ function RecommendationListRow({
           />
         ))}
       </div>
-      {totalPages > 1 && !isLast && <div className="border-b border-border mt-6" />}
+      {totalPages > 1 && !isLast && (
+        <div className="border-b border-border mt-6" />
+      )}
     </div>
   );
 }

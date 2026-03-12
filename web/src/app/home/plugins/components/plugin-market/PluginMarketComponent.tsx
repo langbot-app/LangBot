@@ -1,12 +1,6 @@
 'use client';
 
-import {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-  Suspense,
-} from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { Input } from '@/components/ui/input';
 import {
   Select,
