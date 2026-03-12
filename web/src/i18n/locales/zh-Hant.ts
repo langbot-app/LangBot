@@ -226,6 +226,11 @@ const zhHant = {
     modelsCount: '{{count}} 個模型',
     expandModels: '展開',
     collapseModels: '收起',
+    fallback: {
+      primary: '主模型',
+      fallbackList: '備用模型',
+      addFallback: '新增備用模型',
+    },
   },
   bots: {
     title: '機器人',

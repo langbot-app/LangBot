@@ -81,22 +81,33 @@ class WecomEventConverter(abstract_platform_adapter.AbstractEventConverter):
             return event.source_platform_object
 
     @staticmethod
-    async def target2yiri(event: WecomCSEvent):
+    async def target2yiri(event: WecomCSEvent, bot: WecomCSClient = None):
         """
         将 WecomEvent 转换为平台的 FriendMessage 对象。
 
         Args:
             event (WecomEvent): 企业微信客服事件。
+            bot (WecomCSClient): 企业微信客服客户端，用于获取用户信息。
 
         Returns:
             platform_events.FriendMessage: 转换后的 FriendMessage 对象。
         """
+        # Try to get customer nickname from WeChat API
+        nickname = str(event.user_id)
+        if bot and event.user_id:
+            try:
+                customer_info = await bot.get_customer_info(event.user_id)
+                if customer_info and customer_info.get('nickname'):
+                    nickname = customer_info.get('nickname')
+            except Exception:
+                pass  # Fall back to user_id as nickname
+
         # 转换消息链
         if event.type == 'text':
             yiri_chain = await WecomMessageConverter.target2yiri(event.message, event.message_id)
             friend = platform_entities.Friend(
                 id=f'u{event.user_id}',
-                nickname=str(event.user_id),
+                nickname=nickname,
                 remark='',
             )
 
@@ -106,7 +117,7 @@ class WecomEventConverter(abstract_platform_adapter.AbstractEventConverter):
         elif event.type == 'image':
             friend = platform_entities.Friend(
                 id=f'u{event.user_id}',
-                nickname=str(event.user_id),
+                nickname=nickname,
                 remark='',
             )
 
@@ -187,7 +198,7 @@ class WecomCSAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         async def on_message(event: WecomCSEvent):
             self.bot_account_id = event.receiver_id
             try:
-                return await callback(await self.event_converter.target2yiri(event), self)
+                return await callback(await self.event_converter.target2yiri(event, self.bot), self)
             except Exception:
                 await self.logger.error(f'Error in wecomcs callback: {traceback.format_exc()}')
 

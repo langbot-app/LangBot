@@ -463,14 +463,16 @@ export default function ModelsDialog({
                     )
                   : t('models.providerCount', { count: otherProviders.length })}
               </span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleCreateProvider}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                {t('models.addProvider')}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCreateProvider}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  {t('models.addProvider')}
+                </Button>
+              </div>
             </div>
 
             {/* Provider List */}

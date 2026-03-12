@@ -227,6 +227,11 @@ const zhHans = {
     modelsCount: '{{count}} 个模型',
     expandModels: '展开',
     collapseModels: '收起',
+    fallback: {
+      primary: '主模型',
+      fallbackList: '备用模型',
+      addFallback: '添加备用模型',
+    },
   },
   bots: {
     title: '机器人',

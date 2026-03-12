@@ -1,4 +1,4 @@
-const jaJP = {
+﻿const jaJP = {
   common: {
     login: 'ログイン',
     logout: 'ログアウト',
@@ -241,6 +241,11 @@ const jaJP = {
     modelsCount: '{{count}} 個のモデル',
     expandModels: '展開',
     collapseModels: '折りたたむ',
+    fallback: {
+      primary: 'プライマリモデル',
+      fallbackList: 'フォールバックモデル',
+      addFallback: 'フォールバックモデルを追加',
+    },
   },
   bots: {
     title: 'ボット',

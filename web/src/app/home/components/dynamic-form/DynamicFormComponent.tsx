@@ -11,7 +11,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
-import { useCallback, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useTranslation } from 'react-i18next';
 
@@ -72,6 +72,12 @@ export default function DynamicFormComponent({
             break;
           case 'bot-selector':
             fieldSchema = z.string();
+            break;
+          case 'model-fallback-selector':
+            fieldSchema = z.object({
+              primary: z.string(),
+              fallbacks: z.array(z.string()),
+            });
             break;
           case 'prompt-editor':
             fieldSchema = z.array(
@@ -160,39 +166,34 @@ export default function DynamicFormComponent({
   const onSubmitRef = useRef(onSubmit);
   onSubmitRef.current = onSubmit;
 
-  // Track the last emitted values to avoid emitting identical snapshots,
-  // which would cause the parent to call setValue with an equivalent object,
-  // triggering a re-render loop.
-  const lastEmittedRef = useRef<string>('');
-
-  const emitValues = useCallback(() => {
+  // 监听表单值变化
+  useEffect(() => {
+    // Emit initial form values immediately so the parent always has a valid snapshot,
+    // even if the user saves without modifying any field.
+    // form.watch(callback) only fires on subsequent changes, not on mount.
     const formValues = form.getValues();
-    const finalValues = itemConfigList.reduce(
+    const initialFinalValues = itemConfigList.reduce(
       (acc, item) => {
         acc[item.name] = formValues[item.name] ?? item.default;
         return acc;
       },
       {} as Record<string, object>,
     );
-    const serialized = JSON.stringify(finalValues);
-    if (serialized !== lastEmittedRef.current) {
-      lastEmittedRef.current = serialized;
-      onSubmitRef.current?.(finalValues);
-    }
-  }, [form, itemConfigList]);
-
-  // 监听表单值变化
-  useEffect(() => {
-    // Emit initial form values immediately so the parent always has a valid snapshot,
-    // even if the user saves without modifying any field.
-    // form.watch(callback) only fires on subsequent changes, not on mount.
-    emitValues();
+    onSubmitRef.current?.(initialFinalValues);
 
     const subscription = form.watch(() => {
-      emitValues();
+      const formValues = form.getValues();
+      const finalValues = itemConfigList.reduce(
+        (acc, item) => {
+          acc[item.name] = formValues[item.name] ?? item.default;
+          return acc;
+        },
+        {} as Record<string, object>,
+      );
+      onSubmitRef.current?.(finalValues);
     });
     return () => subscription.unsubscribe();
-  }, [form, itemConfigList, emitValues]);
+  }, [form, itemConfigList]);
 
   return (
     <Form {...form}>
@@ -231,6 +232,7 @@ export default function DynamicFormComponent({
 
           // All fields are disabled when editing (creation_settings are immutable)
           const isFieldDisabled = !!isEditing;
+
           return (
             <FormField
               key={config.id}

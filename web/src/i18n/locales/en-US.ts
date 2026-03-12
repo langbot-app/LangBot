@@ -236,6 +236,11 @@ const enUS = {
     modelsCount: '{{count}} model(s)',
     expandModels: 'Expand',
     collapseModels: 'Collapse',
+    fallback: {
+      primary: 'Primary Model',
+      fallbackList: 'Fallback Models',
+      addFallback: 'Add Fallback Model',
+    },
   },
   bots: {
     title: 'Bots',
