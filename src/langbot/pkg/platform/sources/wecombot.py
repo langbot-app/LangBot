@@ -209,10 +209,14 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         return max(min_value, min(max_value, value))
 
     def __init__(self, config: dict, logger: EventLogger):
+        enable_webhook = config.get('enable-webhook', True)
+        if not enable_webhook:
+            raise Exception('WecomBot websocket mode is not supported in this branch yet. Please enable webhook mode.')
+
         required_keys = ['Token', 'EncodingAESKey', 'Corpid', 'BotId']
-        missing_keys = [key for key in required_keys if key not in config]
+        missing_keys = [key for key in required_keys if not config.get(key)]
         if missing_keys:
-            raise Exception(f'WecomBot 缺少配置项: {missing_keys}')
+            raise Exception(f'WecomBot webhook mode missing config: {missing_keys}')
 
         pull_poll_timeout_ms = self._get_int_config(config, 'PullPollTimeoutMs', 500, 50, 2000)
         pull_stream_max_lifetime_ms = self._get_int_config(config, 'PullStreamMaxLifetimeMs', 300000, 1000, 600000)
@@ -221,6 +225,7 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         pending_placeholder = config.get('PullPendingPlaceholder', DEFAULT_PULL_PENDING_PLACEHOLDER)
 
         normalized_config = dict(config)
+        normalized_config['enable-webhook'] = True
         normalized_config['PullPollTimeoutMs'] = pull_poll_timeout_ms
         normalized_config['PullStreamMaxLifetimeMs'] = pull_stream_max_lifetime_ms
         normalized_config['PullPendingPlaceholderEnabled'] = pending_placeholder_enabled

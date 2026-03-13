@@ -49,6 +49,25 @@ def make_async_logger():
     )
 
 
+def make_valid_event_logger():
+    from langbot_plugin.api.definition.abstract.platform.event_logger import AbstractEventLogger
+
+    class _Logger(AbstractEventLogger):
+        async def info(self, *args, **kwargs):
+            return None
+
+        async def debug(self, *args, **kwargs):
+            return None
+
+        async def warning(self, *args, **kwargs):
+            return None
+
+        async def error(self, *args, **kwargs):
+            return None
+
+    return _Logger()
+
+
 def make_dify_pipeline_config(
     chunk_batch_size: int = 8,
     flush_window_enabled: bool = False,
@@ -416,3 +435,41 @@ def test_dify_stream_uses_output_defaults_when_config_missing():
     assert runner._get_stream_chunk_batch_size(query) == 8
     assert runner._is_stream_flush_window_enabled(query) is False
     assert runner._get_stream_flush_window_ms(query) == 2000
+
+
+def get_wecom_adapter():
+    return import_module('langbot.pkg.platform.sources.wecombot').WecomBotAdapter
+
+
+def test_wecombot_adapter_rejects_websocket_mode_in_current_branch():
+    WecomBotAdapter = get_wecom_adapter()
+
+    with pytest.raises(Exception, match='websocket mode is not supported'):
+        WecomBotAdapter(
+            {
+                'BotId': 'bot-id',
+                'enable-webhook': False,
+                'Secret': 'secret',
+            },
+            make_async_logger(),
+        )
+
+
+def test_wecombot_adapter_webhook_mode_normalizes_pull_config():
+    WecomBotAdapter = get_wecom_adapter()
+
+    adapter = WecomBotAdapter(
+        {
+            'BotId': 'bot-id',
+            'enable-webhook': True,
+            'Token': 'token',
+            'EncodingAESKey': 'encoding-aes-key',
+            'Corpid': 'corp-id',
+        },
+        make_valid_event_logger(),
+    )
+
+    assert adapter.config['enable-webhook'] is True
+    assert adapter.config['PullPollTimeoutMs'] == 500
+    assert adapter.config['PullStreamMaxLifetimeMs'] == 300000
+    assert adapter.config['PullPendingPlaceholderEnabled'] is False

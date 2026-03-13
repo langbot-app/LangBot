@@ -15,6 +15,7 @@ from quart import Quart, request, Response, jsonify
 
 from langbot.libs.wecom_ai_bot_api import wecombotevent
 from langbot.libs.wecom_ai_bot_api.WXBizMsgCrypt3 import WXBizMsgCrypt
+from langbot.libs.wecom_ai_bot_api.pull_stream_policy import PullStreamPolicy
 from langbot.pkg.platform.logger import EventLogger
 
 
@@ -260,12 +261,20 @@ class WecomBotClient:
         self.pending_placeholder_delay = max(0.0, pending_placeholder_delay)
         self.stream_timeout_final_text = '抱歉，处理超时，请稍后重试。'
         self.stream_error_final_text = '抱歉，处理失败，请稍后重试。'
+        self.pull_stream_policy = PullStreamPolicy(
+            stream_sessions=self.stream_sessions,
+            generated_content=self.generated_content,
+            stream_max_lifetime=self.stream_max_lifetime,
+            pending_placeholder=self.pending_placeholder,
+            pending_placeholder_delay=self.pending_placeholder_delay,
+            stream_timeout_final_text=self.stream_timeout_final_text,
+            stream_error_final_text=self.stream_error_final_text,
+            chunk_factory=StreamChunk,
+        )
 
     def _is_stream_lifetime_exceeded(self, session: StreamSession) -> bool:
-        """判断当前 stream 是否已经超过最大生命周期。"""
-        if session.finished:
-            return False
-        return time.time() - session.created_at >= self.stream_max_lifetime
+        """Keep method signature stable while delegating policy details."""
+        return self.pull_stream_policy.is_stream_lifetime_exceeded(session)
 
     async def _force_finish_stream(
         self,
@@ -273,51 +282,16 @@ class WecomBotClient:
         content: str,
         reason: str,
     ) -> Optional[StreamChunk]:
-        """强制结束未正常收口的 stream，避免企微持续轮询后展示官方兜底文案。"""
-        if not stream_id:
-            return None
-
-        chunk = StreamChunk(content=content, is_final=True, meta={'reason': reason})
-        await self.stream_sessions.publish(stream_id, chunk)
-        self.stream_sessions.mark_finished(stream_id)
-
-        session = self.stream_sessions.get_session(stream_id)
-        if session:
-            session.last_chunk = chunk
-            session.finished = True
-            session.last_access = time.time()
-
-        return chunk
+        """Keep method signature stable while delegating policy details."""
+        return await self.pull_stream_policy.force_finish_stream(stream_id, content, reason)
 
     def _resolve_followup_chunk(
         self,
         session: Optional[StreamSession],
         cached_content: Optional[str],
     ) -> Optional[StreamChunk]:
-        """为 follow-up 请求返回兜底片段，避免企微收到空内容后展示官方兜底文案。"""
-        if cached_content is not None:
-            return StreamChunk(content=cached_content, is_final=True, meta={'reason': 'cached_final'})
-
-        if session and session.last_chunk:
-            if 'reason' not in session.last_chunk.meta:
-                session.last_chunk.meta['reason'] = 'last_snapshot'
-            return session.last_chunk
-
-        if session:
-            elapsed = time.time() - session.created_at
-            if elapsed < self.pending_placeholder_delay:
-                return None
-
-            placeholder_chunk = StreamChunk(
-                content=self.pending_placeholder,
-                is_final=False,
-                meta={'reason': 'pending_placeholder'},
-            )
-            session.last_chunk = placeholder_chunk
-            session.last_access = time.time()
-            return placeholder_chunk
-
-        return None
+        """Keep method signature stable while delegating policy details."""
+        return self.pull_stream_policy.resolve_followup_chunk(session, cached_content)
 
     @staticmethod
     def _build_stream_payload(stream_id: str, content: str, finish: bool) -> dict[str, Any]:
@@ -442,32 +416,28 @@ class WecomBotClient:
 
         session = self.stream_sessions.get_session(stream_id)
         if not session:
-            chunk = StreamChunk(content=self.stream_error_final_text, is_final=True, meta={'reason': 'missing_session'})
+            chunk = self.pull_stream_policy.create_missing_session_chunk()
             payload = self._build_stream_payload(stream_id, chunk.content, chunk.is_final)
             return await self._encrypt_and_reply(payload, nonce)
 
         if self._is_stream_lifetime_exceeded(session):
-            timeout_content = session.last_chunk.content if session.last_chunk else self.stream_timeout_final_text
+            timeout_content = self.pull_stream_policy.resolve_timeout_content(session)
             chunk = await self._force_finish_stream(stream_id, timeout_content, 'max_lifetime_exceeded')
             payload = self._build_stream_payload(stream_id, chunk.content if chunk else '', True)
             return await self._encrypt_and_reply(payload, nonce)
 
-        consume_timeout = self.stream_poll_timeout
-        if not session.last_chunk and not session.finished and self.pending_placeholder_delay > 0:
-            remaining_delay = self.pending_placeholder_delay - (time.time() - session.created_at)
-            if remaining_delay > 0:
-                consume_timeout = max(consume_timeout, remaining_delay)
+        consume_timeout = self.pull_stream_policy.resolve_consume_timeout(session, self.stream_poll_timeout)
 
         chunk = await self.stream_sessions.consume(stream_id, timeout=consume_timeout)
 
         if not chunk:
             if self._is_stream_lifetime_exceeded(session):
-                timeout_content = session.last_chunk.content if session.last_chunk else self.stream_timeout_final_text
+                timeout_content = self.pull_stream_policy.resolve_timeout_content(session)
                 chunk = await self._force_finish_stream(stream_id, timeout_content, 'max_lifetime_exceeded')
 
             cached_content = None
-            if not chunk and session.msg_id:
-                cached_content = self.generated_content.pop(session.msg_id, None)
+            if not chunk:
+                cached_content = self.pull_stream_policy.pop_cached_content(session)
             if not chunk:
                 chunk = self._resolve_followup_chunk(session, cached_content)
             if not chunk:

@@ -11,34 +11,58 @@ metadata:
   icon: wecombot.png
 spec:
   config:
+    - name: BotId
+      label:
+        en_US: BotId
+        zh_Hans: 机器人ID (BotId)
+      type: string
+      required: true
+      default: ""
+    - name: enable-webhook
+      label:
+        en_US: Enable Webhook Mode
+        zh_Hans: 启用 Webhook 模式
+      description:
+        en_US: Switch between Webhook mode and WebSocket mode config. This branch currently supports Webhook mode only.
+        zh_Hans: 在 Webhook / WebSocket 配置之间切换展示。当前分支仅支持 Webhook 模式。
+      type: boolean
+      required: true
+      default: true
+    - name: Secret
+      label:
+        en_US: Secret
+        zh_Hans: 机器人密钥 (Secret)
+      description:
+        en_US: Reserved for WebSocket mode.
+        zh_Hans: WebSocket 模式预留配置项。
+      type: string
+      required: false
+      default: ""
+      visibleOn: ${enable-webhook} == false
     - name: Corpid
       label:
         en_US: Corpid
         zh_Hans: 企业ID
       type: string
-      required: true
+      required: false
       default: ""
+      visibleOn: ${enable-webhook} == true
     - name: Token
       label:
         en_US: Token
         zh_Hans: 令牌 (Token)
       type: string
-      required: true
+      required: false
       default: ""
+      visibleOn: ${enable-webhook} == true
     - name: EncodingAESKey
       label:
         en_US: EncodingAESKey
         zh_Hans: 消息加解密密钥 (EncodingAESKey)
       type: string
-      required: true
-      default: ""
-    - name: BotId
-      label:
-        en_US: BotId
-        zh_Hans: 机器人ID
-      type: string
       required: false
       default: ""
+      visibleOn: ${enable-webhook} == true
     - name: PullPollTimeoutMs
       label:
         en_US: Pull Poll Timeout (ms)
@@ -49,6 +73,7 @@ spec:
       type: integer
       required: true
       default: 500
+      visibleOn: ${enable-webhook} == true
     - name: PullStreamMaxLifetimeMs
       label:
         en_US: Pull Stream Max Lifetime (ms)
@@ -59,6 +84,7 @@ spec:
       type: integer
       required: true
       default: 300000
+      visibleOn: ${enable-webhook} == true
     - name: PullPendingPlaceholderEnabled
       label:
         en_US: Pull Pending Placeholder Enabled
@@ -69,6 +95,7 @@ spec:
       type: boolean
       required: false
       default: false
+      visibleOn: ${enable-webhook} == true
     - name: PullPendingPlaceholderDelayMs
       label:
         en_US: Pull Pending Placeholder Delay (ms)
@@ -79,7 +106,7 @@ spec:
       type: integer
       required: false
       default: 3000
-      visibleOn: ${PullPendingPlaceholderEnabled} == true
+      visibleOn: ${enable-webhook} == true && ${PullPendingPlaceholderEnabled} == true
     - name: PullPendingPlaceholder
       label:
         en_US: Pull Pending Placeholder
@@ -90,7 +117,7 @@ spec:
       type: string
       required: false
       default: "AI 正在思考中，请稍候"
-      visibleOn: ${PullPendingPlaceholderEnabled} == true
+      visibleOn: ${enable-webhook} == true && ${PullPendingPlaceholderEnabled} == true
 execution:
   python:
     path: ./wecombot.py
