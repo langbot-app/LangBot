@@ -1,4 +1,4 @@
-const jaJP = {
+﻿const jaJP = {
   common: {
     login: 'ログイン',
     logout: 'ログアウト',
@@ -48,6 +48,12 @@ const jaJP = {
     copyFailed: 'コピーに失敗しました',
     test: 'テスト',
     forgotPassword: 'パスワードを忘れた？',
+    agreementNotice: '続行することで、以下に同意したものとみなされます：',
+    privacyPolicy: 'プライバシーポリシー',
+    and: 'および',
+    dataCollectionPolicy: 'データ収集ポリシー',
+    dataCollectionPolicyUrl:
+      'https://docs.langbot.app/ja/insight/data-collection-policy',
     loading: '読み込み中...',
     fieldRequired: 'この項目は必須です',
     or: 'または',
@@ -235,6 +241,11 @@ const jaJP = {
     modelsCount: '{{count}} 個のモデル',
     expandModels: '展開',
     collapseModels: '折りたたむ',
+    fallback: {
+      primary: 'プライマリモデル',
+      fallbackList: 'フォールバックモデル',
+      addFallback: 'フォールバックモデルを追加',
+    },
   },
   bots: {
     title: 'ボット',
@@ -278,6 +289,8 @@ const jaJP = {
     webhookUrlCopied: 'Webhook URL をコピーしました',
     webhookUrlHint:
       '入力ボックスをクリックして全選択し、Ctrl+C (Mac: Cmd+C) でコピーするか、右側のボタンをクリックしてください',
+    webhookUrlHintEither:
+      '上記の2つのURLのいずれかをプラットフォーム設定に使用してください',
     logLevel: 'ログレベル',
     allLevels: 'すべてのレベル',
     selectLevel: 'レベルを選択',

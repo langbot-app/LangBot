@@ -100,7 +100,7 @@ class VectorDBManager:
     ) -> list[dict]:
         """Proxy: Search vectors.
 
-        Returns a list of dicts with keys: 'id', 'score', 'metadata'.
+        Returns a list of dicts with keys: 'id', 'distance', 'metadata'.
         The underlying VectorDatabase.search returns Chroma-style format:
         { 'ids': [['id1']], 'distances': [[0.1]], 'metadatas': [[{}]] }
         """
@@ -130,7 +130,7 @@ class VectorDBManager:
             parsed_results.append(
                 {
                     'id': id_val,
-                    'score': r_dists[i] if r_dists and i < len(r_dists) else 0.0,
+                    'distance': r_dists[i] if r_dists and i < len(r_dists) else 0.0,
                     'metadata': r_metas[i] if r_metas and i < len(r_metas) else {},
                 }
             )

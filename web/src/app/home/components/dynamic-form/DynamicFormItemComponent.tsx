@@ -125,6 +125,28 @@ export default function DynamicFormItemComponent({
   }, [config.type]);
 
   useEffect(() => {
+    if (config.type === DynamicFormItemType.MODEL_FALLBACK_SELECTOR) {
+      httpClient
+        .getProviderLLMModels()
+        .then((resp) => {
+          let models = resp.models;
+          if (
+            systemInfo.disable_models_service ||
+            userInfo?.account_type !== 'space'
+          ) {
+            models = models.filter(
+              (m) => m.provider?.requester !== 'space-chat-completions',
+            );
+          }
+          setLlmModels(models);
+        })
+        .catch((err) => {
+          toast.error('Failed to get LLM model list: ' + err.msg);
+        });
+    }
+  }, [config.type]);
+
+  useEffect(() => {
     if (
       config.type === DynamicFormItemType.KNOWLEDGE_BASE_SELECTOR ||
       config.type === DynamicFormItemType.KNOWLEDGE_BASE_MULTI_SELECTOR
@@ -171,12 +193,7 @@ export default function DynamicFormItemComponent({
       return <Textarea {...field} className="min-h-[120px]" />;
 
     case DynamicFormItemType.BOOLEAN:
-      return (
-        <Switch
-          checked={field.value ?? false}
-          onCheckedChange={field.onChange}
-        />
-      );
+      return <Switch checked={field.value} onCheckedChange={field.onChange} />;
 
     case DynamicFormItemType.STRING_ARRAY:
       return (
@@ -227,7 +244,7 @@ export default function DynamicFormItemComponent({
 
     case DynamicFormItemType.SELECT:
       return (
-        <Select value={field.value ?? ''} onValueChange={field.onChange}>
+        <Select value={field.value} onValueChange={field.onChange}>
           <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
             <SelectValue placeholder={t('common.select')} />
           </SelectTrigger>
@@ -317,6 +334,193 @@ export default function DynamicFormItemComponent({
           </SelectContent>
         </Select>
       );
+
+    case DynamicFormItemType.MODEL_FALLBACK_SELECTOR: {
+      // Group models by provider
+      const groupedModelsForFallback = llmModels.reduce(
+        (acc, model) => {
+          const providerName =
+            model.provider?.name || model.provider?.requester || 'Unknown';
+          if (!acc[providerName]) acc[providerName] = [];
+          acc[providerName].push(model);
+          return acc;
+        },
+        {} as Record<string, LLMModel[]>,
+      );
+
+      const rawModelValue = field.value;
+      const modelValue: { primary: string; fallbacks: string[] } =
+        rawModelValue != null &&
+        typeof rawModelValue === 'object' &&
+        !Array.isArray(rawModelValue)
+          ? {
+              primary:
+                typeof (rawModelValue as Record<string, unknown>).primary ===
+                'string'
+                  ? ((rawModelValue as Record<string, unknown>)
+                      .primary as string)
+                  : '',
+              fallbacks: Array.isArray(
+                (rawModelValue as Record<string, unknown>).fallbacks,
+              )
+                ? (
+                    (rawModelValue as Record<string, unknown>)
+                      .fallbacks as unknown[]
+                  ).filter((v): v is string => typeof v === 'string')
+                : [],
+            }
+          : {
+              primary: typeof rawModelValue === 'string' ? rawModelValue : '',
+              fallbacks: [],
+            };
+
+      const renderModelSelect = (
+        value: string,
+        onChange: (val: string) => void,
+        placeholder: string,
+      ) => (
+        <Select value={value} onValueChange={onChange}>
+          <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+            <SelectValue placeholder={placeholder} />
+          </SelectTrigger>
+          <SelectContent>
+            {Object.entries(groupedModelsForFallback).map(
+              ([providerName, models]) => (
+                <SelectGroup key={providerName}>
+                  <SelectLabel>{providerName}</SelectLabel>
+                  {models.map((model) => (
+                    <SelectItem key={model.uuid} value={model.uuid}>
+                      <span className="inline-flex items-center gap-1">
+                        {model.name}
+                        {model.abilities?.includes('vision') && (
+                          <Eye className="h-3 w-3 text-muted-foreground" />
+                        )}
+                        {model.abilities?.includes('func_call') && (
+                          <Wrench className="h-3 w-3 text-muted-foreground" />
+                        )}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              ),
+            )}
+          </SelectContent>
+        </Select>
+      );
+
+      const updateValue = (patch: Partial<typeof modelValue>) => {
+        field.onChange({ ...modelValue, ...patch });
+      };
+
+      const addFallbackModel = () => {
+        updateValue({ fallbacks: [...modelValue.fallbacks, ''] });
+      };
+
+      const updateFallbackModel = (index: number, value: string) => {
+        const updated = [...modelValue.fallbacks];
+        updated[index] = value;
+        updateValue({ fallbacks: updated });
+      };
+
+      const removeFallbackModel = (index: number) => {
+        const updated = [...modelValue.fallbacks];
+        updated.splice(index, 1);
+        updateValue({ fallbacks: updated });
+      };
+
+      const moveFallbackModel = (index: number, direction: 'up' | 'down') => {
+        const updated = [...modelValue.fallbacks];
+        const newIndex = direction === 'up' ? index - 1 : index + 1;
+        if (newIndex < 0 || newIndex >= updated.length) return;
+        [updated[index], updated[newIndex]] = [
+          updated[newIndex],
+          updated[index],
+        ];
+        updateValue({ fallbacks: updated });
+      };
+
+      return (
+        <div className="space-y-3">
+          {/* Primary model selector */}
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">
+              {t('models.fallback.primary')}
+            </p>
+            {renderModelSelect(
+              modelValue.primary,
+              (val) => updateValue({ primary: val }),
+              t('models.selectModel'),
+            )}
+          </div>
+
+          {/* Fallback models */}
+          {modelValue.fallbacks.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                {t('models.fallback.fallbackList')}
+              </p>
+              {modelValue.fallbacks.map((fbUuid: string, index: number) => (
+                <div key={index} className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground w-4 shrink-0">
+                    {index + 1}.
+                  </span>
+                  <div className="flex-1">
+                    {renderModelSelect(
+                      fbUuid,
+                      (val) => updateFallbackModel(index, val),
+                      t('models.selectModel'),
+                    )}
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={() => moveFallbackModel(index, 'up')}
+                      disabled={index === 0}
+                    >
+                      ↑
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={() => moveFallbackModel(index, 'down')}
+                      disabled={index === modelValue.fallbacks.length - 1}
+                    >
+                      ↓
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 text-destructive"
+                      onClick={() => removeFallbackModel(index)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add fallback button */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={addFallbackModel}
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            {t('models.fallback.addFallback')}
+          </Button>
+        </div>
+      );
+    }
 
     case DynamicFormItemType.KNOWLEDGE_BASE_SELECTOR:
       // Group KBs by Knowledge Engine name

@@ -47,6 +47,12 @@ const enUS = {
     copyFailed: 'Copy Failed',
     test: 'Test',
     forgotPassword: 'Forgot Password?',
+    agreementNotice: 'By continuing, you agree to our',
+    privacyPolicy: 'Privacy Policy',
+    and: 'and',
+    dataCollectionPolicy: 'Data Collection Policy',
+    dataCollectionPolicyUrl:
+      'https://docs.langbot.app/en/insight/data-collection-policy',
     loading: 'Loading...',
     fieldRequired: 'This field is required',
     or: 'or',
@@ -230,6 +236,11 @@ const enUS = {
     modelsCount: '{{count}} model(s)',
     expandModels: 'Expand',
     collapseModels: 'Collapse',
+    fallback: {
+      primary: 'Primary Model',
+      fallbackList: 'Fallback Models',
+      addFallback: 'Add Fallback Model',
+    },
   },
   bots: {
     title: 'Bots',
@@ -273,6 +284,8 @@ const enUS = {
     webhookUrlCopied: 'Webhook URL copied',
     webhookUrlHint:
       'Click the input to select all, then press Ctrl+C (Mac: Cmd+C) to copy, or click the button',
+    webhookUrlHintEither:
+      'Use either of the two URLs above in your platform configuration',
     logLevel: 'Log Level',
     allLevels: 'All Levels',
     selectLevel: 'Select Level',

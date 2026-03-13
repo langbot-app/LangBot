@@ -70,12 +70,17 @@ class BotService:
             'lark',
         ]:
             webhook_prefix = self.ap.instance_config.data['api'].get('webhook_prefix', 'http://127.0.0.1:5300')
+            extra_webhook_prefix = self.ap.instance_config.data['api'].get('extra_webhook_prefix', '')
             webhook_url = f'/bots/{bot_uuid}'
             adapter_runtime_values['webhook_url'] = webhook_url
             adapter_runtime_values['webhook_full_url'] = f'{webhook_prefix}{webhook_url}'
+            adapter_runtime_values['extra_webhook_full_url'] = (
+                f'{extra_webhook_prefix}{webhook_url}' if extra_webhook_prefix else ''
+            )
         else:
             adapter_runtime_values['webhook_url'] = None
             adapter_runtime_values['webhook_full_url'] = None
+            adapter_runtime_values['extra_webhook_full_url'] = None
 
         persistence_bot['adapter_runtime_values'] = adapter_runtime_values
 

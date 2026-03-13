@@ -36,17 +36,36 @@ class PreProcessor(stage.PipelineStage):
         session = await self.ap.sess_mgr.get_session(query)
 
         # When not local-agent, llm_model is None
-        try:
-            llm_model = (
-                await self.ap.model_mgr.get_model_by_uuid(query.pipeline_config['ai']['local-agent']['model'])
-                if selected_runner == 'local-agent'
-                else None
-            )
-        except ValueError:
-            self.ap.logger.warning(
-                f'LLM model {query.pipeline_config["ai"]["local-agent"]["model"] + " "}not found or not configured'
-            )
-            llm_model = None
+        llm_model = None
+        if selected_runner == 'local-agent':
+            # Read model config — new format is { primary: str, fallbacks: [str] },
+            # but handle legacy plain string for backward compatibility
+            model_config = query.pipeline_config['ai']['local-agent'].get('model', {})
+            if isinstance(model_config, str):
+                # Legacy format: plain UUID string
+                primary_uuid = model_config
+                fallback_uuids = []
+            else:
+                primary_uuid = model_config.get('primary', '')
+                fallback_uuids = model_config.get('fallbacks', [])
+
+            if primary_uuid:
+                try:
+                    llm_model = await self.ap.model_mgr.get_model_by_uuid(primary_uuid)
+                except ValueError:
+                    self.ap.logger.warning(f'LLM model {primary_uuid} not found or not configured')
+
+            # Resolve fallback model UUIDs
+            if fallback_uuids:
+                valid_fallbacks = []
+                for fb_uuid in fallback_uuids:
+                    try:
+                        await self.ap.model_mgr.get_model_by_uuid(fb_uuid)
+                        valid_fallbacks.append(fb_uuid)
+                    except ValueError:
+                        self.ap.logger.warning(f'Fallback model {fb_uuid} not found, skipping')
+                if valid_fallbacks:
+                    query.variables['_fallback_model_uuids'] = valid_fallbacks
 
         conversation = await self.ap.sess_mgr.get_conversation(
             query,
@@ -61,19 +80,27 @@ class PreProcessor(stage.PipelineStage):
         query.prompt = conversation.prompt.copy()
         query.messages = conversation.messages.copy()
 
-        if selected_runner == 'local-agent' and llm_model:
+        if selected_runner == 'local-agent':
             query.use_funcs = []
-            query.use_llm_model_uuid = llm_model.model_entity.uuid
+            if llm_model:
+                query.use_llm_model_uuid = llm_model.model_entity.uuid
 
-            if llm_model.model_entity.abilities.__contains__('func_call'):
-                # Get bound plugins and MCP servers for filtering tools
+                if llm_model.model_entity.abilities.__contains__('func_call'):
+                    # Get bound plugins and MCP servers for filtering tools
+                    bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+                    bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
+                    query.use_funcs = await self.ap.tool_mgr.get_all_tools(bound_plugins, bound_mcp_servers)
+
+                    self.ap.logger.debug(f'Bound plugins: {bound_plugins}')
+                    self.ap.logger.debug(f'Bound MCP servers: {bound_mcp_servers}')
+                    self.ap.logger.debug(f'Use funcs: {query.use_funcs}')
+
+            # If primary model doesn't support func_call but fallback models exist,
+            # load tools anyway since fallback models may support them
+            if not query.use_funcs and query.variables.get('_fallback_model_uuids'):
                 bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
                 bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
                 query.use_funcs = await self.ap.tool_mgr.get_all_tools(bound_plugins, bound_mcp_servers)
-
-                self.ap.logger.debug(f'Bound plugins: {bound_plugins}')
-                self.ap.logger.debug(f'Bound MCP servers: {bound_mcp_servers}')
-                self.ap.logger.debug(f'Use funcs: {query.use_funcs}')
 
         sender_name = ''
 

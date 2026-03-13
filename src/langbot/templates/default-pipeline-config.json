@@ -41,7 +41,10 @@
             "runner": "local-agent"
         },
         "local-agent": {
-            "model": "",
+            "model": {
+                "primary": "",
+                "fallbacks": []
+            },
             "max-round": 10,
             "prompt": [
                 {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -242,11 +242,17 @@ export default function KBForm({
   };
 
   // Convert creation schema to dynamic form items (same as ExternalKBForm)
-  const configFormItems = parseCreationSchema(selectedEngine?.creation_schema);
+  // Memoize to avoid regenerating UUIDs on every render, which would cause
+  // DynamicFormComponent's useEffect to re-fire and trigger an infinite loop.
+  const configFormItems = useMemo(
+    () => parseCreationSchema(selectedEngine?.creation_schema),
+    [selectedEngine?.creation_schema],
+  );
 
   // Convert retrieval schema to dynamic form items
-  const retrievalFormItems = parseCreationSchema(
-    selectedEngine?.retrieval_schema,
+  const retrievalFormItems = useMemo(
+    () => parseCreationSchema(selectedEngine?.retrieval_schema),
+    [selectedEngine?.retrieval_schema],
   );
 
   // Show loading state

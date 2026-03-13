@@ -11,7 +11,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
-import { useCallback, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useTranslation } from 'react-i18next';
 
@@ -33,6 +33,35 @@ export default function DynamicFormComponent({
   const isInitialMount = useRef(true);
   const previousInitialValues = useRef(initialValues);
   const { t } = useTranslation();
+
+  // Normalize a form value according to its field type.
+  // This ensures legacy/malformed data (e.g. a plain string for
+  // model-fallback-selector) is coerced to the expected shape
+  // so that downstream components never crash.
+  const normalizeFieldValue = (
+    item: IDynamicFormItemSchema,
+    value: unknown,
+  ): unknown => {
+    if (item.type === 'model-fallback-selector') {
+      if (value != null && typeof value === 'object' && !Array.isArray(value)) {
+        const obj = value as Record<string, unknown>;
+        return {
+          primary: typeof obj.primary === 'string' ? obj.primary : '',
+          fallbacks: Array.isArray(obj.fallbacks)
+            ? (obj.fallbacks as unknown[]).filter(
+                (v): v is string => typeof v === 'string',
+              )
+            : [],
+        };
+      }
+      // Legacy string format or any other unexpected type
+      return {
+        primary: typeof value === 'string' ? value : '',
+        fallbacks: [],
+      };
+    }
+    return value;
+  };
 
   // 根据 itemConfigList 动态生成 zod schema
   const formSchema = z.object(
@@ -73,6 +102,12 @@ export default function DynamicFormComponent({
           case 'bot-selector':
             fieldSchema = z.string();
             break;
+          case 'model-fallback-selector':
+            fieldSchema = z.object({
+              primary: z.string(),
+              fallbacks: z.array(z.string()),
+            });
+            break;
           case 'prompt-editor':
             fieldSchema = z.array(
               z.object({
@@ -110,10 +145,10 @@ export default function DynamicFormComponent({
     resolver: zodResolver(formSchema),
     defaultValues: itemConfigList.reduce((acc, item) => {
       // 优先使用 initialValues，如果没有则使用默认值
-      const value = initialValues?.[item.name] ?? item.default;
+      const rawValue = initialValues?.[item.name] ?? item.default;
       return {
         ...acc,
-        [item.name]: value,
+        [item.name]: normalizeFieldValue(item, rawValue),
       };
     }, {} as FormValues),
   });
@@ -138,7 +173,8 @@ export default function DynamicFormComponent({
       // 合并默认值和初始值
       const mergedValues = itemConfigList.reduce(
         (acc, item) => {
-          acc[item.name] = initialValues[item.name] ?? item.default;
+          const rawValue = initialValues[item.name] ?? item.default;
+          acc[item.name] = normalizeFieldValue(item, rawValue) as object;
           return acc;
         },
         {} as Record<string, object>,
@@ -160,39 +196,44 @@ export default function DynamicFormComponent({
   const onSubmitRef = useRef(onSubmit);
   onSubmitRef.current = onSubmit;
 
-  // Track the last emitted values to avoid emitting identical snapshots,
-  // which would cause the parent to call setValue with an equivalent object,
-  // triggering a re-render loop.
-  const lastEmittedRef = useRef<string>('');
-
-  const emitValues = useCallback(() => {
+  // 监听表单值变化
+  useEffect(() => {
+    // Emit initial form values immediately so the parent always has a valid snapshot,
+    // even if the user saves without modifying any field.
+    // form.watch(callback) only fires on subsequent changes, not on mount.
     const formValues = form.getValues();
-    const finalValues = itemConfigList.reduce(
+    const initialFinalValues = itemConfigList.reduce(
       (acc, item) => {
         acc[item.name] = formValues[item.name] ?? item.default;
         return acc;
       },
       {} as Record<string, object>,
     );
-    const serialized = JSON.stringify(finalValues);
-    if (serialized !== lastEmittedRef.current) {
-      lastEmittedRef.current = serialized;
-      onSubmitRef.current?.(finalValues);
-    }
-  }, [form, itemConfigList]);
+    onSubmitRef.current?.(initialFinalValues);
 
-  // 监听表单值变化
-  useEffect(() => {
-    // Emit initial form values immediately so the parent always has a valid snapshot,
-    // even if the user saves without modifying any field.
-    // form.watch(callback) only fires on subsequent changes, not on mount.
-    emitValues();
+    // Update previousInitialValues to the emitted snapshot so that if the
+    // parent writes these values back as new initialValues, the deep
+    // comparison in the initialValues-sync useEffect won't detect a change
+    // and won't trigger an infinite update loop.
+    previousInitialValues.current = initialFinalValues as Record<
+      string,
+      object
+    >;
 
     const subscription = form.watch(() => {
-      emitValues();
+      const formValues = form.getValues();
+      const finalValues = itemConfigList.reduce(
+        (acc, item) => {
+          acc[item.name] = formValues[item.name] ?? item.default;
+          return acc;
+        },
+        {} as Record<string, object>,
+      );
+      onSubmitRef.current?.(finalValues);
+      previousInitialValues.current = finalValues as Record<string, object>;
     });
     return () => subscription.unsubscribe();
-  }, [form, itemConfigList, emitValues]);
+  }, [form, itemConfigList]);
 
   return (
     <Form {...form}>
@@ -231,6 +272,7 @@ export default function DynamicFormComponent({
 
           // All fields are disabled when editing (creation_settings are immutable)
           const isFieldDisabled = !!isEditing;
+
           return (
             <FormField
               key={config.id}

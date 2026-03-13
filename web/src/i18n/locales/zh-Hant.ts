@@ -47,6 +47,12 @@ const zhHant = {
     copyFailed: '複製失敗',
     test: '測試',
     forgotPassword: '忘記密碼？',
+    agreementNotice: '繼續即表示您同意我們的',
+    privacyPolicy: '隱私政策',
+    and: '和',
+    dataCollectionPolicy: '數據收集政策',
+    dataCollectionPolicyUrl:
+      'https://docs.langbot.app/zh/insight/data-collection-policy',
     loading: '載入中...',
     fieldRequired: '此欄位為必填',
     or: '或',
@@ -220,6 +226,11 @@ const zhHant = {
     modelsCount: '{{count}} 個模型',
     expandModels: '展開',
     collapseModels: '收起',
+    fallback: {
+      primary: '主模型',
+      fallbackList: '備用模型',
+      addFallback: '新增備用模型',
+    },
   },
   bots: {
     title: '機器人',
@@ -261,6 +272,7 @@ const zhHant = {
     webhookUrlCopied: 'Webhook 位址已複製',
     webhookUrlHint:
       '點擊輸入框自動全選，然後按 Ctrl+C (Mac: Cmd+C) 複製，或點擊右側按鈕',
+    webhookUrlHintEither: '以上兩個地址任選其一填入平台配置即可',
     logLevel: '日誌級別',
     allLevels: '全部級別',
     selectLevel: '選擇級別',

@@ -253,6 +253,27 @@ export default function Register() {
               </Button>
             </form>
           </Form>
+
+          <p className="text-xs text-center text-muted-foreground">
+            {t('common.agreementNotice')}{' '}
+            <a
+              href="https://langbot.app/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-foreground transition-colors"
+            >
+              {t('common.privacyPolicy')}
+            </a>{' '}
+            {t('common.and')}{' '}
+            <a
+              href={t('common.dataCollectionPolicyUrl')}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-foreground transition-colors"
+            >
+              {t('common.dataCollectionPolicy')}
+            </a>
+          </p>
         </CardContent>
       </Card>
     </div>

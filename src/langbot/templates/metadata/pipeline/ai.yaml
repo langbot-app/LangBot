@@ -59,8 +59,11 @@ stages:
         label:
           en_US: Model
           zh_Hans: 模型
-        type: llm-model-selector
+        type: model-fallback-selector
         required: true
+        default:
+          primary: ''
+          fallbacks: []
       - name: max-round
         label:
           en_US: Max Round

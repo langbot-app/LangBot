@@ -47,6 +47,12 @@ const zhHans = {
     copyFailed: '复制失败',
     test: '测试',
     forgotPassword: '忘记密码？',
+    agreementNotice: '继续即表示您同意我们的',
+    privacyPolicy: '隐私政策',
+    and: '和',
+    dataCollectionPolicy: '数据收集政策',
+    dataCollectionPolicyUrl:
+      'https://docs.langbot.app/zh/insight/data-collection-policy',
     loading: '加载中...',
     fieldRequired: '此字段为必填项',
     or: '或',
@@ -221,6 +227,11 @@ const zhHans = {
     modelsCount: '{{count}} 个模型',
     expandModels: '展开',
     collapseModels: '收起',
+    fallback: {
+      primary: '主模型',
+      fallbackList: '备用模型',
+      addFallback: '添加备用模型',
+    },
   },
   bots: {
     title: '机器人',
@@ -262,6 +273,7 @@ const zhHans = {
     webhookUrlCopied: 'Webhook 地址已复制',
     webhookUrlHint:
       '点击输入框自动全选，然后按 Ctrl+C (Mac: Cmd+C) 复制，或点击右侧按钮',
+    webhookUrlHintEither: '以上两个地址任选其一填入平台配置即可',
     logLevel: '日志级别',
     allLevels: '全部级别',
     selectLevel: '选择级别',

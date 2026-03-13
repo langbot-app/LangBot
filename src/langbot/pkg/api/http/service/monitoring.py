@@ -30,6 +30,7 @@ class MonitoringService:
         level: str = 'info',
         platform: str | None = None,
         user_id: str | None = None,
+        user_name: str | None = None,
         runner_name: str | None = None,
         variables: str | None = None,
         role: str = 'user',
@@ -49,6 +50,7 @@ class MonitoringService:
             'level': level,
             'platform': platform,
             'user_id': user_id,
+            'user_name': user_name,
             'runner_name': runner_name,
             'variables': variables,
             'role': role,
@@ -152,6 +154,7 @@ class MonitoringService:
         pipeline_name: str,
         platform: str | None = None,
         user_id: str | None = None,
+        user_name: str | None = None,
     ) -> None:
         """Record a new session"""
         session_data = {
@@ -166,6 +169,7 @@ class MonitoringService:
             'is_active': True,
             'platform': platform,
             'user_id': user_id,
+            'user_name': user_name,
         }
 
         await self.ap.persistence_mgr.execute_async(

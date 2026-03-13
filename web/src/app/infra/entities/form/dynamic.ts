@@ -35,6 +35,7 @@ export enum DynamicFormItemType {
   SELECT = 'select',
   LLM_MODEL_SELECTOR = 'llm-model-selector',
   EMBEDDING_MODEL_SELECTOR = 'embedding-model-selector',
+  MODEL_FALLBACK_SELECTOR = 'model-fallback-selector',
   PROMPT_EDITOR = 'prompt-editor',
   UNKNOWN = 'unknown',
   KNOWLEDGE_BASE_SELECTOR = 'knowledge-base-selector',

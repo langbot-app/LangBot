@@ -105,11 +105,16 @@ class LLMModelsService:
                 )
             )
             pipeline = result.first()
-            if pipeline is not None and pipeline.config['ai']['local-agent']['model'] == '':
-                pipeline_config = pipeline.config
-                pipeline_config['ai']['local-agent']['model'] = model_data['uuid']
-                pipeline_data = {'config': pipeline_config}
-                await self.ap.pipeline_service.update_pipeline(pipeline.uuid, pipeline_data)
+            if pipeline is not None:
+                model_config = pipeline.config.get('ai', {}).get('local-agent', {}).get('model', {})
+                if not model_config.get('primary', ''):
+                    pipeline_config = pipeline.config
+                    pipeline_config['ai']['local-agent']['model'] = {
+                        'primary': model_data['uuid'],
+                        'fallbacks': [],
+                    }
+                    pipeline_data = {'config': pipeline_config}
+                    await self.ap.pipeline_service.update_pipeline(pipeline.uuid, pipeline_data)
 
         return model_data['uuid']
 

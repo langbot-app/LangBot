@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   IChooseAdapterEntity,
   IPipelineEntity,
@@ -113,115 +113,73 @@ export default function BotForm({
   const [dynamicFormConfigList, setDynamicFormConfigList] = useState<
     IDynamicFormItemSchema[]
   >([]);
-  const [filteredDynamicFormConfigList, setFilteredDynamicFormConfigList] =
-    useState<IDynamicFormItemSchema[]>([]);
   const [, setIsLoading] = useState<boolean>(false);
   const [webhookUrl, setWebhookUrl] = useState<string>('');
-  const webhookInputRef = React.useRef<HTMLInputElement>(null);
+  const [extraWebhookUrl, setExtraWebhookUrl] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
+  const [extraCopied, setExtraCopied] = useState<boolean>(false);
 
   // Watch adapter and adapter_config for filtering
   const currentAdapter = form.watch('adapter');
   const currentAdapterConfig = form.watch('adapter_config');
 
-  // Serialize adapter_config to a stable string so it can be used as a
-  // useEffect dependency without triggering on every render.  form.watch()
-  // returns a new object reference each time, which would otherwise cause
-  // the filtering effect below to loop indefinitely.
-  const adapterConfigJson = JSON.stringify(currentAdapterConfig);
+  // Derive the filtered config list via useMemo instead of useEffect+setState
+  // to avoid creating new array references that would cause DynamicFormComponent
+  // to re-subscribe its form.watch, re-emit values, and trigger an infinite loop.
+  // Only depend on the specific field we care about (enable-webhook) rather than
+  // the entire currentAdapterConfig object, which changes on every emission.
+  const enableWebhook = currentAdapterConfig?.['enable-webhook'];
+  const filteredDynamicFormConfigList = useMemo(() => {
+    if (currentAdapter === 'lark' && enableWebhook === false) {
+      // Hide encrypt-key field when webhook is disabled
+      return dynamicFormConfigList.filter(
+        (config) => config.name !== 'encrypt-key',
+      );
+    }
+    // For non-Lark adapters or when webhook is enabled/undefined, show all fields
+    return dynamicFormConfigList;
+  }, [currentAdapter, enableWebhook, dynamicFormConfigList]);
 
   useEffect(() => {
     setBotFormValues();
   }, []);
 
-  // Filter dynamic form config list based on enable-webhook status for Lark adapter
-  useEffect(() => {
-    if (currentAdapter === 'lark') {
-      const enableWebhook = currentAdapterConfig?.['enable-webhook'];
-      if (enableWebhook === false) {
-        // Hide encrypt-key field when webhook is disabled
-        setFilteredDynamicFormConfigList(
-          dynamicFormConfigList.filter(
-            (config) => config.name !== 'encrypt-key',
-          ),
-        );
-      } else {
-        // Show all fields when webhook is enabled or undefined
-        setFilteredDynamicFormConfigList(dynamicFormConfigList);
-      }
+  // 复制到剪贴板的辅助函数
+  const copyToClipboard = (
+    text: string,
+    setStatus: React.Dispatch<React.SetStateAction<boolean>>,
+  ) => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+        .writeText(text)
+        .then(() => {
+          setStatus(true);
+          setTimeout(() => setStatus(false), 2000);
+        })
+        .catch(() => {
+          // 降级：创建临时textarea复制
+          fallbackCopy(text, setStatus);
+        });
     } else {
-      // For non-Lark adapters, show all fields
-      setFilteredDynamicFormConfigList(dynamicFormConfigList);
+      fallbackCopy(text, setStatus);
     }
-  }, [currentAdapter, adapterConfigJson, dynamicFormConfigList]);
+  };
 
-  // 复制到剪贴板的辅助函数 - 使用页面上的真实input元素
-  const copyToClipboard = () => {
-    console.log('[Copy] Attempting to copy from input element');
-
-    const inputElement = webhookInputRef.current;
-    if (!inputElement) {
-      console.error('[Copy] Input element not found');
-      return;
-    }
-
-    try {
-      // 确保input元素可见且未被禁用
-      inputElement.disabled = false;
-      inputElement.readOnly = false;
-
-      // 聚焦并选中所有文本
-      inputElement.focus();
-      inputElement.select();
-
-      // 尝试使用现代API
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        console.log(
-          '[Copy] Using Clipboard API with input value:',
-          inputElement.value,
-        );
-        navigator.clipboard
-          .writeText(inputElement.value)
-          .then(() => {
-            console.log('[Copy] Clipboard API success');
-            inputElement.blur(); // 取消选中
-            inputElement.readOnly = true;
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-          })
-          .catch((err) => {
-            console.error(
-              '[Copy] Clipboard API failed, trying execCommand:',
-              err,
-            );
-            // 降级到execCommand
-            const successful = document.execCommand('copy');
-            console.log('[Copy] execCommand result:', successful);
-            inputElement.blur();
-            inputElement.readOnly = true;
-            if (successful) {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            }
-          });
-      } else {
-        // 直接使用execCommand
-        console.log(
-          '[Copy] Using execCommand with input value:',
-          inputElement.value,
-        );
-        const successful = document.execCommand('copy');
-        console.log('[Copy] execCommand result:', successful);
-        inputElement.blur();
-        inputElement.readOnly = true;
-        if (successful) {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        }
-      }
-    } catch (err) {
-      console.error('[Copy] Copy failed:', err);
-      inputElement.readOnly = true;
+  const fallbackCopy = (
+    text: string,
+    setStatus: React.Dispatch<React.SetStateAction<boolean>>,
+  ) => {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const successful = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    if (successful) {
+      setStatus(true);
+      setTimeout(() => setStatus(false), 2000);
     }
   };
 
@@ -246,6 +204,7 @@ export default function BotForm({
             } else {
               setWebhookUrl('');
             }
+            setExtraWebhookUrl(val.extra_webhook_full_url || '');
           })
           .catch((err) => {
             toast.error(
@@ -255,6 +214,7 @@ export default function BotForm({
       } else {
         form.reset();
         setWebhookUrl('');
+        setExtraWebhookUrl('');
       }
     });
   }
@@ -327,14 +287,20 @@ export default function BotForm({
     setAdapterNameToDynamicConfigMap(adapterNameToDynamicConfigMap);
   }
 
-  async function getBotConfig(
-    botId: string,
-  ): Promise<z.infer<typeof formSchema> & { webhook_full_url?: string }> {
+  async function getBotConfig(botId: string): Promise<
+    z.infer<typeof formSchema> & {
+      webhook_full_url?: string;
+      extra_webhook_full_url?: string;
+    }
+  > {
     return new Promise((resolve, reject) => {
       httpClient
         .getBot(botId)
         .then((res) => {
           const bot = res.bot;
+          const runtimeValues = bot.adapter_runtime_values as
+            | Record<string, unknown>
+            | undefined;
           resolve({
             adapter: bot.adapter,
             description: bot.description,
@@ -342,10 +308,12 @@ export default function BotForm({
             adapter_config: bot.adapter_config,
             enable: bot.enable ?? true,
             use_pipeline_uuid: bot.use_pipeline_uuid ?? '',
-            webhook_full_url: bot.adapter_runtime_values
-              ? ((bot.adapter_runtime_values as Record<string, unknown>)
-                  .webhook_full_url as string)
-              : undefined,
+            webhook_full_url: runtimeValues?.webhook_full_url as
+              | string
+              | undefined,
+            extra_webhook_full_url: runtimeValues?.extra_webhook_full_url as
+              | string
+              | undefined,
           });
         })
         .catch((err) => {
@@ -536,13 +504,11 @@ export default function BotForm({
 
                 {/* Webhook 地址显示（统一 Webhook 模式） */}
                 {webhookUrl &&
-                  (currentAdapter !== 'lark' ||
-                    currentAdapterConfig?.['enable-webhook'] !== false) && (
+                  (currentAdapter !== 'lark' || enableWebhook !== false) && (
                     <FormItem>
                       <FormLabel>{t('bots.webhookUrl')}</FormLabel>
                       <div className="flex items-center gap-2">
                         <Input
-                          ref={webhookInputRef}
                           value={webhookUrl}
                           readOnly
                           className="flex-1 bg-gray-50 dark:bg-gray-900"
@@ -555,7 +521,7 @@ export default function BotForm({
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={copyToClipboard}
+                          onClick={() => copyToClipboard(webhookUrl, setCopied)}
                         >
                           {copied ? (
                             <Check className="h-4 w-4 text-green-600 mr-2" />
@@ -565,8 +531,37 @@ export default function BotForm({
                           {t('common.copy')}
                         </Button>
                       </div>
+                      {extraWebhookUrl && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <Input
+                            value={extraWebhookUrl}
+                            readOnly
+                            className="flex-1 bg-gray-50 dark:bg-gray-900"
+                            onClick={(e) => {
+                              (e.target as HTMLInputElement).select();
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              copyToClipboard(extraWebhookUrl, setExtraCopied)
+                            }
+                          >
+                            {extraCopied ? (
+                              <Check className="h-4 w-4 text-green-600 mr-2" />
+                            ) : (
+                              <Copy className="h-4 w-4 mr-2" />
+                            )}
+                            {t('common.copy')}
+                          </Button>
+                        </div>
+                      )}
                       <p className="text-sm text-gray-500 mt-1">
-                        {t('bots.webhookUrlHint')}
+                        {extraWebhookUrl
+                          ? t('bots.webhookUrlHintEither')
+                          : t('bots.webhookUrlHint')}
                       </p>
                     </FormItem>
                   )}
@@ -673,7 +668,7 @@ export default function BotForm({
                 </div>
                 <DynamicFormComponent
                   itemConfigList={filteredDynamicFormConfigList}
-                  initialValues={form.watch('adapter_config')}
+                  initialValues={currentAdapterConfig}
                   onSubmit={(values) => {
                     form.setValue('adapter_config', values);
                   }}
