@@ -93,6 +93,26 @@ stages:
         type: knowledge-base-multi-selector
         required: false
         default: []
+      - name: max-tool-iterations
+        label:
+          en_US: Max Tool Iterations
+          zh_Hans: 最大工具调用轮次
+        description:
+          en_US: Maximum number of tool call iterations in a single agent loop to prevent runaway loops
+          zh_Hans: 单次 Agent 循环中工具调用的最大轮次，防止无限循环
+        type: integer
+        required: false
+        default: 16
+      - name: max-tool-result-chars
+        label:
+          en_US: Max Tool Result Length
+          zh_Hans: 工具返回最大字符数
+        description:
+          en_US: Maximum character length of a single tool call result, longer results will be truncated
+          zh_Hans: 单次工具调用返回结果的最大字符数，超出部分将被截断
+        type: integer
+        required: false
+        default: 8000
   - name: tbox-app-api
     label:
       en_US: Tbox App API

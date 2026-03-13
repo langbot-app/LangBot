@@ -132,6 +132,12 @@ class LocalAgentRunner(runner.RequestRunner):
         """Run request"""
         pending_tool_calls = []
 
+        # Agent loop protection config
+        agent_config = query.pipeline_config['ai']['local-agent']
+        max_tool_iterations = agent_config.get('max-tool-iterations', 16)
+        max_tool_result_chars = agent_config.get('max-tool-result-chars', 8000)
+        iteration_count = 0
+
         # Get knowledge bases list (new field)
         kb_uuids = query.pipeline_config['ai']['local-agent'].get('knowledge-bases', [])
 
@@ -296,6 +302,14 @@ class LocalAgentRunner(runner.RequestRunner):
         # Once a model succeeds, commit to it for the tool call loop
         # (no fallback mid-conversation — different models may interpret tool results differently)
         while pending_tool_calls:
+            iteration_count += 1
+            if iteration_count > max_tool_iterations:
+                self.ap.logger.warning(
+                    f'localagent: query={query.query_id} agent loop exceeded max iterations ({max_tool_iterations}), '
+                    f'forcing termination'
+                )
+                break
+
             for tool_call in pending_tool_calls:
                 try:
                     func = tool_call.function
@@ -317,6 +331,14 @@ class LocalAgentRunner(runner.RequestRunner):
                         tool_content = func_ret
                     else:
                         tool_content = json.dumps(func_ret, ensure_ascii=False)
+
+                    # Truncate oversized tool results to prevent context overflow
+                    if isinstance(tool_content, str) and len(tool_content) > max_tool_result_chars:
+                        self.ap.logger.warning(
+                            f'localagent: tool {func.name} returned {len(tool_content)} chars, '
+                            f'truncating to {max_tool_result_chars}'
+                        )
+                        tool_content = tool_content[:max_tool_result_chars] + '\n...[result truncated]'
 
                     if is_stream:
                         msg = provider_message.MessageChunk(
