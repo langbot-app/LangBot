@@ -24,14 +24,18 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
         return content
 
     @staticmethod
-    async def target2yiri(event: WecomBotEvent):
+    async def target2yiri(event: WecomBotEvent, bot_name: str = ''):
         yiri_msg_list = []
         if event.type == 'group':
             yiri_msg_list.append(platform_message.At(target=event.ai_bot_id))
+
         yiri_msg_list.append(platform_message.Source(id=event.message_id, time=datetime.datetime.now()))
 
         if event.content:
-            yiri_msg_list.append(platform_message.Plain(text=event.content))
+            content = event.content
+            if bot_name:
+                content = content.replace(f'@{bot_name}', '').strip()
+            yiri_msg_list.append(platform_message.Plain(text=content))
 
         images = []
         if event.images:
@@ -134,13 +138,15 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
 
 
 class WecomBotEventConverter(abstract_platform_adapter.AbstractEventConverter):
+    def __init__(self, bot_name: str = ''):
+        self.bot_name = bot_name
+
     @staticmethod
     async def yiri2target(event: platform_events.MessageEvent):
         return event.source_platform_object
 
-    @staticmethod
-    async def target2yiri(event: WecomBotEvent):
-        message_chain = await WecomBotMessageConverter.target2yiri(event)
+    async def target2yiri(self, event: WecomBotEvent):
+        message_chain = await WecomBotMessageConverter.target2yiri(event, bot_name=self.bot_name)
         if event.type == 'single':
             return platform_events.FriendMessage(
                 sender=platform_entities.Friend(
@@ -180,13 +186,16 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot: typing.Union[WecomBotClient, WecomBotWsClient]
     bot_account_id: str
     message_converter: WecomBotMessageConverter = WecomBotMessageConverter()
-    event_converter: WecomBotEventConverter = WecomBotEventConverter()
+    event_converter: WecomBotEventConverter
     config: dict
     bot_uuid: str = None
     _ws_mode: bool = False
+    bot_name: str = ''
+    listeners: dict = {}
 
     def __init__(self, config: dict, logger: EventLogger):
         enable_webhook = config.get('enable-webhook', False)
+        bot_name = config.get('robot_name', '')
 
         if not enable_webhook:
             bot = WecomBotWsClient(
@@ -195,7 +204,6 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 logger=logger,
                 encoding_aes_key=config.get('EncodingAESKey', ''),
             )
-            ws_mode = True
         else:
             # Webhook callback mode
             required_keys = ['Token', 'EncodingAESKey', 'Corpid']
@@ -210,17 +218,18 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 logger=logger,
                 unified_mode=True,
             )
-            ws_mode = False
 
         bot_account_id = config.get('BotId', '')
-
+        event_converter = WecomBotEventConverter(bot_name=bot_name)
         super().__init__(
             config=config,
             logger=logger,
             bot=bot,
             bot_account_id=bot_account_id,
+            bot_name=bot_name,
+            event_converter=event_converter,
         )
-        self._ws_mode = ws_mode
+        self.listeners = {}
 
     async def reply_message(
         self,
@@ -228,8 +237,10 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         message: platform_message.MessageChain,
         quote_origin: bool = False,
     ):
-        content = await self.message_converter.yiri2target(message)
-        if self._ws_mode:
+        content = await self.message_converter.yiri2target(message, self.bot_name)
+        _ws_mode = not self.config.get('enable-webhook', False)
+
+        if _ws_mode:
             event = message_source.source_platform_object
             req_id = event.get('req_id', '')
             if req_id:
@@ -249,8 +260,9 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     ):
         content = await self.message_converter.yiri2target(message)
         msg_id = message_source.source_platform_object.message_id
+        _ws_mode = not self.config.get('enable-webhook', False)
 
-        if self._ws_mode:
+        if _ws_mode:
             success = await self.bot.push_stream_chunk(msg_id, content, is_final=is_final)
             if not success and is_final:
                 event = message_source.source_platform_object
@@ -275,11 +287,21 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         return True
 
     async def send_message(self, target_type, target_id, message):
-        if self._ws_mode:
+        _ws_mode = not self.config.get('enable-webhook', False)
+        if _ws_mode:
             content = await self.message_converter.yiri2target(message)
             await self.bot.send_message(target_id, content)
         else:
             pass
+
+    async def on_message(self, event: WecomBotEvent):
+        try:
+            lb_event = await self.event_converter.target2yiri(event)
+            if lb_event:
+                await self.listeners[type(lb_event)](lb_event, self)
+        except Exception:
+            await self.logger.error(f'Error in wecombot callback: {traceback.format_exc()}')
+            print(traceback.format_exc())
 
     def register_listener(
         self,
@@ -288,18 +310,13 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
         ],
     ):
-        async def on_message(event: WecomBotEvent):
-            try:
-                return await callback(await self.event_converter.target2yiri(event), self)
-            except Exception:
-                await self.logger.error(f'Error in wecombot callback: {traceback.format_exc()}')
-                print(traceback.format_exc())
+        self.listeners[event_type] = callback
 
         try:
             if event_type == platform_events.FriendMessage:
-                self.bot.on_message('single')(on_message)
+                self.bot.on_message('single')(self.on_message)
             elif event_type == platform_events.GroupMessage:
-                self.bot.on_message('group')(on_message)
+                self.bot.on_message('group')(self.on_message)
         except Exception:
             print(traceback.format_exc())
 
@@ -308,12 +325,14 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         self.bot_uuid = bot_uuid
 
     async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
-        if self._ws_mode:
+        _ws_mode = not self.config.get('enable-webhook', False)
+        if _ws_mode:
             return None
         return await self.bot.handle_unified_webhook(request)
 
     async def run_async(self):
-        if self._ws_mode:
+        _ws_mode = not self.config.get('enable-webhook', False)
+        if _ws_mode:
             await self.bot.connect()
         else:
 
@@ -324,7 +343,8 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             await keep_alive()
 
     async def kill(self) -> bool:
-        if self._ws_mode:
+        _ws_mode = not self.config.get('enable-webhook', False)
+        if _ws_mode:
             await self.bot.disconnect()
             return True
         return False
