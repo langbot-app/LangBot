@@ -11,6 +11,10 @@ const enUS = {
     continueToLogin: 'Login to continue',
     loginSuccess: 'Login successful',
     loginFailed: 'Login failed, please check your email and password',
+    loginLoadError: 'Unable to connect to server',
+    loginLoadErrorDesc:
+      'Unable to connect to the LangBot backend. Please make sure the service is running and try again.',
+    retry: 'Retry',
     enterEmail: 'Enter email address',
     enterPassword: 'Enter password',
     invalidEmail: 'Please enter a valid email address',

@@ -12,6 +12,10 @@
     loginSuccess: 'ログインに成功しました',
     loginFailed:
       'ログインに失敗しました。メールアドレスまたはパスワードをご確認ください',
+    loginLoadError: 'サーバーに接続できません',
+    loginLoadErrorDesc:
+      'LangBot バックエンドに接続できません。サービスが起動していることを確認してから再試行してください。',
+    retry: '再試行',
     enterEmail: 'メールアドレスを入力',
     enterPassword: 'パスワードを入力',
     invalidEmail: '有効なメールアドレスを入力してください',
