@@ -237,7 +237,7 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         message: platform_message.MessageChain,
         quote_origin: bool = False,
     ):
-        content = await self.message_converter.yiri2target(message, self.bot_name)
+        content = await self.message_converter.yiri2target(message)
         _ws_mode = not self.config.get('enable-webhook', False)
 
         if _ws_mode:
