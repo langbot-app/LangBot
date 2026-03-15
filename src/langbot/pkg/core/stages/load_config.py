@@ -74,20 +74,26 @@ def _apply_env_overrides_to_config(cfg: dict) -> dict:
         current = cfg
 
         for i, key in enumerate(keys):
-            if not isinstance(current, dict) or key not in current:
+            if not isinstance(current, dict):
                 break
 
             if i == len(keys) - 1:
-                # At the final key - check if it's a scalar value
-                if isinstance(current[key], (dict, list)):
-                    # Skip dict and list types
-                    pass
+                # At the final key
+                if key in current:
+                    if isinstance(current[key], (dict, list)):
+                        # Skip dict and list types
+                        pass
+                    else:
+                        # Valid scalar value - convert and set it
+                        converted_value = convert_value(env_value, current[key])
+                        current[key] = converted_value
                 else:
-                    # Valid scalar value - convert and set it
-                    converted_value = convert_value(env_value, current[key])
-                    current[key] = converted_value
+                    # Key doesn't exist yet - create it as string
+                    current[key] = env_value
             else:
-                # Navigate deeper
+                # Navigate deeper - create intermediate dict if needed
+                if key not in current:
+                    current[key] = {}
                 current = current[key]
 
     return cfg
