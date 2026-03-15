@@ -269,11 +269,16 @@ export default function PipelineFormComponent({
     stage: PipelineConfigStage,
     formName: keyof FormValues,
   ) {
+    const currentRunner = form.watch('ai.runner.runner');
+
+    if (formName === 'output' && stage.name === 'dify-stream') {
+      if (currentRunner !== 'dify-service-api') {
+        return null;
+      }
+    }
+
     // 如果是 AI 配置，需要特殊处理
     if (formName === 'ai') {
-      // 获取当前选择的 runner
-      const currentRunner = form.watch('ai.runner.runner');
-
       // 如果是 runner 配置项，直接渲染
       if (stage.name === 'runner') {
         return (

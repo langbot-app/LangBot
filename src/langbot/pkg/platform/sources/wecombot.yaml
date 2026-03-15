@@ -21,53 +21,103 @@ spec:
     - name: enable-webhook
       label:
         en_US: Enable Webhook Mode
-        zh_Hans: 启用Webhook模式
+        zh_Hans: 启用 Webhook 模式
       description:
-        en_US: If enabled, the bot will use webhook mode to receive messages. Otherwise, it will use WS long connection mode
-        zh_Hans: 如果启用，机器人将使用 Webhook 模式接收消息。否则，将使用 WS 长连接模式
+        en_US: Switch between Webhook mode and WebSocket mode config. This branch currently supports Webhook mode only.
+        zh_Hans: 在 Webhook / WebSocket 配置之间切换展示。当前分支仅支持 Webhook 模式。
       type: boolean
       required: true
-      default: false
+      default: true
     - name: Secret
       label:
         en_US: Secret
         zh_Hans: 机器人密钥 (Secret)
       description:
-        en_US: Required for WebSocket long connection mode
-        zh_Hans: 使用 WS 长连接模式时必填
+        en_US: Reserved for WebSocket mode.
+        zh_Hans: WebSocket 模式预留配置项。
       type: string
       required: false
       default: ""
+      visibleOn: ${enable-webhook} == false
     - name: Corpid
       label:
         en_US: Corpid
         zh_Hans: 企业ID
-      description:
-        en_US: Required for Webhook mode
-        zh_Hans: 使用 Webhook 模式时必填
       type: string
       required: false
       default: ""
+      visibleOn: ${enable-webhook} == true
     - name: Token
       label:
         en_US: Token
         zh_Hans: 令牌 (Token)
-      description:
-        en_US: Required for Webhook mode
-        zh_Hans: 使用 Webhook 模式时必填
       type: string
       required: false
       default: ""
+      visibleOn: ${enable-webhook} == true
     - name: EncodingAESKey
       label:
         en_US: EncodingAESKey
         zh_Hans: 消息加解密密钥 (EncodingAESKey)
-      description:
-        en_US: Required for Webhook mode. Optional for WebSocket mode (used for file decryption)
-        zh_Hans: 使用 Webhook 模式时必填。WebSocket 模式下可选（用于文件解密）
       type: string
       required: false
       default: ""
+      visibleOn: ${enable-webhook} == true
+    - name: PullPollTimeoutMs
+      label:
+        en_US: Pull Poll Timeout (ms)
+        zh_Hans: Pull 模式轮询等待时间（毫秒）
+      description:
+        en_US: How long LangBot waits for a new chunk before replying to WeCom follow-up polling. Higher values reduce empty polling and repeated snapshots, but may slightly increase latency.
+        zh_Hans: LangBot 在响应企微 follow-up 轮询前，等待新 chunk 的时间。值越大越不容易出现空轮询和重复快照，但延迟会略增。
+      type: integer
+      required: true
+      default: 500
+      visibleOn: ${enable-webhook} == true
+    - name: PullStreamMaxLifetimeMs
+      label:
+        en_US: Pull Stream Max Lifetime (ms)
+        zh_Hans: Pull 模式 Stream 最大生命周期（毫秒）
+      description:
+        en_US: Maximum lifetime of a single WeCom pull stream. Once exceeded, LangBot will force finish the stream with the latest snapshot to avoid endless polling.
+        zh_Hans: 单个企微 Pull 流式会话的最大生命周期。超过后 LangBot 会使用最后快照强制 finish，避免企微无休止轮询后展示官方兜底文案。
+      type: integer
+      required: true
+      default: 300000
+      visibleOn: ${enable-webhook} == true
+    - name: PullPendingPlaceholderEnabled
+      label:
+        en_US: Pull Pending Placeholder Enabled
+        zh_Hans: Pull 模式首字等待占位开关
+      description:
+        en_US: When enabled, return a pending placeholder if no first chunk arrives within the delay window.
+        zh_Hans: 开启后，若在延迟时间内未收到首字，则返回等待占位文案；关闭则不返回任何占位。
+      type: boolean
+      required: false
+      default: false
+      visibleOn: ${enable-webhook} == true
+    - name: PullPendingPlaceholderDelayMs
+      label:
+        en_US: Pull Pending Placeholder Delay (ms)
+        zh_Hans: Pull 模式占位文案延迟（毫秒）
+      description:
+        en_US: Only return the pending placeholder if no first token arrives within this delay window.
+        zh_Hans: 只有在这段延迟时间内仍未收到首字时，才会返回等待占位文案。
+      type: integer
+      required: false
+      default: 3000
+      visibleOn: ${enable-webhook} == true && ${PullPendingPlaceholderEnabled} == true
+    - name: PullPendingPlaceholder
+      label:
+        en_US: Pull Pending Placeholder
+        zh_Hans: Pull 模式等待占位文案
+      description:
+        en_US: Temporary placeholder returned before the first chunk arrives, preventing WeCom from showing its fallback error message.
+        zh_Hans: 首个 chunk 到达前返回的临时占位文案，用于避免企微展示官方兜底错误提示。
+      type: string
+      required: false
+      default: "AI 正在思考中，请稍候"
+      visibleOn: ${enable-webhook} == true && ${PullPendingPlaceholderEnabled} == true
 execution:
   python:
     path: ./wecombot.py

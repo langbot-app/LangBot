@@ -5,7 +5,7 @@ import json
 import uuid
 import base64
 import mimetypes
-
+import time
 
 from langbot.pkg.provider import runner
 from langbot.pkg.core import app
@@ -93,6 +93,68 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 return parsed['content']
             return value
         return str(value)
+
+    @staticmethod
+    def _get_stream_chunk_batch_size(query: pipeline_query.Query) -> int:
+        pipeline_config = getattr(query, 'pipeline_config', {}) or {}
+        output_config = pipeline_config.get('output', {}) or {}
+        dify_stream_config = output_config.get('dify-stream', {}) or {}
+        value = dify_stream_config.get('chunk-batch-size', 8)
+
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            value = 8
+        return max(1, min(20, value))
+
+    @staticmethod
+    def _get_stream_flush_window_ms(query: pipeline_query.Query) -> int:
+        pipeline_config = getattr(query, 'pipeline_config', {}) or {}
+        output_config = pipeline_config.get('output', {}) or {}
+        dify_stream_config = output_config.get('dify-stream', {}) or {}
+        value = dify_stream_config.get('flush-window-ms', 2000)
+
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            value = 2000
+        return max(200, min(10000, value))
+
+    @staticmethod
+    def _is_stream_flush_window_enabled(query: pipeline_query.Query) -> bool:
+        pipeline_config = getattr(query, 'pipeline_config', {}) or {}
+        output_config = pipeline_config.get('output', {}) or {}
+        dify_stream_config = output_config.get('dify-stream', {}) or {}
+        return bool(dify_stream_config.get('flush-window-enabled', False))
+
+    @staticmethod
+    def _should_emit_stream_snapshot(
+        content: str,
+        is_final: bool,
+        pending_chunk_count: int,
+        chunk_batch_size: int,
+        flush_window_enabled: bool,
+        flush_window_ms: int,
+        last_emitted_content: str,
+        last_emit_at: float,
+    ) -> bool:
+        if is_final:
+            return True
+
+        if not content or content == last_emitted_content:
+            return False
+
+        if last_emitted_content == '':
+            return True
+
+        if pending_chunk_count >= chunk_batch_size:
+            return True
+
+        if not flush_window_enabled:
+            return False
+
+        elapsed_ms = (time.monotonic() - last_emit_at) * 1000
+        return elapsed_ms >= flush_window_ms
 
     async def _preprocess_user_message(self, query: pipeline_query.Query) -> tuple[str, list[dict]]:
         """预处理用户消息，提取纯文本，并将图片/文件上传到 Dify 服务
@@ -439,11 +501,18 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         chunk = None  # 初始化chunk变量，防止在没有响应时引用错误
 
         is_final = False
+        stream_completed = False
+        final_snapshot_emitted = False
         think_start = False
         think_end = False
-        yielded_final = False
+        last_emitted_content = ''
+        pending_chunk_count = 0
+        last_emit_at = time.monotonic()
 
         remove_think = self.pipeline_config['output'].get('misc', '').get('remove-think')
+        chunk_batch_size = self._get_stream_chunk_batch_size(query)
+        flush_window_enabled = self._is_stream_flush_window_enabled(query)
+        flush_window_ms = self._get_stream_flush_window_ms(query)
 
         async for chunk in self.dify_client.chat_messages(
             inputs=inputs,
@@ -462,29 +531,34 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 mode = 'workflow'
 
             if chunk['event'] == 'message':
-                message_idx += 1
-                if remove_think:
-                    if '<think>' in chunk['answer'] and not think_start:
-                        think_start = True
-                        continue
-                    if '</think>' in chunk['answer'] and not think_end:
-                        import re
+                answer = chunk.get('answer', '')
+                if answer != '':
+                    message_idx += 1
+                    pending_chunk_count += 1
+                    if remove_think:
+                        if '<think>' in answer and not think_start:
+                            think_start = True
+                            continue
+                        if '</think>' in answer and not think_end:
+                            import re
 
-                        content = re.sub(r'^\n</think>', '', chunk['answer'])
-                        basic_mode_pending_chunk += content
-                        think_end = True
-                    elif think_end:
-                        basic_mode_pending_chunk += chunk['answer']
-                    if think_start:
-                        continue
+                            content = re.sub(r'^\n</think>', '', answer)
+                            basic_mode_pending_chunk += content
+                            think_end = True
+                        elif think_end:
+                            basic_mode_pending_chunk += answer
+                        if think_start:
+                            continue
 
-                else:
-                    basic_mode_pending_chunk += chunk['answer']
+                    else:
+                        basic_mode_pending_chunk += answer
 
             if chunk['event'] == 'message_end':
                 is_final = True
+                stream_completed = True
             elif chunk['event'] == 'workflow_finished':
                 is_final = True
+                stream_completed = True
                 if chunk['data'].get('error'):
                     raise errors.DifyAPIError(chunk['data']['error'])
 
@@ -494,22 +568,42 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     if answer:
                         basic_mode_pending_chunk = answer
 
-            if (
-                not yielded_final
-                and (is_final or message_idx % 8 == 0)
-                and (basic_mode_pending_chunk != '' or is_final)
+            if final_snapshot_emitted and is_final:
+                continue
+
+            if self._should_emit_stream_snapshot(
+                content=basic_mode_pending_chunk,
+                is_final=is_final,
+                pending_chunk_count=pending_chunk_count,
+                chunk_batch_size=chunk_batch_size,
+                flush_window_enabled=flush_window_enabled,
+                flush_window_ms=flush_window_ms,
+                last_emitted_content=last_emitted_content,
+                last_emit_at=last_emit_at,
             ):
-                # content, _ = self._process_thinking_content(basic_mode_pending_chunk)
                 yield provider_message.MessageChunk(
                     role='assistant',
                     content=basic_mode_pending_chunk,
                     is_final=is_final,
                 )
                 if is_final:
-                    yielded_final = True
+                    final_snapshot_emitted = True
+                last_emitted_content = basic_mode_pending_chunk
+                pending_chunk_count = 0
+                last_emit_at = time.monotonic()
 
         if chunk is None:
             raise errors.DifyAPIError('Dify API 没有返回任何响应，请检查网络连接和API配置')
+
+        if stream_completed and not final_snapshot_emitted:
+            final_content = basic_mode_pending_chunk or last_emitted_content
+            if final_content:
+                self.ap.logger.debug('dify-chat-stream: emit final snapshot fallback')
+                yield provider_message.MessageChunk(
+                    role='assistant',
+                    content=final_content,
+                    is_final=True,
+                )
 
         query.session.using_conversation.uuid = chunk['conversation_id']
 
@@ -542,10 +636,18 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         chunk = None  # 初始化chunk变量，防止在没有响应时引用错误
         message_idx = 0
         is_final = False
+        stream_completed = False
+        final_snapshot_emitted = False
         think_start = False
         think_end = False
+        last_emitted_content = ''
+        pending_chunk_count = 0
+        last_emit_at = time.monotonic()
 
         remove_think = self.pipeline_config['output'].get('misc', '').get('remove-think')
+        chunk_batch_size = self._get_stream_chunk_batch_size(query)
+        flush_window_enabled = self._is_stream_flush_window_enabled(query)
+        flush_window_ms = self._get_stream_flush_window_ms(query)
 
         async for chunk in self.dify_client.chat_messages(
             inputs=inputs,
@@ -562,26 +664,30 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 continue
 
             if chunk['event'] == 'agent_message':
-                message_idx += 1
-                if remove_think:
-                    if '<think>' in chunk['answer'] and not think_start:
-                        think_start = True
-                        continue
-                    if '</think>' in chunk['answer'] and not think_end:
-                        import re
+                answer = chunk.get('answer', '')
+                if answer != '':
+                    message_idx += 1
+                    pending_chunk_count += 1
+                    if remove_think:
+                        if '<think>' in answer and not think_start:
+                            think_start = True
+                            continue
+                        if '</think>' in answer and not think_end:
+                            import re
 
-                        content = re.sub(r'^\n</think>', '', chunk['answer'])
-                        pending_agent_message += content
-                        think_end = True
-                    elif think_end or not think_start:
-                        pending_agent_message += chunk['answer']
-                    if think_start and not think_end:
-                        continue
+                            content = re.sub(r'^\n</think>', '', answer)
+                            pending_agent_message += content
+                            think_end = True
+                        elif think_end or not think_start:
+                            pending_agent_message += answer
+                        if think_start and not think_end:
+                            continue
 
-                else:
-                    pending_agent_message += chunk['answer']
-            elif chunk['event'] == 'message_end':
+                    else:
+                        pending_agent_message += answer
+            elif chunk['event'] in ('message_end', 'workflow_finished'):
                 is_final = True
+                stream_completed = True
             else:
                 if chunk['event'] == 'agent_thought':
                     if chunk['tool'] != '' and chunk['observation'] != '':  # 工具调用结果，跳过
@@ -624,15 +730,39 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
                 if chunk['event'] == 'error':
                     raise errors.DifyAPIError('dify 服务错误: ' + chunk['message'])
-            if message_idx % 8 == 0 or is_final:
+            if self._should_emit_stream_snapshot(
+                content=pending_agent_message,
+                is_final=is_final,
+                pending_chunk_count=pending_chunk_count,
+                chunk_batch_size=chunk_batch_size,
+                flush_window_enabled=flush_window_enabled,
+                flush_window_ms=flush_window_ms,
+                last_emitted_content=last_emitted_content,
+                last_emit_at=last_emit_at,
+            ):
                 yield provider_message.MessageChunk(
                     role='assistant',
                     content=pending_agent_message,
                     is_final=is_final,
                 )
+                if is_final:
+                    final_snapshot_emitted = True
+                last_emitted_content = pending_agent_message
+                pending_chunk_count = 0
+                last_emit_at = time.monotonic()
 
         if chunk is None:
             raise errors.DifyAPIError('Dify API 没有返回任何响应，请检查网络连接和API配置')
+
+        if stream_completed and not final_snapshot_emitted:
+            final_content = pending_agent_message or last_emitted_content
+            if final_content:
+                self.ap.logger.debug('dify-agent-stream: emit final snapshot fallback')
+                yield provider_message.MessageChunk(
+                    role='assistant',
+                    content=final_content,
+                    is_final=True,
+                )
 
         query.session.using_conversation.uuid = chunk['conversation_id']
 
@@ -669,11 +799,19 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         inputs.update(query.variables)
         messsage_idx = 0
         is_final = False
+        stream_completed = False
+        final_snapshot_emitted = False
         think_start = False
         think_end = False
         workflow_contents = ''
+        last_emitted_content = ''
+        pending_chunk_count = 0
+        last_emit_at = time.monotonic()
 
         remove_think = self.pipeline_config['output'].get('misc', '').get('remove-think')
+        chunk_batch_size = self._get_stream_chunk_batch_size(query)
+        flush_window_enabled = self._is_stream_flush_window_enabled(query)
+        flush_window_ms = self._get_stream_flush_window_ms(query)
         async for chunk in self.dify_client.workflow_run(
             inputs=inputs,
             user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
@@ -685,28 +823,32 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                 continue
             if chunk['event'] == 'workflow_finished':
                 is_final = True
+                stream_completed = True
                 if chunk['data']['error']:
                     raise errors.DifyAPIError(chunk['data']['error'])
 
             if chunk['event'] == 'text_chunk':
-                messsage_idx += 1
-                if remove_think:
-                    if '<think>' in chunk['data']['text'] and not think_start:
-                        think_start = True
-                        continue
-                    if '</think>' in chunk['data']['text'] and not think_end:
-                        import re
+                text = chunk['data'].get('text', '')
+                if text != '':
+                    messsage_idx += 1
+                    pending_chunk_count += 1
+                    if remove_think:
+                        if '<think>' in text and not think_start:
+                            think_start = True
+                            continue
+                        if '</think>' in text and not think_end:
+                            import re
 
-                        content = re.sub(r'^\n</think>', '', chunk['data']['text'])
-                        workflow_contents += content
-                        think_end = True
-                    elif think_end:
-                        workflow_contents += chunk['data']['text']
-                    if think_start:
-                        continue
+                            content = re.sub(r'^\n</think>', '', text)
+                            workflow_contents += content
+                            think_end = True
+                        elif think_end:
+                            workflow_contents += text
+                        if think_start:
+                            continue
 
-                else:
-                    workflow_contents += chunk['data']['text']
+                    else:
+                        workflow_contents += text
 
             if chunk['event'] == 'node_started':
                 if chunk['data']['node_type'] == 'start' or chunk['data']['node_type'] == 'end':
@@ -729,11 +871,35 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
                 yield msg
 
-            if messsage_idx % 8 == 0 or is_final:
+            if self._should_emit_stream_snapshot(
+                content=workflow_contents,
+                is_final=is_final,
+                pending_chunk_count=pending_chunk_count,
+                chunk_batch_size=chunk_batch_size,
+                flush_window_enabled=flush_window_enabled,
+                flush_window_ms=flush_window_ms,
+                last_emitted_content=last_emitted_content,
+                last_emit_at=last_emit_at,
+            ):
                 yield provider_message.MessageChunk(
                     role='assistant',
                     content=workflow_contents,
                     is_final=is_final,
+                )
+                if is_final:
+                    final_snapshot_emitted = True
+                last_emitted_content = workflow_contents
+                pending_chunk_count = 0
+                last_emit_at = time.monotonic()
+
+        if stream_completed and not final_snapshot_emitted:
+            final_content = workflow_contents or last_emitted_content
+            if final_content:
+                self.ap.logger.debug('dify-workflow-stream: emit final snapshot fallback')
+                yield provider_message.MessageChunk(
+                    role='assistant',
+                    content=final_content,
+                    is_final=True,
                 )
 
     async def run(self, query: pipeline_query.Query) -> typing.AsyncGenerator[provider_message.Message, None]:

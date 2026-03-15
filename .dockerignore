@@ -1,8 +1,36 @@
+# Version control
 .github
+.git
+
+# Development
 .venv
 .vscode
+.idea
+
+# Data and temp
 .data
 .temp
+*.log
+
+# Frontend build artifacts
 web/.next
 web/node_modules
 web/.env
+
+# Documentation (not needed in runtime)
+docs
+*.md
+!README.md
+
+# Tests (not needed in runtime)
+tests
+pytest.ini
+
+# CI/CD
+.gitlab-ci.yml
+.travis.yml
+
+# Misc
+*.pyc
+__pycache__
+.DS_Store

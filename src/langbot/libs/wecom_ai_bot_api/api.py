@@ -15,6 +15,7 @@ from quart import Quart, request, Response, jsonify
 
 from langbot.libs.wecom_ai_bot_api import wecombotevent
 from langbot.libs.wecom_ai_bot_api.WXBizMsgCrypt3 import WXBizMsgCrypt
+from langbot.libs.wecom_ai_bot_api.pull_stream_policy import PullStreamPolicy
 from langbot.pkg.platform.logger import EventLogger
 
 
@@ -135,6 +136,13 @@ class StreamSessionManager:
         session.last_access = time.time()
         session.last_chunk = chunk
 
+        # 企业微信消费的是当前完整快照，保留最新片段即可，避免旧片段堆积导致显示延迟。
+        while not session.queue.empty():
+            try:
+                session.queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+
         try:
             session.queue.put_nowait(chunk)
         except asyncio.QueueFull:
@@ -170,10 +178,12 @@ class StreamSessionManager:
             session.last_access = time.time()
             if chunk.is_final:
                 session.finished = True
+
             return chunk
         except asyncio.TimeoutError:
             if session.finished and session.last_chunk:
                 return session.last_chunk
+
             return None
 
     def mark_finished(self, stream_id: str) -> None:
@@ -447,7 +457,18 @@ async def parse_wecom_bot_message(
 
 
 class WecomBotClient:
-    def __init__(self, Token: str, EnCodingAESKey: str, Corpid: str, logger: EventLogger, unified_mode: bool = False):
+    def __init__(
+        self,
+        Token: str,
+        EnCodingAESKey: str,
+        Corpid: str,
+        logger: EventLogger,
+        unified_mode: bool = False,
+        stream_poll_timeout: float = 0.5,
+        stream_max_lifetime: float = 120,
+        pending_placeholder: str = '',
+        pending_placeholder_delay: float = 0.0,
+    ):
         """企业微信智能机器人客户端。
 
         Args:
@@ -481,7 +502,43 @@ class WecomBotClient:
         self.generated_content: dict[str, str] = {}
         self.msg_id_map: dict[str, int] = {}
         self.stream_sessions = StreamSessionManager(logger=logger)
-        self.stream_poll_timeout = 0.5
+        self.stream_poll_timeout = max(0.05, stream_poll_timeout)
+        self.stream_max_lifetime = max(1.0, stream_max_lifetime)
+        self.pending_placeholder = pending_placeholder
+        self.pending_placeholder_delay = max(0.0, pending_placeholder_delay)
+        self.stream_timeout_final_text = '抱歉，处理超时，请稍后重试。'
+        self.stream_error_final_text = '抱歉，处理失败，请稍后重试。'
+        self.pull_stream_policy = PullStreamPolicy(
+            stream_sessions=self.stream_sessions,
+            generated_content=self.generated_content,
+            stream_max_lifetime=self.stream_max_lifetime,
+            pending_placeholder=self.pending_placeholder,
+            pending_placeholder_delay=self.pending_placeholder_delay,
+            stream_timeout_final_text=self.stream_timeout_final_text,
+            stream_error_final_text=self.stream_error_final_text,
+            chunk_factory=StreamChunk,
+        )
+
+    def _is_stream_lifetime_exceeded(self, session: StreamSession) -> bool:
+        """Keep method signature stable while delegating policy details."""
+        return self.pull_stream_policy.is_stream_lifetime_exceeded(session)
+
+    async def _force_finish_stream(
+        self,
+        stream_id: str,
+        content: str,
+        reason: str,
+    ) -> Optional[StreamChunk]:
+        """Keep method signature stable while delegating policy details."""
+        return await self.pull_stream_policy.force_finish_stream(stream_id, content, reason)
+
+    def _resolve_followup_chunk(
+        self,
+        session: Optional[StreamSession],
+        cached_content: Optional[str],
+    ) -> Optional[StreamChunk]:
+        """Keep method signature stable while delegating policy details."""
+        return self.pull_stream_policy.resolve_followup_chunk(session, cached_content)
 
     @staticmethod
     def _build_stream_payload(stream_id: str, content: str, finish: bool) -> dict[str, Any]:
@@ -544,6 +601,11 @@ class WecomBotClient:
             await self._handle_message(event)
         except Exception:
             await self.logger.error(traceback.format_exc())
+            await self._force_finish_stream(
+                str(event.get('stream_id', '')),
+                self.stream_error_final_text,
+                'dispatch_exception',
+            )
 
     async def _handle_post_initial_response(self, msg_json: dict[str, Any], nonce: str) -> tuple[Response, int]:
         """处理企业微信首次推送的消息，返回 stream_id 并开启流水线。
@@ -567,9 +629,15 @@ class WecomBotClient:
                 event = wecombotevent.WecomBotEvent(message_data)
             except Exception:
                 await self.logger.error(traceback.format_exc())
+                await self._force_finish_stream(
+                    session.stream_id,
+                    self.stream_error_final_text,
+                    'event_build_failed',
+                )
             else:
                 if is_new:
                     asyncio.create_task(self._dispatch_event(event))
+
 
         payload = self._build_stream_payload(session.stream_id, '', False)
         return await self._encrypt_and_reply(payload, nonce)
@@ -594,15 +662,32 @@ class WecomBotClient:
             return await self._encrypt_and_reply(self._build_stream_payload('', '', True), nonce)
 
         session = self.stream_sessions.get_session(stream_id)
-        chunk = await self.stream_sessions.consume(stream_id, timeout=self.stream_poll_timeout)
+        if not session:
+            chunk = self.pull_stream_policy.create_missing_session_chunk()
+            payload = self._build_stream_payload(stream_id, chunk.content, chunk.is_final)
+            return await self._encrypt_and_reply(payload, nonce)
+
+        if self._is_stream_lifetime_exceeded(session):
+            timeout_content = self.pull_stream_policy.resolve_timeout_content(session)
+            chunk = await self._force_finish_stream(stream_id, timeout_content, 'max_lifetime_exceeded')
+            payload = self._build_stream_payload(stream_id, chunk.content if chunk else '', True)
+            return await self._encrypt_and_reply(payload, nonce)
+
+        consume_timeout = self.pull_stream_policy.resolve_consume_timeout(session, self.stream_poll_timeout)
+
+        chunk = await self.stream_sessions.consume(stream_id, timeout=consume_timeout)
 
         if not chunk:
+            if self._is_stream_lifetime_exceeded(session):
+                timeout_content = self.pull_stream_policy.resolve_timeout_content(session)
+                chunk = await self._force_finish_stream(stream_id, timeout_content, 'max_lifetime_exceeded')
+
             cached_content = None
-            if session and session.msg_id:
-                cached_content = self.generated_content.pop(session.msg_id, None)
-            if cached_content is not None:
-                chunk = StreamChunk(content=cached_content, is_final=True)
-            else:
+            if not chunk:
+                cached_content = self.pull_stream_policy.pop_cached_content(session)
+            if not chunk:
+                chunk = self._resolve_followup_chunk(session, cached_content)
+            if not chunk:
                 payload = self._build_stream_payload(stream_id, '', False)
                 return await self._encrypt_and_reply(payload, nonce)
 
@@ -677,6 +762,12 @@ class WecomBotClient:
         """处理企业微信的 POST 回调请求。"""
 
         self.stream_sessions.cleanup()
+
+        # 清理过期的消息ID记录，保留最近1000条，防止内存无限增长
+        if len(self.msg_id_map) > 1000:
+            # 只保留最近的500条记录
+            recent_items = list(self.msg_id_map.items())[-500:]
+            self.msg_id_map = dict(recent_items)
 
         msg_signature = unquote(req.args.get('msg_signature', ''))
         timestamp = unquote(req.args.get('timestamp', ''))
