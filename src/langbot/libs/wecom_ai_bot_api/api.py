@@ -638,7 +638,6 @@ class WecomBotClient:
                 if is_new:
                     asyncio.create_task(self._dispatch_event(event))
 
-
         payload = self._build_stream_payload(session.stream_id, '', False)
         return await self._encrypt_and_reply(payload, nonce)
 

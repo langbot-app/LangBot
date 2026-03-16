@@ -149,6 +149,7 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
 
         return chain
 
+
 class WecomBotEventConverter(abstract_platform_adapter.AbstractEventConverter):
     @staticmethod
     async def yiri2target(event: platform_events.MessageEvent):
@@ -190,6 +191,7 @@ class WecomBotEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 )
             except Exception:
                 print(traceback.format_exc())
+
 
 class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot: WecomBotClient

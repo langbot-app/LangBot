@@ -10,6 +10,7 @@ import langbot_plugin.api.entities.builtin.provider.message as provider_message
 from .. import stage, entities
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
+
 @stage.stage_class('SendResponseBackStage')
 class SendResponseBackStage(stage.PipelineStage):
     """发送响应消息"""
