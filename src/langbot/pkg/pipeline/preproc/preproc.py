@@ -176,6 +176,16 @@ class PreProcessor(stage.PipelineStage):
         query.variables['user_message_text'] = plain_text
 
         query.user_message = provider_message.Message(role='user', content=content_list)
+
+        # Extract knowledge base UUIDs into query variables so plugins can modify them
+        # during PromptPreProcessing before the runner performs retrieval.
+        kb_uuids = query.pipeline_config['ai']['local-agent'].get('knowledge-bases', [])
+        if not kb_uuids:
+            old_kb_uuid = query.pipeline_config['ai']['local-agent'].get('knowledge-base', '')
+            if old_kb_uuid and old_kb_uuid != '__none__':
+                kb_uuids = [old_kb_uuid]
+        query.variables['_knowledge_base_uuids'] = list(kb_uuids)
+
         # =========== 触发事件 PromptPreProcessing
 
         event = events.PromptPreProcessing(

@@ -92,6 +92,28 @@ class VectorDatabase(abc.ABC):
         """
         pass
 
+    async def list_by_filter(
+        self,
+        collection: str,
+        filter: dict[str, Any] | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """List vectors matching the given metadata filter with pagination.
+
+        Args:
+            collection: Collection name.
+            filter: Optional metadata filter dict in canonical format.
+            limit: Maximum number of items to return.
+            offset: Number of items to skip.
+
+        Returns:
+            Tuple of (items, total) where items is a list of dicts with
+            keys 'id', 'document', 'metadata', and total is the best-effort
+            count of all matching vectors (-1 if unknown).
+        """
+        return [], -1
+
     @abc.abstractmethod
     async def get_or_create_collection(self, collection: str):
         """Get or create collection."""

@@ -221,6 +221,39 @@ class ChromaVectorDatabase(VectorDatabase):
         self.ap.logger.info(f"Deleted embeddings from Chroma collection '{collection}' by filter")
         return 0  # Chroma delete does not return a count
 
+    async def list_by_filter(
+        self,
+        collection: str,
+        filter: dict[str, Any] | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        col = await self.get_or_create_collection(collection)
+        get_kwargs: dict[str, Any] = dict(
+            include=['metadatas', 'documents'],
+            limit=limit,
+            offset=offset,
+        )
+        if filter:
+            get_kwargs['where'] = filter
+        results = await asyncio.to_thread(col.get, **get_kwargs)
+
+        ids = results.get('ids', [])
+        metadatas = results.get('metadatas', []) or [None] * len(ids)
+        documents = results.get('documents', []) or [None] * len(ids)
+
+        items = []
+        for i, vid in enumerate(ids):
+            items.append({
+                'id': vid,
+                'document': documents[i] if i < len(documents) else None,
+                'metadata': metadatas[i] if i < len(metadatas) else {},
+            })
+
+        # Chroma col.count() gives total in collection; filtered count not available
+        total = await asyncio.to_thread(col.count) if not filter else -1
+        return items, total
+
     async def delete_collection(self, collection: str):
         if collection in self._collections:
             del self._collections[collection]

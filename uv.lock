@@ -1832,7 +1832,7 @@ wheels = [
 
 [[package]]
 name = "langbot"
-version = "4.9.2"
+version = "4.9.3"
 source = { editable = "." }
 dependencies = [
     { name = "aiocqhttp" },
@@ -1937,7 +1937,7 @@ requires-dist = [
     { name = "ebooklib", specifier = ">=0.18" },
     { name = "gewechat-client", specifier = ">=0.1.5" },
     { name = "html2text", specifier = ">=2024.2.26" },
-    { name = "langbot-plugin", specifier = "==0.3.1" },
+    { name = "langbot-plugin", specifier = "==0.3.2" },
     { name = "langchain", specifier = ">=0.2.0" },
     { name = "langchain-text-splitters", specifier = ">=0.0.1" },
     { name = "lark-oapi", specifier = ">=1.4.15" },
@@ -1993,7 +1993,7 @@ dev = [
 
 [[package]]
 name = "langbot-plugin"
-version = "0.3.1"
+version = "0.3.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -2011,9 +2011,9 @@ dependencies = [
     { name = "watchdog" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4e/ed/b440e26ebc40983abf00dd343338101ada3381065fb3347401ba75f873fe/langbot_plugin-0.3.1.tar.gz", hash = "sha256:0839dcb4cfe689fc670d0ded29b57e6a3f683d8f7326eaa771a5b753675459ac", size = 170285, upload-time = "2026-03-12T15:07:01.918Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/05/32/1b029961d718b5418d9d139687287193d4657914c467833176d9c060fb4c/langbot_plugin-0.3.2.tar.gz", hash = "sha256:2f7f16285600ec019a4e8cc8b40bc8f8d404e3bbc69c9d129620dc70b3bde2f8", size = 170431, upload-time = "2026-03-14T12:42:55.175Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/13/81/d3c4142911792838b90384a28f7dd1540d0862303293c53ba77e69fc0e15/langbot_plugin-0.3.1-py3-none-any.whl", hash = "sha256:8139796926fe8385b7b546ef865e29b1b8d8e28249e20f3b5417d42d3181ec62", size = 144813, upload-time = "2026-03-12T15:07:03.69Z" },
+    { url = "https://files.pythonhosted.org/packages/91/d7/a5dd6cff000a4f7fe88692689be276875b04485f48fc26e162f1ad2a341c/langbot_plugin-0.3.2-py3-none-any.whl", hash = "sha256:a1de527c4d651e6b6ba2458b6fac09a300e6b1ffdc5a25bbfad88d970cfd6cfd", size = 144906, upload-time = "2026-03-14T12:42:56.486Z" },
 ]
 
 [[package]]

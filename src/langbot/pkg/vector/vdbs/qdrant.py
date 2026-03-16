@@ -150,6 +150,95 @@ class QdrantVectorDatabase(VectorDatabase):
         self.ap.logger.info(f"Deleted embeddings from Qdrant collection '{collection}' by filter")
         return 0  # Qdrant delete does not return a count
 
+    async def list_by_filter(
+        self,
+        collection: str,
+        filter: dict[str, Any] | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        exists = await self.client.collection_exists(collection)
+        if not exists:
+            return [], 0
+
+        qdrant_filter = _build_qdrant_filter(filter) if filter else None
+
+        # Qdrant scroll uses cursor-based pagination (offset = point ID),
+        # not numeric skip.  To support numeric offset we scroll through
+        # `offset + limit` items and discard the first `offset`.
+        remaining_to_skip = offset
+        remaining_to_collect = limit
+        cursor: int | str | None = None
+        collected: list[dict[str, Any]] = []
+
+        while remaining_to_skip > 0 or remaining_to_collect > 0:
+            batch_size = remaining_to_skip + remaining_to_collect if remaining_to_skip > 0 else remaining_to_collect
+            scroll_kwargs: dict[str, Any] = dict(
+                collection_name=collection,
+                limit=min(batch_size, 256),
+                with_payload=True if remaining_to_skip == 0 else False,
+                with_vectors=False,
+            )
+            if qdrant_filter:
+                scroll_kwargs['scroll_filter'] = qdrant_filter
+            if cursor is not None:
+                scroll_kwargs['offset'] = cursor
+
+            points, next_cursor = await self.client.scroll(**scroll_kwargs)
+            if not points:
+                break
+
+            for point in points:
+                if remaining_to_skip > 0:
+                    remaining_to_skip -= 1
+                    continue
+                if remaining_to_collect <= 0:
+                    break
+                # Re-fetch payload if we skipped it during the skip phase
+                payload = point.payload or {}
+                collected.append({
+                    'id': str(point.id),
+                    'document': payload.get('text') or payload.get('document'),
+                    'metadata': payload,
+                })
+                remaining_to_collect -= 1
+
+            if next_cursor is None:
+                break
+            cursor = next_cursor
+
+        # If we skipped without payload, re-fetch the collected items' payloads
+        # (only needed when offset > 0 and items were collected in a skip batch)
+        if offset > 0 and collected:
+            refetch_ids = [item['id'] for item in collected if not item.get('metadata')]
+            if refetch_ids:
+                fetched_points = await self.client.retrieve(
+                    collection_name=collection,
+                    ids=refetch_ids,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+                payload_map = {str(p.id): p.payload or {} for p in fetched_points}
+                for item in collected:
+                    if item['id'] in payload_map:
+                        payload = payload_map[item['id']]
+                        item['metadata'] = payload
+                        item['document'] = payload.get('text') or payload.get('document')
+
+        # Use count() for accurate total (supports filter)
+        total = -1
+        try:
+            count_result = await self.client.count(
+                collection_name=collection,
+                count_filter=qdrant_filter,
+                exact=True,
+            )
+            total = count_result.count
+        except Exception:
+            pass
+
+        return collected, total
+
     async def delete_collection(self, collection: str):
         try:
             await self.client.delete_collection(collection)

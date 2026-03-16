@@ -132,14 +132,9 @@ class LocalAgentRunner(runner.RequestRunner):
         """Run request"""
         pending_tool_calls = []
 
-        # Get knowledge bases list (new field)
-        kb_uuids = query.pipeline_config['ai']['local-agent'].get('knowledge-bases', [])
-
-        # Fallback to old field for backward compatibility
-        if not kb_uuids:
-            old_kb_uuid = query.pipeline_config['ai']['local-agent'].get('knowledge-base', '')
-            if old_kb_uuid and old_kb_uuid != '__none__':
-                kb_uuids = [old_kb_uuid]
+        # Get knowledge bases list from query variables (set by PreProcessor,
+        # may have been modified by plugins during PromptPreProcessing)
+        kb_uuids = query.variables.get('_knowledge_base_uuids', [])
 
         user_message = copy.deepcopy(query.user_message)
 

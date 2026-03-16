@@ -13,6 +13,9 @@ Base = declarative_base()
 # pgvector schema only stores these metadata fields.
 _PG_SUPPORTED_FIELDS = {'text', 'file_id', 'chunk_uuid'}
 
+# Callers use canonical metadata key 'uuid' but pgvector stores it as 'chunk_uuid'.
+_PG_FIELD_ALIASES = {'uuid': 'chunk_uuid'}
+
 # Map schema field names to SQLAlchemy columns (resolved lazily from PgVectorEntry).
 _PG_COLUMN_MAP = {
     'text': 'text',
@@ -37,7 +40,7 @@ class PgVectorEntry(Base):
 def _build_pg_conditions(filter_dict: dict[str, Any]) -> list:
     """Translate canonical filter dict into a list of SQLAlchemy conditions."""
     triples = normalize_filter(filter_dict)
-    triples = strip_unsupported_fields(triples, _PG_SUPPORTED_FIELDS)
+    triples = strip_unsupported_fields(triples, _PG_SUPPORTED_FIELDS, _PG_FIELD_ALIASES)
 
     conditions = []
     for field, op, value in triples:
@@ -307,6 +310,65 @@ class PgVectorDatabase(VectorDatabase):
             except Exception as e:
                 await session.rollback()
                 self.ap.logger.error(f'Error deleting from pgvector by filter: {e}')
+                raise
+
+    async def list_by_filter(
+        self,
+        collection: str,
+        filter: dict[str, Any] | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        await self.get_or_create_collection(collection)
+
+        async with self.AsyncSessionLocal() as session:
+            try:
+                from sqlalchemy import select, func
+
+                stmt = (
+                    select(
+                        PgVectorEntry.id,
+                        PgVectorEntry.text,
+                        PgVectorEntry.file_id,
+                        PgVectorEntry.chunk_uuid,
+                    )
+                    .filter(PgVectorEntry.collection == collection)
+                    .offset(offset)
+                    .limit(limit)
+                )
+
+                count_stmt = (
+                    select(func.count())
+                    .select_from(PgVectorEntry)
+                    .filter(PgVectorEntry.collection == collection)
+                )
+
+                if filter:
+                    for cond in _build_pg_conditions(filter):
+                        stmt = stmt.filter(cond)
+                        count_stmt = count_stmt.filter(cond)
+
+                result = await session.execute(stmt)
+                rows = result.fetchall()
+
+                count_result = await session.execute(count_stmt)
+                total = count_result.scalar() or 0
+
+                items = []
+                for row in rows:
+                    items.append({
+                        'id': row.id,
+                        'document': row.text or '',
+                        'metadata': {
+                            'text': row.text or '',
+                            'file_id': row.file_id or '',
+                            'uuid': row.chunk_uuid or '',
+                        },
+                    })
+
+                return items, total
+            except Exception as e:
+                self.ap.logger.error(f'Error listing from pgvector: {e}')
                 raise
 
     async def delete_collection(self, collection: str):

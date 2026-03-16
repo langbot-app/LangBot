@@ -16,6 +16,7 @@ proxy:
     http: ''
     https: ''
 system:
+    instance_id: ''
     edition: community
     recovery_key: ''
     allow_modify_login_info: true

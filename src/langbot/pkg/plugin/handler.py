@@ -555,6 +555,20 @@ class RuntimeConnectionHandler(handler.Handler):
             except Exception as e:
                 return _make_rag_error_response(e, 'VectorStoreError', collection_id=collection_id)
 
+        @self.action(PluginToRuntimeAction.VECTOR_LIST)
+        async def vector_list(data: dict[str, Any]) -> handler.ActionResponse:
+            collection_id = data['collection_id']
+            filters = data.get('filters')
+            limit = data.get('limit', 20)
+            offset = data.get('offset', 0)
+            try:
+                items, total = await self.ap.rag_runtime_service.vector_list(
+                    collection_id, filters, limit, offset
+                )
+                return handler.ActionResponse.success(data={'items': items, 'total': total})
+            except Exception as e:
+                return _make_rag_error_response(e, 'VectorStoreError', collection_id=collection_id)
+
         @self.action(PluginToRuntimeAction.GET_KNOWLEDEGE_FILE_STREAM)
         async def get_knowledge_file_stream(data: dict[str, Any]) -> handler.ActionResponse:
             storage_path = data['storage_path']
@@ -675,11 +689,15 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
 
             try:
+                session_name = f'{query.session.launcher_type.value}_{query.session.launcher_id}'
                 entries = await kb.retrieve(
                     query_text,
                     settings={
                         'top_k': top_k,
                         'filters': filters,
+                        'session_name': session_name,
+                        'bot_uuid': query.bot_uuid or '',
+                        'sender_id': str(query.sender_id),
                     },
                 )
                 results = [entry.model_dump(mode='json') for entry in entries]

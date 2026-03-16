@@ -340,6 +340,48 @@ class SeekDBVectorDatabase(VectorDatabase):
         self.ap.logger.info(f"Deleted embeddings from SeekDB collection '{collection}' by filter")
         return 0  # SeekDB delete does not return a count
 
+    async def list_by_filter(
+        self,
+        collection: str,
+        filter: Dict[str, Any] | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[Dict[str, Any]], int]:
+        exists = await asyncio.to_thread(self.client.has_collection, collection)
+        if not exists:
+            return [], 0
+
+        if collection not in self._collections:
+            coll = await asyncio.to_thread(self.client.get_collection, collection, embedding_function=None)
+            self._collections[collection] = coll
+        else:
+            coll = self._collections[collection]
+
+        get_kwargs: Dict[str, Any] = dict(
+            include=['metadatas', 'documents'],
+            limit=limit,
+            offset=offset,
+        )
+        if filter:
+            get_kwargs['where'] = filter
+
+        results = await asyncio.to_thread(coll.get, **get_kwargs)
+
+        ids = results.get('ids', [])
+        metadatas = results.get('metadatas', []) or [None] * len(ids)
+        documents = results.get('documents', []) or [None] * len(ids)
+
+        items = []
+        for i, vid in enumerate(ids):
+            items.append({
+                'id': vid,
+                'document': documents[i] if i < len(documents) else None,
+                'metadata': metadatas[i] if i < len(metadatas) else {},
+            })
+
+        total = await asyncio.to_thread(coll.count) if not filter else -1
+        return items, total
+
     async def delete_collection(self, collection: str):
         """Delete the entire collection.
 

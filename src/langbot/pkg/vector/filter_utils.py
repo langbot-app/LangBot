@@ -49,17 +49,25 @@ def normalize_filter(
 def strip_unsupported_fields(
     triples: list[tuple[str, str, Any]],
     supported_fields: set[str],
+    field_aliases: dict[str, str] | None = None,
 ) -> list[tuple[str, str, Any]]:
     """Return only triples whose field is in *supported_fields*.
+
+    If *field_aliases* is provided, aliased field names are mapped to the
+    canonical backend name before the support check.  For example,
+    ``{'uuid': 'chunk_uuid'}`` allows callers to use ``uuid`` which is
+    transparently rewritten to ``chunk_uuid``.
 
     Dropped fields are logged at WARNING level so the caller knows they were
     silently ignored (useful for Milvus / pgvector which only store a fixed
     schema).
     """
+    aliases = field_aliases or {}
     kept: list[tuple[str, str, Any]] = []
     for field, op, value in triples:
-        if field in supported_fields:
-            kept.append((field, op, value))
+        resolved = aliases.get(field, field)
+        if resolved in supported_fields:
+            kept.append((resolved, op, value))
         else:
             logger.warning(
                 'Filter field %r is not supported by this backend and will be ignored (supported: %s)',

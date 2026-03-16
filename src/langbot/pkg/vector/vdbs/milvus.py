@@ -11,11 +11,14 @@ from langbot.pkg.core import app
 # silently dropped with a warning.
 _MILVUS_SUPPORTED_FIELDS = {'text', 'file_id', 'chunk_uuid'}
 
+# Callers use canonical metadata key 'uuid' but Milvus stores it as 'chunk_uuid'.
+_MILVUS_FIELD_ALIASES = {'uuid': 'chunk_uuid'}
+
 
 def _build_milvus_expr(filter_dict: dict[str, Any]) -> str:
     """Translate canonical filter dict into a Milvus boolean expression string."""
     triples = normalize_filter(filter_dict)
-    triples = strip_unsupported_fields(triples, _MILVUS_SUPPORTED_FIELDS)
+    triples = strip_unsupported_fields(triples, _MILVUS_SUPPORTED_FIELDS, _MILVUS_FIELD_ALIASES)
     if not triples:
         return ''
 
@@ -339,6 +342,60 @@ class MilvusVectorDatabase(VectorDatabase):
         await asyncio.to_thread(self.client.delete, collection_name=collection, filter=expr)
         self.ap.logger.info(f"Deleted embeddings from Milvus collection '{collection}' by filter")
         return 0  # Milvus delete does not return a count
+
+    async def list_by_filter(
+        self,
+        collection: str,
+        filter: dict[str, Any] | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        collection = self._normalize_collection_name(collection)
+        await self.get_or_create_collection(collection)
+
+        query_kwargs: dict[str, Any] = dict(
+            collection_name=collection,
+            output_fields=['text', 'file_id', 'chunk_uuid'],
+            limit=limit,
+            offset=offset,
+        )
+        if filter:
+            expr = _build_milvus_expr(filter)
+            if expr:
+                query_kwargs['filter'] = expr
+
+        results = await asyncio.to_thread(self.client.query, **query_kwargs)
+
+        items = []
+        for row in results:
+            items.append({
+                'id': row.get('id', ''),
+                'document': row.get('text'),
+                'metadata': {
+                    'text': row.get('text', ''),
+                    'file_id': row.get('file_id', ''),
+                    'uuid': row.get('chunk_uuid', ''),
+                },
+            })
+
+        # Milvus query with count(*)
+        total = -1
+        try:
+            count_kwargs: dict[str, Any] = dict(
+                collection_name=collection,
+                output_fields=['count(*)'],
+            )
+            if filter:
+                expr = _build_milvus_expr(filter)
+                if expr:
+                    count_kwargs['filter'] = expr
+            count_result = await asyncio.to_thread(self.client.query, **count_kwargs)
+            if count_result:
+                total = count_result[0].get('count(*)', -1)
+        except Exception:
+            pass
+
+        return items, total
 
     async def delete_collection(self, collection: str):
         """Delete a Milvus collection

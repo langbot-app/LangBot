@@ -157,3 +157,17 @@ class VectorDBManager:
             Number of deleted vectors (best-effort; some backends return 0).
         """
         return await self.vector_db.delete_by_filter(collection_name, filter)
+
+    async def list_by_filter(
+        self,
+        collection_name: str,
+        filter: dict | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[dict], int]:
+        """Proxy: List vectors by metadata filter with pagination.
+
+        Returns:
+            Tuple of (items, total).
+        """
+        return await self.vector_db.list_by_filter(collection_name, filter, limit, offset)

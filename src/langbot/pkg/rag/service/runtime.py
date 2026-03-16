@@ -75,6 +75,31 @@ class RAGRuntimeService:
             count = await self.ap.vector_db_mgr.delete_by_filter(collection_name=collection_id, filter=filters)
         return count
 
+    async def vector_list(
+        self,
+        collection_id: str,
+        filters: dict[str, Any] | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Handle VECTOR_LIST action.
+
+        Args:
+            collection_id: The collection to list from.
+            filters: Optional metadata filters.
+            limit: Maximum number of items to return.
+            offset: Number of items to skip.
+
+        Returns:
+            Tuple of (items, total).
+        """
+        return await self.ap.vector_db_mgr.list_by_filter(
+            collection_name=collection_id,
+            filter=filters,
+            limit=limit,
+            offset=offset,
+        )
+
     async def get_file_stream(self, storage_path: str) -> bytes:
         """Handle GET_KNOWLEDEGE_FILE_STREAM action.
 
