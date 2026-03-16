@@ -409,8 +409,6 @@ async def test_wecom_dispatch_exception_forces_finish():
     assert chunk.content == client.stream_error_final_text
 
 
-
-
 def test_wecom_client_defaults_match_master_polling_behavior():
     WecomBotClient = get_wecom_client()
     client = WecomBotClient(
@@ -441,18 +439,22 @@ def get_wecom_adapter():
     return import_module('langbot.pkg.platform.sources.wecombot').WecomBotAdapter
 
 
-def test_wecombot_adapter_rejects_websocket_mode_in_current_branch():
+def test_wecombot_adapter_supports_websocket_mode_from_master():
     WecomBotAdapter = get_wecom_adapter()
+    ws_module = import_module('langbot.libs.wecom_ai_bot_api.ws_client')
 
-    with pytest.raises(Exception, match='websocket mode is not supported'):
-        WecomBotAdapter(
-            {
-                'BotId': 'bot-id',
-                'enable-webhook': False,
-                'Secret': 'secret',
-            },
-            make_async_logger(),
-        )
+    adapter = WecomBotAdapter(
+        {
+            'BotId': 'bot-id',
+            'enable-webhook': False,
+            'Secret': 'secret',
+        },
+        make_valid_event_logger(),
+    )
+
+    assert adapter._ws_mode is True
+    assert isinstance(adapter.bot, ws_module.WecomBotWsClient)
+    assert adapter.config['enable-webhook'] is False
 
 
 def test_wecombot_adapter_webhook_mode_normalizes_pull_config():

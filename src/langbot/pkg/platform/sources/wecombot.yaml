@@ -21,20 +21,20 @@ spec:
     - name: enable-webhook
       label:
         en_US: Enable Webhook Mode
-        zh_Hans: 启用 Webhook 模式
+        zh_Hans: 启用Webhook模式
       description:
-        en_US: Switch between Webhook mode and WebSocket mode config. This branch currently supports Webhook mode only.
-        zh_Hans: 在 Webhook / WebSocket 配置之间切换展示。当前分支仅支持 Webhook 模式。
+        en_US: If enabled, the bot will use webhook mode to receive messages. Otherwise, it will use WS long connection mode
+        zh_Hans: 如果启用，机器人将使用 Webhook 模式接收消息。否则，将使用 WS 长连接模式
       type: boolean
       required: true
-      default: true
+      default: false
     - name: Secret
       label:
         en_US: Secret
         zh_Hans: 机器人密钥 (Secret)
       description:
-        en_US: Reserved for WebSocket mode.
-        zh_Hans: WebSocket 模式预留配置项。
+        en_US: Required for WebSocket long connection mode
+        zh_Hans: 使用 WS 长连接模式时必填
       type: string
       required: false
       default: ""
@@ -43,6 +43,9 @@ spec:
       label:
         en_US: Corpid
         zh_Hans: 企业ID
+      description:
+        en_US: Required for Webhook mode
+        zh_Hans: 使用 Webhook 模式时必填
       type: string
       required: false
       default: ""
@@ -51,6 +54,9 @@ spec:
       label:
         en_US: Token
         zh_Hans: 令牌 (Token)
+      description:
+        en_US: Required for Webhook mode
+        zh_Hans: 使用 Webhook 模式时必填
       type: string
       required: false
       default: ""
@@ -59,6 +65,9 @@ spec:
       label:
         en_US: EncodingAESKey
         zh_Hans: 消息加解密密钥 (EncodingAESKey)
+      description:
+        en_US: Required for Webhook mode. Optional for WebSocket mode (used for file decryption)
+        zh_Hans: 使用 Webhook 模式时必填。WebSocket 模式下可选（用于文件解密）
       type: string
       required: false
       default: ""
