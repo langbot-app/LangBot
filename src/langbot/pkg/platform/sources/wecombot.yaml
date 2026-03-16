@@ -38,7 +38,6 @@ spec:
       type: string
       required: false
       default: ""
-      visibleOn: ${enable-webhook} == false
     - name: Corpid
       label:
         en_US: Corpid
@@ -49,7 +48,6 @@ spec:
       type: string
       required: false
       default: ""
-      visibleOn: ${enable-webhook} == true
     - name: Token
       label:
         en_US: Token
@@ -60,7 +58,6 @@ spec:
       type: string
       required: false
       default: ""
-      visibleOn: ${enable-webhook} == true
     - name: EncodingAESKey
       label:
         en_US: EncodingAESKey
@@ -71,7 +68,6 @@ spec:
       type: string
       required: false
       default: ""
-      visibleOn: ${enable-webhook} == true
     - name: PullPollTimeoutMs
       label:
         en_US: Pull Poll Timeout (ms)

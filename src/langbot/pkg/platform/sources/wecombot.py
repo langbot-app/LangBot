@@ -320,10 +320,6 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             流水线执行阶段会调用此方法以确认是否启用流式。"""
         return True
 
-    async def create_message_card(self, message_id: str, event) -> bool:
-        """企微智能机器人不需要创建卡片，流式消息直接通过 stream 协议推送。"""
-        return False
-
     async def send_message(self, target_type, target_id, message):
         if self._ws_mode:
             content = await self.message_converter.yiri2target(message)
