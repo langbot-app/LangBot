@@ -20,6 +20,7 @@ import {
   Lightbulb,
   LogOut,
   KeyRound,
+  Settings2,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 
@@ -35,6 +36,7 @@ import AccountSettingsDialog from '@/app/home/components/account-settings-dialog
 import ApiIntegrationDialog from '@/app/home/components/api-integration-dialog/ApiIntegrationDialog';
 import NewVersionDialog from '@/app/home/components/new-version-dialog/NewVersionDialog';
 import ModelsDialog from '@/app/home/components/models-dialog/ModelsDialog';
+import SystemSettingsDialog from '@/app/home/components/system-settings-dialog/SystemSettingsDialog';
 import { GitHubRelease } from '@/app/infra/http/CloudServiceClient';
 
 // Compare two version strings, returns true if v1 > v2
@@ -83,6 +85,9 @@ export default function HomeSidebar({
     if (searchParams.get('action') === 'showApiIntegrationSettings') {
       setApiKeyDialogOpen(true);
     }
+    if (searchParams.get('action') === 'showSystemSettings') {
+      setSystemSettingsOpen(true);
+    }
   }, [searchParams]);
 
   const [selectedChild, setSelectedChild] = useState<SidebarChildVO>();
@@ -91,6 +96,7 @@ export default function HomeSidebar({
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
   const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false);
+  const [systemSettingsOpen, setSystemSettingsOpen] = useState(false);
   const [languageSelectorOpen, setLanguageSelectorOpen] = useState(false);
   const [starCount, setStarCount] = useState<number | null>(null);
   const [latestRelease, setLatestRelease] = useState<GitHubRelease | null>(
@@ -124,6 +130,22 @@ export default function HomeSidebar({
     if (open) {
       const params = new URLSearchParams(searchParams.toString());
       params.set('action', 'showAccountSettings');
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    } else {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete('action');
+      const newUrl = params.toString()
+        ? `${pathname}?${params.toString()}`
+        : pathname;
+      router.replace(newUrl, { scroll: false });
+    }
+  }
+
+  function handleSystemSettingsChange(open: boolean) {
+    setSystemSettingsOpen(open);
+    if (open) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('action', 'showSystemSettings');
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     } else {
       const params = new URLSearchParams(searchParams.toString());
@@ -408,6 +430,17 @@ export default function HomeSidebar({
                 variant="ghost"
                 className="w-full justify-start font-normal"
                 onClick={() => {
+                  handleSystemSettingsChange(true);
+                  setPopoverOpen(false);
+                }}
+              >
+                <Settings2 className="w-4 h-4 mr-2" />
+                {t('systemSettings.title')}
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full justify-start font-normal"
+                onClick={() => {
                   setApiKeyDialogOpen(true);
                   setPopoverOpen(false);
                 }}
@@ -470,6 +503,10 @@ export default function HomeSidebar({
       <ApiIntegrationDialog
         open={apiKeyDialogOpen}
         onOpenChange={setApiKeyDialogOpen}
+      />
+      <SystemSettingsDialog
+        open={systemSettingsOpen}
+        onOpenChange={handleSystemSettingsChange}
       />
       <NewVersionDialog
         open={versionDialogOpen}

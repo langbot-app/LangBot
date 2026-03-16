@@ -812,6 +812,35 @@ const jaJP = {
     viewUpdateGuide: 'アップデート方法を見る',
     noReleaseNotes: 'リリースノートはありません',
   },
+  systemSettings: {
+    title: 'システム設定',
+    description:
+      'ログ、監視記録、実行時セッションの自動クリーンアップ設定を管理します。',
+    loadFailed: 'システム設定の読み込みに失敗しました',
+    saveFailed: 'システム設定の保存に失敗しました',
+    saved: 'システム設定を保存しました',
+    autoCleanupEnabled: '自動クリーンアップを有効化',
+    autoCleanupEnabledDescription:
+      '古いログ、監視記録、長時間アイドル状態の実行時セッションを定期的に削除します。',
+    intervalHours: '実行間隔（時間）',
+    intervalHoursDescription:
+      'バックグラウンドタスクはこの間隔でクリーンアップを確認して実行します。',
+    logRetentionDays: 'ログ保持日数',
+    monitoringRetentionDays: '監視記録の保持日数',
+    monitoringRetentionDaysDescription:
+      '監視画面のメッセージ、セッション、モデル呼び出し、エラー記録を削除します。',
+    runtimeSessionIdleHours: '実行時セッションのアイドル時間（時間）',
+    runtimeSessionIdleHoursDescription:
+      'この時間を超えて未使用のメモリ内セッションは解放され、多段会話の文脈が失われる可能性があります。',
+    zeroDisables: '0 を設定するとこの項目のクリーンアップを無効化します。',
+    notice:
+      '自動クリーンアップは過去の調査データと長時間会話の文脈に影響します。まずは保守的な保持期間を推奨します。',
+    validation: {
+      intervalHours: '実行間隔は 0 より大きい整数である必要があります',
+      nonNegativeInteger:
+        'すべてのクリーンアップ設定は 0 以上の整数である必要があります',
+    },
+  },
   account: {
     settings: 'アカウント設定',
     setPassword: 'パスワードを設定',

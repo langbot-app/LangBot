@@ -246,6 +246,14 @@ export interface SystemLimitation {
   max_extensions: number;
 }
 
+export interface SystemAutoCleanupSettings {
+  enabled: boolean;
+  interval_hours: number;
+  log_retention_days: number;
+  monitoring_retention_days: number;
+  runtime_session_idle_hours: number;
+}
+
 export interface ApiRespSystemInfo {
   debug: boolean;
   version: string;
@@ -255,6 +263,7 @@ export interface ApiRespSystemInfo {
   allow_modify_login_info: boolean;
   disable_models_service: boolean;
   limitation: SystemLimitation;
+  auto_cleanup: SystemAutoCleanupSettings;
 }
 
 export interface ApiRespPluginSystemStatus {

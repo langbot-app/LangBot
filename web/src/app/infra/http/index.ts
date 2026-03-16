@@ -16,6 +16,13 @@ export let systemInfo: ApiRespSystemInfo = {
     max_pipelines: -1,
     max_extensions: -1,
   },
+  auto_cleanup: {
+    enabled: false,
+    interval_hours: 24,
+    log_retention_days: 7,
+    monitoring_retention_days: 30,
+    runtime_session_idle_hours: 24,
+  },
 };
 
 // 用户信息

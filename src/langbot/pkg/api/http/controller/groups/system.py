@@ -1,7 +1,6 @@
 import quart
 
 from .. import group
-from .....utils import constants
 
 
 @group.group_class('system', '/api/v1/system')
@@ -9,26 +8,13 @@ class SystemRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('/info', methods=['GET'], auth_type=group.AuthType.NONE)
         async def _() -> str:
-            return self.success(
-                data={
-                    'version': constants.semantic_version,
-                    'debug': constants.debug_mode,
-                    'edition': constants.edition,
-                    'enable_marketplace': self.ap.instance_config.data.get('plugin', {}).get(
-                        'enable_marketplace', True
-                    ),
-                    'cloud_service_url': (
-                        self.ap.instance_config.data.get('space', {}).get('url', 'https://space.langbot.app')
-                    ),
-                    'allow_modify_login_info': self.ap.instance_config.data.get('system', {}).get(
-                        'allow_modify_login_info', True
-                    ),
-                    'disable_models_service': self.ap.instance_config.data.get('space', {}).get(
-                        'disable_models_service', False
-                    ),
-                    'limitation': self.ap.instance_config.data.get('system', {}).get('limitation', {}),
-                }
-            )
+            return self.success(data=self.ap.system_service.get_system_info())
+
+        @self.route('/settings/auto-cleanup', methods=['PUT'], auth_type=group.AuthType.USER_TOKEN)
+        async def _() -> str:
+            data = await quart.request.get_json()
+            settings = await self.ap.system_service.update_auto_cleanup_settings(data)
+            return self.success(data={'auto_cleanup': settings})
 
         @self.route('/tasks', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:

@@ -31,6 +31,7 @@ from ..api.http.service import apikey as apikey_service
 from ..api.http.service import webhook as webhook_service
 from ..api.http.service import external_kb as external_kb_service
 from ..api.http.service import monitoring as monitoring_service
+from ..api.http.service import system as system_service
 from ..discover import engine as discover_engine
 from ..storage import mgr as storagemgr
 from ..utils import logcache
@@ -152,6 +153,8 @@ class Application:
 
     monitoring_service: monitoring_service.MonitoringService = None
 
+    system_service: system_service.SystemService = None
+
     def __init__(self):
         pass
 
@@ -184,6 +187,11 @@ class Application:
             self.task_mgr.create_task(
                 self.http_ctrl.run(),
                 name='http-api-controller',
+                scopes=[core_entities.LifecycleControlScope.APPLICATION],
+            )
+            self.task_mgr.create_task(
+                self.system_service.run_auto_cleanup_loop(),
+                name='system-auto-cleanup',
                 scopes=[core_entities.LifecycleControlScope.APPLICATION],
             )
 

@@ -41,6 +41,7 @@ import {
   ApiRespModelProviders,
   ApiRespModelProvider,
   ModelProvider,
+  SystemAutoCleanupSettings,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
@@ -722,6 +723,12 @@ export class BackendClient extends BaseHttpClient {
   // ============ System API ============
   public getSystemInfo(): Promise<ApiRespSystemInfo> {
     return this.get('/api/v1/system/info');
+  }
+
+  public updateAutoCleanupSettings(
+    settings: SystemAutoCleanupSettings,
+  ): Promise<{ auto_cleanup: SystemAutoCleanupSettings }> {
+    return this.put('/api/v1/system/settings/auto-cleanup', settings);
   }
 
   public getAsyncTasks(): Promise<ApiRespAsyncTasks> {

@@ -18,6 +18,12 @@ system:
     edition: community
     recovery_key: ''
     allow_modify_login_info: true
+    auto_cleanup:
+        enabled: false
+        interval_hours: 24
+        log_retention_days: 7
+        monitoring_retention_days: 30
+        runtime_session_idle_hours: 24
     limitation:
         max_bots: -1
         max_pipelines: -1
