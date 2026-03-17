@@ -196,11 +196,13 @@ class QdrantVectorDatabase(VectorDatabase):
                     break
                 # Re-fetch payload if we skipped it during the skip phase
                 payload = point.payload or {}
-                collected.append({
-                    'id': str(point.id),
-                    'document': payload.get('text') or payload.get('document'),
-                    'metadata': payload,
-                })
+                collected.append(
+                    {
+                        'id': str(point.id),
+                        'document': payload.get('text') or payload.get('document'),
+                        'metadata': payload,
+                    }
+                )
                 remaining_to_collect -= 1
 
             if next_cursor is None:

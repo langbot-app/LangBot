@@ -373,11 +373,13 @@ class SeekDBVectorDatabase(VectorDatabase):
 
         items = []
         for i, vid in enumerate(ids):
-            items.append({
-                'id': vid,
-                'document': documents[i] if i < len(documents) else None,
-                'metadata': metadatas[i] if i < len(metadatas) else {},
-            })
+            items.append(
+                {
+                    'id': vid,
+                    'document': documents[i] if i < len(documents) else None,
+                    'metadata': metadatas[i] if i < len(metadatas) else {},
+                }
+            )
 
         total = await asyncio.to_thread(coll.count) if not filter else -1
         return items, total

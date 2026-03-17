@@ -338,9 +338,7 @@ class PgVectorDatabase(VectorDatabase):
                 )
 
                 count_stmt = (
-                    select(func.count())
-                    .select_from(PgVectorEntry)
-                    .filter(PgVectorEntry.collection == collection)
+                    select(func.count()).select_from(PgVectorEntry).filter(PgVectorEntry.collection == collection)
                 )
 
                 if filter:
@@ -356,15 +354,17 @@ class PgVectorDatabase(VectorDatabase):
 
                 items = []
                 for row in rows:
-                    items.append({
-                        'id': row.id,
-                        'document': row.text or '',
-                        'metadata': {
-                            'text': row.text or '',
-                            'file_id': row.file_id or '',
-                            'uuid': row.chunk_uuid or '',
-                        },
-                    })
+                    items.append(
+                        {
+                            'id': row.id,
+                            'document': row.text or '',
+                            'metadata': {
+                                'text': row.text or '',
+                                'file_id': row.file_id or '',
+                                'uuid': row.chunk_uuid or '',
+                            },
+                        }
+                    )
 
                 return items, total
             except Exception as e:

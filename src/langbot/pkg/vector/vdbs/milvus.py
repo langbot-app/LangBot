@@ -368,15 +368,17 @@ class MilvusVectorDatabase(VectorDatabase):
 
         items = []
         for row in results:
-            items.append({
-                'id': row.get('id', ''),
-                'document': row.get('text'),
-                'metadata': {
-                    'text': row.get('text', ''),
-                    'file_id': row.get('file_id', ''),
-                    'uuid': row.get('chunk_uuid', ''),
-                },
-            })
+            items.append(
+                {
+                    'id': row.get('id', ''),
+                    'document': row.get('text'),
+                    'metadata': {
+                        'text': row.get('text', ''),
+                        'file_id': row.get('file_id', ''),
+                        'uuid': row.get('chunk_uuid', ''),
+                    },
+                }
+            )
 
         # Milvus query with count(*)
         total = -1

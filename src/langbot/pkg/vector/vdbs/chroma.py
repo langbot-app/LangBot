@@ -244,11 +244,13 @@ class ChromaVectorDatabase(VectorDatabase):
 
         items = []
         for i, vid in enumerate(ids):
-            items.append({
-                'id': vid,
-                'document': documents[i] if i < len(documents) else None,
-                'metadata': metadatas[i] if i < len(metadatas) else {},
-            })
+            items.append(
+                {
+                    'id': vid,
+                    'document': documents[i] if i < len(documents) else None,
+                    'metadata': metadatas[i] if i < len(metadatas) else {},
+                }
+            )
 
         # Chroma col.count() gives total in collection; filtered count not available
         total = await asyncio.to_thread(col.count) if not filter else -1
