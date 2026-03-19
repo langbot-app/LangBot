@@ -4,7 +4,7 @@ metadata:
   author: local
   name: feishu_keyword_report_plugin
   repository: "https://open.feishu.cn/"
-  version: 0.1.13
+  version: 0.1.14
   description:
     en_US: Reply keyword commands for daily report and touch-material query with Feishu Sheets + Bitable.
     zh_Hans: 通过口令查询日报与摸料信息，联动飞书在线表格和多维表。
@@ -78,6 +78,26 @@ spec:
       type: string
       required: false
       default: "A1:ZZ2000"
+    - name: sheet_snapshot_header_rows
+      label:
+        en_US: Snapshot Header Rows
+        zh_Hans: 截图头部行数
+      description:
+        en_US: Number of leading rows to keep in sheet snapshots.
+        zh_Hans: 日报或图片截图时固定保留的前置行数。
+      type: string
+      required: false
+      default: "3"
+    - name: sheet_snapshot_tail_nonempty_rows
+      label:
+        en_US: Snapshot Tail Non-empty Rows
+        zh_Hans: 截图尾部有效行数
+      description:
+        en_US: Number of trailing non-empty rows to keep in sheet snapshots.
+        zh_Hans: 日报或图片截图时额外保留的尾部有效行数。
+      type: string
+      required: false
+      default: "20"
     - name: date_mode
       label:
         en_US: Date Mode

@@ -170,6 +170,12 @@ class KeywordBitableReportListener(EventListener):
             return command_sheets
         return self._split_csv(self._get_str_config("sheets_sheet_names", ""))
 
+    def _get_sheet_snapshot_header_rows(self) -> int:
+        return self._get_int_config("sheet_snapshot_header_rows", 3, 0, 50)
+
+    def _get_sheet_snapshot_tail_nonempty_rows(self) -> int:
+        return self._get_int_config("sheet_snapshot_tail_nonempty_rows", 20, 0, 200)
+
     def _resolve_touch_recipe_field_aliases(self) -> dict[str, list[str]]:
         defaults = _default_touch_recipe_field_aliases()
         configured = self._get_json_config("touch_recipe_field_aliases_json", {})
@@ -470,6 +476,8 @@ class KeywordBitableReportListener(EventListener):
             available = "；".join(available_titles) if available_titles else "无"
             raise ValueError(f"指定表名不存在：{'；'.join(missing)}；可选：{available}")
 
+        header_rows = self._get_sheet_snapshot_header_rows()
+        tail_nonempty_rows = self._get_sheet_snapshot_tail_nonempty_rows()
         components: list[platform_message.Plain | platform_message.Image] = []
         for sheet_name in ordered_sheet_names:
             values = matrices.get(sheet_name)
@@ -480,8 +488,8 @@ class KeywordBitableReportListener(EventListener):
             snapshot = render_sheet_snapshot(
                 sheet_title=sheet_name,
                 values=values,
-                header_rows=3,
-                tail_nonempty_rows=20,
+                header_rows=header_rows,
+                tail_nonempty_rows=tail_nonempty_rows,
             )
             components.append(platform_message.Image(base64=snapshot.data_url))
 

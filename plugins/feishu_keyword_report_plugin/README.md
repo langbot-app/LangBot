@@ -113,6 +113,8 @@
 - `sheets_spreadsheet_token`
 - `sheets_sheet_names`
 - `sheets_range`
+- `sheet_snapshot_header_rows`（截图固定保留前几行，默认 `3`）
+- `sheet_snapshot_tail_nonempty_rows`（截图保留尾部有效行数，默认 `20`）
 - `date_mode`
 - `report_show_placeholder_sections`
 - `lookback_days` / `trend_days`

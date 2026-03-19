@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 import unittest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
@@ -161,6 +161,52 @@ class TouchMaterialListenerTest(unittest.IsolatedAsyncioTestCase):
         listener._run_sheet_snapshot_reply.assert_awaited_once_with(sheet_name="S18-A线")  # type: ignore[attr-defined]
         self.assertEqual(self._extract_plain_texts(ctx.event), [])
         self.assertTrue(self._has_reply_image(ctx.event))
+
+    async def test_sheet_snapshot_uses_configurable_row_settings(self) -> None:
+        listener = self._build_listener()
+        listener.plugin = DummyPlugin(
+            {
+                "sheets_spreadsheet_token": "sp_token",
+                "sheets_range": "A1:ZZ2000",
+                "sheet_snapshot_header_rows": "5",
+                "sheet_snapshot_tail_nonempty_rows": "12",
+            }
+        )
+        listener._build_auth_headers = AsyncMock(return_value={"Authorization": "Bearer test"})  # type: ignore[method-assign]
+        listener._sheets_source.fetch_line_matrices = AsyncMock(  # type: ignore[method-assign]
+            return_value=(
+                {
+                    "S18-A线": [
+                        ["header-1", "header-2"],
+                        ["desc-1", "desc-2"],
+                        ["spec-1", "spec-2"],
+                        ["row-1", "value-1"],
+                    ]
+                },
+                ["S18-A线"],
+                [],
+            )
+        )
+
+        with patch(
+            "components.event_listeners.keyword_bitable_report.render_sheet_snapshot",
+            return_value=SimpleNamespace(data_url="data:image/png;base64,ZmFrZQ=="),
+        ) as mock_render:
+            components = await listener._build_sheet_snapshot_components(["S18-A线"], strict=True)
+
+        self.assertEqual(len(components), 1)
+        self.assertIsInstance(components[0], platform_message.Image)
+        mock_render.assert_called_once_with(
+            sheet_title="S18-A线",
+            values=[
+                ["header-1", "header-2"],
+                ["desc-1", "desc-2"],
+                ["spec-1", "spec-2"],
+                ["row-1", "value-1"],
+            ],
+            header_rows=5,
+            tail_nonempty_rows=12,
+        )
 
     async def test_touch_invalid_segment_reply_usage(self) -> None:
         listener = self._build_listener()
