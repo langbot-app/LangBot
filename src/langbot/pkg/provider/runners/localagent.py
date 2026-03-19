@@ -24,10 +24,36 @@ Respond in the same language as the user's input.
 </user_message>
 """
 
+SANDBOX_EXEC_TOOL_NAME = 'sandbox_exec'
+SANDBOX_EXEC_SYSTEM_GUIDANCE = (
+    'When sandbox_exec is available, use it for exact calculations, statistics, structured data parsing, '
+    'and code execution instead of estimating mentally. If the user provides numbers, tables, CSV-like text, '
+    'JSON, or other data and asks for a computed answer, prefer running a short Python script in sandbox_exec '
+    'and then answer from the tool result.'
+)
+
 
 @runner.runner_class('local-agent')
 class LocalAgentRunner(runner.RequestRunner):
     """Local agent request runner"""
+
+    def _build_request_messages(
+        self,
+        query: pipeline_query.Query,
+        user_message: provider_message.Message,
+    ) -> list[provider_message.Message]:
+        req_messages = query.prompt.messages.copy() + query.messages.copy()
+
+        if any(getattr(tool, 'name', None) == SANDBOX_EXEC_TOOL_NAME for tool in query.use_funcs or []):
+            req_messages.append(
+                provider_message.Message(
+                    role='system',
+                    content=SANDBOX_EXEC_SYSTEM_GUIDANCE,
+                )
+            )
+
+        req_messages.append(user_message)
+        return req_messages
 
     async def _get_model_candidates(
         self,
@@ -197,7 +223,7 @@ class LocalAgentRunner(runner.RequestRunner):
                     ce.text = final_user_message_text
                     break
 
-        req_messages = query.prompt.messages.copy() + query.messages.copy() + [user_message]
+        req_messages = self._build_request_messages(query, user_message)
 
         try:
             is_stream = await query.adapter.is_stream_output_supported()
