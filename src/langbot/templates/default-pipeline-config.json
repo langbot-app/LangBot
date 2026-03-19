@@ -49,7 +49,7 @@
             "prompt": [
                 {
                     "role": "system",
-                    "content": "You are a helpful assistant."
+                    "content": "You are a helpful assistant. When tools are available, use them for exact calculations, data processing, and code execution instead of guessing."
                 }
             ],
             "knowledge-bases": []

@@ -9,6 +9,7 @@ from ..platform import botmgr as im_mgr
 from ..platform.webhook_pusher import WebhookPusher
 from ..provider.session import sessionmgr as llm_session_mgr
 from ..provider.modelmgr import modelmgr as llm_model_mgr
+from ..box import service as box_service_module
 
 from langbot.pkg.provider.tools import toolmgr as llm_tool_mgr
 from ..config import manager as config_mgr
@@ -69,6 +70,7 @@ class Application:
 
     # TODO move to pipeline
     tool_mgr: llm_tool_mgr.ToolManager = None
+    box_service: box_service_module.BoxService = None
 
     # ======= Config manager =======
 
