@@ -37,6 +37,14 @@ class BoxRuntime:
         session = await self._get_or_create_session(spec)
 
         async with session.lock:
+            self.logger.info(
+                'LangBot Box execute: '
+                f'session_id={spec.session_id} '
+                f'backend_session_id={session.info.backend_session_id} '
+                f'backend={session.info.backend_name} '
+                f'workdir={spec.workdir} '
+                f'timeout_sec={spec.timeout_sec}'
+            )
             result = await (await self._get_backend()).exec(session.info, spec)
 
         async with self._lock:
@@ -63,12 +71,28 @@ class BoxRuntime:
             if existing is not None:
                 self._assert_session_compatible(existing.info, spec)
                 existing.info.last_used_at = dt.datetime.now(dt.UTC)
+                self.logger.info(
+                    'LangBot Box session reused: '
+                    f'session_id={spec.session_id} '
+                    f'backend_session_id={existing.info.backend_session_id} '
+                    f'backend={existing.info.backend_name}'
+                )
                 return existing
 
             backend = await self._get_backend()
             info = await backend.start_session(spec)
             runtime_session = _RuntimeSession(info=info, lock=asyncio.Lock())
             self._sessions[spec.session_id] = runtime_session
+            self.logger.info(
+                'LangBot Box session created: '
+                f'session_id={spec.session_id} '
+                f'backend_session_id={info.backend_session_id} '
+                f'backend={info.backend_name} '
+                f'image={info.image} '
+                f'network={info.network.value} '
+                f'host_path={info.host_path} '
+                f'host_path_mode={info.host_path_mode.value}'
+            )
             return runtime_session
 
     async def _get_backend(self) -> BaseSandboxBackend:
@@ -113,6 +137,12 @@ class BoxRuntime:
             return
 
         try:
+            self.logger.info(
+                'LangBot Box session cleanup: '
+                f'session_id={session_id} '
+                f'backend_session_id={runtime_session.info.backend_session_id} '
+                f'backend={runtime_session.info.backend_name}'
+            )
             await self._backend.stop_session(runtime_session.info)
         except Exception as exc:
             self.logger.warning(f'Failed to clean up box session {session_id}: {exc}')
@@ -125,4 +155,12 @@ class BoxRuntime:
         if session.image != spec.image:
             raise BoxSessionConflictError(
                 f'sandbox_exec session {spec.session_id} already exists with image={session.image}'
+            )
+        if session.host_path != spec.host_path:
+            raise BoxSessionConflictError(
+                f'sandbox_exec session {spec.session_id} already exists with host_path={session.host_path}'
+            )
+        if session.host_path_mode != spec.host_path_mode:
+            raise BoxSessionConflictError(
+                f'sandbox_exec session {spec.session_id} already exists with host_path_mode={session.host_path_mode.value}'
             )

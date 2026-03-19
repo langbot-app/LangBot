@@ -49,7 +49,7 @@
             "prompt": [
                 {
                     "role": "system",
-                    "content": "You are a helpful assistant. When tools are available, use them for exact calculations, data processing, and code execution instead of guessing."
+                    "content": "You are a helpful assistant. When tools are available, use them for exact calculations, data processing, and code execution instead of guessing. Unless the user explicitly asks for code or a script, return the result directly instead of printing the generated code."
                 }
             ],
             "knowledge-bases": [],
