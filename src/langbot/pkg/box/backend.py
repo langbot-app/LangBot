@@ -11,7 +11,7 @@ import shutil
 import uuid
 
 from .errors import BoxError
-from .models import BoxExecutionResult, BoxExecutionStatus, BoxSessionInfo, BoxSpec
+from .models import DEFAULT_BOX_MOUNT_PATH, BoxExecutionResult, BoxExecutionStatus, BoxSessionInfo, BoxSpec
 
 
 @dataclasses.dataclass(slots=True)
@@ -83,7 +83,18 @@ class CLISandboxBackend(BaseSandboxBackend):
         if spec.network.value == 'off':
             args.extend(['--network', 'none'])
 
+        if spec.host_path is not None:
+            mount_spec = f'{spec.host_path}:{DEFAULT_BOX_MOUNT_PATH}:{spec.host_path_mode.value}'
+            args.extend(['-v', mount_spec])
+
         args.extend([spec.image, 'sh', '-lc', 'while true; do sleep 3600; done'])
+
+        self.logger.info(
+            f'LangBot Box backend start_session: backend={self.name} '
+            f'session_id={spec.session_id} container_name={container_name} '
+            f'image={spec.image} network={spec.network.value} '
+            f'host_path={spec.host_path} host_path_mode={spec.host_path_mode.value}'
+        )
 
         await self._run_command(args, timeout_sec=30, check=True)
 
@@ -93,6 +104,8 @@ class CLISandboxBackend(BaseSandboxBackend):
             backend_session_id=container_name,
             image=spec.image,
             network=spec.network,
+            host_path=spec.host_path,
+            host_path_mode=spec.host_path_mode,
             created_at=now,
             last_used_at=now,
         )
@@ -111,6 +124,16 @@ class CLISandboxBackend(BaseSandboxBackend):
                 '-lc',
                 self._build_exec_command(spec.workdir, spec.cmd),
             ]
+        )
+
+        cmd_preview = spec.cmd.strip()
+        if len(cmd_preview) > 400:
+            cmd_preview = f'{cmd_preview[:397]}...'
+        self.logger.info(
+            f'LangBot Box backend exec: backend={self.name} '
+            f'session_id={session.session_id} container_name={session.backend_session_id} '
+            f'workdir={spec.workdir} timeout_sec={spec.timeout_sec} '
+            f'env_keys={sorted(spec.env.keys())} cmd={cmd_preview}'
         )
 
         result = await self._run_command(args, timeout_sec=spec.timeout_sec, check=False)
@@ -138,6 +161,10 @@ class CLISandboxBackend(BaseSandboxBackend):
         )
 
     async def stop_session(self, session: BoxSessionInfo):
+        self.logger.info(
+            f'LangBot Box backend stop_session: backend={self.name} '
+            f'session_id={session.session_id} container_name={session.backend_session_id}'
+        )
         await self._run_command(
             [self.command, 'rm', '-f', session.backend_session_id],
             timeout_sec=20,
