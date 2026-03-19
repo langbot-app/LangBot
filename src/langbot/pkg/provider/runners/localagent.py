@@ -26,6 +26,14 @@ Respond in the same language as the user's input.
 </user_message>
 """
 
+SANDBOX_EXEC_TOOL_NAME = 'sandbox_exec'
+SANDBOX_EXEC_SYSTEM_GUIDANCE = (
+    'When sandbox_exec is available, use it for exact calculations, statistics, structured data parsing, '
+    'and code execution instead of estimating mentally. If the user provides numbers, tables, CSV-like text, '
+    'JSON, or other data and asks for a computed answer, prefer running a short Python script in sandbox_exec '
+    'and then answer from the tool result.'
+)
+
 
 @runner.runner_class('local-agent')
 class LocalAgentRunner(runner.RequestRunner):

@@ -29,11 +29,11 @@ class RequestRunner(abc.ABC):
 
     name: str = None
 
-    ap: app.Application
+    ap: 'app.Application'
 
     pipeline_config: dict
 
-    def __init__(self, ap: app.Application, pipeline_config: dict):
+    def __init__(self, ap: 'app.Application', pipeline_config: dict):
         self.ap = ap
         self.pipeline_config = pipeline_config
 
