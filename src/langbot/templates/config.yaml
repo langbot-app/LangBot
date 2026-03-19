@@ -87,6 +87,11 @@ monitoring:
         retention_days: 30
         # Cleanup check interval in hours
         check_interval_hours: 1
+box:
+    default_host_workspace: './data/box-workspaces/default'
+    allowed_host_mount_roots:
+        - './data/box-workspaces'
+        - '/tmp'
 space:
     # Space service URL for OAuth and API
     url: 'https://space.langbot.app'

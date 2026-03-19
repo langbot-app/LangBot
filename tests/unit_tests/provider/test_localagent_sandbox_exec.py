@@ -124,6 +124,13 @@ async def test_localagent_uses_sandbox_exec_for_exact_calculation():
         model_mgr=SimpleNamespace(get_model_by_uuid=AsyncMock(return_value=model)),
         tool_mgr=tool_manager,
         rag_mgr=SimpleNamespace(),
+        instance_config=SimpleNamespace(
+            data={
+                'box': {
+                    'default_host_workspace': '/home/yhh/workspace/box-demo',
+                }
+            }
+        ),
     )
 
     runner = LocalAgentRunner(app, pipeline_config={})
@@ -144,6 +151,8 @@ async def test_localagent_uses_sandbox_exec_for_exact_calculation():
         message.role == 'system'
         and 'sandbox_exec' in str(message.content)
         and 'exact calculations' in str(message.content)
+        and 'Unless the user explicitly asks for the script' in str(message.content)
+        and '/workspace' in str(message.content)
         for message in first_request['messages']
     )
     assert [tool.name for tool in first_request['funcs']] == ['sandbox_exec']

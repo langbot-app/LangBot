@@ -7,6 +7,7 @@ import pydantic
 
 
 DEFAULT_BOX_IMAGE = 'python:3.11-slim'
+DEFAULT_BOX_MOUNT_PATH = '/workspace'
 
 
 class BoxNetworkMode(str, enum.Enum):
@@ -19,6 +20,11 @@ class BoxExecutionStatus(str, enum.Enum):
     TIMED_OUT = 'timed_out'
 
 
+class BoxHostMountMode(str, enum.Enum):
+    READ_ONLY = 'ro'
+    READ_WRITE = 'rw'
+
+
 class BoxSpec(pydantic.BaseModel):
     cmd: str
     workdir: str = '/workspace'
@@ -27,6 +33,8 @@ class BoxSpec(pydantic.BaseModel):
     session_id: str
     env: dict[str, str] = pydantic.Field(default_factory=dict)
     image: str = DEFAULT_BOX_IMAGE
+    host_path: str | None = None
+    host_path_mode: BoxHostMountMode = BoxHostMountMode.READ_WRITE
 
     @pydantic.field_validator('cmd')
     @classmethod
@@ -64,6 +72,24 @@ class BoxSpec(pydantic.BaseModel):
     def validate_env(cls, value: dict[str, str]) -> dict[str, str]:
         return {str(k): str(v) for k, v in value.items()}
 
+    @pydantic.field_validator('host_path')
+    @classmethod
+    def validate_host_path(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value.startswith('/'):
+            raise ValueError('host_path must be an absolute host path')
+        return value
+
+    @pydantic.model_validator(mode='after')
+    def validate_host_mount_consistency(self) -> 'BoxSpec':
+        if self.host_path is None:
+            return self
+        if not self.workdir.startswith(DEFAULT_BOX_MOUNT_PATH):
+            raise ValueError('workdir must stay under /workspace when host_path is provided')
+        return self
+
 
 class BoxSessionInfo(pydantic.BaseModel):
     session_id: str
@@ -71,6 +97,8 @@ class BoxSessionInfo(pydantic.BaseModel):
     backend_session_id: str
     image: str
     network: BoxNetworkMode
+    host_path: str | None = None
+    host_path_mode: BoxHostMountMode = BoxHostMountMode.READ_WRITE
     created_at: dt.datetime
     last_used_at: dt.datetime
 
