@@ -5,7 +5,7 @@ import typing
 from ...core import app
 from langbot.pkg.utils import importutil
 from langbot.pkg.provider.tools import loaders
-from langbot.pkg.provider.tools.loaders import mcp as mcp_loader, plugin as plugin_loader
+from langbot.pkg.provider.tools.loaders import mcp as mcp_loader, native as native_loader, plugin as plugin_loader
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 from langbot_plugin.api.entities.events import pipeline_query
 
@@ -17,6 +17,7 @@ class ToolManager:
 
     ap: app.Application
 
+    native_tool_loader: native_loader.NativeToolLoader
     plugin_tool_loader: plugin_loader.PluginToolLoader
     mcp_tool_loader: mcp_loader.MCPLoader
 
@@ -24,6 +25,8 @@ class ToolManager:
         self.ap = ap
 
     async def initialize(self):
+        self.native_tool_loader = native_loader.NativeToolLoader(self.ap)
+        await self.native_tool_loader.initialize()
         self.plugin_tool_loader = plugin_loader.PluginToolLoader(self.ap)
         await self.plugin_tool_loader.initialize()
         self.mcp_tool_loader = mcp_loader.MCPLoader(self.ap)
@@ -35,6 +38,7 @@ class ToolManager:
         """获取所有函数"""
         all_functions: list[resource_tool.LLMTool] = []
 
+        all_functions.extend(await self.native_tool_loader.get_tools())
         all_functions.extend(await self.plugin_tool_loader.get_tools(bound_plugins))
         all_functions.extend(await self.mcp_tool_loader.get_tools(bound_mcp_servers))
 
@@ -95,7 +99,9 @@ class ToolManager:
     async def execute_func_call(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
         """执行函数调用"""
 
-        if await self.plugin_tool_loader.has_tool(name):
+        if await self.native_tool_loader.has_tool(name):
+            return await self.native_tool_loader.invoke_tool(name, parameters, query)
+        elif await self.plugin_tool_loader.has_tool(name):
             return await self.plugin_tool_loader.invoke_tool(name, parameters, query)
         elif await self.mcp_tool_loader.has_tool(name):
             return await self.mcp_tool_loader.invoke_tool(name, parameters, query)
@@ -104,5 +110,6 @@ class ToolManager:
 
     async def shutdown(self):
         """关闭所有工具"""
+        await self.native_tool_loader.shutdown()
         await self.plugin_tool_loader.shutdown()
         await self.mcp_tool_loader.shutdown()

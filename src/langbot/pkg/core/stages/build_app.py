@@ -8,6 +8,7 @@ from ...pipeline import pool, controller, pipelinemgr
 from ...pipeline import aggregator as message_aggregator
 from ...plugin import connector as plugin_connector
 from ...command import cmdmgr
+from ...box import service as box_service
 from ...provider.session import sessionmgr as llm_session_mgr
 from ...provider.modelmgr import modelmgr as llm_model_mgr
 from ...provider.tools import toolmgr as llm_tool_mgr
@@ -127,6 +128,10 @@ class BuildAppStage(stage.BootingStage):
         llm_session_mgr_inst = llm_session_mgr.SessionManager(ap)
         await llm_session_mgr_inst.initialize()
         ap.sess_mgr = llm_session_mgr_inst
+
+        box_service_inst = box_service.BoxService(ap)
+        await box_service_inst.initialize()
+        ap.box_service = box_service_inst
 
         llm_tool_mgr_inst = llm_tool_mgr.ToolManager(ap)
         await llm_tool_mgr_inst.initialize()
