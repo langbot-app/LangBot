@@ -4,7 +4,7 @@ on:
   pull_request:
     types: [opened, ready_for_review, synchronize]
     paths:
-      - 'pkg/**'
+      - 'src/langbot/pkg/**'
       - 'tests/**'
       - '.github/workflows/run-tests.yml'
       - 'pyproject.toml'
@@ -14,7 +14,7 @@ on:
       - master
       - develop
     paths:
-      - 'pkg/**'
+      - 'src/langbot/pkg/**'
       - 'tests/**'
       - '.github/workflows/run-tests.yml'
       - 'pyproject.toml'

@@ -7,7 +7,13 @@ import { toast } from 'sonner';
 
 import { httpClient, systemInfo } from '@/app/infra/http';
 import { SystemAutoCleanupSettings } from '@/app/infra/entities/api';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -67,17 +73,21 @@ export default function SystemSettingsDialog({
   }
 
   function validateSettings() {
-    if (!Number.isInteger(settings.interval_hours) || settings.interval_hours <= 0) {
+    if (
+      !Number.isInteger(settings.interval_hours) ||
+      settings.interval_hours <= 0
+    ) {
       toast.error(t('systemSettings.validation.intervalHours'));
       return false;
     }
 
-    const numericFields: Array<keyof Omit<SystemAutoCleanupSettings, 'enabled'>> =
-      [
-        'log_retention_days',
-        'monitoring_retention_days',
-        'runtime_session_idle_hours',
-      ];
+    const numericFields: Array<
+      keyof Omit<SystemAutoCleanupSettings, 'enabled'>
+    > = [
+      'log_retention_days',
+      'monitoring_retention_days',
+      'runtime_session_idle_hours',
+    ];
 
     for (const field of numericFields) {
       const value = settings[field];
@@ -179,10 +189,7 @@ export default function SystemSettingsDialog({
                   min={0}
                   value={settings.log_retention_days}
                   onChange={(event) =>
-                    updateNumericField(
-                      'log_retention_days',
-                      event.target.value,
-                    )
+                    updateNumericField('log_retention_days', event.target.value)
                   }
                 />
                 <p className="text-xs text-muted-foreground">

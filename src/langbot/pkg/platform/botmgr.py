@@ -158,11 +158,11 @@ class RuntimeBot:
                 adapter=adapter,
                 pipeline_uuid=self.bot_entity.use_pipeline_uuid,
                 variables={
-                    "_system_event": "message_recalled",
-                    "_recalled_message_id": str(event.message_id),
-                    "_recalled_chat_id": str(event.chat_id),
-                    "_recalled_time": str(event.recall_time),
-                    "_recalled_type": str(event.recall_type),
+                    '_system_event': 'message_recalled',
+                    '_recalled_message_id': str(event.message_id),
+                    '_recalled_chat_id': str(event.chat_id),
+                    '_recalled_time': str(event.recall_time),
+                    '_recalled_type': str(event.recall_type),
                 },
             )
 

@@ -781,16 +781,20 @@ const zhHans = {
     saveFailed: '保存系统设置失败',
     saved: '系统设置已保存',
     autoCleanupEnabled: '启用自动清理',
-    autoCleanupEnabledDescription: '按设定周期自动清理旧日志、监控记录和长时间空闲的运行时会话。',
+    autoCleanupEnabledDescription:
+      '按设定周期自动清理旧日志、监控记录和长时间空闲的运行时会话。',
     intervalHours: '执行周期（小时）',
     intervalHoursDescription: '后台任务会按这个周期检查并执行自动清理。',
     logRetentionDays: '日志保留天数',
     monitoringRetentionDays: '监控记录保留天数',
-    monitoringRetentionDaysDescription: '会清理监控页面中的消息、会话、模型调用和错误记录。',
+    monitoringRetentionDaysDescription:
+      '会清理监控页面中的消息、会话、模型调用和错误记录。',
     runtimeSessionIdleHours: '运行时会话空闲时长（小时）',
-    runtimeSessionIdleHoursDescription: '超过该时长未活动的内存会话会被释放，可能导致多轮上下文丢失。',
+    runtimeSessionIdleHoursDescription:
+      '超过该时长未活动的内存会话会被释放，可能导致多轮上下文丢失。',
     zeroDisables: '填 0 表示关闭这一项清理。',
-    notice: '自动清理会影响历史排障和长会话上下文，建议先从较保守的保留时间开始。',
+    notice:
+      '自动清理会影响历史排障和长会话上下文，建议先从较保守的保留时间开始。',
     validation: {
       intervalHours: '执行周期必须是大于 0 的整数',
       nonNegativeInteger: '所有清理设置都必须是大于等于 0 的整数',

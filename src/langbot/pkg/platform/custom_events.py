@@ -10,12 +10,12 @@ import langbot_plugin.api.entities.builtin.provider.session as provider_session
 class MessageRecalled(platform_events.Event):
     """Platform-level recall event emitted by adapters."""
 
-    type: str = "MessageRecalled"
+    type: str = 'MessageRecalled'
 
     message_id: typing.Union[int, str]
-    chat_id: str = ""
-    recall_time: str = ""
-    recall_type: str = ""
+    chat_id: str = ''
+    recall_time: str = ''
+    recall_type: str = ''
 
     launcher_type: provider_session.LauncherTypes
     launcher_id: typing.Union[int, str]

@@ -88,8 +88,12 @@ class SystemService:
             'edition': constants.edition,
             'enable_marketplace': self.ap.instance_config.data.get('plugin', {}).get('enable_marketplace', True),
             'cloud_service_url': self.ap.instance_config.data.get('space', {}).get('url', 'https://space.langbot.app'),
-            'allow_modify_login_info': self.ap.instance_config.data.get('system', {}).get('allow_modify_login_info', True),
-            'disable_models_service': self.ap.instance_config.data.get('space', {}).get('disable_models_service', False),
+            'allow_modify_login_info': self.ap.instance_config.data.get('system', {}).get(
+                'allow_modify_login_info', True
+            ),
+            'disable_models_service': self.ap.instance_config.data.get('space', {}).get(
+                'disable_models_service', False
+            ),
             'limitation': self.ap.instance_config.data.get('system', {}).get('limitation', {}),
             'auto_cleanup': self.get_auto_cleanup_settings(),
         }

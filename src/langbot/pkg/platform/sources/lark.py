@@ -831,9 +831,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         cached = self.message_recall_cache.pop(message_id, None)
         if cached is None and chat_id:
             fallback_candidates = [
-                item
-                for item in self.message_recall_cache.values()
-                if str(item.get('chat_id', '')).strip() == chat_id
+                item for item in self.message_recall_cache.values() if str(item.get('chat_id', '')).strip() == chat_id
             ]
             if fallback_candidates:
                 cached = max(fallback_candidates, key=lambda item: float(item.get('created_at', 0.0)))
@@ -1096,7 +1094,9 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         return None
 
-    async def resolve_chat_name(self, chat_id: str, event: lark_oapi.im.v1.P2ImMessageReceiveV1 | None = None) -> str | None:
+    async def resolve_chat_name(
+        self, chat_id: str, event: lark_oapi.im.v1.P2ImMessageReceiveV1 | None = None
+    ) -> str | None:
         if not chat_id:
             return None
 
