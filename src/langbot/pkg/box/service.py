@@ -12,7 +12,7 @@ import pydantic
 from .client import BoxRuntimeClient
 from .connector import BoxRuntimeConnector
 from .errors import BoxError, BoxValidationError
-from .models import BUILTIN_PROFILES, BoxExecutionResult, BoxProfile, BoxSpec
+from .models import BUILTIN_PROFILES, BoxExecutionResult, BoxProfile, BoxSpec, get_box_config
 
 _INT_ADAPTER = pydantic.TypeAdapter(int)
 _UTC = _dt.timezone.utc
@@ -189,9 +189,7 @@ class BoxService:
         }
 
     def _load_allowed_host_mount_roots(self) -> list[str]:
-        box_config = getattr(self.ap, 'instance_config', None)
-        box_config_data = getattr(box_config, 'data', {}) if box_config is not None else {}
-        configured_roots = box_config_data.get('box', {}).get('allowed_host_mount_roots', [])
+        configured_roots = get_box_config(self.ap).get('allowed_host_mount_roots', [])
 
         normalized_roots: list[str] = []
         for root in configured_roots:
@@ -203,9 +201,7 @@ class BoxService:
         return normalized_roots
 
     def _load_default_host_workspace(self) -> str | None:
-        box_config = getattr(self.ap, 'instance_config', None)
-        box_config_data = getattr(box_config, 'data', {}) if box_config is not None else {}
-        default_host_workspace = str(box_config_data.get('box', {}).get('default_host_workspace', '')).strip()
+        default_host_workspace = str(get_box_config(self.ap).get('default_host_workspace', '')).strip()
         if not default_host_workspace:
             return None
         return os.path.realpath(os.path.abspath(default_host_workspace))
@@ -252,9 +248,7 @@ class BoxService:
         raise BoxValidationError(f'host_path is outside allowed_host_mount_roots: {allowed_roots}')
 
     def _load_profile(self) -> BoxProfile:
-        box_config = getattr(self.ap, 'instance_config', None)
-        box_config_data = getattr(box_config, 'data', {}) if box_config is not None else {}
-        profile_name = str(box_config_data.get('box', {}).get('profile', 'default')).strip() or 'default'
+        profile_name = str(get_box_config(self.ap).get('profile', 'default')).strip() or 'default'
 
         profile = BUILTIN_PROFILES.get(profile_name)
         if profile is None:

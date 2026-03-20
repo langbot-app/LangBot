@@ -45,7 +45,6 @@ services:
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
-      - BOX__RUNTIME_URL=http://langbot_box_runtime:5410
     ports:
       - 5300:5300  # For web ui and webhook callback
       - 2280-2285:2280-2285  # For platform reverse connection

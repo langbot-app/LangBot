@@ -6,7 +6,8 @@ import sys
 from typing import TYPE_CHECKING
 
 from .errors import BoxRuntimeUnavailableError
-from .client import create_box_runtime_client, resolve_box_runtime_url
+from .client import RemoteBoxRuntimeClient, resolve_box_runtime_url
+from .models import get_box_config
 from ..utils import platform
 
 if TYPE_CHECKING:
@@ -24,7 +25,7 @@ class BoxRuntimeConnector:
         self.configured_runtime_url = self._load_configured_runtime_url()
         self.runtime_url = self.configured_runtime_url or resolve_box_runtime_url(ap)
         self.manages_local_runtime = self._should_manage_local_runtime()
-        self.client = create_box_runtime_client(ap, runtime_url=self.runtime_url)
+        self.client = RemoteBoxRuntimeClient(base_url=self.runtime_url, logger=ap.logger)
         self.runtime_subprocess: asyncio.subprocess.Process | None = None
         self.runtime_subprocess_task: asyncio.Task | None = None
 
@@ -54,9 +55,7 @@ class BoxRuntimeConnector:
             self.runtime_subprocess_task = None
 
     def _load_configured_runtime_url(self) -> str:
-        box_config = getattr(self.ap, 'instance_config', None)
-        box_config_data = getattr(box_config, 'data', {}) if box_config is not None else {}
-        return str(box_config_data.get('box', {}).get('runtime_url', '')).strip()
+        return str(get_box_config(self.ap).get('runtime_url', '')).strip()
 
     def _should_manage_local_runtime(self) -> bool:
         return not self.configured_runtime_url and platform.get_platform() != 'docker'

@@ -81,7 +81,6 @@ async def handle_create_session(request: web.Request) -> web.Response:
         body = await request.json()
         session_id = request.match_info['session_id']
         body['session_id'] = session_id
-        body.setdefault('cmd', '__langbot_session_placeholder__')
         spec = BoxSpec.model_validate(body)
         session_info = await runtime.create_session(spec)
         return web.json_response(session_info, status=201)
