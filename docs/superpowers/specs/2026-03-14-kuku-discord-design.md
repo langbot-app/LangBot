@@ -1,6 +1,9 @@
 # KUKU Discord Bot — Engineering Spec
 
-> Status: Approved
+> Superseded on 2026-03-20 by [`docs/kuku-design.md`](../../kuku-design.md)
+> Reason: the chosen direction is a LangBot-native KUKU core with Discord as Phase 1 and Feishu as Phase 2, not a standalone Discord-only service.
+
+> Status: Superseded
 > Date: 2026-03-14
 
 ---

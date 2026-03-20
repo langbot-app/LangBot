@@ -35,6 +35,7 @@ bard.json
 data/labels/instance_id.json
 .DS_Store
 /data
+/docker/data/
 botpy.log*
 /poc
 /libs/wecom_api/test.py

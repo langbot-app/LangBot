@@ -1,8 +1,8 @@
 # KUKU AI Agent — Engineering Design Doc
 
 > Based on KUKU AI Agent IP PRD v1.0
-> Status: Draft
-> Last updated: 2026-03-14
+> Status: Approved
+> Last updated: 2026-03-20
 
 ---
 
@@ -10,46 +10,54 @@
 
 KUKU is a family of AI Agent IPs. Each KUKU is a digital group member with a distinct personality that can be added to group chats on Discord and Feishu. It perceives group atmosphere, proactively initiates conversation when the group goes silent, and builds a dynamic memory of each member over time.
 
-**MVP core loop:** detect group silence → generate a natural conversation opener → send it → repeat.
+The implementation direction is:
+- Build KUKU as a LangBot-native capability with a shared core
+- Ship Discord first as the MVP platform
+- Add Feishu next by reusing the same core and adding a second platform adapter
+
+**MVP core loop:** detect group silence -> generate a natural conversation opener -> send it -> repeat.
 
 ---
 
 ## 2. Goals & Non-Goals
 
 ### Goals (MVP)
-- Deploy a KUKU bot to a Discord channel or Feishu group
+- Deploy a KUKU bot to a Discord channel
 - Detect silence (no messages for N minutes) and proactively send a message
 - Accumulate per-user memory and inject it into every KUKU response
-- Support multiple KUKU personas (selectable at setup time)
+- Use one fixed KUKU persona across the MVP
 
 ### Non-Goals (MVP)
 - Multiple KUKUs in the same group simultaneously
-- Changing persona after deployment (requires re-adding the bot)
+- Persona selection or persona changes after deployment
 - Discord Activity embedded page (P1)
-- WeChat support (post-MVP)
+- Feishu support in the first release
+- WeChat support (post-Feishu)
 - External tool calls / agentic tasks (post-MVP)
 
 ---
 
 ## 3. Architecture
 
-KUKU is implemented as a **LangBot Plugin**. LangBot handles all platform abstraction (Discord, Feishu), message ingestion, and pipeline execution. The plugin hooks into the pipeline to add KUKU-specific behavior.
+KUKU should not be implemented as a Discord-only standalone service. Since Feishu is the planned next platform, the core behavior must live inside LangBot and platform differences should stay at the adapter boundary.
+
+KUKU is implemented as a **LangBot Plugin**. LangBot handles platform abstraction, message ingestion, and pipeline execution. The plugin adds KUKU-specific behavior and is shared across platforms.
 
 ```
 Discord / Feishu
-      │
-      ▼
+      |
+      v
  LangBot Core
-  ├── Platform Adapter (discord / feishu)
-  ├── Message Pipeline
-  └── Plugin Runtime
-         │
-         ▼
+  |- Platform Adapter (discord / feishu)
+  |- Message Pipeline
+  `- Plugin Runtime
+         |
+         v
     KUKU Plugin
-     ├── SilenceDetector       — background scheduler per group
-     ├── MemoryManager         — per-user Mem0 storage
-     ├── UserProfileBuilder    — extracts traits from messages
-     └── KUKUResponder         — injects profile + persona → LLM → send
+     |- SilenceDetector       - background scheduler per group
+     |- MemoryManager         - per-user Mem0 storage
+     |- UserProfileBuilder    - extracts traits from messages
+     `- KUKUResponder         - injects profile + persona -> LLM -> send
 ```
 
 ### Component responsibilities
@@ -61,16 +69,23 @@ Discord / Feishu
 | `UserProfileBuilder` | Periodically run LLM over recent messages to extract structured user traits |
 | `KUKUResponder` | Build the final prompt (persona + memories + context) and call the LLM |
 
+### Platform strategy
+
+- Shared KUKU core owns silence detection, memory, prompt construction, and response policy
+- Discord MVP is the first adapter and the only platform enabled in the first release
+- Feishu is added next by mapping Feishu events and message rendering onto the same shared KUKU core
+- Platform-specific setup UX, message formatting, and permission handling must stay outside the shared core
+
 ---
 
 ## 4. Platform Support
 
 | Platform | Bot type | Message format | Config flow |
 |---|---|---|---|
-| Discord | Bot (P0), Activity (P1) | Embed cards + button components | Admin selects persona via Activity page (P1) or slash command (P0) |
-| Feishu | Enterprise bot | Rich text message cards + buttons | Admin adds bot to group → bot sends persona selection card |
+| Discord | Bot (P0), Activity (P1) | Embed cards + button components | Admin adds bot and enables KUKU for the channel/group |
+| Feishu | Enterprise bot | Rich text message cards + buttons | Added after Discord MVP using the same KUKU core |
 
-Both platforms share identical core logic. Differences are isolated to platform adapter layer already handled by LangBot.
+Both platforms share the same KUKU core logic. Differences are isolated to the platform adapter layer already handled by LangBot.
 
 ---
 
@@ -108,7 +123,7 @@ class SilenceDetector:
 ### 5.2 Proactive Topic Generation
 
 When silence is detected, KUKU generates an opening message using:
-- Its assigned persona prompt
+- The fixed KUKU persona prompt
 - The last N messages as context
 - Relevant user profile snippets for active members
 
@@ -140,6 +155,19 @@ Keep it short (1-2 sentences). Don't be cringe. Match the group's energy.
 ### 5.3 Reactive Responses
 
 When a user directly @mentions KUKU or replies to a KUKU message, respond immediately using the same prompt structure (persona + user memories + conversation context).
+
+### 5.4 MVP rollout
+
+Phase 1:
+- Discord only
+- One fixed KUKU persona
+- Proactive silence-breaking messages
+- Reactive replies on mention or reply
+
+Phase 2:
+- Feishu adapter over the same plugin core
+- Same persona, memory, and silence logic
+- Platform-specific setup and message rendering only
 
 ---
 
