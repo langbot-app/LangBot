@@ -13,7 +13,7 @@ class BoxRouterGroup(group.RouterGroup):
 
         @self.route('/sessions', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
-            sessions = self.ap.box_service.runtime.get_sessions()
+            sessions = await self.ap.box_service.get_sessions()
             return self.success(data=sessions)
 
         @self.route('/errors', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)

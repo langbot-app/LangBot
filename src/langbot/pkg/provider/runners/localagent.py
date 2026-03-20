@@ -371,7 +371,15 @@ class LocalAgentRunner(runner.RequestRunner):
 
                     req_messages.append(msg)
                 except Exception as e:
-                    err_msg = provider_message.Message(role='tool', content=f'err: {e}', tool_call_id=tool_call.id)
+                    if is_stream:
+                        err_msg = provider_message.MessageChunk(
+                            role='tool',
+                            content=f'err: {e}',
+                            tool_call_id=tool_call.id,
+                            is_final=True,
+                        )
+                    else:
+                        err_msg = provider_message.Message(role='tool', content=f'err: {e}', tool_call_id=tool_call.id)
 
                     yield err_msg
 

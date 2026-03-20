@@ -89,8 +89,9 @@ monitoring:
         check_interval_hours: 1
 box:
     profile: 'default'
-    default_host_workspace: './data/box-workspaces/default'
-    allowed_host_mount_roots:
+    runtime_url: ''  # Leave empty to use defaults: http://127.0.0.1:5410 locally, http://langbot_box_runtime:5410 in Docker
+    default_host_workspace: './data/box-workspaces/default'  # For Docker deployment, use '/workspaces/default'
+    allowed_host_mount_roots:  # For Docker deployment, use '/workspaces' instead
         - './data/box-workspaces'
         - '/tmp'
 space:
