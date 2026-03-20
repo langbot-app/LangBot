@@ -6,7 +6,7 @@ import datetime as dt
 import logging
 
 from .backend import BaseSandboxBackend, DockerBackend, PodmanBackend
-from .errors import BoxBackendUnavailableError, BoxSessionConflictError
+from .errors import BoxBackendUnavailableError, BoxSessionConflictError, BoxSessionNotFoundError
 from .models import BoxExecutionResult, BoxExecutionStatus, BoxSessionInfo, BoxSpec
 
 _UTC = dt.timezone.utc
@@ -65,6 +65,16 @@ class BoxRuntime:
             for session_id in session_ids:
                 await self._drop_session_locked(session_id)
 
+    async def create_session(self, spec: BoxSpec) -> dict:
+        session = await self._get_or_create_session(spec)
+        return self._session_to_dict(session.info)
+
+    async def delete_session(self, session_id: str) -> None:
+        async with self._lock:
+            if session_id not in self._sessions:
+                raise BoxSessionNotFoundError(f'session {session_id} not found')
+            await self._drop_session_locked(session_id)
+
     # ── Observability ─────────────────────────────────────────────────
 
     async def get_backend_info(self) -> dict:
@@ -78,24 +88,7 @@ class BoxRuntime:
         return {'name': backend.name, 'available': available}
 
     def get_sessions(self) -> list[dict]:
-        return [
-            {
-                'session_id': s.info.session_id,
-                'backend_name': s.info.backend_name,
-                'backend_session_id': s.info.backend_session_id,
-                'image': s.info.image,
-                'network': s.info.network.value,
-                'host_path': s.info.host_path,
-                'host_path_mode': s.info.host_path_mode.value,
-                'cpus': s.info.cpus,
-                'memory_mb': s.info.memory_mb,
-                'pids_limit': s.info.pids_limit,
-                'read_only_rootfs': s.info.read_only_rootfs,
-                'created_at': s.info.created_at.isoformat(),
-                'last_used_at': s.info.last_used_at.isoformat(),
-            }
-            for s in self._sessions.values()
-        ]
+        return [self._session_to_dict(s.info) for s in self._sessions.values()]
 
     async def get_status(self) -> dict:
         backend_info = await self.get_backend_info()
@@ -222,3 +215,21 @@ class BoxRuntime:
             raise BoxSessionConflictError(
                 f'sandbox_exec session {spec.session_id} already exists with read_only_rootfs={session.read_only_rootfs}'
             )
+
+    @staticmethod
+    def _session_to_dict(info: BoxSessionInfo) -> dict:
+        return {
+            'session_id': info.session_id,
+            'backend_name': info.backend_name,
+            'backend_session_id': info.backend_session_id,
+            'image': info.image,
+            'network': info.network.value,
+            'host_path': info.host_path,
+            'host_path_mode': info.host_path_mode.value,
+            'cpus': info.cpus,
+            'memory_mb': info.memory_mb,
+            'pids_limit': info.pids_limit,
+            'read_only_rootfs': info.read_only_rootfs,
+            'created_at': info.created_at.isoformat(),
+            'last_used_at': info.last_used_at.isoformat(),
+        }
