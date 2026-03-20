@@ -12,7 +12,7 @@ import pytest
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 from langbot.pkg.box.backend import BaseSandboxBackend
-from langbot.pkg.box.client import LocalBoxRuntimeClient, RemoteBoxRuntimeClient
+from langbot.pkg.box.client import BoxRuntimeClient, RemoteBoxRuntimeClient
 from langbot.pkg.box.errors import BoxBackendUnavailableError, BoxSessionConflictError, BoxSessionNotFoundError, BoxValidationError
 from langbot.pkg.box.models import (
     BUILTIN_PROFILES,
@@ -28,6 +28,37 @@ from langbot.pkg.box.runtime import BoxRuntime
 from langbot.pkg.box.service import BoxService
 
 _UTC = dt.timezone.utc
+
+
+class _InProcessBoxRuntimeClient(BoxRuntimeClient):
+    """Test-only client that wraps a BoxRuntime in-process (no HTTP)."""
+
+    def __init__(self, logger, runtime=None):
+        self._runtime = runtime or BoxRuntime(logger=logger)
+
+    async def initialize(self):
+        await self._runtime.initialize()
+
+    async def execute(self, spec):
+        return await self._runtime.execute(spec)
+
+    async def shutdown(self):
+        await self._runtime.shutdown()
+
+    async def get_status(self):
+        return await self._runtime.get_status()
+
+    async def get_sessions(self):
+        return self._runtime.get_sessions()
+
+    async def get_backend_info(self):
+        return await self._runtime.get_backend_info()
+
+    async def delete_session(self, session_id):
+        await self._runtime.delete_session(session_id)
+
+    async def create_session(self, spec):
+        return await self._runtime.create_session(spec)
 
 
 def _can_open_test_socket() -> bool:
@@ -197,7 +228,7 @@ async def test_box_service_defaults_session_id_from_query():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger), client=LocalBoxRuntimeClient(logger, runtime))
+    service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
     result = await service.execute_sandbox_tool({'cmd': 'pwd', 'network': BoxNetworkMode.OFF.value}, make_query(7))
@@ -212,7 +243,7 @@ async def test_box_service_fails_closed_when_backend_unavailable():
     logger = Mock()
     backend = FakeBackend(logger, available=False)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger), client=LocalBoxRuntimeClient(logger, runtime))
+    service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
     with pytest.raises(BoxBackendUnavailableError):
@@ -226,7 +257,7 @@ async def test_box_service_allows_host_mount_under_configured_root(tmp_path):
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
     host_dir = tmp_path / 'mounted-workspace'
     host_dir.mkdir()
-    service = BoxService(make_app(logger, [str(tmp_path)]), client=LocalBoxRuntimeClient(logger, runtime))
+    service = BoxService(make_app(logger, [str(tmp_path)]), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
     result = await service.execute_sandbox_tool(
@@ -251,7 +282,7 @@ async def test_box_service_uses_default_host_workspace_when_host_path_omitted(tm
     host_dir.mkdir()
     app = make_app(logger, [str(tmp_path)])
     app.instance_config.data['box']['default_host_workspace'] = str(host_dir)
-    service = BoxService(app, client=LocalBoxRuntimeClient(logger, runtime))
+    service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
     result = await service.execute_sandbox_tool({'cmd': 'pwd'}, make_query(15))
@@ -272,7 +303,7 @@ async def test_box_service_creates_default_host_workspace_on_initialize(tmp_path
     default_host_workspace = allowed_root / 'default-workspace'
     app = make_app(logger, [str(allowed_root)])
     app.instance_config.data['box']['default_host_workspace'] = str(default_host_workspace)
-    service = BoxService(app, client=LocalBoxRuntimeClient(logger, runtime))
+    service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
 
     await service.initialize()
 
@@ -288,7 +319,7 @@ async def test_box_service_rejects_host_mount_outside_allowed_roots(tmp_path):
     disallowed_root = tmp_path / 'disallowed'
     allowed_root.mkdir()
     disallowed_root.mkdir()
-    service = BoxService(make_app(logger, [str(allowed_root)]), client=LocalBoxRuntimeClient(logger, runtime))
+    service = BoxService(make_app(logger, [str(allowed_root)]), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
     with pytest.raises(BoxValidationError):
@@ -379,7 +410,7 @@ async def test_truncate_short_output_unchanged():
     logger = Mock()
     backend = FakeBackendWithOutput(logger, stdout='hello world')
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger), client=LocalBoxRuntimeClient(logger, runtime), output_limit_chars=100)
+    service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime), output_limit_chars=100)
     await service.initialize()
 
     result = await service.execute_sandbox_tool({'cmd': 'echo hello'}, make_query(20))
@@ -400,7 +431,7 @@ async def test_truncate_preserves_head_and_tail():
     backend = FakeBackendWithOutput(logger, stdout=big_output)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
     limit = 100
-    service = BoxService(make_app(logger), client=LocalBoxRuntimeClient(logger, runtime), output_limit_chars=limit)
+    service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime), output_limit_chars=limit)
     await service.initialize()
 
     result = await service.execute_sandbox_tool({'cmd': 'cat big'}, make_query(21))
@@ -422,7 +453,7 @@ async def test_truncate_at_exact_limit_not_truncated():
     exact_output = 'a' * 200
     backend = FakeBackendWithOutput(logger, stdout=exact_output)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger), client=LocalBoxRuntimeClient(logger, runtime), output_limit_chars=200)
+    service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime), output_limit_chars=200)
     await service.initialize()
 
     result = await service.execute_sandbox_tool({'cmd': 'echo a'}, make_query(22))
@@ -436,7 +467,7 @@ async def test_truncate_stderr_independently():
     logger = Mock()
     backend = FakeBackendWithOutput(logger, stdout='short', stderr='E' * 300)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger), client=LocalBoxRuntimeClient(logger, runtime), output_limit_chars=100)
+    service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime), output_limit_chars=100)
     await service.initialize()
 
     result = await service.execute_sandbox_tool({'cmd': 'fail'}, make_query(23))
@@ -456,7 +487,7 @@ async def test_profile_default_provides_defaults():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger), client=LocalBoxRuntimeClient(logger, runtime))
+    service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
     result = await service.execute_sandbox_tool({'cmd': 'echo hi'}, make_query(30))
@@ -474,7 +505,7 @@ async def test_profile_unlocked_field_can_be_overridden():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger), client=LocalBoxRuntimeClient(logger, runtime))
+    service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
     result = await service.execute_sandbox_tool(
@@ -494,7 +525,7 @@ async def test_profile_locked_field_cannot_be_overridden():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger, profile='offline_readonly'), client=LocalBoxRuntimeClient(logger, runtime))
+    service = BoxService(make_app(logger, profile='offline_readonly'), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
     result = await service.execute_sandbox_tool(
@@ -514,7 +545,7 @@ async def test_profile_timeout_clamped_to_max():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger), client=LocalBoxRuntimeClient(logger, runtime))
+    service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
     result = await service.execute_sandbox_tool(
@@ -534,7 +565,7 @@ async def test_profile_timeout_clamped_for_coercible_inputs(timeout_value):
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger), client=LocalBoxRuntimeClient(logger, runtime))
+    service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
     await service.execute_sandbox_tool(
@@ -551,7 +582,7 @@ def test_unknown_profile_raises_error():
     logger = Mock()
     runtime = BoxRuntime(logger=logger, backends=[FakeBackend(logger)], session_ttl_sec=300)
     with pytest.raises(BoxValidationError, match='unknown box profile'):
-        BoxService(make_app(logger, profile='nonexistent'), client=LocalBoxRuntimeClient(logger, runtime))
+        BoxService(make_app(logger, profile='nonexistent'), client=_InProcessBoxRuntimeClient(logger, runtime))
 
 
 def test_builtin_profiles_are_consistent():
@@ -586,7 +617,7 @@ async def test_profile_default_applies_resource_limits():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger), client=LocalBoxRuntimeClient(logger, runtime))
+    service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
     await service.execute_sandbox_tool({'cmd': 'echo hi'}, make_query(40))
@@ -605,7 +636,7 @@ async def test_profile_offline_readonly_locks_read_only_rootfs():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger, profile='offline_readonly'), client=LocalBoxRuntimeClient(logger, runtime))
+    service = BoxService(make_app(logger, profile='offline_readonly'), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
     await service.execute_sandbox_tool(
@@ -623,7 +654,7 @@ async def test_profile_network_extended_has_relaxed_limits():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger, profile='network_extended'), client=LocalBoxRuntimeClient(logger, runtime))
+    service = BoxService(make_app(logger, profile='network_extended'), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
     await service.execute_sandbox_tool({'cmd': 'echo hi'}, make_query(42))
@@ -698,7 +729,7 @@ async def test_service_records_errors_on_failure():
     logger = Mock()
     backend = FakeBackend(logger, available=False)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger), client=LocalBoxRuntimeClient(logger, runtime))
+    service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
     with pytest.raises(Exception):
@@ -716,7 +747,7 @@ async def test_service_error_ring_buffer_capped():
     logger = Mock()
     backend = FakeBackend(logger, available=False)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger), client=LocalBoxRuntimeClient(logger, runtime))
+    service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
     for i in range(60):
@@ -735,7 +766,7 @@ async def test_service_get_status_aggregates_runtime_and_profile():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger), client=LocalBoxRuntimeClient(logger, runtime))
+    service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
     status = await service.get_status()

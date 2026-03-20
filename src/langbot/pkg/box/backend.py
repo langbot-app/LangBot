@@ -249,12 +249,6 @@ class CLISandboxBackend(BaseSandboxBackend):
         )
 
     @staticmethod
-    def _clip_bytes(data: bytes, limit: int = _MAX_RAW_OUTPUT_BYTES) -> str:
-        """Decode bytes to str, discarding bytes beyond *limit*."""
-        clipped = data[:limit]
-        return CLISandboxBackend._clip_captured_bytes(clipped, len(data), limit=limit)
-
-    @staticmethod
     def _clip_captured_bytes(data: bytes, total_size: int, limit: int = _MAX_RAW_OUTPUT_BYTES) -> str:
         text = data.decode('utf-8', errors='replace').strip()
         if total_size > limit:
