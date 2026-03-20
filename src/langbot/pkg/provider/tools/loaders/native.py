@@ -28,8 +28,7 @@ class NativeToolLoader(loader.ToolLoader):
         return await self.ap.box_service.execute_sandbox_tool(parameters, query)
 
     async def shutdown(self):
-        if getattr(self.ap, 'box_service', None) is not None:
-            await self.ap.box_service.shutdown()
+        pass
 
     def _build_sandbox_exec_tool(self) -> resource_tool.LLMTool:
         return resource_tool.LLMTool(
@@ -63,23 +62,6 @@ class NativeToolLoader(loader.ToolLoader):
                         'description': 'Network policy for the sandbox session. Prefer off unless network is required.',
                         'enum': ['off', 'on'],
                         'default': 'off',
-                    },
-                    'session_id': {
-                        'type': 'string',
-                        'description': 'Optional sandbox session id. Defaults to the current request id for reuse.',
-                    },
-                    'host_path': {
-                        'type': 'string',
-                        'description': (
-                            'Optional absolute host directory path to mount into the sandbox as /workspace. '
-                            'The path must be under an allowed host mount root.'
-                        ),
-                    },
-                    'host_path_mode': {
-                        'type': 'string',
-                        'description': 'Mount mode for host_path. Use rw to create or modify host files.',
-                        'enum': ['ro', 'rw'],
-                        'default': 'rw',
                     },
                     'env': {
                         'type': 'object',

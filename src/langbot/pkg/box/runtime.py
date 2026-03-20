@@ -6,7 +6,7 @@ import datetime as dt
 import logging
 
 from .backend import BaseSandboxBackend, DockerBackend, PodmanBackend
-from .errors import BoxBackendUnavailableError, BoxSessionConflictError, BoxSessionNotFoundError
+from .errors import BoxBackendUnavailableError, BoxSessionConflictError, BoxSessionNotFoundError, BoxValidationError
 from .models import BoxExecutionResult, BoxExecutionStatus, BoxSessionInfo, BoxSpec
 
 _UTC = dt.timezone.utc
@@ -36,6 +36,8 @@ class BoxRuntime:
         self._backend = await self._select_backend()
 
     async def execute(self, spec: BoxSpec) -> BoxExecutionResult:
+        if not spec.cmd:
+            raise BoxValidationError('cmd must not be empty')
         session = await self._get_or_create_session(spec)
 
         async with session.lock:
@@ -183,38 +185,18 @@ class BoxRuntime:
             self.logger.warning(f'Failed to clean up box session {session_id}: {exc}')
 
     def _assert_session_compatible(self, session: BoxSessionInfo, spec: BoxSpec):
-        if session.network != spec.network:
-            raise BoxSessionConflictError(
-                f'sandbox_exec session {spec.session_id} already exists with network={session.network.value}'
-            )
-        if session.image != spec.image:
-            raise BoxSessionConflictError(
-                f'sandbox_exec session {spec.session_id} already exists with image={session.image}'
-            )
-        if session.host_path != spec.host_path:
-            raise BoxSessionConflictError(
-                f'sandbox_exec session {spec.session_id} already exists with host_path={session.host_path}'
-            )
-        if session.host_path_mode != spec.host_path_mode:
-            raise BoxSessionConflictError(
-                f'sandbox_exec session {spec.session_id} already exists with host_path_mode={session.host_path_mode.value}'
-            )
-        if session.cpus != spec.cpus:
-            raise BoxSessionConflictError(
-                f'sandbox_exec session {spec.session_id} already exists with cpus={session.cpus}'
-            )
-        if session.memory_mb != spec.memory_mb:
-            raise BoxSessionConflictError(
-                f'sandbox_exec session {spec.session_id} already exists with memory_mb={session.memory_mb}'
-            )
-        if session.pids_limit != spec.pids_limit:
-            raise BoxSessionConflictError(
-                f'sandbox_exec session {spec.session_id} already exists with pids_limit={session.pids_limit}'
-            )
-        if session.read_only_rootfs != spec.read_only_rootfs:
-            raise BoxSessionConflictError(
-                f'sandbox_exec session {spec.session_id} already exists with read_only_rootfs={session.read_only_rootfs}'
-            )
+        _COMPAT_FIELDS = (
+            'network', 'image', 'host_path', 'host_path_mode',
+            'cpus', 'memory_mb', 'pids_limit', 'read_only_rootfs',
+        )
+        for field in _COMPAT_FIELDS:
+            session_val = getattr(session, field)
+            spec_val = getattr(spec, field)
+            if session_val != spec_val:
+                display = session_val.value if hasattr(session_val, 'value') else session_val
+                raise BoxSessionConflictError(
+                    f'sandbox_exec session {spec.session_id} already exists with {field}={display}'
+                )
 
     @staticmethod
     def _session_to_dict(info: BoxSessionInfo) -> dict:
