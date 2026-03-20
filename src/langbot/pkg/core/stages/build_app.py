@@ -6,9 +6,9 @@ from .. import stage, app
 from ...utils import version, proxy
 from ...pipeline import pool, controller, pipelinemgr
 from ...pipeline import aggregator as message_aggregator
+from ...box import service as box_service
 from ...plugin import connector as plugin_connector
 from ...command import cmdmgr
-from ...box import service as box_service
 from ...provider.session import sessionmgr as llm_session_mgr
 from ...provider.modelmgr import modelmgr as llm_model_mgr
 from ...provider.tools import toolmgr as llm_tool_mgr

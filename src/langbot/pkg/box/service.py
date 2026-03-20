@@ -9,9 +9,10 @@ from typing import TYPE_CHECKING
 
 import pydantic
 
+from .client import BoxRuntimeClient
+from .connector import BoxRuntimeConnector
 from .errors import BoxError, BoxValidationError
 from .models import BUILTIN_PROFILES, BoxExecutionResult, BoxProfile, BoxSpec
-from .runtime import BoxRuntime
 
 _INT_ADAPTER = pydantic.TypeAdapter(int)
 _UTC = _dt.timezone.utc
@@ -26,19 +27,28 @@ class BoxService:
     def __init__(
         self,
         ap: 'core_app.Application',
-        runtime: BoxRuntime | None = None,
+        client: BoxRuntimeClient | None = None,
         output_limit_chars: int = 4000,
     ):
         self.ap = ap
-        self.runtime = runtime or BoxRuntime(logger=ap.logger)
+        self._runtime_connector: BoxRuntimeConnector | None = None
+        if client is None:
+            self._runtime_connector = BoxRuntimeConnector(ap)
+            client = self._runtime_connector.client
+        self.client = client
         self.output_limit_chars = output_limit_chars
         self.allowed_host_mount_roots = self._load_allowed_host_mount_roots()
         self.default_host_workspace = self._load_default_host_workspace()
         self.profile = self._load_profile()
         self._recent_errors: collections.deque[dict] = collections.deque(maxlen=_MAX_RECENT_ERRORS)
+        self._shutdown_task = None
 
     async def initialize(self):
-        await self.runtime.initialize()
+        self._ensure_default_host_workspace()
+        if self._runtime_connector is not None:
+            await self._runtime_connector.initialize()
+            return
+        await self.client.initialize()
 
     async def execute_sandbox_tool(self, parameters: dict, query: 'pipeline_query.Query') -> dict:
         spec_payload = dict(parameters)
@@ -64,7 +74,7 @@ class BoxService:
             f'spec={json.dumps(self._summarize_spec(spec), ensure_ascii=False)}'
         )
         try:
-            result = await self.runtime.execute(spec)
+            result = await self.client.execute(spec)
         except BoxError as exc:
             self._record_error(exc, query)
             raise
@@ -76,7 +86,21 @@ class BoxService:
         return self._serialize_result(result)
 
     async def shutdown(self):
-        await self.runtime.shutdown()
+        await self.client.shutdown()
+
+    def dispose(self):
+        if self._runtime_connector is not None:
+            self._runtime_connector.dispose()
+        loop = getattr(self.ap, 'event_loop', None)
+        if (
+            loop is not None
+            and not loop.is_closed()
+            and (self._shutdown_task is None or self._shutdown_task.done())
+        ):
+            self._shutdown_task = loop.create_task(self.shutdown())
+
+    async def get_sessions(self) -> list[dict]:
+        return await self.client.get_sessions()
 
     def _serialize_result(self, result: BoxExecutionResult) -> dict:
         stdout, stdout_truncated = self._truncate(result.stdout)
@@ -186,6 +210,29 @@ class BoxService:
             return None
         return os.path.realpath(os.path.abspath(default_host_workspace))
 
+    def _ensure_default_host_workspace(self):
+        if self.default_host_workspace is None:
+            return
+
+        if os.path.isdir(self.default_host_workspace):
+            return
+
+        if os.path.exists(self.default_host_workspace):
+            raise BoxValidationError('default_host_workspace must point to a directory on the host')
+
+        if not self.allowed_host_mount_roots:
+            raise BoxValidationError(
+                'default_host_workspace cannot be created because no allowed_host_mount_roots are configured'
+            )
+
+        for allowed_root in self.allowed_host_mount_roots:
+            if self.default_host_workspace == allowed_root or self.default_host_workspace.startswith(f'{allowed_root}{os.sep}'):
+                os.makedirs(self.default_host_workspace, exist_ok=True)
+                return
+
+        allowed_roots = ', '.join(self.allowed_host_mount_roots)
+        raise BoxValidationError(f'default_host_workspace is outside allowed_host_mount_roots: {allowed_roots}')
+
     def _validate_host_mount(self, spec: BoxSpec):
         if spec.host_path is None:
             return
@@ -255,7 +302,7 @@ class BoxService:
         return list(self._recent_errors)
 
     async def get_status(self) -> dict:
-        runtime_status = await self.runtime.get_status()
+        runtime_status = await self.client.get_status()
         return {
             **runtime_status,
             'profile': self.profile.name,

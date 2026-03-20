@@ -58,6 +58,46 @@ class RecordingProvider:
         )
 
 
+class RecordingStreamProvider:
+    def __init__(self):
+        self.stream_requests: list[dict] = []
+
+    def invoke_llm_stream(self, query, model, messages, funcs, extra_args=None, remove_think=None):
+        self.stream_requests.append(
+            {
+                'messages': list(messages),
+                'funcs': list(funcs),
+                'remove_think': remove_think,
+            }
+        )
+
+        async def _stream():
+            if len(self.stream_requests) == 1:
+                yield provider_message.MessageChunk(
+                    role='assistant',
+                    tool_calls=[
+                        provider_message.ToolCall(
+                            id='call-1',
+                            type='function',
+                            function=provider_message.FunctionCall(
+                                name='sandbox_exec',
+                                arguments=json.dumps({'cmd': "python -c 'print(1)'"}),
+                            ),
+                        )
+                    ],
+                    is_final=True,
+                )
+                return
+
+            yield provider_message.MessageChunk(
+                role='assistant',
+                content='Tool execution failed.',
+                is_final=True,
+            )
+
+        return _stream()
+
+
 def make_query() -> pipeline_query.Query:
     adapter = AsyncMock()
     adapter.is_stream_output_supported = AsyncMock(return_value=False)
@@ -156,3 +196,38 @@ async def test_localagent_uses_sandbox_exec_for_exact_calculation():
         for message in first_request['messages']
     )
     assert [tool.name for tool in first_request['funcs']] == ['sandbox_exec']
+
+
+@pytest.mark.asyncio
+async def test_localagent_streaming_tool_error_yields_message_chunks():
+    provider = RecordingStreamProvider()
+    model = SimpleNamespace(
+        provider=provider,
+        model_entity=SimpleNamespace(
+            uuid='test-model-uuid',
+            name='test-model',
+            abilities=['func_call'],
+            extra_args={},
+        ),
+    )
+
+    adapter = AsyncMock()
+    adapter.is_stream_output_supported = AsyncMock(return_value=True)
+
+    query = make_query()
+    query.adapter = adapter
+
+    app = SimpleNamespace(
+        logger=Mock(),
+        model_mgr=SimpleNamespace(get_model_by_uuid=AsyncMock(return_value=model)),
+        tool_mgr=SimpleNamespace(execute_func_call=AsyncMock(side_effect=RuntimeError('boom'))),
+        rag_mgr=SimpleNamespace(),
+        instance_config=SimpleNamespace(data={'box': {'default_host_workspace': '/home/yhh/workspace/box-demo'}}),
+    )
+
+    runner = LocalAgentRunner(app, pipeline_config={})
+
+    results = [message async for message in runner.run(query)]
+
+    assert all(isinstance(message, provider_message.MessageChunk) for message in results)
+    assert any(message.role == 'tool' and message.content == 'err: boom' for message in results)

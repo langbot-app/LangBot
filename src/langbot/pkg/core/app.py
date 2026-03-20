@@ -235,7 +235,10 @@ class Application:
             self.logger.debug(f'Traceback: {traceback.format_exc()}')
 
     def dispose(self):
-        self.plugin_connector.dispose()
+        if self.plugin_connector is not None:
+            self.plugin_connector.dispose()
+        if self.box_service is not None:
+            self.box_service.dispose()
 
     async def print_web_access_info(self):
         """Print access webui tips"""
