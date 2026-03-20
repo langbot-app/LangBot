@@ -153,9 +153,10 @@ async def test_session_persists_files(box_client: RemoteBoxRuntimeClient):
 @pytest.mark.asyncio
 async def test_timeout_kills_command(box_client: RemoteBoxRuntimeClient):
     """A long-running command is killed after timeout_sec."""
+    session_id = 'int-timeout'
     spec = BoxSpec(
         cmd='sleep 120',
-        session_id='int-timeout',
+        session_id=session_id,
         workdir='/tmp',
         timeout_sec=3,
         image=_TEST_IMAGE,
@@ -164,6 +165,9 @@ async def test_timeout_kills_command(box_client: RemoteBoxRuntimeClient):
 
     assert result.status == BoxExecutionStatus.TIMED_OUT
     assert result.exit_code is None
+
+    sessions = await box_client.get_sessions()
+    assert all(session['session_id'] != session_id for session in sessions)
 
 
 # ── 4. Network isolation ─────────────────────────────────────────────
