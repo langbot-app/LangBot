@@ -68,6 +68,7 @@ class AutoProcessToBitableListener(EventListener):
         self._record_lookup_cache: dict[str, str] = {}
         self._source_record_cache: dict[str, list[tuple[str, str]]] = {}
         self._history_table_id_cache: str = ""
+        self._processed_event_cache: dict[str, float] = {}
 
     async def initialize(self) -> None:
         await super().initialize()
@@ -629,6 +630,8 @@ class AutoProcessToBitableListener(EventListener):
         message_event = getattr(event_ctx.event, "message_event", None)
         if message_event is not None:
             candidate = getattr(message_event, "time", None)
+        if candidate in {None, ""}:
+            candidate = self._extract_message_source_time(getattr(event_ctx.event, "message_chain", None))
         return self._format_time_value(candidate, fallback_now=True)
 
     @staticmethod
@@ -754,19 +757,84 @@ class AutoProcessToBitableListener(EventListener):
         return f"{record.route_key} | {record.batch_id}"
 
     @staticmethod
-    def _mark_query_processed(event_ctx: context.EventContext) -> bool:
+    def _extract_message_source_time(message_chain: platform_message.MessageChain | None) -> Any:
+        if message_chain is None:
+            return None
+        source = getattr(message_chain, "source", None)
+        if source is None:
+            return None
+        return getattr(source, "time", None)
+
+    @staticmethod
+    def _build_message_component_signature(message_chain: platform_message.MessageChain | None) -> str:
+        if message_chain is None:
+            return ""
+
+        signatures: list[str] = []
+        for component in message_chain:
+            if isinstance(component, platform_message.Image):
+                if component.url:
+                    signatures.append(f"url:{str(component.url).strip()}")
+                    continue
+                if component.path:
+                    signatures.append(f"path:{str(component.path).strip()}")
+                    continue
+                if component.base64:
+                    preview = AutoProcessToBitableListener._strip_data_url_prefix(str(component.base64))[:48]
+                    signatures.append(f"base64:{preview}")
+        return "|".join(signatures[:3])
+
+    def _build_processed_event_key(self, event_ctx: context.EventContext) -> str:
+        message_chain = getattr(event_ctx.event, "message_chain", None)
+        source_message_id = self._extract_message_source_id(message_chain)
+        if source_message_id:
+            return f"message_id:{source_message_id}"
+
+        source_time = self._format_time_value(self._extract_message_source_time(message_chain), fallback_now=False)
+        launcher_type = str(getattr(event_ctx.event, "launcher_type", "")).strip().lower()
+        launcher_id = str(getattr(event_ctx.event, "launcher_id", "")).strip()
+        sender_id = str(getattr(event_ctx.event, "sender_id", "")).strip()
+        plain_text = ""
+        if message_chain is not None:
+            plain_text = re.sub(r"\s+", " ", self._extract_plain_text(message_chain)).strip()
+        image_signature = self._build_message_component_signature(message_chain)
+        key_parts = [launcher_type, launcher_id, sender_id, source_time, plain_text[:200], image_signature]
+        normalized_parts = [part for part in key_parts if part]
+        return "|".join(normalized_parts)
+
+    def _remember_processed_event(self, processed_key: str) -> None:
+        if not processed_key:
+            return
+
+        now = time.monotonic()
+        self._processed_event_cache[processed_key] = now
+
+        expire_before = now - 600.0
+        stale_keys = [key for key, created_at in self._processed_event_cache.items() if created_at < expire_before]
+        for stale_key in stale_keys:
+            self._processed_event_cache.pop(stale_key, None)
+
+        max_cache_size = 5000
+        overflow = len(self._processed_event_cache) - max_cache_size
+        if overflow > 0:
+            for stale_key in list(self._processed_event_cache.keys())[:overflow]:
+                self._processed_event_cache.pop(stale_key, None)
+
+    def _mark_query_processed(self, event_ctx: context.EventContext) -> bool:
         query = getattr(event_ctx.event, "query", None)
-        if query is None:
-            return False
-
-        variables = getattr(query, "variables", None)
-        if not isinstance(variables, dict):
-            return False
-
         marker_key = "_feishu_process_bitable_processed"
-        if variables.get(marker_key, False):
+        if query is not None:
+            variables = getattr(query, "variables", None)
+            if isinstance(variables, dict):
+                if variables.get(marker_key, False):
+                    return True
+                variables[marker_key] = True
+
+        processed_key = self._build_processed_event_key(event_ctx)
+        if processed_key and processed_key in self._processed_event_cache:
             return True
-        variables[marker_key] = True
+
+        self._remember_processed_event(processed_key)
         return False
 
     @staticmethod
@@ -3426,8 +3494,7 @@ class AutoProcessToBitableListener(EventListener):
                 match_fields = self._build_upsert_match_fields(normalized_write_fields)
                 upsert_result = await self._upsert_record_to_bitable(table_id, normalized_write_fields, match_fields)
                 if upsert_result.ok:
-                    success_count += 1
-                    success_records.append(record)
+                    history_failed = False
                     if source_message_id and upsert_result.record_id:
                         self._remember_written_record(source_message_id, table_id, upsert_result.record_id)
                         if self._get_bool_config("enable_recall_restore_previous", True):
@@ -3440,8 +3507,14 @@ class AutoProcessToBitableListener(EventListener):
                                 )
                                 if not ok_history:
                                     errors.append(f"route={record.route_key}, history={detail_history}")
+                                    history_failed = True
                             except Exception as exc:
                                 errors.append(f"route={record.route_key}, history write failed: {exc}")
+                                history_failed = True
+                    if history_failed:
+                        break
+                    success_count += 1
+                    success_records.append(record)
                     break
 
                 if (not retried_after_table_not_found) and self._is_table_id_not_found_error(upsert_result.detail):
