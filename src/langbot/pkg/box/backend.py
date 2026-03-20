@@ -8,10 +8,17 @@ import logging
 import re
 import shlex
 import shutil
+import typing
 import uuid
 
 from .errors import BoxError
 from .models import DEFAULT_BOX_MOUNT_PATH, BoxExecutionResult, BoxExecutionStatus, BoxSessionInfo, BoxSpec
+
+# Hard cap on raw subprocess output to prevent unbounded memory usage.
+# Container timeout already bounds duration, but fast commands can still
+# produce large output within the time limit.  After this many bytes the
+# remaining output is discarded before decoding.
+_MAX_RAW_OUTPUT_BYTES = 1_048_576  # 1 MB per stream
 
 
 @dataclasses.dataclass(slots=True)
@@ -83,6 +90,15 @@ class CLISandboxBackend(BaseSandboxBackend):
         if spec.network.value == 'off':
             args.extend(['--network', 'none'])
 
+        # Resource limits
+        args.extend(['--cpus', str(spec.cpus)])
+        args.extend(['--memory', f'{spec.memory_mb}m'])
+        args.extend(['--pids-limit', str(spec.pids_limit)])
+
+        if spec.read_only_rootfs:
+            args.append('--read-only')
+            args.extend(['--tmpfs', '/tmp:size=64m'])
+
         if spec.host_path is not None:
             mount_spec = f'{spec.host_path}:{DEFAULT_BOX_MOUNT_PATH}:{spec.host_path_mode.value}'
             args.extend(['-v', mount_spec])
@@ -93,7 +109,9 @@ class CLISandboxBackend(BaseSandboxBackend):
             f'LangBot Box backend start_session: backend={self.name} '
             f'session_id={spec.session_id} container_name={container_name} '
             f'image={spec.image} network={spec.network.value} '
-            f'host_path={spec.host_path} host_path_mode={spec.host_path_mode.value}'
+            f'host_path={spec.host_path} host_path_mode={spec.host_path_mode.value} '
+            f'cpus={spec.cpus} memory_mb={spec.memory_mb} pids_limit={spec.pids_limit} '
+            f'read_only_rootfs={spec.read_only_rootfs}'
         )
 
         await self._run_command(args, timeout_sec=30, check=True)
@@ -106,6 +124,10 @@ class CLISandboxBackend(BaseSandboxBackend):
             network=spec.network,
             host_path=spec.host_path,
             host_path_mode=spec.host_path_mode,
+            cpus=spec.cpus,
+            memory_mb=spec.memory_mb,
+            pids_limit=spec.pids_limit,
+            read_only_rootfs=spec.read_only_rootfs,
             created_at=now,
             last_used_at=now,
         )
@@ -191,21 +213,30 @@ class CLISandboxBackend(BaseSandboxBackend):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
+        stdout_task = asyncio.create_task(self._read_stream(process.stdout))
+        stderr_task = asyncio.create_task(self._read_stream(process.stderr))
 
+        timed_out = False
         try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=timeout_sec)
+            await asyncio.wait_for(process.wait(), timeout=timeout_sec)
         except asyncio.TimeoutError:
             process.kill()
-            stdout_bytes, stderr_bytes = await process.communicate()
+            timed_out = True
+            await process.wait()
+
+        stdout_bytes, stdout_total = await stdout_task
+        stderr_bytes, stderr_total = await stderr_task
+
+        if timed_out:
             return _CommandResult(
                 return_code=-1,
-                stdout=stdout_bytes.decode('utf-8', errors='replace').strip(),
-                stderr=stderr_bytes.decode('utf-8', errors='replace').strip(),
+                stdout=self._clip_captured_bytes(stdout_bytes, stdout_total),
+                stderr=self._clip_captured_bytes(stderr_bytes, stderr_total),
                 timed_out=True,
             )
 
-        stdout = stdout_bytes.decode('utf-8', errors='replace').strip()
-        stderr = stderr_bytes.decode('utf-8', errors='replace').strip()
+        stdout = self._clip_captured_bytes(stdout_bytes, stdout_total)
+        stderr = self._clip_captured_bytes(stderr_bytes, stderr_total)
 
         if check and process.returncode != 0:
             raise BoxError(self._format_cli_error(stderr or stdout or 'unknown backend error'))
@@ -216,6 +247,40 @@ class CLISandboxBackend(BaseSandboxBackend):
             stderr=stderr,
             timed_out=False,
         )
+
+    @staticmethod
+    def _clip_bytes(data: bytes, limit: int = _MAX_RAW_OUTPUT_BYTES) -> str:
+        """Decode bytes to str, discarding bytes beyond *limit*."""
+        clipped = data[:limit]
+        return CLISandboxBackend._clip_captured_bytes(clipped, len(data), limit=limit)
+
+    @staticmethod
+    def _clip_captured_bytes(data: bytes, total_size: int, limit: int = _MAX_RAW_OUTPUT_BYTES) -> str:
+        text = data.decode('utf-8', errors='replace').strip()
+        if total_size > limit:
+            text += f'\n... [raw output clipped at {limit} bytes, {total_size - limit} bytes discarded]'
+        return text
+
+    @staticmethod
+    async def _read_stream(
+        stream: typing.Optional[asyncio.StreamReader],
+        limit: int = _MAX_RAW_OUTPUT_BYTES,
+    ) -> tuple[bytes, int]:
+        if stream is None:
+            return b'', 0
+
+        chunks = bytearray()
+        total_size = 0
+        while True:
+            chunk = await stream.read(65536)
+            if not chunk:
+                break
+            total_size += len(chunk)
+            remaining = limit - len(chunks)
+            if remaining > 0:
+                chunks.extend(chunk[:remaining])
+
+        return bytes(chunks), total_size
 
     def _format_cli_error(self, message: str) -> str:
         message = ' '.join(message.split())
