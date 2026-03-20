@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import collections
+import datetime as _dt
 import enum
 import json
 import os
@@ -7,11 +9,13 @@ from typing import TYPE_CHECKING
 
 import pydantic
 
-from .errors import BoxValidationError
+from .errors import BoxError, BoxValidationError
 from .models import BUILTIN_PROFILES, BoxExecutionResult, BoxProfile, BoxSpec
 from .runtime import BoxRuntime
 
 _INT_ADAPTER = pydantic.TypeAdapter(int)
+_UTC = _dt.timezone.utc
+_MAX_RECENT_ERRORS = 50
 
 if TYPE_CHECKING:
     from ..core import app as core_app
@@ -31,6 +35,7 @@ class BoxService:
         self.allowed_host_mount_roots = self._load_allowed_host_mount_roots()
         self.default_host_workspace = self._load_default_host_workspace()
         self.profile = self._load_profile()
+        self._recent_errors: collections.deque[dict] = collections.deque(maxlen=_MAX_RECENT_ERRORS)
 
     async def initialize(self):
         await self.runtime.initialize()
@@ -48,7 +53,9 @@ class BoxService:
             spec = BoxSpec.model_validate(spec_payload)
         except pydantic.ValidationError as exc:
             first_error = exc.errors()[0]
-            raise BoxValidationError(first_error.get('msg', 'invalid sandbox_exec arguments')) from exc
+            err = BoxValidationError(first_error.get('msg', 'invalid sandbox_exec arguments'))
+            self._record_error(err, query)
+            raise err from exc
 
         self._validate_host_mount(spec)
         self.ap.logger.info(
@@ -56,7 +63,11 @@ class BoxService:
             f'query_id={query.query_id} '
             f'spec={json.dumps(self._summarize_spec(spec), ensure_ascii=False)}'
         )
-        result = await self.runtime.execute(spec)
+        try:
+            result = await self.runtime.execute(spec)
+        except BoxError as exc:
+            self._record_error(exc, query)
+            raise
         self.ap.logger.info(
             'LangBot Box result: '
             f'query_id={query.query_id} '
@@ -229,3 +240,24 @@ class BoxService:
 
         if normalized_timeout > profile.max_timeout_sec:
             params['timeout_sec'] = profile.max_timeout_sec
+
+    # ── Observability ─────────────────────────────────────────────────
+
+    def _record_error(self, exc: Exception, query: 'pipeline_query.Query'):
+        self._recent_errors.append({
+            'timestamp': _dt.datetime.now(_UTC).isoformat(),
+            'type': type(exc).__name__,
+            'message': str(exc),
+            'query_id': str(query.query_id),
+        })
+
+    def get_recent_errors(self) -> list[dict]:
+        return list(self._recent_errors)
+
+    async def get_status(self) -> dict:
+        runtime_status = await self.runtime.get_status()
+        return {
+            **runtime_status,
+            'profile': self.profile.name,
+            'recent_error_count': len(self._recent_errors),
+        }
