@@ -9,6 +9,8 @@ from .backend import BaseSandboxBackend, DockerBackend, PodmanBackend
 from .errors import BoxBackendUnavailableError, BoxSessionConflictError
 from .models import BoxExecutionResult, BoxExecutionStatus, BoxSessionInfo, BoxSpec
 
+_UTC = dt.timezone.utc
+
 
 @dataclasses.dataclass(slots=True)
 class _RuntimeSession:
@@ -48,7 +50,7 @@ class BoxRuntime:
             result = await (await self._get_backend()).exec(session.info, spec)
 
         async with self._lock:
-            now = dt.datetime.now(dt.UTC)
+            now = dt.datetime.now(_UTC)
             if spec.session_id in self._sessions:
                 self._sessions[spec.session_id].info.last_used_at = now
 
@@ -70,7 +72,7 @@ class BoxRuntime:
             existing = self._sessions.get(spec.session_id)
             if existing is not None:
                 self._assert_session_compatible(existing.info, spec)
-                existing.info.last_used_at = dt.datetime.now(dt.UTC)
+                existing.info.last_used_at = dt.datetime.now(_UTC)
                 self.logger.info(
                     'LangBot Box session reused: '
                     f'session_id={spec.session_id} '
@@ -121,7 +123,7 @@ class BoxRuntime:
         if self.session_ttl_sec <= 0:
             return
 
-        deadline = dt.datetime.now(dt.UTC) - dt.timedelta(seconds=self.session_ttl_sec)
+        deadline = dt.datetime.now(_UTC) - dt.timedelta(seconds=self.session_ttl_sec)
         expired_session_ids = [
             session_id
             for session_id, session in self._sessions.items()
@@ -163,4 +165,20 @@ class BoxRuntime:
         if session.host_path_mode != spec.host_path_mode:
             raise BoxSessionConflictError(
                 f'sandbox_exec session {spec.session_id} already exists with host_path_mode={session.host_path_mode.value}'
+            )
+        if session.cpus != spec.cpus:
+            raise BoxSessionConflictError(
+                f'sandbox_exec session {spec.session_id} already exists with cpus={session.cpus}'
+            )
+        if session.memory_mb != spec.memory_mb:
+            raise BoxSessionConflictError(
+                f'sandbox_exec session {spec.session_id} already exists with memory_mb={session.memory_mb}'
+            )
+        if session.pids_limit != spec.pids_limit:
+            raise BoxSessionConflictError(
+                f'sandbox_exec session {spec.session_id} already exists with pids_limit={session.pids_limit}'
+            )
+        if session.read_only_rootfs != spec.read_only_rootfs:
+            raise BoxSessionConflictError(
+                f'sandbox_exec session {spec.session_id} already exists with read_only_rootfs={session.read_only_rootfs}'
             )
