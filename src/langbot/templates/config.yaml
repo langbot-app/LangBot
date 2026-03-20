@@ -88,6 +88,7 @@ monitoring:
         # Cleanup check interval in hours
         check_interval_hours: 1
 box:
+    profile: 'default'
     default_host_workspace: './data/box-workspaces/default'
     allowed_host_mount_roots:
         - './data/box-workspaces'

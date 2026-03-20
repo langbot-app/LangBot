@@ -35,6 +35,11 @@ class BoxSpec(pydantic.BaseModel):
     image: str = DEFAULT_BOX_IMAGE
     host_path: str | None = None
     host_path_mode: BoxHostMountMode = BoxHostMountMode.READ_WRITE
+    # Resource limits
+    cpus: float = 1.0
+    memory_mb: int = 512
+    pids_limit: int = 128
+    read_only_rootfs: bool = True
 
     @pydantic.field_validator('cmd')
     @classmethod
@@ -57,6 +62,27 @@ class BoxSpec(pydantic.BaseModel):
     def validate_timeout_sec(cls, value: int) -> int:
         if value <= 0:
             raise ValueError('timeout_sec must be greater than 0')
+        return value
+
+    @pydantic.field_validator('cpus')
+    @classmethod
+    def validate_cpus(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError('cpus must be greater than 0')
+        return value
+
+    @pydantic.field_validator('memory_mb')
+    @classmethod
+    def validate_memory_mb(cls, value: int) -> int:
+        if value < 32:
+            raise ValueError('memory_mb must be at least 32')
+        return value
+
+    @pydantic.field_validator('pids_limit')
+    @classmethod
+    def validate_pids_limit(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError('pids_limit must be at least 1')
         return value
 
     @pydantic.field_validator('session_id')
@@ -91,6 +117,74 @@ class BoxSpec(pydantic.BaseModel):
         return self
 
 
+class BoxProfile(pydantic.BaseModel):
+    """Preset sandbox configuration.
+
+    Provides default values for BoxSpec fields and optionally locks fields
+    so that tool-call parameters cannot override them.
+    """
+
+    name: str
+    image: str = DEFAULT_BOX_IMAGE
+    network: BoxNetworkMode = BoxNetworkMode.OFF
+    timeout_sec: int = 30
+    host_path_mode: BoxHostMountMode = BoxHostMountMode.READ_WRITE
+    max_timeout_sec: int = 120
+    # Resource limits
+    cpus: float = 1.0
+    memory_mb: int = 512
+    pids_limit: int = 128
+    read_only_rootfs: bool = True
+    locked: frozenset[str] = frozenset()
+
+    model_config = pydantic.ConfigDict(frozen=True)
+
+
+BUILTIN_PROFILES: dict[str, BoxProfile] = {
+    'default': BoxProfile(
+        name='default',
+        network=BoxNetworkMode.OFF,
+        host_path_mode=BoxHostMountMode.READ_WRITE,
+        cpus=1.0,
+        memory_mb=512,
+        pids_limit=128,
+        read_only_rootfs=True,
+        max_timeout_sec=120,
+    ),
+    'offline_readonly': BoxProfile(
+        name='offline_readonly',
+        network=BoxNetworkMode.OFF,
+        host_path_mode=BoxHostMountMode.READ_ONLY,
+        cpus=0.5,
+        memory_mb=256,
+        pids_limit=64,
+        read_only_rootfs=True,
+        max_timeout_sec=60,
+        locked=frozenset({'network', 'host_path_mode', 'read_only_rootfs'}),
+    ),
+    'network_basic': BoxProfile(
+        name='network_basic',
+        network=BoxNetworkMode.ON,
+        host_path_mode=BoxHostMountMode.READ_WRITE,
+        cpus=1.0,
+        memory_mb=512,
+        pids_limit=128,
+        read_only_rootfs=True,
+        max_timeout_sec=120,
+    ),
+    'network_extended': BoxProfile(
+        name='network_extended',
+        network=BoxNetworkMode.ON,
+        host_path_mode=BoxHostMountMode.READ_WRITE,
+        cpus=2.0,
+        memory_mb=1024,
+        pids_limit=256,
+        read_only_rootfs=False,
+        max_timeout_sec=300,
+    ),
+}
+
+
 class BoxSessionInfo(pydantic.BaseModel):
     session_id: str
     backend_name: str
@@ -99,6 +193,10 @@ class BoxSessionInfo(pydantic.BaseModel):
     network: BoxNetworkMode
     host_path: str | None = None
     host_path_mode: BoxHostMountMode = BoxHostMountMode.READ_WRITE
+    cpus: float = 1.0
+    memory_mb: int = 512
+    pids_limit: int = 128
+    read_only_rootfs: bool = True
     created_at: dt.datetime
     last_used_at: dt.datetime
 

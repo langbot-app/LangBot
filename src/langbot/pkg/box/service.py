@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 import json
 import os
 from typing import TYPE_CHECKING
@@ -7,8 +8,10 @@ from typing import TYPE_CHECKING
 import pydantic
 
 from .errors import BoxValidationError
-from .models import BoxExecutionResult, BoxSpec
+from .models import BUILTIN_PROFILES, BoxExecutionResult, BoxProfile, BoxSpec
 from .runtime import BoxRuntime
+
+_INT_ADAPTER = pydantic.TypeAdapter(int)
 
 if TYPE_CHECKING:
     from ..core import app as core_app
@@ -27,6 +30,7 @@ class BoxService:
         self.output_limit_chars = output_limit_chars
         self.allowed_host_mount_roots = self._load_allowed_host_mount_roots()
         self.default_host_workspace = self._load_default_host_workspace()
+        self.profile = self._load_profile()
 
     async def initialize(self):
         await self.runtime.initialize()
@@ -37,6 +41,8 @@ class BoxService:
         spec_payload.setdefault('env', {})
         if spec_payload.get('host_path') in (None, '') and self.default_host_workspace is not None:
             spec_payload['host_path'] = self.default_host_workspace
+
+        self._apply_profile(spec_payload)
 
         try:
             spec = BoxSpec.model_validate(spec_payload)
@@ -81,7 +87,32 @@ class BoxService:
     def _truncate(self, text: str) -> tuple[str, bool]:
         if len(text) <= self.output_limit_chars:
             return text, False
-        return f'{text[: self.output_limit_chars]}...', True
+        if self.output_limit_chars <= 0:
+            return '', True
+
+        head_size = 0
+        tail_size = 0
+        notice = ''
+        # Recompute once the omitted count is known so the final payload
+        # stays within output_limit_chars even after adding the notice.
+        for _ in range(4):
+            omitted = max(len(text) - head_size - tail_size, 0)
+            notice = f'\n\n... [{omitted} characters truncated] ...\n\n'
+            available = self.output_limit_chars - len(notice)
+            if available <= 0:
+                return notice[: self.output_limit_chars], True
+
+            new_head_size = int(available * 0.6)
+            new_tail_size = available - new_head_size
+            if new_head_size == head_size and new_tail_size == tail_size:
+                break
+            head_size = new_head_size
+            tail_size = new_tail_size
+
+        head = text[:head_size]
+        tail = text[-tail_size:] if tail_size else ''
+        truncated = f'{head}{notice}{tail}'
+        return truncated[: self.output_limit_chars], True
 
     def _summarize_spec(self, spec: BoxSpec) -> dict:
         cmd = spec.cmd.strip()
@@ -96,6 +127,10 @@ class BoxService:
             'image': spec.image,
             'host_path': spec.host_path,
             'host_path_mode': spec.host_path_mode.value,
+            'cpus': spec.cpus,
+            'memory_mb': spec.memory_mb,
+            'pids_limit': spec.pids_limit,
+            'read_only_rootfs': spec.read_only_rootfs,
             'env_keys': sorted(spec.env.keys()),
             'cmd': cmd,
         }
@@ -157,3 +192,40 @@ class BoxService:
 
         allowed_roots = ', '.join(self.allowed_host_mount_roots)
         raise BoxValidationError(f'host_path is outside allowed_host_mount_roots: {allowed_roots}')
+
+    def _load_profile(self) -> BoxProfile:
+        box_config = getattr(self.ap, 'instance_config', None)
+        box_config_data = getattr(box_config, 'data', {}) if box_config is not None else {}
+        profile_name = str(box_config_data.get('box', {}).get('profile', 'default')).strip() or 'default'
+
+        profile = BUILTIN_PROFILES.get(profile_name)
+        if profile is None:
+            available = ', '.join(sorted(BUILTIN_PROFILES))
+            raise BoxValidationError(f"unknown box profile '{profile_name}', available profiles: {available}")
+        return profile
+
+    def _apply_profile(self, params: dict):
+        """Merge profile defaults into *params* in-place, enforce locked fields and clamp timeout."""
+        profile = self.profile
+        _PROFILE_FIELDS = (
+            'image', 'network', 'timeout_sec', 'host_path_mode',
+            'cpus', 'memory_mb', 'pids_limit', 'read_only_rootfs',
+        )
+
+        for field in _PROFILE_FIELDS:
+            profile_value = getattr(profile, field)
+            raw_value = profile_value.value if isinstance(profile_value, enum.Enum) else profile_value
+
+            if field in profile.locked:
+                params[field] = raw_value
+            elif field not in params:
+                params[field] = raw_value
+
+        timeout = params.get('timeout_sec')
+        try:
+            normalized_timeout = _INT_ADAPTER.validate_python(timeout)
+        except pydantic.ValidationError:
+            return
+
+        if normalized_timeout > profile.max_timeout_sec:
+            params['timeout_sec'] = profile.max_timeout_sec
