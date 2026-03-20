@@ -42,6 +42,25 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
                         photo_bytes = f.read()
 
                 components.append({'type': 'photo', 'photo': photo_bytes})
+            elif isinstance(component, platform_message.File):
+                file_bytes = None
+
+                if component.base64:
+                    # Strip data URI prefix if present (e.g. "data:application/pdf;base64,...")
+                    b64_data = component.base64
+                    if ';base64,' in b64_data:
+                        b64_data = b64_data.split(';base64,', 1)[1]
+                    file_bytes = base64.b64decode(b64_data)
+                elif component.url:
+                    session = httpclient.get_session()
+                    async with session.get(component.url) as response:
+                        file_bytes = await response.read()
+                elif component.path:
+                    with open(component.path, 'rb') as f:
+                        file_bytes = f.read()
+
+                file_name = getattr(component, 'name', None) or 'file'
+                components.append({'type': 'document', 'document': file_bytes, 'filename': file_name})
             elif isinstance(component, platform_message.Forward):
                 for node in component.node_list:
                     components.extend(await TelegramMessageConverter.yiri2target(node.message_chain, bot))
@@ -101,6 +120,27 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
                 platform_message.Voice(
                     base64=f'data:{file_format};base64,{base64.b64encode(file_bytes).decode("utf-8")}',
                     length=message.voice.duration,
+                )
+            )
+
+        if message.document:
+            if message.caption:
+                message_components.extend(parse_message_text(message.caption))
+
+            file = await message.document.get_file()
+            file_name = message.document.file_name or 'document'
+            file_size = message.document.file_size or 0
+            file_format = message.document.mime_type or 'application/octet-stream'
+
+            file_bytes = None
+            async with httpclient.get_session(trust_env=True).get(file.file_path) as response:
+                file_bytes = await response.read()
+
+            message_components.append(
+                platform_message.File(
+                    name=file_name,
+                    size=file_size,
+                    base64=f'data:{file_format};base64,{base64.b64encode(file_bytes).decode("utf-8")}',
                 )
             )
 
@@ -179,7 +219,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         application = ApplicationBuilder().token(config['token']).build()
         bot = application.bot
         application.add_handler(
-            MessageHandler(filters.TEXT | (filters.COMMAND) | filters.PHOTO | filters.VOICE, telegram_callback)
+            MessageHandler(filters.TEXT | (filters.COMMAND) | filters.PHOTO | filters.VOICE | filters.Document.ALL, telegram_callback)
         )
         super().__init__(
             config=config,
@@ -218,6 +258,13 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     continue
                 args['photo'] = telegram.InputFile(photo)
                 await self.bot.send_photo(**args)
+            elif component_type == 'document':
+                doc = component.get('document')
+                if doc is None:
+                    continue
+                filename = component.get('filename', 'file')
+                args['document'] = telegram.InputFile(doc, filename=filename)
+                await self.bot.send_document(**args)
 
     async def reply_message(
         self,
