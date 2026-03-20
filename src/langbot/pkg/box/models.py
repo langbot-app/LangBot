@@ -10,6 +10,13 @@ DEFAULT_BOX_IMAGE = 'python:3.11-slim'
 DEFAULT_BOX_MOUNT_PATH = '/workspace'
 
 
+def get_box_config(ap) -> dict:
+    """Return the 'box' section from instance config, with safe fallbacks."""
+    instance_config = getattr(ap, 'instance_config', None)
+    config_data = getattr(instance_config, 'data', {}) if instance_config is not None else {}
+    return config_data.get('box', {})
+
+
 class BoxNetworkMode(str, enum.Enum):
     OFF = 'off'
     ON = 'on'
@@ -26,7 +33,7 @@ class BoxHostMountMode(str, enum.Enum):
 
 
 class BoxSpec(pydantic.BaseModel):
-    cmd: str
+    cmd: str = ''
     workdir: str = '/workspace'
     timeout_sec: int = 30
     network: BoxNetworkMode = BoxNetworkMode.OFF
@@ -44,10 +51,7 @@ class BoxSpec(pydantic.BaseModel):
     @pydantic.field_validator('cmd')
     @classmethod
     def validate_cmd(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError('cmd must not be empty')
-        return value
+        return value.strip()
 
     @pydantic.field_validator('workdir')
     @classmethod

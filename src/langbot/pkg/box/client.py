@@ -1,4 +1,4 @@
-"""BoxRuntimeClient abstraction for local and remote Box Runtime access."""
+"""BoxRuntimeClient abstraction for remote Box Runtime access."""
 
 from __future__ import annotations
 
@@ -16,8 +16,7 @@ from .errors import (
     BoxSessionNotFoundError,
     BoxValidationError,
 )
-from .models import BoxExecutionResult, BoxExecutionStatus, BoxSpec
-from .runtime import BoxRuntime
+from .models import BoxExecutionResult, BoxExecutionStatus, BoxSpec, get_box_config
 from ..utils import platform
 
 if TYPE_CHECKING:
@@ -34,25 +33,13 @@ _ERROR_CODE_MAP: dict[str, type[BoxError]] = {
 
 
 def resolve_box_runtime_url(ap: 'core_app.Application') -> str:
-    box_config = getattr(ap, 'instance_config', None)
-    box_config_data = getattr(box_config, 'data', {}) if box_config is not None else {}
-    runtime_url = str(box_config_data.get('box', {}).get('runtime_url', '')).strip()
+    runtime_url = str(get_box_config(ap).get('runtime_url', '')).strip()
     if runtime_url:
         return runtime_url
 
     if platform.get_platform() == 'docker':
         return 'http://langbot_box_runtime:5410'
     return 'http://127.0.0.1:5410'
-
-
-def create_box_runtime_client(
-    ap: 'core_app.Application',
-    runtime_url: str | None = None,
-) -> 'RemoteBoxRuntimeClient':
-    return RemoteBoxRuntimeClient(
-        base_url=runtime_url or resolve_box_runtime_url(ap),
-        logger=ap.logger,
-    )
 
 
 class BoxRuntimeClient(abc.ABC):
@@ -81,41 +68,6 @@ class BoxRuntimeClient(abc.ABC):
 
     @abc.abstractmethod
     async def create_session(self, spec: BoxSpec) -> dict: ...
-
-
-class LocalBoxRuntimeClient(BoxRuntimeClient):
-    """In-process client that wraps a real BoxRuntime directly."""
-
-    def __init__(self, logger: logging.Logger, runtime: BoxRuntime | None = None):
-        self._runtime = runtime or BoxRuntime(logger=logger)
-
-    @property
-    def runtime(self) -> BoxRuntime:
-        return self._runtime
-
-    async def initialize(self) -> None:
-        await self._runtime.initialize()
-
-    async def execute(self, spec: BoxSpec) -> BoxExecutionResult:
-        return await self._runtime.execute(spec)
-
-    async def shutdown(self) -> None:
-        await self._runtime.shutdown()
-
-    async def get_status(self) -> dict:
-        return await self._runtime.get_status()
-
-    async def get_sessions(self) -> list[dict]:
-        return self._runtime.get_sessions()
-
-    async def get_backend_info(self) -> dict:
-        return await self._runtime.get_backend_info()
-
-    async def delete_session(self, session_id: str) -> None:
-        await self._runtime.delete_session(session_id)
-
-    async def create_session(self, spec: BoxSpec) -> dict:
-        return await self._runtime.create_session(spec)
 
 
 class RemoteBoxRuntimeClient(BoxRuntimeClient):
