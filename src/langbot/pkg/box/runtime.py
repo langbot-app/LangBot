@@ -65,6 +65,46 @@ class BoxRuntime:
             for session_id in session_ids:
                 await self._drop_session_locked(session_id)
 
+    # ── Observability ─────────────────────────────────────────────────
+
+    async def get_backend_info(self) -> dict:
+        backend = self._backend
+        if backend is None:
+            return {'name': None, 'available': False}
+        try:
+            available = await backend.is_available()
+        except Exception:
+            available = False
+        return {'name': backend.name, 'available': available}
+
+    def get_sessions(self) -> list[dict]:
+        return [
+            {
+                'session_id': s.info.session_id,
+                'backend_name': s.info.backend_name,
+                'backend_session_id': s.info.backend_session_id,
+                'image': s.info.image,
+                'network': s.info.network.value,
+                'host_path': s.info.host_path,
+                'host_path_mode': s.info.host_path_mode.value,
+                'cpus': s.info.cpus,
+                'memory_mb': s.info.memory_mb,
+                'pids_limit': s.info.pids_limit,
+                'read_only_rootfs': s.info.read_only_rootfs,
+                'created_at': s.info.created_at.isoformat(),
+                'last_used_at': s.info.last_used_at.isoformat(),
+            }
+            for s in self._sessions.values()
+        ]
+
+    async def get_status(self) -> dict:
+        backend_info = await self.get_backend_info()
+        return {
+            'backend': backend_info,
+            'active_sessions': len(self._sessions),
+            'session_ttl_sec': self.session_ttl_sec,
+        }
+
     async def _get_or_create_session(self, spec: BoxSpec) -> _RuntimeSession:
         async with self._lock:
             await self._reap_expired_sessions_locked()
