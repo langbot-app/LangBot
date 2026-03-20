@@ -545,3 +545,104 @@ def test_box_spec_validates_resource_limits():
         BoxSpec.model_validate({'cmd': 'echo', 'session_id': 's1', 'memory_mb': 10})
     with pytest.raises(Exception):
         BoxSpec.model_validate({'cmd': 'echo', 'session_id': 's1', 'pids_limit': 0})
+
+
+# ── Observability tests ───────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_runtime_get_status_reports_backend_and_sessions():
+    logger = Mock()
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
+    await runtime.initialize()
+
+    status = await runtime.get_status()
+    assert status['backend']['name'] == 'fake'
+    assert status['backend']['available'] is True
+    assert status['active_sessions'] == 0
+
+    await runtime.execute(BoxSpec.model_validate({'cmd': 'echo', 'session_id': 'obs-1'}))
+    status = await runtime.get_status()
+    assert status['active_sessions'] == 1
+
+
+@pytest.mark.asyncio
+async def test_runtime_get_sessions_returns_session_info():
+    logger = Mock()
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
+    await runtime.initialize()
+
+    await runtime.execute(BoxSpec.model_validate({'cmd': 'echo', 'session_id': 'obs-2'}))
+    sessions = runtime.get_sessions()
+    assert len(sessions) == 1
+    assert sessions[0]['session_id'] == 'obs-2'
+    assert sessions[0]['backend_name'] == 'fake'
+    assert 'created_at' in sessions[0]
+    assert 'last_used_at' in sessions[0]
+
+
+@pytest.mark.asyncio
+async def test_runtime_get_backend_info_when_no_backend():
+    logger = Mock()
+    backend = FakeBackend(logger, available=False)
+    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
+    await runtime.initialize()
+
+    info = await runtime.get_backend_info()
+    assert info['name'] is None
+    assert info['available'] is False
+
+
+@pytest.mark.asyncio
+async def test_service_records_errors_on_failure():
+    logger = Mock()
+    backend = FakeBackend(logger, available=False)
+    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
+    service = BoxService(make_app(logger), runtime=runtime)
+    await service.initialize()
+
+    with pytest.raises(Exception):
+        await service.execute_sandbox_tool({'cmd': 'echo hello'}, make_query(50))
+
+    errors = service.get_recent_errors()
+    assert len(errors) == 1
+    assert errors[0]['type'] == 'BoxBackendUnavailableError'
+    assert errors[0]['query_id'] == '50'
+    assert 'timestamp' in errors[0]
+
+
+@pytest.mark.asyncio
+async def test_service_error_ring_buffer_capped():
+    logger = Mock()
+    backend = FakeBackend(logger, available=False)
+    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
+    service = BoxService(make_app(logger), runtime=runtime)
+    await service.initialize()
+
+    for i in range(60):
+        with pytest.raises(Exception):
+            await service.execute_sandbox_tool({'cmd': 'fail'}, make_query(100 + i))
+
+    errors = service.get_recent_errors()
+    assert len(errors) == 50
+    # Oldest should have been evicted, newest kept
+    assert errors[0]['query_id'] == '110'
+    assert errors[-1]['query_id'] == '159'
+
+
+@pytest.mark.asyncio
+async def test_service_get_status_aggregates_runtime_and_profile():
+    logger = Mock()
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
+    service = BoxService(make_app(logger), runtime=runtime)
+    await service.initialize()
+
+    status = await service.get_status()
+    assert status['profile'] == 'default'
+    assert status['backend']['name'] == 'fake'
+    assert status['backend']['available'] is True
+    assert status['active_sessions'] == 0
+    assert status['recent_error_count'] == 0
