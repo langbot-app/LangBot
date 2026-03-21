@@ -20,13 +20,14 @@ import subprocess
 
 import aiohttp
 import pytest
+from aiohttp import web
 from aiohttp.test_utils import TestServer
 
-from langbot.pkg.box.client import RemoteBoxRuntimeClient
+from langbot.pkg.box.client import ActionRPCBoxClient
 from langbot.pkg.box.errors import BoxSessionNotFoundError
 from langbot.pkg.box.models import BoxManagedProcessSpec, BoxManagedProcessStatus, BoxSpec
 from langbot.pkg.box.runtime import BoxRuntime
-from langbot.pkg.box.server import create_app as create_server_app
+from langbot.pkg.box.server import BoxServerHandler, create_ws_relay_app
 
 _logger = logging.getLogger('test.box.mcp_integration')
 
@@ -69,23 +70,71 @@ requires_socket = pytest.mark.skipif(
 )
 
 
+# ── Helpers ──────────────────────────────────────────────────────────
+
+
+class _QueueConnection:
+    """In-process Connection backed by asyncio Queues — no real IO."""
+
+    def __init__(self, rx: asyncio.Queue[str], tx: asyncio.Queue[str]):
+        self._rx = rx
+        self._tx = tx
+
+    async def send(self, message: str) -> None:
+        await self._tx.put(message)
+
+    async def receive(self) -> str:
+        return await self._rx.get()
+
+    async def close(self) -> None:
+        pass
+
+
+async def _make_rpc_pair(runtime: BoxRuntime):
+    """Create an in-process RPC pair connected via queues."""
+    from langbot_plugin.runtime.io.handler import Handler
+
+    c2s: asyncio.Queue[str] = asyncio.Queue()
+    s2c: asyncio.Queue[str] = asyncio.Queue()
+    client_conn = _QueueConnection(rx=s2c, tx=c2s)
+    server_conn = _QueueConnection(rx=c2s, tx=s2c)
+
+    server_handler = BoxServerHandler(server_conn, runtime)
+    server_task = asyncio.create_task(server_handler.run())
+
+    client_handler = Handler.__new__(Handler)
+    Handler.__init__(client_handler, client_conn)
+    client_task = asyncio.create_task(client_handler.run())
+
+    client = ActionRPCBoxClient(logger=_logger)
+    client.set_handler(client_handler)
+
+    return client, server_task, client_task
+
+
 # ── Fixtures ──────────────────────────────────────────────────────────
 
 
 @pytest.fixture
 async def box_server():
-    """Yield a (TestServer, RemoteBoxRuntimeClient) backed by a real BoxRuntime."""
+    """Yield a (ws_relay_url, ActionRPCBoxClient) backed by a real BoxRuntime."""
     runtime = BoxRuntime(logger=_logger)
-    app = create_server_app(runtime)
-    server = TestServer(app)
-    await server.start_server()
-    client = RemoteBoxRuntimeClient(
-        base_url=str(server.make_url('')),
-        logger=_logger,
-    )
-    yield server, client
-    await client.shutdown()
-    await server.close()
+    await runtime.initialize()
+
+    # Start ws relay for managed process attach
+    ws_app = create_ws_relay_app(runtime)
+    ws_server = TestServer(ws_app)
+    await ws_server.start_server()
+
+    client, server_task, client_task = await _make_rpc_pair(runtime)
+
+    ws_relay_url = str(ws_server.make_url(''))
+    yield ws_relay_url, client
+
+    server_task.cancel()
+    client_task.cancel()
+    await runtime.shutdown()
+    await ws_server.close()
 
 
 # ── 1. Managed process lifecycle ─────────────────────────────────────
@@ -96,7 +145,7 @@ async def box_server():
 @pytest.mark.asyncio
 async def test_managed_process_start_and_query(box_server):
     """Start a managed process and query its status."""
-    server, client = box_server
+    ws_relay_url, client = box_server
 
     # Create session
     spec = BoxSpec(
@@ -133,7 +182,7 @@ async def test_managed_process_start_and_query(box_server):
 @pytest.mark.asyncio
 async def test_ws_stdio_attach_echo(box_server):
     """Attach to a managed process via WebSocket and verify bidirectional IO."""
-    server, client = box_server
+    ws_relay_url, client = box_server
 
     spec = BoxSpec(
         cmd='',
@@ -151,8 +200,8 @@ async def test_ws_stdio_attach_echo(box_server):
     )
     await client.start_managed_process('mcp-int-ws', proc_spec)
 
-    # Connect via WebSocket
-    ws_url = client.get_managed_process_websocket_url('mcp-int-ws')
+    # Connect via WebSocket (ws relay)
+    ws_url = client.get_managed_process_websocket_url('mcp-int-ws', ws_relay_url)
     session = aiohttp.ClientSession()
     try:
         async with session.ws_connect(ws_url) as ws:
@@ -177,7 +226,7 @@ async def test_ws_stdio_attach_echo(box_server):
 @pytest.mark.asyncio
 async def test_delete_session_cleans_up(box_server):
     """After deleting a session, it should no longer exist."""
-    server, client = box_server
+    ws_relay_url, client = box_server
 
     spec = BoxSpec(
         cmd='',
@@ -203,15 +252,15 @@ async def test_delete_session_cleans_up(box_server):
         await client.get_session('mcp-int-cleanup')
 
 
-# ── 4. GET /v1/sessions/{id} ────────────────────────────────────────
+# ── 4. GET session details ────────────────────────────────────────
 
 
 @requires_container
 @requires_socket
 @pytest.mark.asyncio
 async def test_get_session_returns_details(box_server):
-    """GET single session returns session details and managed process info."""
-    server, client = box_server
+    """Get single session returns session details and managed process info."""
+    ws_relay_url, client = box_server
 
     spec = BoxSpec(
         cmd='',
@@ -251,7 +300,7 @@ async def test_get_session_returns_details(box_server):
 @pytest.mark.asyncio
 async def test_process_exit_detected(box_server):
     """When a managed process exits, its status should reflect EXITED."""
-    server, client = box_server
+    ws_relay_url, client = box_server
 
     spec = BoxSpec(
         cmd='',
@@ -287,7 +336,7 @@ async def test_process_exit_detected(box_server):
 @pytest.mark.asyncio
 async def test_orphan_cleanup_preserves_own_containers(box_server):
     """Orphan cleanup should not remove containers belonging to the current instance."""
-    server, client = box_server
+    ws_relay_url, client = box_server
 
     # Create a session (container gets current instance ID label)
     spec = BoxSpec(

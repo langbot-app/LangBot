@@ -1,7 +1,10 @@
-"""Standalone HTTP service exposing BoxRuntime as a REST API.
+"""Standalone Box Runtime service exposing BoxRuntime via action RPC.
 
-Usage:
-    python -m langbot.pkg.box.server [--host 0.0.0.0] [--port 5410]
+Usage (stdio, launched by LangBot as subprocess):
+    python -m langbot.pkg.box.server
+
+Usage (ws + ws relay, for remote/docker mode):
+    python -m langbot.pkg.box.server --port 5410
 """
 
 from __future__ import annotations
@@ -10,45 +13,28 @@ import argparse
 import asyncio
 import datetime as dt
 import logging
+import sys
+from typing import Any
 
 import pydantic
 from aiohttp import web
 
+from langbot_plugin.entities.io.actions.enums import CommonAction
+from langbot_plugin.entities.io.resp import ActionResponse
+from langbot_plugin.runtime.io.connection import Connection
+from langbot_plugin.runtime.io.handler import Handler
+
+from .actions import LangBotToBoxAction
 from .errors import (
-    BoxBackendUnavailableError,
     BoxError,
     BoxManagedProcessConflictError,
     BoxManagedProcessNotFoundError,
-    BoxSessionConflictError,
     BoxSessionNotFoundError,
-    BoxValidationError,
 )
 from .models import BoxExecutionResult, BoxManagedProcessSpec, BoxSpec
 from .runtime import BoxRuntime
 
 logger = logging.getLogger('langbot.box.server')
-
-_ERROR_MAP: dict[type, tuple[int, str]] = {
-    BoxValidationError: (400, 'validation_error'),
-    BoxSessionNotFoundError: (404, 'session_not_found'),
-    BoxSessionConflictError: (409, 'session_conflict'),
-    BoxManagedProcessNotFoundError: (404, 'managed_process_not_found'),
-    BoxManagedProcessConflictError: (409, 'managed_process_conflict'),
-    BoxBackendUnavailableError: (503, 'backend_unavailable'),
-}
-
-
-def _error_response(exc: Exception) -> web.Response:
-    for exc_type, (status, code) in _ERROR_MAP.items():
-        if isinstance(exc, exc_type):
-            return web.json_response(
-                {'error': {'code': code, 'message': str(exc)}},
-                status=status,
-            )
-    return web.json_response(
-        {'error': {'code': 'internal_error', 'message': str(exc)}},
-        status=500,
-    )
 
 
 def _result_to_dict(result: BoxExecutionResult) -> dict:
@@ -63,111 +49,98 @@ def _result_to_dict(result: BoxExecutionResult) -> dict:
     }
 
 
-async def handle_exec(request: web.Request) -> web.Response:
-    runtime: BoxRuntime = request.app['runtime']
-    try:
-        body = await request.json()
-        session_id = request.match_info['session_id']
-        body['session_id'] = session_id
-        spec = BoxSpec.model_validate(body)
-        result = await runtime.execute(spec)
-        return web.json_response(_result_to_dict(result))
-    except pydantic.ValidationError as exc:
-        return web.json_response(
-            {'error': {'code': 'validation_error', 'message': str(exc)}},
-            status=400,
-        )
-    except BoxError as exc:
-        return _error_response(exc)
+class BoxServerHandler(Handler):
+    """Server-side handler that registers box actions backed by BoxRuntime."""
+
+    name = 'BoxServerHandler'
+
+    def __init__(self, connection: Connection, runtime: BoxRuntime):
+        super().__init__(connection)
+        self._runtime = runtime
+        self._register_actions()
+
+    def _register_actions(self) -> None:
+
+        @self.action(CommonAction.PING)
+        async def ping(data: dict[str, Any]) -> ActionResponse:
+            return ActionResponse.success({})
+
+        @self.action(LangBotToBoxAction.HEALTH)
+        async def health(data: dict[str, Any]) -> ActionResponse:
+            info = await self._runtime.get_backend_info()
+            return ActionResponse.success(info)
+
+        @self.action(LangBotToBoxAction.STATUS)
+        async def status(data: dict[str, Any]) -> ActionResponse:
+            result = await self._runtime.get_status()
+            return ActionResponse.success(result)
+
+        @self.action(LangBotToBoxAction.EXEC)
+        async def exec_cmd(data: dict[str, Any]) -> ActionResponse:
+            try:
+                spec = BoxSpec.model_validate(data)
+            except pydantic.ValidationError as exc:
+                return ActionResponse.error(f'BoxValidationError: {exc}')
+            result = await self._runtime.execute(spec)
+            return ActionResponse.success(_result_to_dict(result))
+
+        @self.action(LangBotToBoxAction.CREATE_SESSION)
+        async def create_session(data: dict[str, Any]) -> ActionResponse:
+            try:
+                spec = BoxSpec.model_validate(data)
+            except pydantic.ValidationError as exc:
+                return ActionResponse.error(f'BoxValidationError: {exc}')
+            info = await self._runtime.create_session(spec)
+            return ActionResponse.success(info)
+
+        @self.action(LangBotToBoxAction.GET_SESSION)
+        async def get_session(data: dict[str, Any]) -> ActionResponse:
+            return ActionResponse.success(self._runtime.get_session(data['session_id']))
+
+        @self.action(LangBotToBoxAction.GET_SESSIONS)
+        async def get_sessions(data: dict[str, Any]) -> ActionResponse:
+            return ActionResponse.success({'sessions': self._runtime.get_sessions()})
+
+        @self.action(LangBotToBoxAction.DELETE_SESSION)
+        async def delete_session(data: dict[str, Any]) -> ActionResponse:
+            await self._runtime.delete_session(data['session_id'])
+            return ActionResponse.success({'deleted': data['session_id']})
+
+        @self.action(LangBotToBoxAction.START_MANAGED_PROCESS)
+        async def start_managed_process(data: dict[str, Any]) -> ActionResponse:
+            session_id = data['session_id']
+            try:
+                spec = BoxManagedProcessSpec.model_validate(data['spec'])
+            except pydantic.ValidationError as exc:
+                return ActionResponse.error(f'BoxValidationError: {exc}')
+            info = await self._runtime.start_managed_process(session_id, spec)
+            return ActionResponse.success(info)
+
+        @self.action(LangBotToBoxAction.GET_MANAGED_PROCESS)
+        async def get_managed_process(data: dict[str, Any]) -> ActionResponse:
+            return ActionResponse.success(
+                self._runtime.get_managed_process(data['session_id'])
+            )
+
+        @self.action(LangBotToBoxAction.GET_BACKEND_INFO)
+        async def get_backend_info(data: dict[str, Any]) -> ActionResponse:
+            info = await self._runtime.get_backend_info()
+            return ActionResponse.success(info)
+
+        @self.action(LangBotToBoxAction.SHUTDOWN)
+        async def shutdown(data: dict[str, Any]) -> ActionResponse:
+            await self._runtime.shutdown()
+            return ActionResponse.success({})
 
 
-async def handle_create_session(request: web.Request) -> web.Response:
-    runtime: BoxRuntime = request.app['runtime']
-    try:
-        body = await request.json()
-        session_id = request.match_info['session_id']
-        body['session_id'] = session_id
-        spec = BoxSpec.model_validate(body)
-        session_info = await runtime.create_session(spec)
-        return web.json_response(session_info, status=201)
-    except pydantic.ValidationError as exc:
-        return web.json_response(
-            {'error': {'code': 'validation_error', 'message': str(exc)}},
-            status=400,
-        )
-    except BoxError as exc:
-        return _error_response(exc)
+# ── Managed process WebSocket relay (aiohttp) ────────────────────────
 
 
-async def handle_get_sessions(request: web.Request) -> web.Response:
-    runtime: BoxRuntime = request.app['runtime']
-    try:
-        return web.json_response(runtime.get_sessions())
-    except BoxError as exc:
-        return _error_response(exc)
-
-
-async def handle_delete_session(request: web.Request) -> web.Response:
-    runtime: BoxRuntime = request.app['runtime']
-    session_id = request.match_info['session_id']
-    try:
-        await runtime.delete_session(session_id)
-        return web.json_response({'deleted': session_id})
-    except BoxError as exc:
-        return _error_response(exc)
-
-
-async def handle_get_session(request: web.Request) -> web.Response:
-    runtime: BoxRuntime = request.app['runtime']
-    session_id = request.match_info['session_id']
-    try:
-        return web.json_response(runtime.get_session(session_id))
-    except BoxError as exc:
-        return _error_response(exc)
-
-
-async def handle_status(request: web.Request) -> web.Response:
-    runtime: BoxRuntime = request.app['runtime']
-    try:
-        status = await runtime.get_status()
-        return web.json_response(status)
-    except BoxError as exc:
-        return _error_response(exc)
-
-
-async def handle_health(request: web.Request) -> web.Response:
-    runtime: BoxRuntime = request.app['runtime']
-    try:
-        info = await runtime.get_backend_info()
-        return web.json_response(info)
-    except BoxError as exc:
-        return _error_response(exc)
-
-
-async def handle_start_managed_process(request: web.Request) -> web.Response:
-    runtime: BoxRuntime = request.app['runtime']
-    session_id = request.match_info['session_id']
-    try:
-        body = await request.json()
-        spec = BoxManagedProcessSpec.model_validate(body)
-        process_info = await runtime.start_managed_process(session_id, spec)
-        return web.json_response(process_info, status=201)
-    except pydantic.ValidationError as exc:
-        return web.json_response(
-            {'error': {'code': 'validation_error', 'message': str(exc)}},
-            status=400,
-        )
-    except BoxError as exc:
-        return _error_response(exc)
-
-
-async def handle_get_managed_process(request: web.Request) -> web.Response:
-    runtime: BoxRuntime = request.app['runtime']
-    session_id = request.match_info['session_id']
-    try:
-        return web.json_response(runtime.get_managed_process(session_id))
-    except BoxError as exc:
-        return _error_response(exc)
+def _error_response(exc: Exception) -> web.Response:
+    return web.json_response(
+        {'error': {'code': type(exc).__name__, 'message': str(exc)}},
+        status=400,
+    )
 
 
 async def handle_managed_process_ws(request: web.Request) -> web.StreamResponse:
@@ -229,50 +202,67 @@ async def handle_managed_process_ws(request: web.Request) -> web.StreamResponse:
     return ws
 
 
-def create_app(runtime: BoxRuntime | None = None) -> web.Application:
-    """Create the aiohttp Application with all routes.
-
-    If *runtime* is ``None`` a new ``BoxRuntime`` is created using the module
-    logger.
-    """
-    if runtime is None:
-        runtime = BoxRuntime(logger=logger)
-
+def create_ws_relay_app(runtime: BoxRuntime) -> web.Application:
+    """Create a minimal aiohttp app that only serves the managed-process ws relay."""
     app = web.Application()
     app['runtime'] = runtime
-
-    app.router.add_post('/v1/sessions/{session_id}/exec', handle_exec)
-    app.router.add_post('/v1/sessions/{session_id}', handle_create_session)
-    app.router.add_get('/v1/sessions/{session_id}', handle_get_session)
-    app.router.add_get('/v1/sessions', handle_get_sessions)
-    app.router.add_delete('/v1/sessions/{session_id}', handle_delete_session)
-    app.router.add_post('/v1/sessions/{session_id}/managed-process', handle_start_managed_process)
-    app.router.add_get('/v1/sessions/{session_id}/managed-process', handle_get_managed_process)
     app.router.add_get('/v1/sessions/{session_id}/managed-process/ws', handle_managed_process_ws)
-    app.router.add_get('/v1/status', handle_status)
-    app.router.add_get('/v1/health', handle_health)
-
-    async def on_startup(_app: web.Application) -> None:
-        await _app['runtime'].initialize()
-
-    async def on_shutdown(_app: web.Application) -> None:
-        await _app['runtime'].shutdown()
-
-    app.on_startup.append(on_startup)
-    app.on_shutdown.append(on_shutdown)
-
     return app
 
 
+# ── Entry point ──────────────────────────────────────────────────────
+
+
+async def _run_server(host: str, port: int, mode: str) -> None:
+    runtime = BoxRuntime(logger=logger)
+    await runtime.initialize()
+
+    # Start aiohttp for ws relay (non-fatal — managed process attach
+    # degrades gracefully if the port is unavailable).
+    runner: web.AppRunner | None = None
+    try:
+        ws_app = create_ws_relay_app(runtime)
+        runner = web.AppRunner(ws_app)
+        await runner.setup()
+        site = web.TCPSite(runner, host, port)
+        await site.start()
+        logger.info(f'Box ws relay listening on {host}:{port}')
+    except OSError as exc:
+        logger.warning(f'Box ws relay failed to bind {host}:{port}: {exc}')
+        logger.warning('Managed process WebSocket attach will be unavailable.')
+
+    async def new_connection_callback(connection: Connection) -> None:
+        handler = BoxServerHandler(connection, runtime)
+        await handler.run()
+
+    try:
+        if mode == 'stdio':
+            from langbot_plugin.runtime.io.controllers.stdio.server import StdioServerController
+            ctrl = StdioServerController()
+            await ctrl.run(new_connection_callback)
+        else:
+            from langbot_plugin.runtime.io.controllers.ws.server import WebSocketServerController
+            # Action RPC uses port+1 to avoid conflict with ws relay
+            rpc_port = port + 1
+            logger.info(f'Box action RPC (ws) listening on {host}:{rpc_port}')
+            ctrl = WebSocketServerController(rpc_port)
+            await ctrl.run(new_connection_callback)
+    finally:
+        await runtime.shutdown()
+        if runner is not None:
+            await runner.cleanup()
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description='LangBot Box Runtime HTTP Service')
+    parser = argparse.ArgumentParser(description='LangBot Box Runtime Service')
     parser.add_argument('--host', default='0.0.0.0', help='Bind address')
-    parser.add_argument('--port', type=int, default=5410, help='Bind port')
+    parser.add_argument('--port', type=int, default=5410, help='Bind port (ws relay)')
+    parser.add_argument('--mode', choices=['stdio', 'ws'], default='stdio',
+                        help='Control channel transport (default: stdio)')
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO)
-    app = create_app()
-    web.run_app(app, host=args.host, port=args.port)
+    logging.basicConfig(level=logging.INFO, stream=sys.stderr)
+    asyncio.run(_run_server(args.host, args.port, args.mode))
 
 
 if __name__ == '__main__':
