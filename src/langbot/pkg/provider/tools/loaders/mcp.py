@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import enum
+import os
 import typing
 from contextlib import AsyncExitStack
 import traceback
@@ -9,11 +10,13 @@ import sqlalchemy
 import asyncio
 import httpx
 
+import pydantic
 import uuid as uuid_module
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamable_http_client
+from mcp.client.websocket import websocket_client
 
 from .. import loader
 from ....core import app
@@ -26,6 +29,27 @@ class MCPSessionStatus(enum.Enum):
     CONNECTING = 'connecting'
     CONNECTED = 'connected'
     ERROR = 'error'
+
+
+_VENV_DIRS = frozenset({'.venv', 'venv', 'env', '.env'})
+_VENV_BIN_DIRS = frozenset({'bin', 'Scripts'})
+
+
+class MCPServerBoxConfig(pydantic.BaseModel):
+    """Structured configuration for running an MCP server inside a Box container."""
+
+    image: str | None = None
+    network: str = 'on'  # MCP servers need network for dependency installation
+    host_path: str | None = None
+    host_path_mode: str = 'ro'  # MCP servers default to read-only mount
+    env: dict[str, str] = pydantic.Field(default_factory=dict)
+    startup_timeout_sec: int = 120  # Longer default to allow pip install
+    cpus: float | None = None
+    memory_mb: int | None = None
+    pids_limit: int | None = None
+    read_only_rootfs: bool | None = None
+
+    model_config = pydantic.ConfigDict(extra='ignore')
 
 
 class RuntimeMCPSession:
@@ -75,7 +99,16 @@ class RuntimeMCPSession:
         self._shutdown_event = asyncio.Event()
         self._ready_event = asyncio.Event()
 
+        # Parse box config once
+        self.box_config = MCPServerBoxConfig.model_validate(
+            server_config.get('box', {})
+        )
+
     async def _init_stdio_python_server(self):
+        if self._uses_box_stdio():
+            await self._init_box_stdio_server()
+            return
+
         server_params = StdioServerParameters(
             command=self.server_config['command'],
             args=self.server_config['args'],
@@ -88,6 +121,52 @@ class RuntimeMCPSession:
 
         self.session = await self.exit_stack.enter_async_context(ClientSession(stdio, write))
 
+        await self.session.initialize()
+
+    async def _init_box_stdio_server(self):
+        box_service = self.ap.box_service
+        session_id = self._build_box_session_id()
+        host_path = self._resolve_host_path()
+        session_payload = self._build_box_session_payload(session_id, host_path)
+
+        # MCP server paths are admin-configured, skip host_mount_roots validation
+        await box_service.create_session(
+            session_payload,
+            skip_host_mount_validation=True,
+        )
+
+        # Install dependencies inside the container before starting the MCP server
+        if host_path:
+            install_cmd = self._detect_install_command(host_path)
+            if install_cmd:
+                self.ap.logger.info(
+                    f'MCP server {self.server_name}: installing dependencies in Box '
+                    f'with: {install_cmd}'
+                )
+                # Build an exec spec that matches the existing session config
+                # to pass the compatibility check.
+                exec_payload = dict(session_payload)
+                exec_payload['cmd'] = install_cmd
+                exec_payload['timeout_sec'] = self.box_config.startup_timeout_sec or 120
+                result = await box_service.client.execute(
+                    box_service.build_spec(exec_payload, skip_host_mount_validation=True)
+                )
+                if not result.ok:
+                    stderr_preview = (result.stderr or '')[:500]
+                    raise Exception(
+                        f'Dependency install failed (exit code {result.exit_code}): '
+                        f'{stderr_preview}'
+                    )
+
+        await box_service.start_managed_process(
+            session_id,
+            self._build_box_process_payload(host_path),
+        )
+
+        websocket_url = box_service.get_managed_process_websocket_url(session_id)
+        transport = await self.exit_stack.enter_async_context(websocket_client(websocket_url))
+        read_stream, write_stream = transport
+        self.session = await self.exit_stack.enter_async_context(ClientSession(read_stream, write_stream))
         await self.session.initialize()
 
     async def _init_sse_server(self):
@@ -124,8 +203,11 @@ class RuntimeMCPSession:
 
         await self.session.initialize()
 
+    _MAX_RETRIES = 3
+    _RETRY_DELAYS = [2, 4, 8]
+
     async def _lifecycle_loop(self):
-        """在后台任务中管理整个MCP会话的生命周期"""
+        """Manage the full MCP session lifecycle in a background task."""
         try:
             if self.server_config['mode'] == 'stdio':
                 await self._init_stdio_python_server()
@@ -134,49 +216,111 @@ class RuntimeMCPSession:
             elif self.server_config['mode'] == 'http':
                 await self._init_streamable_http_server()
             else:
-                raise ValueError(f'无法识别 MCP 服务器类型: {self.server_name}: {self.server_config}')
+                raise ValueError(f'Unknown MCP server mode: {self.server_name}: {self.server_config}')
 
             await self.refresh()
 
             self.status = MCPSessionStatus.CONNECTED
 
-            # 通知start()方法连接已建立
+            # Notify start() that connection is established
             self._ready_event.set()
 
-            # 等待shutdown信号
-            await self._shutdown_event.wait()
+            # Wait for shutdown signal, with optional health monitoring for Box stdio
+            if self._uses_box_stdio():
+                monitor_task = asyncio.create_task(self._monitor_box_process_health())
+                shutdown_task = asyncio.create_task(self._shutdown_event.wait())
+                done, pending = await asyncio.wait(
+                    [shutdown_task, monitor_task],
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for task in pending:
+                    task.cancel()
+                for task in done:
+                    if task is monitor_task and not self._shutdown_event.is_set():
+                        raise Exception('Box managed process exited unexpectedly')
+            else:
+                await self._shutdown_event.wait()
 
         except Exception as e:
             self.status = MCPSessionStatus.ERROR
             self.error_message = str(e)
             self.ap.logger.error(f'Error in MCP session lifecycle {self.server_name}: {e}\n{traceback.format_exc()}')
-            # 即使出错也要设置ready事件，让start()方法知道初始化已完成
-            self._ready_event.set()
+            # Do NOT set _ready_event here — let _lifecycle_loop_with_retry
+            # handle retries first. It will set the event when all retries
+            # are exhausted or on success.
+            raise  # Re-raise so _lifecycle_loop_with_retry can catch it
         finally:
-            # 在同一个任务中清理所有资源
+            # Clean up all resources in the same task
             try:
                 if self.exit_stack:
                     await self.exit_stack.aclose()
+                    self.exit_stack = AsyncExitStack()
                 self.functions.clear()
                 self.session = None
             except Exception as e:
                 self.ap.logger.error(f'Error cleaning up MCP session {self.server_name}: {e}\n{traceback.format_exc()}')
+            finally:
+                await self._cleanup_box_stdio_session()
+
+    async def _lifecycle_loop_with_retry(self):
+        """Wrap _lifecycle_loop with retry and exponential backoff."""
+        for attempt in range(self._MAX_RETRIES + 1):
+            try:
+                await self._lifecycle_loop()
+                return  # Normal shutdown, don't retry
+            except Exception as e:
+                if self._shutdown_event.is_set():
+                    return  # Shutdown requested, don't retry
+                if attempt >= self._MAX_RETRIES:
+                    self.status = MCPSessionStatus.ERROR
+                    self.error_message = f'Failed after {self._MAX_RETRIES + 1} attempts: {e}'
+                    self._ready_event.set()
+                    return
+                delay = self._RETRY_DELAYS[attempt]
+                self.ap.logger.warning(
+                    f'MCP session {self.server_name} failed (attempt {attempt + 1}), '
+                    f'retrying in {delay}s: {e}'
+                )
+                await self._cleanup_box_stdio_session()
+                # Reset status for retry
+                self.status = MCPSessionStatus.CONNECTING
+                self.error_message = None
+                await asyncio.sleep(delay)
+
+    async def _monitor_box_process_health(self):
+        """Poll managed process status; return when process exits."""
+        from ...box.models import BoxManagedProcessStatus
+
+        session_id = self._build_box_session_id()
+        while not self._shutdown_event.is_set():
+            try:
+                info = await self.ap.box_service.client.get_managed_process(session_id)
+                if isinstance(info, dict):
+                    status = info.get('status', '')
+                else:
+                    status = getattr(info, 'status', '')
+                if status == BoxManagedProcessStatus.EXITED.value or status == BoxManagedProcessStatus.EXITED:
+                    return
+            except Exception:
+                return  # Process or session gone
+            await asyncio.sleep(5)
 
     async def start(self):
         if not self.enable:
             return
 
-        # 创建后台任务来管理生命周期
-        self._lifecycle_task = asyncio.create_task(self._lifecycle_loop())
+        # Create background task for lifecycle management with retry
+        self._lifecycle_task = asyncio.create_task(self._lifecycle_loop_with_retry())
 
-        # 等待连接建立或失败（带超时）
+        # Wait for connection or failure (with timeout)
+        startup_timeout = self.box_config.startup_timeout_sec if self._uses_box_stdio() else 30.0
         try:
-            await asyncio.wait_for(self._ready_event.wait(), timeout=30.0)
+            await asyncio.wait_for(self._ready_event.wait(), timeout=startup_timeout)
         except asyncio.TimeoutError:
             self.status = MCPSessionStatus.ERROR
-            raise Exception('Connection timeout after 30 seconds')
+            raise Exception(f'Connection timeout after {startup_timeout} seconds')
 
-        # 检查是否有错误
+        # Check for errors
         if self.status == MCPSessionStatus.ERROR:
             raise Exception('Connection failed, please check URL')
 
@@ -232,7 +376,7 @@ class RuntimeMCPSession:
         return self.functions
 
     def get_runtime_info_dict(self) -> dict:
-        return {
+        info = {
             'status': self.status.value,
             'error_message': self.error_message,
             'tool_count': len(self.get_tools()),
@@ -244,6 +388,10 @@ class RuntimeMCPSession:
                 for tool in self.get_tools()
             ],
         }
+        if self._uses_box_stdio():
+            info['box_session_id'] = self._build_box_session_id()
+            info['box_enabled'] = True
+        return info
 
     async def shutdown(self):
         """关闭会话并清理资源"""
@@ -266,6 +414,177 @@ class RuntimeMCPSession:
             self.ap.logger.info(f'MCP session {self.server_name} shutdown complete')
         except Exception as e:
             self.ap.logger.error(f'Error shutting down MCP session {self.server_name}: {e}\n{traceback.format_exc()}')
+
+    def _uses_box_stdio(self) -> bool:
+        """Check whether this stdio MCP server should run inside a Box container.
+
+        Returns True when mode is stdio AND the Box runtime is available.
+        An explicit ``box`` key in server_config is NOT required — if the
+        runtime is reachable, stdio servers default to Box isolation.
+        """
+        if self.server_config.get('mode') != 'stdio':
+            return False
+        try:
+            return getattr(self.ap.box_service, 'available', False)
+        except Exception:
+            return False
+
+    def _build_box_session_id(self) -> str:
+        return f'mcp-{self.server_uuid}'
+
+    def _rewrite_path(self, path: str, host_path: str | None) -> str:
+        """Rewrite host path prefix to container /workspace prefix."""
+        if not host_path or not path:
+            return path
+        normalized_host = os.path.realpath(host_path)
+        if path.startswith(normalized_host + '/'):
+            return '/workspace' + path[len(normalized_host):]
+        if path == normalized_host:
+            return '/workspace'
+        return path
+
+    def _infer_host_path(self) -> str | None:
+        """Try to infer host_path from command and args absolute paths.
+
+        Detects virtualenv patterns (e.g. .venv/bin/python) and walks up
+        to the project root rather than using the bin directory.
+        """
+        candidates = []
+        parts = [self.server_config.get('command', '')] + self.server_config.get('args', [])
+        for part in parts:
+            if not os.path.isabs(part):
+                continue
+            # Use the raw path for venv detection (before resolving symlinks)
+            # because .venv/bin/python is often a symlink to the system python.
+            if os.path.exists(part):
+                directory = os.path.dirname(part)
+                directory = self._unwrap_venv_path(directory)
+                candidates.append(os.path.realpath(directory))
+        if not candidates:
+            return None
+        common = os.path.commonpath(candidates)
+        return common if common != '/' else None
+
+    @staticmethod
+    def _unwrap_venv_path(directory: str) -> str:
+        """If directory looks like a virtualenv bin dir, return the project root.
+
+        Recognized patterns:
+          /project/.venv/bin        -> /project
+          /project/venv/bin         -> /project
+          /project/.venv/Scripts    -> /project  (Windows)
+          /project/env/bin          -> /project
+        """
+        parts = directory.replace('\\', '/').split('/')
+        # Look for patterns like .../(.venv|venv|env)/(bin|Scripts)
+        for i in range(len(parts) - 1, 0, -1):
+            if parts[i] in _VENV_BIN_DIRS and i >= 1:
+                venv_dir = parts[i - 1]
+                if venv_dir in _VENV_DIRS:
+                    # Return everything before the venv directory
+                    project_root = '/'.join(parts[:i - 1])
+                    return project_root if project_root else '/'
+        return directory
+
+    def _resolve_host_path(self) -> str | None:
+        """Resolve the effective host_path: explicit config > inference."""
+        return self.box_config.host_path or self._infer_host_path()
+
+    @staticmethod
+    def _detect_install_command(host_path: str) -> str | None:
+        """Detect how to install dependencies from the mounted project.
+
+        Copies the project to a writable temp directory before installing,
+        because /workspace may be mounted read-only and pip needs to write
+        build artifacts in the source tree.
+        """
+        _COPY_AND_INSTALL = (
+            'cp -r /workspace /tmp/_mcp_src'
+            ' && pip install --no-cache-dir /tmp/_mcp_src'
+            ' && rm -rf /tmp/_mcp_src'
+        )
+        _INSTALL_REQUIREMENTS = 'pip install --no-cache-dir -r /workspace/requirements.txt'
+
+        if os.path.isfile(os.path.join(host_path, 'pyproject.toml')):
+            return _COPY_AND_INSTALL
+        if os.path.isfile(os.path.join(host_path, 'setup.py')):
+            return _COPY_AND_INSTALL
+        if os.path.isfile(os.path.join(host_path, 'requirements.txt')):
+            return _INSTALL_REQUIREMENTS
+        return None
+
+    def _build_box_session_payload(self, session_id: str, host_path: str | None = None) -> dict:
+        bc = self.box_config
+        if host_path is None:
+            host_path = self._resolve_host_path()
+
+        payload: dict[str, typing.Any] = {
+            'session_id': session_id,
+            'workdir': '/workspace',
+            'env': bc.env,
+            # MCP sessions need network for dependency install and writable rootfs
+            'network': bc.network,
+            'read_only_rootfs': bc.read_only_rootfs if bc.read_only_rootfs is not None else False,
+        }
+        if host_path:
+            payload['host_path'] = host_path
+            payload['host_path_mode'] = bc.host_path_mode
+        for key in ('image', 'cpus', 'memory_mb', 'pids_limit'):
+            val = getattr(bc, key)
+            if val is not None:
+                payload[key] = val if not isinstance(val, enum.Enum) else val.value
+        return payload
+
+    def _build_box_process_payload(self, host_path: str | None = None) -> dict:
+        if host_path is None:
+            host_path = self._resolve_host_path()
+
+        command = self.server_config['command']
+        args = self.server_config.get('args', [])
+        cwd = '/workspace'
+
+        if host_path:
+            # When host_path is resolved, we install deps in-container rather
+            # than relying on the host venv.  Rewrite paths so the container
+            # sees /workspace/... but replace venv python with plain "python".
+            command = self._rewrite_venv_command(command, host_path)
+            args = [self._rewrite_path(a, host_path) for a in args]
+            cwd = self._rewrite_path(cwd, host_path)
+
+        return {
+            'command': command,
+            'args': args,
+            'env': self.server_config.get('env', {}),
+            'cwd': cwd,
+        }
+
+    def _rewrite_venv_command(self, command: str, host_path: str) -> str:
+        """Rewrite command: if it points to a venv python, use plain 'python'."""
+        if not host_path or not command:
+            return command
+        normalized_host = os.path.realpath(host_path)
+        if not command.startswith(normalized_host + '/'):
+            return command
+        # Check if command is a venv python interpreter
+        rel = command[len(normalized_host) + 1:]  # e.g. ".venv/bin/python"
+        parts = rel.replace('\\', '/').split('/')
+        # Match patterns like .venv/bin/python*, venv/bin/python*, etc.
+        if (len(parts) >= 3
+                and parts[0] in _VENV_DIRS
+                and parts[1] in _VENV_BIN_DIRS
+                and parts[2].startswith('python')):
+            return 'python'
+        # Not a venv python — do normal path rewrite
+        return self._rewrite_path(command, host_path)
+
+    async def _cleanup_box_stdio_session(self) -> None:
+        if not self._uses_box_stdio():
+            return
+
+        try:
+            await self.ap.box_service.client.delete_session(self._build_box_session_id())
+        except Exception as e:
+            self.ap.logger.warning(f'Failed to cleanup Box session for MCP server {self.server_name}: {e}')
 
 
 # @loader.loader_class('mcp')
@@ -332,7 +651,7 @@ class MCPLoader(loader.ToolLoader):
         Args:
             server_config: 服务器配置字典，必须包含:
                 - name: 服务器名称
-                - mode: 连接模式 (stdio/sse)
+                - mode: 连接模式 (stdio/sse/http)
                 - enable: 是否启用
                 - extra_args: 额外的配置参数 (可选)
         """
