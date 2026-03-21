@@ -31,16 +31,6 @@ spec:
       type: string
       required: true
       default: ""
-    - name: callback_base_url
-      label:
-        en_US: Callback Base URL
-        zh_Hans: 回调基础URL
-      description:
-        en_US: "LangBot public base URL for webhook callbacks, e.g. http://your-server:5300. The full callback URL will be auto-generated as {callback_base_url}/api/bots/{bot_uuid}"
-        zh_Hans: "LangBot 对外可访问的基础URL，如 http://your-server:5300。完整回调地址将自动生成为 {callback_base_url}/api/bots/{bot_uuid}"
-      type: string
-      required: true
-      default: ""
     - name: app_id
       label:
         en_US: App ID

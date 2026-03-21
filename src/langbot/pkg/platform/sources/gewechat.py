@@ -404,11 +404,7 @@ class GewechatEventConverter(abstract_platform_adapter.AbstractEventConverter):
 class GeWeChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot: gewechat_client.GewechatClient = None
     bot_uuid: str = None
-
-    bot_account_id: str = ''
-
-    config: dict
-
+    webhook_url: str = None
     message_converter: GewechatMessageConverter = None
     event_converter: GewechatEventConverter = None
 
@@ -418,8 +414,6 @@ class GeWeChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     ] = {}
 
     def __init__(self, config: dict, logger: EventLogger):
-        self.config = config
-
         super().__init__(
             config=config,
             logger=logger,
@@ -430,6 +424,9 @@ class GeWeChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     def set_bot_uuid(self, bot_uuid: str):
         self.bot_uuid = bot_uuid
+
+    def set_webhook_url(self, webhook_url: str):
+        self.webhook_url = webhook_url
 
     async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
         data = await request.json
@@ -578,8 +575,9 @@ class GeWeChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         pass
 
     def _build_callback_url(self) -> str:
-        base_url = self.config.get('callback_base_url', '').rstrip('/')
-        return f'{base_url}/api/bots/{self.bot_uuid}'
+        if self.webhook_url:
+            return self.webhook_url
+        raise Exception('webhook_url 未设置，请检查 LangBot 的 api.webhook_prefix 配置')
 
     async def run_async(self):
         if not self.config['token']:

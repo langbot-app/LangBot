@@ -68,6 +68,7 @@ class BotService:
             'wecomcs',
             'LINE',
             'lark',
+            'gewechat',
         ]:
             webhook_prefix = self.ap.instance_config.data['api'].get('webhook_prefix', 'http://127.0.0.1:5300')
             extra_webhook_prefix = self.ap.instance_config.data['api'].get('extra_webhook_prefix', '')
