@@ -273,6 +273,12 @@ class PlatformManager:
         if hasattr(adapter_inst, 'set_bot_uuid'):
             adapter_inst.set_bot_uuid(bot_entity.uuid)
 
+        # 如果 adapter 支持 set_webhook_url 方法，构建并传递完整的 webhook URL
+        if hasattr(adapter_inst, 'set_webhook_url'):
+            webhook_prefix = self.ap.instance_config.data['api'].get('webhook_prefix', 'http://127.0.0.1:5300')
+            webhook_full_url = f'{webhook_prefix}/bots/{bot_entity.uuid}'
+            adapter_inst.set_webhook_url(webhook_full_url)
+
         runtime_bot = RuntimeBot(ap=self.ap, bot_entity=bot_entity, adapter=adapter_inst, logger=logger)
 
         await runtime_bot.initialize()
