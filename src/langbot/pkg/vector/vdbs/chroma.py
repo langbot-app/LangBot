@@ -59,7 +59,9 @@ class ChromaVectorDatabase(VectorDatabase):
         if search_type == SearchType.FULL_TEXT:
             return await self._full_text_search(col, collection, k, query_text, filter)
         elif search_type == SearchType.HYBRID:
-            return await self._hybrid_search(col, collection, query_embedding, k, query_text, filter, vector_weight=vector_weight)
+            return await self._hybrid_search(
+                col, collection, query_embedding, k, query_text, filter, vector_weight=vector_weight
+            )
 
         # Default: vector search
         return await self._vector_search(col, collection, query_embedding, k, filter)
@@ -151,8 +153,8 @@ class ChromaVectorDatabase(VectorDatabase):
             weights = [vector_weight, 1.0 - vector_weight]
         self.ap.logger.info(
             f"Chroma hybrid fusion config in '{collection}': "
-            f"vector_weight={vector_weight}, weights={weights or [1.0, 1.0]}, "
-            f"vector_hits={len(vector_ids)}, text_hits={len(text_ids)}"
+            f'vector_weight={vector_weight}, weights={weights or [1.0, 1.0]}, '
+            f'vector_hits={len(vector_ids)}, text_hits={len(text_ids)}'
         )
         fused = self._rrf_fuse([vector_ids, text_ids], k, weights=weights)
         if not fused:

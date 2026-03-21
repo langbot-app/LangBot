@@ -302,9 +302,9 @@ class SeekDBVectorDatabase(VectorDatabase):
                     query_cfg['boost'] = 1.0 - vector_weight
                 self.ap.logger.info(
                     f"SeekDB hybrid fusion config in '{collection}': "
-                    f"vector_weight={vector_weight}, "
-                    f"knn_boost={knn_cfg.get('boost', 1.0)}, "
-                    f"query_boost={query_cfg.get('boost', 1.0)}"
+                    f'vector_weight={vector_weight}, '
+                    f'knn_boost={knn_cfg.get("boost", 1.0)}, '
+                    f'query_boost={query_cfg.get("boost", 1.0)}'
                 )
 
                 results = await asyncio.to_thread(
@@ -316,8 +316,7 @@ class SeekDBVectorDatabase(VectorDatabase):
                     include=['documents', 'metadatas'],
                 )
                 self.ap.logger.info(
-                    f"SeekDB hybrid search in '{collection}' returned "
-                    f"{len(results.get('ids', [[]])[0])} results."
+                    f"SeekDB hybrid search in '{collection}' returned {len(results.get('ids', [[]])[0])} results."
                 )
         else:
             # Default: vector search via query()
