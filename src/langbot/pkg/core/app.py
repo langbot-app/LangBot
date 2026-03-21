@@ -29,6 +29,7 @@ from ..api.http.service import bot as bot_service
 from ..api.http.service import knowledge as knowledge_service
 from ..api.http.service import mcp as mcp_service
 from ..api.http.service import apikey as apikey_service
+from ..api.http.service import kuku as kuku_service
 from ..api.http.service import webhook as webhook_service
 from ..api.http.service import monitoring as monitoring_service
 
@@ -144,6 +145,8 @@ class Application:
     mcp_service: mcp_service.MCPService = None
 
     apikey_service: apikey_service.ApiKeyService = None
+
+    kuku_service: kuku_service.KukuService = None
 
     webhook_service: webhook_service.WebhookService = None
 

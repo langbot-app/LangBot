@@ -26,6 +26,7 @@ from ...api.http.service import bot as bot_service
 from ...api.http.service import knowledge as knowledge_service
 from ...api.http.service import mcp as mcp_service
 from ...api.http.service import apikey as apikey_service
+from ...api.http.service import kuku as kuku_service
 from ...api.http.service import webhook as webhook_service
 from ...api.http.service import monitoring as monitoring_service
 from ...discover import engine as discover_engine
@@ -78,6 +79,9 @@ class BuildAppStage(stage.BootingStage):
 
         apikey_service_inst = apikey_service.ApiKeyService(ap)
         ap.apikey_service = apikey_service_inst
+
+        kuku_service_inst = kuku_service.KukuService(ap)
+        ap.kuku_service = kuku_service_inst
 
         webhook_service_inst = webhook_service.WebhookService(ap)
         ap.webhook_service = webhook_service_inst
