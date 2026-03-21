@@ -328,11 +328,15 @@ class RuntimeMCPSession:
                 self.error_phase = None
                 await asyncio.sleep(delay)
 
+    _MONITOR_POLL_INTERVAL = 5
+    _MONITOR_MAX_CONSECUTIVE_ERRORS = 3
+
     async def _monitor_box_process_health(self):
         """Poll managed process status; return when process exits."""
         from ...box.models import BoxManagedProcessStatus
 
         session_id = self._build_box_session_id()
+        consecutive_errors = 0
         while not self._shutdown_event.is_set():
             try:
                 info = await self.ap.box_service.client.get_managed_process(session_id)
@@ -341,10 +345,21 @@ class RuntimeMCPSession:
                 else:
                     status = getattr(info, 'status', '')
                 if status == BoxManagedProcessStatus.EXITED.value or status == BoxManagedProcessStatus.EXITED:
+                    self.ap.logger.info(
+                        f'MCP monitor for {self.server_name}: process exited'
+                    )
                     return
-            except Exception:
-                return  # Process or session gone
-            await asyncio.sleep(5)
+                consecutive_errors = 0
+            except Exception as exc:
+                consecutive_errors += 1
+                self.ap.logger.warning(
+                    f'MCP monitor for {self.server_name}: get_managed_process failed '
+                    f'({consecutive_errors}/{self._MONITOR_MAX_CONSECUTIVE_ERRORS}): '
+                    f'{type(exc).__name__}: {exc}'
+                )
+                if consecutive_errors >= self._MONITOR_MAX_CONSECUTIVE_ERRORS:
+                    return
+            await asyncio.sleep(self._MONITOR_POLL_INTERVAL)
 
     async def start(self):
         if not self.enable:
@@ -541,10 +556,18 @@ class RuntimeMCPSession:
         because /workspace may be mounted read-only and pip needs to write
         build artifacts in the source tree.
         """
+        # Use /opt instead of /tmp — /tmp is often a small tmpfs (64 MB)
+        # and cannot hold the copied source tree plus pip build artifacts.
         _COPY_AND_INSTALL = (
-            'cp -r /workspace /tmp/_mcp_src'
-            ' && pip install --no-cache-dir /tmp/_mcp_src'
-            ' && rm -rf /tmp/_mcp_src'
+            'mkdir -p /opt/_mcp_src'
+            ' && tar -C /workspace'
+            ' --exclude=.venv --exclude=.git --exclude=__pycache__'
+            ' --exclude=node_modules --exclude=.tox --exclude=.nox'
+            ' --exclude="*.egg-info" --exclude=.uv-cache'
+            ' -cf - .'
+            ' | tar -C /opt/_mcp_src -xf -'
+            ' && pip install --no-cache-dir /opt/_mcp_src'
+            ' && rm -rf /opt/_mcp_src'
         )
         _INSTALL_REQUIREMENTS = 'pip install --no-cache-dir -r /workspace/requirements.txt'
 
