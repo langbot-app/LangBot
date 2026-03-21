@@ -34,6 +34,7 @@ class _CommandResult:
 
 class BaseSandboxBackend(abc.ABC):
     name: str
+    instance_id: str = ''
 
     def __init__(self, logger: logging.Logger):
         self.logger = logger
@@ -60,7 +61,7 @@ class BaseSandboxBackend(abc.ABC):
     async def start_managed_process(self, session: BoxSessionInfo, spec):
         raise BoxError(f'{self.name} backend does not support managed processes')
 
-    async def cleanup_orphaned_containers(self):
+    async def cleanup_orphaned_containers(self, current_instance_id: str = ''):
         """Remove lingering containers from previous runs. No-op by default."""
         pass
 
@@ -97,6 +98,8 @@ class CLISandboxBackend(BaseSandboxBackend):
             'langbot.box=true',
             '--label',
             f'langbot.session_id={spec.session_id}',
+            '--label',
+            f'langbot.box.instance_id={self.instance_id}',
         ]
 
         # Config hash label for identifying configuration drift
@@ -218,22 +221,37 @@ class CLISandboxBackend(BaseSandboxBackend):
             check=False,
         )
 
-    async def cleanup_orphaned_containers(self):
-        """Remove any lingering langbot.box containers from previous runs."""
+    async def cleanup_orphaned_containers(self, current_instance_id: str = ''):
+        """Remove langbot.box containers from previous instances.
+
+        Only removes containers whose ``langbot.box.instance_id`` label does
+        NOT match *current_instance_id*.  Containers without the label (from
+        older versions) are also removed.
+        """
         result = await self._run_command(
-            [self.command, 'ps', '-a', '--filter', 'label=langbot.box=true', '-q'],
+            [self.command, 'ps', '-a', '--filter', 'label=langbot.box=true',
+             '--format', '{{.ID}}\t{{.Label "langbot.box.instance_id"}}'],
             timeout_sec=10,
             check=False,
         )
         if result.return_code != 0 or not result.stdout.strip():
             return
-        container_ids = [cid.strip() for cid in result.stdout.strip().split('\n') if cid.strip()]
-        if not container_ids:
+        orphan_ids = []
+        for line in result.stdout.strip().split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split('\t', 1)
+            cid = parts[0].strip()
+            label_instance = parts[1].strip() if len(parts) > 1 else ''
+            if label_instance != current_instance_id:
+                orphan_ids.append(cid)
+        if not orphan_ids:
             return
-        for cid in container_ids:
+        for cid in orphan_ids:
             self.logger.info(f'Cleaning up orphaned Box container: {cid}')
         await self._run_command(
-            [self.command, 'rm', '-f', *container_ids],
+            [self.command, 'rm', '-f', *orphan_ids],
             timeout_sec=30,
             check=False,
         )

@@ -5,6 +5,7 @@ import collections
 import dataclasses
 import datetime as dt
 import logging
+import uuid
 
 from .backend import BaseSandboxBackend, DockerBackend, PodmanBackend
 from .errors import (
@@ -64,12 +65,14 @@ class BoxRuntime:
         self._backend: BaseSandboxBackend | None = None
         self._sessions: dict[str, _RuntimeSession] = {}
         self._lock = asyncio.Lock()
+        self.instance_id = uuid.uuid4().hex[:12]
 
     async def initialize(self):
         self._backend = await self._select_backend()
         if self._backend is not None:
+            self._backend.instance_id = self.instance_id
             try:
-                await self._backend.cleanup_orphaned_containers()
+                await self._backend.cleanup_orphaned_containers(self.instance_id)
             except Exception as exc:
                 self.logger.warning(f'LangBot Box orphan container cleanup failed: {exc}')
 
@@ -163,6 +166,17 @@ class BoxRuntime:
 
     def get_sessions(self) -> list[dict]:
         return [self._session_to_dict(s.info) for s in self._sessions.values()]
+
+    def get_session(self, session_id: str) -> dict:
+        runtime_session = self._sessions.get(session_id)
+        if runtime_session is None:
+            raise BoxSessionNotFoundError(f'session {session_id} not found')
+        result = self._session_to_dict(runtime_session.info)
+        if runtime_session.managed_process is not None:
+            result['managed_process'] = self._managed_process_to_dict(
+                session_id, runtime_session.managed_process
+            )
+        return result
 
     async def get_status(self) -> dict:
         backend_info = await self.get_backend_info()

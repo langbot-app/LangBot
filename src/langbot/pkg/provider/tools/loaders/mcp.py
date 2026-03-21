@@ -31,6 +31,17 @@ class MCPSessionStatus(enum.Enum):
     ERROR = 'error'
 
 
+class MCPSessionErrorPhase(enum.Enum):
+    """Which phase of the MCP lifecycle failed."""
+    SESSION_CREATE = 'session_create'
+    DEP_INSTALL = 'dep_install'
+    PROCESS_START = 'process_start'
+    RELAY_CONNECT = 'relay_connect'
+    MCP_INIT = 'mcp_init'
+    RUNTIME = 'runtime'
+    TOOL_CALL = 'tool_call'
+
+
 _VENV_DIRS = frozenset({'.venv', 'venv', 'env', '.env'})
 _VENV_BIN_DIRS = frozenset({'bin', 'Scripts'})
 
@@ -82,6 +93,10 @@ class RuntimeMCPSession:
 
     error_message: str | None = None
 
+    error_phase: MCPSessionErrorPhase | None = None
+
+    retry_count: int = 0
+
     def __init__(self, server_name: str, server_config: dict, enable: bool, ap: app.Application):
         self.server_name = server_name
         self.server_uuid = server_config.get('uuid', '')
@@ -129,13 +144,17 @@ class RuntimeMCPSession:
         host_path = self._resolve_host_path()
         session_payload = self._build_box_session_payload(session_id, host_path)
 
-        # MCP server paths are admin-configured, skip host_mount_roots validation
-        await box_service.create_session(
-            session_payload,
-            skip_host_mount_validation=True,
-        )
+        # Phase: session creation
+        try:
+            await box_service.create_session(
+                session_payload,
+                skip_host_mount_validation=True,
+            )
+        except Exception as e:
+            self.error_phase = MCPSessionErrorPhase.SESSION_CREATE
+            raise
 
-        # Install dependencies inside the container before starting the MCP server
+        # Phase: dependency installation
         if host_path:
             install_cmd = self._detect_install_command(host_path)
             if install_cmd:
@@ -143,31 +162,50 @@ class RuntimeMCPSession:
                     f'MCP server {self.server_name}: installing dependencies in Box '
                     f'with: {install_cmd}'
                 )
-                # Build an exec spec that matches the existing session config
-                # to pass the compatibility check.
                 exec_payload = dict(session_payload)
                 exec_payload['cmd'] = install_cmd
                 exec_payload['timeout_sec'] = self.box_config.startup_timeout_sec or 120
-                result = await box_service.client.execute(
-                    box_service.build_spec(exec_payload, skip_host_mount_validation=True)
-                )
+                try:
+                    result = await box_service.client.execute(
+                        box_service.build_spec(exec_payload, skip_host_mount_validation=True)
+                    )
+                except Exception as e:
+                    self.error_phase = MCPSessionErrorPhase.DEP_INSTALL
+                    raise
                 if not result.ok:
+                    self.error_phase = MCPSessionErrorPhase.DEP_INSTALL
                     stderr_preview = (result.stderr or '')[:500]
                     raise Exception(
                         f'Dependency install failed (exit code {result.exit_code}): '
                         f'{stderr_preview}'
                     )
 
-        await box_service.start_managed_process(
-            session_id,
-            self._build_box_process_payload(host_path),
-        )
+        # Phase: managed process start
+        try:
+            await box_service.start_managed_process(
+                session_id,
+                self._build_box_process_payload(host_path),
+            )
+        except Exception as e:
+            self.error_phase = MCPSessionErrorPhase.PROCESS_START
+            raise
 
-        websocket_url = box_service.get_managed_process_websocket_url(session_id)
-        transport = await self.exit_stack.enter_async_context(websocket_client(websocket_url))
-        read_stream, write_stream = transport
-        self.session = await self.exit_stack.enter_async_context(ClientSession(read_stream, write_stream))
-        await self.session.initialize()
+        # Phase: WebSocket relay connection
+        try:
+            websocket_url = box_service.get_managed_process_websocket_url(session_id)
+            transport = await self.exit_stack.enter_async_context(websocket_client(websocket_url))
+            read_stream, write_stream = transport
+            self.session = await self.exit_stack.enter_async_context(ClientSession(read_stream, write_stream))
+        except Exception as e:
+            self.error_phase = MCPSessionErrorPhase.RELAY_CONNECT
+            raise
+
+        # Phase: MCP protocol initialization
+        try:
+            await self.session.initialize()
+        except Exception as e:
+            self.error_phase = MCPSessionErrorPhase.MCP_INIT
+            raise
 
     async def _init_sse_server(self):
         sse_transport = await self.exit_stack.enter_async_context(
@@ -237,6 +275,7 @@ class RuntimeMCPSession:
                     task.cancel()
                 for task in done:
                     if task is monitor_task and not self._shutdown_event.is_set():
+                        self.error_phase = MCPSessionErrorPhase.RUNTIME
                         raise Exception('Box managed process exited unexpectedly')
             else:
                 await self._shutdown_event.wait()
@@ -269,6 +308,7 @@ class RuntimeMCPSession:
                 await self._lifecycle_loop()
                 return  # Normal shutdown, don't retry
             except Exception as e:
+                self.retry_count = attempt + 1
                 if self._shutdown_event.is_set():
                     return  # Shutdown requested, don't retry
                 if attempt >= self._MAX_RETRIES:
@@ -285,6 +325,7 @@ class RuntimeMCPSession:
                 # Reset status for retry
                 self.status = MCPSessionStatus.CONNECTING
                 self.error_message = None
+                self.error_phase = None
                 await asyncio.sleep(delay)
 
     async def _monitor_box_process_health(self):
@@ -379,6 +420,8 @@ class RuntimeMCPSession:
         info = {
             'status': self.status.value,
             'error_message': self.error_message,
+            'error_phase': self.error_phase.value if self.error_phase else None,
+            'retry_count': self.retry_count,
             'tool_count': len(self.get_tools()),
             'tools': [
                 {
