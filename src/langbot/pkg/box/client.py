@@ -86,6 +86,9 @@ class BoxRuntimeClient(abc.ABC):
     @abc.abstractmethod
     async def get_managed_process(self, session_id: str) -> BoxManagedProcessInfo: ...
 
+    @abc.abstractmethod
+    async def get_session(self, session_id: str) -> dict: ...
+
 
 class RemoteBoxRuntimeClient(BoxRuntimeClient):
     """HTTP client that talks to a standalone Box Runtime service."""
@@ -163,6 +166,15 @@ class RemoteBoxRuntimeClient(BoxRuntimeClient):
         session = self._get_session()
         try:
             async with session.get(f'{self._base_url}/v1/sessions') as resp:
+                await self._check_response(resp)
+                return await resp.json()
+        except aiohttp.ClientError as exc:
+            raise BoxRuntimeUnavailableError(f'box runtime unavailable: {exc}') from exc
+
+    async def get_session(self, session_id: str) -> dict:
+        session = self._get_session()
+        try:
+            async with session.get(f'{self._base_url}/v1/sessions/{session_id}') as resp:
                 await self._check_response(resp)
                 return await resp.json()
         except aiohttp.ClientError as exc:

@@ -67,6 +67,9 @@ class _InProcessBoxRuntimeClient(BoxRuntimeClient):
     async def get_managed_process(self, session_id: str):
         return self._runtime.get_managed_process(session_id)
 
+    async def get_session(self, session_id: str):
+        return self._runtime.get_session(session_id)
+
 
 def _can_open_test_socket() -> bool:
     try:
