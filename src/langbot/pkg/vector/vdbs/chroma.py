@@ -52,13 +52,14 @@ class ChromaVectorDatabase(VectorDatabase):
         search_type: str = 'vector',
         query_text: str = '',
         filter: dict[str, Any] | None = None,
+        vector_weight: float | None = None,
     ) -> dict[str, Any]:
         col = await self.get_or_create_collection(collection)
 
         if search_type == SearchType.FULL_TEXT:
             return await self._full_text_search(col, collection, k, query_text, filter)
         elif search_type == SearchType.HYBRID:
-            return await self._hybrid_search(col, collection, query_embedding, k, query_text, filter)
+            return await self._hybrid_search(col, collection, query_embedding, k, query_text, filter, vector_weight=vector_weight)
 
         # Default: vector search
         return await self._vector_search(col, collection, query_embedding, k, filter)
@@ -127,6 +128,7 @@ class ChromaVectorDatabase(VectorDatabase):
         k: int,
         query_text: str,
         filter: dict[str, Any] | None,
+        vector_weight: float | None = None,
     ) -> dict[str, Any]:
         # Fall back to pure vector search when no text is provided
         if not query_text:
@@ -144,7 +146,15 @@ class ChromaVectorDatabase(VectorDatabase):
             return {'ids': [[]], 'metadatas': [[]], 'distances': [[]], 'documents': [[]]}
 
         # RRF fusion
-        fused = self._rrf_fuse([vector_ids, text_ids], k)
+        weights = None
+        if vector_weight is not None:
+            weights = [vector_weight, 1.0 - vector_weight]
+        self.ap.logger.info(
+            f"Chroma hybrid fusion config in '{collection}': "
+            f"vector_weight={vector_weight}, weights={weights or [1.0, 1.0]}, "
+            f"vector_hits={len(vector_ids)}, text_hits={len(text_ids)}"
+        )
+        fused = self._rrf_fuse([vector_ids, text_ids], k, weights=weights)
         if not fused:
             return {'ids': [[]], 'metadatas': [[]], 'distances': [[]], 'documents': [[]]}
 
@@ -197,16 +207,24 @@ class ChromaVectorDatabase(VectorDatabase):
         }
 
     @staticmethod
-    def _rrf_fuse(result_lists: list[list[str]], k: int) -> list[tuple[str, float]]:
+    def _rrf_fuse(result_lists: list[list[str]], k: int, weights: list[float] | None = None) -> list[tuple[str, float]]:
         """Reciprocal Rank Fusion over multiple ranked ID lists.
 
         Returns a list of (doc_id, rrf_score) sorted by descending score,
         truncated to *k* entries.
+
+        Args:
+            result_lists: Ranked ID lists from different search methods.
+            k: Number of results to return.
+            weights: Per-list weights.  ``None`` means equal weight (1.0 each).
         """
+        if weights is None:
+            weights = [1.0] * len(result_lists)
         scores: dict[str, float] = {}
-        for ranked_ids in result_lists:
+        for list_idx, ranked_ids in enumerate(result_lists):
+            w = weights[list_idx]
             for rank, doc_id in enumerate(ranked_ids):
-                scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (_RRF_K + rank + 1)
+                scores[doc_id] = scores.get(doc_id, 0.0) + w / (_RRF_K + rank + 1)
         sorted_results = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         return sorted_results[:k]
 

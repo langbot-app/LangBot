@@ -255,6 +255,7 @@ class MilvusVectorDatabase(VectorDatabase):
         search_type: str = 'vector',
         query_text: str = '',
         filter: dict[str, Any] | None = None,
+        vector_weight: float | None = None,
     ) -> Dict[str, Any]:
         """Search for similar vectors in Milvus collection
 

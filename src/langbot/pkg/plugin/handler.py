@@ -531,6 +531,7 @@ class RuntimeConnectionHandler(handler.Handler):
             filters = data.get('filters')
             search_type = data.get('search_type', 'vector')
             query_text = data.get('query_text', '')
+            vector_weight = data.get('vector_weight')
             try:
                 results = await self.ap.rag_runtime_service.vector_search(
                     collection_id,
@@ -539,6 +540,7 @@ class RuntimeConnectionHandler(handler.Handler):
                     filters,
                     search_type,
                     query_text,
+                    vector_weight=vector_weight,
                 )
                 return handler.ActionResponse.success(data={'results': results})
             except Exception as e:
