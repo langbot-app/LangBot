@@ -12,21 +12,22 @@ CI pipeline.  Run them locally with::
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import shutil
 import socket
 import subprocess
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
-from aiohttp.test_utils import TestServer
 
 from langbot.pkg.box.backend import BaseSandboxBackend
-from langbot.pkg.box.client import RemoteBoxRuntimeClient
+from langbot.pkg.box.client import ActionRPCBoxClient
 from langbot.pkg.box.errors import BoxBackendUnavailableError, BoxRuntimeUnavailableError
 from langbot.pkg.box.models import BoxExecutionStatus, BoxNetworkMode, BoxSpec
 from langbot.pkg.box.runtime import BoxRuntime
-from langbot.pkg.box.server import create_app as create_server_app
+from langbot.pkg.box.server import BoxServerHandler
 from langbot.pkg.box.service import BoxService
 
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -77,23 +78,61 @@ requires_socket = pytest.mark.skipif(
 )
 
 
+# ── Helpers ──────────────────────────────────────────────────────────
+
+
+class _QueueConnection:
+    """In-process Connection backed by asyncio Queues — no real IO."""
+
+    def __init__(self, rx: asyncio.Queue[str], tx: asyncio.Queue[str]):
+        self._rx = rx
+        self._tx = tx
+
+    async def send(self, message: str) -> None:
+        await self._tx.put(message)
+
+    async def receive(self) -> str:
+        return await self._rx.get()
+
+    async def close(self) -> None:
+        pass
+
+
+async def _make_rpc_pair(runtime: BoxRuntime):
+    """Create an in-process (ActionRPCBoxClient, server_task, client_task) connected via queues."""
+    from langbot_plugin.runtime.io.handler import Handler
+
+    c2s: asyncio.Queue[str] = asyncio.Queue()
+    s2c: asyncio.Queue[str] = asyncio.Queue()
+    client_conn = _QueueConnection(rx=s2c, tx=c2s)
+    server_conn = _QueueConnection(rx=c2s, tx=s2c)
+
+    server_handler = BoxServerHandler(server_conn, runtime)
+    server_task = asyncio.create_task(server_handler.run())
+
+    client_handler = Handler.__new__(Handler)
+    Handler.__init__(client_handler, client_conn)
+    client_task = asyncio.create_task(client_handler.run())
+
+    client = ActionRPCBoxClient(logger=_logger)
+    client.set_handler(client_handler)
+
+    return client, server_task, client_task
+
+
 # ── Fixtures ──────────────────────────────────────────────────────────
 
 
 @pytest.fixture
 async def box_client():
-    """Yield a RemoteBoxRuntimeClient backed by a real BoxRuntime HTTP server."""
+    """Yield an ActionRPCBoxClient backed by a real BoxRuntime via in-process RPC."""
     runtime = BoxRuntime(logger=_logger)
-    app = create_server_app(runtime)
-    server = TestServer(app)
-    await server.start_server()
-    client = RemoteBoxRuntimeClient(
-        base_url=str(server.make_url('')),
-        logger=_logger,
-    )
+    await runtime.initialize()
+    client, server_task, client_task = await _make_rpc_pair(runtime)
     yield client
-    await client.shutdown()
-    await server.close()
+    server_task.cancel()
+    client_task.cancel()
+    await runtime.shutdown()
 
 
 # ── 1. Simple command execution ───────────────────────────────────────
@@ -102,7 +141,7 @@ async def box_client():
 @requires_container
 @requires_socket
 @pytest.mark.asyncio
-async def test_exec_simple_command(box_client: RemoteBoxRuntimeClient):
+async def test_exec_simple_command(box_client: ActionRPCBoxClient):
     """Box starts a simple command and returns stdout."""
     spec = BoxSpec(
         cmd='echo hello-box',
@@ -123,7 +162,7 @@ async def test_exec_simple_command(box_client: RemoteBoxRuntimeClient):
 @requires_container
 @requires_socket
 @pytest.mark.asyncio
-async def test_session_persists_files(box_client: RemoteBoxRuntimeClient):
+async def test_session_persists_files(box_client: ActionRPCBoxClient):
     """Write a file in one exec, read it back in a second exec on the same session."""
     sid = 'int-persist'
 
@@ -151,7 +190,7 @@ async def test_session_persists_files(box_client: RemoteBoxRuntimeClient):
 @requires_container
 @requires_socket
 @pytest.mark.asyncio
-async def test_timeout_kills_command(box_client: RemoteBoxRuntimeClient):
+async def test_timeout_kills_command(box_client: ActionRPCBoxClient):
     """A long-running command is killed after timeout_sec."""
     session_id = 'int-timeout'
     spec = BoxSpec(
@@ -176,7 +215,7 @@ async def test_timeout_kills_command(box_client: RemoteBoxRuntimeClient):
 @requires_container
 @requires_socket
 @pytest.mark.asyncio
-async def test_offline_cannot_reach_network(box_client: RemoteBoxRuntimeClient):
+async def test_offline_cannot_reach_network(box_client: ActionRPCBoxClient):
     """With network=OFF the sandbox cannot reach the internet."""
     spec = BoxSpec(
         cmd='wget -q -O /dev/null --timeout=3 http://1.1.1.1 2>&1; exit $?',
@@ -217,16 +256,11 @@ class _UnavailableBackend(BaseSandboxBackend):
 @requires_socket
 @pytest.mark.asyncio
 async def test_backend_unavailable_returns_error():
-    """When no backend is available the full HTTP path returns BoxBackendUnavailableError."""
+    """When no backend is available the full RPC path returns BoxBackendUnavailableError."""
     runtime = BoxRuntime(logger=_logger, backends=[_UnavailableBackend()])
-    app = create_server_app(runtime)
-    server = TestServer(app)
-    await server.start_server()
+    await runtime.initialize()
+    client, server_task, client_task = await _make_rpc_pair(runtime)
     try:
-        client = RemoteBoxRuntimeClient(
-            base_url=str(server.make_url('')),
-            logger=_logger,
-        )
         spec = BoxSpec(
             cmd='echo hello',
             session_id='int-no-backend',
@@ -234,46 +268,24 @@ async def test_backend_unavailable_returns_error():
         )
         with pytest.raises(BoxBackendUnavailableError):
             await client.execute(spec)
-        await client.shutdown()
     finally:
-        await server.close()
+        server_task.cancel()
+        client_task.cancel()
+        await runtime.shutdown()
 
 
-# ── 6. Runtime unreachable ────────────────────────────────────────────
-
-
-@requires_socket
-@pytest.mark.asyncio
-async def test_runtime_unreachable_returns_error():
-    """Connecting to a non-existent runtime raises BoxRuntimeUnavailableError."""
-    client = RemoteBoxRuntimeClient(
-        base_url='http://127.0.0.1:19999',
-        logger=_logger,
-    )
-    try:
-        with pytest.raises(BoxRuntimeUnavailableError):
-            await client.initialize()
-    finally:
-        await client.shutdown()
-
-
-# ── 7. Full service-to-runtime path ──────────────────────────────────
+# ── 6. Full service-to-runtime path ──────────────────────────────────
 
 
 @requires_container
 @requires_socket
 @pytest.mark.asyncio
 async def test_full_service_to_remote_runtime(tmp_path):
-    """BoxService -> RemoteBoxRuntimeClient -> HTTP -> BoxRuntime -> real backend."""
+    """BoxService -> ActionRPCBoxClient -> RPC -> BoxRuntime -> real backend."""
     runtime = BoxRuntime(logger=_logger)
-    app = create_server_app(runtime)
-    server = TestServer(app)
-    await server.start_server()
+    await runtime.initialize()
+    client, server_task, client_task = await _make_rpc_pair(runtime)
     try:
-        client = RemoteBoxRuntimeClient(
-            base_url=str(server.make_url('')),
-            logger=_logger,
-        )
         host_dir = tmp_path / 'workspace'
         host_dir.mkdir()
 
@@ -303,6 +315,7 @@ async def test_full_service_to_remote_runtime(tmp_path):
         assert result['status'] == 'completed'
         assert 'service-path' in result['stdout']
         assert result['session_id'] == '42'
-        await client.shutdown()
     finally:
-        await server.close()
+        server_task.cancel()
+        client_task.cancel()
+        await runtime.shutdown()

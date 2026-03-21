@@ -17,6 +17,7 @@ from langbot_plugin.api.entities.builtin.pipeline.query import provider_session
 from ..core import app
 from . import handler
 from ..utils import platform
+from ..utils.managed_runtime import ManagedRuntimeConnector
 from langbot_plugin.runtime.io.controllers.stdio import (
     client as stdio_client_controller,
 )
@@ -34,10 +35,8 @@ from ..core import taskmgr
 from ..entity.persistence import plugin as persistence_plugin
 
 
-class PluginRuntimeConnector:
+class PluginRuntimeConnector(ManagedRuntimeConnector):
     """Plugin runtime connector"""
-
-    ap: app.Application
 
     handler: handler.RuntimeConnectionHandler
 
@@ -48,10 +47,6 @@ class PluginRuntimeConnector:
     stdio_client_controller: stdio_client_controller.StdioClientController
 
     ctrl: stdio_client_controller.StdioClientController | ws_client_controller.WebSocketClientController
-
-    runtime_subprocess_on_windows: asyncio.subprocess.Process | None = None
-
-    runtime_subprocess_on_windows_task: asyncio.Task | None = None
 
     runtime_disconnect_callback: typing.Callable[
         [PluginRuntimeConnector], typing.Coroutine[typing.Any, typing.Any, None]
@@ -67,7 +62,7 @@ class PluginRuntimeConnector:
             [PluginRuntimeConnector], typing.Coroutine[typing.Any, typing.Any, None]
         ],
     ):
-        self.ap = ap
+        super().__init__(ap)
         self.runtime_disconnect_callback = runtime_disconnect_callback
         self.is_enable_plugin = self.ap.instance_config.data.get('plugin', {}).get('enable', True)
 
@@ -135,19 +130,7 @@ class PluginRuntimeConnector:
             # We have to launch runtime via cmd but communicate via ws.
             self.ap.logger.info('(windows) use cmd to launch plugin runtime and communicate via ws')
 
-            if self.runtime_subprocess_on_windows is None:  # only launch once
-                python_path = sys.executable
-                env = os.environ.copy()
-                self.runtime_subprocess_on_windows = await asyncio.create_subprocess_exec(
-                    python_path,
-                    '-m',
-                    'langbot_plugin.cli.__init__',
-                    'rt',
-                    env=env,
-                )
-
-                # hold the process
-                self.runtime_subprocess_on_windows_task = asyncio.create_task(self.runtime_subprocess_on_windows.wait())
+            await self._start_runtime_subprocess('-m', 'langbot_plugin.cli.__init__', 'rt')
 
             ws_url = 'ws://localhost:5400/control/ws'
 
@@ -523,12 +506,13 @@ class PluginRuntimeConnector:
         return await self.handler.retrieve_knowledge(plugin_author, plugin_name, retriever_name, retrieval_context)
 
     def dispose(self):
-        # No need to consider the shutdown on Windows
-        # for Windows can kill processes and subprocesses chainly
-
-        if self.is_enable_plugin and isinstance(self.ctrl, stdio_client_controller.StdioClientController):
+        # On non-Windows stdio mode, terminate via the controller's process handle.
+        # On Windows, the managed subprocess is cleaned up by the base class.
+        if self.is_enable_plugin and hasattr(self, 'ctrl') and isinstance(self.ctrl, stdio_client_controller.StdioClientController):
             self.ap.logger.info('Terminating plugin runtime process...')
             self.ctrl.process.terminate()
+
+        self._dispose_subprocess()
 
         if self.heartbeat_task is not None:
             self.heartbeat_task.cancel()

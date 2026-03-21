@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import os
-import socket
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -12,7 +11,7 @@ import pytest
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 from langbot.pkg.box.backend import BaseSandboxBackend
-from langbot.pkg.box.client import BoxRuntimeClient, RemoteBoxRuntimeClient
+from langbot.pkg.box.client import BoxRuntimeClient, ActionRPCBoxClient
 from langbot.pkg.box.errors import BoxBackendUnavailableError, BoxSessionConflictError, BoxSessionNotFoundError, BoxValidationError
 from langbot.pkg.box.models import (
     BUILTIN_PROFILES,
@@ -70,20 +69,6 @@ class _InProcessBoxRuntimeClient(BoxRuntimeClient):
     async def get_session(self, session_id: str):
         return self._runtime.get_session(session_id)
 
-
-def _can_open_test_socket() -> bool:
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    except OSError:
-        return False
-    sock.close()
-    return True
-
-
-requires_socket = pytest.mark.skipif(
-    not _can_open_test_socket(),
-    reason='local test environment does not permit opening TCP sockets',
-)
 
 
 class FakeBackend(BaseSandboxBackend):
@@ -787,27 +772,65 @@ async def test_service_get_status_aggregates_runtime_and_profile():
     assert status['recent_error_count'] == 0
 
 
-# ── RemoteBoxRuntimeClient tests ─────────────────────────────────────
+# ── In-process RPC client/server tests ─────────────────────────────────
 
 
-@requires_socket
+class _QueueConnection:
+    """In-process Connection backed by asyncio Queues — no real IO."""
+
+    def __init__(self, rx: asyncio.Queue[str], tx: asyncio.Queue[str]):
+        self._rx = rx
+        self._tx = tx
+
+    async def send(self, message: str) -> None:
+        await self._tx.put(message)
+
+    async def receive(self) -> str:
+        return await self._rx.get()
+
+    async def close(self) -> None:
+        pass
+
+
+def _make_queue_connection_pair():
+    """Return (client_conn, server_conn) linked by queues."""
+    c2s: asyncio.Queue[str] = asyncio.Queue()
+    s2c: asyncio.Queue[str] = asyncio.Queue()
+    client_conn = _QueueConnection(rx=s2c, tx=c2s)
+    server_conn = _QueueConnection(rx=c2s, tx=s2c)
+    return client_conn, server_conn
+
+
+async def _make_rpc_pair(runtime: BoxRuntime):
+    """Create an in-process (ActionRPCBoxClient, server_task, client_task) connected via queues."""
+    from langbot.pkg.box.server import BoxServerHandler
+    from langbot_plugin.runtime.io.handler import Handler
+
+    client_conn, server_conn = _make_queue_connection_pair()
+
+    server_handler = BoxServerHandler(server_conn, runtime)
+    server_task = asyncio.create_task(server_handler.run())
+
+    client_handler = Handler.__new__(Handler)
+    Handler.__init__(client_handler, client_conn)
+    client_task = asyncio.create_task(client_handler.run())
+
+    client = ActionRPCBoxClient(logger=Mock())
+    client.set_handler(client_handler)
+
+    return client, server_task, client_task
+
+
 @pytest.mark.asyncio
-async def test_remote_client_execute():
-    """RemoteBoxRuntimeClient correctly posts to server and parses result."""
-    from aiohttp.test_utils import TestServer
-
-    from langbot.pkg.box.server import create_app as create_server_app
-
+async def test_rpc_client_execute():
+    """ActionRPCBoxClient correctly calls server and parses result."""
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    app = create_server_app(runtime)
-    server = TestServer(app)
-    await server.start_server()
-    try:
-        client = RemoteBoxRuntimeClient(base_url=str(server.make_url('')), logger=logger)
-        await client.initialize()
+    await runtime.initialize()
 
+    client, server_task, client_task = await _make_rpc_pair(runtime)
+    try:
         spec = BoxSpec.model_validate({'cmd': 'echo remote', 'session_id': 'r-1'})
         result = await client.execute(spec)
 
@@ -815,353 +838,122 @@ async def test_remote_client_execute():
         assert result.status == BoxExecutionStatus.COMPLETED
         assert result.exit_code == 0
         assert result.stdout == 'executed: echo remote'
-        await client.shutdown()
     finally:
-        await server.close()
+        server_task.cancel()
+        client_task.cancel()
+        await runtime.shutdown()
 
 
-@requires_socket
 @pytest.mark.asyncio
-async def test_remote_client_get_sessions():
-    from aiohttp.test_utils import TestServer
-
-    from langbot.pkg.box.server import create_app as create_server_app
-
+async def test_rpc_client_get_sessions():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    app = create_server_app(runtime)
-    server = TestServer(app)
-    await server.start_server()
-    try:
-        client = RemoteBoxRuntimeClient(base_url=str(server.make_url('')), logger=logger)
+    await runtime.initialize()
 
+    client, server_task, client_task = await _make_rpc_pair(runtime)
+    try:
         spec = BoxSpec.model_validate({'cmd': 'echo hi', 'session_id': 'r-2'})
         await client.execute(spec)
 
         sessions = await client.get_sessions()
         assert len(sessions) == 1
         assert sessions[0]['session_id'] == 'r-2'
-        await client.shutdown()
     finally:
-        await server.close()
+        server_task.cancel()
+        client_task.cancel()
+        await runtime.shutdown()
 
 
-@requires_socket
 @pytest.mark.asyncio
-async def test_remote_client_get_status():
-    from aiohttp.test_utils import TestServer
-
-    from langbot.pkg.box.server import create_app as create_server_app
-
+async def test_rpc_client_get_status():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    app = create_server_app(runtime)
-    server = TestServer(app)
-    await server.start_server()
+    await runtime.initialize()
+
+    client, server_task, client_task = await _make_rpc_pair(runtime)
     try:
-        client = RemoteBoxRuntimeClient(base_url=str(server.make_url('')), logger=logger)
         status = await client.get_status()
 
         assert 'backend' in status
         assert 'active_sessions' in status
-        await client.shutdown()
     finally:
-        await server.close()
+        server_task.cancel()
+        client_task.cancel()
+        await runtime.shutdown()
 
 
-@requires_socket
 @pytest.mark.asyncio
-async def test_remote_client_get_backend_info():
-    from aiohttp.test_utils import TestServer
-
-    from langbot.pkg.box.server import create_app as create_server_app
-
+async def test_rpc_client_get_backend_info():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    app = create_server_app(runtime)
-    server = TestServer(app)
-    await server.start_server()
+    await runtime.initialize()
+
+    client, server_task, client_task = await _make_rpc_pair(runtime)
     try:
-        client = RemoteBoxRuntimeClient(base_url=str(server.make_url('')), logger=logger)
         info = await client.get_backend_info()
 
         assert info['name'] == 'fake'
         assert info['available'] is True
-        await client.shutdown()
     finally:
-        await server.close()
+        server_task.cancel()
+        client_task.cancel()
+        await runtime.shutdown()
 
 
-# ── Server endpoint tests ────────────────────────────────────────────
-
-
-@requires_socket
-@pytest.mark.asyncio
-async def test_server_delete_session():
-    from aiohttp.test_utils import TestClient, TestServer
-
-    from langbot.pkg.box.server import create_app as create_server_app
-
-    logger = Mock()
-    backend = FakeBackend(logger)
-    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    app = create_server_app(runtime)
-    server = TestServer(app)
-    test_client = TestClient(server)
-    await test_client.start_server()
-    try:
-        # Create a session via exec
-        resp = await test_client.post('/v1/sessions/del-1/exec', json={'cmd': 'echo hi'})
-        assert resp.status == 200
-
-        # Delete it
-        resp = await test_client.delete('/v1/sessions/del-1')
-        assert resp.status == 200
-        data = await resp.json()
-        assert data['deleted'] == 'del-1'
-
-        # Verify session is gone
-        resp = await test_client.get('/v1/sessions')
-        sessions = await resp.json()
-        assert len(sessions) == 0
-    finally:
-        await test_client.close()
-
-
-# ── Runtime delete_session / create_session tests ────────────────────
+# ── RPC-based delete/create/conflict tests ────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_runtime_delete_session():
+async def test_rpc_client_delete_session():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
     await runtime.initialize()
 
-    await runtime.execute(BoxSpec.model_validate({'cmd': 'echo', 'session_id': 'del-test'}))
-    assert len(runtime.get_sessions()) == 1
-
-    await runtime.delete_session('del-test')
-    assert len(runtime.get_sessions()) == 0
-    assert backend.stop_calls == ['del-test']
-
-
-@pytest.mark.asyncio
-async def test_runtime_delete_session_not_found():
-    logger = Mock()
-    backend = FakeBackend(logger)
-    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    await runtime.initialize()
-
-    with pytest.raises(BoxSessionNotFoundError):
-        await runtime.delete_session('nonexistent')
-
-
-@pytest.mark.asyncio
-async def test_runtime_create_session():
-    logger = Mock()
-    backend = FakeBackend(logger)
-    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    await runtime.initialize()
-
-    spec = BoxSpec.model_validate({'cmd': 'placeholder', 'session_id': 'create-1'})
-    info = await runtime.create_session(spec)
-    assert info['session_id'] == 'create-1'
-    assert info['backend_name'] == 'fake'
-
-    sessions = runtime.get_sessions()
-    assert len(sessions) == 1
-    assert sessions[0]['session_id'] == 'create-1'
-
-
-# ── Server structured error tests ────────────────────────────────────
-
-
-@requires_socket
-@pytest.mark.asyncio
-async def test_server_delete_nonexistent_session():
-    from aiohttp.test_utils import TestClient, TestServer
-
-    from langbot.pkg.box.server import create_app as create_server_app
-
-    logger = Mock()
-    backend = FakeBackend(logger)
-    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    app = create_server_app(runtime)
-    server = TestServer(app)
-    test_client = TestClient(server)
-    await test_client.start_server()
+    client, server_task, client_task = await _make_rpc_pair(runtime)
     try:
-        resp = await test_client.delete('/v1/sessions/nonexistent')
-        assert resp.status == 404
-        data = await resp.json()
-        assert data['error']['code'] == 'session_not_found'
-    finally:
-        await test_client.close()
-
-
-@requires_socket
-@pytest.mark.asyncio
-async def test_server_exec_returns_structured_error_on_conflict():
-    from aiohttp.test_utils import TestClient, TestServer
-
-    from langbot.pkg.box.server import create_app as create_server_app
-
-    logger = Mock()
-    backend = FakeBackend(logger)
-    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    app = create_server_app(runtime)
-    server = TestServer(app)
-    test_client = TestClient(server)
-    await test_client.start_server()
-    try:
-        # Create session with network=off
-        resp = await test_client.post('/v1/sessions/conflict-1/exec', json={'cmd': 'echo hi', 'network': 'off'})
-        assert resp.status == 200
-
-        # Try to use same session with network=on -> conflict
-        resp = await test_client.post('/v1/sessions/conflict-1/exec', json={'cmd': 'echo hi', 'network': 'on'})
-        assert resp.status == 409
-        data = await resp.json()
-        assert data['error']['code'] == 'session_conflict'
-    finally:
-        await test_client.close()
-
-
-@requires_socket
-@pytest.mark.asyncio
-async def test_server_create_session():
-    from aiohttp.test_utils import TestClient, TestServer
-
-    from langbot.pkg.box.server import create_app as create_server_app
-
-    logger = Mock()
-    backend = FakeBackend(logger)
-    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    app = create_server_app(runtime)
-    server = TestServer(app)
-    test_client = TestClient(server)
-    await test_client.start_server()
-    try:
-        resp = await test_client.post('/v1/sessions/new-1', json={'image': 'python:3.11-slim'})
-        assert resp.status == 201
-        data = await resp.json()
-        assert data['session_id'] == 'new-1'
-        assert data['backend_name'] == 'fake'
-        assert 'created_at' in data
-
-        # Session should appear in list
-        resp = await test_client.get('/v1/sessions')
-        sessions = await resp.json()
-        assert len(sessions) == 1
-        assert sessions[0]['session_id'] == 'new-1'
-    finally:
-        await test_client.close()
-
-
-@requires_socket
-@pytest.mark.asyncio
-async def test_server_create_session_conflict():
-    from aiohttp.test_utils import TestClient, TestServer
-
-    from langbot.pkg.box.server import create_app as create_server_app
-
-    logger = Mock()
-    backend = FakeBackend(logger)
-    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    app = create_server_app(runtime)
-    server = TestServer(app)
-    test_client = TestClient(server)
-    await test_client.start_server()
-    try:
-        resp = await test_client.post('/v1/sessions/dup-1', json={'network': 'off'})
-        assert resp.status == 201
-
-        # Conflicting create with different network
-        resp = await test_client.post('/v1/sessions/dup-1', json={'network': 'on'})
-        assert resp.status == 409
-        data = await resp.json()
-        assert data['error']['code'] == 'session_conflict'
-    finally:
-        await test_client.close()
-
-
-# ── Remote client error translation tests ─────────────────────────────
-
-
-@requires_socket
-@pytest.mark.asyncio
-async def test_remote_client_delete_session():
-    from aiohttp.test_utils import TestServer
-
-    from langbot.pkg.box.server import create_app as create_server_app
-
-    logger = Mock()
-    backend = FakeBackend(logger)
-    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    app = create_server_app(runtime)
-    server = TestServer(app)
-    await server.start_server()
-    try:
-        client = RemoteBoxRuntimeClient(base_url=str(server.make_url('')), logger=logger)
-
-        # Create session via exec
         spec = BoxSpec.model_validate({'cmd': 'echo hi', 'session_id': 'r-del-1'})
         await client.execute(spec)
 
-        # Delete it
         await client.delete_session('r-del-1')
 
-        # Verify empty
         sessions = await client.get_sessions()
         assert len(sessions) == 0
-        await client.shutdown()
     finally:
-        await server.close()
+        server_task.cancel()
+        client_task.cancel()
+        await runtime.shutdown()
 
 
-@requires_socket
 @pytest.mark.asyncio
-async def test_remote_client_delete_session_raises_not_found():
-    from aiohttp.test_utils import TestServer
-
-    from langbot.pkg.box.server import create_app as create_server_app
-
+async def test_rpc_client_delete_session_raises_not_found():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    app = create_server_app(runtime)
-    server = TestServer(app)
-    await server.start_server()
-    try:
-        client = RemoteBoxRuntimeClient(base_url=str(server.make_url('')), logger=logger)
+    await runtime.initialize()
 
+    client, server_task, client_task = await _make_rpc_pair(runtime)
+    try:
         with pytest.raises(BoxSessionNotFoundError):
             await client.delete_session('nonexistent')
-        await client.shutdown()
     finally:
-        await server.close()
+        server_task.cancel()
+        client_task.cancel()
+        await runtime.shutdown()
 
 
-@requires_socket
 @pytest.mark.asyncio
-async def test_remote_client_create_session():
-    from aiohttp.test_utils import TestServer
-
-    from langbot.pkg.box.server import create_app as create_server_app
-
+async def test_rpc_client_create_session():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    app = create_server_app(runtime)
-    server = TestServer(app)
-    await server.start_server()
-    try:
-        client = RemoteBoxRuntimeClient(base_url=str(server.make_url('')), logger=logger)
+    await runtime.initialize()
 
+    client, server_task, client_task = await _make_rpc_pair(runtime)
+    try:
         spec = BoxSpec.model_validate({'cmd': 'placeholder', 'session_id': 'r-create-1'})
         info = await client.create_session(spec)
         assert info['session_id'] == 'r-create-1'
@@ -1169,38 +961,31 @@ async def test_remote_client_create_session():
 
         sessions = await client.get_sessions()
         assert len(sessions) == 1
-        await client.shutdown()
     finally:
-        await server.close()
+        server_task.cancel()
+        client_task.cancel()
+        await runtime.shutdown()
 
 
-@requires_socket
 @pytest.mark.asyncio
-async def test_remote_client_exec_raises_conflict_error():
-    from aiohttp.test_utils import TestServer
-
-    from langbot.pkg.box.server import create_app as create_server_app
-
+async def test_rpc_client_exec_raises_conflict_error():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    app = create_server_app(runtime)
-    server = TestServer(app)
-    await server.start_server()
-    try:
-        client = RemoteBoxRuntimeClient(base_url=str(server.make_url('')), logger=logger)
+    await runtime.initialize()
 
-        # Create session with network=off
+    client, server_task, client_task = await _make_rpc_pair(runtime)
+    try:
         spec1 = BoxSpec.model_validate({'cmd': 'echo first', 'session_id': 'r-conflict-1', 'network': 'off'})
         await client.execute(spec1)
 
-        # Conflicting exec with network=on
         spec2 = BoxSpec.model_validate({'cmd': 'echo second', 'session_id': 'r-conflict-1', 'network': 'on'})
         with pytest.raises(BoxSessionConflictError):
             await client.execute(spec2)
-        await client.shutdown()
     finally:
-        await server.close()
+        server_task.cancel()
+        client_task.cancel()
+        await runtime.shutdown()
 
 
 # ── BoxHostMountMode.NONE tests ─────────────────────────────────────

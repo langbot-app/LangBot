@@ -5,8 +5,12 @@ import os
 import sys
 from typing import TYPE_CHECKING
 
+from langbot_plugin.entities.io.actions.enums import CommonAction
+from langbot_plugin.runtime.io.handler import Handler
+from langbot_plugin.runtime.io.connection import Connection
+
+from .client import ActionRPCBoxClient, resolve_box_ws_relay_url
 from .errors import BoxRuntimeUnavailableError
-from .client import RemoteBoxRuntimeClient, resolve_box_runtime_url
 from .models import get_box_config
 from ..utils import platform
 
@@ -15,44 +19,129 @@ if TYPE_CHECKING:
 
 
 class BoxRuntimeConnector:
-    """Build and initialize the Box runtime-facing service for the app."""
-
-    _HEALTH_CHECK_RETRY_COUNT = 40
-    _HEALTH_CHECK_RETRY_INTERVAL_SEC = 0.25
+    """Connect to the Box runtime via action RPC (stdio or ws)."""
 
     def __init__(self, ap: 'core_app.Application'):
         self.ap = ap
         self.configured_runtime_url = self._load_configured_runtime_url()
-        self.runtime_url = self.configured_runtime_url or resolve_box_runtime_url(ap)
         self.manages_local_runtime = self._should_manage_local_runtime()
-        self.client = RemoteBoxRuntimeClient(base_url=self.runtime_url, logger=ap.logger)
-        self.runtime_subprocess: asyncio.subprocess.Process | None = None
-        self.runtime_subprocess_task: asyncio.Task | None = None
+        self.ws_relay_base_url = resolve_box_ws_relay_url(ap)
+        self.client = ActionRPCBoxClient(logger=ap.logger)
+
+        self._handler: Handler | None = None
+        self._handler_task: asyncio.Task | None = None
+        self._ctrl_task: asyncio.Task | None = None
+        self._subprocess: asyncio.subprocess.Process | None = None
+        self._subprocess_wait_task: asyncio.Task | None = None
 
     async def initialize(self) -> None:
-        if not self.manages_local_runtime:
-            await self.client.initialize()
-            return
+        if self.manages_local_runtime:
+            await self._start_local_stdio()
+        else:
+            await self._connect_remote_ws()
+
+    async def _start_local_stdio(self) -> None:
+        """Launch box server as subprocess and connect via stdio."""
+        from langbot_plugin.runtime.io.controllers.stdio.client import StdioClientController
+
+        python_path = sys.executable
+        env = os.environ.copy()
+
+        connected = asyncio.Event()
+        connect_error: list[Exception] = []
+
+        async def new_connection_callback(connection: Connection) -> None:
+            handler = Handler.__new__(Handler)
+            Handler.__init__(handler, connection)
+            self._handler = handler
+            self.client.set_handler(handler)
+            self._handler_task = asyncio.create_task(handler.run())
+            try:
+                await handler.call_action(CommonAction.PING, {})
+                self.ap.logger.info('Connected to Box runtime via stdio.')
+                connected.set()
+                await self._handler_task
+            except Exception as exc:
+                if not connected.is_set():
+                    connect_error.append(exc)
+                    connected.set()
+
+        ctrl = StdioClientController(
+            command=python_path,
+            args=['-m', 'langbot.pkg.box.server', '--port', str(self._get_ws_relay_port())],
+            env=env,
+        )
+        self._subprocess = None  # StdioClientController manages the subprocess
+        self._ctrl_task = asyncio.create_task(ctrl.run(new_connection_callback))
+
+        # Wait for connection or failure
+        try:
+            await asyncio.wait_for(connected.wait(), timeout=30.0)
+        except asyncio.TimeoutError:
+            raise BoxRuntimeUnavailableError('box runtime subprocess did not connect in time')
+
+        if connect_error:
+            raise BoxRuntimeUnavailableError(f'box runtime connection failed: {connect_error[0]}')
+
+        # Store subprocess reference for dispose
+        self._subprocess = ctrl.process
+
+    async def _connect_remote_ws(self) -> None:
+        """Connect to a remote box server via WebSocket."""
+        from langbot_plugin.runtime.io.controllers.ws.client import WebSocketClientController
+
+        ws_url = self._get_rpc_ws_url()
+
+        connected = asyncio.Event()
+        connect_error: list[Exception] = []
+
+        async def new_connection_callback(connection: Connection) -> None:
+            handler = Handler.__new__(Handler)
+            Handler.__init__(handler, connection)
+            self._handler = handler
+            self.client.set_handler(handler)
+            self._handler_task = asyncio.create_task(handler.run())
+            try:
+                await handler.call_action(CommonAction.PING, {})
+                self.ap.logger.info('Connected to Box runtime via WebSocket.')
+                connected.set()
+                await self._handler_task
+            except Exception as exc:
+                if not connected.is_set():
+                    connect_error.append(exc)
+                    connected.set()
+
+        async def on_connect_failed(ctrl, exc):
+            connect_error.append(exc or BoxRuntimeUnavailableError('ws connection failed'))
+            connected.set()
+
+        ctrl = WebSocketClientController(ws_url=ws_url, make_connection_failed_callback=on_connect_failed)
+        self._ctrl_task = asyncio.create_task(ctrl.run(new_connection_callback))
 
         try:
-            await self.client.initialize()
-            return
-        except BoxRuntimeUnavailableError:
-            self.ap.logger.info(
-                'Local Box runtime is not running, starting an embedded Box runtime server...'
-            )
+            await asyncio.wait_for(connected.wait(), timeout=30.0)
+        except asyncio.TimeoutError:
+            raise BoxRuntimeUnavailableError('box runtime ws connection timed out')
 
-        await self._start_local_runtime_process()
-        await self._wait_until_runtime_ready()
+        if connect_error:
+            raise BoxRuntimeUnavailableError(f'box runtime connection failed: {connect_error[0]}')
 
     def dispose(self) -> None:
-        if self.runtime_subprocess is not None and self.runtime_subprocess.returncode is None:
-            self.ap.logger.info('Terminating local Box runtime process...')
-            self.runtime_subprocess.terminate()
+        if self._handler_task is not None:
+            self._handler_task.cancel()
+            self._handler_task = None
 
-        if self.runtime_subprocess_task is not None:
-            self.runtime_subprocess_task.cancel()
-            self.runtime_subprocess_task = None
+        if self._ctrl_task is not None:
+            self._ctrl_task.cancel()
+            self._ctrl_task = None
+
+        if self._subprocess is not None and self._subprocess.returncode is None:
+            self.ap.logger.info('Terminating managed box runtime process...')
+            self._subprocess.terminate()
+
+        if self._subprocess_wait_task is not None:
+            self._subprocess_wait_task.cancel()
+            self._subprocess_wait_task = None
 
     def _load_configured_runtime_url(self) -> str:
         return str(get_box_config(self.ap).get('runtime_url', '')).strip()
@@ -60,36 +149,19 @@ class BoxRuntimeConnector:
     def _should_manage_local_runtime(self) -> bool:
         return not self.configured_runtime_url and platform.get_platform() != 'docker'
 
-    async def _start_local_runtime_process(self) -> None:
-        if self.runtime_subprocess is not None and self.runtime_subprocess.returncode is None:
-            return
+    def _get_ws_relay_port(self) -> int:
+        """Extract the port for ws relay from ws_relay_base_url."""
+        from urllib.parse import urlparse
+        parsed = urlparse(self.ws_relay_base_url)
+        return parsed.port or 5410
 
-        python_path = sys.executable
-        env = os.environ.copy()
-        self.runtime_subprocess = await asyncio.create_subprocess_exec(
-            python_path,
-            '-m',
-            'langbot.pkg.box.server',
-            env=env,
-        )
-        self.runtime_subprocess_task = asyncio.create_task(self.runtime_subprocess.wait())
+    def _get_rpc_ws_url(self) -> str:
+        """Derive the action RPC ws URL from the configured runtime URL.
 
-    async def _wait_until_runtime_ready(self) -> None:
-        last_exc: BoxRuntimeUnavailableError | None = None
-        for _ in range(self._HEALTH_CHECK_RETRY_COUNT):
-            if self.runtime_subprocess is not None and self.runtime_subprocess.returncode is not None:
-                raise BoxRuntimeUnavailableError(
-                    f'local box runtime exited before becoming ready (code {self.runtime_subprocess.returncode})'
-                )
-
-            try:
-                await self.client.initialize()
-                self.ap.logger.info(f'Local Box runtime is ready at {self.runtime_url}.')
-                return
-            except BoxRuntimeUnavailableError as exc:
-                last_exc = exc
-                await asyncio.sleep(self._HEALTH_CHECK_RETRY_INTERVAL_SEC)
-
-        if last_exc is not None:
-            raise last_exc
-        raise BoxRuntimeUnavailableError('local box runtime did not become ready')
+        The RPC endpoint is on port+1 relative to the ws relay port.
+        """
+        from urllib.parse import urlparse
+        parsed = urlparse(self.ws_relay_base_url)
+        host = parsed.hostname or '127.0.0.1'
+        port = (parsed.port or 5410) + 1
+        return f'ws://{host}:{port}'
