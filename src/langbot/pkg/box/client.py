@@ -11,12 +11,21 @@ import aiohttp
 from .errors import (
     BoxBackendUnavailableError,
     BoxError,
+    BoxManagedProcessConflictError,
+    BoxManagedProcessNotFoundError,
     BoxRuntimeUnavailableError,
     BoxSessionConflictError,
     BoxSessionNotFoundError,
     BoxValidationError,
 )
-from .models import BoxExecutionResult, BoxExecutionStatus, BoxSpec, get_box_config
+from .models import (
+    BoxExecutionResult,
+    BoxExecutionStatus,
+    BoxManagedProcessInfo,
+    BoxManagedProcessSpec,
+    BoxSpec,
+    get_box_config,
+)
 from ..utils import platform
 
 if TYPE_CHECKING:
@@ -26,6 +35,8 @@ _ERROR_CODE_MAP: dict[str, type[BoxError]] = {
     'validation_error': BoxValidationError,
     'session_not_found': BoxSessionNotFoundError,
     'session_conflict': BoxSessionConflictError,
+    'managed_process_not_found': BoxManagedProcessNotFoundError,
+    'managed_process_conflict': BoxManagedProcessConflictError,
     'backend_unavailable': BoxBackendUnavailableError,
     'runtime_unavailable': BoxRuntimeUnavailableError,
     'internal_error': BoxError,
@@ -68,6 +79,12 @@ class BoxRuntimeClient(abc.ABC):
 
     @abc.abstractmethod
     async def create_session(self, spec: BoxSpec) -> dict: ...
+
+    @abc.abstractmethod
+    async def start_managed_process(self, session_id: str, spec: BoxManagedProcessSpec) -> BoxManagedProcessInfo: ...
+
+    @abc.abstractmethod
+    async def get_managed_process(self, session_id: str) -> BoxManagedProcessInfo: ...
 
 
 class RemoteBoxRuntimeClient(BoxRuntimeClient):
@@ -182,3 +199,41 @@ class RemoteBoxRuntimeClient(BoxRuntimeClient):
                 return await resp.json()
         except aiohttp.ClientError as exc:
             raise BoxRuntimeUnavailableError(f'box runtime unavailable: {exc}') from exc
+
+    async def start_managed_process(self, session_id: str, spec: BoxManagedProcessSpec) -> BoxManagedProcessInfo:
+        session = self._get_session()
+        payload = spec.model_dump(mode='json')
+        try:
+            async with session.post(
+                f'{self._base_url}/v1/sessions/{session_id}/managed-process',
+                json=payload,
+            ) as resp:
+                await self._check_response(resp)
+                data = await resp.json()
+        except aiohttp.ClientError as exc:
+            raise BoxRuntimeUnavailableError(f'box runtime unavailable: {exc}') from exc
+        return BoxManagedProcessInfo.model_validate(data)
+
+    async def get_managed_process(self, session_id: str) -> BoxManagedProcessInfo:
+        session = self._get_session()
+        try:
+            async with session.get(
+                f'{self._base_url}/v1/sessions/{session_id}/managed-process',
+            ) as resp:
+                await self._check_response(resp)
+                data = await resp.json()
+        except aiohttp.ClientError as exc:
+            raise BoxRuntimeUnavailableError(f'box runtime unavailable: {exc}') from exc
+        return BoxManagedProcessInfo.model_validate(data)
+
+    def get_managed_process_websocket_url(self, session_id: str) -> str:
+        if self._base_url.startswith('https://'):
+            scheme = 'wss://'
+            suffix = self._base_url[len('https://'):]
+        elif self._base_url.startswith('http://'):
+            scheme = 'ws://'
+            suffix = self._base_url[len('http://'):]
+        else:
+            scheme = 'ws://'
+            suffix = self._base_url
+        return f'{scheme}{suffix}/v1/sessions/{session_id}/managed-process/ws'

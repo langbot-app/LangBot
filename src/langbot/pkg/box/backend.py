@@ -4,6 +4,8 @@ import abc
 import asyncio
 import dataclasses
 import datetime as dt
+import hashlib
+import json
 import logging
 import re
 import shlex
@@ -12,7 +14,8 @@ import typing
 import uuid
 
 from .errors import BoxError
-from .models import DEFAULT_BOX_MOUNT_PATH, BoxExecutionResult, BoxExecutionStatus, BoxSessionInfo, BoxSpec
+from .models import DEFAULT_BOX_MOUNT_PATH, BoxExecutionResult, BoxExecutionStatus, BoxHostMountMode, BoxSessionInfo, BoxSpec
+from .security import validate_sandbox_security
 
 # Hard cap on raw subprocess output to prevent unbounded memory usage.
 # Container timeout already bounds duration, but fast commands can still
@@ -54,6 +57,13 @@ class BaseSandboxBackend(abc.ABC):
     async def stop_session(self, session: BoxSessionInfo):
         pass
 
+    async def start_managed_process(self, session: BoxSessionInfo, spec):
+        raise BoxError(f'{self.name} backend does not support managed processes')
+
+    async def cleanup_orphaned_containers(self):
+        """Remove lingering containers from previous runs. No-op by default."""
+        pass
+
 
 class CLISandboxBackend(BaseSandboxBackend):
     command: str
@@ -71,6 +81,8 @@ class CLISandboxBackend(BaseSandboxBackend):
         return result.return_code == 0 and not result.timed_out
 
     async def start_session(self, spec: BoxSpec) -> BoxSessionInfo:
+        validate_sandbox_security(spec)
+
         now = dt.datetime.now(dt.UTC)
         container_name = self._build_container_name(spec.session_id)
 
@@ -87,6 +99,19 @@ class CLISandboxBackend(BaseSandboxBackend):
             f'langbot.session_id={spec.session_id}',
         ]
 
+        # Config hash label for identifying configuration drift
+        config_hash = hashlib.sha256(json.dumps({
+            'image': spec.image,
+            'network': spec.network.value,
+            'host_path': spec.host_path,
+            'host_path_mode': spec.host_path_mode.value,
+            'cpus': spec.cpus,
+            'memory_mb': spec.memory_mb,
+            'pids_limit': spec.pids_limit,
+            'read_only_rootfs': spec.read_only_rootfs,
+        }, sort_keys=True).encode()).hexdigest()[:16]
+        args.extend(['--label', f'langbot.box.config_hash={config_hash}'])
+
         if spec.network.value == 'off':
             args.extend(['--network', 'none'])
 
@@ -99,7 +124,7 @@ class CLISandboxBackend(BaseSandboxBackend):
             args.append('--read-only')
             args.extend(['--tmpfs', '/tmp:size=64m'])
 
-        if spec.host_path is not None:
+        if spec.host_path is not None and spec.host_path_mode != BoxHostMountMode.NONE:
             mount_spec = f'{spec.host_path}:{DEFAULT_BOX_MOUNT_PATH}:{spec.host_path_mode.value}'
             args.extend(['-v', mount_spec])
 
@@ -193,6 +218,54 @@ class CLISandboxBackend(BaseSandboxBackend):
             check=False,
         )
 
+    async def cleanup_orphaned_containers(self):
+        """Remove any lingering langbot.box containers from previous runs."""
+        result = await self._run_command(
+            [self.command, 'ps', '-a', '--filter', 'label=langbot.box=true', '-q'],
+            timeout_sec=10,
+            check=False,
+        )
+        if result.return_code != 0 or not result.stdout.strip():
+            return
+        container_ids = [cid.strip() for cid in result.stdout.strip().split('\n') if cid.strip()]
+        if not container_ids:
+            return
+        for cid in container_ids:
+            self.logger.info(f'Cleaning up orphaned Box container: {cid}')
+        await self._run_command(
+            [self.command, 'rm', '-f', *container_ids],
+            timeout_sec=30,
+            check=False,
+        )
+
+    async def start_managed_process(self, session: BoxSessionInfo, spec) -> asyncio.subprocess.Process:
+        args = [self.command, 'exec', '-i']
+
+        for key, value in spec.env.items():
+            args.extend(['-e', f'{key}={value}'])
+
+        args.extend(
+            [
+                session.backend_session_id,
+                'sh',
+                '-lc',
+                self._build_spawn_command(spec.cwd, spec.command, spec.args),
+            ]
+        )
+
+        self.logger.info(
+            f'LangBot Box backend start_managed_process: backend={self.name} '
+            f'session_id={session.session_id} container_name={session.backend_session_id} '
+            f'cwd={spec.cwd} env_keys={sorted(spec.env.keys())} command={spec.command} args={spec.args}'
+        )
+
+        return await asyncio.create_subprocess_exec(
+            *args,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
     def _build_container_name(self, session_id: str) -> str:
         normalized = re.sub(r'[^a-zA-Z0-9_.-]+', '-', session_id).strip('-').lower() or 'session'
         suffix = uuid.uuid4().hex[:8]
@@ -201,6 +274,11 @@ class CLISandboxBackend(BaseSandboxBackend):
     def _build_exec_command(self, workdir: str, cmd: str) -> str:
         quoted_workdir = shlex.quote(workdir)
         return f'mkdir -p {quoted_workdir} && cd {quoted_workdir} && {cmd}'
+
+    def _build_spawn_command(self, cwd: str, command: str, args: list[str]) -> str:
+        quoted_cwd = shlex.quote(cwd)
+        command_parts = [shlex.quote(command), *[shlex.quote(arg) for arg in args]]
+        return f'mkdir -p {quoted_cwd} && cd {quoted_cwd} && exec {" ".join(command_parts)}'
 
     async def _run_command(
         self,

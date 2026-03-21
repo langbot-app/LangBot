@@ -12,7 +12,15 @@ import pydantic
 from .client import BoxRuntimeClient
 from .connector import BoxRuntimeConnector
 from .errors import BoxError, BoxValidationError
-from .models import BUILTIN_PROFILES, BoxExecutionResult, BoxProfile, BoxSpec, get_box_config
+from .models import (
+    BUILTIN_PROFILES,
+    BoxExecutionResult,
+    BoxManagedProcessInfo,
+    BoxManagedProcessSpec,
+    BoxProfile,
+    BoxSpec,
+    get_box_config,
+)
 
 _INT_ADAPTER = pydantic.TypeAdapter(int)
 _UTC = _dt.timezone.utc
@@ -42,32 +50,36 @@ class BoxService:
         self.profile = self._load_profile()
         self._recent_errors: collections.deque[dict] = collections.deque(maxlen=_MAX_RECENT_ERRORS)
         self._shutdown_task = None
+        self._available = False
 
     async def initialize(self):
         self._ensure_default_host_workspace()
-        if self._runtime_connector is not None:
-            await self._runtime_connector.initialize()
-            return
-        await self.client.initialize()
+        try:
+            if self._runtime_connector is not None:
+                await self._runtime_connector.initialize()
+            else:
+                await self.client.initialize()
+            self._available = True
+        except Exception as exc:
+            self.ap.logger.warning(
+                f'LangBot Box runtime unavailable, sandbox features disabled: {exc}'
+            )
+            self._available = False
+
+    @property
+    def available(self) -> bool:
+        return self._available
 
     async def execute_sandbox_tool(self, parameters: dict, query: 'pipeline_query.Query') -> dict:
+        if not self._available:
+            raise BoxError('Box runtime is not available. Install and start Podman or Docker to use sandbox features.')
         spec_payload = dict(parameters)
         spec_payload.setdefault('session_id', str(query.query_id))
-        spec_payload.setdefault('env', {})
-        if spec_payload.get('host_path') in (None, '') and self.default_host_workspace is not None:
-            spec_payload['host_path'] = self.default_host_workspace
-
-        self._apply_profile(spec_payload)
-
         try:
-            spec = BoxSpec.model_validate(spec_payload)
-        except pydantic.ValidationError as exc:
-            first_error = exc.errors()[0]
-            err = BoxValidationError(first_error.get('msg', 'invalid sandbox_exec arguments'))
-            self._record_error(err, query)
-            raise err from exc
-
-        self._validate_host_mount(spec)
+            spec = self.build_spec(spec_payload)
+        except BoxError as exc:
+            self._record_error(exc, query)
+            raise
         self.ap.logger.info(
             'LangBot Box request: '
             f'query_id={query.query_id} '
@@ -101,6 +113,41 @@ class BoxService:
 
     async def get_sessions(self) -> list[dict]:
         return await self.client.get_sessions()
+
+    def build_spec(self, spec_payload: dict, skip_host_mount_validation: bool = False) -> BoxSpec:
+        spec_payload = dict(spec_payload)
+        spec_payload.setdefault('env', {})
+        if spec_payload.get('host_path') in (None, '') and self.default_host_workspace is not None:
+            spec_payload['host_path'] = self.default_host_workspace
+
+        self._apply_profile(spec_payload)
+
+        try:
+            spec = BoxSpec.model_validate(spec_payload)
+        except pydantic.ValidationError as exc:
+            first_error = exc.errors()[0]
+            raise BoxValidationError(first_error.get('msg', 'invalid box arguments')) from exc
+
+        if not skip_host_mount_validation:
+            self._validate_host_mount(spec)
+        return spec
+
+    async def create_session(self, spec_payload: dict, *, skip_host_mount_validation: bool = False) -> dict:
+        spec = self.build_spec(spec_payload, skip_host_mount_validation=skip_host_mount_validation)
+        return await self.client.create_session(spec)
+
+    async def start_managed_process(self, session_id: str, process_payload: dict) -> BoxManagedProcessInfo:
+        process_spec = BoxManagedProcessSpec.model_validate(process_payload)
+        return await self.client.start_managed_process(session_id, process_spec)
+
+    async def get_managed_process(self, session_id: str) -> BoxManagedProcessInfo:
+        return await self.client.get_managed_process(session_id)
+
+    def get_managed_process_websocket_url(self, session_id: str) -> str:
+        getter = getattr(self.client, 'get_managed_process_websocket_url', None)
+        if getter is None:
+            raise BoxValidationError('box runtime client does not support managed process websocket attach')
+        return getter(session_id)
 
     def _serialize_result(self, result: BoxExecutionResult) -> dict:
         stdout, stdout_truncated = self._truncate(result.stdout)
@@ -296,9 +343,16 @@ class BoxService:
         return list(self._recent_errors)
 
     async def get_status(self) -> dict:
+        if not self._available:
+            return {
+                'available': False,
+                'profile': self.profile.name,
+                'recent_error_count': len(self._recent_errors),
+            }
         runtime_status = await self.client.get_status()
         return {
             **runtime_status,
+            'available': True,
             'profile': self.profile.name,
             'recent_error_count': len(self._recent_errors),
         }

@@ -19,6 +19,7 @@ from langbot.pkg.box.models import (
     BoxExecutionResult,
     BoxExecutionStatus,
     BoxHostMountMode,
+    BoxManagedProcessSpec,
     BoxNetworkMode,
     BoxProfile,
     BoxSessionInfo,
@@ -59,6 +60,12 @@ class _InProcessBoxRuntimeClient(BoxRuntimeClient):
 
     async def create_session(self, spec):
         return await self._runtime.create_session(spec)
+
+    async def start_managed_process(self, session_id: str, spec: BoxManagedProcessSpec):
+        return await self._runtime.start_managed_process(session_id, spec)
+
+    async def get_managed_process(self, session_id: str):
+        return self._runtime.get_managed_process(session_id)
 
 
 def _can_open_test_socket() -> bool:
@@ -1191,3 +1198,46 @@ async def test_remote_client_exec_raises_conflict_error():
         await client.shutdown()
     finally:
         await server.close()
+
+
+# ── BoxHostMountMode.NONE tests ─────────────────────────────────────
+
+
+class TestBoxHostMountModeNone:
+    def test_none_mode_is_valid_enum(self):
+        assert BoxHostMountMode.NONE.value == 'none'
+
+    def test_spec_with_none_mode_skips_workdir_check(self):
+        """When host_path_mode is NONE, workdir validation is skipped."""
+        spec = BoxSpec(
+            session_id='test',
+            cmd='echo hi',
+            host_path='/home/user/data',
+            host_path_mode=BoxHostMountMode.NONE,
+            workdir='/opt/custom',  # Not under /workspace, should be allowed
+        )
+        assert spec.host_path_mode == BoxHostMountMode.NONE
+        assert spec.workdir == '/opt/custom'
+
+    def test_spec_with_rw_mode_requires_workspace_workdir(self):
+        """When host_path_mode is RW, workdir must be under /workspace."""
+        with pytest.raises(Exception):
+            BoxSpec(
+                session_id='test',
+                cmd='echo hi',
+                host_path='/home/user/data',
+                host_path_mode=BoxHostMountMode.READ_WRITE,
+                workdir='/opt/custom',
+            )
+
+    def test_spec_with_ro_mode_requires_workspace_workdir(self):
+        """When host_path_mode is RO, workdir must be under /workspace."""
+        with pytest.raises(Exception):
+            BoxSpec(
+                session_id='test',
+                cmd='echo hi',
+                host_path='/home/user/data',
+                host_path_mode=BoxHostMountMode.READ_ONLY,
+                workdir='/opt/custom',
+            )
+
