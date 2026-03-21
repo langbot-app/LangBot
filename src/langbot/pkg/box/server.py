@@ -117,6 +117,15 @@ async def handle_delete_session(request: web.Request) -> web.Response:
         return _error_response(exc)
 
 
+async def handle_get_session(request: web.Request) -> web.Response:
+    runtime: BoxRuntime = request.app['runtime']
+    session_id = request.match_info['session_id']
+    try:
+        return web.json_response(runtime.get_session(session_id))
+    except BoxError as exc:
+        return _error_response(exc)
+
+
 async def handle_status(request: web.Request) -> web.Response:
     runtime: BoxRuntime = request.app['runtime']
     try:
@@ -234,6 +243,7 @@ def create_app(runtime: BoxRuntime | None = None) -> web.Application:
 
     app.router.add_post('/v1/sessions/{session_id}/exec', handle_exec)
     app.router.add_post('/v1/sessions/{session_id}', handle_create_session)
+    app.router.add_get('/v1/sessions/{session_id}', handle_get_session)
     app.router.add_get('/v1/sessions', handle_get_sessions)
     app.router.add_delete('/v1/sessions/{session_id}', handle_delete_session)
     app.router.add_post('/v1/sessions/{session_id}/managed-process', handle_start_managed_process)
