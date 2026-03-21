@@ -23,3 +23,11 @@ class BoxSessionConflictError(BoxError):
 
 class BoxSessionNotFoundError(BoxError):
     """Raised when a referenced session does not exist."""
+
+
+class BoxManagedProcessConflictError(BoxError):
+    """Raised when a session already has an active managed process."""
+
+
+class BoxManagedProcessNotFoundError(BoxError):
+    """Raised when a referenced managed process does not exist."""

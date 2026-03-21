@@ -1,21 +1,54 @@
 from __future__ import annotations
 
 import asyncio
+import collections
 import dataclasses
 import datetime as dt
 import logging
 
 from .backend import BaseSandboxBackend, DockerBackend, PodmanBackend
-from .errors import BoxBackendUnavailableError, BoxSessionConflictError, BoxSessionNotFoundError, BoxValidationError
-from .models import BoxExecutionResult, BoxExecutionStatus, BoxSessionInfo, BoxSpec
+from .errors import (
+    BoxBackendUnavailableError,
+    BoxManagedProcessConflictError,
+    BoxManagedProcessNotFoundError,
+    BoxSessionConflictError,
+    BoxSessionNotFoundError,
+    BoxValidationError,
+)
+from .models import (
+    BoxExecutionResult,
+    BoxExecutionStatus,
+    BoxManagedProcessInfo,
+    BoxManagedProcessSpec,
+    BoxManagedProcessStatus,
+    BoxSessionInfo,
+    BoxSpec,
+)
 
 _UTC = dt.timezone.utc
+_MANAGED_PROCESS_STDERR_PREVIEW_LIMIT = 4000
+
+
+@dataclasses.dataclass(slots=True)
+class _ManagedProcess:
+    spec: BoxManagedProcessSpec
+    process: asyncio.subprocess.Process
+    started_at: dt.datetime
+    attach_lock: asyncio.Lock
+    stderr_chunks: collections.deque[str]
+    exit_code: int | None = None
+    exited_at: dt.datetime | None = None
+
+    @property
+    def is_running(self) -> bool:
+        return self.exit_code is None and self.process.returncode is None
 
 
 @dataclasses.dataclass(slots=True)
 class _RuntimeSession:
     info: BoxSessionInfo
     lock: asyncio.Lock
+    managed_process: _ManagedProcess | None = None
 
 
 class BoxRuntime:
@@ -34,6 +67,11 @@ class BoxRuntime:
 
     async def initialize(self):
         self._backend = await self._select_backend()
+        if self._backend is not None:
+            try:
+                await self._backend.cleanup_orphaned_containers()
+            except Exception as exc:
+                self.logger.warning(f'LangBot Box orphan container cleanup failed: {exc}')
 
     async def execute(self, spec: BoxSpec) -> BoxExecutionResult:
         if not spec.cmd:
@@ -77,6 +115,40 @@ class BoxRuntime:
                 raise BoxSessionNotFoundError(f'session {session_id} not found')
             await self._drop_session_locked(session_id)
 
+    async def start_managed_process(self, session_id: str, spec: BoxManagedProcessSpec) -> dict:
+        async with self._lock:
+            runtime_session = self._sessions.get(session_id)
+            if runtime_session is None:
+                raise BoxSessionNotFoundError(f'session {session_id} not found')
+
+        async with runtime_session.lock:
+            existing = runtime_session.managed_process
+            if existing is not None and existing.is_running:
+                raise BoxManagedProcessConflictError(f'session {session_id} already has a managed process')
+
+            backend = await self._get_backend()
+            process = await backend.start_managed_process(runtime_session.info, spec)
+            managed_process = _ManagedProcess(
+                spec=spec,
+                process=process,
+                started_at=dt.datetime.now(_UTC),
+                attach_lock=asyncio.Lock(),
+                stderr_chunks=collections.deque(),
+            )
+            runtime_session.managed_process = managed_process
+            runtime_session.info.last_used_at = dt.datetime.now(_UTC)
+            asyncio.create_task(self._drain_managed_process_stderr(runtime_session.info.session_id, managed_process))
+            asyncio.create_task(self._watch_managed_process(runtime_session.info.session_id, managed_process))
+            return self._managed_process_to_dict(runtime_session.info.session_id, managed_process)
+
+    def get_managed_process(self, session_id: str) -> dict:
+        runtime_session = self._sessions.get(session_id)
+        if runtime_session is None:
+            raise BoxSessionNotFoundError(f'session {session_id} not found')
+        if runtime_session.managed_process is None:
+            raise BoxManagedProcessNotFoundError(f'session {session_id} has no managed process')
+        return self._managed_process_to_dict(session_id, runtime_session.managed_process)
+
     # ── Observability ─────────────────────────────────────────────────
 
     async def get_backend_info(self) -> dict:
@@ -97,6 +169,11 @@ class BoxRuntime:
         return {
             'backend': backend_info,
             'active_sessions': len(self._sessions),
+            'managed_processes': sum(
+                1
+                for runtime_session in self._sessions.values()
+                if runtime_session.managed_process is not None and runtime_session.managed_process.is_running
+            ),
             'session_ttl_sec': self.session_ttl_sec,
         }
 
@@ -163,6 +240,7 @@ class BoxRuntime:
             session_id
             for session_id, session in self._sessions.items()
             if session.info.last_used_at < deadline
+            and not (session.managed_process is not None and session.managed_process.is_running)
         ]
 
         for session_id in expired_session_ids:
@@ -172,6 +250,8 @@ class BoxRuntime:
         runtime_session = self._sessions.pop(session_id, None)
         if runtime_session is None or self._backend is None:
             return
+
+        await self._terminate_managed_process(runtime_session)
 
         try:
             self.logger.info(
@@ -197,6 +277,90 @@ class BoxRuntime:
                 raise BoxSessionConflictError(
                     f'sandbox_exec session {spec.session_id} already exists with {field}={display}'
                 )
+
+    async def _drain_managed_process_stderr(self, session_id: str, managed_process: _ManagedProcess) -> None:
+        stream = managed_process.process.stderr
+        if stream is None:
+            return
+
+        try:
+            while True:
+                chunk = await stream.readline()
+                if not chunk:
+                    break
+                text = chunk.decode('utf-8', errors='replace').rstrip()
+                if not text:
+                    continue
+                managed_process.stderr_chunks.append(text)
+                preview = '\n'.join(managed_process.stderr_chunks)
+                while len(preview) > _MANAGED_PROCESS_STDERR_PREVIEW_LIMIT and managed_process.stderr_chunks:
+                    managed_process.stderr_chunks.popleft()
+                    preview = '\n'.join(managed_process.stderr_chunks)
+                self.logger.info(f'LangBot Box managed process stderr: session_id={session_id} {text}')
+        except Exception as exc:
+            self.logger.warning(f'Failed to drain managed process stderr for {session_id}: {exc}')
+
+    async def _watch_managed_process(self, session_id: str, managed_process: _ManagedProcess) -> None:
+        return_code = await managed_process.process.wait()
+        managed_process.exit_code = return_code
+        managed_process.exited_at = dt.datetime.now(_UTC)
+        runtime_session = self._sessions.get(session_id)
+        if runtime_session is not None:
+            runtime_session.info.last_used_at = managed_process.exited_at
+        self.logger.info(
+            'LangBot Box managed process exited: '
+            f'session_id={session_id} return_code={return_code}'
+        )
+
+    async def _terminate_managed_process(self, runtime_session: _RuntimeSession) -> None:
+        managed_process = runtime_session.managed_process
+        if managed_process is None or not managed_process.is_running:
+            return
+
+        process = managed_process.process
+        try:
+            if process.stdin is not None:
+                process.stdin.close()
+        except Exception:
+            pass
+
+        try:
+            await asyncio.wait_for(asyncio.shield(process.wait()), timeout=5)
+        except asyncio.TimeoutError:
+            if process.returncode is None:
+                try:
+                    process.terminate()
+                except ProcessLookupError:
+                    pass
+            try:
+                await asyncio.wait_for(asyncio.shield(process.wait()), timeout=5)
+            except asyncio.TimeoutError:
+                if process.returncode is None:
+                    try:
+                        process.kill()
+                    except ProcessLookupError:
+                        pass
+                await process.wait()
+        finally:
+            managed_process.exit_code = process.returncode
+            managed_process.exited_at = dt.datetime.now(_UTC)
+
+    def _managed_process_to_dict(self, session_id: str, managed_process: _ManagedProcess) -> dict:
+        stderr_preview = '\n'.join(managed_process.stderr_chunks)
+        status = BoxManagedProcessStatus.RUNNING if managed_process.is_running else BoxManagedProcessStatus.EXITED
+        return BoxManagedProcessInfo(
+            session_id=session_id,
+            status=status,
+            command=managed_process.spec.command,
+            args=managed_process.spec.args,
+            cwd=managed_process.spec.cwd,
+            env_keys=sorted(managed_process.spec.env.keys()),
+            attached=managed_process.attach_lock.locked(),
+            started_at=managed_process.started_at,
+            exited_at=managed_process.exited_at,
+            exit_code=managed_process.exit_code,
+            stderr_preview=stderr_preview,
+        ).model_dump(mode='json')
 
     @staticmethod
     def _session_to_dict(info: BoxSessionInfo) -> dict:

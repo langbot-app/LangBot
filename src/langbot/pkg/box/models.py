@@ -28,8 +28,14 @@ class BoxExecutionStatus(str, enum.Enum):
 
 
 class BoxHostMountMode(str, enum.Enum):
+    NONE = 'none'
     READ_ONLY = 'ro'
     READ_WRITE = 'rw'
+
+
+class BoxManagedProcessStatus(str, enum.Enum):
+    RUNNING = 'running'
+    EXITED = 'exited'
 
 
 class BoxSpec(pydantic.BaseModel):
@@ -115,6 +121,8 @@ class BoxSpec(pydantic.BaseModel):
     @pydantic.model_validator(mode='after')
     def validate_host_mount_consistency(self) -> 'BoxSpec':
         if self.host_path is None:
+            return self
+        if self.host_path_mode == BoxHostMountMode.NONE:
             return self
         if not self.workdir.startswith(DEFAULT_BOX_MOUNT_PATH):
             raise ValueError('workdir must stay under /workspace when host_path is provided')
@@ -203,6 +211,53 @@ class BoxSessionInfo(pydantic.BaseModel):
     read_only_rootfs: bool = True
     created_at: dt.datetime
     last_used_at: dt.datetime
+
+
+class BoxManagedProcessSpec(pydantic.BaseModel):
+    command: str
+    args: list[str] = pydantic.Field(default_factory=list)
+    env: dict[str, str] = pydantic.Field(default_factory=dict)
+    cwd: str = '/workspace'
+
+    @pydantic.field_validator('command')
+    @classmethod
+    def validate_command(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError('command must not be empty')
+        return value
+
+    @pydantic.field_validator('args')
+    @classmethod
+    def validate_args(cls, value: list[str]) -> list[str]:
+        return [str(item) for item in value]
+
+    @pydantic.field_validator('env')
+    @classmethod
+    def validate_env(cls, value: dict[str, str]) -> dict[str, str]:
+        return {str(k): str(v) for k, v in value.items()}
+
+    @pydantic.field_validator('cwd')
+    @classmethod
+    def validate_cwd(cls, value: str) -> str:
+        value = value.strip()
+        if not value.startswith('/'):
+            raise ValueError('cwd must be an absolute path inside the sandbox')
+        return value
+
+
+class BoxManagedProcessInfo(pydantic.BaseModel):
+    session_id: str
+    status: BoxManagedProcessStatus
+    command: str
+    args: list[str]
+    cwd: str
+    env_keys: list[str]
+    attached: bool = False
+    started_at: dt.datetime
+    exited_at: dt.datetime | None = None
+    exit_code: int | None = None
+    stderr_preview: str = ''
 
 
 class BoxExecutionResult(pydantic.BaseModel):
