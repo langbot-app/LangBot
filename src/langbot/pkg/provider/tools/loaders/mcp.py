@@ -333,7 +333,7 @@ class RuntimeMCPSession:
 
     async def _monitor_box_process_health(self):
         """Poll managed process status; return when process exits."""
-        from ...box.models import BoxManagedProcessStatus
+        from langbot.pkg.box.models import BoxManagedProcessStatus
 
         session_id = self._build_box_session_id()
         consecutive_errors = 0
@@ -345,9 +345,6 @@ class RuntimeMCPSession:
                 else:
                     status = getattr(info, 'status', '')
                 if status == BoxManagedProcessStatus.EXITED.value or status == BoxManagedProcessStatus.EXITED:
-                    self.ap.logger.info(
-                        f'MCP monitor for {self.server_name}: process exited'
-                    )
                     return
                 consecutive_errors = 0
             except Exception as exc:
