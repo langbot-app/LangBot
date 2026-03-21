@@ -147,7 +147,12 @@ class BoxService:
         getter = getattr(self.client, 'get_managed_process_websocket_url', None)
         if getter is None:
             raise BoxValidationError('box runtime client does not support managed process websocket attach')
-        return getter(session_id)
+        ws_relay_base_url = (
+            self._runtime_connector.ws_relay_base_url
+            if self._runtime_connector is not None
+            else 'http://127.0.0.1:5410'
+        )
+        return getter(session_id, ws_relay_base_url)
 
     def _serialize_result(self, result: BoxExecutionResult) -> dict:
         stdout, stdout_truncated = self._truncate(result.stdout)

@@ -1,23 +1,15 @@
-"""BoxRuntimeClient abstraction for remote Box Runtime access."""
+"""BoxRuntimeClient abstraction for Box Runtime access."""
 
 from __future__ import annotations
 
 import abc
 import logging
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
-import aiohttp
+from langbot_plugin.runtime.io.handler import Handler
 
-from .errors import (
-    BoxBackendUnavailableError,
-    BoxError,
-    BoxManagedProcessConflictError,
-    BoxManagedProcessNotFoundError,
-    BoxRuntimeUnavailableError,
-    BoxSessionConflictError,
-    BoxSessionNotFoundError,
-    BoxValidationError,
-)
+from .actions import LangBotToBoxAction
+from .errors import BoxError, BoxRuntimeUnavailableError
 from .models import (
     BoxExecutionResult,
     BoxExecutionStatus,
@@ -31,19 +23,9 @@ from ..utils import platform
 if TYPE_CHECKING:
     from ..core import app as core_app
 
-_ERROR_CODE_MAP: dict[str, type[BoxError]] = {
-    'validation_error': BoxValidationError,
-    'session_not_found': BoxSessionNotFoundError,
-    'session_conflict': BoxSessionConflictError,
-    'managed_process_not_found': BoxManagedProcessNotFoundError,
-    'managed_process_conflict': BoxManagedProcessConflictError,
-    'backend_unavailable': BoxBackendUnavailableError,
-    'runtime_unavailable': BoxRuntimeUnavailableError,
-    'internal_error': BoxError,
-}
 
-
-def resolve_box_runtime_url(ap: 'core_app.Application') -> str:
+def resolve_box_ws_relay_url(ap: 'core_app.Application') -> str:
+    """Derive the ws relay base URL used for managed-process attach."""
     runtime_url = str(get_box_config(ap).get('runtime_url', '')).strip()
     if runtime_url:
         return runtime_url
@@ -90,54 +72,64 @@ class BoxRuntimeClient(abc.ABC):
     async def get_session(self, session_id: str) -> dict: ...
 
 
-class RemoteBoxRuntimeClient(BoxRuntimeClient):
-    """HTTP client that talks to a standalone Box Runtime service."""
+def _translate_action_error(exc: Exception) -> BoxError:
+    """Convert an ActionCallError message back into the appropriate BoxError subclass."""
+    from .errors import (
+        BoxBackendUnavailableError,
+        BoxManagedProcessConflictError,
+        BoxManagedProcessNotFoundError,
+        BoxSessionConflictError,
+        BoxSessionNotFoundError,
+        BoxValidationError,
+    )
+    msg = str(exc)
+    _ERROR_PREFIX_MAP: list[tuple[str, type[BoxError]]] = [
+        ('BoxValidationError:', BoxValidationError),
+        ('BoxSessionNotFoundError:', BoxSessionNotFoundError),
+        ('BoxSessionConflictError:', BoxSessionConflictError),
+        ('BoxManagedProcessNotFoundError:', BoxManagedProcessNotFoundError),
+        ('BoxManagedProcessConflictError:', BoxManagedProcessConflictError),
+        ('BoxBackendUnavailableError:', BoxBackendUnavailableError),
+    ]
+    for prefix, cls in _ERROR_PREFIX_MAP:
+        if prefix in msg:
+            return cls(msg)
+    return BoxError(msg)
 
-    def __init__(self, base_url: str, logger: logging.Logger):
-        self._base_url = base_url.rstrip('/')
+
+class ActionRPCBoxClient(BoxRuntimeClient):
+    """Client that talks to BoxRuntime via the action RPC protocol."""
+
+    def __init__(self, logger: logging.Logger):
         self._logger = logger
-        self._session: aiohttp.ClientSession | None = None
+        self._handler: Handler | None = None
 
-    def _get_session(self) -> aiohttp.ClientSession:
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
-        return self._session
+    @property
+    def handler(self) -> Handler:
+        if self._handler is None:
+            raise BoxRuntimeUnavailableError('box runtime not connected')
+        return self._handler
 
-    async def _check_response(self, resp: aiohttp.ClientResponse) -> None:
-        if resp.status < 400:
-            return
+    def set_handler(self, handler: Handler) -> None:
+        self._handler = handler
+
+    async def _call(self, action: LangBotToBoxAction, data: dict[str, Any], timeout: float = 15.0) -> dict[str, Any]:
         try:
-            body = await resp.json()
-            error_info = body.get('error', {})
-            code = error_info.get('code', '')
-            message = error_info.get('message', '')
-        except Exception:
-            resp.raise_for_status()
-            return
-        exc_class = _ERROR_CODE_MAP.get(code, BoxError)
-        raise exc_class(message)
+            return await self.handler.call_action(action, data, timeout=timeout)
+        except BoxRuntimeUnavailableError:
+            raise
+        except Exception as exc:
+            raise _translate_action_error(exc) from exc
 
     async def initialize(self) -> None:
-        session = self._get_session()
         try:
-            async with session.get(f'{self._base_url}/v1/health') as resp:
-                await self._check_response(resp)
-                self._logger.info(f'LangBot Box runtime connected: {self._base_url}')
-        except aiohttp.ClientError as exc:
+            await self._call(LangBotToBoxAction.HEALTH, {})
+            self._logger.info('LangBot Box runtime connected via action RPC.')
+        except Exception as exc:
             raise BoxRuntimeUnavailableError(f'box runtime unavailable: {exc}') from exc
 
     async def execute(self, spec: BoxSpec) -> BoxExecutionResult:
-        session = self._get_session()
-        payload = spec.model_dump(mode='json')
-        try:
-            async with session.post(
-                f'{self._base_url}/v1/sessions/{spec.session_id}/exec',
-                json=payload,
-            ) as resp:
-                await self._check_response(resp)
-                data = await resp.json()
-        except aiohttp.ClientError as exc:
-            raise BoxRuntimeUnavailableError(f'box runtime unavailable: {exc}') from exc
+        data = await self._call(LangBotToBoxAction.EXEC, spec.model_dump(mode='json'), timeout=300.0)
         return BoxExecutionResult(
             session_id=data['session_id'],
             backend_name=data['backend_name'],
@@ -149,103 +141,52 @@ class RemoteBoxRuntimeClient(BoxRuntimeClient):
         )
 
     async def shutdown(self) -> None:
-        if self._session and not self._session.closed:
-            await self._session.close()
-            self._session = None
+        if self._handler is not None:
+            try:
+                await self._call(LangBotToBoxAction.SHUTDOWN, {})
+            except Exception:
+                pass
+            self._handler = None
 
     async def get_status(self) -> dict:
-        session = self._get_session()
-        try:
-            async with session.get(f'{self._base_url}/v1/status') as resp:
-                await self._check_response(resp)
-                return await resp.json()
-        except aiohttp.ClientError as exc:
-            raise BoxRuntimeUnavailableError(f'box runtime unavailable: {exc}') from exc
+        return await self._call(LangBotToBoxAction.STATUS, {})
 
     async def get_sessions(self) -> list[dict]:
-        session = self._get_session()
-        try:
-            async with session.get(f'{self._base_url}/v1/sessions') as resp:
-                await self._check_response(resp)
-                return await resp.json()
-        except aiohttp.ClientError as exc:
-            raise BoxRuntimeUnavailableError(f'box runtime unavailable: {exc}') from exc
+        data = await self._call(LangBotToBoxAction.GET_SESSIONS, {})
+        return data['sessions']
 
     async def get_session(self, session_id: str) -> dict:
-        session = self._get_session()
-        try:
-            async with session.get(f'{self._base_url}/v1/sessions/{session_id}') as resp:
-                await self._check_response(resp)
-                return await resp.json()
-        except aiohttp.ClientError as exc:
-            raise BoxRuntimeUnavailableError(f'box runtime unavailable: {exc}') from exc
+        return await self._call(LangBotToBoxAction.GET_SESSION, {'session_id': session_id})
 
     async def get_backend_info(self) -> dict:
-        session = self._get_session()
-        try:
-            async with session.get(f'{self._base_url}/v1/health') as resp:
-                await self._check_response(resp)
-                return await resp.json()
-        except aiohttp.ClientError as exc:
-            raise BoxRuntimeUnavailableError(f'box runtime unavailable: {exc}') from exc
+        return await self._call(LangBotToBoxAction.GET_BACKEND_INFO, {})
 
     async def delete_session(self, session_id: str) -> None:
-        session = self._get_session()
-        try:
-            async with session.delete(
-                f'{self._base_url}/v1/sessions/{session_id}',
-            ) as resp:
-                await self._check_response(resp)
-        except aiohttp.ClientError as exc:
-            raise BoxRuntimeUnavailableError(f'box runtime unavailable: {exc}') from exc
+        await self._call(LangBotToBoxAction.DELETE_SESSION, {'session_id': session_id})
 
     async def create_session(self, spec: BoxSpec) -> dict:
-        session = self._get_session()
-        payload = spec.model_dump(mode='json')
-        try:
-            async with session.post(
-                f'{self._base_url}/v1/sessions/{spec.session_id}',
-                json=payload,
-            ) as resp:
-                await self._check_response(resp)
-                return await resp.json()
-        except aiohttp.ClientError as exc:
-            raise BoxRuntimeUnavailableError(f'box runtime unavailable: {exc}') from exc
+        return await self._call(LangBotToBoxAction.CREATE_SESSION, spec.model_dump(mode='json'))
 
     async def start_managed_process(self, session_id: str, spec: BoxManagedProcessSpec) -> BoxManagedProcessInfo:
-        session = self._get_session()
-        payload = spec.model_dump(mode='json')
-        try:
-            async with session.post(
-                f'{self._base_url}/v1/sessions/{session_id}/managed-process',
-                json=payload,
-            ) as resp:
-                await self._check_response(resp)
-                data = await resp.json()
-        except aiohttp.ClientError as exc:
-            raise BoxRuntimeUnavailableError(f'box runtime unavailable: {exc}') from exc
+        data = await self._call(
+            LangBotToBoxAction.START_MANAGED_PROCESS,
+            {'session_id': session_id, 'spec': spec.model_dump(mode='json')},
+        )
         return BoxManagedProcessInfo.model_validate(data)
 
     async def get_managed_process(self, session_id: str) -> BoxManagedProcessInfo:
-        session = self._get_session()
-        try:
-            async with session.get(
-                f'{self._base_url}/v1/sessions/{session_id}/managed-process',
-            ) as resp:
-                await self._check_response(resp)
-                data = await resp.json()
-        except aiohttp.ClientError as exc:
-            raise BoxRuntimeUnavailableError(f'box runtime unavailable: {exc}') from exc
+        data = await self._call(LangBotToBoxAction.GET_MANAGED_PROCESS, {'session_id': session_id})
         return BoxManagedProcessInfo.model_validate(data)
 
-    def get_managed_process_websocket_url(self, session_id: str) -> str:
-        if self._base_url.startswith('https://'):
+    def get_managed_process_websocket_url(self, session_id: str, ws_relay_base_url: str) -> str:
+        base = ws_relay_base_url
+        if base.startswith('https://'):
             scheme = 'wss://'
-            suffix = self._base_url[len('https://'):]
-        elif self._base_url.startswith('http://'):
+            suffix = base[len('https://'):]
+        elif base.startswith('http://'):
             scheme = 'ws://'
-            suffix = self._base_url[len('http://'):]
+            suffix = base[len('http://'):]
         else:
             scheme = 'ws://'
-            suffix = self._base_url
+            suffix = base
         return f'{scheme}{suffix}/v1/sessions/{session_id}/managed-process/ws'
