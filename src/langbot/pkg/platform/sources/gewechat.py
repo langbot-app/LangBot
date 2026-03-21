@@ -3,7 +3,7 @@ import gewechat_client
 import typing
 import asyncio
 import traceback
-import time
+
 import re
 import copy
 import threading
@@ -404,7 +404,6 @@ class GewechatEventConverter(abstract_platform_adapter.AbstractEventConverter):
 class GeWeChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot: gewechat_client.GewechatClient = None
     bot_uuid: str = None
-    webhook_url: str = None
     message_converter: GewechatMessageConverter = None
     event_converter: GewechatEventConverter = None
 
@@ -424,9 +423,6 @@ class GeWeChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     def set_bot_uuid(self, bot_uuid: str):
         self.bot_uuid = bot_uuid
-
-    def set_webhook_url(self, webhook_url: str):
-        self.webhook_url = webhook_url
 
     async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
         data = await request.json
@@ -575,9 +571,8 @@ class GeWeChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         pass
 
     def _build_callback_url(self) -> str:
-        if self.webhook_url:
-            return self.webhook_url
-        raise Exception('webhook_url 未设置，请检查 LangBot 的 api.webhook_prefix 配置')
+        webhook_prefix = self.config.get('_webhook_prefix', 'http://127.0.0.1:5300').rstrip('/')
+        return f'{webhook_prefix}/bots/{self.bot_uuid}'
 
     async def run_async(self):
         if not self.config['token']:
@@ -592,19 +587,9 @@ class GeWeChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         self.bot = gewechat_client.GewechatClient(f'{self.config["gewechat_url"]}/v2/api', self.config['token'])
 
-        def gewechat_login_process():
-            app_id, error_msg = self.bot.login(self.config['app_id'])
-            if error_msg:
-                raise Exception(f'Gewechat 登录失败: {error_msg}')
-
-            self.config['app_id'] = app_id
-
-            print(f'Gewechat 登录成功，app_id: {app_id}')
-
+        def gewechat_init_process():
             profile = self.bot.get_profile(self.config['app_id'])
             self.bot_account_id = profile['data']['nickName']
-
-            time.sleep(2)
 
             try:
                 callback_url = self._build_callback_url()
@@ -613,7 +598,7 @@ class GeWeChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             except Exception as e:
                 raise Exception(f'设置 Gewechat 回调失败，token失效：{e}')
 
-        threading.Thread(target=gewechat_login_process).start()
+        threading.Thread(target=gewechat_init_process).start()
 
         # 统一 webhook 模式下，不启动独立的 HTTP 服务
         # 保持适配器运行
