@@ -12,7 +12,6 @@ SANDBOX_EXEC_TOOL_NAME = 'sandbox_exec'
 
 
 class NativeToolLoader(loader.ToolLoader):
-
     def __init__(self, ap):
         super().__init__(ap)
         self._sandbox_exec_tool: resource_tool.LLMTool | None = None

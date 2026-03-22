@@ -82,6 +82,7 @@ def _translate_action_error(exc: Exception) -> BoxError:
         BoxSessionNotFoundError,
         BoxValidationError,
     )
+
     msg = str(exc)
     _ERROR_PREFIX_MAP: list[tuple[str, type[BoxError]]] = [
         ('BoxValidationError:', BoxValidationError),
@@ -182,10 +183,10 @@ class ActionRPCBoxClient(BoxRuntimeClient):
         base = ws_relay_base_url
         if base.startswith('https://'):
             scheme = 'wss://'
-            suffix = base[len('https://'):]
+            suffix = base[len('https://') :]
         elif base.startswith('http://'):
             scheme = 'ws://'
-            suffix = base[len('http://'):]
+            suffix = base[len('http://') :]
         else:
             scheme = 'ws://'
             suffix = base

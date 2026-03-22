@@ -5,20 +5,22 @@ import os
 from .errors import BoxValidationError
 from .models import BoxSpec
 
-BLOCKED_HOST_PATHS = frozenset({
-    '/etc',
-    '/proc',
-    '/sys',
-    '/dev',
-    '/root',
-    '/boot',
-    '/run',
-    '/var/run',
-    '/run/docker.sock',
-    '/var/run/docker.sock',
-    '/run/podman',
-    '/var/run/podman',
-})
+BLOCKED_HOST_PATHS = frozenset(
+    {
+        '/etc',
+        '/proc',
+        '/sys',
+        '/dev',
+        '/root',
+        '/boot',
+        '/run',
+        '/var/run',
+        '/run/docker.sock',
+        '/var/run/docker.sock',
+        '/run/podman',
+        '/var/run/podman',
+    }
+)
 
 
 def validate_sandbox_security(spec: BoxSpec) -> None:
@@ -30,6 +32,4 @@ def validate_sandbox_security(spec: BoxSpec) -> None:
         real = os.path.realpath(spec.host_path)
         for blocked in BLOCKED_HOST_PATHS:
             if real == blocked or real.startswith(blocked + '/'):
-                raise BoxValidationError(
-                    f'host_path {spec.host_path} is blocked for security'
-                )
+                raise BoxValidationError(f'host_path {spec.host_path} is blocked for security')
