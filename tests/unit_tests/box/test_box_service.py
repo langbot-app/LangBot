@@ -12,7 +12,12 @@ import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 from langbot_plugin.box.backend import BaseSandboxBackend
 from langbot_plugin.box.client import BoxRuntimeClient, ActionRPCBoxClient
-from langbot_plugin.box.errors import BoxBackendUnavailableError, BoxSessionConflictError, BoxSessionNotFoundError, BoxValidationError
+from langbot_plugin.box.errors import (
+    BoxBackendUnavailableError,
+    BoxSessionConflictError,
+    BoxSessionNotFoundError,
+    BoxValidationError,
+)
 from langbot_plugin.box.models import (
     BUILTIN_PROFILES,
     BoxExecutionResult,
@@ -20,7 +25,6 @@ from langbot_plugin.box.models import (
     BoxHostMountMode,
     BoxManagedProcessSpec,
     BoxNetworkMode,
-    BoxProfile,
     BoxSessionInfo,
     BoxSpec,
 )
@@ -68,7 +72,6 @@ class _InProcessBoxRuntimeClient(BoxRuntimeClient):
 
     async def get_session(self, session_id: str):
         return self._runtime.get_session(session_id)
-
 
 
 class FakeBackend(BaseSandboxBackend):
@@ -520,7 +523,9 @@ async def test_profile_locked_field_cannot_be_overridden():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger, profile='offline_readonly'), client=_InProcessBoxRuntimeClient(logger, runtime))
+    service = BoxService(
+        make_app(logger, profile='offline_readonly'), client=_InProcessBoxRuntimeClient(logger, runtime)
+    )
     await service.initialize()
 
     result = await service.execute_sandbox_tool(
@@ -631,7 +636,9 @@ async def test_profile_offline_readonly_locks_read_only_rootfs():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger, profile='offline_readonly'), client=_InProcessBoxRuntimeClient(logger, runtime))
+    service = BoxService(
+        make_app(logger, profile='offline_readonly'), client=_InProcessBoxRuntimeClient(logger, runtime)
+    )
     await service.initialize()
 
     await service.execute_sandbox_tool(
@@ -649,7 +656,9 @@ async def test_profile_network_extended_has_relaxed_limits():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger, profile='network_extended'), client=_InProcessBoxRuntimeClient(logger, runtime))
+    service = BoxService(
+        make_app(logger, profile='network_extended'), client=_InProcessBoxRuntimeClient(logger, runtime)
+    )
     await service.initialize()
 
     await service.execute_sandbox_tool({'cmd': 'echo hi'}, make_query(42))
@@ -1028,4 +1037,3 @@ class TestBoxHostMountModeNone:
                 host_path_mode=BoxHostMountMode.READ_ONLY,
                 workdir='/opt/custom',
             )
-

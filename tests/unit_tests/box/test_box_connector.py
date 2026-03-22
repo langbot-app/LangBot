@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
 from langbot_plugin.box.client import ActionRPCBoxClient
 from langbot.pkg.box.connector import BoxRuntimeConnector
-from langbot_plugin.box.errors import BoxRuntimeUnavailableError
 
 
 def make_app(logger: Mock, runtime_url: str = ''):

@@ -3,6 +3,7 @@
 Uses importlib.util.spec_from_file_location to load mcp.py directly without
 triggering the circular import chain through the app module.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -19,6 +20,7 @@ import pytest
 # ---------------------------------------------------------------------------
 # Load mcp.py directly from file path, with stub dependencies
 # ---------------------------------------------------------------------------
+
 
 def _stub_module(fqn: str, attrs: dict | None = None, is_package: bool = False):
     """Create or return a stub module and register it in sys.modules."""
@@ -59,9 +61,12 @@ def mcp_module():
     _save_and_stub('langbot_plugin.api.entities.events.pipeline_query', {})
     _save_and_stub('langbot_plugin.api.entities.builtin', is_package=True)
     _save_and_stub('langbot_plugin.api.entities.builtin.resource', is_package=True)
-    _save_and_stub('langbot_plugin.api.entities.builtin.resource.tool', {
-        'LLMTool': type('LLMTool', (), {}),
-    })
+    _save_and_stub(
+        'langbot_plugin.api.entities.builtin.resource.tool',
+        {
+            'LLMTool': type('LLMTool', (), {}),
+        },
+    )
     _save_and_stub('langbot_plugin.api.entities.builtin.provider', is_package=True)
     _save_and_stub('langbot_plugin.api.entities.builtin.provider.message', {})
     _save_and_stub('sqlalchemy', {'select': Mock()})
@@ -78,9 +83,12 @@ def mcp_module():
     _save_and_stub('langbot.pkg', is_package=True)
     _save_and_stub('langbot.pkg.provider', is_package=True)
     _save_and_stub('langbot.pkg.provider.tools', is_package=True)
-    _save_and_stub('langbot.pkg.provider.tools.loader', {
-        'ToolLoader': type('ToolLoader', (), {'__init__': lambda self, ap: None}),
-    })
+    _save_and_stub(
+        'langbot.pkg.provider.tools.loader',
+        {
+            'ToolLoader': type('ToolLoader', (), {'__init__': lambda self, ap: None}),
+        },
+    )
     _save_and_stub('langbot.pkg.provider.tools.loaders', is_package=True)
     _save_and_stub('langbot.pkg.core', is_package=True)
     _save_and_stub('langbot.pkg.core.app', {'Application': type('Application', (), {})})
@@ -90,9 +98,11 @@ def mcp_module():
 
     # box models
     import enum as _enum
+
     class _BPS(str, _enum.Enum):
         RUNNING = 'running'
         EXITED = 'exited'
+
     _save_and_stub('langbot_plugin.box', is_package=True)
     _save_and_stub('langbot_plugin.box.models', {'BoxManagedProcessStatus': _BPS})
 
@@ -100,8 +110,17 @@ def mcp_module():
     mod_fqn = 'langbot.pkg.provider.tools.loaders.mcp'
     sys.modules.pop(mod_fqn, None)
     mcp_path = os.path.join(
-        os.path.dirname(__file__), '..', '..', '..',
-        'src', 'langbot', 'pkg', 'provider', 'tools', 'loaders', 'mcp.py',
+        os.path.dirname(__file__),
+        '..',
+        '..',
+        '..',
+        'src',
+        'langbot',
+        'pkg',
+        'provider',
+        'tools',
+        'loaders',
+        'mcp.py',
     )
     mcp_path = os.path.normpath(mcp_path)
     spec = importlib.util.spec_from_file_location(mod_fqn, mcp_path)
@@ -123,6 +142,7 @@ def mcp_module():
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_ap():
     ap = Mock()
@@ -160,28 +180,32 @@ class TestMCPServerBoxConfig:
         assert cfg.read_only_rootfs is None
 
     def test_custom_values(self, mcp_module):
-        cfg = mcp_module.MCPServerBoxConfig.model_validate({
-            'image': 'node:20',
-            'network': 'on',
-            'host_path': '/home/user/mcp',
-            'host_path_mode': 'rw',
-            'env': {'FOO': 'bar'},
-            'startup_timeout_sec': 60,
-            'cpus': 2.0,
-            'memory_mb': 1024,
-            'pids_limit': 256,
-            'read_only_rootfs': False,
-        })
+        cfg = mcp_module.MCPServerBoxConfig.model_validate(
+            {
+                'image': 'node:20',
+                'network': 'on',
+                'host_path': '/home/user/mcp',
+                'host_path_mode': 'rw',
+                'env': {'FOO': 'bar'},
+                'startup_timeout_sec': 60,
+                'cpus': 2.0,
+                'memory_mb': 1024,
+                'pids_limit': 256,
+                'read_only_rootfs': False,
+            }
+        )
         assert cfg.image == 'node:20'
         assert cfg.network == 'on'
         assert cfg.cpus == 2.0
         assert cfg.memory_mb == 1024
 
     def test_extra_fields_ignored(self, mcp_module):
-        cfg = mcp_module.MCPServerBoxConfig.model_validate({
-            'image': 'node:20',
-            'unknown_field': 'whatever',
-        })
+        cfg = mcp_module.MCPServerBoxConfig.model_validate(
+            {
+                'image': 'node:20',
+                'unknown_field': 'whatever',
+            }
+        )
         assert cfg.image == 'node:20'
         assert not hasattr(cfg, 'unknown_field')
 
@@ -191,56 +215,98 @@ class TestMCPServerBoxConfig:
 
 class TestRewritePath:
     def test_no_host_path_returns_unchanged(self, mcp_module):
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'u1', 'mode': 'sse',
-            'command': 'python', 'args': [],
-        })
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
         assert s._rewrite_path('/some/path', None) == '/some/path'
 
     def test_empty_path_returns_empty(self, mcp_module):
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'u1', 'mode': 'sse',
-            'command': 'python', 'args': [],
-        })
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
         assert s._rewrite_path('', '/home/user/mcp') == ''
 
     def test_prefix_match_rewrites(self, mcp_module):
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'u1', 'mode': 'sse',
-            'command': 'python', 'args': [],
-        })
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
         result = s._rewrite_path('/home/user/mcp/server.py', '/home/user/mcp')
         assert result == '/workspace/server.py'
 
     def test_exact_match_rewrites_to_workspace(self, mcp_module):
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'u1', 'mode': 'sse',
-            'command': 'python', 'args': [],
-        })
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
         result = s._rewrite_path('/home/user/mcp', '/home/user/mcp')
         assert result == '/workspace'
 
     def test_non_matching_path_unchanged(self, mcp_module):
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'u1', 'mode': 'sse',
-            'command': 'python', 'args': [],
-        })
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
         result = s._rewrite_path('/opt/other/server.py', '/home/user/mcp')
         assert result == '/opt/other/server.py'
 
     def test_similar_prefix_not_rewritten(self, mcp_module):
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'u1', 'mode': 'sse',
-            'command': 'python', 'args': [],
-        })
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
         result = s._rewrite_path('/home/user/mcp-other/file.py', '/home/user/mcp')
         assert result == '/home/user/mcp-other/file.py'
 
     def test_nested_subpath_rewrites(self, mcp_module):
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'u1', 'mode': 'sse',
-            'command': 'python', 'args': [],
-        })
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
         result = s._rewrite_path('/home/user/mcp/src/lib/main.py', '/home/user/mcp')
         assert result == '/workspace/src/lib/main.py'
 
@@ -250,25 +316,43 @@ class TestRewritePath:
 
 class TestInferHostPath:
     def test_no_absolute_paths_returns_none(self, mcp_module):
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'u1', 'mode': 'sse',
-            'command': 'python', 'args': ['server.py'],
-        })
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': ['server.py'],
+            },
+        )
         assert s._infer_host_path() is None
 
     def test_nonexistent_path_returns_none(self, mcp_module):
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'u1', 'mode': 'sse',
-            'command': '/nonexistent/path/to/python', 'args': [],
-        })
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': '/nonexistent/path/to/python',
+                'args': [],
+            },
+        )
         assert s._infer_host_path() is None
 
     def test_existing_absolute_path_infers_directory(self, mcp_module):
         with tempfile.NamedTemporaryFile(suffix='.py') as f:
-            s = _make_session(mcp_module, {
-                'name': 'test', 'uuid': 'u1', 'mode': 'sse',
-                'command': 'python', 'args': [f.name],
-            })
+            s = _make_session(
+                mcp_module,
+                {
+                    'name': 'test',
+                    'uuid': 'u1',
+                    'mode': 'sse',
+                    'command': 'python',
+                    'args': [f.name],
+                },
+            )
             result = s._infer_host_path()
             assert result is not None
             assert result == os.path.dirname(os.path.realpath(f.name))
@@ -279,10 +363,16 @@ class TestInferHostPath:
 
 class TestBuildBoxSessionPayload:
     def test_minimal_config(self, mcp_module):
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'u1', 'mode': 'sse',
-            'command': 'python', 'args': [],
-        })
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
         payload = s._build_box_session_payload('session-123')
         assert payload['session_id'] == 'session-123'
         assert payload['workdir'] == '/workspace'
@@ -290,21 +380,33 @@ class TestBuildBoxSessionPayload:
         assert 'host_path' not in payload
 
     def test_with_host_path(self, mcp_module):
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'u1', 'mode': 'sse',
-            'command': 'python', 'args': [],
-            'box': {'host_path': '/home/user/mcp', 'host_path_mode': 'ro'},
-        })
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+                'box': {'host_path': '/home/user/mcp', 'host_path_mode': 'ro'},
+            },
+        )
         payload = s._build_box_session_payload('session-123')
         assert payload['host_path'] == '/home/user/mcp'
         assert payload['host_path_mode'] == 'ro'
 
     def test_optional_fields_included_when_set(self, mcp_module):
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'u1', 'mode': 'sse',
-            'command': 'python', 'args': [],
-            'box': {'image': 'node:20', 'cpus': 2.0, 'memory_mb': 1024, 'pids_limit': 256},
-        })
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+                'box': {'image': 'node:20', 'cpus': 2.0, 'memory_mb': 1024, 'pids_limit': 256},
+            },
+        )
         payload = s._build_box_session_payload('session-123')
         assert payload['image'] == 'node:20'
         assert payload['cpus'] == 2.0
@@ -312,10 +414,16 @@ class TestBuildBoxSessionPayload:
         assert payload['pids_limit'] == 256
 
     def test_none_fields_excluded(self, mcp_module):
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'u1', 'mode': 'sse',
-            'command': 'python', 'args': [],
-        })
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
         payload = s._build_box_session_payload('session-123')
         assert 'image' not in payload
         assert 'cpus' not in payload
@@ -326,10 +434,17 @@ class TestBuildBoxSessionPayload:
 
 class TestBuildBoxProcessPayload:
     def test_basic_payload(self, mcp_module):
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'u1', 'mode': 'sse',
-            'command': 'python', 'args': ['server.py'], 'env': {'KEY': 'val'},
-        })
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': ['server.py'],
+                'env': {'KEY': 'val'},
+            },
+        )
         payload = s._build_box_process_payload()
         assert payload['command'] == 'python'
         assert payload['args'] == ['server.py']
@@ -337,26 +452,36 @@ class TestBuildBoxProcessPayload:
         assert payload['cwd'] == '/workspace'
 
     def test_path_rewriting_applied(self, mcp_module):
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'u1', 'mode': 'sse',
-            'command': '/home/user/mcp/venv/bin/python',
-            'args': ['/home/user/mcp/server.py', '--config', '/home/user/mcp/config.json'],
-            'env': {},
-            'box': {'host_path': '/home/user/mcp'},
-        })
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': '/home/user/mcp/venv/bin/python',
+                'args': ['/home/user/mcp/server.py', '--config', '/home/user/mcp/config.json'],
+                'env': {},
+                'box': {'host_path': '/home/user/mcp'},
+            },
+        )
         payload = s._build_box_process_payload()
         # venv python is replaced with plain 'python' (deps installed in-container)
         assert payload['command'] == 'python'
         assert payload['args'] == ['/workspace/server.py', '--config', '/workspace/config.json']
 
     def test_non_matching_args_not_rewritten(self, mcp_module):
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'u1', 'mode': 'sse',
-            'command': 'python',
-            'args': ['/opt/other/server.py', '--flag'],
-            'env': {},
-            'box': {'host_path': '/home/user/mcp'},
-        })
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': ['/opt/other/server.py', '--flag'],
+                'env': {},
+                'box': {'host_path': '/home/user/mcp'},
+            },
+        )
         payload = s._build_box_process_payload()
         assert payload['command'] == 'python'
         assert payload['args'] == ['/opt/other/server.py', '--flag']
@@ -367,10 +492,16 @@ class TestBuildBoxProcessPayload:
 
 class TestGetRuntimeInfoDict:
     def test_non_stdio_session(self, mcp_module):
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'test-uuid', 'mode': 'sse',
-            'command': 'python', 'args': [],
-        })
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'test-uuid',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
         info = s.get_runtime_info_dict()
         assert info['status'] == 'connecting'
         assert 'box_session_id' not in info
@@ -378,10 +509,17 @@ class TestGetRuntimeInfoDict:
     def test_stdio_session_includes_box_info(self, mcp_module):
         ap = _make_ap()
         ap.box_service.available = True
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'test-uuid', 'mode': 'stdio',
-            'command': 'python', 'args': [],
-        }, ap=ap)
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'test-uuid',
+                'mode': 'stdio',
+                'command': 'python',
+                'args': [],
+            },
+            ap=ap,
+        )
         info = s.get_runtime_info_dict()
         assert info['box_session_id'] == 'mcp-test-uuid'
         assert info['box_enabled'] is True
@@ -389,10 +527,17 @@ class TestGetRuntimeInfoDict:
     def test_stdio_session_without_box_runtime(self, mcp_module):
         ap = _make_ap()
         ap.box_service.available = False
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'test-uuid', 'mode': 'stdio',
-            'command': 'python', 'args': [],
-        }, ap=ap)
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'test-uuid',
+                'mode': 'stdio',
+                'command': 'python',
+                'args': [],
+            },
+            ap=ap,
+        )
         info = s.get_runtime_info_dict()
         assert 'box_session_id' not in info
 
@@ -402,20 +547,32 @@ class TestGetRuntimeInfoDict:
 
 class TestBoxConfigParsing:
     def test_box_config_parsed_from_server_config(self, mcp_module):
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'u1', 'mode': 'sse',
-            'command': 'python', 'args': [],
-            'box': {'image': 'node:20', 'host_path': '/home/user/mcp'},
-        })
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+                'box': {'image': 'node:20', 'host_path': '/home/user/mcp'},
+            },
+        )
         assert isinstance(s.box_config, mcp_module.MCPServerBoxConfig)
         assert s.box_config.image == 'node:20'
         assert s.box_config.host_path == '/home/user/mcp'
 
     def test_missing_box_key_uses_defaults(self, mcp_module):
-        s = _make_session(mcp_module, {
-            'name': 'test', 'uuid': 'u1', 'mode': 'sse',
-            'command': 'python', 'args': [],
-        })
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
         assert isinstance(s.box_config, mcp_module.MCPServerBoxConfig)
         assert s.box_config.image is None
         assert s.box_config.host_path_mode == 'ro'
