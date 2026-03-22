@@ -174,9 +174,7 @@ class BoxRuntime:
             raise BoxSessionNotFoundError(f'session {session_id} not found')
         result = self._session_to_dict(runtime_session.info)
         if runtime_session.managed_process is not None:
-            result['managed_process'] = self._managed_process_to_dict(
-                session_id, runtime_session.managed_process
-            )
+            result['managed_process'] = self._managed_process_to_dict(session_id, runtime_session.managed_process)
         return result
 
     async def get_status(self) -> dict:
@@ -281,8 +279,14 @@ class BoxRuntime:
 
     def _assert_session_compatible(self, session: BoxSessionInfo, spec: BoxSpec):
         _COMPAT_FIELDS = (
-            'network', 'image', 'host_path', 'host_path_mode',
-            'cpus', 'memory_mb', 'pids_limit', 'read_only_rootfs',
+            'network',
+            'image',
+            'host_path',
+            'host_path_mode',
+            'cpus',
+            'memory_mb',
+            'pids_limit',
+            'read_only_rootfs',
         )
         for field in _COMPAT_FIELDS:
             session_val = getattr(session, field)
@@ -308,7 +312,10 @@ class BoxRuntime:
                     continue
                 managed_process.stderr_chunks.append(text)
                 managed_process.stderr_total_len += len(text) + 1  # +1 for '\n' separator
-                while managed_process.stderr_total_len > _MANAGED_PROCESS_STDERR_PREVIEW_LIMIT and managed_process.stderr_chunks:
+                while (
+                    managed_process.stderr_total_len > _MANAGED_PROCESS_STDERR_PREVIEW_LIMIT
+                    and managed_process.stderr_chunks
+                ):
                     removed = managed_process.stderr_chunks.popleft()
                     managed_process.stderr_total_len -= len(removed) + 1
                 self.logger.info(f'LangBot Box managed process stderr: session_id={session_id} {text}')
@@ -322,10 +329,7 @@ class BoxRuntime:
         runtime_session = self._sessions.get(session_id)
         if runtime_session is not None:
             runtime_session.info.last_used_at = managed_process.exited_at
-        self.logger.info(
-            'LangBot Box managed process exited: '
-            f'session_id={session_id} return_code={return_code}'
-        )
+        self.logger.info(f'LangBot Box managed process exited: session_id={session_id} return_code={return_code}')
 
     async def _terminate_managed_process(self, runtime_session: _RuntimeSession) -> None:
         managed_process = runtime_session.managed_process
