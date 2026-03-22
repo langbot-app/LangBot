@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from langbot.pkg.box.client import ActionRPCBoxClient
+from langbot_plugin.box.client import ActionRPCBoxClient
 from langbot.pkg.box.connector import BoxRuntimeConnector
-from langbot.pkg.box.errors import BoxRuntimeUnavailableError
+from langbot_plugin.box.errors import BoxRuntimeUnavailableError
 
 
 def make_app(logger: Mock, runtime_url: str = ''):
@@ -27,7 +27,6 @@ def make_app(logger: Mock, runtime_url: str = ''):
 
 
 def patch_platform(monkeypatch: pytest.MonkeyPatch, value: str):
-    monkeypatch.setattr('langbot.pkg.box.client.platform.get_platform', lambda: value)
     monkeypatch.setattr('langbot.pkg.box.connector.platform.get_platform', lambda: value)
 
 
