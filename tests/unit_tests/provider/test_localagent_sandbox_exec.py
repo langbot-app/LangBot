@@ -173,13 +173,6 @@ async def test_localagent_uses_exec_for_exact_calculation():
             detect_skill_activation=AsyncMock(return_value=None),
             build_activation_prompt=Mock(return_value=None),
         ),
-        instance_config=SimpleNamespace(
-            data={
-                'box': {
-                    'default_host_workspace': '/home/yhh/workspace/box-demo',
-                }
-            }
-        ),
     )
 
     runner = LocalAgentRunner(app, pipeline_config={})
@@ -239,7 +232,6 @@ async def test_localagent_streaming_tool_error_yields_message_chunks():
             detect_skill_activation=AsyncMock(return_value=None),
             build_activation_prompt=Mock(return_value=None),
         ),
-        instance_config=SimpleNamespace(data={'box': {'default_host_workspace': '/home/yhh/workspace/box-demo'}}),
     )
 
     runner = LocalAgentRunner(app, pipeline_config={})
