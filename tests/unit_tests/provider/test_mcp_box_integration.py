@@ -93,8 +93,8 @@ def mcp_module():
     class _BPS(str, _enum.Enum):
         RUNNING = 'running'
         EXITED = 'exited'
-    _save_and_stub('langbot.pkg.box', is_package=True)
-    _save_and_stub('langbot.pkg.box.models', {'BoxManagedProcessStatus': _BPS})
+    _save_and_stub('langbot_plugin.box', is_package=True)
+    _save_and_stub('langbot_plugin.box.models', {'BoxManagedProcessStatus': _BPS})
 
     # Now load mcp.py via spec_from_file_location
     mod_fqn = 'langbot.pkg.provider.tools.loaders.mcp'

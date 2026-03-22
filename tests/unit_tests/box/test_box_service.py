@@ -10,10 +10,10 @@ import pytest
 
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
-from langbot.pkg.box.backend import BaseSandboxBackend
-from langbot.pkg.box.client import BoxRuntimeClient, ActionRPCBoxClient
-from langbot.pkg.box.errors import BoxBackendUnavailableError, BoxSessionConflictError, BoxSessionNotFoundError, BoxValidationError
-from langbot.pkg.box.models import (
+from langbot_plugin.box.backend import BaseSandboxBackend
+from langbot_plugin.box.client import BoxRuntimeClient, ActionRPCBoxClient
+from langbot_plugin.box.errors import BoxBackendUnavailableError, BoxSessionConflictError, BoxSessionNotFoundError, BoxValidationError
+from langbot_plugin.box.models import (
     BUILTIN_PROFILES,
     BoxExecutionResult,
     BoxExecutionStatus,
@@ -24,7 +24,7 @@ from langbot.pkg.box.models import (
     BoxSessionInfo,
     BoxSpec,
 )
-from langbot.pkg.box.runtime import BoxRuntime
+from langbot_plugin.box.runtime import BoxRuntime
 from langbot.pkg.box.service import BoxService
 
 _UTC = dt.timezone.utc
@@ -803,7 +803,7 @@ def _make_queue_connection_pair():
 
 async def _make_rpc_pair(runtime: BoxRuntime):
     """Create an in-process (ActionRPCBoxClient, server_task, client_task) connected via queues."""
-    from langbot.pkg.box.server import BoxServerHandler
+    from langbot_plugin.box.server import BoxServerHandler
     from langbot_plugin.runtime.io.handler import Handler
 
     client_conn, server_conn = _make_queue_connection_pair()

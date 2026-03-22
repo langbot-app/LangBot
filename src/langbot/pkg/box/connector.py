@@ -10,13 +10,30 @@ from langbot_plugin.entities.io.actions.enums import CommonAction
 from langbot_plugin.runtime.io.handler import Handler
 from langbot_plugin.runtime.io.connection import Connection
 
-from .client import ActionRPCBoxClient, resolve_box_ws_relay_url
-from .errors import BoxRuntimeUnavailableError
-from .models import get_box_config
+from langbot_plugin.box.client import ActionRPCBoxClient
+from langbot_plugin.box.errors import BoxRuntimeUnavailableError
 from ..utils import platform
 
 if TYPE_CHECKING:
     from ..core import app as core_app
+
+
+def _get_box_config(ap) -> dict:
+    """Return the 'box' section from instance config, with safe fallbacks."""
+    instance_config = getattr(ap, 'instance_config', None)
+    config_data = getattr(instance_config, 'data', {}) if instance_config is not None else {}
+    return config_data.get('box', {})
+
+
+def resolve_box_ws_relay_url(ap: 'core_app.Application') -> str:
+    """Derive the ws relay base URL used for managed-process attach."""
+    runtime_url = str(_get_box_config(ap).get('runtime_url', '')).strip()
+    if runtime_url:
+        return runtime_url
+
+    if platform.get_platform() == 'docker':
+        return 'http://langbot_box_runtime:5410'
+    return 'http://127.0.0.1:5410'
 
 
 class BoxRuntimeConnector:
@@ -80,7 +97,7 @@ class BoxRuntimeConnector:
 
         ctrl = StdioClientController(
             command=python_path,
-            args=['-m', 'langbot.pkg.box.server', '--port', str(self._relay_port)],
+            args=['-m', 'langbot_plugin.box.server', '--port', str(self._relay_port)],
             env=env,
         )
         self._subprocess = None  # StdioClientController manages the subprocess
@@ -140,7 +157,7 @@ class BoxRuntimeConnector:
             self._subprocess.terminate()
 
     def _load_configured_runtime_url(self) -> str:
-        return str(get_box_config(self.ap).get('runtime_url', '')).strip()
+        return str(_get_box_config(self.ap).get('runtime_url', '')).strip()
 
     def _should_manage_local_runtime(self) -> bool:
         return not self.configured_runtime_url and platform.get_platform() != 'docker'
