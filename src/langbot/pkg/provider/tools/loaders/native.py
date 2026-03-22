@@ -5,20 +5,28 @@ import json
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 from langbot_plugin.api.entities.events import pipeline_query
 
+from langbot.pkg.box.models import BoxNetworkMode
 from .. import loader
+
+SANDBOX_EXEC_TOOL_NAME = 'sandbox_exec'
 
 
 class NativeToolLoader(loader.ToolLoader):
-    SANDBOX_EXEC_TOOL_NAME = 'sandbox_exec'
+
+    def __init__(self, ap):
+        super().__init__(ap)
+        self._sandbox_exec_tool: resource_tool.LLMTool | None = None
 
     async def get_tools(self, bound_plugins: list[str] | None = None) -> list[resource_tool.LLMTool]:
-        return [self._build_sandbox_exec_tool()]
+        if self._sandbox_exec_tool is None:
+            self._sandbox_exec_tool = self._build_sandbox_exec_tool()
+        return [self._sandbox_exec_tool]
 
     async def has_tool(self, name: str) -> bool:
-        return name == self.SANDBOX_EXEC_TOOL_NAME
+        return name == SANDBOX_EXEC_TOOL_NAME
 
     async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query):
-        if name != self.SANDBOX_EXEC_TOOL_NAME:
+        if name != SANDBOX_EXEC_TOOL_NAME:
             raise ValueError(f'未找到工具: {name}')
         self.ap.logger.info(
             'sandbox_exec tool invoked: '
@@ -32,7 +40,7 @@ class NativeToolLoader(loader.ToolLoader):
 
     def _build_sandbox_exec_tool(self) -> resource_tool.LLMTool:
         return resource_tool.LLMTool(
-            name=self.SANDBOX_EXEC_TOOL_NAME,
+            name=SANDBOX_EXEC_TOOL_NAME,
             human_desc='Execute a command inside the LangBot Box sandbox',
             description=(
                 'Run shell commands only inside the isolated LangBot Box sandbox. '
@@ -60,7 +68,7 @@ class NativeToolLoader(loader.ToolLoader):
                     'network': {
                         'type': 'string',
                         'description': 'Network policy for the sandbox session. Prefer off unless network is required.',
-                        'enum': ['off', 'on'],
+                        'enum': [e.value for e in BoxNetworkMode],
                         'default': 'off',
                     },
                     'env': {

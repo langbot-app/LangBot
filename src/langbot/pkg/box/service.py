@@ -26,6 +26,11 @@ _INT_ADAPTER = pydantic.TypeAdapter(int)
 _UTC = _dt.timezone.utc
 _MAX_RECENT_ERRORS = 50
 
+
+def _is_path_under(path: str, root: str) -> bool:
+    """Check whether *path* equals *root* or is a child of *root*."""
+    return path == root or path.startswith(f'{root}{os.sep}')
+
 if TYPE_CHECKING:
     from ..core import app as core_app
     import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -274,7 +279,7 @@ class BoxService:
             )
 
         for allowed_root in self.allowed_host_mount_roots:
-            if self.default_host_workspace == allowed_root or self.default_host_workspace.startswith(f'{allowed_root}{os.sep}'):
+            if _is_path_under(self.default_host_workspace, allowed_root):
                 os.makedirs(self.default_host_workspace, exist_ok=True)
                 return
 
@@ -293,7 +298,7 @@ class BoxService:
             raise BoxValidationError('host_path mounting is disabled because no allowed_host_mount_roots are configured')
 
         for allowed_root in self.allowed_host_mount_roots:
-            if host_path == allowed_root or host_path.startswith(f'{allowed_root}{os.sep}'):
+            if _is_path_under(host_path, allowed_root):
                 return
 
         allowed_roots = ', '.join(self.allowed_host_mount_roots)
