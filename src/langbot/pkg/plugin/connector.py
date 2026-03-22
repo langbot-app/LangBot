@@ -508,7 +508,11 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
     def dispose(self):
         # On non-Windows stdio mode, terminate via the controller's process handle.
         # On Windows, the managed subprocess is cleaned up by the base class.
-        if self.is_enable_plugin and hasattr(self, 'ctrl') and isinstance(self.ctrl, stdio_client_controller.StdioClientController):
+        if (
+            self.is_enable_plugin
+            and hasattr(self, 'ctrl')
+            and isinstance(self.ctrl, stdio_client_controller.StdioClientController)
+        ):
             self.ap.logger.info('Terminating plugin runtime process...')
             self.ctrl.process.terminate()
 

@@ -51,7 +51,6 @@ class BoxServerHandler(Handler):
         self._register_actions()
 
     def _register_actions(self) -> None:
-
         @self.action(CommonAction.PING)
         async def ping(data: dict[str, Any]) -> ActionResponse:
             return ActionResponse.success({})
@@ -109,9 +108,7 @@ class BoxServerHandler(Handler):
 
         @self.action(LangBotToBoxAction.GET_MANAGED_PROCESS)
         async def get_managed_process(data: dict[str, Any]) -> ActionResponse:
-            return ActionResponse.success(
-                self._runtime.get_managed_process(data['session_id'])
-            )
+            return ActionResponse.success(self._runtime.get_managed_process(data['session_id']))
 
         @self.action(LangBotToBoxAction.GET_BACKEND_INFO)
         async def get_backend_info(data: dict[str, Any]) -> ActionResponse:
@@ -146,7 +143,9 @@ async def handle_managed_process_ws(request: web.Request) -> web.StreamResponse:
     if managed_process is None:
         return _error_response(BoxManagedProcessNotFoundError(f'session {session_id} has no managed process'))
     if not managed_process.is_running:
-        return _error_response(BoxManagedProcessConflictError(f'managed process in session {session_id} is not running'))
+        return _error_response(
+            BoxManagedProcessConflictError(f'managed process in session {session_id} is not running')
+        )
 
     ws = web.WebSocketResponse(protocols=('mcp',))
     await ws.prepare(request)
@@ -173,7 +172,12 @@ async def handle_managed_process_ws(request: web.Request) -> web.StreamResponse:
                     stdin.write((msg.data + '\n').encode('utf-8'))
                     await stdin.drain()
                     runtime_session.info.last_used_at = dt.datetime.now(dt.timezone.utc)
-                elif msg.type in (web.WSMsgType.CLOSE, web.WSMsgType.CLOSING, web.WSMsgType.CLOSED, web.WSMsgType.ERROR):
+                elif msg.type in (
+                    web.WSMsgType.CLOSE,
+                    web.WSMsgType.CLOSING,
+                    web.WSMsgType.CLOSED,
+                    web.WSMsgType.ERROR,
+                ):
                     break
 
         stdout_task = asyncio.create_task(_stdout_to_ws())
@@ -229,10 +233,12 @@ async def _run_server(host: str, port: int, mode: str) -> None:
     try:
         if mode == 'stdio':
             from langbot_plugin.runtime.io.controllers.stdio.server import StdioServerController
+
             ctrl = StdioServerController()
             await ctrl.run(new_connection_callback)
         else:
             from langbot_plugin.runtime.io.controllers.ws.server import WebSocketServerController
+
             # Action RPC uses port+1 to avoid conflict with ws relay
             rpc_port = port + 1
             logger.info(f'Box action RPC (ws) listening on {host}:{rpc_port}')
@@ -248,8 +254,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description='LangBot Box Runtime Service')
     parser.add_argument('--host', default='0.0.0.0', help='Bind address')
     parser.add_argument('--port', type=int, default=5410, help='Bind port (ws relay)')
-    parser.add_argument('--mode', choices=['stdio', 'ws'], default='stdio',
-                        help='Control channel transport (default: stdio)')
+    parser.add_argument(
+        '--mode', choices=['stdio', 'ws'], default='stdio', help='Control channel transport (default: stdio)'
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)

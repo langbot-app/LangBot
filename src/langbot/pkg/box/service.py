@@ -31,6 +31,7 @@ def _is_path_under(path: str, root: str) -> bool:
     """Check whether *path* equals *root* or is a child of *root*."""
     return path == root or path.startswith(f'{root}{os.sep}')
 
+
 if TYPE_CHECKING:
     from ..core import app as core_app
     import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -66,9 +67,7 @@ class BoxService:
                 await self.client.initialize()
             self._available = True
         except Exception as exc:
-            self.ap.logger.warning(
-                f'LangBot Box runtime unavailable, sandbox features disabled: {exc}'
-            )
+            self.ap.logger.warning(f'LangBot Box runtime unavailable, sandbox features disabled: {exc}')
             self._available = False
 
     @property
@@ -109,11 +108,7 @@ class BoxService:
         if self._runtime_connector is not None:
             self._runtime_connector.dispose()
         loop = getattr(self.ap, 'event_loop', None)
-        if (
-            loop is not None
-            and not loop.is_closed()
-            and (self._shutdown_task is None or self._shutdown_task.done())
-        ):
+        if loop is not None and not loop.is_closed() and (self._shutdown_task is None or self._shutdown_task.done()):
             self._shutdown_task = loop.create_task(self.shutdown())
 
     async def get_sessions(self) -> list[dict]:
@@ -295,7 +290,9 @@ class BoxService:
             raise BoxValidationError('host_path must point to an existing directory on the host')
 
         if not self.allowed_host_mount_roots:
-            raise BoxValidationError('host_path mounting is disabled because no allowed_host_mount_roots are configured')
+            raise BoxValidationError(
+                'host_path mounting is disabled because no allowed_host_mount_roots are configured'
+            )
 
         for allowed_root in self.allowed_host_mount_roots:
             if _is_path_under(host_path, allowed_root):
@@ -317,8 +314,14 @@ class BoxService:
         """Merge profile defaults into *params* in-place, enforce locked fields and clamp timeout."""
         profile = self.profile
         _PROFILE_FIELDS = (
-            'image', 'network', 'timeout_sec', 'host_path_mode',
-            'cpus', 'memory_mb', 'pids_limit', 'read_only_rootfs',
+            'image',
+            'network',
+            'timeout_sec',
+            'host_path_mode',
+            'cpus',
+            'memory_mb',
+            'pids_limit',
+            'read_only_rootfs',
         )
 
         for field in _PROFILE_FIELDS:
@@ -342,12 +345,14 @@ class BoxService:
     # ── Observability ─────────────────────────────────────────────────
 
     def _record_error(self, exc: Exception, query: 'pipeline_query.Query'):
-        self._recent_errors.append({
-            'timestamp': _dt.datetime.now(_UTC).isoformat(),
-            'type': type(exc).__name__,
-            'message': str(exc),
-            'query_id': str(query.query_id),
-        })
+        self._recent_errors.append(
+            {
+                'timestamp': _dt.datetime.now(_UTC).isoformat(),
+                'type': type(exc).__name__,
+                'message': str(exc),
+                'query_id': str(query.query_id),
+            }
+        )
 
     def get_recent_errors(self) -> list[dict]:
         return list(self._recent_errors)
