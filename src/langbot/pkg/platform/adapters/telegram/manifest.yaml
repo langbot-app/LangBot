@@ -1,0 +1,97 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+
+metadata:
+  name: telegram-eba
+  label:
+    en_US: Telegram (EBA)
+    zh_Hans: 电报 (EBA)
+  description:
+    en_US: Telegram Bot adapter (EBA architecture)
+    zh_Hans: 电报 Bot 适配器（EBA 架构版本）
+  icon: telegram.svg
+
+spec:
+  config:
+    - name: token
+      label:
+        en_US: Token
+        zh_Hans: 令牌
+      type: string
+      required: true
+      default: ""
+    - name: markdown_card
+      label:
+        en_US: Markdown Card
+        zh_Hans: 是否使用 Markdown 卡片
+      type: boolean
+      required: false
+      default: true
+    - name: enable-stream-reply
+      label:
+        en_US: Enable Stream Reply Mode
+        zh_Hans: 启用电报流式回复模式
+      description:
+        en_US: If enabled, the bot will use the stream of telegram reply mode
+        zh_Hans: 如果启用，将使用电报流式方式来回复内容
+      type: boolean
+      required: true
+      default: false
+
+  supported_events:
+    - message.received
+    - message.edited
+    - message.deleted
+    - message.reaction
+    - group.member_joined
+    - group.member_left
+    - group.member_banned
+    - group.info_updated
+    - bot.invited_to_group
+    - bot.removed_from_group
+
+  supported_apis:
+    required:
+      - send_message
+      - reply_message
+    optional:
+      - edit_message
+      - delete_message
+      - forward_message
+      - get_group_info
+      - get_group_member_list
+      - get_group_member_info
+      - get_user_info
+      - get_file_url
+      - mute_member
+      - unmute_member
+      - kick_member
+      - leave_group
+      - call_platform_api
+
+  platform_specific_apis:
+    - action: pin_message
+      description: { en_US: "Pin a message", zh_Hans: "置顶消息" }
+    - action: unpin_message
+      description: { en_US: "Unpin a message", zh_Hans: "取消置顶" }
+    - action: unpin_all_messages
+      description: { en_US: "Unpin all messages", zh_Hans: "取消所有置顶" }
+    - action: get_chat_administrators
+      description: { en_US: "Get chat admins", zh_Hans: "获取群管理员列表" }
+    - action: set_chat_title
+      description: { en_US: "Set chat title", zh_Hans: "修改群名称" }
+    - action: set_chat_description
+      description: { en_US: "Set chat description", zh_Hans: "修改群描述" }
+    - action: get_chat_member_count
+      description: { en_US: "Get member count", zh_Hans: "获取群成员数量" }
+    - action: send_chat_action
+      description: { en_US: "Send chat action (typing, etc.)", zh_Hans: "发送聊天动作" }
+    - action: create_chat_invite_link
+      description: { en_US: "Create invite link", zh_Hans: "创建邀请链接" }
+    - action: answer_callback_query
+      description: { en_US: "Answer callback query", zh_Hans: "应答回调查询" }
+
+execution:
+  python:
+    path: pkg/platform/adapters/telegram/adapter.py
+    attr: TelegramAdapter
