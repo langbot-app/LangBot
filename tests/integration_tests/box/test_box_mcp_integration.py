@@ -20,7 +20,6 @@ import subprocess
 
 import aiohttp
 import pytest
-from aiohttp import web
 from aiohttp.test_utils import TestServer
 
 from langbot.pkg.box.client import ActionRPCBoxClient
