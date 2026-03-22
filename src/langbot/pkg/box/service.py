@@ -357,6 +357,27 @@ class BoxService:
     def get_recent_errors(self) -> list[dict]:
         return list(self._recent_errors)
 
+    def get_system_guidance(self) -> str:
+        """Return LLM system-prompt guidance for sandbox_exec.
+
+        All sandbox-specific prompt text is kept here so that callers
+        (e.g. LocalAgentRunner) stay free of box domain knowledge.
+        """
+        guidance = (
+            'When sandbox_exec is available, use it for exact calculations, statistics, structured data parsing, '
+            'and code execution instead of estimating mentally. If the user provides numbers, tables, CSV-like text, '
+            'JSON, or other data and asks for a computed answer, prefer running a short Python script in sandbox_exec '
+            'and then answer from the tool result. Unless the user explicitly asks for the script, code, or implementation '
+            'details, do not include the generated script in the final answer; return the result and a brief explanation only.'
+        )
+        if self.default_host_workspace:
+            guidance += (
+                ' A default host workspace is mounted at /workspace for file tasks. When the user asks to read, create, or '
+                'modify local files in the working directory, use sandbox_exec with /workspace paths directly; do not ask the '
+                'user for sandbox parameters such as host_path unless they explicitly need a different directory.'
+            )
+        return guidance
+
     async def get_status(self) -> dict:
         if not self._available:
             return {
