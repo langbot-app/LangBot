@@ -43,14 +43,7 @@ class RecordingProvider:
                         function=provider_message.FunctionCall(
                             name='sandbox_exec',
                             arguments=json.dumps(
-                                {
-                                    'cmd': (
-                                        "python - <<'PY'\n"
-                                        "nums = [1, 2, 3, 4]\n"
-                                        'print(sum(nums) / len(nums))\n'
-                                        'PY'
-                                    )
-                                }
+                                {'cmd': ("python - <<'PY'\nnums = [1, 2, 3, 4]\nprint(sum(nums) / len(nums))\nPY")}
                             ),
                         ),
                     )
@@ -60,7 +53,7 @@ class RecordingProvider:
         tool_result = json.loads(messages[-1].content)
         return provider_message.Message(
             role='assistant',
-            content=f"The average is {tool_result['stdout']}.",
+            content=f'The average is {tool_result["stdout"]}.',
         )
 
 
@@ -192,7 +185,7 @@ async def test_localagent_uses_sandbox_exec_for_exact_calculation():
     tool_manager.execute_func_call.assert_awaited_once()
     tool_name, tool_parameters = tool_manager.execute_func_call.await_args.args[:2]
     assert tool_name == 'sandbox_exec'
-    assert "print(sum(nums) / len(nums))" in tool_parameters['cmd']
+    assert 'print(sum(nums) / len(nums))' in tool_parameters['cmd']
 
     first_request = provider.requests[0]
     assert any(

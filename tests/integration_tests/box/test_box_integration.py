@@ -18,13 +18,12 @@ import shutil
 import socket
 import subprocess
 from types import SimpleNamespace
-from unittest.mock import Mock
 
 import pytest
 
 from langbot.pkg.box.backend import BaseSandboxBackend
 from langbot.pkg.box.client import ActionRPCBoxClient
-from langbot.pkg.box.errors import BoxBackendUnavailableError, BoxRuntimeUnavailableError
+from langbot.pkg.box.errors import BoxBackendUnavailableError
 from langbot.pkg.box.models import BoxExecutionStatus, BoxNetworkMode, BoxSpec
 from langbot.pkg.box.runtime import BoxRuntime
 from langbot.pkg.box.server import BoxServerHandler
@@ -166,20 +165,24 @@ async def test_session_persists_files(box_client: ActionRPCBoxClient):
     """Write a file in one exec, read it back in a second exec on the same session."""
     sid = 'int-persist'
 
-    write_result = await box_client.execute(BoxSpec(
-        cmd='echo "hello from file" > /tmp/testfile.txt',
-        session_id=sid,
-        workdir='/tmp',
-        image=_TEST_IMAGE,
-    ))
+    write_result = await box_client.execute(
+        BoxSpec(
+            cmd='echo "hello from file" > /tmp/testfile.txt',
+            session_id=sid,
+            workdir='/tmp',
+            image=_TEST_IMAGE,
+        )
+    )
     assert write_result.exit_code == 0
 
-    read_result = await box_client.execute(BoxSpec(
-        cmd='cat /tmp/testfile.txt',
-        session_id=sid,
-        workdir='/tmp',
-        image=_TEST_IMAGE,
-    ))
+    read_result = await box_client.execute(
+        BoxSpec(
+            cmd='cat /tmp/testfile.txt',
+            session_id=sid,
+            workdir='/tmp',
+            image=_TEST_IMAGE,
+        )
+    )
     assert read_result.exit_code == 0
     assert 'hello from file' in read_result.stdout
 
