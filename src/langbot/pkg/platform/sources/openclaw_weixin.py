@@ -13,6 +13,7 @@ import traceback
 import typing
 
 import pydantic
+import sqlalchemy
 
 from langbot.libs.openclaw_weixin_api.client import (
     DEFAULT_BASE_URL,
@@ -23,6 +24,7 @@ from langbot.libs.openclaw_weixin_api.types import (
     MessageItem,
     WeixinMessage,
 )
+from langbot.pkg.entity.persistence import bot as persistence_bot
 
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
@@ -176,6 +178,7 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
 
     _polling: bool = pydantic.PrivateAttr(default=False)
     _poll_task: typing.Optional[asyncio.Task] = pydantic.PrivateAttr(default=None)
+    _bot_uuid: typing.Optional[str] = pydantic.PrivateAttr(default=None)
 
     listeners: typing.Dict[
         typing.Type[platform_events.Event],
@@ -195,6 +198,24 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
             listeners={},
             name='openclaw-weixin',
         )
+
+    def set_bot_uuid(self, bot_uuid: str):
+        """Called by BotManager to provide the bot's UUID for config persistence."""
+        self._bot_uuid = bot_uuid
+
+    async def _persist_config(self) -> None:
+        """Persist current self.config to the database so token survives restart."""
+        if not self._bot_uuid:
+            return
+        try:
+            ap = self.logger.ap
+            await ap.persistence_mgr.execute_async(
+                sqlalchemy.update(persistence_bot.Bot)
+                .where(persistence_bot.Bot.uuid == self._bot_uuid)
+                .values(adapter_config=self.config)
+            )
+        except Exception as e:
+            await self.logger.warning(f'Failed to persist adapter config: {e}')
 
     async def _do_login(self) -> None:
         """Run the QR code login flow via client.login() and update config."""
@@ -217,6 +238,9 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
             self.config['account_id'] = login_result.account_id
 
         await self.logger.info(f'WeChat login successful! account_id={login_result.account_id}')
+
+        # Persist token to database so it survives restart
+        await self._persist_config()
 
     async def send_message(
         self,
