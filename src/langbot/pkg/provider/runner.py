@@ -3,8 +3,7 @@ from __future__ import annotations
 import abc
 import typing
 
-if typing.TYPE_CHECKING:
-    from ..core import app
+from ..core import app
 
 
 preregistered_runners: list[typing.Type[RequestRunner]] = []
@@ -26,11 +25,11 @@ class RequestRunner(abc.ABC):
 
     name: str = None
 
-    ap: 'app.Application'
+    ap: app.Application
 
     pipeline_config: dict
 
-    def __init__(self, ap: 'app.Application', pipeline_config: dict):
+    def __init__(self, ap: app.Application, pipeline_config: dict):
         self.ap = ap
         self.pipeline_config = pipeline_config
 

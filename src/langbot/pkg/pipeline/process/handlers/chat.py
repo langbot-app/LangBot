@@ -17,19 +17,12 @@ from ....provider import runners
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
-from .. import logging_utils
 
 
 importutil.import_modules_in_pkg(runners)
 
 
 class ChatMessageHandler(handler.MessageHandler):
-    def _format_result_log(
-        self,
-        result: provider_message.Message | provider_message.MessageChunk,
-    ) -> str | None:
-        return logging_utils.format_result_log(result, self.cut_str)
-
     async def handle(
         self,
         query: pipeline_query.Query,
@@ -120,7 +113,7 @@ class ChatMessageHandler(handler.MessageHandler):
                         # This prevents memory overflow from thousands of log entries per conversation
                         # First chunk uses INFO level to confirm connection establishment
                         if chunk_count == 1:
-                            summary = self._format_result_log(result)
+                            summary = self.format_result_log(result)
                             if summary is not None:
                                 self.ap.logger.info(f'Conversation({query.query_id}) Streaming started: {summary}')
                             else:
@@ -144,7 +137,7 @@ class ChatMessageHandler(handler.MessageHandler):
                     async for result in runner.run(query):
                         query.resp_messages.append(result)
 
-                        summary = self._format_result_log(result)
+                        summary = self.format_result_log(result)
                         if summary is not None:
                             self.ap.logger.info(f'Conversation({query.query_id}) Response: {summary}')
 
