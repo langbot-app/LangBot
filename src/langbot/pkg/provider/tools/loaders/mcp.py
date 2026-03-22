@@ -150,7 +150,7 @@ class RuntimeMCPSession:
                 session_payload,
                 skip_host_mount_validation=True,
             )
-        except Exception as e:
+        except Exception:
             self.error_phase = MCPSessionErrorPhase.SESSION_CREATE
             raise
 
@@ -169,7 +169,7 @@ class RuntimeMCPSession:
                     result = await box_service.client.execute(
                         box_service.build_spec(exec_payload, skip_host_mount_validation=True)
                     )
-                except Exception as e:
+                except Exception:
                     self.error_phase = MCPSessionErrorPhase.DEP_INSTALL
                     raise
                 if not result.ok:
@@ -186,7 +186,7 @@ class RuntimeMCPSession:
                 session_id,
                 self._build_box_process_payload(host_path),
             )
-        except Exception as e:
+        except Exception:
             self.error_phase = MCPSessionErrorPhase.PROCESS_START
             raise
 
@@ -196,14 +196,14 @@ class RuntimeMCPSession:
             transport = await self.exit_stack.enter_async_context(websocket_client(websocket_url))
             read_stream, write_stream = transport
             self.session = await self.exit_stack.enter_async_context(ClientSession(read_stream, write_stream))
-        except Exception as e:
+        except Exception:
             self.error_phase = MCPSessionErrorPhase.RELAY_CONNECT
             raise
 
         # Phase: MCP protocol initialization
         try:
             await self.session.initialize()
-        except Exception as e:
+        except Exception:
             self.error_phase = MCPSessionErrorPhase.MCP_INIT
             raise
 
@@ -813,12 +813,13 @@ class MCPLoader(loader.ToolLoader):
         """获取所有服务器的信息"""
         info = {}
         for server_name, session in self.sessions.items():
+            tools = session.get_tools()
             info[server_name] = {
                 'name': server_name,
                 'mode': session.server_config.get('mode'),
                 'enable': session.enable,
-                'tools_count': len(session.get_tools()),
-                'tool_names': [f.name for f in session.get_tools()],
+                'tools_count': len(tools),
+                'tool_names': [f.name for f in tools],
             }
         return info
 

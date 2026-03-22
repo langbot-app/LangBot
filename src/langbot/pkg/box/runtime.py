@@ -37,6 +37,7 @@ class _ManagedProcess:
     started_at: dt.datetime
     attach_lock: asyncio.Lock
     stderr_chunks: collections.deque[str]
+    stderr_total_len: int = 0
     exit_code: int | None = None
     exited_at: dt.datetime | None = None
 
@@ -306,10 +307,10 @@ class BoxRuntime:
                 if not text:
                     continue
                 managed_process.stderr_chunks.append(text)
-                preview = '\n'.join(managed_process.stderr_chunks)
-                while len(preview) > _MANAGED_PROCESS_STDERR_PREVIEW_LIMIT and managed_process.stderr_chunks:
-                    managed_process.stderr_chunks.popleft()
-                    preview = '\n'.join(managed_process.stderr_chunks)
+                managed_process.stderr_total_len += len(text) + 1  # +1 for '\n' separator
+                while managed_process.stderr_total_len > _MANAGED_PROCESS_STDERR_PREVIEW_LIMIT and managed_process.stderr_chunks:
+                    removed = managed_process.stderr_chunks.popleft()
+                    managed_process.stderr_total_len -= len(removed) + 1
                 self.logger.info(f'LangBot Box managed process stderr: session_id={session_id} {text}')
         except Exception as exc:
             self.logger.warning(f'Failed to drain managed process stderr for {session_id}: {exc}')
@@ -378,18 +379,4 @@ class BoxRuntime:
 
     @staticmethod
     def _session_to_dict(info: BoxSessionInfo) -> dict:
-        return {
-            'session_id': info.session_id,
-            'backend_name': info.backend_name,
-            'backend_session_id': info.backend_session_id,
-            'image': info.image,
-            'network': info.network.value,
-            'host_path': info.host_path,
-            'host_path_mode': info.host_path_mode.value,
-            'cpus': info.cpus,
-            'memory_mb': info.memory_mb,
-            'pids_limit': info.pids_limit,
-            'read_only_rootfs': info.read_only_rootfs,
-            'created_at': info.created_at.isoformat(),
-            'last_used_at': info.last_used_at.isoformat(),
-        }
+        return info.model_dump(mode='json')
