@@ -93,5 +93,5 @@ spec:
 
 execution:
   python:
-    path: pkg/platform/adapters/telegram/adapter.py
+    path: ./adapter.py
     attr: TelegramAdapter
