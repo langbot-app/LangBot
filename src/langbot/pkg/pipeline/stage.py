@@ -3,8 +3,7 @@ from __future__ import annotations
 import abc
 import typing
 
-if typing.TYPE_CHECKING:
-    from ..core import app
+from ..core import app
 from . import entities
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
@@ -23,9 +22,9 @@ def stage_class(name: str) -> typing.Callable[[type[PipelineStage]], type[Pipeli
 class PipelineStage(metaclass=abc.ABCMeta):
     """流水线阶段"""
 
-    ap: 'app.Application'
+    ap: app.Application
 
-    def __init__(self, ap: 'app.Application'):
+    def __init__(self, ap: app.Application):
         self.ap = ap
 
     async def initialize(self, pipeline_config: dict):

@@ -25,38 +25,9 @@ Respond in the same language as the user's input.
 </user_message>
 """
 
-SANDBOX_EXEC_SYSTEM_GUIDANCE = (
-    'When sandbox_exec is available, use it for exact calculations, statistics, structured data parsing, '
-    'and code execution instead of estimating mentally. If the user provides numbers, tables, CSV-like text, '
-    'JSON, or other data and asks for a computed answer, prefer running a short Python script in sandbox_exec '
-    'and then answer from the tool result. Unless the user explicitly asks for the script, code, or implementation '
-    'details, do not include the generated script in the final answer; return the result and a brief explanation only.'
-)
-SANDBOX_EXEC_WORKSPACE_GUIDANCE = (
-    'A default host workspace is mounted at /workspace for file tasks. When the user asks to read, create, or '
-    'modify local files in the working directory, use sandbox_exec with /workspace paths directly; do not ask the '
-    'user for sandbox parameters such as host_path unless they explicitly need a different directory.'
-)
-
-
 @runner.runner_class('local-agent')
 class LocalAgentRunner(runner.RequestRunner):
     """Local agent request runner"""
-
-    _cached_sandbox_guidance: str | None = None
-
-    def _build_sandbox_system_guidance(self) -> str:
-        if self._cached_sandbox_guidance is not None:
-            return self._cached_sandbox_guidance
-
-        from langbot.pkg.box.models import get_box_config
-
-        guidance = SANDBOX_EXEC_SYSTEM_GUIDANCE
-        default_host_workspace = str(get_box_config(self.ap).get('default_host_workspace', '')).strip()
-        if default_host_workspace:
-            guidance = f'{guidance} {SANDBOX_EXEC_WORKSPACE_GUIDANCE}'
-        self._cached_sandbox_guidance = guidance
-        return guidance
 
     def _build_request_messages(
         self,
@@ -69,7 +40,7 @@ class LocalAgentRunner(runner.RequestRunner):
             req_messages.append(
                 provider_message.Message(
                     role='system',
-                    content=self._build_sandbox_system_guidance(),
+                    content=self.ap.box_service.get_system_guidance(),
                 )
             )
 
