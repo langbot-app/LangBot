@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: openclaw-weixin
+  label:
+    en_US: OpenClaw WeChat
+    zh_Hans: OpenClaw 微信
+  description:
+    en_US: OpenClaw WeChat adapter, supports personal WeChat via QR code login
+    zh_Hans: OpenClaw 微信适配器，通过扫码登录支持个人微信
+  icon: wechat.png
+spec:
+  config:
+    - name: base_url
+      label:
+        en_US: API Base URL
+        zh_Hans: API 基础地址
+      description:
+        en_US: The base URL of the OpenClaw WeChat backend API
+        zh_Hans: OpenClaw 微信后端 API 的基础地址
+      type: string
+      required: true
+      default: "https://ilinkai.weixin.qq.com"
+    - name: token
+      label:
+        en_US: Token
+        zh_Hans: 令牌
+      description:
+        en_US: Bearer token obtained after QR code login authorization. Leave empty to trigger QR code login on startup.
+        zh_Hans: 扫码登录授权后获取的 Bearer 令牌。留空则启动时自动触发扫码登录。
+      type: string
+      required: false
+      default: ""
+    - name: account_id
+      label:
+        en_US: Account ID
+        zh_Hans: 账号标识
+      description:
+        en_US: A label for this WeChat account (used for display purposes)
+        zh_Hans: 此微信账号的标识（用于显示）
+      type: string
+      required: false
+      default: "openclaw-weixin"
+    - name: poll_timeout
+      label:
+        en_US: Poll Timeout (seconds)
+        zh_Hans: 轮询超时（秒）
+      description:
+        en_US: Long-poll timeout for getUpdates, the server may hold the request up to this duration
+        zh_Hans: getUpdates 长轮询超时时间，服务端最多持有请求的时长
+      type: integer
+      required: false
+      default: 35
+execution:
+  python:
+    path: ./openclaw_weixin.py
+    attr: OpenClawWeixinAdapter
