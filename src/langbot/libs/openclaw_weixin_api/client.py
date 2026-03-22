@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import io
 import logging
 import os
 import struct
@@ -310,14 +311,22 @@ class OpenClawWeixinClient:
         )
 
     async def _fetch_qr_image_base64(self, url: str) -> str:
-        """Download a QR code image and return a data URI string."""
-        session = await self._get_session()
-        async with session.get(url, timeout=aiohttp.ClientTimeout(total=DEFAULT_API_TIMEOUT)) as resp:
-            resp.raise_for_status()
-            content_type = resp.headers.get('Content-Type', 'image/png')
-            data = await resp.read()
-        b64 = base64.b64encode(data).decode('utf-8')
-        return f'data:{content_type};base64,{b64}'
+        """Generate a QR code image from the URL and return a data URI string.
+
+        The qrcode_img_content URL points to an HTML page (not a raw image),
+        so we generate the QR code locally using the qrcode library.
+        """
+        import qrcode
+
+        qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_L)
+        qr.add_data(url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color='black', back_color='white')
+
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+        return f'data:image/png;base64,{b64}'
 
     async def poll_qrcode_status(self, qrcode: str) -> QRStatusResponse:
         """Long-poll the QR code scan status (GET with iLink-App-ClientVersion header)."""
