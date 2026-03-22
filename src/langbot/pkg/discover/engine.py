@@ -221,12 +221,14 @@ class ComponentDiscoveryEngine:
                 return
 
             for file in importutil.list_resource_files(path):
-                if (not os.path.isdir(os.path.join(path, file))) and (file.endswith('.yaml') or file.endswith('.yml')):
-                    comp = self.load_component_manifest(os.path.join(path, file), owner, no_save)
+                file_path = os.path.join(path, file)
+                is_dir = importutil.is_resource_dir(file_path)
+                if (not is_dir) and (file.endswith('.yaml') or file.endswith('.yml')):
+                    comp = self.load_component_manifest(file_path, owner, no_save)
                     if comp is not None:
                         components.append(comp)
-                elif os.path.isdir(os.path.join(path, file)):
-                    recursive_load_component_manifests_in_dir(os.path.join(path, file), depth + 1)
+                elif is_dir:
+                    recursive_load_component_manifests_in_dir(file_path, depth + 1)
 
         recursive_load_component_manifests_in_dir(path)
         return components
