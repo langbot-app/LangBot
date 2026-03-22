@@ -5,7 +5,7 @@ import json
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 from langbot_plugin.api.entities.events import pipeline_query
 
-from langbot.pkg.box.models import BoxNetworkMode
+from langbot_plugin.box.models import BoxNetworkMode
 from .. import loader
 
 SANDBOX_EXEC_TOOL_NAME = 'sandbox_exec'

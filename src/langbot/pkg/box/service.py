@@ -9,17 +9,16 @@ from typing import TYPE_CHECKING
 
 import pydantic
 
-from .client import BoxRuntimeClient
-from .connector import BoxRuntimeConnector
-from .errors import BoxError, BoxValidationError
-from .models import (
+from langbot_plugin.box.client import BoxRuntimeClient
+from .connector import BoxRuntimeConnector, _get_box_config
+from langbot_plugin.box.errors import BoxError, BoxValidationError
+from langbot_plugin.box.models import (
     BUILTIN_PROFILES,
     BoxExecutionResult,
     BoxManagedProcessInfo,
     BoxManagedProcessSpec,
     BoxProfile,
     BoxSpec,
-    get_box_config,
 )
 
 _INT_ADAPTER = pydantic.TypeAdapter(int)
@@ -241,7 +240,7 @@ class BoxService:
         }
 
     def _load_allowed_host_mount_roots(self) -> list[str]:
-        configured_roots = get_box_config(self.ap).get('allowed_host_mount_roots', [])
+        configured_roots = _get_box_config(self.ap).get('allowed_host_mount_roots', [])
 
         normalized_roots: list[str] = []
         for root in configured_roots:
@@ -253,7 +252,7 @@ class BoxService:
         return normalized_roots
 
     def _load_default_host_workspace(self) -> str | None:
-        default_host_workspace = str(get_box_config(self.ap).get('default_host_workspace', '')).strip()
+        default_host_workspace = str(_get_box_config(self.ap).get('default_host_workspace', '')).strip()
         if not default_host_workspace:
             return None
         return os.path.realpath(os.path.abspath(default_host_workspace))
@@ -302,7 +301,7 @@ class BoxService:
         raise BoxValidationError(f'host_path is outside allowed_host_mount_roots: {allowed_roots}')
 
     def _load_profile(self) -> BoxProfile:
-        profile_name = str(get_box_config(self.ap).get('profile', 'default')).strip() or 'default'
+        profile_name = str(_get_box_config(self.ap).get('profile', 'default')).strip() or 'default'
 
         profile = BUILTIN_PROFILES.get(profile_name)
         if profile is None:
