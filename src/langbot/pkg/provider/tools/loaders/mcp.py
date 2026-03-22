@@ -327,7 +327,7 @@ class RuntimeMCPSession:
 
     async def _monitor_box_process_health(self):
         """Poll managed process status; return when process exits."""
-        from langbot.pkg.box.models import BoxManagedProcessStatus
+        from langbot_plugin.box.models import BoxManagedProcessStatus
 
         session_id = self._build_box_session_id()
         consecutive_errors = 0
