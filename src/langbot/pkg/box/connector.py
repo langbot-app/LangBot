@@ -46,7 +46,10 @@ class BoxRuntimeConnector:
             await self._connect_remote_ws()
 
     def _make_connection_callback(
-        self, transport_name: str, connected: asyncio.Event, connect_error: list[Exception],
+        self,
+        transport_name: str,
+        connected: asyncio.Event,
+        connect_error: list[Exception],
     ):
         async def new_connection_callback(connection: Connection) -> None:
             handler = Handler(connection)

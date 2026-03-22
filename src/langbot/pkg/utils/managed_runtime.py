@@ -63,8 +63,7 @@ class ManagedRuntimeConnector:
             # Fast-fail if the process already died.
             if self.runtime_subprocess is not None and self.runtime_subprocess.returncode is not None:
                 raise RuntimeError(
-                    f'local {runtime_name} exited before becoming ready '
-                    f'(code {self.runtime_subprocess.returncode})'
+                    f'local {runtime_name} exited before becoming ready (code {self.runtime_subprocess.returncode})'
                 )
 
             try:

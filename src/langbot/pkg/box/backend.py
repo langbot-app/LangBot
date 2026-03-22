@@ -11,7 +11,15 @@ import shutil
 import uuid
 
 from .errors import BoxError
-from .models import DEFAULT_BOX_MOUNT_PATH, BoxExecutionResult, BoxExecutionStatus, BoxHostMountMode, BoxNetworkMode, BoxSessionInfo, BoxSpec
+from .models import (
+    DEFAULT_BOX_MOUNT_PATH,
+    BoxExecutionResult,
+    BoxExecutionStatus,
+    BoxHostMountMode,
+    BoxNetworkMode,
+    BoxSessionInfo,
+    BoxSpec,
+)
 from .security import validate_sandbox_security
 
 # Hard cap on raw subprocess output to prevent unbounded memory usage.
@@ -213,8 +221,15 @@ class CLISandboxBackend(BaseSandboxBackend):
         older versions) are also removed.
         """
         result = await self._run_command(
-            [self.command, 'ps', '-a', '--filter', 'label=langbot.box=true',
-             '--format', '{{.ID}}\t{{.Label "langbot.box.instance_id"}}'],
+            [
+                self.command,
+                'ps',
+                '-a',
+                '--filter',
+                'label=langbot.box=true',
+                '--format',
+                '{{.ID}}\t{{.Label "langbot.box.instance_id"}}',
+            ],
             timeout_sec=10,
             check=False,
         )

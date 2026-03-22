@@ -33,6 +33,7 @@ class MCPSessionStatus(enum.Enum):
 
 class MCPSessionErrorPhase(enum.Enum):
     """Which phase of the MCP lifecycle failed."""
+
     SESSION_CREATE = 'session_create'
     DEP_INSTALL = 'dep_install'
     PROCESS_START = 'process_start'
@@ -115,9 +116,7 @@ class RuntimeMCPSession:
         self._ready_event = asyncio.Event()
 
         # Parse box config once
-        self.box_config = MCPServerBoxConfig.model_validate(
-            server_config.get('box', {})
-        )
+        self.box_config = MCPServerBoxConfig.model_validate(server_config.get('box', {}))
 
     async def _init_stdio_python_server(self):
         if self._uses_box_stdio():
@@ -159,8 +158,7 @@ class RuntimeMCPSession:
             install_cmd = self._detect_install_command(host_path)
             if install_cmd:
                 self.ap.logger.info(
-                    f'MCP server {self.server_name}: installing dependencies in Box '
-                    f'with: {install_cmd}'
+                    f'MCP server {self.server_name}: installing dependencies in Box with: {install_cmd}'
                 )
                 exec_payload = dict(session_payload)
                 exec_payload['cmd'] = install_cmd
@@ -175,10 +173,7 @@ class RuntimeMCPSession:
                 if not result.ok:
                     self.error_phase = MCPSessionErrorPhase.DEP_INSTALL
                     stderr_preview = (result.stderr or '')[:500]
-                    raise Exception(
-                        f'Dependency install failed (exit code {result.exit_code}): '
-                        f'{stderr_preview}'
-                    )
+                    raise Exception(f'Dependency install failed (exit code {result.exit_code}): {stderr_preview}')
 
         # Phase: managed process start
         try:
@@ -318,8 +313,7 @@ class RuntimeMCPSession:
                     return
                 delay = self._RETRY_DELAYS[attempt]
                 self.ap.logger.warning(
-                    f'MCP session {self.server_name} failed (attempt {attempt + 1}), '
-                    f'retrying in {delay}s: {e}'
+                    f'MCP session {self.server_name} failed (attempt {attempt + 1}), retrying in {delay}s: {e}'
                 )
                 await self._cleanup_box_stdio_session()
                 # Reset status for retry
@@ -493,7 +487,7 @@ class RuntimeMCPSession:
             return path
         normalized_host = os.path.realpath(host_path)
         if path.startswith(normalized_host + '/'):
-            return '/workspace' + path[len(normalized_host):]
+            return '/workspace' + path[len(normalized_host) :]
         if path == normalized_host:
             return '/workspace'
         return path
@@ -537,7 +531,7 @@ class RuntimeMCPSession:
                 venv_dir = parts[i - 1]
                 if venv_dir in _VENV_DIRS:
                     # Return everything before the venv directory
-                    project_root = '/'.join(parts[:i - 1])
+                    project_root = '/'.join(parts[: i - 1])
                     return project_root if project_root else '/'
         return directory
 
@@ -629,13 +623,10 @@ class RuntimeMCPSession:
         if not command.startswith(normalized_host + '/'):
             return command
         # Check if command is a venv python interpreter
-        rel = command[len(normalized_host) + 1:]  # e.g. ".venv/bin/python"
+        rel = command[len(normalized_host) + 1 :]  # e.g. ".venv/bin/python"
         parts = rel.replace('\\', '/').split('/')
         # Match patterns like .venv/bin/python*, venv/bin/python*, etc.
-        if (len(parts) >= 3
-                and parts[0] in _VENV_DIRS
-                and parts[1] in _VENV_BIN_DIRS
-                and parts[2].startswith('python')):
+        if len(parts) >= 3 and parts[0] in _VENV_DIRS and parts[1] in _VENV_BIN_DIRS and parts[2].startswith('python'):
             return 'python'
         # Not a venv python — do normal path rewrite
         return self._rewrite_path(command, host_path)
