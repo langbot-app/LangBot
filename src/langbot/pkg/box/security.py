@@ -20,13 +20,6 @@ BLOCKED_HOST_PATHS = frozenset({
     '/var/run/podman',
 })
 
-RESERVED_CONTAINER_PATHS = frozenset({
-    '/workspace',
-    '/tmp',
-    '/var/tmp',
-    '/run',
-})
-
 
 def validate_sandbox_security(spec: BoxSpec) -> None:
     """Validate that a BoxSpec does not request dangerous container config.

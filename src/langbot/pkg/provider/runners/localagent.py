@@ -5,6 +5,7 @@ import copy
 import typing
 from .. import runner
 from ..modelmgr import requester as modelmgr_requester
+from ..tools.loaders.native import SANDBOX_EXEC_TOOL_NAME
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.rag.context as rag_context
@@ -24,7 +25,6 @@ Respond in the same language as the user's input.
 </user_message>
 """
 
-SANDBOX_EXEC_TOOL_NAME = 'sandbox_exec'
 SANDBOX_EXEC_SYSTEM_GUIDANCE = (
     'When sandbox_exec is available, use it for exact calculations, statistics, structured data parsing, '
     'and code execution instead of estimating mentally. If the user provides numbers, tables, CSV-like text, '
@@ -43,13 +43,19 @@ SANDBOX_EXEC_WORKSPACE_GUIDANCE = (
 class LocalAgentRunner(runner.RequestRunner):
     """Local agent request runner"""
 
+    _cached_sandbox_guidance: str | None = None
+
     def _build_sandbox_system_guidance(self) -> str:
+        if self._cached_sandbox_guidance is not None:
+            return self._cached_sandbox_guidance
+
+        from langbot.pkg.box.models import get_box_config
+
         guidance = SANDBOX_EXEC_SYSTEM_GUIDANCE
-        default_host_workspace = str(
-            getattr(getattr(self.ap, 'instance_config', None), 'data', {}).get('box', {}).get('default_host_workspace', '')
-        ).strip()
+        default_host_workspace = str(get_box_config(self.ap).get('default_host_workspace', '')).strip()
         if default_host_workspace:
             guidance = f'{guidance} {SANDBOX_EXEC_WORKSPACE_GUIDANCE}'
+        self._cached_sandbox_guidance = guidance
         return guidance
 
     def _build_request_messages(

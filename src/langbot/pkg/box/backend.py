@@ -4,17 +4,14 @@ import abc
 import asyncio
 import dataclasses
 import datetime as dt
-import hashlib
-import json
 import logging
 import re
 import shlex
 import shutil
-import typing
 import uuid
 
 from .errors import BoxError
-from .models import DEFAULT_BOX_MOUNT_PATH, BoxExecutionResult, BoxExecutionStatus, BoxHostMountMode, BoxSessionInfo, BoxSpec
+from .models import DEFAULT_BOX_MOUNT_PATH, BoxExecutionResult, BoxExecutionStatus, BoxHostMountMode, BoxNetworkMode, BoxSessionInfo, BoxSpec
 from .security import validate_sandbox_security
 
 # Hard cap on raw subprocess output to prevent unbounded memory usage.
@@ -102,20 +99,7 @@ class CLISandboxBackend(BaseSandboxBackend):
             f'langbot.box.instance_id={self.instance_id}',
         ]
 
-        # Config hash label for identifying configuration drift
-        config_hash = hashlib.sha256(json.dumps({
-            'image': spec.image,
-            'network': spec.network.value,
-            'host_path': spec.host_path,
-            'host_path_mode': spec.host_path_mode.value,
-            'cpus': spec.cpus,
-            'memory_mb': spec.memory_mb,
-            'pids_limit': spec.pids_limit,
-            'read_only_rootfs': spec.read_only_rootfs,
-        }, sort_keys=True).encode()).hexdigest()[:16]
-        args.extend(['--label', f'langbot.box.config_hash={config_hash}'])
-
-        if spec.network.value == 'off':
+        if spec.network == BoxNetworkMode.OFF:
             args.extend(['--network', 'none'])
 
         # Resource limits
@@ -353,7 +337,7 @@ class CLISandboxBackend(BaseSandboxBackend):
 
     @staticmethod
     async def _read_stream(
-        stream: typing.Optional[asyncio.StreamReader],
+        stream: asyncio.StreamReader | None,
         limit: int = _MAX_RAW_OUTPUT_BYTES,
     ) -> tuple[bytes, int]:
         if stream is None:

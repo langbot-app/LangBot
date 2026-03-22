@@ -26,7 +26,6 @@ from langbot_plugin.runtime.io.handler import Handler
 
 from .actions import LangBotToBoxAction
 from .errors import (
-    BoxError,
     BoxManagedProcessConflictError,
     BoxManagedProcessNotFoundError,
     BoxSessionNotFoundError,
@@ -38,15 +37,7 @@ logger = logging.getLogger('langbot.box.server')
 
 
 def _result_to_dict(result: BoxExecutionResult) -> dict:
-    return {
-        'session_id': result.session_id,
-        'backend_name': result.backend_name,
-        'status': result.status.value,
-        'exit_code': result.exit_code,
-        'stdout': result.stdout,
-        'stderr': result.stderr,
-        'duration_ms': result.duration_ms,
-    }
+    return result.model_dump(mode='json')
 
 
 class BoxServerHandler(Handler):

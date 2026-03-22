@@ -4,6 +4,7 @@ import asyncio
 import os
 import sys
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 from langbot_plugin.entities.io.actions.enums import CommonAction
 from langbot_plugin.runtime.io.handler import Handler
@@ -32,13 +33,37 @@ class BoxRuntimeConnector:
         self._handler_task: asyncio.Task | None = None
         self._ctrl_task: asyncio.Task | None = None
         self._subprocess: asyncio.subprocess.Process | None = None
-        self._subprocess_wait_task: asyncio.Task | None = None
+
+        # Parse the relay URL once for reuse
+        parsed = urlparse(self.ws_relay_base_url)
+        self._relay_host = parsed.hostname or '127.0.0.1'
+        self._relay_port = parsed.port or 5410
 
     async def initialize(self) -> None:
         if self.manages_local_runtime:
             await self._start_local_stdio()
         else:
             await self._connect_remote_ws()
+
+    def _make_connection_callback(
+        self, transport_name: str, connected: asyncio.Event, connect_error: list[Exception],
+    ):
+        async def new_connection_callback(connection: Connection) -> None:
+            handler = Handler(connection)
+            self._handler = handler
+            self.client.set_handler(handler)
+            self._handler_task = asyncio.create_task(handler.run())
+            try:
+                await handler.call_action(CommonAction.PING, {})
+                self.ap.logger.info(f'Connected to Box runtime via {transport_name}.')
+                connected.set()
+                await self._handler_task
+            except Exception as exc:
+                if not connected.is_set():
+                    connect_error.append(exc)
+                    connected.set()
+
+        return new_connection_callback
 
     async def _start_local_stdio(self) -> None:
         """Launch box server as subprocess and connect via stdio."""
@@ -50,29 +75,15 @@ class BoxRuntimeConnector:
         connected = asyncio.Event()
         connect_error: list[Exception] = []
 
-        async def new_connection_callback(connection: Connection) -> None:
-            handler = Handler.__new__(Handler)
-            Handler.__init__(handler, connection)
-            self._handler = handler
-            self.client.set_handler(handler)
-            self._handler_task = asyncio.create_task(handler.run())
-            try:
-                await handler.call_action(CommonAction.PING, {})
-                self.ap.logger.info('Connected to Box runtime via stdio.')
-                connected.set()
-                await self._handler_task
-            except Exception as exc:
-                if not connected.is_set():
-                    connect_error.append(exc)
-                    connected.set()
-
         ctrl = StdioClientController(
             command=python_path,
-            args=['-m', 'langbot.pkg.box.server', '--port', str(self._get_ws_relay_port())],
+            args=['-m', 'langbot.pkg.box.server', '--port', str(self._relay_port)],
             env=env,
         )
         self._subprocess = None  # StdioClientController manages the subprocess
-        self._ctrl_task = asyncio.create_task(ctrl.run(new_connection_callback))
+        self._ctrl_task = asyncio.create_task(
+            ctrl.run(self._make_connection_callback('stdio', connected, connect_error))
+        )
 
         # Wait for connection or failure
         try:
@@ -90,33 +101,19 @@ class BoxRuntimeConnector:
         """Connect to a remote box server via WebSocket."""
         from langbot_plugin.runtime.io.controllers.ws.client import WebSocketClientController
 
-        ws_url = self._get_rpc_ws_url()
+        ws_url = f'ws://{self._relay_host}:{self._relay_port + 1}'
 
         connected = asyncio.Event()
         connect_error: list[Exception] = []
-
-        async def new_connection_callback(connection: Connection) -> None:
-            handler = Handler.__new__(Handler)
-            Handler.__init__(handler, connection)
-            self._handler = handler
-            self.client.set_handler(handler)
-            self._handler_task = asyncio.create_task(handler.run())
-            try:
-                await handler.call_action(CommonAction.PING, {})
-                self.ap.logger.info('Connected to Box runtime via WebSocket.')
-                connected.set()
-                await self._handler_task
-            except Exception as exc:
-                if not connected.is_set():
-                    connect_error.append(exc)
-                    connected.set()
 
         async def on_connect_failed(ctrl, exc):
             connect_error.append(exc or BoxRuntimeUnavailableError('ws connection failed'))
             connected.set()
 
         ctrl = WebSocketClientController(ws_url=ws_url, make_connection_failed_callback=on_connect_failed)
-        self._ctrl_task = asyncio.create_task(ctrl.run(new_connection_callback))
+        self._ctrl_task = asyncio.create_task(
+            ctrl.run(self._make_connection_callback('WebSocket', connected, connect_error))
+        )
 
         try:
             await asyncio.wait_for(connected.wait(), timeout=30.0)
@@ -139,29 +136,8 @@ class BoxRuntimeConnector:
             self.ap.logger.info('Terminating managed box runtime process...')
             self._subprocess.terminate()
 
-        if self._subprocess_wait_task is not None:
-            self._subprocess_wait_task.cancel()
-            self._subprocess_wait_task = None
-
     def _load_configured_runtime_url(self) -> str:
         return str(get_box_config(self.ap).get('runtime_url', '')).strip()
 
     def _should_manage_local_runtime(self) -> bool:
         return not self.configured_runtime_url and platform.get_platform() != 'docker'
-
-    def _get_ws_relay_port(self) -> int:
-        """Extract the port for ws relay from ws_relay_base_url."""
-        from urllib.parse import urlparse
-        parsed = urlparse(self.ws_relay_base_url)
-        return parsed.port or 5410
-
-    def _get_rpc_ws_url(self) -> str:
-        """Derive the action RPC ws URL from the configured runtime URL.
-
-        The RPC endpoint is on port+1 relative to the ws relay port.
-        """
-        from urllib.parse import urlparse
-        parsed = urlparse(self.ws_relay_base_url)
-        host = parsed.hostname or '127.0.0.1'
-        port = (parsed.port or 5410) + 1
-        return f'ws://{host}:{port}'
