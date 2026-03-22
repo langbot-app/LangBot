@@ -21,10 +21,8 @@ class DBMigrateSkillsTable(migration.DBMigration):
                         uuid VARCHAR(255) PRIMARY KEY,
                         name VARCHAR(64) NOT NULL UNIQUE,
                         description VARCHAR(1024) NOT NULL,
-                        instructions TEXT,
                         type VARCHAR(32) NOT NULL DEFAULT 'skill',
-                        source_type VARCHAR(32) NOT NULL DEFAULT 'inline',
-                        package_root VARCHAR(1024),
+                        package_root VARCHAR(1024) NOT NULL DEFAULT '',
                         entry_file VARCHAR(255) NOT NULL DEFAULT 'SKILL.md',
                         skill_tools JSONB NOT NULL DEFAULT '[]',
                         requires_tools JSONB NOT NULL DEFAULT '[]',
@@ -49,10 +47,8 @@ class DBMigrateSkillsTable(migration.DBMigration):
                         uuid VARCHAR(255) PRIMARY KEY,
                         name VARCHAR(64) NOT NULL UNIQUE,
                         description VARCHAR(1024) NOT NULL,
-                        instructions TEXT,
                         type VARCHAR(32) NOT NULL DEFAULT 'skill',
-                        source_type VARCHAR(32) NOT NULL DEFAULT 'inline',
-                        package_root VARCHAR(1024),
+                        package_root VARCHAR(1024) NOT NULL DEFAULT '',
                         entry_file VARCHAR(255) NOT NULL DEFAULT 'SKILL.md',
                         skill_tools JSON NOT NULL DEFAULT '[]',
                         requires_tools JSON NOT NULL DEFAULT '[]',
@@ -74,8 +70,7 @@ class DBMigrateSkillsTable(migration.DBMigration):
     async def _add_new_columns(self):
         """Add new columns to existing skills table if they don't exist yet."""
         columns = [
-            ("source_type", "VARCHAR(32) NOT NULL DEFAULT 'inline'"),
-            ("package_root", "VARCHAR(1024)"),
+            ("package_root", "VARCHAR(1024) NOT NULL DEFAULT ''"),
             ("entry_file", "VARCHAR(255) NOT NULL DEFAULT 'SKILL.md'"),
         ]
 

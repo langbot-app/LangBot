@@ -30,7 +30,7 @@ class SkillsRouterGroup(group.RouterGroup):
                 data = await quart.request.json
 
                 # Validate required fields
-                required_fields = ['name', 'description', 'instructions']
+                required_fields = ['name', 'description']
                 for field in required_fields:
                     if field not in data or not data[field]:
                         return self.http_status(400, -1, f'Missing required field: {field}')
@@ -179,3 +179,38 @@ class SkillsRouterGroup(group.RouterGroup):
             )
 
             return self.success(data={'index': skill_index})
+
+        # ========== Install Endpoints ==========
+
+        @self.route('/install/github', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def install_skill_from_github() -> quart.Response:
+            """Install a skill from a GitHub release asset (zip)"""
+            data = await quart.request.json
+
+            required_fields = ['asset_url', 'owner', 'repo', 'release_tag']
+            for field in required_fields:
+                if field not in data or not data[field]:
+                    return self.http_status(400, -1, f'Missing required field: {field}')
+
+            try:
+                skill = await self.ap.skill_service.install_from_github(data)
+                return self.success(data={'skill': skill})
+            except ValueError as e:
+                return self.http_status(400, -1, str(e))
+            except Exception as e:
+                return self.http_status(500, -1, f'Failed to install skill: {e}')
+
+        # ========== Scan / Import Endpoint ==========
+
+        @self.route('/scan', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def scan_skill_directory() -> quart.Response:
+            """Scan a local directory for skill metadata (YAML frontmatter in SKILL.md)"""
+            path = quart.request.args.get('path', '').strip()
+            if not path:
+                return self.http_status(400, -1, 'Missing required parameter: path')
+
+            try:
+                result = self.ap.skill_service.scan_directory(path)
+                return self.success(data=result)
+            except ValueError as e:
+                return self.http_status(400, -1, str(e))

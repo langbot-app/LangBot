@@ -192,7 +192,7 @@ class BoxService:
             'session_id': session_id,
             'env': env,
             'host_path': skill_data.get('package_root'),
-            'host_path_mode': 'ro',
+            'host_path_mode': 'rw',
         }
 
         return await self.execute_spec_payload(spec_payload, query)

@@ -22,7 +22,6 @@ def _make_ap(logger=None):
 
 def _make_skill_data(
     name='test-skill',
-    source_type='inline',
     instructions='Do something',
     package_root=None,
     entry_file='SKILL.md',
@@ -36,8 +35,7 @@ def _make_skill_data(
         'description': f'Description of {name}',
         'instructions': instructions,
         'type': 'skill',
-        'source_type': source_type,
-        'package_root': package_root,
+        'package_root': package_root or '',
         'entry_file': entry_file,
         'skill_tools': skill_tools or [],
         'requires_tools': [],
@@ -52,9 +50,9 @@ def _make_skill_data(
 
 
 class TestSkillManagerPackageLoading:
-    """Test SkillManager._load_package_instructions()."""
+    """Test SkillManager._load_instructions()."""
 
-    def test_load_package_instructions_success(self):
+    def test_load_instructions_success(self):
         from langbot.pkg.skill.manager import SkillManager
 
         ap = _make_ap()
@@ -66,15 +64,14 @@ class TestSkillManagerPackageLoading:
                 f.write('# Test Skill\nDo things.')
 
             skill_data = _make_skill_data(
-                source_type='package',
                 package_root=tmpdir,
             )
-            result = mgr._load_package_instructions(skill_data)
+            result = mgr._load_instructions(skill_data)
 
             assert result is True
             assert skill_data['instructions'] == '# Test Skill\nDo things.'
 
-    def test_load_package_instructions_missing_file(self):
+    def test_load_instructions_missing_file(self):
         from langbot.pkg.skill.manager import SkillManager
 
         ap = _make_ap()
@@ -82,26 +79,25 @@ class TestSkillManagerPackageLoading:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_data = _make_skill_data(
-                source_type='package',
                 package_root=tmpdir,
             )
-            result = mgr._load_package_instructions(skill_data)
+            result = mgr._load_instructions(skill_data)
 
             assert result is False
             ap.logger.warning.assert_called_once()
 
-    def test_load_package_instructions_no_package_root(self):
+    def test_load_instructions_no_package_root(self):
         from langbot.pkg.skill.manager import SkillManager
 
         ap = _make_ap()
         mgr = SkillManager(ap)
 
-        skill_data = _make_skill_data(source_type='package', package_root=None)
-        result = mgr._load_package_instructions(skill_data)
+        skill_data = _make_skill_data(package_root='')
+        result = mgr._load_instructions(skill_data)
 
         assert result is False
 
-    def test_load_package_instructions_custom_entry_file(self):
+    def test_load_instructions_custom_entry_file(self):
         from langbot.pkg.skill.manager import SkillManager
 
         ap = _make_ap()
@@ -113,11 +109,10 @@ class TestSkillManagerPackageLoading:
                 f.write('Custom entry')
 
             skill_data = _make_skill_data(
-                source_type='package',
                 package_root=tmpdir,
                 entry_file='README.md',
             )
-            result = mgr._load_package_instructions(skill_data)
+            result = mgr._load_instructions(skill_data)
 
             assert result is True
             assert skill_data['instructions'] == 'Custom entry'

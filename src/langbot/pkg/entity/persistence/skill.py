@@ -11,17 +11,15 @@ class Skill(Base):
     uuid = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True, unique=True)
     name = sqlalchemy.Column(sqlalchemy.String(64), nullable=False, unique=True)
     description = sqlalchemy.Column(sqlalchemy.String(1024), nullable=False)
-    instructions = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
 
-    # Type: "skill" (single skill) | "workflow" (workflow with steps)
+    # Type
     type = sqlalchemy.Column(sqlalchemy.String(32), nullable=False, default='skill')
 
-    # Source type: "inline" (instructions in DB) | "package" (from local package)
-    source_type = sqlalchemy.Column(sqlalchemy.String(32), nullable=False, default='inline')
-    package_root = sqlalchemy.Column(sqlalchemy.String(1024), nullable=True)
+    # Package location: directory containing SKILL.md
+    package_root = sqlalchemy.Column(sqlalchemy.String(1024), nullable=False, default='')
     entry_file = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, default='SKILL.md')
 
-    # Skill-declared tools (for package-backed skills)
+    # Skill tools
     skill_tools = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, default=[])
 
     # Dependencies configuration

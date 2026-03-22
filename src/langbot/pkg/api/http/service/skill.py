@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
+import tempfile
 import uuid as uuid_lib
+import zipfile
 from typing import Optional
 
+import httpx
 import sqlalchemy
+import yaml
 
 from ....core import app
 from ....entity.persistence import skill as persistence_skill
@@ -49,6 +54,10 @@ class SkillService:
 
         skill_list = [self.ap.persistence_mgr.serialize_model(persistence_skill.Skill, s) for s in skills]
 
+        # Load instructions from SKILL.md for each skill
+        for s in skill_list:
+            self._load_instructions_from_file(s)
+
         # Filter by tags if specified (post-query filtering for JSON field)
         if tags:
             skill_list = [s for s in skill_list if any(tag in s.get('tags', []) for tag in tags)]
@@ -68,7 +77,12 @@ class SkillService:
             sqlalchemy.select(persistence_skill.Skill).where(persistence_skill.Skill.uuid == skill_uuid)
         )
         skill = result.first()
-        return self.ap.persistence_mgr.serialize_model(persistence_skill.Skill, skill) if skill else None
+        if not skill:
+            return None
+        skill_data = self.ap.persistence_mgr.serialize_model(persistence_skill.Skill, skill)
+        # Load instructions from SKILL.md for API consumers
+        self._load_instructions_from_file(skill_data)
+        return skill_data
 
     async def get_skill_by_name(self, name: str) -> Optional[dict]:
         """Get a single skill by name.
@@ -92,10 +106,9 @@ class SkillService:
             data: Skill data containing:
                 - name: Skill name (required, unique)
                 - description: Skill description (required)
-                - instructions: Markdown instructions (required for inline skills)
+                - instructions: Markdown instructions (written to SKILL.md, not stored in DB)
                 - type: 'skill' or 'workflow' (default: 'skill')
-                - source_type: 'inline' or 'package' (default: 'inline')
-                - package_root: Package root directory (required for package skills)
+                - package_root: Package root directory (auto-created under data/skills/{name}/ if not provided)
                 - entry_file: Package entry file name (default: 'SKILL.md')
                 - skill_tools: List of skill tool definitions
                 - requires_tools: List of required tool names
@@ -117,8 +130,24 @@ class SkillService:
         if existing:
             raise ValueError(f"Skill with name '{data['name']}' already exists")
 
-        source_type = data.get('source_type', 'inline')
-        self._validate_source_type_fields(data, source_type)
+        package_root = data.get('package_root', '').strip()
+        entry_file = data.get('entry_file', 'SKILL.md')
+        instructions = data.get('instructions', '')
+
+        # Auto-create package_root if not provided
+        if not package_root:
+            package_root = os.path.join('data', 'skills', data['name'])
+
+        # Ensure the directory exists
+        os.makedirs(package_root, exist_ok=True)
+
+        # Write instructions to entry file
+        if instructions:
+            entry_path = os.path.join(package_root, entry_file)
+            with open(entry_path, 'w', encoding='utf-8') as f:
+                f.write(instructions)
+
+        self._validate_package_fields(package_root, entry_file, data)
 
         skill_uuid = str(uuid_lib.uuid4())
 
@@ -126,11 +155,9 @@ class SkillService:
             'uuid': skill_uuid,
             'name': data['name'],
             'description': data['description'],
-            'instructions': data.get('instructions'),
             'type': data.get('type', 'skill'),
-            'source_type': source_type,
-            'package_root': data.get('package_root'),
-            'entry_file': data.get('entry_file', 'SKILL.md'),
+            'package_root': package_root,
+            'entry_file': entry_file,
             'skill_tools': data.get('skill_tools', []),
             'requires_tools': data.get('requires_tools', []),
             'requires_kbs': data.get('requires_kbs', []),
@@ -186,6 +213,17 @@ class SkillService:
             existing = await self.get_skill_by_name(data['name'])
             if existing:
                 raise ValueError(f"Skill with name '{data['name']}' already exists")
+
+        # If instructions content is provided, write it to SKILL.md
+        instructions = data.pop('instructions', None)
+        if instructions is not None:
+            package_root = data.get('package_root', skill.get('package_root', ''))
+            entry_file = data.get('entry_file', skill.get('entry_file', 'SKILL.md'))
+            if package_root:
+                os.makedirs(package_root, exist_ok=True)
+                entry_path = os.path.join(package_root, entry_file)
+                with open(entry_path, 'w', encoding='utf-8') as f:
+                    f.write(instructions)
 
         if data:
             await self.ap.persistence_mgr.execute_async(
@@ -366,19 +404,119 @@ class SkillService:
 
         return await self.get_pipeline_skills(pipeline_uuid)
 
+    # ========== Install from GitHub ==========
+
+    async def install_from_github(self, data: dict) -> dict:
+        """Install a skill from a GitHub release asset (zip).
+
+        Downloads the zip, extracts to data/skills/{repo}/, scans SKILL.md,
+        and creates the skill in the database.
+
+        Args:
+            data: Dictionary with asset_url, owner, repo, release_tag
+
+        Returns:
+            Created skill dictionary
+
+        Raises:
+            ValueError: If download/extraction/scan fails
+        """
+        asset_url = data['asset_url']
+        repo = data['repo']
+        release_tag = data.get('release_tag', '')
+
+        # Determine target directory
+        target_dir = os.path.join('data', 'skills', repo)
+        if os.path.exists(target_dir):
+            # Handle name conflicts by appending release tag
+            tag_suffix = release_tag.lstrip('v').replace('/', '-')
+            target_dir = os.path.join('data', 'skills', f'{repo}-{tag_suffix}')
+            if os.path.exists(target_dir):
+                raise ValueError(f'Skill directory already exists: {target_dir}')
+
+        tmp_dir = tempfile.mkdtemp(prefix='langbot_skill_')
+        try:
+            # Download the zip asset
+            zip_path = os.path.join(tmp_dir, 'skill.zip')
+            async with httpx.AsyncClient(follow_redirects=True, timeout=120) as client:
+                resp = await client.get(asset_url)
+                resp.raise_for_status()
+                with open(zip_path, 'wb') as f:
+                    f.write(resp.content)
+
+            # Extract zip
+            extract_dir = os.path.join(tmp_dir, 'extracted')
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                zf.extractall(extract_dir)
+
+            # Find the skill root – GitHub zips typically have a {repo}-{tag}/ wrapper
+            entries = os.listdir(extract_dir)
+            if len(entries) == 1 and os.path.isdir(os.path.join(extract_dir, entries[0])):
+                skill_root = os.path.join(extract_dir, entries[0])
+            else:
+                skill_root = extract_dir
+
+            # Verify SKILL.md exists
+            has_skill_md = False
+            for candidate in ('SKILL.md', 'skill.md'):
+                if os.path.isfile(os.path.join(skill_root, candidate)):
+                    has_skill_md = True
+                    break
+            if not has_skill_md:
+                raise ValueError('No SKILL.md found in the downloaded archive')
+
+            # Move to target directory
+            os.makedirs(os.path.dirname(target_dir), exist_ok=True)
+            shutil.move(skill_root, target_dir)
+
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+        # Scan the extracted directory for metadata
+        try:
+            scanned = self.scan_directory(target_dir)
+        except ValueError:
+            # Clean up if scan fails
+            shutil.rmtree(target_dir, ignore_errors=True)
+            raise
+
+        # Create skill in DB using scanned metadata
+        skill_data = {
+            'name': scanned['name'],
+            'description': scanned.get('description', ''),
+            'package_root': scanned['package_root'],
+            'entry_file': scanned['entry_file'],
+            'author': scanned.get('author'),
+            'version': scanned.get('version', '1.0.0'),
+            'tags': scanned.get('tags', []),
+        }
+
+        try:
+            return await self.create_skill(skill_data)
+        except ValueError:
+            # Clean up directory if DB creation fails (e.g. duplicate name)
+            shutil.rmtree(target_dir, ignore_errors=True)
+            raise
+
     # ========== Validation Helpers ==========
 
-    def _validate_source_type_fields(self, data: dict, source_type: str):
-        """Validate fields specific to source_type."""
-        if source_type == 'package':
-            package_root = data.get('package_root')
-            if not package_root:
-                raise ValueError('package_root is required for package-backed skills')
-            if not os.path.isabs(package_root):
-                raise ValueError('package_root must be an absolute path')
-            if not os.path.isdir(package_root):
-                raise ValueError(f'package_root directory does not exist: {package_root}')
+    def _load_instructions_from_file(self, skill_data: dict):
+        """Load instructions content from SKILL.md into skill_data for API responses."""
+        package_root = skill_data.get('package_root', '')
+        entry_file = skill_data.get('entry_file', 'SKILL.md')
+        if package_root:
+            entry_path = os.path.join(package_root, entry_file)
+            try:
+                with open(entry_path, 'r', encoding='utf-8') as f:
+                    skill_data['instructions'] = f.read()
+            except (FileNotFoundError, OSError):
+                skill_data['instructions'] = ''
+        else:
+            skill_data['instructions'] = ''
 
+    def _validate_package_fields(self, package_root: str, entry_file: str, data: dict):
+        """Validate package_root and entry_file fields."""
+        if os.path.isabs(package_root):
             # Validate package_root is within allowed host mount roots
             if hasattr(self.ap, 'box_service') and self.ap.box_service is not None:
                 real_root = os.path.realpath(os.path.abspath(package_root))
@@ -393,15 +531,10 @@ class SkillService:
                             f'package_root is outside allowed_host_mount_roots'
                         )
 
-            entry_file = data.get('entry_file', 'SKILL.md')
-            if os.path.isabs(entry_file):
-                raise ValueError('entry_file must not be an absolute path')
-            if '..' in entry_file.split(os.sep):
-                raise ValueError('entry_file must not contain path traversal')
-
-        elif source_type == 'inline':
-            if not data.get('instructions'):
-                raise ValueError('instructions is required for inline skills')
+        if os.path.isabs(entry_file):
+            raise ValueError('entry_file must not be an absolute path')
+        if '..' in entry_file.split(os.sep):
+            raise ValueError('entry_file must not contain path traversal')
 
         # Validate skill_tools entries
         for tool in data.get('skill_tools', []):
@@ -422,3 +555,90 @@ class SkillService:
             raise ValueError(f'skill tool entry must be a relative path: {entry}')
         if '..' in entry.split(os.sep):
             raise ValueError(f'skill tool entry must not contain path traversal: {entry}')
+
+    # ========== Scan / Import ==========
+
+    def scan_directory(self, path: str) -> dict:
+        """Scan a directory for skill metadata.
+
+        Reads SKILL.md (or other entry file) and parses YAML frontmatter
+        to extract name, description, author, version, tags, etc.
+
+        Args:
+            path: Directory path to scan
+
+        Returns:
+            Dictionary with detected metadata and instructions
+
+        Raises:
+            ValueError: If path is invalid or no entry file found
+        """
+        if not os.path.isdir(path):
+            raise ValueError(f'Directory does not exist: {path}')
+
+        # Try common entry files
+        entry_file = None
+        for candidate in ('SKILL.md', 'skill.md', 'README.md'):
+            if os.path.isfile(os.path.join(path, candidate)):
+                entry_file = candidate
+                break
+
+        if not entry_file:
+            raise ValueError(f'No SKILL.md found in {path}')
+
+        entry_path = os.path.join(path, entry_file)
+        with open(entry_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        # Parse YAML frontmatter
+        metadata, instructions = self._parse_frontmatter(content)
+
+        # Use directory name as fallback skill name
+        dir_name = os.path.basename(os.path.normpath(path))
+
+        result = {
+            'package_root': os.path.abspath(path),
+            'entry_file': entry_file,
+            'name': metadata.get('name', dir_name),
+            'description': metadata.get('description', ''),
+            'author': metadata.get('author'),
+            'version': metadata.get('version', '1.0.0'),
+            'tags': metadata.get('tags', []),
+            'instructions': instructions,
+        }
+
+        return result
+
+    @staticmethod
+    def _parse_frontmatter(content: str) -> tuple[dict, str]:
+        """Parse YAML frontmatter from markdown content.
+
+        Expects format:
+            ---
+            name: my-skill
+            description: Does something
+            ---
+            # Actual instructions...
+
+        Returns:
+            Tuple of (metadata dict, remaining content)
+        """
+        if not content.startswith('---'):
+            return {}, content
+
+        parts = content.split('---', 2)
+        if len(parts) < 3:
+            return {}, content
+
+        frontmatter_str = parts[1].strip()
+        instructions = parts[2].strip()
+
+        try:
+            metadata = yaml.safe_load(frontmatter_str) or {}
+        except yaml.YAMLError:
+            metadata = {}
+
+        if not isinstance(metadata, dict):
+            metadata = {}
+
+        return metadata, instructions

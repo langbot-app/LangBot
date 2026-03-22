@@ -7,14 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { Plus, Trash2 } from 'lucide-react';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Plus, Trash2, FolderSearch } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Skill, SkillToolDef } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
@@ -36,7 +29,6 @@ export default function SkillForm({
     description: '',
     instructions: '',
     type: 'skill',
-    source_type: 'inline',
     package_root: '',
     entry_file: 'SKILL.md',
     skill_tools: [],
@@ -52,6 +44,7 @@ export default function SkillForm({
   });
   const [keywordsInput, setKeywordsInput] = useState('');
   const [tagsInput, setTagsInput] = useState('');
+  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
     if (initSkillId) {
@@ -71,7 +64,35 @@ export default function SkillForm({
     }
   }
 
-  const isPackage = skill.source_type === 'package';
+  async function scanDirectory() {
+    const path = skill.package_root?.trim();
+    if (!path) {
+      toast.error(t('skills.packageRootRequired'));
+      return;
+    }
+    setScanning(true);
+    try {
+      const result = await httpClient.scanSkillDirectory(path);
+      setSkill((prev) => ({
+        ...prev,
+        name: prev.name || result.name,
+        description: prev.description || result.description,
+        package_root: result.package_root,
+        entry_file: result.entry_file,
+        instructions: result.instructions,
+        author: prev.author || result.author || '',
+        version: prev.version || result.version,
+        tags: prev.tags?.length ? prev.tags : result.tags,
+      }));
+      setTagsInput((prev) => prev || result.tags?.join(', ') || '');
+      toast.success(t('skills.scanSuccess'));
+    } catch (error) {
+      console.error('Failed to scan directory:', error);
+      toast.error(t('skills.scanError') + String(error));
+    } finally {
+      setScanning(false);
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,14 +103,6 @@ export default function SkillForm({
     }
     if (!skill.description?.trim()) {
       toast.error(t('skills.skillDescriptionRequired'));
-      return;
-    }
-    if (!isPackage && !skill.instructions?.trim()) {
-      toast.error(t('skills.instructionsRequired'));
-      return;
-    }
-    if (isPackage && !skill.package_root?.trim()) {
-      toast.error(t('skills.packageRootRequired'));
       return;
     }
 
@@ -176,75 +189,50 @@ export default function SkillForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="type">{t('skills.skillType')}</Label>
-        <Select
-          value={skill.type || 'skill'}
-          onValueChange={(value) =>
-            setSkill({ ...skill, type: value as 'skill' | 'workflow' })
-          }
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="skill">{t('skills.typeSkill')}</SelectItem>
-            <SelectItem value="workflow">{t('skills.typeWorkflow')}</SelectItem>
-          </SelectContent>
-        </Select>
+        <Label htmlFor="package_root">{t('skills.packageRoot')}</Label>
+        <div className="flex gap-2">
+          <Input
+            id="package_root"
+            value={skill.package_root || ''}
+            onChange={(e) => setSkill({ ...skill, package_root: e.target.value })}
+            placeholder={`data/skills/${skill.name || '<skill-name>'}/`}
+            className="flex-1"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={scanDirectory}
+            disabled={scanning || !skill.package_root?.trim()}
+            className="shrink-0"
+          >
+            <FolderSearch className="h-4 w-4 mr-1" />
+            {scanning ? t('common.loading') : t('skills.scan')}
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="source_type">{t('skills.sourceType')}</Label>
-        <Select
-          value={skill.source_type || 'inline'}
-          onValueChange={(value) =>
-            setSkill({ ...skill, source_type: value as 'inline' | 'package' })
-          }
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="inline">{t('skills.sourceInline')}</SelectItem>
-            <SelectItem value="package">{t('skills.sourcePackage')}</SelectItem>
-          </SelectContent>
-        </Select>
+        <Label htmlFor="entry_file">{t('skills.entryFile')}</Label>
+        <Input
+          id="entry_file"
+          value={skill.entry_file || 'SKILL.md'}
+          onChange={(e) => setSkill({ ...skill, entry_file: e.target.value })}
+          placeholder="SKILL.md"
+        />
       </div>
 
-      {isPackage ? (
-        <>
-          <div className="space-y-2">
-            <Label htmlFor="package_root">{t('skills.packageRoot')} *</Label>
-            <Input
-              id="package_root"
-              value={skill.package_root || ''}
-              onChange={(e) => setSkill({ ...skill, package_root: e.target.value })}
-              placeholder="/path/to/skill/package"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="entry_file">{t('skills.entryFile')}</Label>
-            <Input
-              id="entry_file"
-              value={skill.entry_file || 'SKILL.md'}
-              onChange={(e) => setSkill({ ...skill, entry_file: e.target.value })}
-              placeholder="SKILL.md"
-            />
-          </div>
-        </>
-      ) : (
-        <div className="space-y-2">
-          <Label htmlFor="instructions">{t('skills.skillInstructions')} *</Label>
-          <Textarea
-            id="instructions"
-            value={skill.instructions || ''}
-            onChange={(e) => setSkill({ ...skill, instructions: e.target.value })}
-            placeholder={t('skills.instructionsPlaceholder')}
-            rows={10}
-            className="font-mono text-sm"
-          />
-        </div>
-      )}
+      <div className="space-y-2">
+        <Label htmlFor="instructions">{t('skills.skillInstructions')}</Label>
+        <Textarea
+          id="instructions"
+          value={skill.instructions || ''}
+          onChange={(e) => setSkill({ ...skill, instructions: e.target.value })}
+          placeholder={t('skills.instructionsPlaceholder')}
+          rows={10}
+          className="font-mono text-sm"
+        />
+      </div>
 
       {/* Skill Tools */}
       <div className="space-y-2">

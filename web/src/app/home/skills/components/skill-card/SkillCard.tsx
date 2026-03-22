@@ -12,17 +12,6 @@ export default function SkillCard({ skillCardVO }: { skillCardVO: SkillCardVO })
             <div className={`${styles.basicInfoNameText}`}>
               {skillCardVO.name}
             </div>
-            <span
-              className={`${styles.typeBadge} ${
-                skillCardVO.type === 'skill'
-                  ? styles.typeSkill
-                  : styles.typeWorkflow
-              }`}
-            >
-              {skillCardVO.type === 'skill'
-                ? t('skills.typeSkill')
-                : t('skills.typeWorkflow')}
-            </span>
             {skillCardVO.isBuiltin && (
               <span className={`${styles.builtinBadge}`}>
                 {t('skills.builtin')}

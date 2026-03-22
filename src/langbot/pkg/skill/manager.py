@@ -57,19 +57,17 @@ class SkillManager:
         for skill in skills_list:
             skill_data = self.ap.persistence_mgr.serialize_model(persistence_skill.Skill, skill)
 
-            # For package-backed skills, load instructions from file system
-            if skill_data.get('source_type') == 'package':
-                loaded = self._load_package_instructions(skill_data)
-                if not loaded:
-                    continue
+            # Load instructions from package_root/entry_file
+            if not self._load_instructions(skill_data):
+                continue
 
             self.skills[skill_data['name']] = skill_data
             self.skills_by_uuid[skill_data['uuid']] = skill_data
 
         self.ap.logger.info(f'Loaded {len(self.skills)} skills')
 
-    def _load_package_instructions(self, skill_data: dict) -> bool:
-        """Load instructions from package entry file.
+    def _load_instructions(self, skill_data: dict) -> bool:
+        """Load instructions from skill entry file.
 
         Args:
             skill_data: Skill data dict (modified in place)
@@ -82,7 +80,7 @@ class SkillManager:
 
         if not package_root:
             self.ap.logger.warning(
-                f'Package skill "{skill_data["name"]}" has no package_root, skipping'
+                f'Skill "{skill_data["name"]}" has no package_root, skipping'
             )
             return False
 
@@ -93,12 +91,12 @@ class SkillManager:
             return True
         except FileNotFoundError:
             self.ap.logger.warning(
-                f'Package skill "{skill_data["name"]}" entry file not found: {entry_path}, skipping'
+                f'Skill "{skill_data["name"]}" entry file not found: {entry_path}, skipping'
             )
             return False
         except OSError as e:
             self.ap.logger.warning(
-                f'Package skill "{skill_data["name"]}" failed to read entry file: {e}, skipping'
+                f'Skill "{skill_data["name"]}" failed to read entry file: {e}, skipping'
             )
             return False
 
@@ -138,8 +136,7 @@ class SkillManager:
 
         lines = ['Available Skills:']
         for skill in skills_to_index:
-            skill_type_tag = '[workflow]' if skill['type'] == 'workflow' else ''
-            lines.append(f"- {skill['name']}{skill_type_tag}: {skill['description']}")
+            lines.append(f"- {skill['name']}: {skill['description']}")
 
         return '\n'.join(lines)
 

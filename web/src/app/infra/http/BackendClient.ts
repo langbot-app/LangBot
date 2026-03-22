@@ -621,6 +621,21 @@ export class BackendClient extends BaseHttpClient {
     return this.postFile('/api/v1/plugins/install/local', formData);
   }
 
+  // ============ Skill Install API ============
+  public installSkillFromGithub(
+    assetUrl: string,
+    owner: string,
+    repo: string,
+    releaseTag: string,
+  ): Promise<ApiRespSkill> {
+    return this.post('/api/v1/skills/install/github', {
+      asset_url: assetUrl,
+      owner,
+      repo,
+      release_tag: releaseTag,
+    });
+  }
+
   public installPluginFromMarketplace(
     author: string,
     name: string,
@@ -1146,6 +1161,19 @@ export class BackendClient extends BaseHttpClient {
   public getSkillIndex(pipelineUuid?: string): Promise<{ index: string }> {
     const params = pipelineUuid ? { pipeline_uuid: pipelineUuid } : {};
     return this.get('/api/v1/skills/index', params);
+  }
+
+  public scanSkillDirectory(path: string): Promise<{
+    package_root: string;
+    entry_file: string;
+    name: string;
+    description: string;
+    author?: string;
+    version: string;
+    tags: string[];
+    instructions: string;
+  }> {
+    return this.get('/api/v1/skills/scan', { path });
   }
 }
 
