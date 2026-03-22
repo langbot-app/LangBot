@@ -25,6 +25,7 @@ Respond in the same language as the user's input.
 </user_message>
 """
 
+
 @runner.runner_class('local-agent')
 class LocalAgentRunner(runner.RequestRunner):
     """Local agent request runner"""
