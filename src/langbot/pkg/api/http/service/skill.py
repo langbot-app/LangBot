@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import re
 import uuid as uuid_lib
 from typing import Optional
 
@@ -90,8 +92,12 @@ class SkillService:
             data: Skill data containing:
                 - name: Skill name (required, unique)
                 - description: Skill description (required)
-                - instructions: Markdown instructions (required)
+                - instructions: Markdown instructions (required for inline skills)
                 - type: 'skill' or 'workflow' (default: 'skill')
+                - source_type: 'inline' or 'package' (default: 'inline')
+                - package_root: Package root directory (required for package skills)
+                - entry_file: Package entry file name (default: 'SKILL.md')
+                - skill_tools: List of skill tool definitions
                 - requires_tools: List of required tool names
                 - requires_kbs: List of required knowledge base UUIDs
                 - requires_skills: List of required sub-skill names
@@ -104,12 +110,15 @@ class SkillService:
             Created skill dictionary
 
         Raises:
-            ValueError: If a skill with the same name already exists
+            ValueError: If validation fails
         """
         # Check for duplicate name
         existing = await self.get_skill_by_name(data['name'])
         if existing:
             raise ValueError(f"Skill with name '{data['name']}' already exists")
+
+        source_type = data.get('source_type', 'inline')
+        self._validate_source_type_fields(data, source_type)
 
         skill_uuid = str(uuid_lib.uuid4())
 
@@ -117,8 +126,12 @@ class SkillService:
             'uuid': skill_uuid,
             'name': data['name'],
             'description': data['description'],
-            'instructions': data['instructions'],
+            'instructions': data.get('instructions'),
             'type': data.get('type', 'skill'),
+            'source_type': source_type,
+            'package_root': data.get('package_root'),
+            'entry_file': data.get('entry_file', 'SKILL.md'),
+            'skill_tools': data.get('skill_tools', []),
             'requires_tools': data.get('requires_tools', []),
             'requires_kbs': data.get('requires_kbs', []),
             'requires_skills': data.get('requires_skills', []),
@@ -352,3 +365,60 @@ class SkillService:
             )
 
         return await self.get_pipeline_skills(pipeline_uuid)
+
+    # ========== Validation Helpers ==========
+
+    def _validate_source_type_fields(self, data: dict, source_type: str):
+        """Validate fields specific to source_type."""
+        if source_type == 'package':
+            package_root = data.get('package_root')
+            if not package_root:
+                raise ValueError('package_root is required for package-backed skills')
+            if not os.path.isabs(package_root):
+                raise ValueError('package_root must be an absolute path')
+            if not os.path.isdir(package_root):
+                raise ValueError(f'package_root directory does not exist: {package_root}')
+
+            # Validate package_root is within allowed host mount roots
+            if hasattr(self.ap, 'box_service') and self.ap.box_service is not None:
+                real_root = os.path.realpath(os.path.abspath(package_root))
+                allowed_roots = self.ap.box_service.allowed_host_mount_roots
+                if allowed_roots:
+                    is_allowed = any(
+                        real_root == ar or real_root.startswith(f'{ar}{os.sep}')
+                        for ar in allowed_roots
+                    )
+                    if not is_allowed:
+                        raise ValueError(
+                            f'package_root is outside allowed_host_mount_roots'
+                        )
+
+            entry_file = data.get('entry_file', 'SKILL.md')
+            if os.path.isabs(entry_file):
+                raise ValueError('entry_file must not be an absolute path')
+            if '..' in entry_file.split(os.sep):
+                raise ValueError('entry_file must not contain path traversal')
+
+        elif source_type == 'inline':
+            if not data.get('instructions'):
+                raise ValueError('instructions is required for inline skills')
+
+        # Validate skill_tools entries
+        for tool in data.get('skill_tools', []):
+            self._validate_skill_tool_entry(tool)
+
+    @staticmethod
+    def _validate_skill_tool_entry(tool: dict):
+        """Validate a single skill_tools entry."""
+        if not tool.get('name'):
+            raise ValueError('skill tool name is required')
+        if not re.match(r'^[a-zA-Z0-9_-]+$', tool['name']):
+            raise ValueError(f'skill tool name contains invalid characters: {tool["name"]}')
+
+        entry = tool.get('entry', '')
+        if not entry:
+            raise ValueError(f'skill tool entry is required for tool "{tool["name"]}"')
+        if os.path.isabs(entry):
+            raise ValueError(f'skill tool entry must be a relative path: {entry}')
+        if '..' in entry.split(os.sep):
+            raise ValueError(f'skill tool entry must not contain path traversal: {entry}')

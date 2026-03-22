@@ -136,6 +136,92 @@ class BoxService:
 
         return await self.execute_spec_payload(spec_payload, query)
 
+    # ── Skill tool execution ─────────────────────────────────────────
+
+    _ENTRY_RUNNERS: dict[str, str] = {
+        '.py': 'python',
+        '.sh': 'bash',
+        '.js': 'node',
+    }
+
+    async def execute_skill_tool(
+        self,
+        skill_data: dict,
+        tool_def: dict,
+        parameters: dict,
+        query: 'pipeline_query.Query',
+    ) -> dict:
+        """Execute a skill-declared tool in the Box sandbox.
+
+        Args:
+            skill_data: Skill data dict (must contain package_root, uuid)
+            tool_def: Single skill tool definition (contains entry, timeout_sec, network, etc.)
+            parameters: Parameters from LLM tool call
+            query: Current query context
+
+        Returns:
+            Serialized execution result dict
+        """
+        if not self._available:
+            raise BoxError('Box runtime is not available. Install and start Podman or Docker to use sandbox features.')
+
+        # Build command from entry
+        entry = tool_def.get('entry', '')
+        cmd = self._build_entry_command(entry)
+
+        # Build env with parameters
+        env: dict[str, str] = {}
+        if parameters:
+            env['SKILL_PARAMS'] = json.dumps(parameters, ensure_ascii=False)
+            for key, value in parameters.items():
+                env[f'SKILL_PARAM_{key.upper()}'] = str(value)
+
+        # Determine session ID
+        session_id = self._build_skill_session_id(skill_data, query)
+
+        # Build spec payload
+        timeout_sec = tool_def.get('timeout_sec', 30)
+        network_raw = tool_def.get('network', False)
+        network = 'on' if network_raw else 'off'
+
+        spec_payload = {
+            'cmd': cmd,
+            'workdir': '/workspace',
+            'timeout_sec': timeout_sec,
+            'network': network,
+            'session_id': session_id,
+            'env': env,
+            'host_path': skill_data.get('package_root'),
+            'host_path_mode': 'ro',
+        }
+
+        return await self.execute_spec_payload(spec_payload, query)
+
+    def _build_entry_command(self, entry: str) -> str:
+        """Build shell command from a skill tool entry path."""
+        if not entry:
+            raise BoxValidationError('skill tool entry is empty')
+
+        _, ext = os.path.splitext(entry)
+        ext = ext.lower()
+
+        runner = self._ENTRY_RUNNERS.get(ext)
+        if runner is None:
+            supported = ', '.join(sorted(self._ENTRY_RUNNERS.keys()))
+            raise BoxValidationError(f'unsupported skill tool entry extension "{ext}", supported: {supported}')
+
+        return f'{runner} /workspace/{entry}'
+
+    def _build_skill_session_id(self, skill_data: dict, query: 'pipeline_query.Query') -> str:
+        """Build session ID for skill tool execution."""
+        skill_uuid = skill_data.get('uuid', 'unknown')
+        launcher_type = getattr(query, 'launcher_type', None)
+        launcher_id = getattr(query, 'launcher_id', None)
+
+        if launcher_type is not None and launcher_id is not None:
+            return f'skill-{launcher_type}_{launcher_id}-{skill_uuid}'
+        return f'skill-{query.query_id}-{skill_uuid}'
+
     async def shutdown(self):
         await self.client.shutdown()
 

@@ -502,12 +502,25 @@ export interface ApiRespToolDetail {
 }
 
 // Skills
+export interface SkillToolDef {
+  name: string;
+  description: string;
+  entry: string;
+  parameters?: Record<string, unknown>;
+  timeout_sec?: number;
+  network?: boolean;
+}
+
 export interface Skill {
   uuid?: string;
   name: string;
   description: string;
-  instructions: string;
+  instructions?: string;
   type: 'skill' | 'workflow';
+  source_type?: 'inline' | 'package';
+  package_root?: string;
+  entry_file?: string;
+  skill_tools?: SkillToolDef[];
   requires_tools?: string[];
   requires_kbs?: string[];
   requires_skills?: string[];

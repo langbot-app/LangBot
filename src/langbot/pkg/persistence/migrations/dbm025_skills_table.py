@@ -2,13 +2,14 @@ import sqlalchemy
 from .. import migration
 
 
-@migration.migration_class(18)
+@migration.migration_class(25)
 class DBMigrateSkillsTable(migration.DBMigration):
-    """Create skills and skill_pipeline_bindings tables"""
+    """Create skills and skill_pipeline_bindings tables, or add new columns if tables already exist."""
 
     async def upgrade(self):
         """Upgrade"""
         await self._create_skills_table()
+        await self._add_new_columns()
         await self._create_skill_pipeline_bindings_table()
 
     async def _create_skills_table(self):
@@ -20,8 +21,12 @@ class DBMigrateSkillsTable(migration.DBMigration):
                         uuid VARCHAR(255) PRIMARY KEY,
                         name VARCHAR(64) NOT NULL UNIQUE,
                         description VARCHAR(1024) NOT NULL,
-                        instructions TEXT NOT NULL,
+                        instructions TEXT,
                         type VARCHAR(32) NOT NULL DEFAULT 'skill',
+                        source_type VARCHAR(32) NOT NULL DEFAULT 'inline',
+                        package_root VARCHAR(1024),
+                        entry_file VARCHAR(255) NOT NULL DEFAULT 'SKILL.md',
+                        skill_tools JSONB NOT NULL DEFAULT '[]',
                         requires_tools JSONB NOT NULL DEFAULT '[]',
                         requires_kbs JSONB NOT NULL DEFAULT '[]',
                         requires_skills JSONB NOT NULL DEFAULT '[]',
@@ -44,8 +49,12 @@ class DBMigrateSkillsTable(migration.DBMigration):
                         uuid VARCHAR(255) PRIMARY KEY,
                         name VARCHAR(64) NOT NULL UNIQUE,
                         description VARCHAR(1024) NOT NULL,
-                        instructions TEXT NOT NULL,
+                        instructions TEXT,
                         type VARCHAR(32) NOT NULL DEFAULT 'skill',
+                        source_type VARCHAR(32) NOT NULL DEFAULT 'inline',
+                        package_root VARCHAR(1024),
+                        entry_file VARCHAR(255) NOT NULL DEFAULT 'SKILL.md',
+                        skill_tools JSON NOT NULL DEFAULT '[]',
                         requires_tools JSON NOT NULL DEFAULT '[]',
                         requires_kbs JSON NOT NULL DEFAULT '[]',
                         requires_skills JSON NOT NULL DEFAULT '[]',
@@ -61,6 +70,26 @@ class DBMigrateSkillsTable(migration.DBMigration):
                     )
                 """)
             )
+
+    async def _add_new_columns(self):
+        """Add new columns to existing skills table if they don't exist yet."""
+        columns = [
+            ("source_type", "VARCHAR(32) NOT NULL DEFAULT 'inline'"),
+            ("package_root", "VARCHAR(1024)"),
+            ("entry_file", "VARCHAR(255) NOT NULL DEFAULT 'SKILL.md'"),
+        ]
+
+        json_type = 'JSONB' if self.ap.persistence_mgr.db.name == 'postgresql' else 'JSON'
+        columns.append(("skill_tools", f"{json_type} NOT NULL DEFAULT '[]'"))
+
+        for col_name, col_def in columns:
+            try:
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.text(f"ALTER TABLE skills ADD COLUMN {col_name} {col_def}")
+                )
+            except Exception:
+                # Column already exists
+                pass
 
     async def _create_skill_pipeline_bindings_table(self):
         """Create skill_pipeline_bindings table"""

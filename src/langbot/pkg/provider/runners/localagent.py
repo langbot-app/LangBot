@@ -5,9 +5,15 @@ import copy
 import typing
 from .. import runner
 from ..modelmgr import requester as modelmgr_requester
+<<<<<<< HEAD
 from ..tools.loaders.native import EXEC_TOOL_NAME
+=======
+from ..tools.loaders.native import SANDBOX_EXEC_TOOL_NAME
+from ..tools.loaders import skill as skill_loader
+>>>>>>> 0d3f3a33 (feat(skills): upgrade to package-backed skills with sandbox execution)
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
+import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.rag.context as rag_context
 
 
@@ -316,6 +322,32 @@ class LocalAgentRunner(runner.RequestRunner):
                 skill_prompt = self.ap.skill_mgr.build_activation_prompt(activated_skill_name)
 
                 if skill_prompt:
+                    # Inject skill tools into query
+                    skill_data = self.ap.skill_mgr.get_skill_by_name(activated_skill_name)
+                    skill_tools = self.ap.skill_mgr.get_skill_tools(activated_skill_name)
+                    if skill_tools and skill_data:
+                        # Register skill tools on query for SkillToolLoader
+                        skill_loader.register_skill_tools(query, skill_tools, skill_data)
+
+                        # Convert skill tools to LLMTool and append to query.use_funcs
+                        if query.use_funcs is None:
+                            query.use_funcs = []
+
+                        existing_names = {t.name for t in query.use_funcs}
+                        for st in skill_tools:
+                            if st['name'] in existing_names:
+                                self.ap.logger.warning(
+                                    f'Skill tool name conflict, skipping: {st["name"]}'
+                                )
+                                continue
+                            query.use_funcs.append(resource_tool.LLMTool(
+                                name=st['name'],
+                                human_desc=st.get('description', ''),
+                                description=st.get('description', ''),
+                                parameters=st.get('parameters', {}),
+                                func=lambda: None,  # placeholder, dispatch via SkillToolLoader
+                            ))
+
                     # Remove the activation marker from the response
                     cleaned_content = self.ap.skill_mgr.remove_activation_marker(first_content)
 

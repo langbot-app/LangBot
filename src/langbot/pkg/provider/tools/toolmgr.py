@@ -8,7 +8,12 @@ from langbot_plugin.api.entities.events import pipeline_query
 
 if TYPE_CHECKING:
     from ...core import app
-    from langbot.pkg.provider.tools.loaders import mcp as mcp_loader, native as native_loader, plugin as plugin_loader
+    from langbot.pkg.provider.tools.loaders import (
+        mcp as mcp_loader,
+        native as native_loader,
+        plugin as plugin_loader,
+        skill as skill_loader,
+    )
 
 
 class ToolManager:
@@ -19,6 +24,7 @@ class ToolManager:
     native_tool_loader: native_loader.NativeToolLoader
     plugin_tool_loader: plugin_loader.PluginToolLoader
     mcp_tool_loader: mcp_loader.MCPLoader
+    skill_tool_loader: skill_loader.SkillToolLoader
 
     def __init__(self, ap: app.Application):
         self.ap = ap
@@ -26,7 +32,12 @@ class ToolManager:
     async def initialize(self):
         from langbot.pkg.utils import importutil
         from langbot.pkg.provider.tools import loaders
-        from langbot.pkg.provider.tools.loaders import mcp as mcp_loader, native as native_loader, plugin as plugin_loader
+        from langbot.pkg.provider.tools.loaders import (
+            mcp as mcp_loader,
+            native as native_loader,
+            plugin as plugin_loader,
+            skill as skill_loader,
+        )
 
         importutil.import_modules_in_pkg(loaders)
 
@@ -36,6 +47,8 @@ class ToolManager:
         await self.plugin_tool_loader.initialize()
         self.mcp_tool_loader = mcp_loader.MCPLoader(self.ap)
         await self.mcp_tool_loader.initialize()
+        self.skill_tool_loader = skill_loader.SkillToolLoader(self.ap)
+        await self.skill_tool_loader.initialize()
 
     async def get_all_tools(
         self, bound_plugins: list[str] | None = None, bound_mcp_servers: list[str] | None = None
@@ -110,6 +123,8 @@ class ToolManager:
             return await self.plugin_tool_loader.invoke_tool(name, parameters, query)
         elif await self.mcp_tool_loader.has_tool(name):
             return await self.mcp_tool_loader.invoke_tool(name, parameters, query)
+        elif self.skill_tool_loader.has_tool(name, query):
+            return await self.skill_tool_loader.invoke_tool(name, parameters, query)
         else:
             raise ValueError(f'未找到工具: {name}')
 
@@ -118,3 +133,4 @@ class ToolManager:
         await self.native_tool_loader.shutdown()
         await self.plugin_tool_loader.shutdown()
         await self.mcp_tool_loader.shutdown()
+        await self.skill_tool_loader.shutdown()

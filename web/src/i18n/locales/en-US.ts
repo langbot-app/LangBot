@@ -1203,6 +1203,7 @@ const enUS = {
       'Maximum number of pipelines ({{max}}) reached. Please remove an existing pipeline before creating a new one.',
     maxExtensionsReached:
       'Maximum number of extensions ({{max}}) reached. Please remove an existing MCP server or plugin before adding a new one.',
+  },
   skills: {
     title: 'Skills',
     description:
@@ -1234,6 +1235,7 @@ const enUS = {
     skillNameRequired: 'Skill name cannot be empty',
     skillDescriptionRequired: 'Skill description cannot be empty',
     instructionsRequired: 'Instructions cannot be empty',
+    packageRootRequired: 'Package root path cannot be empty',
     noSkills: 'No skills configured',
     enabled: 'Enabled',
     disabled: 'Disabled',
@@ -1244,6 +1246,17 @@ const enUS = {
     descriptionPlaceholder:
       'A brief description of what this skill does (shown to the LLM)',
     keywordsPlaceholder: 'Enter keywords separated by commas',
+    sourceType: 'Source Type',
+    sourceInline: 'Inline',
+    sourcePackage: 'Package',
+    packageRoot: 'Package Root',
+    entryFile: 'Entry File',
+    skillTools: 'Skill Tools',
+    toolName: 'Tool name',
+    toolEntry: 'Script entry (e.g. scripts/run.py)',
+    toolDescription: 'Tool description',
+    toolTimeout: 'Timeout(s)',
+    toolNetwork: 'Network',
     allTypes: 'All Types',
     filterByType: 'Filter by Type',
     searchSkills: 'Search skills...',

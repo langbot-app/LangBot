@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import typing
 
@@ -20,6 +21,7 @@ class SkillManager:
     - Build skill index for LLM matching
     - Detect skill activation from LLM responses
     - Resolve skill instructions with sub-skill support
+    - Aggregate skill tools from skill and sub-skills
     """
 
     INVOKE_SKILL_PATTERN = r'\{\{INVOKE_SKILL:\s*(\S+)\s*\}\}'
@@ -54,10 +56,51 @@ class SkillManager:
 
         for skill in skills_list:
             skill_data = self.ap.persistence_mgr.serialize_model(persistence_skill.Skill, skill)
+
+            # For package-backed skills, load instructions from file system
+            if skill_data.get('source_type') == 'package':
+                loaded = self._load_package_instructions(skill_data)
+                if not loaded:
+                    continue
+
             self.skills[skill_data['name']] = skill_data
             self.skills_by_uuid[skill_data['uuid']] = skill_data
 
         self.ap.logger.info(f'Loaded {len(self.skills)} skills')
+
+    def _load_package_instructions(self, skill_data: dict) -> bool:
+        """Load instructions from package entry file.
+
+        Args:
+            skill_data: Skill data dict (modified in place)
+
+        Returns:
+            True if loaded successfully, False otherwise
+        """
+        package_root = skill_data.get('package_root')
+        entry_file = skill_data.get('entry_file', 'SKILL.md')
+
+        if not package_root:
+            self.ap.logger.warning(
+                f'Package skill "{skill_data["name"]}" has no package_root, skipping'
+            )
+            return False
+
+        entry_path = os.path.join(package_root, entry_file)
+        try:
+            with open(entry_path, 'r', encoding='utf-8') as f:
+                skill_data['instructions'] = f.read()
+            return True
+        except FileNotFoundError:
+            self.ap.logger.warning(
+                f'Package skill "{skill_data["name"]}" entry file not found: {entry_path}, skipping'
+            )
+            return False
+        except OSError as e:
+            self.ap.logger.warning(
+                f'Package skill "{skill_data["name"]}" failed to read entry file: {e}, skipping'
+            )
+            return False
 
     def get_skill_by_name(self, name: str) -> dict | None:
         """Get skill by name"""
@@ -198,6 +241,7 @@ Only activate ONE skill at a time. If no skill matches, respond normally without
             - resolved_instructions: Instructions with sub-skills expanded
             - all_tools: Combined list of required tools from skill and sub-skills
             - all_kbs: Combined list of required knowledge bases
+            - all_skill_tools: Combined list of skill-declared tools
         """
         skill = self.skills.get(skill_name)
         if not skill:
@@ -218,7 +262,52 @@ Only activate ONE skill at a time. If no skill matches, respond normally without
             'resolved_instructions': self.resolve_skill_instructions(skill_name),
             'all_tools': list(all_tools),
             'all_kbs': list(all_kbs),
+            'all_skill_tools': self.get_skill_tools(skill_name),
         }
+
+    def get_skill_tools(self, skill_name: str) -> list[dict]:
+        """Get all tools declared by a skill and its sub-skills.
+
+        Args:
+            skill_name: Name of the skill
+
+        Returns:
+            List of skill tool definitions (with namespaced names)
+        """
+        return self._collect_skill_tools(skill_name, depth=0)
+
+    def _collect_skill_tools(self, skill_name: str, depth: int) -> list[dict]:
+        """Recursively collect skill tools from skill and sub-skills.
+
+        Args:
+            skill_name: Name of the skill
+            depth: Current recursion depth
+
+        Returns:
+            List of skill tool definitions
+        """
+        if depth > 5:
+            return []
+
+        skill = self.skills.get(skill_name)
+        if not skill:
+            return []
+
+        tools = []
+
+        # Collect this skill's own tools
+        for tool_def in skill.get('skill_tools', []):
+            namespaced = dict(tool_def)
+            namespaced['_original_name'] = tool_def['name']
+            namespaced['_skill_name'] = skill_name
+            namespaced['name'] = f'skill__{skill_name}__{tool_def["name"]}'
+            tools.append(namespaced)
+
+        # Recursively collect from sub-skills
+        for sub_skill_name in skill.get('requires_skills', []):
+            tools.extend(self._collect_skill_tools(sub_skill_name, depth + 1))
+
+        return tools
 
     def build_activation_prompt(self, skill_name: str) -> str:
         """Build the prompt to inject when a skill is activated.
