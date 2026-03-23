@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 
 from .. import stage, entities
+from ...provider.tools.loaders import skill as skill_loader
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 import langbot_plugin.api.entities.events as events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
@@ -238,6 +239,10 @@ class PreProcessor(stage.PipelineStage):
                 )
                 # Store bound skills in query variables for later use
                 query.variables['_pipeline_bound_skills'] = bound_skills
+
+                # Let the agent inspect visible skills at runtime with a read-only tool.
+                if not any(getattr(tool, 'name', None) == skill_loader.SKILL_GET_TOOL_NAME for tool in query.use_funcs):
+                    query.use_funcs.append(skill_loader.build_skill_get_tool())
 
                 # Append skill instruction to the first system message
                 if query.prompt.messages and query.prompt.messages[0].role == 'system':

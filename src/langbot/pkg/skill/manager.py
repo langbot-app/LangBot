@@ -22,7 +22,6 @@ class SkillManager:
     (display_name, description, author, type, requires_*, etc.).
     """
 
-    INVOKE_SKILL_PATTERN = r'\{\{INVOKE_SKILL:\s*(\S+)\s*\}\}'
     SKILL_ACTIVATION_MARKER = '[ACTIVATE_SKILL:'
 
     ap: app.Application
@@ -87,8 +86,7 @@ class SkillManager:
         """Load SKILL.md: parse frontmatter for metadata, body for instructions.
 
         Populates skill_data with: instructions, display_name, description,
-        type, author, version, tags, auto_activate, trigger_keywords,
-        requires_tools, requires_kbs, requires_skills.
+        type, author, version, tags, auto_activate, trigger_keywords.
 
         Args:
             skill_data: Skill data dict (modified in place)
@@ -136,9 +134,6 @@ class SkillManager:
         skill_data['tags'] = metadata.get('tags', [])
         skill_data['auto_activate'] = metadata.get('auto_activate', True)
         skill_data['trigger_keywords'] = metadata.get('trigger_keywords', [])
-        skill_data['requires_tools'] = metadata.get('requires_tools', [])
-        skill_data['requires_kbs'] = metadata.get('requires_kbs', [])
-        skill_data['requires_skills'] = metadata.get('requires_skills', [])
 
         return True
 
@@ -187,97 +182,57 @@ class SkillManager:
 
 {skill_index}
 
-When the user's request clearly matches a skill's purpose based on its description, you should activate that skill.
+When the user's request clearly matches one or more skills based on their descriptions, you should activate them.
 To activate a skill, include this marker at the beginning of your response: [ACTIVATE_SKILL: skill-name]
-After activation, the skill's detailed instructions will be loaded for you to follow.
-Only activate ONE skill at a time. If no skill matches, respond normally without activation.
+If multiple skills are needed, include multiple activation markers at the beginning of your response, one per line.
+After activation, the selected skills' detailed instructions will be loaded for you to follow.
+Use the first activated skill as the primary skill. Use any additional activated skills as supporting guidance.
+Use the `skill_get` tool if you need to inspect a visible skill's full instructions or metadata before activation.
+If no skill matches, respond normally without activation.
 """
+
+    def detect_skill_activations(self, response: str) -> list[str]:
+        """Detect all valid skill activation markers from an LLM response."""
+        if self.SKILL_ACTIVATION_MARKER not in response:
+            return []
+
+        activated: list[str] = []
+        for skill_name in re.findall(r'\[ACTIVATE_SKILL:\s*(\S+?)\s*\]', response):
+            if skill_name in self.skills and skill_name not in activated:
+                activated.append(skill_name)
+
+        return activated
 
     def detect_skill_activation(self, response: str) -> str | None:
-        """Detect skill activation request from LLM response."""
-        if self.SKILL_ACTIVATION_MARKER not in response:
-            return None
+        """Backward-compatible single-skill wrapper for activation detection."""
+        activations = self.detect_skill_activations(response)
+        return activations[0] if activations else None
 
-        match = re.search(r'\[ACTIVATE_SKILL:\s*(\S+?)\s*\]', response)
-        if match:
-            skill_name = match.group(1)
-            if skill_name in self.skills:
-                return skill_name
-
-        return None
-
-    def resolve_skill_instructions(self, skill_name: str, depth: int = 0) -> str:
-        """Resolve skill instructions with sub-skill expansion."""
-        if depth > 5:
-            return f'[ERROR: Maximum skill nesting depth exceeded for {skill_name}]'
-
-        skill = self.skills.get(skill_name)
-        if not skill:
-            return f'[ERROR: Skill "{skill_name}" not found]'
-
-        instructions = skill['instructions']
-
-        def replace_invoke(match):
-            sub_skill_name = match.group(1)
-            sub_skill = self.skills.get(sub_skill_name)
-
-            if not sub_skill:
-                return f'[Sub-skill "{sub_skill_name}" not found]'
-
-            sub_instructions = self.resolve_skill_instructions(sub_skill_name, depth + 1)
-
-            return f"""
-<sub_skill name="{sub_skill_name}" type="{sub_skill.get('type', 'skill')}">
-{sub_instructions}
-</sub_skill>
-"""
-
-        resolved = re.sub(self.INVOKE_SKILL_PATTERN, replace_invoke, instructions)
-        return resolved
-
-    def get_skill_with_dependencies(self, skill_name: str) -> dict | None:
-        """Get skill with all resolved dependencies."""
+    def get_skill_runtime_data(self, skill_name: str) -> dict | None:
+        """Get a skill's instructions for runtime use."""
         skill = self.skills.get(skill_name)
         if not skill:
             return None
-
-        all_tools = set(skill.get('requires_tools', []))
-        all_kbs = set(skill.get('requires_kbs', []))
-
-        for sub_skill_name in skill.get('requires_skills', []):
-            sub_skill = self.skills.get(sub_skill_name)
-            if sub_skill:
-                all_tools.update(sub_skill.get('requires_tools', []))
-                all_kbs.update(sub_skill.get('requires_kbs', []))
 
         return {
             'skill': skill,
-            'resolved_instructions': self.resolve_skill_instructions(skill_name),
-            'all_tools': list(all_tools),
-            'all_kbs': list(all_kbs),
+            'instructions': skill.get('instructions', ''),
         }
 
     def build_activation_prompt(self, skill_name: str) -> str:
         """Build the prompt to inject when a skill is activated."""
-        resolved = self.get_skill_with_dependencies(skill_name)
+        resolved = self.get_skill_runtime_data(skill_name)
         if not resolved:
             return ''
 
         skill = resolved['skill']
-        instructions = resolved['resolved_instructions']
-
-        tools_info = ', '.join(resolved['all_tools']) if resolved['all_tools'] else 'None specified'
-        kbs_info = ', '.join(resolved['all_kbs']) if resolved['all_kbs'] else 'None specified'
+        instructions = resolved['instructions']
 
         return f"""
 <activated_skill name="{skill_name}" type="{skill.get('type', 'skill')}">
 
 ## Instructions
 {instructions}
-
-## Available Resources
-- Required Tools: {tools_info}
-- Required Knowledge Bases: {kbs_info}
 
 ## Sandbox Execution
 You have access to the `skill_exec` tool to run commands inside this skill's sandboxed directory.
@@ -287,11 +242,67 @@ update the skill package, and run any command available in the sandbox environme
 </activated_skill>
 
 Now execute the above skill instructions step by step to complete the user's request.
-If the skill contains sub-skills (<sub_skill> tags), execute them in the order they appear.
 Use the `skill_exec` tool with skill_name="{skill_name}" when you need to run scripts or commands.
 Respond to the user based on the skill's guidance.
 """
 
+    def build_activation_prompt_for_skills(self, skill_names: list[str]) -> str:
+        """Build a combined prompt for multiple activated skills."""
+        if not skill_names:
+            return ''
+
+        activated_skill_names: list[str] = []
+        for skill_name in skill_names:
+            if skill_name in self.skills and skill_name not in activated_skill_names:
+                activated_skill_names.append(skill_name)
+
+        if not activated_skill_names:
+            return ''
+
+        blocks: list[str] = []
+        for skill_name in activated_skill_names:
+            resolved = self.get_skill_runtime_data(skill_name)
+            if not resolved:
+                continue
+
+            skill = resolved['skill']
+            instructions = resolved['instructions']
+
+            role = 'primary' if skill_name == activated_skill_names[0] else 'auxiliary'
+
+            blocks.append(
+                f"""
+<activated_skill name="{skill_name}" type="{skill.get('type', 'skill')}" role="{role}">
+
+## Instructions
+{instructions}
+
+## Sandbox Execution
+You have access to the `skill_exec` tool to run commands inside this skill's sandboxed directory.
+The skill directory is mounted at /workspace with write access. You can execute scripts, read files,
+update the skill package, and run any command available in the sandbox environment.
+
+</activated_skill>
+""".strip()
+            )
+
+        if not blocks:
+            return ''
+
+        activated_list = ', '.join(activated_skill_names)
+        return f"""
+Activated skills: {activated_list}
+
+{chr(10).join(blocks)}
+
+Now execute the activated skills to complete the user's request.
+Treat the first activated skill as the primary skill.
+Treat additional activated skills as supporting guidance when they do not conflict with the primary skill.
+If guidance conflicts, prefer: primary skill > auxiliary skills.
+Use the `skill_exec` tool with the matching skill_name whenever you need to run scripts or commands.
+Respond to the user with one coherent answer that integrates the activated skills.
+"""
+
     def remove_activation_marker(self, response: str) -> str:
-        """Remove skill activation marker from response."""
-        return re.sub(r'\[ACTIVATE_SKILL:\s*\S+?\s*\]\s*', '', response, count=1)
+        """Remove all skill activation markers from response text."""
+        return re.sub(r'\[ACTIVATE_SKILL:\s*\S+?\s*\]\s*', '', response).lstrip()

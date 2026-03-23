@@ -29,7 +29,6 @@ def _make_skill_data(
     entry_file='SKILL.md',
     sandbox_timeout_sec=120,
     sandbox_network=False,
-    requires_skills=None,
     **kwargs,
 ):
     return {
@@ -42,9 +41,6 @@ def _make_skill_data(
         'entry_file': entry_file,
         'sandbox_timeout_sec': sandbox_timeout_sec,
         'sandbox_network': sandbox_network,
-        'requires_tools': [],
-        'requires_kbs': [],
-        'requires_skills': requires_skills or [],
         'auto_activate': True,
         'trigger_keywords': [],
         'is_enabled': True,
@@ -145,6 +141,98 @@ class TestSkillManagerPackageLoading:
             assert mgr.skills['test-skill'] is skill_data
             assert skill_data['instructions'] == 'Updated instructions'
             assert skill_data['description'] == 'Second'
+
+
+class TestSkillManagerActivation:
+    """Test multi-skill activation parsing and prompt building."""
+
+    def test_detect_skill_activations_returns_unique_ordered_skills(self):
+        from langbot.pkg.skill.manager import SkillManager
+
+        ap = _make_ap()
+        mgr = SkillManager(ap)
+        mgr.skills = {
+            'alpha': _make_skill_data(name='alpha'),
+            'beta': _make_skill_data(name='beta'),
+        }
+
+        response = (
+            '[ACTIVATE_SKILL: alpha]\n'
+            '[ACTIVATE_SKILL: beta]\n'
+            '[ACTIVATE_SKILL: alpha]\n'
+            'Let me handle this.'
+        )
+
+        assert mgr.detect_skill_activations(response) == ['alpha', 'beta']
+        assert mgr.detect_skill_activation(response) == 'alpha'
+
+    def test_detect_skill_activations_ignores_unknown_skills(self):
+        from langbot.pkg.skill.manager import SkillManager
+
+        ap = _make_ap()
+        mgr = SkillManager(ap)
+        mgr.skills = {
+            'alpha': _make_skill_data(name='alpha'),
+        }
+
+        response = '[ACTIVATE_SKILL: missing]\n[ACTIVATE_SKILL: alpha]'
+        assert mgr.detect_skill_activations(response) == ['alpha']
+
+    def test_build_activation_prompt_for_skills_includes_roles(self):
+        from langbot.pkg.skill.manager import SkillManager
+
+        ap = _make_ap()
+        mgr = SkillManager(ap)
+        mgr.skills = {
+            'primary': _make_skill_data(name='primary', instructions='Primary instructions'),
+            'aux': _make_skill_data(name='aux', instructions='Aux instructions'),
+        }
+
+        prompt = mgr.build_activation_prompt_for_skills(['primary', 'aux'])
+
+        assert 'Activated skills: primary, aux' in prompt
+        assert 'role="primary"' in prompt
+        assert 'role="auxiliary"' in prompt
+        assert 'primary skill > auxiliary skills' in prompt
+
+    def test_remove_activation_marker_removes_multiple_markers(self):
+        from langbot.pkg.skill.manager import SkillManager
+
+        ap = _make_ap()
+        mgr = SkillManager(ap)
+
+        response = '[ACTIVATE_SKILL: alpha]\n[ACTIVATE_SKILL: beta]\nFinal answer'
+        assert mgr.remove_activation_marker(response) == 'Final answer'
+
+
+class TestSkillActivationHelper:
+    """Test activation preparation helper."""
+
+    def test_prepare_skill_activation_registers_only_explicit_activated_skills(self):
+        from langbot.pkg.skill.activation import prepare_skill_activation
+        from langbot.pkg.provider.tools.loaders.skill import ACTIVATED_SKILLS_KEY, SKILL_EXEC_TOOL_NAME
+        from langbot.pkg.skill.manager import SkillManager
+
+        ap = _make_ap()
+        mgr = SkillManager(ap)
+        mgr.skills = {
+            'primary': _make_skill_data(name='primary', instructions='Primary instructions'),
+            'aux': _make_skill_data(name='aux', instructions='Aux instructions'),
+        }
+        ap.skill_mgr = mgr
+
+        query = SimpleNamespace(variables={}, use_funcs=[])
+        activation = prepare_skill_activation(
+            ap,
+            query,
+            '[ACTIVATE_SKILL: primary]\n[ACTIVATE_SKILL: aux]\nWorking on it.',
+        )
+
+        assert activation is not None
+        assert activation.activated_skill_names == ['primary', 'aux']
+        assert activation.cleaned_content == 'Working on it.'
+        assert set(query.variables[ACTIVATED_SKILLS_KEY].keys()) == {'primary', 'aux'}
+        assert any(getattr(tool, 'name', None) == SKILL_EXEC_TOOL_NAME for tool in query.use_funcs)
 
 
 class TestSkillExecLoader:
@@ -301,6 +389,63 @@ class TestSkillExecLoader:
 
         activated = query.variables[ACTIVATED_SKILLS_KEY]
         assert len(activated) == 1
+
+    @pytest.mark.asyncio
+    async def test_skill_get_returns_visible_skill_details(self):
+        from langbot.pkg.provider.tools.loaders.skill import (
+            PIPELINE_BOUND_SKILLS_KEY,
+            SKILL_GET_TOOL_NAME,
+            SkillToolLoader,
+        )
+
+        ap = _make_ap()
+        ap.skill_mgr = SimpleNamespace(
+            skills={
+                'visible': _make_skill_data(
+                    name='visible',
+                    instructions='Visible instructions',
+                ),
+                'hidden': _make_skill_data(name='hidden', instructions='Hidden instructions'),
+            }
+        )
+        loader = SkillToolLoader(ap)
+
+        query = SimpleNamespace(variables={PIPELINE_BOUND_SKILLS_KEY: ['uuid-visible']})
+
+        result = await loader.invoke_tool(
+            SKILL_GET_TOOL_NAME,
+            {'skill_name': 'visible'},
+            query,
+        )
+
+        assert result['name'] == 'visible'
+        assert result['instructions'] == 'Visible instructions'
+
+    @pytest.mark.asyncio
+    async def test_skill_get_rejects_invisible_skill(self):
+        from langbot.pkg.provider.tools.loaders.skill import (
+            PIPELINE_BOUND_SKILLS_KEY,
+            SKILL_GET_TOOL_NAME,
+            SkillToolLoader,
+        )
+
+        ap = _make_ap()
+        ap.skill_mgr = SimpleNamespace(
+            skills={
+                'visible': _make_skill_data(name='visible'),
+                'hidden': _make_skill_data(name='hidden'),
+            }
+        )
+        loader = SkillToolLoader(ap)
+
+        query = SimpleNamespace(variables={PIPELINE_BOUND_SKILLS_KEY: ['uuid-visible']})
+
+        with pytest.raises(ValueError, match='not visible'):
+            await loader.invoke_tool(
+                SKILL_GET_TOOL_NAME,
+                {'skill_name': 'hidden'},
+                query,
+            )
 
 
 class TestBoxServiceSkillExec:

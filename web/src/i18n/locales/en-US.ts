@@ -1247,7 +1247,7 @@ const enUS = {
     preview: 'Preview',
     previewInstructions: 'Preview Instructions',
     instructionsPlaceholder:
-      'Enter skill instructions in Markdown format...\n\nYou can use {{INVOKE_SKILL: skill-name}} to invoke sub-skills.',
+      'Enter skill instructions in Markdown format...',
     descriptionPlaceholder:
       'A brief description of what this skill does (shown to the LLM)',
     keywordsPlaceholder: 'Enter keywords separated by commas',

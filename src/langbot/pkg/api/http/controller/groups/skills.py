@@ -91,21 +91,18 @@ class SkillsRouterGroup(group.RouterGroup):
 
         @self.route('/<skill_uuid>/preview', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def preview_skill(skill_uuid: str) -> quart.Response:
-            """Preview resolved skill instructions with sub-skills expanded"""
+            """Preview skill instructions"""
             skill = await self.ap.skill_service.get_skill(skill_uuid)
             if not skill:
                 return self.http_status(404, -1, 'Skill not found')
 
-            resolved = self.ap.skill_mgr.get_skill_with_dependencies(skill['name'])
-            if not resolved:
+            runtime_data = self.ap.skill_mgr.get_skill_runtime_data(skill['name'])
+            if not runtime_data:
                 return self.http_status(404, -1, 'Skill not found in manager')
 
             return self.success(
                 data={
-                    'skill': skill,
-                    'resolved_instructions': resolved['resolved_instructions'],
-                    'all_tools': resolved['all_tools'],
-                    'all_kbs': resolved['all_kbs'],
+                    'instructions': runtime_data['instructions'],
                 }
             )
 

@@ -22,7 +22,7 @@ _DB_FIELDS = {'uuid', 'name', 'package_root', 'entry_file', 'sandbox_timeout_sec
 # Fields that live in SKILL.md frontmatter (package metadata)
 _FRONTMATTER_FIELDS = {
     'display_name', 'description', 'type', 'author', 'version', 'tags',
-    'auto_activate', 'trigger_keywords', 'requires_tools', 'requires_kbs', 'requires_skills',
+    'auto_activate', 'trigger_keywords',
 }
 
 
@@ -350,7 +350,7 @@ class SkillService:
                 # Set defaults for missing fields
                 if key in ('display_name', 'description', 'author', 'type'):
                     skill_data[key] = '' if key != 'type' else 'skill'
-                elif key in ('tags', 'requires_tools', 'requires_kbs', 'requires_skills', 'trigger_keywords'):
+                elif key in ('tags', 'trigger_keywords'):
                     skill_data[key] = []
                 elif key == 'auto_activate':
                     skill_data[key] = True
