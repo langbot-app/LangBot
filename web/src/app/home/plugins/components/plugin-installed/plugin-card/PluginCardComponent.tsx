@@ -2,13 +2,7 @@ import { PluginCardVO } from '@/app/home/plugins/components/plugin-installed/Plu
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
-import {
-  BugIcon,
-  ExternalLink,
-  Ellipsis,
-  Trash,
-  ArrowUp,
-} from 'lucide-react';
+import { BugIcon, ExternalLink, Ellipsis, Trash, ArrowUp } from 'lucide-react';
 import { getCloudServiceClientSync, systemInfo } from '@/app/infra/http';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Button } from '@/components/ui/button';
