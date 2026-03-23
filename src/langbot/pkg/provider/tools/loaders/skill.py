@@ -1,21 +1,24 @@
 from __future__ import annotations
 
-import json
 import typing
 
 if typing.TYPE_CHECKING:
     from langbot_plugin.api.entities.events import pipeline_query
     from ....core import app
 
-# Key used to store skill tool registry in query.variables
-SKILL_TOOLS_REGISTRY_KEY = '_skill_tools_registry'
+# Tool name exposed to LLM
+SKILL_EXEC_TOOL_NAME = 'skill_exec'
+
+# Key used to store activated skills in query.variables
+ACTIVATED_SKILLS_KEY = '_activated_skills'
 
 
 class SkillToolLoader:
-    """Stateless skill tool loader that reads from query.variables.
+    """Handles the skill_exec generic sandbox tool.
 
-    Skill tools are registered per-query to ensure isolation between conversations.
-    The actual tool definitions are stored in query.variables[SKILL_TOOLS_REGISTRY_KEY].
+    Instead of registering individual tools per skill script, this loader
+    exposes a single ``skill_exec`` tool that lets the LLM run arbitrary
+    commands inside an activated skill's sandboxed directory.
     """
 
     ap: app.Application
@@ -27,56 +30,61 @@ class SkillToolLoader:
         pass
 
     def has_tool(self, name: str, query: pipeline_query.Query) -> bool:
-        """Check if a skill tool is registered for this query."""
-        registry = self._get_registry(query)
-        return name in registry
+        """Return True when *name* is ``skill_exec`` and at least one skill is activated."""
+        return name == SKILL_EXEC_TOOL_NAME and bool(self._get_activated_skills(query))
 
     async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
-        """Invoke a skill tool via BoxService."""
-        registry = self._get_registry(query)
-        entry = registry.get(name)
-        if not entry:
-            raise ValueError(f'Skill tool not found: {name}')
+        """Execute a command in the activated skill's sandbox."""
+        if name != SKILL_EXEC_TOOL_NAME:
+            raise ValueError(f'Unknown skill tool: {name}')
 
-        return await self.ap.box_service.execute_skill_tool(
-            skill_data=entry['skill_data'],
-            tool_def=entry['tool_def'],
-            parameters=parameters,
+        skill_name = parameters.get('skill_name', '')
+        command = parameters.get('command', '')
+
+        if not skill_name:
+            raise ValueError('skill_name is required')
+        if not command:
+            raise ValueError('command is required')
+
+        activated = self._get_activated_skills(query)
+        skill_data = activated.get(skill_name)
+        if not skill_data:
+            activated_names = ', '.join(activated.keys()) if activated else 'none'
+            raise ValueError(
+                f'Skill "{skill_name}" is not activated for this query. '
+                f'Activated skills: {activated_names}'
+            )
+
+        return await self.ap.box_service.execute_in_skill_sandbox(
+            skill_data=skill_data,
+            command=command,
             query=query,
         )
 
-    def _get_registry(self, query: pipeline_query.Query) -> dict:
-        """Get the skill tool registry from query.variables."""
+    def _get_activated_skills(self, query: pipeline_query.Query) -> dict:
+        """Get the activated skills dict from query.variables."""
         if query.variables is None:
             return {}
-        return query.variables.get(SKILL_TOOLS_REGISTRY_KEY, {})
+        return query.variables.get(ACTIVATED_SKILLS_KEY, {})
 
     async def shutdown(self):
         pass
 
 
-def register_skill_tools(
+def register_activated_skill(
     query: pipeline_query.Query,
-    skill_tools: list[dict],
     skill_data: dict,
 ) -> None:
-    """Register skill tools on a query for the SkillToolLoader to find.
+    """Register an activated skill on the query for skill_exec to use.
 
     Args:
         query: The current query object
-        skill_tools: List of namespaced skill tool definitions from SkillManager.get_skill_tools()
-        skill_data: The skill data dict (needed for package_root, uuid, etc.)
+        skill_data: The skill data dict (must contain name, package_root, sandbox_* config)
     """
     if query.variables is None:
         query.variables = {}
 
-    registry = query.variables.setdefault(SKILL_TOOLS_REGISTRY_KEY, {})
-
-    for tool_def in skill_tools:
-        namespaced_name = tool_def['name']  # Already namespaced by SkillManager
-        if namespaced_name in registry:
-            continue
-        registry[namespaced_name] = {
-            'tool_def': tool_def,
-            'skill_data': skill_data,
-        }
+    activated = query.variables.setdefault(ACTIVATED_SKILLS_KEY, {})
+    skill_name = skill_data.get('name', '')
+    if skill_name and skill_name not in activated:
+        activated[skill_name] = skill_data

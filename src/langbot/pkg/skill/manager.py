@@ -8,6 +8,7 @@ import sqlalchemy
 
 from ..core import app
 from ..entity.persistence import skill as persistence_skill
+from .utils import parse_frontmatter
 
 if typing.TYPE_CHECKING:
     import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -16,12 +17,9 @@ if typing.TYPE_CHECKING:
 class SkillManager:
     """Skill manager for loading, matching and resolving skills.
 
-    Responsibilities:
-    - Load skills from database
-    - Build skill index for LLM matching
-    - Detect skill activation from LLM responses
-    - Resolve skill instructions with sub-skill support
-    - Aggregate skill tools from skill and sub-skills
+    DB is the registry (uuid, name, package_root, is_enabled, sandbox config).
+    SKILL.md frontmatter is the canonical source for package metadata
+    (display_name, description, author, type, requires_*, etc.).
     """
 
     INVOKE_SKILL_PATTERN = r'\{\{INVOKE_SKILL:\s*(\S+)\s*\}\}'
@@ -30,7 +28,7 @@ class SkillManager:
     ap: app.Application
 
     skills: dict[str, dict]
-    """Skills indexed by name"""
+    """Skills indexed by name — merged from DB registry + file metadata"""
 
     skills_by_uuid: dict[str, dict]
     """Skills indexed by UUID"""
@@ -45,7 +43,7 @@ class SkillManager:
         await self.reload_skills()
 
     async def reload_skills(self):
-        """Reload all skills from database"""
+        """Reload all skills from database, then parse SKILL.md for metadata."""
         result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.select(persistence_skill.Skill).where(persistence_skill.Skill.is_enabled == True)
         )
@@ -56,9 +54,10 @@ class SkillManager:
 
         for skill in skills_list:
             skill_data = self.ap.persistence_mgr.serialize_model(persistence_skill.Skill, skill)
+            skill_data['package_root'] = self._normalize_package_root(skill_data.get('package_root', ''))
 
-            # Load instructions from package_root/entry_file
-            if not self._load_instructions(skill_data):
+            # Load and parse SKILL.md — extracts instructions + frontmatter metadata
+            if not self._load_skill_file(skill_data):
                 continue
 
             self.skills[skill_data['name']] = skill_data
@@ -66,8 +65,30 @@ class SkillManager:
 
         self.ap.logger.info(f'Loaded {len(self.skills)} skills')
 
-    def _load_instructions(self, skill_data: dict) -> bool:
-        """Load instructions from skill entry file.
+    def refresh_skill_from_disk(self, skill_name: str) -> bool:
+        """Refresh one loaded skill in place after its package changes on disk."""
+        if not skill_name:
+            return False
+
+        skill_data = self.skills.get(skill_name)
+        if not skill_data:
+            return False
+
+        skill_data['package_root'] = self._normalize_package_root(skill_data.get('package_root', ''))
+        if not self._load_skill_file(skill_data):
+            return False
+
+        skill_uuid = skill_data.get('uuid')
+        if skill_uuid:
+            self.skills_by_uuid[skill_uuid] = skill_data
+        return True
+
+    def _load_skill_file(self, skill_data: dict) -> bool:
+        """Load SKILL.md: parse frontmatter for metadata, body for instructions.
+
+        Populates skill_data with: instructions, display_name, description,
+        type, author, version, tags, auto_activate, trigger_keywords,
+        requires_tools, requires_kbs, requires_skills.
 
         Args:
             skill_data: Skill data dict (modified in place)
@@ -87,8 +108,7 @@ class SkillManager:
         entry_path = os.path.join(package_root, entry_file)
         try:
             with open(entry_path, 'r', encoding='utf-8') as f:
-                skill_data['instructions'] = f.read()
-            return True
+                content = f.read()
         except FileNotFoundError:
             self.ap.logger.warning(
                 f'Skill "{skill_data["name"]}" entry file not found: {entry_path}, skipping'
@@ -100,6 +120,33 @@ class SkillManager:
             )
             return False
 
+        # Parse frontmatter + body
+        metadata, instructions = parse_frontmatter(content)
+
+        # Store raw content and parsed instructions
+        skill_data['instructions'] = instructions
+        skill_data['raw_content'] = content
+
+        # Merge frontmatter metadata into skill_data (file is canonical source)
+        skill_data['display_name'] = metadata.get('display_name', '')
+        skill_data['description'] = metadata.get('description', '')
+        skill_data['type'] = metadata.get('type', 'skill')
+        skill_data['author'] = metadata.get('author', '')
+        skill_data['version'] = metadata.get('version', '1.0.0')
+        skill_data['tags'] = metadata.get('tags', [])
+        skill_data['auto_activate'] = metadata.get('auto_activate', True)
+        skill_data['trigger_keywords'] = metadata.get('trigger_keywords', [])
+        skill_data['requires_tools'] = metadata.get('requires_tools', [])
+        skill_data['requires_kbs'] = metadata.get('requires_kbs', [])
+        skill_data['requires_skills'] = metadata.get('requires_skills', [])
+
+        return True
+
+    def _normalize_package_root(self, package_root: str) -> str:
+        if not package_root:
+            return ''
+        return os.path.realpath(os.path.abspath(package_root))
+
     def get_skill_by_name(self, name: str) -> dict | None:
         """Get skill by name"""
         return self.skills.get(name)
@@ -109,26 +156,14 @@ class SkillManager:
         return self.skills_by_uuid.get(uuid)
 
     def get_skill_index(self, pipeline_uuid: str | None = None, bound_skills: list[str] | None = None) -> str:
-        """Generate skill index for LLM system prompt.
-
-        Args:
-            pipeline_uuid: Optional pipeline UUID to filter bound skills
-            bound_skills: Optional list of skill UUIDs to include
-
-        Returns:
-            Formatted skill index string
-        """
+        """Generate skill index for LLM system prompt."""
         skills_to_index = []
 
         for skill in self.skills.values():
-            # Only include auto-activatable skills
             if not skill.get('auto_activate', True):
                 continue
-
-            # Filter by bound skills if specified
             if bound_skills is not None and skill['uuid'] not in bound_skills:
                 continue
-
             skills_to_index.append(skill)
 
         if not skills_to_index:
@@ -136,20 +171,13 @@ class SkillManager:
 
         lines = ['Available Skills:']
         for skill in skills_to_index:
-            lines.append(f"- {skill['name']}: {skill['description']}")
+            display = skill.get('display_name') or skill['name']
+            lines.append(f"- {skill['name']} ({display}): {skill.get('description', '')}")
 
         return '\n'.join(lines)
 
     def build_skill_aware_prompt_addition(self, pipeline_uuid: str | None = None, bound_skills: list[str] | None = None) -> str:
-        """Build the skill awareness instruction to add to system prompt.
-
-        Args:
-            pipeline_uuid: Optional pipeline UUID
-            bound_skills: Optional list of skill UUIDs
-
-        Returns:
-            Skill awareness instruction string
-        """
+        """Build the skill awareness instruction to add to system prompt."""
         skill_index = self.get_skill_index(pipeline_uuid, bound_skills)
 
         if not skill_index:
@@ -166,37 +194,20 @@ Only activate ONE skill at a time. If no skill matches, respond normally without
 """
 
     def detect_skill_activation(self, response: str) -> str | None:
-        """Detect skill activation request from LLM response.
-
-        Args:
-            response: LLM response text
-
-        Returns:
-            Skill name if activation detected, None otherwise
-        """
+        """Detect skill activation request from LLM response."""
         if self.SKILL_ACTIVATION_MARKER not in response:
             return None
 
-        # Extract skill name using regex
         match = re.search(r'\[ACTIVATE_SKILL:\s*(\S+?)\s*\]', response)
         if match:
             skill_name = match.group(1)
-            # Validate skill exists
             if skill_name in self.skills:
                 return skill_name
 
         return None
 
     def resolve_skill_instructions(self, skill_name: str, depth: int = 0) -> str:
-        """Resolve skill instructions with sub-skill expansion.
-
-        Args:
-            skill_name: Name of the skill to resolve
-            depth: Current recursion depth (to prevent infinite loops)
-
-        Returns:
-            Resolved instructions with sub-skills expanded
-        """
+        """Resolve skill instructions with sub-skill expansion."""
         if depth > 5:
             return f'[ERROR: Maximum skill nesting depth exceeded for {skill_name}]'
 
@@ -206,7 +217,6 @@ Only activate ONE skill at a time. If no skill matches, respond normally without
 
         instructions = skill['instructions']
 
-        # Find and expand sub-skill references
         def replace_invoke(match):
             sub_skill_name = match.group(1)
             sub_skill = self.skills.get(sub_skill_name)
@@ -214,11 +224,10 @@ Only activate ONE skill at a time. If no skill matches, respond normally without
             if not sub_skill:
                 return f'[Sub-skill "{sub_skill_name}" not found]'
 
-            # Recursively resolve sub-skill
             sub_instructions = self.resolve_skill_instructions(sub_skill_name, depth + 1)
 
             return f"""
-<sub_skill name="{sub_skill_name}" type="{sub_skill['type']}">
+<sub_skill name="{sub_skill_name}" type="{sub_skill.get('type', 'skill')}">
 {sub_instructions}
 </sub_skill>
 """
@@ -227,19 +236,7 @@ Only activate ONE skill at a time. If no skill matches, respond normally without
         return resolved
 
     def get_skill_with_dependencies(self, skill_name: str) -> dict | None:
-        """Get skill with all resolved dependencies.
-
-        Args:
-            skill_name: Name of the skill
-
-        Returns:
-            Dictionary containing:
-            - skill: Original skill data
-            - resolved_instructions: Instructions with sub-skills expanded
-            - all_tools: Combined list of required tools from skill and sub-skills
-            - all_kbs: Combined list of required knowledge bases
-            - all_skill_tools: Combined list of skill-declared tools
-        """
+        """Get skill with all resolved dependencies."""
         skill = self.skills.get(skill_name)
         if not skill:
             return None
@@ -247,7 +244,6 @@ Only activate ONE skill at a time. If no skill matches, respond normally without
         all_tools = set(skill.get('requires_tools', []))
         all_kbs = set(skill.get('requires_kbs', []))
 
-        # Collect dependencies from sub-skills
         for sub_skill_name in skill.get('requires_skills', []):
             sub_skill = self.skills.get(sub_skill_name)
             if sub_skill:
@@ -259,62 +255,10 @@ Only activate ONE skill at a time. If no skill matches, respond normally without
             'resolved_instructions': self.resolve_skill_instructions(skill_name),
             'all_tools': list(all_tools),
             'all_kbs': list(all_kbs),
-            'all_skill_tools': self.get_skill_tools(skill_name),
         }
 
-    def get_skill_tools(self, skill_name: str) -> list[dict]:
-        """Get all tools declared by a skill and its sub-skills.
-
-        Args:
-            skill_name: Name of the skill
-
-        Returns:
-            List of skill tool definitions (with namespaced names)
-        """
-        return self._collect_skill_tools(skill_name, depth=0)
-
-    def _collect_skill_tools(self, skill_name: str, depth: int) -> list[dict]:
-        """Recursively collect skill tools from skill and sub-skills.
-
-        Args:
-            skill_name: Name of the skill
-            depth: Current recursion depth
-
-        Returns:
-            List of skill tool definitions
-        """
-        if depth > 5:
-            return []
-
-        skill = self.skills.get(skill_name)
-        if not skill:
-            return []
-
-        tools = []
-
-        # Collect this skill's own tools
-        for tool_def in skill.get('skill_tools', []):
-            namespaced = dict(tool_def)
-            namespaced['_original_name'] = tool_def['name']
-            namespaced['_skill_name'] = skill_name
-            namespaced['name'] = f'skill__{skill_name}__{tool_def["name"]}'
-            tools.append(namespaced)
-
-        # Recursively collect from sub-skills
-        for sub_skill_name in skill.get('requires_skills', []):
-            tools.extend(self._collect_skill_tools(sub_skill_name, depth + 1))
-
-        return tools
-
     def build_activation_prompt(self, skill_name: str) -> str:
-        """Build the prompt to inject when a skill is activated.
-
-        Args:
-            skill_name: Name of the activated skill
-
-        Returns:
-            Formatted prompt string with skill instructions
-        """
+        """Build the prompt to inject when a skill is activated."""
         resolved = self.get_skill_with_dependencies(skill_name)
         if not resolved:
             return ''
@@ -326,7 +270,7 @@ Only activate ONE skill at a time. If no skill matches, respond normally without
         kbs_info = ', '.join(resolved['all_kbs']) if resolved['all_kbs'] else 'None specified'
 
         return f"""
-<activated_skill name="{skill_name}" type="{skill['type']}">
+<activated_skill name="{skill_name}" type="{skill.get('type', 'skill')}">
 
 ## Instructions
 {instructions}
@@ -335,38 +279,19 @@ Only activate ONE skill at a time. If no skill matches, respond normally without
 - Required Tools: {tools_info}
 - Required Knowledge Bases: {kbs_info}
 
+## Sandbox Execution
+You have access to the `skill_exec` tool to run commands inside this skill's sandboxed directory.
+The skill directory is mounted at /workspace with write access. You can execute scripts, read files,
+update the skill package, and run any command available in the sandbox environment.
+
 </activated_skill>
 
 Now execute the above skill instructions step by step to complete the user's request.
 If the skill contains sub-skills (<sub_skill> tags), execute them in the order they appear.
+Use the `skill_exec` tool with skill_name="{skill_name}" when you need to run scripts or commands.
 Respond to the user based on the skill's guidance.
 """
 
-    async def get_pipeline_bound_skills(self, pipeline_uuid: str) -> list[str]:
-        """Get list of skill UUIDs bound to a pipeline.
-
-        Args:
-            pipeline_uuid: Pipeline UUID
-
-        Returns:
-            List of bound skill UUIDs
-        """
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_skill.SkillPipelineBinding.skill_uuid)
-            .where(persistence_skill.SkillPipelineBinding.pipeline_uuid == pipeline_uuid)
-            .where(persistence_skill.SkillPipelineBinding.is_enabled == True)
-            .order_by(persistence_skill.SkillPipelineBinding.priority.desc())
-        )
-
-        return [row[0] for row in result.all()]
-
     def remove_activation_marker(self, response: str) -> str:
-        """Remove skill activation marker from response.
-
-        Args:
-            response: Original response with potential activation marker
-
-        Returns:
-            Response with activation marker removed
-        """
+        """Remove skill activation marker from response."""
         return re.sub(r'\[ACTIVATE_SKILL:\s*\S+?\s*\]\s*', '', response, count=1)

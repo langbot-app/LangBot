@@ -112,14 +112,14 @@ export default function SkillGithubInstallDialog({
       setGithubRepo(result.repo);
 
       if (result.releases.length === 0) {
-        toast.warning(t('plugins.noReleasesFound'));
+        toast.warning(t('skills.noReleasesFound'));
       } else {
         setStatus(InstallStatus.SELECT_RELEASE);
       }
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      setInstallError(errorMessage || t('plugins.fetchReleasesError'));
+      setInstallError(errorMessage || t('skills.fetchReleasesError'));
       setStatus(InstallStatus.ERROR);
     } finally {
       setFetchingReleases(false);
@@ -140,14 +140,14 @@ export default function SkillGithubInstallDialog({
       setGithubAssets(result.assets);
 
       if (result.assets.length === 0) {
-        toast.warning(t('plugins.noAssetsFound'));
+        toast.warning(t('skills.noAssetsFound'));
       } else {
         setStatus(InstallStatus.SELECT_ASSET);
       }
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      setInstallError(errorMessage || t('plugins.fetchAssetsError'));
+      setInstallError(errorMessage || t('skills.fetchAssetsError'));
       setStatus(InstallStatus.ERROR);
     } finally {
       setFetchingAssets(false);
@@ -194,16 +194,16 @@ export default function SkillGithubInstallDialog({
         {/* Step 1: Enter URL */}
         {status === InstallStatus.WAIT_INPUT && (
           <div className="mt-4">
-            <p className="mb-2">{t('plugins.enterRepoUrl')}</p>
+            <p className="mb-2">{t('skills.enterRepoUrl')}</p>
             <Input
-              placeholder={t('plugins.repoUrlPlaceholder')}
+              placeholder={t('skills.repoUrlPlaceholder')}
               value={githubURL}
               onChange={(e) => setGithubURL(e.target.value)}
               className="mb-4"
             />
             {fetchingReleases && (
               <p className="text-sm text-gray-500">
-                {t('plugins.fetchingReleases')}
+                {t('skills.fetchingReleases')}
               </p>
             )}
           </div>
@@ -213,7 +213,7 @@ export default function SkillGithubInstallDialog({
         {status === InstallStatus.SELECT_RELEASE && (
           <div className="mt-4">
             <div className="flex items-center justify-between mb-4">
-              <p className="font-medium">{t('plugins.selectRelease')}</p>
+              <p className="font-medium">{t('skills.selectRelease')}</p>
               <Button
                 variant="ghost"
                 size="sm"
@@ -223,7 +223,7 @@ export default function SkillGithubInstallDialog({
                 }}
               >
                 <ChevronLeft className="w-4 h-4 mr-1" />
-                {t('plugins.backToRepoUrl')}
+                {t('skills.backToRepoUrl')}
               </Button>
             </div>
             <div className="max-h-[400px] overflow-y-auto space-y-2 pb-2">
@@ -239,9 +239,9 @@ export default function SkillGithubInstallDialog({
                         {release.name || release.tag_name}
                       </CardTitle>
                       <CardDescription className="text-xs mt-1">
-                        {t('plugins.releaseTag', { tag: release.tag_name })}{' '}
+                        {t('skills.releaseTag', { tag: release.tag_name })}{' '}
                         •{' '}
-                        {t('plugins.publishedAt', {
+                        {t('skills.publishedAt', {
                           date: new Date(
                             release.published_at,
                           ).toLocaleDateString(),
@@ -250,7 +250,7 @@ export default function SkillGithubInstallDialog({
                     </div>
                     {release.prerelease && (
                       <span className="text-xs bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 px-2 py-0.5 rounded ml-2 shrink-0">
-                        {t('plugins.prerelease')}
+                        {t('skills.prerelease')}
                       </span>
                     )}
                   </CardHeader>
@@ -259,7 +259,7 @@ export default function SkillGithubInstallDialog({
             </div>
             {fetchingAssets && (
               <p className="text-sm text-gray-500 mt-4">
-                {t('plugins.loading')}
+                {t('skills.loading')}
               </p>
             )}
           </div>
@@ -269,7 +269,7 @@ export default function SkillGithubInstallDialog({
         {status === InstallStatus.SELECT_ASSET && (
           <div className="mt-4">
             <div className="flex items-center justify-between mb-4">
-              <p className="font-medium">{t('plugins.selectAsset')}</p>
+              <p className="font-medium">{t('skills.selectAsset')}</p>
               <Button
                 variant="ghost"
                 size="sm"
@@ -280,7 +280,7 @@ export default function SkillGithubInstallDialog({
                 }}
               >
                 <ChevronLeft className="w-4 h-4 mr-1" />
-                {t('plugins.backToReleases')}
+                {t('skills.backToReleases')}
               </Button>
             </div>
             {selectedRelease && (
@@ -303,7 +303,7 @@ export default function SkillGithubInstallDialog({
                   <CardHeader className="px-3">
                     <CardTitle className="text-sm">{asset.name}</CardTitle>
                     <CardDescription className="text-xs">
-                      {t('plugins.assetSize', {
+                      {t('skills.assetSize', {
                         size: formatFileSize(asset.size),
                       })}
                     </CardDescription>
@@ -318,7 +318,7 @@ export default function SkillGithubInstallDialog({
         {status === InstallStatus.ASK_CONFIRM && (
           <div className="mt-4">
             <div className="flex items-center justify-between mb-4">
-              <p className="font-medium">{t('plugins.confirmInstall')}</p>
+              <p className="font-medium">{t('skills.confirmInstall')}</p>
               <Button
                 variant="ghost"
                 size="sm"
@@ -328,7 +328,7 @@ export default function SkillGithubInstallDialog({
                 }}
               >
                 <ChevronLeft className="w-4 h-4 mr-1" />
-                {t('plugins.backToAssets')}
+                {t('skills.backToAssets')}
               </Button>
             </div>
             {selectedRelease && selectedAsset && (
@@ -357,7 +357,7 @@ export default function SkillGithubInstallDialog({
         {/* Installing */}
         {status === InstallStatus.INSTALLING && (
           <div className="mt-4">
-            <p className="mb-2">{t('plugins.installing')}</p>
+            <p className="mb-2">{t('skills.installing')}</p>
           </div>
         )}
 
@@ -383,7 +383,7 @@ export default function SkillGithubInstallDialog({
                 disabled={!githubURL.trim() || fetchingReleases}
               >
                 {fetchingReleases
-                  ? t('plugins.loading')
+                  ? t('skills.loading')
                   : t('common.confirm')}
               </Button>
             </>

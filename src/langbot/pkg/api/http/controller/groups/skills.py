@@ -14,14 +14,10 @@ class SkillsRouterGroup(group.RouterGroup):
         async def list_or_create_skills() -> quart.Response:
             """List all skills or create a new skill"""
             if quart.request.method == 'GET':
-                skill_type = quart.request.args.get('type')
                 is_enabled = quart.request.args.get('is_enabled')
-                tags = quart.request.args.getlist('tags')
 
                 skills = await self.ap.skill_service.list_skills(
-                    skill_type=skill_type,
                     is_enabled=is_enabled.lower() == 'true' if is_enabled else None,
-                    tags=tags if tags else None,
                 )
 
                 return self.success(data={'skills': skills})
@@ -29,11 +25,9 @@ class SkillsRouterGroup(group.RouterGroup):
             elif quart.request.method == 'POST':
                 data = await quart.request.json
 
-                # Validate required fields
-                required_fields = ['name', 'description']
-                for field in required_fields:
-                    if field not in data or not data[field]:
-                        return self.http_status(400, -1, f'Missing required field: {field}')
+                # name is the only required DB field
+                if 'name' not in data or not data['name']:
+                    return self.http_status(400, -1, 'Missing required field: name')
 
                 # Validate name format
                 if not data['name'].replace('-', '').replace('_', '').isalnum():
@@ -43,9 +37,6 @@ class SkillsRouterGroup(group.RouterGroup):
 
                 if len(data['name']) > 64:
                     return self.http_status(400, -1, 'Skill name cannot exceed 64 characters')
-
-                if len(data['description']) > 1024:
-                    return self.http_status(400, -1, 'Skill description cannot exceed 1024 characters')
 
                 try:
                     skill = await self.ap.skill_service.create_skill(data)
@@ -65,7 +56,6 @@ class SkillsRouterGroup(group.RouterGroup):
             elif quart.request.method == 'PUT':
                 data = await quart.request.json
 
-                # Validate name if provided
                 if 'name' in data:
                     if not data['name'].replace('-', '').replace('_', '').isalnum():
                         return self.http_status(
@@ -73,9 +63,6 @@ class SkillsRouterGroup(group.RouterGroup):
                         )
                     if len(data['name']) > 64:
                         return self.http_status(400, -1, 'Skill name cannot exceed 64 characters')
-
-                if 'description' in data and len(data['description']) > 1024:
-                    return self.http_status(400, -1, 'Skill description cannot exceed 1024 characters')
 
                 try:
                     skill = await self.ap.skill_service.update_skill(skill_uuid, data)
@@ -121,50 +108,6 @@ class SkillsRouterGroup(group.RouterGroup):
                     'all_kbs': resolved['all_kbs'],
                 }
             )
-
-        # ========== Pipeline Binding Endpoints ==========
-
-        @self.route(
-            '/pipelines/<pipeline_uuid>', methods=['GET', 'PUT'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
-        )
-        async def get_or_update_pipeline_skills(pipeline_uuid: str) -> quart.Response:
-            """Get or update skills bound to a pipeline"""
-            if quart.request.method == 'GET':
-                skills = await self.ap.skill_service.get_pipeline_skills(pipeline_uuid)
-                return self.success(data={'skills': skills})
-
-            elif quart.request.method == 'PUT':
-                data = await quart.request.json
-                skill_bindings = data.get('skills', [])
-
-                # Validate bindings format
-                for binding in skill_bindings:
-                    if 'skill_uuid' not in binding:
-                        return self.http_status(400, -1, 'Each binding must have skill_uuid')
-
-                skills = await self.ap.skill_service.update_pipeline_skill_bindings(pipeline_uuid, skill_bindings)
-                return self.success(data={'skills': skills})
-
-        @self.route(
-            '/pipelines/<pipeline_uuid>/bind/<skill_uuid>', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
-        )
-        async def bind_skill_to_pipeline(pipeline_uuid: str, skill_uuid: str) -> quart.Response:
-            """Bind a skill to a pipeline"""
-            data = await quart.request.json if quart.request.content_length else {}
-            priority = data.get('priority', 0)
-
-            binding = await self.ap.skill_service.bind_skill_to_pipeline(skill_uuid, pipeline_uuid, priority)
-            return self.success(data={'binding': binding})
-
-        @self.route(
-            '/pipelines/<pipeline_uuid>/unbind/<skill_uuid>',
-            methods=['DELETE'],
-            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
-        )
-        async def unbind_skill_from_pipeline(pipeline_uuid: str, skill_uuid: str) -> quart.Response:
-            """Unbind a skill from a pipeline"""
-            await self.ap.skill_service.unbind_skill_from_pipeline(skill_uuid, pipeline_uuid)
-            return self.success()
 
         # ========== Skill Index Endpoint ==========
 

@@ -314,122 +314,145 @@ class LocalAgentRunner(runner.RequestRunner):
         # =========== Skill activation detection ===========
         # Check if the LLM response contains a skill activation marker
         if first_content and self.ap.skill_mgr:
-            activated_skill_name = self.ap.skill_mgr.detect_skill_activation(first_content)
-            if activated_skill_name:
-                self.ap.logger.info(f'Skill activation detected: {activated_skill_name}')
+            original_use_funcs = query.use_funcs
+            original_variables = copy.deepcopy(query.variables) if query.variables is not None else None
+            original_req_messages_len = len(req_messages)
 
-                # Get the skill's full instructions
-                skill_prompt = self.ap.skill_mgr.build_activation_prompt(activated_skill_name)
+            try:
+                activated_skill_name = self.ap.skill_mgr.detect_skill_activation(first_content)
+                if activated_skill_name:
+                    self.ap.logger.info(f'Skill activation detected: {activated_skill_name}')
 
-                if skill_prompt:
-                    # Inject skill tools into query
-                    skill_data = self.ap.skill_mgr.get_skill_by_name(activated_skill_name)
-                    skill_tools = self.ap.skill_mgr.get_skill_tools(activated_skill_name)
-                    if skill_tools and skill_data:
-                        # Register skill tools on query for SkillToolLoader
-                        skill_loader.register_skill_tools(query, skill_tools, skill_data)
+                    # Get the skill's full instructions
+                    skill_prompt = self.ap.skill_mgr.build_activation_prompt(activated_skill_name)
 
-                        # Convert skill tools to LLMTool and append to query.use_funcs
-                        if query.use_funcs is None:
-                            query.use_funcs = []
+                    if skill_prompt:
+                        # Register activated skill on query for skill_exec
+                        skill_data = self.ap.skill_mgr.get_skill_by_name(activated_skill_name)
+                        if skill_data:
+                            skill_loader.register_activated_skill(query, skill_data)
 
-                        existing_names = {t.name for t in query.use_funcs}
-                        for st in skill_tools:
-                            if st['name'] in existing_names:
-                                self.ap.logger.warning(
-                                    f'Skill tool name conflict, skipping: {st["name"]}'
-                                )
-                                continue
-                            query.use_funcs.append(resource_tool.LLMTool(
-                                name=st['name'],
-                                human_desc=st.get('description', ''),
-                                description=st.get('description', ''),
-                                parameters=st.get('parameters', {}),
-                                func=lambda: None,  # placeholder, dispatch via SkillToolLoader
-                            ))
+                            # Add skill_exec tool to query.use_funcs (if not already present)
+                            if query.use_funcs is None:
+                                query.use_funcs = []
 
-                    # Remove the activation marker from the response
-                    cleaned_content = self.ap.skill_mgr.remove_activation_marker(first_content)
+                            if not any(
+                                getattr(t, 'name', None) == skill_loader.SKILL_EXEC_TOOL_NAME for t in query.use_funcs
+                            ):
+                                query.use_funcs.append(resource_tool.LLMTool(
+                                    name=skill_loader.SKILL_EXEC_TOOL_NAME,
+                                    human_desc='Execute a command in the activated skill\'s sandbox',
+                                    description=(
+                                        'Execute a command in the activated skill\'s sandbox environment. '
+                                        'The skill directory is mounted at /workspace with write access.'
+                                    ),
+                                    parameters={
+                                        'type': 'object',
+                                        'properties': {
+                                            'skill_name': {
+                                                'type': 'string',
+                                                'description': 'Name of the activated skill',
+                                            },
+                                            'command': {
+                                                'type': 'string',
+                                                'description': 'Shell command to run in the sandbox',
+                                            },
+                                        },
+                                        'required': ['skill_name', 'command'],
+                                    },
+                                    func=lambda: None,
+                                ))
 
-                    # Add the skill activation prompt as a system message
-                    skill_system_msg = provider_message.Message(role='system', content=skill_prompt)
+                        # Remove the activation marker from the response
+                        cleaned_content = self.ap.skill_mgr.remove_activation_marker(first_content)
 
-                    # Reconstruct messages: keep original + add skill prompt + let LLM continue
-                    req_messages.append(final_msg)
-                    req_messages.append(skill_system_msg)
+                        # Add the skill activation prompt as a system message
+                        skill_system_msg = provider_message.Message(role='system', content=skill_prompt)
 
-                    # Make another request to let the LLM execute the skill
-                    if is_stream:
-                        tool_calls_map = {}
-                        msg_idx = 0
-                        accumulated_content = cleaned_content  # Start with cleaned content
-                        last_role = 'assistant'
-                        msg_sequence = first_end_sequence
+                        # Reconstruct messages: keep original + add skill prompt + let LLM continue
+                        req_messages.append(final_msg)
+                        req_messages.append(skill_system_msg)
 
-                        async for msg in use_llm_model.provider.requester.invoke_llm_stream(
-                            query,
-                            use_llm_model,
-                            req_messages,
-                            query.use_funcs,
-                            extra_args=use_llm_model.model_entity.extra_args,
-                            remove_think=remove_think,
-                        ):
-                            msg_idx += 1
+                        # Make another request to let the LLM execute the skill
+                        if is_stream:
+                            tool_calls_map = {}
+                            msg_idx = 0
+                            accumulated_content = cleaned_content  # Start with cleaned content
+                            last_role = 'assistant'
+                            msg_sequence = first_end_sequence
 
-                            if msg.role:
-                                last_role = msg.role
+                            async for msg in use_llm_model.provider.requester.invoke_llm_stream(
+                                query,
+                                use_llm_model,
+                                req_messages,
+                                query.use_funcs,
+                                extra_args=use_llm_model.model_entity.extra_args,
+                                remove_think=remove_think,
+                            ):
+                                msg_idx += 1
 
-                            if msg.content:
-                                accumulated_content += msg.content
+                                if msg.role:
+                                    last_role = msg.role
 
-                            if msg.tool_calls:
-                                for tool_call in msg.tool_calls:
-                                    if tool_call.id not in tool_calls_map:
-                                        tool_calls_map[tool_call.id] = provider_message.ToolCall(
-                                            id=tool_call.id,
-                                            type=tool_call.type,
-                                            function=provider_message.FunctionCall(
-                                                name=tool_call.function.name if tool_call.function else '', arguments=''
-                                            ),
-                                        )
-                                    if tool_call.function and tool_call.function.arguments:
-                                        tool_calls_map[tool_call.id].function.arguments += tool_call.function.arguments
+                                if msg.content:
+                                    accumulated_content += msg.content
 
-                            if msg_idx % 8 == 0 or msg.is_final:
-                                msg_sequence += 1
-                                yield provider_message.MessageChunk(
-                                    role=last_role,
-                                    content=accumulated_content,
-                                    tool_calls=list(tool_calls_map.values()) if (tool_calls_map and msg.is_final) else None,
-                                    is_final=msg.is_final,
-                                    msg_sequence=msg_sequence,
-                                )
+                                if msg.tool_calls:
+                                    for tool_call in msg.tool_calls:
+                                        if tool_call.id not in tool_calls_map:
+                                            tool_calls_map[tool_call.id] = provider_message.ToolCall(
+                                                id=tool_call.id,
+                                                type=tool_call.type,
+                                                function=provider_message.FunctionCall(
+                                                    name=tool_call.function.name if tool_call.function else '',
+                                                    arguments='',
+                                                ),
+                                            )
+                                        if tool_call.function and tool_call.function.arguments:
+                                            tool_calls_map[tool_call.id].function.arguments += (
+                                                tool_call.function.arguments
+                                            )
 
-                        final_msg = provider_message.MessageChunk(
-                            role=last_role,
-                            content=accumulated_content,
-                            tool_calls=list(tool_calls_map.values()) if tool_calls_map else None,
-                            msg_sequence=msg_sequence,
-                        )
-                        first_content = accumulated_content
-                        first_end_sequence = msg_sequence
-                    else:
-                        msg = await use_llm_model.provider.requester.invoke_llm(
-                            query,
-                            use_llm_model,
-                            req_messages,
-                            query.use_funcs,
-                            extra_args=use_llm_model.model_entity.extra_args,
-                            remove_think=remove_think,
-                        )
-                        yield msg
-                        final_msg = msg
-                        first_content = msg.content
+                                if msg_idx % 8 == 0 or msg.is_final:
+                                    msg_sequence += 1
+                                    yield provider_message.MessageChunk(
+                                        role=last_role,
+                                        content=accumulated_content,
+                                        tool_calls=list(tool_calls_map.values()) if (tool_calls_map and msg.is_final) else None,
+                                        is_final=msg.is_final,
+                                        msg_sequence=msg_sequence,
+                                    )
 
-                    # Update pending tool calls from the new response
-                    pending_tool_calls = final_msg.tool_calls
-                    # Remove the messages we added (the original final_msg and skill_system_msg)
-                    req_messages = req_messages[:-2]
+                            final_msg = provider_message.MessageChunk(
+                                role=last_role,
+                                content=accumulated_content,
+                                tool_calls=list(tool_calls_map.values()) if tool_calls_map else None,
+                                msg_sequence=msg_sequence,
+                            )
+                            first_content = accumulated_content
+                            first_end_sequence = msg_sequence
+                        else:
+                            msg = await use_llm_model.provider.requester.invoke_llm(
+                                query,
+                                use_llm_model,
+                                req_messages,
+                                query.use_funcs,
+                                extra_args=use_llm_model.model_entity.extra_args,
+                                remove_think=remove_think,
+                            )
+                            yield msg
+                            final_msg = msg
+                            first_content = msg.content
+
+                        # Update pending tool calls from the new response
+                        pending_tool_calls = final_msg.tool_calls
+                        # Remove the messages we added (the original final_msg and skill_system_msg)
+                        req_messages = req_messages[:-2]
+            except Exception:
+                self.ap.logger.exception('Skill activation failed, falling back to normal execution')
+                query.use_funcs = original_use_funcs
+                query.variables = original_variables
+                req_messages = req_messages[:original_req_messages_len]
 
         req_messages.append(final_msg)
 

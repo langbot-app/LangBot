@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -70,7 +71,7 @@ export default function SkillDetailDialog({
       setPreviewContent(resp.instructions);
     } catch (error) {
       console.error('Failed to load preview:', error);
-      setPreviewContent('Failed to load preview');
+      setPreviewContent(t('skills.previewLoadError'));
     } finally {
       setLoadingPreview(false);
     }
@@ -116,6 +117,7 @@ export default function SkillDetailDialog({
       onSkillDeleted();
     } catch (error) {
       console.error('Failed to delete skill:', error);
+      toast.error(t('skills.deleteError') + String(error));
     }
     setShowDeleteConfirm(false);
   };

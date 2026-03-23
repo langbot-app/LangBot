@@ -212,16 +212,30 @@ class PreProcessor(stage.PipelineStage):
 
         # =========== Inject skill index into system prompt ===========
         if selected_runner == 'local-agent' and self.ap.skill_mgr:
-            # Get bound skills for this pipeline
-            bound_skills = await self.ap.skill_mgr.get_pipeline_bound_skills(query.pipeline_uuid)
+            # Get bound skills from pipeline extensions_preferences
+            pipeline_data = await self.ap.pipeline_service.get_pipeline(query.pipeline_uuid)
+            extensions_prefs = (pipeline_data or {}).get('extensions_preferences', {})
+            enable_all_skills = extensions_prefs.get('enable_all_skills', True)
+
+            if enable_all_skills:
+                bound_skills = None  # None = all skills available
+            else:
+                # Get specific bound skill UUIDs
+                bound_skills = extensions_prefs.get('skills', [])
 
             # Build skill awareness addition
             skill_addition = self.ap.skill_mgr.build_skill_aware_prompt_addition(
                 pipeline_uuid=query.pipeline_uuid,
-                bound_skills=bound_skills if bound_skills else None,
+                bound_skills=bound_skills,
             )
 
             if skill_addition:
+                self.ap.logger.info(
+                    f'Skill index injected into system prompt: '
+                    f'pipeline={query.pipeline_uuid} '
+                    f'bound_skills={bound_skills or "all"} '
+                    f'available_skills=[{", ".join(s["name"] for s in self.ap.skill_mgr.skills.values() if s.get("auto_activate", True))}]'
+                )
                 # Store bound skills in query variables for later use
                 query.variables['_pipeline_bound_skills'] = bound_skills
 
@@ -241,5 +255,13 @@ class PreProcessor(stage.PipelineStage):
                         0,
                         provider_message.Message(role='system', content=skill_addition.strip()),
                     )
+            else:
+                loaded_count = len(self.ap.skill_mgr.skills)
+                self.ap.logger.debug(
+                    f'No skills available for injection: '
+                    f'pipeline={query.pipeline_uuid} '
+                    f'loaded_skills={loaded_count} '
+                    f'bound_skills={bound_skills}'
+                )
 
         return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)

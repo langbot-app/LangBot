@@ -36,13 +36,7 @@ export default function SkillForm({
     sandbox_network: false,
     auto_activate: true,
     trigger_keywords: [],
-    requires_tools: [],
-    requires_kbs: [],
-    requires_skills: [],
     is_enabled: true,
-    author: '',
-    version: '1.0.0',
-    tags: [],
   });
   const [keywordsInput, setKeywordsInput] = useState('');
   const [scanning, setScanning] = useState(false);

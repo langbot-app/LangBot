@@ -46,7 +46,6 @@ import {
   Skill,
   ApiRespSkills,
   ApiRespSkill,
-  ApiRespPipelineSkills,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
@@ -1094,9 +1093,7 @@ export class BackendClient extends BaseHttpClient {
   // ============ Skills API ============
 
   public getSkills(params?: {
-    skill_type?: string;
     is_enabled?: boolean;
-    tags?: string[];
   }): Promise<ApiRespSkills> {
     return this.get('/api/v1/skills', params);
   }
@@ -1126,43 +1123,6 @@ export class BackendClient extends BaseHttpClient {
 
   public previewSkill(uuid: string): Promise<{ instructions: string }> {
     return this.get(`/api/v1/skills/${uuid}/preview`);
-  }
-
-  public getPipelineSkills(pipelineUuid: string): Promise<ApiRespPipelineSkills> {
-    return this.get(`/api/v1/skills/pipelines/${pipelineUuid}`);
-  }
-
-  public updatePipelineSkills(
-    pipelineUuid: string,
-    skillBindings: Array<{
-      skill_uuid: string;
-      priority?: number;
-      is_enabled?: boolean;
-    }>,
-  ): Promise<object> {
-    return this.put(`/api/v1/skills/pipelines/${pipelineUuid}`, {
-      skill_bindings: skillBindings,
-    });
-  }
-
-  public bindSkillToPipeline(
-    pipelineUuid: string,
-    skillUuid: string,
-    priority?: number,
-  ): Promise<object> {
-    return this.post(
-      `/api/v1/skills/pipelines/${pipelineUuid}/bind/${skillUuid}`,
-      { priority },
-    );
-  }
-
-  public unbindSkillFromPipeline(
-    pipelineUuid: string,
-    skillUuid: string,
-  ): Promise<object> {
-    return this.delete(
-      `/api/v1/skills/pipelines/${pipelineUuid}/unbind/${skillUuid}`,
-    );
   }
 
   public getSkillIndex(pipelineUuid?: string): Promise<{ index: string }> {

@@ -4,13 +4,15 @@ from .. import migration
 
 @migration.migration_class(25)
 class DBMigrateSkillsTable(migration.DBMigration):
-    """Create skills and skill_pipeline_bindings tables, or add new columns if tables already exist."""
+    """Create skills registry table.
+
+    Skills table is a registry — only stores LangBot-local governance info.
+    Package metadata (description, author, etc.) lives in SKILL.md frontmatter.
+    """
 
     async def upgrade(self):
         """Upgrade"""
         await self._create_skills_table()
-        await self._add_new_columns()
-        await self._create_skill_pipeline_bindings_table()
 
     async def _create_skills_table(self):
         """Create skills table"""
@@ -20,21 +22,12 @@ class DBMigrateSkillsTable(migration.DBMigration):
                     CREATE TABLE IF NOT EXISTS skills (
                         uuid VARCHAR(255) PRIMARY KEY,
                         name VARCHAR(64) NOT NULL UNIQUE,
-                        description VARCHAR(1024) NOT NULL,
-                        type VARCHAR(32) NOT NULL DEFAULT 'skill',
                         package_root VARCHAR(1024) NOT NULL DEFAULT '',
                         entry_file VARCHAR(255) NOT NULL DEFAULT 'SKILL.md',
-                        skill_tools JSONB NOT NULL DEFAULT '[]',
-                        requires_tools JSONB NOT NULL DEFAULT '[]',
-                        requires_kbs JSONB NOT NULL DEFAULT '[]',
-                        requires_skills JSONB NOT NULL DEFAULT '[]',
-                        auto_activate BOOLEAN NOT NULL DEFAULT TRUE,
-                        trigger_keywords JSONB NOT NULL DEFAULT '[]',
+                        sandbox_timeout_sec INTEGER NOT NULL DEFAULT 120,
+                        sandbox_network BOOLEAN NOT NULL DEFAULT FALSE,
                         is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
                         is_builtin BOOLEAN NOT NULL DEFAULT FALSE,
-                        author VARCHAR(255),
-                        version VARCHAR(32) NOT NULL DEFAULT '1.0.0',
-                        tags JSONB NOT NULL DEFAULT '[]',
                         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
                     )
@@ -46,80 +39,18 @@ class DBMigrateSkillsTable(migration.DBMigration):
                     CREATE TABLE IF NOT EXISTS skills (
                         uuid VARCHAR(255) PRIMARY KEY,
                         name VARCHAR(64) NOT NULL UNIQUE,
-                        description VARCHAR(1024) NOT NULL,
-                        type VARCHAR(32) NOT NULL DEFAULT 'skill',
                         package_root VARCHAR(1024) NOT NULL DEFAULT '',
                         entry_file VARCHAR(255) NOT NULL DEFAULT 'SKILL.md',
-                        skill_tools JSON NOT NULL DEFAULT '[]',
-                        requires_tools JSON NOT NULL DEFAULT '[]',
-                        requires_kbs JSON NOT NULL DEFAULT '[]',
-                        requires_skills JSON NOT NULL DEFAULT '[]',
-                        auto_activate BOOLEAN NOT NULL DEFAULT 1,
-                        trigger_keywords JSON NOT NULL DEFAULT '[]',
+                        sandbox_timeout_sec INTEGER NOT NULL DEFAULT 120,
+                        sandbox_network BOOLEAN NOT NULL DEFAULT 0,
                         is_enabled BOOLEAN NOT NULL DEFAULT 1,
                         is_builtin BOOLEAN NOT NULL DEFAULT 0,
-                        author VARCHAR(255),
-                        version VARCHAR(32) NOT NULL DEFAULT '1.0.0',
-                        tags JSON NOT NULL DEFAULT '[]',
                         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
             )
 
-    async def _add_new_columns(self):
-        """Add new columns to existing skills table if they don't exist yet."""
-        columns = [
-            ("package_root", "VARCHAR(1024) NOT NULL DEFAULT ''"),
-            ("entry_file", "VARCHAR(255) NOT NULL DEFAULT 'SKILL.md'"),
-        ]
-
-        json_type = 'JSONB' if self.ap.persistence_mgr.db.name == 'postgresql' else 'JSON'
-        columns.append(("skill_tools", f"{json_type} NOT NULL DEFAULT '[]'"))
-
-        for col_name, col_def in columns:
-            try:
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.text(f"ALTER TABLE skills ADD COLUMN {col_name} {col_def}")
-                )
-            except Exception:
-                # Column already exists
-                pass
-
-    async def _create_skill_pipeline_bindings_table(self):
-        """Create skill_pipeline_bindings table"""
-        if self.ap.persistence_mgr.db.name == 'postgresql':
-            await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text("""
-                    CREATE TABLE IF NOT EXISTS skill_pipeline_bindings (
-                        id SERIAL PRIMARY KEY,
-                        skill_uuid VARCHAR(255) NOT NULL REFERENCES skills(uuid) ON DELETE CASCADE,
-                        pipeline_uuid VARCHAR(255) NOT NULL REFERENCES legacy_pipelines(uuid) ON DELETE CASCADE,
-                        priority INTEGER NOT NULL DEFAULT 0,
-                        is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        UNIQUE(skill_uuid, pipeline_uuid)
-                    )
-                """)
-            )
-        else:
-            await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text("""
-                    CREATE TABLE IF NOT EXISTS skill_pipeline_bindings (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        skill_uuid VARCHAR(255) NOT NULL,
-                        pipeline_uuid VARCHAR(255) NOT NULL,
-                        priority INTEGER NOT NULL DEFAULT 0,
-                        is_enabled BOOLEAN NOT NULL DEFAULT 1,
-                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (skill_uuid) REFERENCES skills(uuid) ON DELETE CASCADE,
-                        FOREIGN KEY (pipeline_uuid) REFERENCES legacy_pipelines(uuid) ON DELETE CASCADE,
-                        UNIQUE(skill_uuid, pipeline_uuid)
-                    )
-                """)
-            )
-
     async def downgrade(self):
         """Downgrade"""
-        await self.ap.persistence_mgr.execute_async(sqlalchemy.text('DROP TABLE IF EXISTS skill_pipeline_bindings'))
         await self.ap.persistence_mgr.execute_async(sqlalchemy.text('DROP TABLE IF EXISTS skills'))

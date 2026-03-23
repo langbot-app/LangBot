@@ -1,4 +1,4 @@
-"""Tests for SkillManager package skill loading and skill tool aggregation."""
+"""Tests for SkillManager, SkillToolLoader (skill_exec), and BoxService skill sandbox."""
 
 from __future__ import annotations
 
@@ -8,6 +8,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+
+from langbot_plugin.box.models import BoxExecutionResult, BoxExecutionStatus
 
 
 def _make_ap(logger=None):
@@ -25,7 +27,8 @@ def _make_skill_data(
     instructions='Do something',
     package_root=None,
     entry_file='SKILL.md',
-    skill_tools=None,
+    sandbox_timeout_sec=120,
+    sandbox_network=False,
     requires_skills=None,
     **kwargs,
 ):
@@ -37,7 +40,8 @@ def _make_skill_data(
         'type': 'skill',
         'package_root': package_root or '',
         'entry_file': entry_file,
-        'skill_tools': skill_tools or [],
+        'sandbox_timeout_sec': sandbox_timeout_sec,
+        'sandbox_network': sandbox_network,
         'requires_tools': [],
         'requires_kbs': [],
         'requires_skills': requires_skills or [],
@@ -50,9 +54,9 @@ def _make_skill_data(
 
 
 class TestSkillManagerPackageLoading:
-    """Test SkillManager._load_instructions()."""
+    """Test SkillManager._load_skill_file()."""
 
-    def test_load_instructions_success(self):
+    def test_load_skill_file_success(self):
         from langbot.pkg.skill.manager import SkillManager
 
         ap = _make_ap()
@@ -61,17 +65,18 @@ class TestSkillManagerPackageLoading:
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_md = os.path.join(tmpdir, 'SKILL.md')
             with open(skill_md, 'w') as f:
-                f.write('# Test Skill\nDo things.')
+                f.write('---\ndescription: Test skill\n---\n\n# Test Skill\nDo things.')
 
             skill_data = _make_skill_data(
                 package_root=tmpdir,
             )
-            result = mgr._load_instructions(skill_data)
+            result = mgr._load_skill_file(skill_data)
 
             assert result is True
             assert skill_data['instructions'] == '# Test Skill\nDo things.'
+            assert skill_data['description'] == 'Test skill'
 
-    def test_load_instructions_missing_file(self):
+    def test_load_skill_file_missing_file(self):
         from langbot.pkg.skill.manager import SkillManager
 
         ap = _make_ap()
@@ -81,23 +86,23 @@ class TestSkillManagerPackageLoading:
             skill_data = _make_skill_data(
                 package_root=tmpdir,
             )
-            result = mgr._load_instructions(skill_data)
+            result = mgr._load_skill_file(skill_data)
 
             assert result is False
             ap.logger.warning.assert_called_once()
 
-    def test_load_instructions_no_package_root(self):
+    def test_load_skill_file_no_package_root(self):
         from langbot.pkg.skill.manager import SkillManager
 
         ap = _make_ap()
         mgr = SkillManager(ap)
 
         skill_data = _make_skill_data(package_root='')
-        result = mgr._load_instructions(skill_data)
+        result = mgr._load_skill_file(skill_data)
 
         assert result is False
 
-    def test_load_instructions_custom_entry_file(self):
+    def test_load_skill_file_custom_entry_file(self):
         from langbot.pkg.skill.manager import SkillManager
 
         ap = _make_ap()
@@ -112,116 +117,88 @@ class TestSkillManagerPackageLoading:
                 package_root=tmpdir,
                 entry_file='README.md',
             )
-            result = mgr._load_instructions(skill_data)
+            result = mgr._load_skill_file(skill_data)
 
             assert result is True
-            assert skill_data['instructions'] == 'Custom entry'
 
-
-class TestSkillManagerGetSkillTools:
-    """Test SkillManager.get_skill_tools() and namespace behavior."""
-
-    def test_get_skill_tools_empty(self):
-        from langbot.pkg.skill.manager import SkillManager
-
-        ap = _make_ap()
-        mgr = SkillManager(ap)
-        mgr.skills = {'my-skill': _make_skill_data(name='my-skill', skill_tools=[])}
-
-        tools = mgr.get_skill_tools('my-skill')
-        assert tools == []
-
-    def test_get_skill_tools_namespaced(self):
+    def test_refresh_skill_from_disk_updates_cached_dict_in_place(self):
         from langbot.pkg.skill.manager import SkillManager
 
         ap = _make_ap()
         mgr = SkillManager(ap)
 
-        tool_def = {
-            'name': 'run_review',
-            'description': 'Run review',
-            'entry': 'scripts/review.py',
-            'parameters': {},
-            'timeout_sec': 30,
-            'network': False,
-        }
-        mgr.skills = {
-            'code-review': _make_skill_data(name='code-review', skill_tools=[tool_def])
-        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_md = os.path.join(tmpdir, 'SKILL.md')
+            with open(skill_md, 'w', encoding='utf-8') as f:
+                f.write('---\ndescription: First\n---\n\nOriginal instructions')
 
-        tools = mgr.get_skill_tools('code-review')
-        assert len(tools) == 1
-        assert tools[0]['name'] == 'skill__code-review__run_review'
-        assert tools[0]['_original_name'] == 'run_review'
-        assert tools[0]['_skill_name'] == 'code-review'
+            skill_data = _make_skill_data(name='test-skill', package_root=tmpdir)
+            assert mgr._load_skill_file(skill_data) is True
 
-    def test_get_skill_tools_with_sub_skills(self):
-        from langbot.pkg.skill.manager import SkillManager
+            mgr.skills['test-skill'] = skill_data
+            mgr.skills_by_uuid[skill_data['uuid']] = skill_data
 
-        ap = _make_ap()
-        mgr = SkillManager(ap)
+            with open(skill_md, 'w', encoding='utf-8') as f:
+                f.write('---\ndescription: Second\n---\n\nUpdated instructions')
 
-        parent_tool = {'name': 'parent_tool', 'description': 'P', 'entry': 'scripts/p.py', 'parameters': {}}
-        child_tool = {'name': 'child_tool', 'description': 'C', 'entry': 'scripts/c.py', 'parameters': {}}
-
-        mgr.skills = {
-            'parent': _make_skill_data(
-                name='parent',
-                skill_tools=[parent_tool],
-                requires_skills=['child'],
-            ),
-            'child': _make_skill_data(
-                name='child',
-                skill_tools=[child_tool],
-            ),
-        }
-
-        tools = mgr.get_skill_tools('parent')
-        assert len(tools) == 2
-        names = {t['name'] for t in tools}
-        assert 'skill__parent__parent_tool' in names
-        assert 'skill__child__child_tool' in names
-
-    def test_get_skill_tools_nonexistent_skill(self):
-        from langbot.pkg.skill.manager import SkillManager
-
-        ap = _make_ap()
-        mgr = SkillManager(ap)
-        mgr.skills = {}
-
-        tools = mgr.get_skill_tools('nonexistent')
-        assert tools == []
+            assert mgr.refresh_skill_from_disk('test-skill') is True
+            assert mgr.skills['test-skill'] is skill_data
+            assert skill_data['instructions'] == 'Updated instructions'
+            assert skill_data['description'] == 'Second'
 
 
-class TestSkillToolLoader:
-    """Test SkillToolLoader query-scoped registration and lookup."""
+class TestSkillExecLoader:
+    """Test SkillToolLoader with skill_exec generic tool."""
 
-    def test_register_and_has_tool(self):
-        from langbot.pkg.provider.tools.loaders.skill import SkillToolLoader, register_skill_tools
+    def test_has_tool_with_activated_skill(self):
+        from langbot.pkg.provider.tools.loaders.skill import (
+            SKILL_EXEC_TOOL_NAME,
+            SkillToolLoader,
+            register_activated_skill,
+        )
 
         ap = _make_ap()
         loader = SkillToolLoader(ap)
 
         query = SimpleNamespace(variables={})
         skill_data = _make_skill_data(name='test')
-        skill_tools = [
-            {
-                'name': 'skill__test__run',
-                '_original_name': 'run',
-                '_skill_name': 'test',
-                'entry': 'scripts/run.py',
-                'description': 'Run',
-                'parameters': {},
-            }
-        ]
+        register_activated_skill(query, skill_data)
 
-        register_skill_tools(query, skill_tools, skill_data)
+        assert loader.has_tool(SKILL_EXEC_TOOL_NAME, query) is True
 
-        assert loader.has_tool('skill__test__run', query) is True
-        assert loader.has_tool('nonexistent', query) is False
+    def test_has_tool_without_activated_skill(self):
+        from langbot.pkg.provider.tools.loaders.skill import (
+            SKILL_EXEC_TOOL_NAME,
+            SkillToolLoader,
+        )
+
+        ap = _make_ap()
+        loader = SkillToolLoader(ap)
+
+        query = SimpleNamespace(variables={})
+        assert loader.has_tool(SKILL_EXEC_TOOL_NAME, query) is False
+
+    def test_has_tool_wrong_name(self):
+        from langbot.pkg.provider.tools.loaders.skill import (
+            SkillToolLoader,
+            register_activated_skill,
+        )
+
+        ap = _make_ap()
+        loader = SkillToolLoader(ap)
+
+        query = SimpleNamespace(variables={})
+        skill_data = _make_skill_data(name='test')
+        register_activated_skill(query, skill_data)
+
+        assert loader.has_tool('wrong_name', query) is False
 
     def test_query_isolation(self):
-        from langbot.pkg.provider.tools.loaders.skill import SkillToolLoader, register_skill_tools
+        from langbot.pkg.provider.tools.loaders.skill import (
+            SKILL_EXEC_TOOL_NAME,
+            SkillToolLoader,
+            register_activated_skill,
+        )
 
         ap = _make_ap()
         loader = SkillToolLoader(ap)
@@ -229,86 +206,144 @@ class TestSkillToolLoader:
         query1 = SimpleNamespace(variables={})
         query2 = SimpleNamespace(variables={})
         skill_data = _make_skill_data(name='test')
-        skill_tools = [
-            {
-                'name': 'skill__test__run',
-                '_original_name': 'run',
-                '_skill_name': 'test',
-                'entry': 'scripts/run.py',
-                'description': 'Run',
-                'parameters': {},
-            }
-        ]
+        register_activated_skill(query1, skill_data)
 
-        register_skill_tools(query1, skill_tools, skill_data)
-
-        assert loader.has_tool('skill__test__run', query1) is True
-        assert loader.has_tool('skill__test__run', query2) is False
+        assert loader.has_tool(SKILL_EXEC_TOOL_NAME, query1) is True
+        assert loader.has_tool(SKILL_EXEC_TOOL_NAME, query2) is False
 
     def test_no_variables_returns_false(self):
-        from langbot.pkg.provider.tools.loaders.skill import SkillToolLoader
+        from langbot.pkg.provider.tools.loaders.skill import (
+            SKILL_EXEC_TOOL_NAME,
+            SkillToolLoader,
+        )
 
         ap = _make_ap()
         loader = SkillToolLoader(ap)
 
         query = SimpleNamespace(variables=None)
-        assert loader.has_tool('anything', query) is False
+        assert loader.has_tool(SKILL_EXEC_TOOL_NAME, query) is False
 
-
-class TestBoxServiceSkillTool:
-    """Test BoxService.execute_skill_tool() spec construction."""
-
-    def test_build_entry_command_py(self):
-        from langbot.pkg.box.service import BoxService
-
-        ap = _make_ap()
-        ap.instance_config = SimpleNamespace(data={})
-        service = BoxService(ap, client=Mock())
-
-        cmd = service._build_entry_command('scripts/review.py')
-        assert cmd == 'python /workspace/scripts/review.py'
-
-    def test_build_entry_command_sh(self):
-        from langbot.pkg.box.service import BoxService
+    @pytest.mark.asyncio
+    async def test_invoke_tool_skill_not_activated(self):
+        from langbot.pkg.provider.tools.loaders.skill import (
+            SKILL_EXEC_TOOL_NAME,
+            SkillToolLoader,
+        )
 
         ap = _make_ap()
-        ap.instance_config = SimpleNamespace(data={})
-        service = BoxService(ap, client=Mock())
+        loader = SkillToolLoader(ap)
 
-        cmd = service._build_entry_command('scripts/run.sh')
-        assert cmd == 'bash /workspace/scripts/run.sh'
+        query = SimpleNamespace(variables={})
+        with pytest.raises(ValueError, match='not activated'):
+            await loader.invoke_tool(
+                SKILL_EXEC_TOOL_NAME,
+                {'skill_name': 'nonexistent', 'command': 'echo hi'},
+                query,
+            )
 
-    def test_build_entry_command_js(self):
-        from langbot.pkg.box.service import BoxService
-
-        ap = _make_ap()
-        ap.instance_config = SimpleNamespace(data={})
-        service = BoxService(ap, client=Mock())
-
-        cmd = service._build_entry_command('scripts/app.js')
-        assert cmd == 'node /workspace/scripts/app.js'
-
-    def test_build_entry_command_unsupported(self):
-        from langbot.pkg.box.service import BoxService
-        from langbot.pkg.box.errors import BoxValidationError
+    @pytest.mark.asyncio
+    async def test_invoke_tool_calls_box_service(self):
+        from langbot.pkg.provider.tools.loaders.skill import (
+            SKILL_EXEC_TOOL_NAME,
+            SkillToolLoader,
+            register_activated_skill,
+        )
 
         ap = _make_ap()
-        ap.instance_config = SimpleNamespace(data={})
-        service = BoxService(ap, client=Mock())
+        ap.box_service = Mock()
+        ap.box_service.execute_in_skill_sandbox = AsyncMock(return_value={'ok': True})
+        loader = SkillToolLoader(ap)
 
-        with pytest.raises(BoxValidationError, match='unsupported'):
-            service._build_entry_command('scripts/run.rb')
+        query = SimpleNamespace(variables={})
+        skill_data = _make_skill_data(name='my-skill')
+        register_activated_skill(query, skill_data)
 
-    def test_build_entry_command_empty(self):
+        result = await loader.invoke_tool(
+            SKILL_EXEC_TOOL_NAME,
+            {'skill_name': 'my-skill', 'command': 'python scripts/check.py'},
+            query,
+        )
+
+        assert result == {'ok': True}
+        ap.box_service.execute_in_skill_sandbox.assert_called_once_with(
+            skill_data=skill_data,
+            command='python scripts/check.py',
+            query=query,
+        )
+
+    def test_register_multiple_skills(self):
+        from langbot.pkg.provider.tools.loaders.skill import (
+            ACTIVATED_SKILLS_KEY,
+            register_activated_skill,
+        )
+
+        query = SimpleNamespace(variables={})
+        skill1 = _make_skill_data(name='skill-a')
+        skill2 = _make_skill_data(name='skill-b')
+
+        register_activated_skill(query, skill1)
+        register_activated_skill(query, skill2)
+
+        activated = query.variables[ACTIVATED_SKILLS_KEY]
+        assert 'skill-a' in activated
+        assert 'skill-b' in activated
+
+    def test_register_same_skill_twice_no_overwrite(self):
+        from langbot.pkg.provider.tools.loaders.skill import (
+            ACTIVATED_SKILLS_KEY,
+            register_activated_skill,
+        )
+
+        query = SimpleNamespace(variables={})
+        skill_data = _make_skill_data(name='test')
+        register_activated_skill(query, skill_data)
+        register_activated_skill(query, skill_data)
+
+        activated = query.variables[ACTIVATED_SKILLS_KEY]
+        assert len(activated) == 1
+
+
+class TestBoxServiceSkillExec:
+    """Test BoxService skill sandbox execution helpers."""
+
+    @pytest.mark.asyncio
+    async def test_execute_in_skill_sandbox_mounts_skill_rw_and_refreshes_cache(self):
         from langbot.pkg.box.service import BoxService
-        from langbot.pkg.box.errors import BoxValidationError
+        from langbot_plugin.box.models import BoxHostMountMode
+
+        client = Mock()
+        client.execute = AsyncMock(
+            return_value=BoxExecutionResult(
+                session_id='skill-1',
+                backend_name='fake',
+                status=BoxExecutionStatus.COMPLETED,
+                exit_code=0,
+                stdout='ok',
+                stderr='',
+                duration_ms=5,
+            )
+        )
 
         ap = _make_ap()
-        ap.instance_config = SimpleNamespace(data={})
-        service = BoxService(ap, client=Mock())
+        ap.skill_mgr = Mock()
 
-        with pytest.raises(BoxValidationError, match='empty'):
-            service._build_entry_command('')
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ap.instance_config = SimpleNamespace(
+                data={'box': {'profile': 'default', 'allowed_host_mount_roots': [tmpdir], 'default_host_workspace': ''}}
+            )
+
+            service = BoxService(ap, client=client)
+            service._available = True
+
+            skill_data = _make_skill_data(name='writer', package_root=tmpdir)
+            query = SimpleNamespace(query_id=7)
+
+            result = await service.execute_in_skill_sandbox(skill_data, 'python scripts/run.py', query)
+
+        assert result['ok'] is True
+        spec = client.execute.await_args.args[0]
+        assert spec.host_path_mode == BoxHostMountMode.READ_WRITE
+        ap.skill_mgr.refresh_skill_from_disk.assert_called_once_with('writer')
 
     def test_build_skill_session_id_with_launcher(self):
         from langbot.pkg.box.service import BoxService
