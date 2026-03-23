@@ -318,15 +318,37 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
         message: platform_message.MessageChain,
     ):
         """Send a message to a user."""
-        items = await OpenClawWeixinMessageConverter.yiri2target(message)
         context_token = self._context_tokens.get(target_id, '')
 
-        for item_dict in items:
-            item_type = item_dict.get('type')
-            if item_type == MessageItem.TEXT:
-                text = item_dict.get('text_item', {}).get('text', '')
-                if text:
-                    await self.client.send_text(target_id, text, context_token)
+        for component in message:
+            try:
+                if isinstance(component, platform_message.Plain):
+                    if component.text:
+                        await self.client.send_text(target_id, component.text, context_token)
+
+                elif isinstance(component, platform_message.Image):
+                    img_bytes, _ = await component.get_bytes()
+                    await self.client.send_image(target_id, img_bytes, context_token)
+
+                elif isinstance(component, platform_message.File):
+                    file_bytes = await self._get_component_bytes(component)
+                    if file_bytes:
+                        await self.client.send_file(target_id, file_bytes, component.name or 'file', context_token)
+
+                elif isinstance(component, platform_message.Voice):
+                    voice_bytes = await self._get_component_bytes(component)
+                    if voice_bytes:
+                        await self.client.send_voice(target_id, voice_bytes, component.length or 0, context_token)
+
+                elif isinstance(component, platform_message.Forward):
+                    for node in component.node_list:
+                        if node.message_chain:
+                            await self.send_message(target_type, target_id, node.message_chain)
+
+            except Exception:
+                await self.logger.error(
+                    f'Failed to send component {type(component).__name__}: {traceback.format_exc()}'
+                )
 
     async def reply_message(
         self,
@@ -343,6 +365,29 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
 
     async def is_muted(self, group_id: int) -> bool:
         return False
+
+    @staticmethod
+    async def _get_component_bytes(component: platform_message.MessageComponent) -> typing.Optional[bytes]:
+        """Extract raw bytes from a File or Voice component."""
+        b64_val = getattr(component, 'base64', None)
+        url_val = getattr(component, 'url', None)
+        path_val = getattr(component, 'path', None)
+
+        if b64_val:
+            return base64.b64decode(b64_val)
+        elif url_val and url_val.startswith(('http://', 'https://')):
+            import aiohttp
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url_val) as resp:
+                    if resp.status == 200:
+                        return await resp.read()
+        elif path_val:
+            import asyncio
+
+            with open(path_val, 'rb') as f:
+                return await asyncio.to_thread(f.read)
+        return None
 
     def register_listener(
         self,

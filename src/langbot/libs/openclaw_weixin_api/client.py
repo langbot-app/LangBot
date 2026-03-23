@@ -297,6 +297,150 @@ class OpenClawWeixinClient:
         unpadder = PKCS7(128).unpadder()
         return unpadder.update(padded) + unpadder.finalize()
 
+    async def upload_media(
+        self,
+        file_bytes: bytes,
+        to_user_id: str,
+        media_type: int,
+    ) -> CDNMedia:
+        """Encrypt and upload media to WeChat CDN.
+
+        Args:
+            file_bytes: Raw file bytes to upload.
+            to_user_id: Recipient user ID.
+            media_type: 1=IMAGE, 2=VIDEO, 3=FILE, 4=VOICE.
+
+        Returns:
+            CDNMedia with encrypt_query_param and aes_key for use in sendMessage.
+        """
+        import hashlib
+
+        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+        from cryptography.hazmat.primitives.padding import PKCS7
+
+        # 1. Generate random 16-byte AES key
+        raw_key = os.urandom(16)
+        aes_key_hex = raw_key.hex()  # 32-char hex string
+
+        # 2. Encode key for CDNMedia: base64(hex_string) — same for all media types
+        # Matches official SDK: Buffer.from(aeskey_hex).toString("base64")
+        encoded_key = base64.b64encode(aes_key_hex.encode('utf-8')).decode('utf-8')
+
+        # 3. Encrypt file with AES-128-ECB + PKCS7
+        padder = PKCS7(128).padder()
+        padded = padder.update(file_bytes) + padder.finalize()
+        cipher = Cipher(algorithms.AES(raw_key), modes.ECB())
+        encryptor = cipher.encryptor()
+        encrypted = encryptor.update(padded) + encryptor.finalize()
+
+        # 4. Get upload URL
+        raw_md5 = hashlib.md5(file_bytes).hexdigest()
+        filekey = os.urandom(16).hex()  # 32-char hex, matches official SDK
+
+        upload_resp = await self.get_upload_url(
+            filekey=filekey,
+            media_type=media_type,
+            to_user_id=to_user_id,
+            rawsize=len(file_bytes),
+            rawfilemd5=raw_md5,
+            filesize=len(encrypted),
+            aeskey=aes_key_hex,  # hex string, as expected by the API
+        )
+
+        if not upload_resp.upload_param:
+            raise ApiError('Failed to get upload URL', status=0)
+
+        # 5. Upload to CDN
+        # upload_param is an opaque token from the server — pass it as-is
+        session = await self._get_session()
+        cdn_url = f'{CDN_BASE_URL}/upload?encrypted_query_param={quote(upload_resp.upload_param, safe="")}&filekey={quote(filekey, safe="")}'
+        logger.debug(
+            'CDN upload: url=%s raw_size=%d encrypted_size=%d md5=%s aeskey=%s',
+            cdn_url,
+            len(file_bytes),
+            len(encrypted),
+            raw_md5,
+            encoded_key,
+        )
+
+        async with session.post(
+            cdn_url,
+            data=encrypted,
+            headers={'Content-Type': 'application/octet-stream'},
+            timeout=aiohttp.ClientTimeout(total=120),
+        ) as resp:
+            if resp.status != 200:
+                text = await resp.text()
+                logger.error('CDN upload failed: status=%d url=%s body=%s', resp.status, cdn_url, text[:500])
+                raise ApiError(f'CDN upload failed: {resp.status} {text}', status=resp.status)
+            download_param = resp.headers.get('x-encrypted-param', '')
+
+        if not download_param:
+            raise ApiError('CDN upload succeeded but no x-encrypted-param returned', status=0)
+
+        return CDNMedia(
+            encrypt_query_param=download_param,
+            aes_key=encoded_key,
+            encrypt_type=1,
+        )
+
+    async def send_image(
+        self,
+        to_user_id: str,
+        image_bytes: bytes,
+        context_token: str = '',
+    ) -> None:
+        """Upload an image to CDN and send it."""
+        media = await self.upload_media(image_bytes, to_user_id, media_type=1)
+        item = MessageItem(
+            type=MessageItem.IMAGE,
+            image_item=ImageItem(
+                media=media,
+                aeskey=media.aes_key,
+            ),
+        )
+        await self.send_message(to_user_id, [item], context_token)
+
+    async def send_file(
+        self,
+        to_user_id: str,
+        file_bytes: bytes,
+        file_name: str,
+        context_token: str = '',
+    ) -> None:
+        """Upload a file to CDN and send it."""
+        import hashlib
+
+        media = await self.upload_media(file_bytes, to_user_id, media_type=3)
+        item = MessageItem(
+            type=MessageItem.FILE,
+            file_item=FileItem(
+                media=media,
+                file_name=file_name,
+                md5=hashlib.md5(file_bytes).hexdigest(),
+                len=str(len(file_bytes)),
+            ),
+        )
+        await self.send_message(to_user_id, [item], context_token)
+
+    async def send_voice(
+        self,
+        to_user_id: str,
+        voice_bytes: bytes,
+        playtime: int = 0,
+        context_token: str = '',
+    ) -> None:
+        """Upload a voice message to CDN and send it."""
+        media = await self.upload_media(voice_bytes, to_user_id, media_type=4)
+        item = MessageItem(
+            type=MessageItem.VOICE,
+            voice_item=VoiceItem(
+                media=media,
+                playtime=playtime,
+            ),
+        )
+        await self.send_message(to_user_id, [item], context_token)
+
     async def get_upload_url(
         self,
         filekey: str,
@@ -318,6 +462,7 @@ class OpenClawWeixinClient:
             'rawsize': rawsize,
             'rawfilemd5': rawfilemd5,
             'filesize': filesize,
+            'no_need_thumb': True,
         }
         if thumb_rawsize is not None:
             payload['thumb_rawsize'] = thumb_rawsize
@@ -329,6 +474,7 @@ class OpenClawWeixinClient:
             payload['aeskey'] = aeskey
 
         data = await self._post('ilink/bot/getuploadurl', payload)
+        logger.debug('get_upload_url response: %s', data)
         return GetUploadUrlResponse(
             upload_param=data.get('upload_param'),
             thumb_upload_param=data.get('thumb_upload_param'),
