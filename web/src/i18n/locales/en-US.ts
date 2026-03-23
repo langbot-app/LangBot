@@ -1223,7 +1223,8 @@ const enUS = {
     displayNamePlaceholder: 'Display name (supports any language)',
     skillSlug: 'Directory Name',
     skillSlugPlaceholder: 'english-name-only',
-    skillSlugHelp: 'Used as the skill directory name. Only letters, numbers, hyphens and underscores.',
+    skillSlugHelp:
+      'Used as the skill directory name. Only letters, numbers, hyphens and underscores.',
     skillDescription: 'Skill Description',
     skillInstructions: 'Instructions',
     autoActivate: 'Auto Activate',
@@ -1246,14 +1247,15 @@ const enUS = {
     disabled: 'Disabled',
     preview: 'Preview',
     previewInstructions: 'Preview Instructions',
-    instructionsPlaceholder:
-      'Enter skill instructions in Markdown format...',
+    instructionsPlaceholder: 'Enter skill instructions in Markdown format...',
     descriptionPlaceholder:
       'A brief description of what this skill does (shown to the LLM)',
     keywordsPlaceholder: 'Enter keywords separated by commas',
-    keywordsHelp: 'When a user message contains these keywords, this skill will be activated. Leave empty to rely on auto-activation only.',
+    keywordsHelp:
+      'When a user message contains these keywords, this skill will be activated. Leave empty to rely on auto-activation only.',
     packageRoot: 'Package Directory',
-    packageRootHelp: 'Optional. Only needed when importing an existing skill directory. Leave empty for new skills.',
+    packageRootHelp:
+      'Optional. Only needed when importing an existing skill directory. Leave empty for new skills.',
     skillType: 'Type',
     typeSkill: 'Skill',
     typeWorkflow: 'Workflow',

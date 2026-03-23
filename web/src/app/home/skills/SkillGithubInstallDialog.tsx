@@ -71,7 +71,9 @@ export default function SkillGithubInstallDialog({
   const [installError, setInstallError] = useState<string | null>(null);
   const [githubURL, setGithubURL] = useState('');
   const [githubReleases, setGithubReleases] = useState<GithubRelease[]>([]);
-  const [selectedRelease, setSelectedRelease] = useState<GithubRelease | null>(null);
+  const [selectedRelease, setSelectedRelease] = useState<GithubRelease | null>(
+    null,
+  );
   const [githubAssets, setGithubAssets] = useState<GithubAsset[]>([]);
   const [selectedAsset, setSelectedAsset] = useState<GithubAsset | null>(null);
   const [githubOwner, setGithubOwner] = useState('');
@@ -239,8 +241,7 @@ export default function SkillGithubInstallDialog({
                         {release.name || release.tag_name}
                       </CardTitle>
                       <CardDescription className="text-xs mt-1">
-                        {t('skills.releaseTag', { tag: release.tag_name })}{' '}
-                        •{' '}
+                        {t('skills.releaseTag', { tag: release.tag_name })} •{' '}
                         {t('skills.publishedAt', {
                           date: new Date(
                             release.published_at,
@@ -341,9 +342,7 @@ export default function SkillGithubInstallDialog({
                 </div>
                 <div>
                   <span className="text-sm font-medium">Release: </span>
-                  <span className="text-sm">
-                    {selectedRelease.tag_name}
-                  </span>
+                  <span className="text-sm">{selectedRelease.tag_name}</span>
                 </div>
                 <div>
                   <span className="text-sm font-medium">File: </span>
@@ -372,28 +371,20 @@ export default function SkillGithubInstallDialog({
         <DialogFooter>
           {status === InstallStatus.WAIT_INPUT && (
             <>
-              <Button
-                variant="outline"
-                onClick={() => handleOpenChange(false)}
-              >
+              <Button variant="outline" onClick={() => handleOpenChange(false)}>
                 {t('common.cancel')}
               </Button>
               <Button
                 onClick={fetchReleases}
                 disabled={!githubURL.trim() || fetchingReleases}
               >
-                {fetchingReleases
-                  ? t('skills.loading')
-                  : t('common.confirm')}
+                {fetchingReleases ? t('skills.loading') : t('common.confirm')}
               </Button>
             </>
           )}
           {status === InstallStatus.ASK_CONFIRM && (
             <>
-              <Button
-                variant="outline"
-                onClick={() => handleOpenChange(false)}
-              >
+              <Button variant="outline" onClick={() => handleOpenChange(false)}>
                 {t('common.cancel')}
               </Button>
               <Button onClick={handleConfirmInstall}>

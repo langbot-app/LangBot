@@ -43,7 +43,9 @@ export default function PipelineExtension({
     [],
   );
   const [tempSelectedMCPIds, setTempSelectedMCPIds] = useState<string[]>([]);
-  const [tempSelectedSkillIds, setTempSelectedSkillIds] = useState<string[]>([]);
+  const [tempSelectedSkillIds, setTempSelectedSkillIds] = useState<string[]>(
+    [],
+  );
 
   useEffect(() => {
     loadExtensions();
@@ -775,9 +777,7 @@ export default function PipelineExtension({
       <Dialog open={skillDialogOpen} onOpenChange={setSkillDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>
-              {t('pipelines.extensions.selectSkills')}
-            </DialogTitle>
+            <DialogTitle>{t('pipelines.extensions.selectSkills')}</DialogTitle>
           </DialogHeader>
           {allSkills.length > 0 && (
             <div

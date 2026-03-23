@@ -26,29 +26,31 @@ def _ensure_skill_exec_tool(query: pipeline_query.Query) -> None:
     if any(getattr(tool, 'name', None) == skill_loader.SKILL_EXEC_TOOL_NAME for tool in query.use_funcs):
         return
 
-    query.use_funcs.append(resource_tool.LLMTool(
-        name=skill_loader.SKILL_EXEC_TOOL_NAME,
-        human_desc='Execute a command in the activated skill\'s sandbox',
-        description=(
-            'Execute a command in the activated skill\'s sandbox environment. '
-            'The skill directory is mounted at /workspace with write access.'
-        ),
-        parameters={
-            'type': 'object',
-            'properties': {
-                'skill_name': {
-                    'type': 'string',
-                    'description': 'Name of the activated skill',
+    query.use_funcs.append(
+        resource_tool.LLMTool(
+            name=skill_loader.SKILL_EXEC_TOOL_NAME,
+            human_desc="Execute a command in the activated skill's sandbox",
+            description=(
+                "Execute a command in the activated skill's sandbox environment. "
+                'The skill directory is mounted at /workspace with write access.'
+            ),
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'skill_name': {
+                        'type': 'string',
+                        'description': 'Name of the activated skill',
+                    },
+                    'command': {
+                        'type': 'string',
+                        'description': 'Shell command to run in the sandbox',
+                    },
                 },
-                'command': {
-                    'type': 'string',
-                    'description': 'Shell command to run in the sandbox',
-                },
+                'required': ['skill_name', 'command'],
             },
-            'required': ['skill_name', 'command'],
-        },
-        func=lambda: None,
-    ))
+            func=lambda: None,
+        )
+    )
 
 
 def prepare_skill_activation(

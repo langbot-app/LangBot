@@ -316,9 +316,7 @@ class LocalAgentRunner(runner.RequestRunner):
             try:
                 activation = prepare_skill_activation(self.ap, query, first_content)
                 if activation:
-                    self.ap.logger.info(
-                        f'Skill activations detected: {activation.activated_skill_names}'
-                    )
+                    self.ap.logger.info(f'Skill activations detected: {activation.activated_skill_names}')
 
                     skill_system_msg = provider_message.Message(role='system', content=activation.prompt)
 
@@ -369,7 +367,9 @@ class LocalAgentRunner(runner.RequestRunner):
                                 yield provider_message.MessageChunk(
                                     role=last_role,
                                     content=accumulated_content,
-                                    tool_calls=list(tool_calls_map.values()) if (tool_calls_map and msg.is_final) else None,
+                                    tool_calls=list(tool_calls_map.values())
+                                    if (tool_calls_map and msg.is_final)
+                                    else None,
                                     is_final=msg.is_final,
                                     msg_sequence=msg_sequence,
                                 )

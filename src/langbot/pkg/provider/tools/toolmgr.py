@@ -13,6 +13,7 @@ if TYPE_CHECKING:
         native as native_loader,
         plugin as plugin_loader,
         skill as skill_loader,
+        skill_authoring as skill_authoring_loader,
     )
 
 
@@ -25,6 +26,7 @@ class ToolManager:
     plugin_tool_loader: plugin_loader.PluginToolLoader
     mcp_tool_loader: mcp_loader.MCPLoader
     skill_tool_loader: skill_loader.SkillToolLoader
+    skill_authoring_tool_loader: skill_authoring_loader.SkillAuthoringToolLoader
 
     def __init__(self, ap: app.Application):
         self.ap = ap
@@ -49,6 +51,8 @@ class ToolManager:
         await self.mcp_tool_loader.initialize()
         self.skill_tool_loader = skill_loader.SkillToolLoader(self.ap)
         await self.skill_tool_loader.initialize()
+        self.skill_authoring_tool_loader = skill_authoring_loader.SkillAuthoringToolLoader(self.ap)
+        await self.skill_authoring_tool_loader.initialize()
 
     async def get_all_tools(
         self, bound_plugins: list[str] | None = None, bound_mcp_servers: list[str] | None = None
@@ -57,6 +61,7 @@ class ToolManager:
         all_functions: list[resource_tool.LLMTool] = []
 
         all_functions.extend(await self.native_tool_loader.get_tools())
+        all_functions.extend(await self.skill_authoring_tool_loader.get_tools())
         all_functions.extend(await self.plugin_tool_loader.get_tools(bound_plugins))
         all_functions.extend(await self.mcp_tool_loader.get_tools(bound_mcp_servers))
 
@@ -123,6 +128,8 @@ class ToolManager:
             return await self.plugin_tool_loader.invoke_tool(name, parameters, query)
         elif await self.mcp_tool_loader.has_tool(name):
             return await self.mcp_tool_loader.invoke_tool(name, parameters, query)
+        elif await self.skill_authoring_tool_loader.has_tool(name):
+            return await self.skill_authoring_tool_loader.invoke_tool(name, parameters, query)
         elif self.skill_tool_loader.has_tool(name, query):
             return await self.skill_tool_loader.invoke_tool(name, parameters, query)
         else:
@@ -133,4 +140,5 @@ class ToolManager:
         await self.native_tool_loader.shutdown()
         await self.plugin_tool_loader.shutdown()
         await self.mcp_tool_loader.shutdown()
+        await self.skill_authoring_tool_loader.shutdown()
         await self.skill_tool_loader.shutdown()

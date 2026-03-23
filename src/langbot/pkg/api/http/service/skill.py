@@ -17,12 +17,27 @@ from ....skill.utils import parse_frontmatter
 
 
 # Fields that live in DB (registry/governance)
-_DB_FIELDS = {'uuid', 'name', 'package_root', 'entry_file', 'sandbox_timeout_sec', 'sandbox_network', 'is_enabled', 'is_builtin'}
+_DB_FIELDS = {
+    'uuid',
+    'name',
+    'package_root',
+    'entry_file',
+    'sandbox_timeout_sec',
+    'sandbox_network',
+    'is_enabled',
+    'is_builtin',
+}
 
 # Fields that live in SKILL.md frontmatter (package metadata)
 _FRONTMATTER_FIELDS = {
-    'display_name', 'description', 'type', 'author', 'version', 'tags',
-    'auto_activate', 'trigger_keywords',
+    'display_name',
+    'description',
+    'type',
+    'author',
+    'version',
+    'tags',
+    'auto_activate',
+    'trigger_keywords',
 }
 
 
@@ -363,10 +378,7 @@ class SkillService:
         if real_root and hasattr(self.ap, 'box_service') and self.ap.box_service is not None:
             allowed_roots = self.ap.box_service.allowed_host_mount_roots
             if allowed_roots:
-                is_allowed = any(
-                    real_root == ar or real_root.startswith(f'{ar}{os.sep}')
-                    for ar in allowed_roots
-                )
+                is_allowed = any(real_root == ar or real_root.startswith(f'{ar}{os.sep}') for ar in allowed_roots)
                 if not is_allowed:
                     raise ValueError('package_root is outside allowed_host_mount_roots')
 

@@ -113,7 +113,9 @@ export default function SkillForm({
         toast.success(t('skills.saveSuccess'));
         onSkillUpdated(initSkillId);
       } else {
-        const resp = await httpClient.createSkill(skillData as Omit<Skill, 'uuid'>);
+        const resp = await httpClient.createSkill(
+          skillData as Omit<Skill, 'uuid'>,
+        );
         toast.success(t('skills.createSuccess'));
         onNewSkillCreated(resp.uuid);
       }
@@ -142,11 +144,18 @@ export default function SkillForm({
         <Input
           id="name"
           value={skill.name || ''}
-          onChange={(e) => setSkill({ ...skill, name: e.target.value.replace(/[^a-zA-Z0-9_-]/g, '') })}
+          onChange={(e) =>
+            setSkill({
+              ...skill,
+              name: e.target.value.replace(/[^a-zA-Z0-9_-]/g, ''),
+            })
+          }
           placeholder={t('skills.skillSlugPlaceholder')}
           className="font-mono"
         />
-        <p className="text-xs text-muted-foreground">{t('skills.skillSlugHelp')}</p>
+        <p className="text-xs text-muted-foreground">
+          {t('skills.skillSlugHelp')}
+        </p>
       </div>
 
       <div className="space-y-2">
@@ -169,7 +178,9 @@ export default function SkillForm({
               name="type"
               value="skill"
               checked={skill.type === 'skill'}
-              onChange={() => setSkill({ ...skill, type: 'skill', auto_activate: true })}
+              onChange={() =>
+                setSkill({ ...skill, type: 'skill', auto_activate: true })
+              }
               className="accent-primary"
             />
             <span className="text-sm">{t('skills.typeSkill')}</span>
@@ -180,7 +191,9 @@ export default function SkillForm({
               name="type"
               value="workflow"
               checked={skill.type === 'workflow'}
-              onChange={() => setSkill({ ...skill, type: 'workflow', auto_activate: false })}
+              onChange={() =>
+                setSkill({ ...skill, type: 'workflow', auto_activate: false })
+              }
               className="accent-primary"
             />
             <span className="text-sm">{t('skills.typeWorkflow')}</span>
@@ -241,14 +254,18 @@ export default function SkillForm({
         {showAdvanced && (
           <div className="p-3 pt-0 space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="trigger_keywords">{t('skills.triggerKeywords')}</Label>
+              <Label htmlFor="trigger_keywords">
+                {t('skills.triggerKeywords')}
+              </Label>
               <Input
                 id="trigger_keywords"
                 value={keywordsInput}
                 onChange={(e) => setKeywordsInput(e.target.value)}
                 placeholder={t('skills.keywordsPlaceholder')}
               />
-              <p className="text-xs text-muted-foreground">{t('skills.keywordsHelp')}</p>
+              <p className="text-xs text-muted-foreground">
+                {t('skills.keywordsHelp')}
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -256,7 +273,9 @@ export default function SkillForm({
               <div className="flex gap-2">
                 <Input
                   value={skill.package_root || ''}
-                  onChange={(e) => setSkill({ ...skill, package_root: e.target.value })}
+                  onChange={(e) =>
+                    setSkill({ ...skill, package_root: e.target.value })
+                  }
                   placeholder={`data/skills/${skill.name || '<skill-name>'}/`}
                   className="flex-1"
                 />
@@ -272,24 +291,33 @@ export default function SkillForm({
                   {scanning ? t('common.loading') : t('skills.scan')}
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">{t('skills.packageRootHelp')}</p>
+              <p className="text-xs text-muted-foreground">
+                {t('skills.packageRootHelp')}
+              </p>
             </div>
 
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 flex-1">
-                <Label className="text-xs whitespace-nowrap">{t('skills.sandboxTimeout')}</Label>
+                <Label className="text-xs whitespace-nowrap">
+                  {t('skills.sandboxTimeout')}
+                </Label>
                 <Input
                   type="number"
                   className="w-24"
                   value={skill.sandbox_timeout_sec ?? 120}
                   onChange={(e) =>
-                    setSkill({ ...skill, sandbox_timeout_sec: parseInt(e.target.value) || 120 })
+                    setSkill({
+                      ...skill,
+                      sandbox_timeout_sec: parseInt(e.target.value) || 120,
+                    })
                   }
                 />
                 <span className="text-xs text-muted-foreground">s</span>
               </div>
               <div className="flex items-center gap-2">
-                <Label className="text-xs whitespace-nowrap">{t('skills.sandboxNetwork')}</Label>
+                <Label className="text-xs whitespace-nowrap">
+                  {t('skills.sandboxNetwork')}
+                </Label>
                 <Switch
                   checked={skill.sandbox_network ?? false}
                   onCheckedChange={(checked) =>

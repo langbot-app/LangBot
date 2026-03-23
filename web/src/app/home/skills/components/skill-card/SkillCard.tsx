@@ -2,7 +2,11 @@ import { SkillCardVO } from '@/app/home/skills/components/skill-card/SkillCardVO
 import { useTranslation } from 'react-i18next';
 import styles from './SkillCard.module.css';
 
-export default function SkillCard({ skillCardVO }: { skillCardVO: SkillCardVO }) {
+export default function SkillCard({
+  skillCardVO,
+}: {
+  skillCardVO: SkillCardVO;
+}) {
   const { t } = useTranslation();
   return (
     <div className={`${styles.cardContainer}`}>

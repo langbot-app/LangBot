@@ -11,7 +11,7 @@ from ..entity.persistence import skill as persistence_skill
 from .utils import parse_frontmatter
 
 if typing.TYPE_CHECKING:
-    import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+    pass
 
 
 class SkillManager:
@@ -98,9 +98,7 @@ class SkillManager:
         entry_file = skill_data.get('entry_file', 'SKILL.md')
 
         if not package_root:
-            self.ap.logger.warning(
-                f'Skill "{skill_data["name"]}" has no package_root, skipping'
-            )
+            self.ap.logger.warning(f'Skill "{skill_data["name"]}" has no package_root, skipping')
             return False
 
         entry_path = os.path.join(package_root, entry_file)
@@ -108,14 +106,10 @@ class SkillManager:
             with open(entry_path, 'r', encoding='utf-8') as f:
                 content = f.read()
         except FileNotFoundError:
-            self.ap.logger.warning(
-                f'Skill "{skill_data["name"]}" entry file not found: {entry_path}, skipping'
-            )
+            self.ap.logger.warning(f'Skill "{skill_data["name"]}" entry file not found: {entry_path}, skipping')
             return False
         except OSError as e:
-            self.ap.logger.warning(
-                f'Skill "{skill_data["name"]}" failed to read entry file: {e}, skipping'
-            )
+            self.ap.logger.warning(f'Skill "{skill_data["name"]}" failed to read entry file: {e}, skipping')
             return False
 
         # Parse frontmatter + body
@@ -167,11 +161,13 @@ class SkillManager:
         lines = ['Available Skills:']
         for skill in skills_to_index:
             display = skill.get('display_name') or skill['name']
-            lines.append(f"- {skill['name']} ({display}): {skill.get('description', '')}")
+            lines.append(f'- {skill["name"]} ({display}): {skill.get("description", "")}')
 
         return '\n'.join(lines)
 
-    def build_skill_aware_prompt_addition(self, pipeline_uuid: str | None = None, bound_skills: list[str] | None = None) -> str:
+    def build_skill_aware_prompt_addition(
+        self, pipeline_uuid: str | None = None, bound_skills: list[str] | None = None
+    ) -> str:
         """Build the skill awareness instruction to add to system prompt."""
         skill_index = self.get_skill_index(pipeline_uuid, bound_skills)
 

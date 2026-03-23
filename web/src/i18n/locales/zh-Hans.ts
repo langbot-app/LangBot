@@ -1191,11 +1191,11 @@ const zhHans = {
     disabled: '已禁用',
     preview: '预览',
     previewInstructions: '预览指令',
-    instructionsPlaceholder:
-      '使用 Markdown 格式输入技能指令...',
+    instructionsPlaceholder: '使用 Markdown 格式输入技能指令...',
     descriptionPlaceholder: '简短描述此技能的功能（会展示给 LLM）',
     keywordsPlaceholder: '输入关键词，用逗号分隔',
-    keywordsHelp: '当用户消息包含这些关键词时，将强制激活此技能。留空则仅依赖自动激活。',
+    keywordsHelp:
+      '当用户消息包含这些关键词时，将强制激活此技能。留空则仅依赖自动激活。',
     packageRoot: '技能目录',
     packageRootHelp: '非必填。仅在导入已有技能目录时需要填写，新建技能可留空。',
     skillType: '类型',

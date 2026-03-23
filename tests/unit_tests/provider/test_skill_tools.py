@@ -448,6 +448,220 @@ class TestSkillExecLoader:
             )
 
 
+class TestSkillAuthoringToolLoader:
+    """Test built-in skill authoring tools."""
+
+    @pytest.mark.asyncio
+    async def test_list_skills_returns_summaries_by_default(self):
+        from langbot.pkg.provider.tools.loaders.skill_authoring import (
+            LIST_SKILLS_TOOL_NAME,
+            SkillAuthoringToolLoader,
+        )
+
+        ap = _make_ap()
+        ap.skill_service = SimpleNamespace(
+            list_skills=AsyncMock(
+                return_value=[
+                    _make_skill_data(name='alpha', instructions='Alpha instructions', updated_at='2026-03-23T00:00:00Z')
+                ]
+            )
+        )
+        ap.pipeline_service = SimpleNamespace()
+
+        loader = SkillAuthoringToolLoader(ap)
+        await loader.initialize()
+
+        result = await loader.invoke_tool(LIST_SKILLS_TOOL_NAME, {}, SimpleNamespace(pipeline_uuid='pipe-1'))
+
+        assert result['skills'] == [
+            {
+                'uuid': 'uuid-alpha',
+                'name': 'alpha',
+                'description': 'Description of alpha',
+                'type': 'skill',
+                'auto_activate': True,
+                'is_enabled': True,
+                'is_builtin': False,
+                'updated_at': '2026-03-23T00:00:00Z',
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_create_skill_calls_service_and_returns_detail(self):
+        from langbot.pkg.provider.tools.loaders.skill_authoring import (
+            CREATE_SKILL_TOOL_NAME,
+            SkillAuthoringToolLoader,
+        )
+
+        created_skill = _make_skill_data(
+            name='writer',
+            description='Writes release notes',
+            instructions='Do the release notes work.',
+            display_name='Release Writer',
+        )
+
+        ap = _make_ap()
+        ap.skill_service = SimpleNamespace(create_skill=AsyncMock(return_value=created_skill))
+        ap.pipeline_service = SimpleNamespace()
+
+        loader = SkillAuthoringToolLoader(ap)
+        await loader.initialize()
+
+        result = await loader.invoke_tool(
+            CREATE_SKILL_TOOL_NAME,
+            {
+                'name': 'writer',
+                'display_name': 'Release Writer',
+                'description': 'Writes release notes',
+                'instructions': 'Do the release notes work.',
+                'trigger_keywords': ['release', 'notes'],
+            },
+            SimpleNamespace(pipeline_uuid='pipe-1'),
+        )
+
+        assert result['skill']['name'] == 'writer'
+        assert result['skill']['instructions'] == 'Do the release notes work.'
+        ap.skill_service.create_skill.assert_awaited_once()
+        payload = ap.skill_service.create_skill.await_args.args[0]
+        assert payload['name'] == 'writer'
+        assert payload['trigger_keywords'] == ['release', 'notes']
+
+    @pytest.mark.asyncio
+    async def test_update_skill_resolves_name_before_patch(self):
+        from langbot.pkg.provider.tools.loaders.skill_authoring import (
+            SkillAuthoringToolLoader,
+            UPDATE_SKILL_TOOL_NAME,
+        )
+
+        ap = _make_ap()
+        ap.skill_service = SimpleNamespace(
+            get_skill_by_name=AsyncMock(return_value={'uuid': 'uuid-writer', 'name': 'writer'}),
+            get_skill=AsyncMock(return_value=_make_skill_data(name='writer', instructions='Old instructions')),
+            update_skill=AsyncMock(return_value=_make_skill_data(name='writer', instructions='New instructions')),
+        )
+        ap.pipeline_service = SimpleNamespace()
+
+        loader = SkillAuthoringToolLoader(ap)
+        await loader.initialize()
+
+        result = await loader.invoke_tool(
+            UPDATE_SKILL_TOOL_NAME,
+            {
+                'skill_name': 'writer',
+                'updates': {'instructions': 'New instructions'},
+            },
+            SimpleNamespace(pipeline_uuid='pipe-1'),
+        )
+
+        assert result['skill']['instructions'] == 'New instructions'
+        ap.skill_service.update_skill.assert_awaited_once_with('uuid-writer', {'instructions': 'New instructions'})
+
+    @pytest.mark.asyncio
+    async def test_get_pipeline_skills_defaults_to_current_query_pipeline(self):
+        from langbot.pkg.provider.tools.loaders.skill_authoring import (
+            GET_PIPELINE_SKILLS_TOOL_NAME,
+            SkillAuthoringToolLoader,
+        )
+
+        ap = _make_ap()
+        ap.skill_service = SimpleNamespace(
+            list_skills=AsyncMock(
+                return_value=[
+                    _make_skill_data(name='alpha'),
+                    _make_skill_data(name='beta'),
+                ]
+            )
+        )
+        ap.pipeline_service = SimpleNamespace(
+            get_pipeline=AsyncMock(
+                return_value={
+                    'uuid': 'pipe-1',
+                    'extensions_preferences': {
+                        'enable_all_skills': False,
+                        'skills': ['uuid-alpha'],
+                    },
+                }
+            )
+        )
+
+        loader = SkillAuthoringToolLoader(ap)
+        await loader.initialize()
+
+        result = await loader.invoke_tool(
+            GET_PIPELINE_SKILLS_TOOL_NAME,
+            {},
+            SimpleNamespace(pipeline_uuid='pipe-1'),
+        )
+
+        assert result['pipeline_uuid'] == 'pipe-1'
+        assert result['enable_all_skills'] is False
+        assert result['bound_skill_uuids'] == ['uuid-alpha']
+        assert result['bound_skill_names'] == ['alpha']
+
+    @pytest.mark.asyncio
+    async def test_update_pipeline_skills_preserves_other_extension_settings(self):
+        from langbot.pkg.provider.tools.loaders.skill_authoring import (
+            SkillAuthoringToolLoader,
+            UPDATE_PIPELINE_SKILLS_TOOL_NAME,
+        )
+
+        original_pipeline = {
+            'uuid': 'pipe-1',
+            'extensions_preferences': {
+                'enable_all_plugins': False,
+                'enable_all_mcp_servers': False,
+                'enable_all_skills': False,
+                'plugins': [{'name': 'plugin-a'}],
+                'mcp_servers': ['mcp-a'],
+                'skills': ['uuid-old'],
+            },
+        }
+        updated_pipeline = {
+            'uuid': 'pipe-1',
+            'extensions_preferences': {
+                'enable_all_plugins': False,
+                'enable_all_mcp_servers': False,
+                'enable_all_skills': False,
+                'plugins': [{'name': 'plugin-a'}],
+                'mcp_servers': ['mcp-a'],
+                'skills': ['uuid-new'],
+            },
+        }
+
+        ap = _make_ap()
+        ap.skill_service = SimpleNamespace(
+            get_skill_by_name=AsyncMock(return_value={'uuid': 'uuid-new', 'name': 'new-skill'}),
+            list_skills=AsyncMock(return_value=[_make_skill_data(name='new-skill', uuid='uuid-new')]),
+        )
+        ap.pipeline_service = SimpleNamespace(
+            get_pipeline=AsyncMock(side_effect=[original_pipeline, updated_pipeline]),
+            update_pipeline_extensions=AsyncMock(),
+        )
+
+        loader = SkillAuthoringToolLoader(ap)
+        await loader.initialize()
+
+        result = await loader.invoke_tool(
+            UPDATE_PIPELINE_SKILLS_TOOL_NAME,
+            {
+                'bound_skill_names': ['new-skill'],
+                'enable_all_skills': False,
+            },
+            SimpleNamespace(pipeline_uuid='pipe-1'),
+        )
+
+        ap.pipeline_service.update_pipeline_extensions.assert_awaited_once_with(
+            pipeline_uuid='pipe-1',
+            bound_plugins=[{'name': 'plugin-a'}],
+            bound_mcp_servers=['mcp-a'],
+            enable_all_plugins=False,
+            enable_all_mcp_servers=False,
+            bound_skills=['uuid-new'],
+            enable_all_skills=False,
+        )
+        assert result['bound_skill_names'] == ['new-skill']
+
+
 class TestBoxServiceSkillExec:
     """Test BoxService skill sandbox execution helpers."""
 

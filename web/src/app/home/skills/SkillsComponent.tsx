@@ -21,7 +21,9 @@ const SkillsComponent = forwardRef<SkillsComponentRef>(
   function SkillsComponent(_props, ref) {
     const { t } = useTranslation();
     const [skillList, setSkillList] = useState<SkillCardVO[]>([]);
-    const [filteredSkillList, setFilteredSkillList] = useState<SkillCardVO[]>([]);
+    const [filteredSkillList, setFilteredSkillList] = useState<SkillCardVO[]>(
+      [],
+    );
     const [selectedSkillId, setSelectedSkillId] = useState<string>('');
     const [detailDialogOpen, setDetailDialogOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -54,7 +56,11 @@ const SkillsComponent = forwardRef<SkillsComponentRef>(
               ? new Date(skill.updated_at)
               : currentTime;
             const lastUpdatedTimeAgo = Math.floor(
-              (currentTime.getTime() - updatedAt.getTime()) / 1000 / 60 / 60 / 24,
+              (currentTime.getTime() - updatedAt.getTime()) /
+                1000 /
+                60 /
+                60 /
+                24,
             );
 
             const lastUpdatedTimeAgoText =
@@ -155,7 +161,10 @@ const SkillsComponent = forwardRef<SkillsComponentRef>(
 
           {filteredSkillList.map((skill) => {
             return (
-              <div key={skill.id} onClick={() => handleSkillCardClick(skill.id)}>
+              <div
+                key={skill.id}
+                onClick={() => handleSkillCardClick(skill.id)}
+              >
                 <SkillCard skillCardVO={skill} />
               </div>
             );

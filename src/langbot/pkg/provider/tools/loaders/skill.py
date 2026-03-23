@@ -64,8 +64,7 @@ class SkillToolLoader:
         if not skill_data:
             activated_names = ', '.join(activated.keys()) if activated else 'none'
             raise ValueError(
-                f'Skill "{skill_name}" is not activated for this query. '
-                f'Activated skills: {activated_names}'
+                f'Skill "{skill_name}" is not activated for this query. Activated skills: {activated_names}'
             )
 
         return await self.ap.box_service.execute_in_skill_sandbox(
@@ -84,8 +83,7 @@ class SkillToolLoader:
         if not skill_data:
             visible_skill_names = ', '.join(sorted(self._get_visible_skills(query).keys())) or 'none'
             raise ValueError(
-                f'Skill "{skill_name}" is not visible for this query. '
-                f'Visible skills: {visible_skill_names}'
+                f'Skill "{skill_name}" is not visible for this query. Visible skills: {visible_skill_names}'
             )
 
         return {

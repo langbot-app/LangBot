@@ -101,8 +101,13 @@ class PipelinesRouterGroup(group.RouterGroup):
                 bound_skills = json_data.get('bound_skills', [])
 
                 await self.ap.pipeline_service.update_pipeline_extensions(
-                    pipeline_uuid, bound_plugins, bound_mcp_servers, enable_all_plugins, enable_all_mcp_servers,
-                    bound_skills=bound_skills, enable_all_skills=enable_all_skills,
+                    pipeline_uuid,
+                    bound_plugins,
+                    bound_mcp_servers,
+                    enable_all_plugins,
+                    enable_all_mcp_servers,
+                    bound_skills=bound_skills,
+                    enable_all_skills=enable_all_skills,
                 )
 
                 return self.success()

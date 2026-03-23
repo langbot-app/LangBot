@@ -44,13 +44,22 @@ def make_tool(name: str) -> resource_tool.LLMTool:
 @pytest.mark.asyncio
 async def test_tool_manager_lists_native_tools_first():
     manager = ToolManager(SimpleNamespace())
+<<<<<<< HEAD
     manager.native_tool_loader = StubLoader([make_tool('exec')])
+=======
+    manager.native_tool_loader = StubLoader([make_tool('sandbox_exec')])
+    manager.skill_authoring_tool_loader = StubLoader([make_tool('list_skills')])
+>>>>>>> d1af0b60 (fix: lint)
     manager.plugin_tool_loader = StubLoader([make_tool('plugin_tool')])
     manager.mcp_tool_loader = StubLoader([make_tool('mcp_tool')])
 
     tools = await manager.get_all_tools()
 
+<<<<<<< HEAD
     assert [tool.name for tool in tools] == ['exec', 'plugin_tool', 'mcp_tool']
+=======
+    assert [tool.name for tool in tools] == ['sandbox_exec', 'list_skills', 'plugin_tool', 'mcp_tool']
+>>>>>>> d1af0b60 (fix: lint)
 
 
 @pytest.mark.asyncio
@@ -58,6 +67,7 @@ async def test_tool_manager_routes_native_tool_calls():
     app = SimpleNamespace()
     manager = ToolManager(app)
     manager.native_tool_loader = StubLoader([make_tool('exec')], invoke_result={'backend': 'fake'})
+    manager.skill_authoring_tool_loader = StubLoader([make_tool('list_skills')])
     manager.plugin_tool_loader = StubLoader([make_tool('plugin_tool')])
     manager.mcp_tool_loader = StubLoader([make_tool('mcp_tool')])
 
