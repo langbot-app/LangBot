@@ -52,6 +52,7 @@ class ImageItem:
     thumb_height: Optional[int] = None
     thumb_width: Optional[int] = None
     hd_size: Optional[int] = None
+    _downloaded_bytes: Optional[bytes] = field(default=None, repr=False)
 
 
 @dataclass
@@ -62,6 +63,7 @@ class VoiceItem:
     sample_rate: Optional[int] = None
     playtime: Optional[int] = None
     text: Optional[str] = None
+    _downloaded_bytes: Optional[bytes] = field(default=None, repr=False)
 
 
 @dataclass
@@ -70,6 +72,7 @@ class FileItem:
     file_name: Optional[str] = None
     md5: Optional[str] = None
     len: Optional[str] = None
+    _downloaded_bytes: Optional[bytes] = field(default=None, repr=False)
 
 
 @dataclass
@@ -82,6 +85,7 @@ class VideoItem:
     thumb_size: Optional[int] = None
     thumb_height: Optional[int] = None
     thumb_width: Optional[int] = None
+    _downloaded_bytes: Optional[bytes] = field(default=None, repr=False)
 
 
 @dataclass

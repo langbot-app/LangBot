@@ -9,6 +9,7 @@ Reference: https://github.com/epiral/weixin-bot
 from __future__ import annotations
 
 import asyncio
+import base64
 import traceback
 import typing
 
@@ -60,6 +61,14 @@ class OpenClawWeixinMessageConverter(abstract_platform_adapter.AbstractMessageCo
                             'text_item': {'text': '[Image]'},
                         }
                     )
+            elif isinstance(component, platform_message.File):
+                if component.name:
+                    items.append(
+                        {
+                            'type': MessageItem.TEXT,
+                            'text_item': {'text': f'[File: {component.name}]'},
+                        }
+                    )
             elif isinstance(component, platform_message.Forward):
                 for node in component.node_list:
                     if node.message_chain:
@@ -102,23 +111,83 @@ class OpenClawWeixinMessageConverter(abstract_platform_adapter.AbstractMessageCo
                 components.append(platform_message.Plain(text=text))
 
             elif item.type == MessageItem.IMAGE and item.image_item:
-                if item.image_item.url:
-                    components.append(platform_message.Image(url=item.image_item.url))
+                if hasattr(item.image_item, '_downloaded_bytes') and item.image_item._downloaded_bytes:
+                    b64 = base64.b64encode(item.image_item._downloaded_bytes).decode('utf-8')
+                    components.append(platform_message.Image(base64=f'data:image/jpeg;base64,{b64}'))
                 else:
                     components.append(platform_message.Unknown(text='[Image]'))
 
             elif item.type == MessageItem.VOICE and item.voice_item:
+                # Voice with speech-to-text: use the transcribed text
                 if item.voice_item.text:
                     components.append(platform_message.Plain(text=item.voice_item.text))
                 else:
                     components.append(platform_message.Unknown(text='[Voice]'))
 
+            # TODO: enable after full testing
+            # elif item.type == MessageItem.VOICE and item.voice_item:
+            #     if item.voice_item.text:
+            #         components.append(platform_message.Plain(text=item.voice_item.text))
+            #     elif hasattr(item.voice_item, '_downloaded_bytes') and item.voice_item._downloaded_bytes:
+            #         b64 = base64.b64encode(item.voice_item._downloaded_bytes).decode('utf-8')
+            #         components.append(
+            #             platform_message.Voice(
+            #                 base64=b64,
+            #                 length=item.voice_item.playtime or 0,
+            #             )
+            #         )
+            #     else:
+            #         components.append(
+            #             platform_message.Voice(
+            #                 length=item.voice_item.playtime or 0,
+            #             )
+            #         )
+
             elif item.type == MessageItem.FILE and item.file_item:
-                file_name = item.file_item.file_name or 'file'
-                components.append(platform_message.Unknown(text=f'[File: {file_name}]'))
+                components.append(platform_message.Unknown(text=f'[File: {item.file_item.file_name or ""}]'))
+
+            # TODO: enable after full testing
+            # elif item.type == MessageItem.FILE and item.file_item:
+            #     file_name = item.file_item.file_name or ''
+            #     file_size = int(item.file_item.len) if item.file_item.len else 0
+            #     if hasattr(item.file_item, '_downloaded_bytes') and item.file_item._downloaded_bytes:
+            #         b64 = base64.b64encode(item.file_item._downloaded_bytes).decode('utf-8')
+            #         components.append(
+            #             platform_message.File(
+            #                 name=file_name,
+            #                 size=file_size,
+            #                 base64=b64,
+            #             )
+            #         )
+            #     else:
+            #         components.append(
+            #             platform_message.File(
+            #                 name=file_name,
+            #                 size=file_size,
+            #             )
+            #         )
 
             elif item.type == MessageItem.VIDEO and item.video_item:
                 components.append(platform_message.Unknown(text='[Video]'))
+
+            # TODO: enable after full testing
+            # elif item.type == MessageItem.VIDEO and item.video_item:
+            #     if hasattr(item.video_item, '_downloaded_bytes') and item.video_item._downloaded_bytes:
+            #         b64 = base64.b64encode(item.video_item._downloaded_bytes).decode('utf-8')
+            #         components.append(
+            #             platform_message.File(
+            #                 name='video.mp4',
+            #                 size=item.video_item.video_size or 0,
+            #                 base64=b64,
+            #             )
+            #         )
+            #     else:
+            #         components.append(
+            #             platform_message.File(
+            #                 name='video.mp4',
+            #                 size=item.video_item.video_size or 0,
+            #             )
+            #         )
 
             else:
                 components.append(platform_message.Unknown(text='[Unknown message type]'))
@@ -404,12 +473,50 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
         if msg.context_token and msg.from_user_id:
             self._context_tokens[msg.from_user_id] = msg.context_token
 
+        # Download CDN media (files, images) before converting to LangBot events
+        await self._download_media_items(msg)
+
         event = await OpenClawWeixinEventConverter.target2yiri(msg)
         if event is None:
             return
 
         if type(event) in self.listeners:
             await self.listeners[type(event)](event, self)
+
+    async def _download_media_items(self, msg: WeixinMessage):
+        """Download CDN media for image items in the message."""
+        if not msg.item_list:
+            return
+
+        for item in msg.item_list:
+            try:
+                if item.type == MessageItem.IMAGE and item.image_item:
+                    if (
+                        item.image_item.media
+                        and item.image_item.media.encrypt_query_param
+                        and item.image_item.media.aes_key
+                    ):
+                        img_bytes = await self.client.download_media(item.image_item.media)
+                        item.image_item._downloaded_bytes = img_bytes
+
+                # TODO: enable after full testing
+                # elif item.type == MessageItem.FILE and item.file_item and item.file_item.media:
+                #     if item.file_item.media.encrypt_query_param and item.file_item.media.aes_key:
+                #         file_bytes = await self.client.download_media(item.file_item.media)
+                #         item.file_item._downloaded_bytes = file_bytes
+                #
+                # elif item.type == MessageItem.VOICE and item.voice_item and item.voice_item.media:
+                #     if item.voice_item.media.encrypt_query_param and item.voice_item.media.aes_key:
+                #         voice_bytes = await self.client.download_media(item.voice_item.media)
+                #         item.voice_item._downloaded_bytes = voice_bytes
+                #
+                # elif item.type == MessageItem.VIDEO and item.video_item and item.video_item.media:
+                #     if item.video_item.media.encrypt_query_param and item.video_item.media.aes_key:
+                #         video_bytes = await self.client.download_media(item.video_item.media)
+                #         item.video_item._downloaded_bytes = video_bytes
+
+            except Exception:
+                await self.logger.warning(f'Failed to download CDN media: {traceback.format_exc()}')
 
     async def kill(self) -> bool:
         """Stop the adapter."""

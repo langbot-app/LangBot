@@ -246,6 +246,57 @@ class OpenClawWeixinClient:
         """Cancel the typing indicator for a user."""
         await self.send_typing(ilink_user_id, typing_ticket, status=2)
 
+    async def download_media(
+        self,
+        media: CDNMedia,
+    ) -> bytes:
+        """Download and decrypt a file from the WeChat CDN.
+
+        Args:
+            media: CDNMedia object with encrypt_query_param and aes_key.
+
+        Returns:
+            Decrypted file bytes.
+        """
+        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+        from cryptography.hazmat.primitives.padding import PKCS7
+
+        if not media.encrypt_query_param:
+            raise ApiError('CDN media has no encrypt_query_param', status=0)
+        if not media.aes_key:
+            raise ApiError('CDN media has no aes_key', status=0)
+
+        # Derive 16-byte AES key
+        # aes_key is base64-encoded; the decoded content may be:
+        #   - raw 16 bytes (direct AES key)
+        #   - 32-char hex string (decode hex to get 16 bytes)
+        raw = base64.b64decode(media.aes_key)
+        if len(raw) == 16:
+            aes_key = raw
+        elif len(raw) == 32:
+            # Hex-encoded 16-byte key
+            aes_key = bytes.fromhex(raw.decode('utf-8'))
+        else:
+            raise ApiError(f'Invalid AES key length: {len(raw)} (expected 16 or 32)', status=0)
+
+        # Download encrypted bytes from CDN
+        session = await self._get_session()
+        cdn_url = f'{CDN_BASE_URL}/download?encrypted_query_param={quote(media.encrypt_query_param, safe="")}'
+
+        async with session.get(cdn_url, timeout=aiohttp.ClientTimeout(total=120)) as resp:
+            if resp.status != 200:
+                text = await resp.text()
+                raise ApiError(f'CDN download failed: {resp.status} {text}', status=resp.status)
+            encrypted = await resp.read()
+
+        # Decrypt AES-128-ECB with PKCS7 padding
+        cipher = Cipher(algorithms.AES(aes_key), modes.ECB())
+        decryptor = cipher.decryptor()
+        padded = decryptor.update(encrypted) + decryptor.finalize()
+
+        unpadder = PKCS7(128).unpadder()
+        return unpadder.update(padded) + unpadder.finalize()
+
     async def get_upload_url(
         self,
         filekey: str,
