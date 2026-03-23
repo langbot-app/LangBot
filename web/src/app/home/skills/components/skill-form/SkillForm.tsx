@@ -7,9 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { Plus, Trash2, FolderSearch } from 'lucide-react';
+import { FolderSearch, ChevronDown, ChevronRight } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { Skill, SkillToolDef } from '@/app/infra/entities/api';
+import { Skill } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
 
 interface SkillFormProps {
@@ -26,13 +26,15 @@ export default function SkillForm({
   const { t } = useTranslation();
   const [skill, setSkill] = useState<Partial<Skill>>({
     name: '',
+    display_name: '',
     description: '',
     instructions: '',
     type: 'skill',
     package_root: '',
     entry_file: 'SKILL.md',
-    skill_tools: [],
-    auto_activate: false,
+    sandbox_timeout_sec: 120,
+    sandbox_network: false,
+    auto_activate: true,
     trigger_keywords: [],
     requires_tools: [],
     requires_kbs: [],
@@ -43,8 +45,8 @@ export default function SkillForm({
     tags: [],
   });
   const [keywordsInput, setKeywordsInput] = useState('');
-  const [tagsInput, setTagsInput] = useState('');
   const [scanning, setScanning] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
     if (initSkillId) {
@@ -57,7 +59,6 @@ export default function SkillForm({
       const resp = await httpClient.getSkill(skillId);
       setSkill(resp.skill);
       setKeywordsInput(resp.skill.trigger_keywords?.join(', ') || '');
-      setTagsInput(resp.skill.tags?.join(', ') || '');
     } catch (error) {
       console.error('Failed to load skill:', error);
       toast.error(t('skills.getSkillListError') + String(error));
@@ -80,11 +81,7 @@ export default function SkillForm({
         package_root: result.package_root,
         entry_file: result.entry_file,
         instructions: result.instructions,
-        author: prev.author || result.author || '',
-        version: prev.version || result.version,
-        tags: prev.tags?.length ? prev.tags : result.tags,
       }));
-      setTagsInput((prev) => prev || result.tags?.join(', ') || '');
       toast.success(t('skills.scanSuccess'));
     } catch (error) {
       console.error('Failed to scan directory:', error);
@@ -106,20 +103,14 @@ export default function SkillForm({
       return;
     }
 
-    // Parse comma-separated inputs
     const parsedKeywords = keywordsInput
       .split(',')
       .map((k) => k.trim())
       .filter((k) => k);
-    const parsedTags = tagsInput
-      .split(',')
-      .map((t) => t.trim())
-      .filter((t) => t);
 
     const skillData = {
       ...skill,
       trigger_keywords: parsedKeywords,
-      tags: parsedTags,
     };
 
     try {
@@ -140,41 +131,28 @@ export default function SkillForm({
     }
   };
 
-  const addSkillTool = () => {
-    const tools = [...(skill.skill_tools || [])];
-    tools.push({
-      name: '',
-      description: '',
-      entry: '',
-      parameters: {},
-      timeout_sec: 30,
-      network: false,
-    });
-    setSkill({ ...skill, skill_tools: tools });
-  };
-
-  const removeSkillTool = (index: number) => {
-    const tools = [...(skill.skill_tools || [])];
-    tools.splice(index, 1);
-    setSkill({ ...skill, skill_tools: tools });
-  };
-
-  const updateSkillTool = (index: number, field: keyof SkillToolDef, value: unknown) => {
-    const tools = [...(skill.skill_tools || [])];
-    tools[index] = { ...tools[index], [field]: value };
-    setSkill({ ...skill, skill_tools: tools });
-  };
-
   return (
     <form id="skill-form" onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor="name">{t('skills.skillName')} *</Label>
+        <Label htmlFor="display_name">{t('skills.displayName')} *</Label>
+        <Input
+          id="display_name"
+          value={skill.display_name || ''}
+          onChange={(e) => setSkill({ ...skill, display_name: e.target.value })}
+          placeholder={t('skills.displayNamePlaceholder')}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="name">{t('skills.skillSlug')} *</Label>
         <Input
           id="name"
           value={skill.name || ''}
-          onChange={(e) => setSkill({ ...skill, name: e.target.value })}
-          placeholder={t('skills.skillName')}
+          onChange={(e) => setSkill({ ...skill, name: e.target.value.replace(/[^a-zA-Z0-9_-]/g, '') })}
+          placeholder={t('skills.skillSlugPlaceholder')}
+          className="font-mono"
         />
+        <p className="text-xs text-muted-foreground">{t('skills.skillSlugHelp')}</p>
       </div>
 
       <div className="space-y-2">
@@ -184,42 +162,36 @@ export default function SkillForm({
           value={skill.description || ''}
           onChange={(e) => setSkill({ ...skill, description: e.target.value })}
           placeholder={t('skills.descriptionPlaceholder')}
-          rows={2}
+          rows={3}
         />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="package_root">{t('skills.packageRoot')}</Label>
-        <div className="flex gap-2">
-          <Input
-            id="package_root"
-            value={skill.package_root || ''}
-            onChange={(e) => setSkill({ ...skill, package_root: e.target.value })}
-            placeholder={`data/skills/${skill.name || '<skill-name>'}/`}
-            className="flex-1"
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={scanDirectory}
-            disabled={scanning || !skill.package_root?.trim()}
-            className="shrink-0"
-          >
-            <FolderSearch className="h-4 w-4 mr-1" />
-            {scanning ? t('common.loading') : t('skills.scan')}
-          </Button>
+        <Label htmlFor="type">{t('skills.skillType')}</Label>
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="type"
+              value="skill"
+              checked={skill.type === 'skill'}
+              onChange={() => setSkill({ ...skill, type: 'skill', auto_activate: true })}
+              className="accent-primary"
+            />
+            <span className="text-sm">{t('skills.typeSkill')}</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="type"
+              value="workflow"
+              checked={skill.type === 'workflow'}
+              onChange={() => setSkill({ ...skill, type: 'workflow', auto_activate: false })}
+              className="accent-primary"
+            />
+            <span className="text-sm">{t('skills.typeWorkflow')}</span>
+          </label>
         </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="entry_file">{t('skills.entryFile')}</Label>
-        <Input
-          id="entry_file"
-          value={skill.entry_file || 'SKILL.md'}
-          onChange={(e) => setSkill({ ...skill, entry_file: e.target.value })}
-          placeholder="SKILL.md"
-        />
       </div>
 
       <div className="space-y-2">
@@ -229,70 +201,9 @@ export default function SkillForm({
           value={skill.instructions || ''}
           onChange={(e) => setSkill({ ...skill, instructions: e.target.value })}
           placeholder={t('skills.instructionsPlaceholder')}
-          rows={10}
+          rows={16}
           className="font-mono text-sm"
         />
-      </div>
-
-      {/* Skill Tools */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label>{t('skills.skillTools')}</Label>
-          <Button type="button" variant="outline" size="sm" onClick={addSkillTool}>
-            <Plus className="h-4 w-4 mr-1" />
-            {t('common.add')}
-          </Button>
-        </div>
-        {(skill.skill_tools || []).map((tool, index) => (
-          <div key={index} className="border rounded-md p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Tool #{index + 1}</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => removeSkillTool(index)}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Input
-                value={tool.name}
-                onChange={(e) => updateSkillTool(index, 'name', e.target.value)}
-                placeholder={t('skills.toolName')}
-              />
-              <Input
-                value={tool.entry}
-                onChange={(e) => updateSkillTool(index, 'entry', e.target.value)}
-                placeholder={t('skills.toolEntry')}
-              />
-            </div>
-            <Input
-              value={tool.description}
-              onChange={(e) => updateSkillTool(index, 'description', e.target.value)}
-              placeholder={t('skills.toolDescription')}
-            />
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Label className="text-xs">{t('skills.toolTimeout')}</Label>
-                <Input
-                  type="number"
-                  className="w-20"
-                  value={tool.timeout_sec ?? 30}
-                  onChange={(e) => updateSkillTool(index, 'timeout_sec', parseInt(e.target.value) || 30)}
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <Label className="text-xs">{t('skills.toolNetwork')}</Label>
-                <Switch
-                  checked={tool.network ?? false}
-                  onCheckedChange={(checked) => updateSkillTool(index, 'network', checked)}
-                />
-              </div>
-            </div>
-          </div>
-        ))}
       </div>
 
       <div className="flex items-center justify-between">
@@ -306,54 +217,95 @@ export default function SkillForm({
         />
       </div>
 
-      <div className="flex items-center justify-between">
-        <Label htmlFor="auto_activate">{t('skills.autoActivate')}</Label>
-        <Switch
-          id="auto_activate"
-          checked={skill.auto_activate ?? false}
-          onCheckedChange={(checked) =>
-            setSkill({ ...skill, auto_activate: checked })
-          }
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="trigger_keywords">{t('skills.triggerKeywords')}</Label>
-        <Input
-          id="trigger_keywords"
-          value={keywordsInput}
-          onChange={(e) => setKeywordsInput(e.target.value)}
-          placeholder={t('skills.keywordsPlaceholder')}
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="author">{t('skills.author')}</Label>
-          <Input
-            id="author"
-            value={skill.author || ''}
-            onChange={(e) => setSkill({ ...skill, author: e.target.value })}
+      {skill.type !== 'workflow' && (
+        <div className="flex items-center justify-between">
+          <Label htmlFor="auto_activate">{t('skills.autoActivate')}</Label>
+          <Switch
+            id="auto_activate"
+            checked={skill.auto_activate ?? true}
+            onCheckedChange={(checked) =>
+              setSkill({ ...skill, auto_activate: checked })
+            }
           />
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="version">{t('skills.version')}</Label>
-          <Input
-            id="version"
-            value={skill.version || ''}
-            onChange={(e) => setSkill({ ...skill, version: e.target.value })}
-          />
-        </div>
-      </div>
+      )}
 
-      <div className="space-y-2">
-        <Label htmlFor="tags">{t('skills.tags')}</Label>
-        <Input
-          id="tags"
-          value={tagsInput}
-          onChange={(e) => setTagsInput(e.target.value)}
-          placeholder={t('skills.keywordsPlaceholder')}
-        />
+      {/* Advanced Settings */}
+      <div className="border rounded-md">
+        <button
+          type="button"
+          className="flex items-center justify-between w-full p-3 text-sm font-medium text-left"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+        >
+          {t('skills.advancedSettings')}
+          {showAdvanced ? (
+            <ChevronDown className="h-4 w-4" />
+          ) : (
+            <ChevronRight className="h-4 w-4" />
+          )}
+        </button>
+        {showAdvanced && (
+          <div className="p-3 pt-0 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="trigger_keywords">{t('skills.triggerKeywords')}</Label>
+              <Input
+                id="trigger_keywords"
+                value={keywordsInput}
+                onChange={(e) => setKeywordsInput(e.target.value)}
+                placeholder={t('skills.keywordsPlaceholder')}
+              />
+              <p className="text-xs text-muted-foreground">{t('skills.keywordsHelp')}</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>{t('skills.packageRoot')}</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={skill.package_root || ''}
+                  onChange={(e) => setSkill({ ...skill, package_root: e.target.value })}
+                  placeholder={`data/skills/${skill.name || '<skill-name>'}/`}
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={scanDirectory}
+                  disabled={scanning || !skill.package_root?.trim()}
+                  className="shrink-0"
+                >
+                  <FolderSearch className="h-4 w-4 mr-1" />
+                  {scanning ? t('common.loading') : t('skills.scan')}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">{t('skills.packageRootHelp')}</p>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 flex-1">
+                <Label className="text-xs whitespace-nowrap">{t('skills.sandboxTimeout')}</Label>
+                <Input
+                  type="number"
+                  className="w-24"
+                  value={skill.sandbox_timeout_sec ?? 120}
+                  onChange={(e) =>
+                    setSkill({ ...skill, sandbox_timeout_sec: parseInt(e.target.value) || 120 })
+                  }
+                />
+                <span className="text-xs text-muted-foreground">s</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs whitespace-nowrap">{t('skills.sandboxNetwork')}</Label>
+                <Switch
+                  checked={skill.sandbox_network ?? false}
+                  onCheckedChange={(checked) =>
+                    setSkill({ ...skill, sandbox_network: checked })
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </form>
   );

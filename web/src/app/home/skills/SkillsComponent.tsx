@@ -64,13 +64,10 @@ const SkillsComponent = forwardRef<SkillsComponentRef>(
 
             return new SkillCardVO({
               id: skill.uuid || '',
-              name: skill.name,
+              name: skill.display_name || skill.name,
               description: skill.description,
               isEnabled: skill.is_enabled ?? true,
               isBuiltin: skill.is_builtin ?? false,
-              author: skill.author,
-              version: skill.version,
-              tags: skill.tags,
               lastUpdatedTimeAgo: lastUpdatedTimeAgoText,
             });
           }),

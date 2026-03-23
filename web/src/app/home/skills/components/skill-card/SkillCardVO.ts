@@ -4,9 +4,6 @@ export interface ISkillCardVO {
   description: string;
   isEnabled: boolean;
   isBuiltin: boolean;
-  author?: string;
-  version?: string;
-  tags?: string[];
   lastUpdatedTimeAgo: string;
 }
 
@@ -16,9 +13,6 @@ export class SkillCardVO implements ISkillCardVO {
   description: string;
   isEnabled: boolean;
   isBuiltin: boolean;
-  author?: string;
-  version?: string;
-  tags?: string[];
   lastUpdatedTimeAgo: string;
 
   constructor(props: ISkillCardVO) {
@@ -27,9 +21,6 @@ export class SkillCardVO implements ISkillCardVO {
     this.description = props.description;
     this.isEnabled = props.isEnabled;
     this.isBuiltin = props.isBuiltin;
-    this.author = props.author;
-    this.version = props.version;
-    this.tags = props.tags;
     this.lastUpdatedTimeAgo = props.lastUpdatedTimeAgo;
   }
 }
