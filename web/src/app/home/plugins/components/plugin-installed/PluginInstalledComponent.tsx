@@ -38,12 +38,10 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
   (props, ref) => {
     const { t } = useTranslation();
     const [pluginList, setPluginList] = useState<PluginCardVO[]>([]);
-    const [modalOpen, setModalOpen] = useState<boolean>(false);
+    const [detailModalOpen, setDetailModalOpen] = useState<boolean>(false);
     const [selectedPlugin, setSelectedPlugin] = useState<PluginCardVO | null>(
       null,
     );
-    const [readmeModalOpen, setReadmeModalOpen] = useState<boolean>(false);
-    const [readmePlugin, setReadmePlugin] = useState<PluginCardVO | null>(null);
     const [showOperationModal, setShowOperationModal] = useState(false);
     const [operationType, setOperationType] = useState<PluginOperationType>(
       PluginOperationType.DELETE,
@@ -166,12 +164,7 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
 
     function handlePluginClick(plugin: PluginCardVO) {
       setSelectedPlugin(plugin);
-      setModalOpen(true);
-    }
-
-    function handleViewReadme(plugin: PluginCardVO) {
-      setReadmePlugin(plugin);
-      setReadmeModalOpen(true);
+      setDetailModalOpen(true);
     }
 
     function handlePluginDelete(plugin: PluginCardVO) {
@@ -355,52 +348,46 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
           </div>
         ) : (
           <div className={`${styles.pluginListContainer}`}>
-            <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-              <DialogContent className="w-[700px] max-h-[80vh] p-0 flex flex-col">
-                <DialogHeader className="px-6 pt-6 pb-2">
-                  <DialogTitle>{t('plugins.pluginConfig')}</DialogTitle>
-                </DialogHeader>
-                <div className="flex-1 overflow-y-auto px-6">
-                  {selectedPlugin && (
-                    <PluginForm
-                      pluginAuthor={selectedPlugin.author}
-                      pluginName={selectedPlugin.name}
-                      onFormSubmit={(timeout?: number) => {
-                        setModalOpen(false);
-                        if (timeout) {
-                          setTimeout(() => {
-                            getPluginList();
-                          }, timeout);
-                        } else {
-                          getPluginList();
-                        }
-                      }}
-                      onFormCancel={() => {
-                        setModalOpen(false);
-                      }}
-                    />
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
-
-            <Dialog open={readmeModalOpen} onOpenChange={setReadmeModalOpen}>
-              <DialogContent className="sm:max-w-[900px] max-w-[90vw] max-h-[85vh] p-0 flex flex-col">
+            <Dialog open={detailModalOpen} onOpenChange={setDetailModalOpen}>
+              <DialogContent className="sm:max-w-[1100px] max-w-[95vw] max-h-[85vh] p-0 flex flex-col">
                 <DialogHeader className="px-6 pt-6 pb-2 border-b">
                   <DialogTitle>
-                    {readmePlugin &&
-                      `${readmePlugin.author}/${readmePlugin.name} - ${t(
-                        'plugins.readme',
-                      )}`}
+                    {selectedPlugin &&
+                      `${selectedPlugin.author}/${selectedPlugin.name}`}
                   </DialogTitle>
                 </DialogHeader>
-                <div className="flex-1 overflow-y-auto">
-                  {readmePlugin && (
-                    <PluginReadme
-                      pluginAuthor={readmePlugin.author}
-                      pluginName={readmePlugin.name}
-                    />
-                  )}
+                <div className="flex-1 flex flex-row overflow-hidden min-h-0">
+                  {/* Left side - Readme */}
+                  <div className="flex-1 overflow-y-auto border-r min-w-0">
+                    {selectedPlugin && (
+                      <PluginReadme
+                        pluginAuthor={selectedPlugin.author}
+                        pluginName={selectedPlugin.name}
+                      />
+                    )}
+                  </div>
+                  {/* Right side - Config */}
+                  <div className="w-[380px] flex-shrink-0 overflow-y-auto px-4">
+                    {selectedPlugin && (
+                      <PluginForm
+                        pluginAuthor={selectedPlugin.author}
+                        pluginName={selectedPlugin.name}
+                        onFormSubmit={(timeout?: number) => {
+                          setDetailModalOpen(false);
+                          if (timeout) {
+                            setTimeout(() => {
+                              getPluginList();
+                            }, timeout);
+                          } else {
+                            getPluginList();
+                          }
+                        }}
+                        onFormCancel={() => {
+                          setDetailModalOpen(false);
+                        }}
+                      />
+                    )}
+                  </div>
                 </div>
               </DialogContent>
             </Dialog>
@@ -413,7 +400,6 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
                     onCardClick={() => handlePluginClick(vo)}
                     onDeleteClick={() => handlePluginDelete(vo)}
                     onUpgradeClick={() => handlePluginUpdate(vo)}
-                    onViewReadme={() => handleViewReadme(vo)}
                   />
                 </div>
               );
