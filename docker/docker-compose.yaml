@@ -13,7 +13,7 @@ services:
       # Uncomment the one that matches your container runtime:
       # - /var/run/podman/podman.sock:/var/run/podman/podman.sock   # Podman
       - /var/run/docker.sock:/var/run/docker.sock                   # Docker
-      - ./data/box-workspaces:/workspaces
+      - ./data/box:/workspaces
     ports:
       - 5410:5410
     restart: on-failure
@@ -41,7 +41,7 @@ services:
     container_name: langbot
     volumes:
       - ./data:/app/data
-      - ./data/box-workspaces:/workspaces
+      - ./data/box:/workspaces
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
