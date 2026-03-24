@@ -50,6 +50,7 @@ class BoxService:
             client = self._runtime_connector.client
         self.client = client
         self.output_limit_chars = output_limit_chars
+        self.shared_host_root = self._load_shared_host_root()
         self.allowed_host_mount_roots = self._load_allowed_host_mount_roots()
         self.default_host_workspace = self._load_default_host_workspace()
         self.profile = self._load_profile()
@@ -73,13 +74,17 @@ class BoxService:
     def available(self) -> bool:
         return self._available
 
-    async def execute_sandbox_tool(self, parameters: dict, query: 'pipeline_query.Query') -> dict:
+    async def execute_spec_payload(
+        self,
+        spec_payload: dict,
+        query: 'pipeline_query.Query',
+        *,
+        skip_host_mount_validation: bool = False,
+    ) -> dict:
         if not self._available:
             raise BoxError('Box runtime is not available. Install and start Podman or Docker to use sandbox features.')
-        spec_payload = dict(parameters)
-        spec_payload.setdefault('session_id', str(query.query_id))
         try:
-            spec = self.build_spec(spec_payload)
+            spec = self.build_spec(spec_payload, skip_host_mount_validation=skip_host_mount_validation)
         except BoxError as exc:
             self._record_error(exc, query)
             raise
@@ -99,6 +104,11 @@ class BoxService:
             f'summary={json.dumps(self._summarize_result(result), ensure_ascii=False)}'
         )
         return self._serialize_result(result)
+
+    async def execute_sandbox_tool(self, parameters: dict, query: 'pipeline_query.Query') -> dict:
+        spec_payload = dict(parameters)
+        spec_payload.setdefault('session_id', str(query.query_id))
+        return await self.execute_spec_payload(spec_payload, query)
 
     async def shutdown(self):
         await self.client.shutdown()
@@ -250,13 +260,29 @@ class BoxService:
                 continue
             normalized_roots.append(os.path.realpath(os.path.abspath(root_value)))
 
+        if not normalized_roots and self.shared_host_root is not None:
+            normalized_roots.append(self.shared_host_root)
+
         return normalized_roots
+
+    def _load_shared_host_root(self) -> str | None:
+        shared_host_root = str(_get_box_config(self.ap).get('shared_host_root', '')).strip()
+        if not shared_host_root:
+            return None
+        return os.path.realpath(os.path.abspath(shared_host_root))
 
     def _load_default_host_workspace(self) -> str | None:
         default_host_workspace = str(_get_box_config(self.ap).get('default_host_workspace', '')).strip()
         if not default_host_workspace:
-            return None
+            if self.shared_host_root is None:
+                return None
+            default_host_workspace = os.path.join(self.shared_host_root, 'default')
         return os.path.realpath(os.path.abspath(default_host_workspace))
+
+    def get_managed_skills_root(self) -> str | None:
+        if self.shared_host_root is None:
+            return None
+        return os.path.join(self.shared_host_root, 'skills')
 
     def _ensure_default_host_workspace(self):
         if self.default_host_workspace is None:
