@@ -128,13 +128,19 @@ def make_query(query_id: int = 42) -> pipeline_query.Query:
     return pipeline_query.Query.model_construct(query_id=query_id)
 
 
-def make_app(logger: Mock, allowed_host_mount_roots: list[str] | None = None, profile: str = 'default'):
+def make_app(
+    logger: Mock,
+    allowed_host_mount_roots: list[str] | None = None,
+    profile: str = 'default',
+    shared_host_root: str = '',
+):
     return SimpleNamespace(
         logger=logger,
         instance_config=SimpleNamespace(
             data={
                 'box': {
                     'profile': profile,
+                    'shared_host_root': shared_host_root,
                     'allowed_host_mount_roots': allowed_host_mount_roots or [],
                     'default_host_workspace': '',
                 }
@@ -307,6 +313,23 @@ async def test_box_service_creates_default_host_workspace_on_initialize(tmp_path
     await service.initialize()
 
     assert default_host_workspace.is_dir()
+
+
+@pytest.mark.asyncio
+async def test_box_service_derives_workspace_and_allowed_root_from_shared_host_root(tmp_path):
+    logger = Mock()
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
+    shared_root = tmp_path / 'shared-box-root'
+    app = make_app(logger, shared_host_root=str(shared_root))
+    service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
+
+    await service.initialize()
+
+    assert service.shared_host_root == os.path.realpath(shared_root)
+    assert service.default_host_workspace == os.path.realpath(shared_root / 'default')
+    assert service.allowed_host_mount_roots == [os.path.realpath(shared_root)]
+    assert (shared_root / 'default').is_dir()
 
 
 @pytest.mark.asyncio
