@@ -147,7 +147,6 @@ class RuntimeMCPSession:
         try:
             await box_service.create_session(
                 session_payload,
-                skip_host_mount_validation=True,
             )
         except Exception:
             self.error_phase = MCPSessionErrorPhase.SESSION_CREATE
@@ -164,9 +163,7 @@ class RuntimeMCPSession:
                 exec_payload['cmd'] = install_cmd
                 exec_payload['timeout_sec'] = self.box_config.startup_timeout_sec or 120
                 try:
-                    result = await box_service.client.execute(
-                        box_service.build_spec(exec_payload, skip_host_mount_validation=True)
-                    )
+                    result = await box_service.client.execute(box_service.build_spec(exec_payload))
                 except Exception:
                     self.error_phase = MCPSessionErrorPhase.DEP_INSTALL
                     raise
