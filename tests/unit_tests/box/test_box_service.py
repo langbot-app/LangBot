@@ -236,7 +236,7 @@ async def test_box_service_defaults_session_id_from_query():
     service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
-    result = await service.execute_sandbox_tool({'cmd': 'pwd', 'network': BoxNetworkMode.OFF.value}, make_query(7))
+    result = await service.execute_tool({'command': 'pwd'}, make_query(7))
 
     assert result['session_id'] == '7'
     assert result['ok'] is True
@@ -252,7 +252,7 @@ async def test_box_service_fails_closed_when_backend_unavailable():
     await service.initialize()
 
     with pytest.raises(BoxBackendUnavailableError):
-        await service.execute_sandbox_tool({'cmd': 'echo hello'}, make_query(9))
+        await service.execute_tool({'command': 'echo hello'}, make_query(9))
 
 
 @pytest.mark.asyncio
@@ -265,11 +265,12 @@ async def test_box_service_allows_host_mount_under_configured_root(tmp_path):
     service = BoxService(make_app(logger, [str(tmp_path)]), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
-    result = await service.execute_sandbox_tool(
+    result = await service.execute_spec_payload(
         {
             'cmd': 'pwd',
             'host_path': str(host_dir),
             'host_path_mode': BoxHostMountMode.READ_WRITE.value,
+            'session_id': '11',
         },
         make_query(11),
     )
@@ -290,7 +291,7 @@ async def test_box_service_uses_default_host_workspace_when_host_path_omitted(tm
     service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
-    result = await service.execute_sandbox_tool({'cmd': 'pwd'}, make_query(15))
+    result = await service.execute_tool({'command': 'pwd'}, make_query(15))
 
     assert result['ok'] is True
     assert backend.start_calls == ['15']
@@ -345,10 +346,11 @@ async def test_box_service_rejects_host_mount_outside_allowed_roots(tmp_path):
     await service.initialize()
 
     with pytest.raises(BoxValidationError):
-        await service.execute_sandbox_tool(
+        await service.execute_spec_payload(
             {
                 'cmd': 'pwd',
                 'host_path': str(disallowed_root),
+                'session_id': '12',
             },
             make_query(12),
         )
@@ -435,7 +437,7 @@ async def test_truncate_short_output_unchanged():
     service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime), output_limit_chars=100)
     await service.initialize()
 
-    result = await service.execute_sandbox_tool({'cmd': 'echo hello'}, make_query(20))
+    result = await service.execute_tool({'command': 'echo hello'}, make_query(20))
 
     assert result['stdout'] == 'hello world'
     assert result['stdout_truncated'] is False
@@ -456,7 +458,7 @@ async def test_truncate_preserves_head_and_tail():
     service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime), output_limit_chars=limit)
     await service.initialize()
 
-    result = await service.execute_sandbox_tool({'cmd': 'cat big'}, make_query(21))
+    result = await service.execute_tool({'command': 'cat big'}, make_query(21))
 
     assert result['stdout_truncated'] is True
     stdout = result['stdout']
@@ -478,7 +480,7 @@ async def test_truncate_at_exact_limit_not_truncated():
     service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime), output_limit_chars=200)
     await service.initialize()
 
-    result = await service.execute_sandbox_tool({'cmd': 'echo a'}, make_query(22))
+    result = await service.execute_tool({'command': 'echo a'}, make_query(22))
 
     assert result['stdout'] == exact_output
     assert result['stdout_truncated'] is False
@@ -492,7 +494,7 @@ async def test_truncate_stderr_independently():
     service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime), output_limit_chars=100)
     await service.initialize()
 
-    result = await service.execute_sandbox_tool({'cmd': 'fail'}, make_query(23))
+    result = await service.execute_tool({'command': 'fail'}, make_query(23))
 
     assert result['stdout_truncated'] is False
     assert result['stderr_truncated'] is True
@@ -512,7 +514,7 @@ async def test_profile_default_provides_defaults():
     service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
-    result = await service.execute_sandbox_tool({'cmd': 'echo hi'}, make_query(30))
+    result = await service.execute_tool({'command': 'echo hi'}, make_query(30))
 
     assert result['ok'] is True
     spec = backend.start_specs[0]
@@ -523,15 +525,15 @@ async def test_profile_default_provides_defaults():
 
 @pytest.mark.asyncio
 async def test_profile_unlocked_field_can_be_overridden():
-    """Tool call can override unlocked profile fields."""
+    """Spec payload can override unlocked profile fields."""
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
     service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
-    result = await service.execute_sandbox_tool(
-        {'cmd': 'echo hi', 'timeout_sec': 60, 'network': 'on'},
+    result = await service.execute_spec_payload(
+        {'cmd': 'echo hi', 'timeout_sec': 60, 'network': 'on', 'session_id': '31'},
         make_query(31),
     )
 
@@ -552,8 +554,8 @@ async def test_profile_locked_field_cannot_be_overridden():
     )
     await service.initialize()
 
-    result = await service.execute_sandbox_tool(
-        {'cmd': 'echo hi', 'network': 'on', 'host_path_mode': 'rw'},
+    result = await service.execute_spec_payload(
+        {'cmd': 'echo hi', 'network': 'on', 'host_path_mode': 'rw', 'session_id': '32'},
         make_query(32),
     )
 
@@ -572,10 +574,7 @@ async def test_profile_timeout_clamped_to_max():
     service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
-    result = await service.execute_sandbox_tool(
-        {'cmd': 'echo hi', 'timeout_sec': 999},
-        make_query(33),
-    )
+    result = await service.execute_tool({'command': 'echo hi', 'timeout_sec': 999}, make_query(33))
 
     assert result['ok'] is True
     spec = backend.start_specs[0]
@@ -592,10 +591,7 @@ async def test_profile_timeout_clamped_for_coercible_inputs(timeout_value):
     service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
-    await service.execute_sandbox_tool(
-        {'cmd': 'echo hi', 'timeout_sec': timeout_value},
-        make_query(34),
-    )
+    await service.execute_tool({'command': 'echo hi', 'timeout_sec': timeout_value}, make_query(34))
 
     spec = backend.start_specs[0]
     assert spec.timeout_sec == 120
@@ -644,7 +640,7 @@ async def test_profile_default_applies_resource_limits():
     service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
-    await service.execute_sandbox_tool({'cmd': 'echo hi'}, make_query(40))
+    await service.execute_tool({'command': 'echo hi'}, make_query(40))
 
     spec = backend.start_specs[0]
     profile = BUILTIN_PROFILES['default']
@@ -665,10 +661,7 @@ async def test_profile_offline_readonly_locks_read_only_rootfs():
     )
     await service.initialize()
 
-    await service.execute_sandbox_tool(
-        {'cmd': 'echo hi', 'read_only_rootfs': False},
-        make_query(41),
-    )
+    await service.execute_spec_payload({'cmd': 'echo hi', 'read_only_rootfs': False, 'session_id': '41'}, make_query(41))
 
     spec = backend.start_specs[0]
     assert spec.read_only_rootfs is True
@@ -685,7 +678,7 @@ async def test_profile_network_extended_has_relaxed_limits():
     )
     await service.initialize()
 
-    await service.execute_sandbox_tool({'cmd': 'echo hi'}, make_query(42))
+    await service.execute_tool({'command': 'echo hi'}, make_query(42))
 
     spec = backend.start_specs[0]
     assert spec.network == BoxNetworkMode.ON
@@ -761,7 +754,7 @@ async def test_service_records_errors_on_failure():
     await service.initialize()
 
     with pytest.raises(Exception):
-        await service.execute_sandbox_tool({'cmd': 'echo hello'}, make_query(50))
+        await service.execute_tool({'command': 'echo hello'}, make_query(50))
 
     errors = service.get_recent_errors()
     assert len(errors) == 1
@@ -780,7 +773,7 @@ async def test_service_error_ring_buffer_capped():
 
     for i in range(60):
         with pytest.raises(Exception):
-            await service.execute_sandbox_tool({'cmd': 'fail'}, make_query(100 + i))
+            await service.execute_tool({'command': 'fail'}, make_query(100 + i))
 
     errors = service.get_recent_errors()
     assert len(errors) == 50
