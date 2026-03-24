@@ -208,6 +208,7 @@ class BoxService:
         return {
             'session_id': spec.session_id,
             'workdir': spec.workdir,
+            'mount_path': spec.mount_path,
             'timeout_sec': spec.timeout_sec,
             'network': spec.network.value,
             'image': spec.image,
