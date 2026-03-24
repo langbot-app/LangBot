@@ -29,16 +29,9 @@ export default function SkillForm({
     display_name: '',
     description: '',
     instructions: '',
-    type: 'skill',
     package_root: '',
-    entry_file: 'SKILL.md',
-    sandbox_timeout_sec: 120,
-    sandbox_network: false,
     auto_activate: true,
-    trigger_keywords: [],
-    is_enabled: true,
   });
-  const [keywordsInput, setKeywordsInput] = useState('');
   const [scanning, setScanning] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -52,7 +45,6 @@ export default function SkillForm({
     try {
       const resp = await httpClient.getSkill(skillId);
       setSkill(resp.skill);
-      setKeywordsInput(resp.skill.trigger_keywords?.join(', ') || '');
     } catch (error) {
       console.error('Failed to load skill:', error);
       toast.error(t('skills.getSkillListError') + String(error));
@@ -71,10 +63,11 @@ export default function SkillForm({
       setSkill((prev) => ({
         ...prev,
         name: prev.name || result.name,
+        display_name: prev.display_name || result.display_name || '',
         description: prev.description || result.description,
         package_root: result.package_root,
-        entry_file: result.entry_file,
         instructions: result.instructions,
+        auto_activate: result.auto_activate ?? true,
       }));
       toast.success(t('skills.scanSuccess'));
     } catch (error) {
@@ -97,27 +90,24 @@ export default function SkillForm({
       return;
     }
 
-    const parsedKeywords = keywordsInput
-      .split(',')
-      .map((k) => k.trim())
-      .filter((k) => k);
-
     const skillData = {
-      ...skill,
-      trigger_keywords: parsedKeywords,
+      name: skill.name,
+      display_name: skill.display_name || '',
+      description: skill.description,
+      instructions: skill.instructions || '',
+      package_root: skill.package_root || '',
+      auto_activate: skill.auto_activate ?? true,
     };
 
     try {
       if (initSkillId) {
-        await httpClient.updateSkill(initSkillId, skillData);
+        const resp = await httpClient.updateSkill(initSkillId, skillData);
         toast.success(t('skills.saveSuccess'));
-        onSkillUpdated(initSkillId);
+        onSkillUpdated(resp.skill.name);
       } else {
-        const resp = await httpClient.createSkill(
-          skillData as Omit<Skill, 'uuid'>,
-        );
+        const resp = await httpClient.createSkill(skillData);
         toast.success(t('skills.createSuccess'));
-        onNewSkillCreated(resp.uuid);
+        onNewSkillCreated(resp.skill.name);
       }
     } catch (error) {
       toast.error(
@@ -130,7 +120,7 @@ export default function SkillForm({
   return (
     <form id="skill-form" onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor="display_name">{t('skills.displayName')} *</Label>
+        <Label htmlFor="display_name">{t('skills.displayName')}</Label>
         <Input
           id="display_name"
           value={skill.display_name || ''}
@@ -152,6 +142,7 @@ export default function SkillForm({
           }
           placeholder={t('skills.skillSlugPlaceholder')}
           className="font-mono"
+          disabled={Boolean(initSkillId)}
         />
         <p className="text-xs text-muted-foreground">
           {t('skills.skillSlugHelp')}
@@ -170,38 +161,6 @@ export default function SkillForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="type">{t('skills.skillType')}</Label>
-        <div className="flex gap-4">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="type"
-              value="skill"
-              checked={skill.type === 'skill'}
-              onChange={() =>
-                setSkill({ ...skill, type: 'skill', auto_activate: true })
-              }
-              className="accent-primary"
-            />
-            <span className="text-sm">{t('skills.typeSkill')}</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="type"
-              value="workflow"
-              checked={skill.type === 'workflow'}
-              onChange={() =>
-                setSkill({ ...skill, type: 'workflow', auto_activate: false })
-              }
-              className="accent-primary"
-            />
-            <span className="text-sm">{t('skills.typeWorkflow')}</span>
-          </label>
-        </div>
-      </div>
-
-      <div className="space-y-2">
         <Label htmlFor="instructions">{t('skills.skillInstructions')}</Label>
         <Textarea
           id="instructions"
@@ -214,30 +173,16 @@ export default function SkillForm({
       </div>
 
       <div className="flex items-center justify-between">
-        <Label htmlFor="is_enabled">{t('common.enable')}</Label>
+        <Label htmlFor="auto_activate">{t('skills.autoActivate')}</Label>
         <Switch
-          id="is_enabled"
-          checked={skill.is_enabled ?? true}
+          id="auto_activate"
+          checked={skill.auto_activate ?? true}
           onCheckedChange={(checked) =>
-            setSkill({ ...skill, is_enabled: checked })
+            setSkill({ ...skill, auto_activate: checked })
           }
         />
       </div>
 
-      {skill.type !== 'workflow' && (
-        <div className="flex items-center justify-between">
-          <Label htmlFor="auto_activate">{t('skills.autoActivate')}</Label>
-          <Switch
-            id="auto_activate"
-            checked={skill.auto_activate ?? true}
-            onCheckedChange={(checked) =>
-              setSkill({ ...skill, auto_activate: checked })
-            }
-          />
-        </div>
-      )}
-
-      {/* Advanced Settings */}
       <div className="border rounded-md">
         <button
           type="button"
@@ -253,21 +198,6 @@ export default function SkillForm({
         </button>
         {showAdvanced && (
           <div className="p-3 pt-0 space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="trigger_keywords">
-                {t('skills.triggerKeywords')}
-              </Label>
-              <Input
-                id="trigger_keywords"
-                value={keywordsInput}
-                onChange={(e) => setKeywordsInput(e.target.value)}
-                placeholder={t('skills.keywordsPlaceholder')}
-              />
-              <p className="text-xs text-muted-foreground">
-                {t('skills.keywordsHelp')}
-              </p>
-            </div>
-
             <div className="space-y-2">
               <Label>{t('skills.packageRoot')}</Label>
               <div className="flex gap-2">
@@ -294,37 +224,6 @@ export default function SkillForm({
               <p className="text-xs text-muted-foreground">
                 {t('skills.packageRootHelp')}
               </p>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 flex-1">
-                <Label className="text-xs whitespace-nowrap">
-                  {t('skills.sandboxTimeout')}
-                </Label>
-                <Input
-                  type="number"
-                  className="w-24"
-                  value={skill.sandbox_timeout_sec ?? 120}
-                  onChange={(e) =>
-                    setSkill({
-                      ...skill,
-                      sandbox_timeout_sec: parseInt(e.target.value) || 120,
-                    })
-                  }
-                />
-                <span className="text-xs text-muted-foreground">s</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Label className="text-xs whitespace-nowrap">
-                  {t('skills.sandboxNetwork')}
-                </Label>
-                <Switch
-                  checked={skill.sandbox_network ?? false}
-                  onCheckedChange={(checked) =>
-                    setSkill({ ...skill, sandbox_network: checked })
-                  }
-                />
-              </div>
             </div>
           </div>
         )}

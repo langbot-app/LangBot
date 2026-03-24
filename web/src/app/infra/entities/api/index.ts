@@ -503,23 +503,13 @@ export interface ApiRespToolDetail {
 
 // Skills
 export interface Skill {
-  uuid?: string;
   name: string;
   display_name?: string;
   description: string;
   instructions?: string;
-  type: 'skill' | 'workflow';
   package_root?: string;
   entry_file?: string;
-  sandbox_timeout_sec?: number;
-  sandbox_network?: boolean;
   auto_activate?: boolean;
-  trigger_keywords?: string[];
-  is_enabled?: boolean;
-  is_builtin?: boolean;
-  author?: string;
-  version?: string;
-  tags?: string[];
   created_at?: string;
   updated_at?: string;
 }

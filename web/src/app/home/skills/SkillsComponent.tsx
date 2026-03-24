@@ -69,10 +69,10 @@ const SkillsComponent = forwardRef<SkillsComponentRef>(
                 : `${t('knowledge.updateTime')} ${t('knowledge.today')}`;
 
             return new SkillCardVO({
-              id: skill.uuid || '',
+              id: skill.name,
               name: skill.display_name || skill.name,
               description: skill.description,
-              isEnabled: skill.is_enabled ?? true,
+              isEnabled: true,
               isBuiltin: skill.is_builtin ?? false,
               lastUpdatedTimeAgo: lastUpdatedTimeAgoText,
             });

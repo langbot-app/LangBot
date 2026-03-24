@@ -94,11 +94,9 @@ class SkillToolLoader:
             'name': skill_data.get('name', ''),
             'display_name': skill_data.get('display_name', ''),
             'description': skill_data.get('description', ''),
-            'type': skill_data.get('type', 'skill'),
             'instructions': skill_data.get('instructions', ''),
             'auto_activate': bool(skill_data.get('auto_activate', True)),
-            'sandbox_timeout_sec': skill_data.get('sandbox_timeout_sec', 120),
-            'sandbox_network': bool(skill_data.get('sandbox_network', False)),
+            'package_root': skill_data.get('package_root', ''),
         }
 
     def _get_activated_skills(self, query: pipeline_query.Query) -> dict:
@@ -124,7 +122,7 @@ class SkillToolLoader:
         return {
             skill_name: skill_data
             for skill_name, skill_data in visible_skills.items()
-            if skill_data.get('uuid') in bound_skills
+            if skill_name in bound_skills
         }
 
     async def shutdown(self):
@@ -137,8 +135,8 @@ class SkillToolLoader:
         query: pipeline_query.Query,
     ) -> typing.Any:
         session_id = self._build_skill_session_id(skill_data, query)
-        timeout_sec = skill_data.get('sandbox_timeout_sec', 120)
-        network = 'on' if skill_data.get('sandbox_network', False) else 'off'
+        timeout_sec = 120
+        network = 'off'
         package_root = skill_data.get('package_root')
         wrapped_command = command
         if self._should_prepare_skill_python_env(package_root):
@@ -167,7 +165,7 @@ class SkillToolLoader:
 
     @staticmethod
     def _build_skill_session_id(skill_data: dict, query: pipeline_query.Query) -> str:
-        skill_uuid = skill_data.get('uuid', 'unknown')
+        skill_uuid = skill_data.get('name', 'unknown')
         launcher_type = getattr(query, 'launcher_type', None)
         launcher_id = getattr(query, 'launcher_id', None)
         query_id = getattr(query, 'query_id', 'unknown')

@@ -1100,35 +1100,28 @@ export class BackendClient extends BaseHttpClient {
 
   // ============ Skills API ============
 
-  public getSkills(params?: { is_enabled?: boolean }): Promise<ApiRespSkills> {
-    return this.get('/api/v1/skills', params);
+  public getSkills(): Promise<ApiRespSkills> {
+    return this.get('/api/v1/skills');
   }
 
-  public getSkill(uuid: string): Promise<ApiRespSkill> {
-    return this.get(`/api/v1/skills/${uuid}`);
+  public getSkill(name: string): Promise<ApiRespSkill> {
+    return this.get(`/api/v1/skills/${name}`);
   }
 
-  public createSkill(skill: Omit<Skill, 'uuid'>): Promise<{ uuid: string }> {
+  public createSkill(skill: Omit<Skill, 'name'> & { name: string }): Promise<ApiRespSkill> {
     return this.post('/api/v1/skills', skill);
   }
 
-  public updateSkill(uuid: string, skill: Partial<Skill>): Promise<object> {
-    return this.put(`/api/v1/skills/${uuid}`, skill);
+  public updateSkill(name: string, skill: Partial<Skill>): Promise<ApiRespSkill> {
+    return this.put(`/api/v1/skills/${name}`, skill);
   }
 
-  public deleteSkill(uuid: string): Promise<object> {
-    return this.delete(`/api/v1/skills/${uuid}`);
+  public deleteSkill(name: string): Promise<object> {
+    return this.delete(`/api/v1/skills/${name}`);
   }
 
-  public toggleSkill(
-    uuid: string,
-    is_enabled: boolean,
-  ): Promise<{ is_enabled: boolean }> {
-    return this.post(`/api/v1/skills/${uuid}/toggle`, { is_enabled });
-  }
-
-  public previewSkill(uuid: string): Promise<{ instructions: string }> {
-    return this.get(`/api/v1/skills/${uuid}/preview`);
+  public previewSkill(name: string): Promise<{ instructions: string }> {
+    return this.get(`/api/v1/skills/${name}/preview`);
   }
 
   public getSkillIndex(pipelineUuid?: string): Promise<{ index: string }> {
@@ -1140,11 +1133,10 @@ export class BackendClient extends BaseHttpClient {
     package_root: string;
     entry_file: string;
     name: string;
+    display_name?: string;
     description: string;
-    author?: string;
-    version: string;
-    tags: string[];
     instructions: string;
+    auto_activate?: boolean;
   }> {
     return this.get('/api/v1/skills/scan', { path });
   }

@@ -229,7 +229,7 @@ class PreProcessor(stage.PipelineStage):
             if enable_all_skills:
                 bound_skills = None  # None = all skills available
             else:
-                # Get specific bound skill UUIDs
+                # Get specific bound skill names
                 bound_skills = extensions_prefs.get('skills', [])
 
             # Build skill awareness addition

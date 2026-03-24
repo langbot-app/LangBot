@@ -87,9 +87,9 @@ export default function PipelineExtension({
       setAllMCPServers(data.available_mcp_servers);
 
       // Load Skills
-      const boundSkillIds = new Set(data.bound_skills || []);
+      const boundSkillNames = new Set(data.bound_skills || []);
       const selectedSkill = (data.available_skills || []).filter((skill) =>
-        boundSkillIds.has(skill.uuid || ''),
+        boundSkillNames.has(skill.name),
       );
 
       setSelectedSkills(selectedSkill);
@@ -120,7 +120,7 @@ export default function PipelineExtension({
       });
 
       const boundMCPServerIds = mcpServers.map((server) => server.uuid || '');
-      const boundSkillIds = skills.map((skill) => skill.uuid || '');
+      const boundSkillIds = skills.map((skill) => skill.name);
 
       await backendClient.updatePipelineExtensions(
         pipelineId,
@@ -154,8 +154,8 @@ export default function PipelineExtension({
     await saveToBackend(selectedPlugins, newServers, selectedSkills);
   };
 
-  const handleRemoveSkill = async (skillUuid: string) => {
-    const newSkills = selectedSkills.filter((s) => s.uuid !== skillUuid);
+  const handleRemoveSkill = async (skillName: string) => {
+    const newSkills = selectedSkills.filter((s) => s.name !== skillName);
     setSelectedSkills(newSkills);
     await saveToBackend(selectedPlugins, selectedMCPServers, newSkills);
   };
@@ -171,7 +171,7 @@ export default function PipelineExtension({
   };
 
   const handleOpenSkillDialog = () => {
-    setTempSelectedSkillIds(selectedSkills.map((s) => s.uuid || ''));
+    setTempSelectedSkillIds(selectedSkills.map((s) => s.name));
     setSkillDialogOpen(true);
   };
 
@@ -191,11 +191,11 @@ export default function PipelineExtension({
     );
   };
 
-  const handleToggleSkill = (skillUuid: string) => {
+  const handleToggleSkill = (skillName: string) => {
     setTempSelectedSkillIds((prev) =>
-      prev.includes(skillUuid)
-        ? prev.filter((id) => id !== skillUuid)
-        : [...prev, skillUuid],
+      prev.includes(skillName)
+        ? prev.filter((id) => id !== skillName)
+        : [...prev, skillName],
     );
   };
 
@@ -219,7 +219,7 @@ export default function PipelineExtension({
     if (tempSelectedSkillIds.length === allSkills.length) {
       setTempSelectedSkillIds([]);
     } else {
-      setTempSelectedSkillIds(allSkills.map((s) => s.uuid || ''));
+      setTempSelectedSkillIds(allSkills.map((s) => s.name));
     }
   };
 
@@ -243,7 +243,7 @@ export default function PipelineExtension({
 
   const handleConfirmSkillSelection = async () => {
     const newSelected = allSkills.filter((s) =>
-      tempSelectedSkillIds.includes(s.uuid || ''),
+      tempSelectedSkillIds.includes(s.name),
     );
     setSelectedSkills(newSelected);
     setSkillDialogOpen(false);
@@ -539,7 +539,7 @@ export default function PipelineExtension({
             <div className="space-y-2">
               {selectedSkills.map((skill) => (
                 <div
-                  key={skill.uuid}
+                  key={skill.name}
                   className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent"
                 >
                   <div className="flex-1 flex items-center gap-3">
@@ -554,16 +554,11 @@ export default function PipelineExtension({
                         {skill.description}
                       </div>
                     </div>
-                    {!skill.is_enabled && (
-                      <Badge variant="secondary">
-                        {t('pipelines.extensions.disabled')}
-                      </Badge>
-                    )}
                   </div>
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => handleRemoveSkill(skill.uuid || '')}
+                    onClick={() => handleRemoveSkill(skill.name)}
                   >
                     <X className="h-4 w-4" />
                   </Button>
@@ -805,14 +800,12 @@ export default function PipelineExtension({
               </div>
             ) : (
               allSkills.map((skill) => {
-                const isSelected = tempSelectedSkillIds.includes(
-                  skill.uuid || '',
-                );
+                const isSelected = tempSelectedSkillIds.includes(skill.name);
                 return (
                   <div
-                    key={skill.uuid}
+                    key={skill.name}
                     className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent cursor-pointer"
-                    onClick={() => handleToggleSkill(skill.uuid || '')}
+                    onClick={() => handleToggleSkill(skill.name)}
                   >
                     <Checkbox checked={isSelected} />
                     <div className="w-10 h-10 rounded-lg border bg-muted flex items-center justify-center flex-shrink-0">
@@ -826,11 +819,6 @@ export default function PipelineExtension({
                         {skill.description}
                       </div>
                     </div>
-                    {!skill.is_enabled && (
-                      <Badge variant="secondary">
-                        {t('pipelines.extensions.disabled')}
-                      </Badge>
-                    )}
                   </div>
                 );
               })
