@@ -105,9 +105,22 @@ class BoxService:
         )
         return self._serialize_result(result)
 
-    async def execute_sandbox_tool(self, parameters: dict, query: pipeline_query.Query) -> dict:
-        spec_payload = dict(parameters)
+    async def execute_tool(self, parameters: dict, query: pipeline_query.Query) -> dict:
+        """Execute an agent-facing ``exec`` tool call.
+
+        Translates the agent-facing ``command`` field to the internal
+        ``BoxSpec.cmd`` field and injects the session id from the query.
+        """
+        spec_payload: dict = {'cmd': parameters['command']}
+
+        # Pass through allowed agent-facing fields
+        for key in ('workdir', 'timeout_sec', 'env'):
+            if key in parameters:
+                spec_payload[key] = parameters[key]
+
+        # Inject context the agent must not control
         spec_payload.setdefault('session_id', str(query.query_id))
+
         return await self.execute_spec_payload(spec_payload, query)
 
     async def shutdown(self):
@@ -379,23 +392,23 @@ class BoxService:
         return list(self._recent_errors)
 
     def get_system_guidance(self) -> str:
-        """Return LLM system-prompt guidance for sandbox_exec.
+        """Return LLM system-prompt guidance for the exec tool.
 
-        All sandbox-specific prompt text is kept here so that callers
+        All execution-specific prompt text is kept here so that callers
         (e.g. LocalAgentRunner) stay free of box domain knowledge.
         """
         guidance = (
-            'When sandbox_exec is available, use it for exact calculations, statistics, structured data parsing, '
+            'When the exec tool is available, use it for exact calculations, statistics, structured data parsing, '
             'and code execution instead of estimating mentally. If the user provides numbers, tables, CSV-like text, '
-            'JSON, or other data and asks for a computed answer, prefer running a short Python script in sandbox_exec '
+            'JSON, or other data and asks for a computed answer, prefer running a short Python script via exec '
             'and then answer from the tool result. Unless the user explicitly asks for the script, code, or implementation '
             'details, do not include the generated script in the final answer; return the result and a brief explanation only.'
         )
         if self.default_host_workspace:
             guidance += (
-                ' A default host workspace is mounted at /workspace for file tasks. When the user asks to read, create, or '
-                'modify local files in the working directory, use sandbox_exec with /workspace paths directly; do not ask the '
-                'user for sandbox parameters such as host_path unless they explicitly need a different directory.'
+                ' A default workspace is mounted at /workspace for file tasks. When the user asks to read, create, or '
+                'modify local files in the working directory, use exec with /workspace paths directly; do not ask the '
+                'user for directory parameters unless they explicitly need a different directory.'
             )
         return guidance
 

@@ -30,14 +30,14 @@ def test_chat_handler_formats_tool_call_request_log():
             provider_message.ToolCall(
                 id='call-1',
                 type='function',
-                function=provider_message.FunctionCall(name='sandbox_exec', arguments='{}'),
+                function=provider_message.FunctionCall(name='exec', arguments='{}'),
             )
         ],
     )
 
     summary = handler.format_result_log(result)
 
-    assert summary == 'assistant: requested tools: sandbox_exec'
+    assert summary == 'assistant: requested tools: exec'
 
 
 def test_chat_handler_formats_tool_result_log():

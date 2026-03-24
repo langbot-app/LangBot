@@ -5,7 +5,7 @@ import copy
 import typing
 from .. import runner
 from ..modelmgr import requester as modelmgr_requester
-from ..tools.loaders.native import SANDBOX_EXEC_TOOL_NAME
+from ..tools.loaders.native import EXEC_TOOL_NAME
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.rag.context as rag_context
@@ -37,7 +37,7 @@ class LocalAgentRunner(runner.RequestRunner):
     ) -> list[provider_message.Message]:
         req_messages = query.prompt.messages.copy() + query.messages.copy()
 
-        if any(getattr(tool, 'name', None) == SANDBOX_EXEC_TOOL_NAME for tool in query.use_funcs or []):
+        if any(getattr(tool, 'name', None) == EXEC_TOOL_NAME for tool in query.use_funcs or []):
             req_messages.append(
                 provider_message.Message(
                     role='system',

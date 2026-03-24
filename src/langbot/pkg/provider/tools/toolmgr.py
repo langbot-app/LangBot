@@ -3,16 +3,12 @@ from __future__ import annotations
 import typing
 from typing import TYPE_CHECKING
 
-from langbot.pkg.utils import importutil
-from langbot.pkg.provider.tools import loaders
-from langbot.pkg.provider.tools.loaders import mcp as mcp_loader, native as native_loader, plugin as plugin_loader
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 from langbot_plugin.api.entities.events import pipeline_query
 
 if TYPE_CHECKING:
     from ...core import app
-
-importutil.import_modules_in_pkg(loaders)
+    from langbot.pkg.provider.tools.loaders import mcp as mcp_loader, native as native_loader, plugin as plugin_loader
 
 
 class ToolManager:
@@ -28,6 +24,12 @@ class ToolManager:
         self.ap = ap
 
     async def initialize(self):
+        from langbot.pkg.utils import importutil
+        from langbot.pkg.provider.tools import loaders
+        from langbot.pkg.provider.tools.loaders import mcp as mcp_loader, native as native_loader, plugin as plugin_loader
+
+        importutil.import_modules_in_pkg(loaders)
+
         self.native_tool_loader = native_loader.NativeToolLoader(self.ap)
         await self.native_tool_loader.initialize()
         self.plugin_tool_loader = plugin_loader.PluginToolLoader(self.ap)
