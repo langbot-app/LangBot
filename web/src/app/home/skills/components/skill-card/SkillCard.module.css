@@ -62,33 +62,6 @@
   color: #f0f0f0;
 }
 
-.typeBadge {
-  font-size: 0.75rem;
-  padding: 0.15rem 0.4rem;
-  border-radius: 4px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.typeSkill {
-  background-color: #e0f2fe;
-  color: #0369a1;
-}
-
-:global(.dark) .typeSkill {
-  background-color: #0c4a6e;
-  color: #7dd3fc;
-}
-
-.typeWorkflow {
-  background-color: #f3e8ff;
-  color: #7c3aed;
-}
-
-:global(.dark) .typeWorkflow {
-  background-color: #4c1d95;
-  color: #c4b5fd;
-}
 
 .builtinBadge {
   font-size: 0.75rem;
@@ -104,32 +77,6 @@
   color: #fcd34d;
 }
 
-.statusBadge {
-  font-size: 0.75rem;
-  padding: 0.15rem 0.4rem;
-  border-radius: 4px;
-  font-weight: 500;
-}
-
-.statusEnabled {
-  background-color: #d1fae5;
-  color: #065f46;
-}
-
-:global(.dark) .statusEnabled {
-  background-color: #064e3b;
-  color: #6ee7b7;
-}
-
-.statusDisabled {
-  background-color: #fee2e2;
-  color: #991b1b;
-}
-
-:global(.dark) .statusDisabled {
-  background-color: #7f1d1d;
-  color: #fca5a5;
-}
 
 .basicInfoDescriptionText {
   font-size: 0.9rem;
@@ -181,22 +128,3 @@
   color: #a0a0a0;
 }
 
-.tagsContainer {
-  display: flex;
-  flex-direction: row;
-  gap: 0.3rem;
-  flex-wrap: wrap;
-}
-
-.tag {
-  font-size: 0.7rem;
-  padding: 0.1rem 0.3rem;
-  border-radius: 3px;
-  background-color: #f3f4f6;
-  color: #4b5563;
-}
-
-:global(.dark) .tag {
-  background-color: #374151;
-  color: #d1d5db;
-}

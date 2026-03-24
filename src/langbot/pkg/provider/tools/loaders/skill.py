@@ -165,14 +165,14 @@ class SkillToolLoader:
 
     @staticmethod
     def _build_skill_session_id(skill_data: dict, query: pipeline_query.Query) -> str:
-        skill_uuid = skill_data.get('name', 'unknown')
+        skill_identifier = skill_data.get('name', 'unknown')
         launcher_type = getattr(query, 'launcher_type', None)
         launcher_id = getattr(query, 'launcher_id', None)
         query_id = getattr(query, 'query_id', 'unknown')
 
         if launcher_type is not None and launcher_id is not None:
-            return f'skill-{launcher_type}_{launcher_id}-{skill_uuid}'
-        return f'skill-{query_id}-{skill_uuid}'
+            return f'skill-{launcher_type}_{launcher_id}-{skill_identifier}'
+        return f'skill-{query_id}-{skill_identifier}'
 
     def _should_prepare_skill_python_env(self, package_root: str | None) -> bool:
         normalized_root = self._normalize_host_path(package_root)

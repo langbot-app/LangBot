@@ -120,7 +120,7 @@ class SkillAuthoringToolLoader(loader.ToolLoader):
         return {field: skill_data.get(field) for field in SKILL_DETAIL_FIELDS if field in skill_data}
 
     async def _resolve_skill(self, parameters: dict) -> dict:
-        skill_name = str(parameters.get('skill_name', '') or parameters.get('skill_uuid', '')).strip()
+        skill_name = str(parameters.get('skill_name', '')).strip()
         if not skill_name:
             raise ValueError('skill_name is required')
 

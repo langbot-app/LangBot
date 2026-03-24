@@ -21,17 +21,6 @@ export default function SkillCard({
                 {t('skills.builtin')}
               </span>
             )}
-            <span
-              className={`${styles.statusBadge} ${
-                skillCardVO.isEnabled
-                  ? styles.statusEnabled
-                  : styles.statusDisabled
-              }`}
-            >
-              {skillCardVO.isEnabled
-                ? t('skills.enabled')
-                : t('skills.disabled')}
-            </span>
           </div>
           <div className={`${styles.basicInfoDescriptionText}`}>
             {skillCardVO.description}

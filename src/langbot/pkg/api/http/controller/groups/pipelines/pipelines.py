@@ -74,7 +74,7 @@ class PipelinesRouterGroup(group.RouterGroup):
                 mcp_servers = await self.ap.mcp_service.get_mcp_servers(contain_runtime_info=True)
 
                 # Get available skills
-                available_skills = await self.ap.skill_service.list_skills(is_enabled=True)
+                available_skills = await self.ap.skill_service.list_skills()
 
                 extensions_prefs = pipeline.get('extensions_preferences', {})
                 return self.success(

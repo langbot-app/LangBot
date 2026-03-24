@@ -4,7 +4,6 @@ import os
 import shutil
 import tempfile
 import zipfile
-from typing import Optional
 
 import httpx
 import yaml
@@ -47,10 +46,7 @@ class SkillService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
-    async def list_skills(self, is_enabled: Optional[bool] = None) -> list[dict]:
-        if is_enabled is False:
-            return []
-
+    async def list_skills(self) -> list[dict]:
         skills = [dict(skill) for skill in getattr(self.ap.skill_mgr, 'skills', {}).values()]
         skills.sort(key=lambda item: item.get('updated_at', ''), reverse=True)
         return skills

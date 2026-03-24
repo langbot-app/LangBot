@@ -72,7 +72,6 @@ const SkillsComponent = forwardRef<SkillsComponentRef>(
               id: skill.name,
               name: skill.display_name || skill.name,
               description: skill.description,
-              isEnabled: true,
               isBuiltin: skill.is_builtin ?? false,
               lastUpdatedTimeAgo: lastUpdatedTimeAgoText,
             });

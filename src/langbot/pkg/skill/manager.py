@@ -19,19 +19,16 @@ class SkillManager:
 
     ap: app.Application
     skills: dict[str, dict]
-    skills_by_uuid: dict[str, dict]
 
     def __init__(self, ap: app.Application):
         self.ap = ap
         self.skills = {}
-        self.skills_by_uuid = {}
 
     async def initialize(self):
         await self.reload_skills()
 
     async def reload_skills(self):
         self.skills = {}
-        self.skills_by_uuid = {}
 
         skills_root = self.get_managed_skills_root()
         if not os.path.isdir(skills_root):
@@ -54,7 +51,6 @@ class SkillManager:
                 continue
 
             self.skills[skill_name] = skill_data
-            self.skills_by_uuid[skill_name] = skill_data
 
         self.ap.logger.info(f'Loaded {len(self.skills)} skills')
 
@@ -70,7 +66,6 @@ class SkillManager:
             return False
 
         self.skills[skill_name] = skill_data
-        self.skills_by_uuid[skill_name] = skill_data
         return True
 
     @staticmethod
@@ -155,8 +150,6 @@ class SkillManager:
     def get_skill_by_name(self, name: str) -> dict | None:
         return self.skills.get(name)
 
-    def get_skill_by_uuid(self, uuid: str) -> dict | None:
-        return self.skills_by_uuid.get(uuid)
 
     def get_skill_index(self, pipeline_uuid: str | None = None, bound_skills: list[str] | None = None) -> str:
         skills_to_index = []
