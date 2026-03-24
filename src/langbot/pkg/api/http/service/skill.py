@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import inspect
 import os
 import shutil
 import tempfile
 import zipfile
+from typing import Optional
 
 import httpx
 import yaml
@@ -80,7 +82,7 @@ class SkillService:
 
         package_root = self._normalize_package_root(data.get('package_root', ''))
         managed_root = self._managed_skill_path(name)
-        instructions = str(data.get('instructions', '') or '')
+        imported_skill_data: dict | None = None
 
         if package_root and package_root != managed_root:
             if not os.path.isdir(package_root):
@@ -89,18 +91,20 @@ class SkillService:
                 raise ValueError(f'Skill directory already exists: {managed_root}')
             os.makedirs(os.path.dirname(managed_root), exist_ok=True)
             shutil.copytree(package_root, managed_root)
+            imported_skill_data = self._read_skill_package(managed_root)
         else:
             os.makedirs(managed_root, exist_ok=True)
 
         metadata = {
             'name': name,
-            'display_name': str(data.get('display_name', '') or ''),
-            'description': str(data.get('description', '') or ''),
-            'auto_activate': bool(data.get('auto_activate', True)),
+            'display_name': self._resolve_create_field(data, 'display_name', imported_skill_data, default=''),
+            'description': self._resolve_create_field(data, 'description', imported_skill_data, default=''),
+            'auto_activate': self._resolve_create_bool(data, 'auto_activate', imported_skill_data, default=True),
         }
+        instructions = self._resolve_create_field(data, 'instructions', imported_skill_data, default='')
         self._write_skill_md(managed_root, metadata, instructions)
 
-        await self.ap.skill_mgr.reload_skills()
+        await self._reload_skills()
         created = await self.get_skill(name)
         if not created:
             raise ValueError(f'Failed to create skill "{name}"')
@@ -115,6 +119,11 @@ class SkillService:
         if requested_name != skill['name']:
             raise ValueError('Renaming skills is not supported')
 
+        requested_package_root = str(data.get('package_root', '') or '').strip()
+        existing_package_root = self._normalize_package_root(skill['package_root'])
+        if requested_package_root and self._normalize_package_root(requested_package_root) != existing_package_root:
+            raise ValueError('Updating package_root is not supported; recreate the skill to import a different package')
+
         metadata = {
             'name': skill['name'],
             'display_name': data.get('display_name', skill.get('display_name', '')),
@@ -124,7 +133,7 @@ class SkillService:
         instructions = str(data.get('instructions', skill.get('instructions', '')) or '')
         self._write_skill_md(skill['package_root'], metadata, instructions)
 
-        await self.ap.skill_mgr.reload_skills()
+        await self._reload_skills()
         updated = await self.get_skill(skill_name)
         if not updated:
             raise ValueError(f'Skill "{skill_name}" not found after update')
@@ -135,13 +144,13 @@ class SkillService:
         if not skill:
             raise ValueError(f'Skill "{skill_name}" not found')
 
-        managed_path = self._managed_skill_path(skill_name)
         package_root = self._normalize_package_root(skill['package_root'])
-        if package_root != managed_path:
+        managed_install_root = self._managed_install_root_for_package(package_root)
+        if not managed_install_root:
             raise ValueError('Only managed skills under data/skills can be deleted via LangBot')
 
-        shutil.rmtree(managed_path, ignore_errors=True)
-        await self.ap.skill_mgr.reload_skills()
+        shutil.rmtree(managed_install_root, ignore_errors=True)
+        await self._reload_skills()
         return True
 
     async def list_skill_files(
@@ -266,10 +275,10 @@ class SkillService:
             shutil.rmtree(target_dir, ignore_errors=True)
             raise
 
-        await self.ap.skill_mgr.reload_skills()
+        await self._reload_skills()
         installed = await self.get_skill(scanned['name'])
         if not installed:
-            raise ValueError(f'Installed skill "{scanned["name"]}" could not be loaded')
+            installed = self._serialize_skill(scanned)
         return installed
 
     def scan_directory(self, path: str) -> dict:
@@ -294,12 +303,62 @@ class SkillService:
         dir_name = os.path.basename(os.path.normpath(package_root))
         return {
             'package_root': os.path.abspath(package_root),
+            'entry_file': entry_file,
             'name': str(metadata.get('name') or dir_name).strip(),
             'display_name': str(metadata.get('display_name') or '').strip(),
             'description': str(metadata.get('description') or '').strip(),
             'instructions': instructions,
             'auto_activate': bool(metadata.get('auto_activate', True)),
         }
+
+    async def _reload_skills(self) -> None:
+        skill_mgr = getattr(self.ap, 'skill_mgr', None)
+        reload_skills = getattr(skill_mgr, 'reload_skills', None)
+        if not callable(reload_skills):
+            return
+        result = reload_skills()
+        if inspect.isawaitable(result):
+            await result
+
+    def _read_skill_package(self, package_root: str) -> dict:
+        entry = self._find_skill_entry(package_root)
+        if entry is None:
+            raise ValueError(f'No SKILL.md found in {package_root}')
+
+        resolved_root, entry_file = entry
+        entry_path = os.path.join(resolved_root, entry_file)
+        with open(entry_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        metadata, instructions = parse_frontmatter(content)
+        return {
+            'entry_file': entry_file,
+            'display_name': str(metadata.get('display_name') or '').strip(),
+            'description': str(metadata.get('description') or '').strip(),
+            'instructions': instructions,
+            'auto_activate': bool(metadata.get('auto_activate', True)),
+        }
+
+    @staticmethod
+    def _resolve_create_field(data: dict, field: str, imported_skill_data: dict | None, *, default: str) -> str:
+        raw_value = data.get(field) if field in data else None
+        if raw_value is None:
+            if imported_skill_data is not None:
+                return str(imported_skill_data.get(field, default) or default)
+            return default
+
+        value = str(raw_value or '')
+        if imported_skill_data is not None and not value.strip():
+            return str(imported_skill_data.get(field, default) or default)
+        return value
+
+    @staticmethod
+    def _resolve_create_bool(data: dict, field: str, imported_skill_data: dict | None, *, default: bool) -> bool:
+        if field in data and data[field] is not None:
+            return bool(data[field])
+        if imported_skill_data is not None:
+            return bool(imported_skill_data.get(field, default))
+        return default
 
     def _write_skill_md(self, package_root: str, metadata: dict, instructions: str) -> None:
         package_root = self._normalize_package_root(package_root)
@@ -310,6 +369,21 @@ class SkillService:
 
     def _managed_skill_path(self, skill_name: str) -> str:
         return self._normalize_package_root(os.path.join('data', 'skills', skill_name))
+
+    def _managed_install_root_for_package(self, package_root: str) -> str:
+        managed_root = self._normalize_package_root(os.path.join('data', 'skills'))
+        if not package_root or package_root == managed_root:
+            return ''
+
+        prefix = f'{managed_root}{os.sep}'
+        if not package_root.startswith(prefix):
+            return ''
+
+        relative = os.path.relpath(package_root, managed_root)
+        top_level = relative.split(os.sep, 1)[0]
+        if top_level in ('', '.', '..'):
+            return ''
+        return os.path.join(managed_root, top_level)
 
     @staticmethod
     def _validate_skill_name(name: str) -> str:

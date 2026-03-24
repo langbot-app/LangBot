@@ -90,14 +90,17 @@ export default function SkillForm({
       return;
     }
 
-    const skillData = {
+    const skillData: Partial<Skill> & { name: string } = {
       name: skill.name,
       display_name: skill.display_name || '',
       description: skill.description,
       instructions: skill.instructions || '',
-      package_root: skill.package_root || '',
       auto_activate: skill.auto_activate ?? true,
     };
+
+    if (!initSkillName) {
+      skillData.package_root = skill.package_root || '';
+    }
 
     try {
       if (initSkillName) {
@@ -208,13 +211,18 @@ export default function SkillForm({
                   }
                   placeholder={`data/skills/${skill.name || '<skill-name>'}/`}
                   className="flex-1"
+                  disabled={Boolean(initSkillName)}
                 />
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   onClick={scanDirectory}
-                  disabled={scanning || !skill.package_root?.trim()}
+                  disabled={
+                    Boolean(initSkillName) ||
+                    scanning ||
+                    !skill.package_root?.trim()
+                  }
                   className="shrink-0"
                 >
                   <FolderSearch className="h-4 w-4 mr-1" />

@@ -9,20 +9,36 @@ import pytest
 from src.langbot.pkg.api.http.service.skill import SkillService
 
 
-def _create_skill_file(path, body: str = 'Skill instructions') -> None:
+def _create_skill_file(
+    path,
+    *,
+    name: str = 'imported-skill',
+    display_name: str = '',
+    description: str = 'Imported from local directory',
+    auto_activate: bool = True,
+    body: str = 'Skill instructions',
+) -> None:
+    frontmatter = ['name: ' + name, 'description: ' + description]
+    if display_name:
+        frontmatter.insert(1, 'display_name: ' + display_name)
+    if not auto_activate:
+        frontmatter.append('auto_activate: false')
+
     path.write_text(
-        '---\n'
-        'name: imported-skill\n'
-        'description: Imported from local directory\n'
-        '---\n\n'
-        f'{body}\n',
+        '---\n' + '\n'.join(frontmatter) + f'\n---\n\n{body}\n',
         encoding='utf-8',
     )
 
 
 @pytest.fixture
 def skill_service():
-    return SkillService(SimpleNamespace(skill_mgr=SimpleNamespace(refresh_skill_from_disk=lambda *_args, **_kwargs: True)))
+    app = SimpleNamespace(
+        skill_mgr=SimpleNamespace(
+            refresh_skill_from_disk=lambda *_args, **_kwargs: True,
+            reload_skills=AsyncMock(),
+        )
+    )
+    return SkillService(app)
 
 
 def test_scan_directory_supports_nested_skill_within_two_levels(skill_service, tmp_path):
@@ -57,6 +73,50 @@ def test_scan_directory_errors_when_skill_is_deeper_than_two_levels(skill_servic
 
     with pytest.raises(ValueError, match='max depth: 2'):
         skill_service.scan_directory(str(tmp_path))
+
+
+@pytest.mark.asyncio
+async def test_create_skill_import_preserves_existing_skill_content_when_form_fields_blank(tmp_path, monkeypatch):
+    source_dir = tmp_path / 'external-skills' / 'manual-skill'
+    source_dir.mkdir(parents=True)
+    _create_skill_file(
+        source_dir / 'SKILL.md',
+        display_name='Imported Skill',
+        description='Imported description',
+        auto_activate=False,
+        body='Original instructions',
+    )
+
+    service = SkillService(SimpleNamespace(skill_mgr=SimpleNamespace(reload_skills=AsyncMock())))
+    service.get_skill_by_name = AsyncMock(return_value=None)
+    managed_root = tmp_path / 'data' / 'skills' / 'imported-skill'
+    service.get_skill = AsyncMock(
+        return_value={
+            'name': 'imported-skill',
+            'package_root': str(managed_root.resolve()),
+            'description': 'Imported description',
+            'instructions': 'Original instructions',
+            'auto_activate': False,
+        }
+    )
+
+    monkeypatch.chdir(tmp_path)
+
+    await service.create_skill(
+        {
+            'name': 'imported-skill',
+            'package_root': str(source_dir),
+            'display_name': '',
+            'description': '',
+            'instructions': '',
+        }
+    )
+
+    content = (managed_root / 'SKILL.md').read_text(encoding='utf-8')
+    assert 'display_name: Imported Skill' in content
+    assert 'description: Imported description' in content
+    assert 'auto_activate: false' in content
+    assert content.endswith('Original instructions')
 
 
 def _build_skill_archive() -> bytes:
@@ -97,17 +157,9 @@ async def test_install_from_github_supports_nested_skill_archive(skill_service, 
         async def get(self, url: str) -> _FakeResponse:
             return _FakeResponse(archive_bytes)
 
-    captured: dict = {}
-
-    async def _fake_register_existing_skill(data: dict) -> dict:
-        captured.update(data)
-        skill_md_path = tmp_path / 'data' / 'skills' / 'demo-repo' / 'skills' / 'nested-skill' / 'SKILL.md'
-        captured['skill_md_content'] = skill_md_path.read_text(encoding='utf-8')
-        return data
-
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr('src.langbot.pkg.api.http.service.skill.httpx.AsyncClient', _FakeAsyncClient)
-    skill_service._register_existing_skill = AsyncMock(side_effect=_fake_register_existing_skill)
+    skill_service.get_skill = AsyncMock(return_value=None)
 
     result = await skill_service.install_from_github(
         {
@@ -119,11 +171,8 @@ async def test_install_from_github_supports_nested_skill_archive(skill_service, 
     )
 
     expected_root = tmp_path / 'data' / 'skills' / 'demo-repo' / 'skills' / 'nested-skill'
-    assert captured['name'] == 'imported-skill'
-    assert captured['entry_file'] == 'SKILL.md'
-    assert captured['package_root'] == str(expected_root.resolve())
-    assert captured['skill_md_content'].endswith('Skill instructions\n')
     assert result['package_root'] == str(expected_root.resolve())
+    assert (expected_root / 'SKILL.md').read_text(encoding='utf-8').endswith('Skill instructions\n')
 
 
 @pytest.mark.asyncio
@@ -135,14 +184,13 @@ async def test_skill_file_operations_stay_within_package_root(skill_service, tmp
     (skill_dir / 'resources' / 'keywords_zh.json').write_text('{"hello": 1}\n', encoding='utf-8')
 
     skill_record = {
-        'uuid': 'uuid-mood',
         'name': 'mood-logger',
         'package_root': str(skill_dir),
         'entry_file': 'SKILL.md',
     }
     skill_service.get_skill = AsyncMock(return_value=skill_record)
 
-    listed = await skill_service.list_skill_files('uuid-mood', path='resources')
+    listed = await skill_service.list_skill_files('mood-logger', path='resources')
     assert listed['entries'] == [
         {
             'path': 'resources/keywords_zh.json',
@@ -152,10 +200,10 @@ async def test_skill_file_operations_stay_within_package_root(skill_service, tmp
         }
     ]
 
-    read_back = await skill_service.read_skill_file('uuid-mood', 'resources/keywords_zh.json')
+    read_back = await skill_service.read_skill_file('mood-logger', 'resources/keywords_zh.json')
     assert read_back['content'] == '{"hello": 1}\n'
 
-    written = await skill_service.write_skill_file('uuid-mood', 'resources/affinity.py', 'print("ok")\n')
+    written = await skill_service.write_skill_file('mood-logger', 'resources/affinity.py', 'print("ok")\n')
     assert written['path'] == 'resources/affinity.py'
     assert (skill_dir / 'resources' / 'affinity.py').read_text(encoding='utf-8') == 'print("ok")\n'
 
@@ -168,7 +216,6 @@ async def test_skill_file_operations_reject_path_traversal(skill_service, tmp_pa
 
     skill_service.get_skill = AsyncMock(
         return_value={
-            'uuid': 'uuid-mood',
             'name': 'mood-logger',
             'package_root': str(skill_dir),
             'entry_file': 'SKILL.md',
@@ -176,7 +223,26 @@ async def test_skill_file_operations_reject_path_traversal(skill_service, tmp_pa
     )
 
     with pytest.raises(ValueError, match='path must stay within the skill package root'):
-        await skill_service.read_skill_file('uuid-mood', '../outside.txt')
+        await skill_service.read_skill_file('mood-logger', '../outside.txt')
+
+
+@pytest.mark.asyncio
+async def test_update_skill_rejects_package_root_change(tmp_path):
+    service = SkillService(SimpleNamespace(skill_mgr=SimpleNamespace(reload_skills=AsyncMock())))
+    skill_root = tmp_path / 'data' / 'skills' / 'writer'
+    service.get_skill = AsyncMock(
+        return_value={
+            'name': 'writer',
+            'package_root': str(skill_root.resolve()),
+            'display_name': 'Writer',
+            'description': 'Writes things',
+            'instructions': 'Do work',
+            'auto_activate': True,
+        }
+    )
+
+    with pytest.raises(ValueError, match='Updating package_root is not supported'):
+        await service.update_skill('writer', {'package_root': str(tmp_path / 'other-root')})
 
 
 @pytest.mark.asyncio
@@ -185,24 +251,17 @@ async def test_delete_skill_removes_managed_skill_directory(tmp_path, monkeypatc
     managed_root.mkdir(parents=True)
     _create_skill_file(managed_root / 'SKILL.md')
 
-    service = SkillService(
-        SimpleNamespace(
-            persistence_mgr=SimpleNamespace(execute_async=AsyncMock()),
-            skill_mgr=SimpleNamespace(reload_skills=AsyncMock()),
-        )
-    )
+    service = SkillService(SimpleNamespace(skill_mgr=SimpleNamespace(reload_skills=AsyncMock())))
     service.get_skill = AsyncMock(
         return_value={
-            'uuid': 'skill-1',
             'name': 'self-improving-agent',
             'package_root': str(managed_root.resolve()),
-            'is_builtin': False,
         }
     )
 
     monkeypatch.chdir(tmp_path)
 
-    result = await service.delete_skill('skill-1')
+    result = await service.delete_skill('self-improving-agent')
 
     assert result is True
     assert not managed_root.exists()
@@ -215,51 +274,36 @@ async def test_delete_skill_removes_managed_install_root_for_nested_package(tmp_
     package_root.mkdir(parents=True)
     _create_skill_file(package_root / 'SKILL.md')
 
-    service = SkillService(
-        SimpleNamespace(
-            persistence_mgr=SimpleNamespace(execute_async=AsyncMock()),
-            skill_mgr=SimpleNamespace(reload_skills=AsyncMock()),
-        )
-    )
+    service = SkillService(SimpleNamespace(skill_mgr=SimpleNamespace(reload_skills=AsyncMock())))
     service.get_skill = AsyncMock(
         return_value={
-            'uuid': 'skill-2',
             'name': 'nested-skill',
             'package_root': str(package_root.resolve()),
-            'is_builtin': False,
         }
     )
 
     monkeypatch.chdir(tmp_path)
 
-    await service.delete_skill('skill-2')
+    await service.delete_skill('nested-skill')
 
     assert not install_root.exists()
 
 
 @pytest.mark.asyncio
-async def test_delete_skill_keeps_external_package_directory(tmp_path, monkeypatch):
+async def test_delete_skill_rejects_external_package_directory(tmp_path, monkeypatch):
     external_root = tmp_path / 'external-skills' / 'manual-skill'
     external_root.mkdir(parents=True)
     _create_skill_file(external_root / 'SKILL.md')
 
-    service = SkillService(
-        SimpleNamespace(
-            persistence_mgr=SimpleNamespace(execute_async=AsyncMock()),
-            skill_mgr=SimpleNamespace(reload_skills=AsyncMock()),
-        )
-    )
+    service = SkillService(SimpleNamespace(skill_mgr=SimpleNamespace(reload_skills=AsyncMock())))
     service.get_skill = AsyncMock(
         return_value={
-            'uuid': 'skill-3',
             'name': 'manual-skill',
             'package_root': str(external_root.resolve()),
-            'is_builtin': False,
         }
     )
 
     monkeypatch.chdir(tmp_path)
 
-    await service.delete_skill('skill-3')
-
-    assert external_root.exists()
+    with pytest.raises(ValueError, match='Only managed skills under data/skills'):
+        await service.delete_skill('manual-skill')
