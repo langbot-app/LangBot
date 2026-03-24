@@ -9,6 +9,7 @@ from ..core import app, entities as core_entities, taskmgr
 from ..discover import engine
 
 from ..entity.persistence import bot as persistence_bot
+from ..entity.persistence import pipeline as persistence_pipeline
 
 from ..entity.errors import platform as platform_errors
 
@@ -267,11 +268,34 @@ class PlatformManager:
         adapter_inst = self.adapter_dict[bot_entity.adapter](
             bot_entity.adapter_config,
             logger,
+            ap=self.ap,
         )
 
         # 如果 adapter 支持 set_bot_uuid 方法，设置 bot_uuid（用于统一 webhook）
         if hasattr(adapter_inst, 'set_bot_uuid'):
             adapter_inst.set_bot_uuid(bot_entity.uuid)
+
+        # 如果 adapter 支持 set_bot_info 方法，设置 bot 信息（用于监控记录）
+        if hasattr(adapter_inst, 'set_bot_info'):
+            pipeline_name = ''
+            if bot_entity.use_pipeline_uuid:
+                try:
+                    pipeline_result = await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.select(persistence_pipeline.LegacyPipeline.name).where(
+                            persistence_pipeline.LegacyPipeline.uuid == bot_entity.use_pipeline_uuid
+                        )
+                    )
+                    pipeline_row = pipeline_result.first()
+                    if pipeline_row:
+                        pipeline_name = pipeline_row[0]
+                except Exception:
+                    pass
+            adapter_inst.set_bot_info(
+                bot_id=bot_entity.uuid,
+                bot_name=bot_entity.name,
+                pipeline_id=bot_entity.use_pipeline_uuid or '',
+                pipeline_name=pipeline_name,
+            )
 
         runtime_bot = RuntimeBot(ap=self.ap, bot_entity=bot_entity, adapter=adapter_inst, logger=logger)
 

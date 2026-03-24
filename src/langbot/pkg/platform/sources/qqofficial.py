@@ -132,7 +132,7 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
     message_converter: QQOfficialMessageConverter = QQOfficialMessageConverter()
     event_converter: QQOfficialEventConverter = QQOfficialEventConverter()
 
-    def __init__(self, config: dict, logger: EventLogger):
+    def __init__(self, config: dict, logger: EventLogger, ap=None, **kwargs):
         bot = QQOfficialClient(
             app_id=config['appid'], secret=config['secret'], token=config['token'], logger=logger, unified_mode=True
         )

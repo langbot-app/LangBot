@@ -10,8 +10,10 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 from ..logger import EventLogger
 from langbot.libs.wecom_ai_bot_api.wecombotevent import WecomBotEvent
-from langbot.libs.wecom_ai_bot_api.api import WecomBotClient
+from langbot.libs.wecom_ai_bot_api.api import WecomBotClient, StreamSession
 from langbot.libs.wecom_ai_bot_api.ws_client import WecomBotWsClient
+from ...core import app as langbot_app
+from ...pipeline.monitoring_helper import FeedbackMonitor
 
 
 class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -192,8 +194,10 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     _ws_mode: bool = False
     bot_name: str = ''
     listeners: dict = {}
+    ap: langbot_app.Application = None  # Application reference for monitoring
+    _bot_info: dict = None  # Bot info for monitoring (bot_id, bot_name, pipeline_id, pipeline_name)
 
-    def __init__(self, config: dict, logger: EventLogger):
+    def __init__(self, config: dict, logger: EventLogger, ap: langbot_app.Application = None, **kwargs):
         enable_webhook = config.get('enable-webhook', False)
         bot_name = config.get('robot_name', '')
 
@@ -228,8 +232,14 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             bot_account_id=bot_account_id,
             bot_name=bot_name,
             event_converter=event_converter,
+            **kwargs,
         )
         self.listeners = {}
+        object.__setattr__(self, '_ws_mode', ws_mode)
+        object.__setattr__(self, 'ap', ap)
+
+        # Register feedback handler for monitoring
+        self._register_feedback_handler()
 
     async def reply_message(
         self,
@@ -317,6 +327,66 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     def set_bot_uuid(self, bot_uuid: str):
         """设置 bot UUID（用于生成 webhook URL）"""
         self.bot_uuid = bot_uuid
+
+    def set_bot_info(
+        self,
+        bot_id: str,
+        bot_name: str,
+        pipeline_id: str,
+        pipeline_name: str,
+    ):
+        """设置 bot 信息（用于监控记录）"""
+        self._bot_info = {
+            'bot_id': bot_id,
+            'bot_name': bot_name,
+            'pipeline_id': pipeline_id,
+            'pipeline_name': pipeline_name,
+        }
+
+    def _register_feedback_handler(self):
+        """注册用户反馈处理器，用于持久化反馈数据到监控服务"""
+
+        async def handle_feedback(
+            feedback_id: str,
+            feedback_type: int,
+            feedback_content: str,
+            inaccurate_reasons: list[str],
+            session: StreamSession,
+        ):
+            """处理用户反馈事件，持久化到监控服务"""
+            if not self.ap or not self._bot_info:
+                return
+
+            try:
+                # Build session_id from session info
+                session_id = None
+                if session.chat_id:
+                    session_id = f'group_{session.chat_id}'
+                elif session.user_id:
+                    session_id = f'person_{session.user_id}'
+
+                await FeedbackMonitor.record_feedback(
+                    ap=self.ap,
+                    feedback_id=feedback_id,
+                    feedback_type=feedback_type,
+                    feedback_content=feedback_content if feedback_content else None,
+                    inaccurate_reasons=inaccurate_reasons if inaccurate_reasons else None,
+                    bot_id=self._bot_info['bot_id'],
+                    bot_name=self._bot_info['bot_name'],
+                    pipeline_id=self._bot_info['pipeline_id'],
+                    pipeline_name=self._bot_info['pipeline_name'],
+                    session_id=session_id,
+                    message_id=session.msg_id if session else None,
+                    stream_id=session.stream_id if session else None,
+                    user_id=session.user_id if session else None,
+                    platform='wecom',
+                )
+            except Exception:
+                await self.logger.error(f'Failed to record feedback: {traceback.format_exc()}')
+
+        # Register the feedback handler with the bot client
+        if hasattr(self.bot, 'on_feedback'):
+            self.bot.on_feedback()(handle_feedback)
 
     async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
         _ws_mode = not self.config.get('enable-webhook', False)

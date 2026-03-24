@@ -60,7 +60,7 @@ class OfficialAccountAdapter(abstract_platform_adapter.AbstractMessagePlatformAd
     bot: typing.Union[OAClient, OAClientForLongerResponse] = pydantic.Field(exclude=True)
     bot_uuid: str = None
 
-    def __init__(self, config: dict, logger: EventLogger):
+    def __init__(self, config: dict, logger: EventLogger, ap=None, **kwargs):
         # 校验必填项
         required_keys = ['token', 'EncodingAESKey', 'AppSecret', 'AppID', 'Mode']
         missing_keys = [k for k in required_keys if k not in config]

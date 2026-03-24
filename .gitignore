@@ -52,3 +52,11 @@ src/langbot/web/
 /dist
 /build
 *.egg-info
+
+# Docker 部署产生的本地文件
+docker/data/
+docker/docker-compose.override.yaml
+
+# 备份目录
+LangBot_backup_*/
+*.bak

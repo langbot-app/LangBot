@@ -539,7 +539,7 @@ class WeChatPadAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         typing.Callable[[platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None],
     ] = {}
 
-    def __init__(self, config: dict, logger: EventLogger):
+    def __init__(self, config: dict, logger: EventLogger, ap=None, **kwargs):
         quart_app = quart.Quart(__name__)
 
         message_converter = WeChatPadMessageConverter(config, logger)

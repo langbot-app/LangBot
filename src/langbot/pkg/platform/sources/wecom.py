@@ -206,7 +206,7 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     config: dict
     bot_uuid: str = None
 
-    def __init__(self, config: dict, logger: EventLogger):
+    def __init__(self, config: dict, logger: EventLogger, ap=None, **kwargs):
         # 校验必填项
         required_keys = [
             'corpid',

@@ -5,6 +5,8 @@ import {
   ModelCall,
   LLMCall,
   EmbeddingCall,
+  FeedbackRecord,
+  FeedbackStats,
 } from '../types/monitoring';
 import { backendClient } from '@/app/infra/http';
 import { parseUTCTimestamp } from '../utils/dateUtils';
