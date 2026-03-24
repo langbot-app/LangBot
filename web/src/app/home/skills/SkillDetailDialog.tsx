@@ -28,46 +28,46 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 interface SkillDetailDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  skillId?: string;
+  skillName?: string;
   onFormCancel: () => void;
   onSkillDeleted: () => void;
-  onNewSkillCreated: (skillId: string) => void;
-  onSkillUpdated: (skillId: string) => void;
+  onNewSkillCreated: (skillName: string) => void;
+  onSkillUpdated: (skillName: string) => void;
 }
 
 export default function SkillDetailDialog({
   open,
   onOpenChange,
-  skillId: propSkillId,
+  skillName: propSkillName,
   onFormCancel,
   onSkillDeleted,
   onNewSkillCreated,
   onSkillUpdated,
 }: SkillDetailDialogProps) {
   const { t } = useTranslation();
-  const [skillId, setSkillId] = useState<string | undefined>(propSkillId);
+  const [skillName, setSkillName] = useState<string | undefined>(propSkillName);
   const [activeMenu, setActiveMenu] = useState('metadata');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [previewContent, setPreviewContent] = useState<string>('');
   const [loadingPreview, setLoadingPreview] = useState(false);
 
   useEffect(() => {
-    setSkillId(propSkillId);
+    setSkillName(propSkillName);
     setActiveMenu('metadata');
     setPreviewContent('');
-  }, [propSkillId, open]);
+  }, [propSkillName, open]);
 
   useEffect(() => {
-    if (activeMenu === 'preview' && skillId) {
+    if (activeMenu === 'preview' && skillName) {
       loadPreview();
     }
-  }, [activeMenu, skillId]);
+  }, [activeMenu, skillName]);
 
   async function loadPreview() {
-    if (!skillId) return;
+    if (!skillName) return;
     setLoadingPreview(true);
     try {
-      const resp = await httpClient.previewSkill(skillId);
+      const resp = await httpClient.previewSkill(skillName);
       setPreviewContent(resp.instructions);
     } catch (error) {
       console.error('Failed to load preview:', error);
@@ -91,7 +91,7 @@ export default function SkillDetailDialog({
         </svg>
       ),
     },
-    ...(skillId
+    ...(skillName
       ? [
           {
             key: 'preview',
@@ -111,9 +111,9 @@ export default function SkillDetailDialog({
   ];
 
   const confirmDelete = async () => {
-    if (!skillId) return;
+    if (!skillName) return;
     try {
-      await httpClient.deleteSkill(skillId);
+      await httpClient.deleteSkill(skillName);
       onSkillDeleted();
     } catch (error) {
       console.error('Failed to delete skill:', error);
@@ -122,7 +122,7 @@ export default function SkillDetailDialog({
     setShowDeleteConfirm(false);
   };
 
-  if (!skillId) {
+  if (!skillName) {
     // New skill
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -133,7 +133,7 @@ export default function SkillDetailDialog({
             </DialogHeader>
             <div className="flex-1 overflow-y-auto px-6 pb-6">
               <SkillForm
-                initSkillId={undefined}
+                initSkillName={undefined}
                 onNewSkillCreated={onNewSkillCreated}
                 onSkillUpdated={onSkillUpdated}
               />
@@ -197,7 +197,7 @@ export default function SkillDetailDialog({
               <div className="flex-1 overflow-y-auto px-6 pb-6">
                 {activeMenu === 'metadata' && (
                   <SkillForm
-                    initSkillId={skillId}
+                    initSkillName={skillName}
                     onNewSkillCreated={onNewSkillCreated}
                     onSkillUpdated={onSkillUpdated}
                   />

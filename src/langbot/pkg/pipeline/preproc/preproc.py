@@ -248,10 +248,6 @@ class PreProcessor(stage.PipelineStage):
                 # Store bound skills in query variables for later use
                 query.variables['_pipeline_bound_skills'] = bound_skills
 
-                # Let the agent inspect visible skills at runtime with a read-only tool.
-                if not any(getattr(tool, 'name', None) == skill_loader.SKILL_GET_TOOL_NAME for tool in query.use_funcs):
-                    query.use_funcs.append(skill_loader.build_skill_get_tool())
-
                 # Append skill instruction to the first system message
                 if query.prompt.messages and query.prompt.messages[0].role == 'system':
                     if isinstance(query.prompt.messages[0].content, str):

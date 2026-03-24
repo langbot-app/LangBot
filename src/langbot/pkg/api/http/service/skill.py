@@ -18,6 +18,17 @@ _FRONTMATTER_FIELDS = (
     'auto_activate',
 )
 
+_PUBLIC_SKILL_FIELDS = (
+    'name',
+    'display_name',
+    'description',
+    'instructions',
+    'package_root',
+    'auto_activate',
+    'created_at',
+    'updated_at',
+)
+
 
 def _build_skill_md(metadata: dict, instructions: str) -> str:
     frontmatter = {}
@@ -46,14 +57,18 @@ class SkillService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
+    @staticmethod
+    def _serialize_skill(skill: dict) -> dict:
+        return {field: skill.get(field) for field in _PUBLIC_SKILL_FIELDS if field in skill}
+
     async def list_skills(self) -> list[dict]:
         skills = [dict(skill) for skill in getattr(self.ap.skill_mgr, 'skills', {}).values()]
         skills.sort(key=lambda item: item.get('updated_at', ''), reverse=True)
-        return skills
+        return [self._serialize_skill(skill) for skill in skills]
 
     async def get_skill(self, skill_name: str) -> Optional[dict]:
         skill = getattr(self.ap.skill_mgr, 'get_skill_by_name', lambda _name: None)(skill_name)
-        return dict(skill) if skill else None
+        return self._serialize_skill(skill) if skill else None
 
     async def get_skill_by_name(self, name: str) -> Optional[dict]:
         return await self.get_skill(name)
@@ -279,7 +294,6 @@ class SkillService:
         dir_name = os.path.basename(os.path.normpath(package_root))
         return {
             'package_root': os.path.abspath(package_root),
-            'entry_file': entry_file,
             'name': str(metadata.get('name') or dir_name).strip(),
             'display_name': str(metadata.get('display_name') or '').strip(),
             'description': str(metadata.get('description') or '').strip(),

@@ -508,8 +508,8 @@ export interface Skill {
   description: string;
   instructions?: string;
   package_root?: string;
-  entry_file?: string;
   auto_activate?: boolean;
+  is_builtin?: boolean;
   created_at?: string;
   updated_at?: string;
 }

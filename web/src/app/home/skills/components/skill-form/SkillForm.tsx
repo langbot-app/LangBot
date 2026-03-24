@@ -13,13 +13,13 @@ import { Skill } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
 
 interface SkillFormProps {
-  initSkillId?: string;
-  onNewSkillCreated: (skillId: string) => void;
-  onSkillUpdated: (skillId: string) => void;
+  initSkillName?: string;
+  onNewSkillCreated: (skillName: string) => void;
+  onSkillUpdated: (skillName: string) => void;
 }
 
 export default function SkillForm({
-  initSkillId,
+  initSkillName,
   onNewSkillCreated,
   onSkillUpdated,
 }: SkillFormProps) {
@@ -36,14 +36,14 @@ export default function SkillForm({
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
-    if (initSkillId) {
-      loadSkill(initSkillId);
+    if (initSkillName) {
+      loadSkill(initSkillName);
     }
-  }, [initSkillId]);
+  }, [initSkillName]);
 
-  async function loadSkill(skillId: string) {
+  async function loadSkill(skillName: string) {
     try {
-      const resp = await httpClient.getSkill(skillId);
+      const resp = await httpClient.getSkill(skillName);
       setSkill(resp.skill);
     } catch (error) {
       console.error('Failed to load skill:', error);
@@ -100,8 +100,8 @@ export default function SkillForm({
     };
 
     try {
-      if (initSkillId) {
-        const resp = await httpClient.updateSkill(initSkillId, skillData);
+      if (initSkillName) {
+        const resp = await httpClient.updateSkill(initSkillName, skillData);
         toast.success(t('skills.saveSuccess'));
         onSkillUpdated(resp.skill.name);
       } else {
@@ -111,7 +111,7 @@ export default function SkillForm({
       }
     } catch (error) {
       toast.error(
-        (initSkillId ? t('skills.saveError') : t('skills.createError')) +
+        (initSkillName ? t('skills.saveError') : t('skills.createError')) +
           String(error),
       );
     }
@@ -142,7 +142,7 @@ export default function SkillForm({
           }
           placeholder={t('skills.skillSlugPlaceholder')}
           className="font-mono"
-          disabled={Boolean(initSkillId)}
+          disabled={Boolean(initSkillName)}
         />
         <p className="text-xs text-muted-foreground">
           {t('skills.skillSlugHelp')}

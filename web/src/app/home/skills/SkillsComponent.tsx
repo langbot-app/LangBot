@@ -24,7 +24,7 @@ const SkillsComponent = forwardRef<SkillsComponentRef>(
     const [filteredSkillList, setFilteredSkillList] = useState<SkillCardVO[]>(
       [],
     );
-    const [selectedSkillId, setSelectedSkillId] = useState<string>('');
+    const [selectedSkillName, setSelectedSkillName] = useState<string>('');
     const [detailDialogOpen, setDetailDialogOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -38,7 +38,7 @@ const SkillsComponent = forwardRef<SkillsComponentRef>(
 
     useImperativeHandle(ref, () => ({
       openCreateDialog: () => {
-        setSelectedSkillId('');
+        setSelectedSkillName('');
         setDetailDialogOpen(true);
       },
       refreshSkillList: () => {
@@ -69,7 +69,7 @@ const SkillsComponent = forwardRef<SkillsComponentRef>(
                 : `${t('knowledge.updateTime')} ${t('knowledge.today')}`;
 
             return new SkillCardVO({
-              id: skill.name,
+              skillName: skill.name,
               name: skill.display_name || skill.name,
               description: skill.description,
               isBuiltin: skill.is_builtin ?? false,
@@ -97,13 +97,13 @@ const SkillsComponent = forwardRef<SkillsComponentRef>(
       setFilteredSkillList(filtered);
     }
 
-    const handleSkillCardClick = (skillId: string) => {
-      setSelectedSkillId(skillId);
+    const handleSkillCardClick = (skillName: string) => {
+      setSelectedSkillName(skillName);
       setDetailDialogOpen(true);
     };
 
     const handleCreateSkillClick = () => {
-      setSelectedSkillId('');
+      setSelectedSkillName('');
       setDetailDialogOpen(true);
     };
 
@@ -116,9 +116,9 @@ const SkillsComponent = forwardRef<SkillsComponentRef>(
       setDetailDialogOpen(false);
     };
 
-    const handleNewSkillCreated = (newSkillId: string) => {
+    const handleNewSkillCreated = (newSkillName: string) => {
       getSkillList();
-      setSelectedSkillId(newSkillId);
+      setSelectedSkillName(newSkillName);
       setDetailDialogOpen(true);
     };
 
@@ -131,7 +131,7 @@ const SkillsComponent = forwardRef<SkillsComponentRef>(
         <SkillDetailDialog
           open={detailDialogOpen}
           onOpenChange={setDetailDialogOpen}
-          skillId={selectedSkillId || undefined}
+          skillName={selectedSkillName || undefined}
           onFormCancel={handleFormCancel}
           onSkillDeleted={handleSkillDeleted}
           onNewSkillCreated={handleNewSkillCreated}
@@ -161,8 +161,8 @@ const SkillsComponent = forwardRef<SkillsComponentRef>(
           {filteredSkillList.map((skill) => {
             return (
               <div
-                key={skill.id}
-                onClick={() => handleSkillCardClick(skill.id)}
+                key={skill.skillName}
+                onClick={() => handleSkillCardClick(skill.skillName)}
               >
                 <SkillCard skillCardVO={skill} />
               </div>

@@ -45,7 +45,6 @@ SKILL_DETAIL_FIELDS = (
     'description',
     'instructions',
     'package_root',
-    'entry_file',
     'auto_activate',
     'created_at',
     'updated_at',

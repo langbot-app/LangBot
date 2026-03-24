@@ -1131,7 +1131,6 @@ export class BackendClient extends BaseHttpClient {
 
   public scanSkillDirectory(path: string): Promise<{
     package_root: string;
-    entry_file: string;
     name: string;
     display_name?: string;
     description: string;

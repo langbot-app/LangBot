@@ -185,7 +185,7 @@ To activate a skill, include this marker at the beginning of your response: [ACT
 If multiple skills are needed, include multiple activation markers at the beginning of your response, one per line.
 After activation, the selected skills' detailed instructions will be loaded for you to follow.
 Use the first activated skill as the primary skill. Use any additional activated skills as supporting guidance.
-Use the `skill_get` tool if you need to inspect a visible skill's full instructions before activation.
+If you need to inspect a visible skill before activation, use `read` on `/workspace/.skills/<skill-name>/SKILL.md` or other files under that path.
 If no skill matches, respond normally without activation.
 """
 
@@ -221,15 +221,15 @@ If no skill matches, respond normally without activation.
 ## Instructions
 {instructions}
 
-## Sandbox Execution
-You have access to the `skill_exec` tool to run commands inside this skill's sandboxed directory.
-The skill directory is mounted at /workspace with write access. You can execute scripts, read files,
-update the skill package, and run any command available in the sandbox environment.
+## Runtime Context
+The activated skill package is available through the standard runtime tools under `/workspace/.skills/{skill_name}`.
+Use `read` to inspect files there. Use `exec` with `workdir` set to `/workspace/.skills/{skill_name}` to run commands in that package.
+Use `write` and `edit` on that path when the instructions require updating files.
 
 </activated_skill>
 
 Now execute the above skill instructions step by step to complete the user's request.
-Use the `skill_exec` tool with skill_name=\"{skill_name}\" when you need to run scripts or commands.
+Use the standard `exec`, `read`, `write`, and `edit` tools against `/workspace/.skills/{skill_name}` when you need to inspect or modify the skill package.
 Respond to the user based on the skill's guidance.
 """
 
@@ -253,7 +253,7 @@ Respond to the user based on the skill's guidance.
             role = 'primary' if skill_name == activated_skill_names[0] else 'auxiliary'
             blocks.append(
                 f"""
-<activated_skill name=\"{skill_name}\" role=\"{role}\">\n\n## Instructions\n{instructions}\n\n## Sandbox Execution\nYou have access to the `skill_exec` tool to run commands inside this skill's sandboxed directory.\nThe skill directory is mounted at /workspace with write access. You can execute scripts, read files,\nupdate the skill package, and run any command available in the sandbox environment.\n\n</activated_skill>
+<activated_skill name=\"{skill_name}\" role=\"{role}\">\n\n## Instructions\n{instructions}\n\n## Runtime Context\nUse the standard `exec`, `read`, `write`, and `edit` tools for activated skills.\nEach activated skill package is available under `/workspace/.skills/<skill-name>`.\nFor a given skill, set `exec.workdir` to `/workspace/.skills/<skill-name>` and use that prefix in file tool paths.\n\n</activated_skill>
 """.strip()
             )
         if not blocks:
@@ -269,7 +269,7 @@ Now execute the activated skills to complete the user's request.
 Treat the first activated skill as the primary skill.
 Treat additional activated skills as supporting guidance when they do not conflict with the primary skill.
 If guidance conflicts, prefer: primary skill > auxiliary skills.
-Use the `skill_exec` tool with the matching skill_name whenever you need to run scripts or commands.
+Use the standard `exec`, `read`, `write`, and `edit` tools against the corresponding `/workspace/.skills/<skill-name>` path whenever you need to inspect or modify an activated skill package.
 Respond to the user with one coherent answer that integrates the activated skills.
 """
 

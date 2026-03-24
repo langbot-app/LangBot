@@ -1,5 +1,5 @@
 export interface ISkillCardVO {
-  id: string;
+  skillName: string;
   name: string;
   description: string;
   isBuiltin: boolean;
@@ -7,14 +7,14 @@ export interface ISkillCardVO {
 }
 
 export class SkillCardVO implements ISkillCardVO {
-  id: string;
+  skillName: string;
   name: string;
   description: string;
   isBuiltin: boolean;
   lastUpdatedTimeAgo: string;
 
   constructor(props: ISkillCardVO) {
-    this.id = props.id;
+    this.skillName = props.skillName;
     this.name = props.name;
     this.description = props.description;
     this.isBuiltin = props.isBuiltin;
