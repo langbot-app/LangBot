@@ -39,6 +39,7 @@ class ToolManager:
             native as native_loader,
             plugin as plugin_loader,
             skill as skill_loader,
+            skill_authoring as skill_authoring_loader,
         )
 
         importutil.import_modules_in_pkg(loaders)
