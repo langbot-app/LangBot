@@ -12,6 +12,9 @@ GET_SKILL_TOOL_NAME = 'get_skill'
 CREATE_SKILL_TOOL_NAME = 'create_skill'
 UPDATE_SKILL_TOOL_NAME = 'update_skill'
 PREVIEW_SKILL_TOOL_NAME = 'preview_skill'
+SKILL_LIST_FILES_TOOL_NAME = 'skill_list_files'
+SKILL_READ_FILE_TOOL_NAME = 'skill_read_file'
+SKILL_WRITE_FILE_TOOL_NAME = 'skill_write_file'
 GET_PIPELINE_SKILLS_TOOL_NAME = 'get_pipeline_skills'
 UPDATE_PIPELINE_SKILLS_TOOL_NAME = 'update_pipeline_skills'
 
@@ -21,6 +24,9 @@ AUTHORING_TOOL_NAMES = {
     CREATE_SKILL_TOOL_NAME,
     UPDATE_SKILL_TOOL_NAME,
     PREVIEW_SKILL_TOOL_NAME,
+    SKILL_LIST_FILES_TOOL_NAME,
+    SKILL_READ_FILE_TOOL_NAME,
+    SKILL_WRITE_FILE_TOOL_NAME,
     GET_PIPELINE_SKILLS_TOOL_NAME,
     UPDATE_PIPELINE_SKILLS_TOOL_NAME,
 }
@@ -74,6 +80,9 @@ class SkillAuthoringToolLoader(loader.ToolLoader):
             self._build_create_skill_tool(),
             self._build_update_skill_tool(),
             self._build_preview_skill_tool(),
+            self._build_skill_list_files_tool(),
+            self._build_skill_read_file_tool(),
+            self._build_skill_write_file_tool(),
             self._build_get_pipeline_skills_tool(),
             self._build_update_pipeline_skills_tool(),
         ]
@@ -97,6 +106,12 @@ class SkillAuthoringToolLoader(loader.ToolLoader):
             return await self._invoke_update_skill(parameters)
         if name == PREVIEW_SKILL_TOOL_NAME:
             return await self._invoke_preview_skill(parameters)
+        if name == SKILL_LIST_FILES_TOOL_NAME:
+            return await self._invoke_skill_list_files(parameters)
+        if name == SKILL_READ_FILE_TOOL_NAME:
+            return await self._invoke_skill_read_file(parameters)
+        if name == SKILL_WRITE_FILE_TOOL_NAME:
+            return await self._invoke_skill_write_file(parameters)
         if name == GET_PIPELINE_SKILLS_TOOL_NAME:
             return await self._invoke_get_pipeline_skills(parameters, query)
         if name == UPDATE_PIPELINE_SKILLS_TOOL_NAME:
@@ -198,6 +213,33 @@ class SkillAuthoringToolLoader(loader.ToolLoader):
         if not runtime_data:
             raise ValueError(f'Skill "{skill["name"]}" not found in manager')
         return {'instructions': runtime_data['instructions']}
+
+    async def _invoke_skill_list_files(self, parameters: dict) -> typing.Any:
+        skill = await self._resolve_skill(parameters)
+        return await self.ap.skill_service.list_skill_files(
+            skill['uuid'],
+            path=str(parameters.get('path', '.') or '.'),
+            include_hidden=bool(parameters.get('include_hidden', False)),
+            max_entries=int(parameters.get('max_entries', 200)),
+        )
+
+    async def _invoke_skill_read_file(self, parameters: dict) -> typing.Any:
+        skill = await self._resolve_skill(parameters)
+        path = str(parameters.get('path', '')).strip()
+        if not path:
+            raise ValueError('path is required')
+        return await self.ap.skill_service.read_skill_file(skill['uuid'], path)
+
+    async def _invoke_skill_write_file(self, parameters: dict) -> typing.Any:
+        skill = await self._resolve_skill(parameters)
+        path = str(parameters.get('path', '')).strip()
+        if not path:
+            raise ValueError('path is required')
+        return await self.ap.skill_service.write_skill_file(
+            skill['uuid'],
+            path,
+            str(parameters.get('content', '')),
+        )
 
     async def _invoke_get_pipeline_skills(self, parameters: dict, query: pipeline_query.Query) -> typing.Any:
         pipeline = await self._resolve_pipeline(parameters, query)
@@ -391,6 +433,76 @@ class SkillAuthoringToolLoader(loader.ToolLoader):
                     'skill_uuid': {'type': 'string', 'description': 'Skill UUID.'},
                     'skill_name': {'type': 'string', 'description': 'Skill name.'},
                 },
+                'additionalProperties': False,
+            },
+            func=lambda parameters: parameters,
+        )
+
+    def _build_skill_list_files_tool(self) -> resource_tool.LLMTool:
+        return resource_tool.LLMTool(
+            name=SKILL_LIST_FILES_TOOL_NAME,
+            human_desc='List skill package files',
+            description='List files and directories under a registered skill package root or a relative subdirectory.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'skill_uuid': {'type': 'string', 'description': 'Skill UUID.'},
+                    'skill_name': {'type': 'string', 'description': 'Skill name.'},
+                    'path': {
+                        'type': 'string',
+                        'description': 'Relative directory path under the skill package root.',
+                        'default': '.',
+                    },
+                    'include_hidden': {
+                        'type': 'boolean',
+                        'description': 'Whether to include dotfiles and dot-directories.',
+                        'default': False,
+                    },
+                    'max_entries': {
+                        'type': 'integer',
+                        'description': 'Maximum number of entries to return.',
+                        'minimum': 1,
+                        'maximum': 1000,
+                        'default': 200,
+                    },
+                },
+                'additionalProperties': False,
+            },
+            func=lambda parameters: parameters,
+        )
+
+    def _build_skill_read_file_tool(self) -> resource_tool.LLMTool:
+        return resource_tool.LLMTool(
+            name=SKILL_READ_FILE_TOOL_NAME,
+            human_desc='Read a skill file',
+            description='Read a UTF-8 text file from a registered skill package by relative path.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'skill_uuid': {'type': 'string', 'description': 'Skill UUID.'},
+                    'skill_name': {'type': 'string', 'description': 'Skill name.'},
+                    'path': {'type': 'string', 'description': 'Relative file path under the skill package root.'},
+                },
+                'required': ['path'],
+                'additionalProperties': False,
+            },
+            func=lambda parameters: parameters,
+        )
+
+    def _build_skill_write_file_tool(self) -> resource_tool.LLMTool:
+        return resource_tool.LLMTool(
+            name=SKILL_WRITE_FILE_TOOL_NAME,
+            human_desc='Write a skill file',
+            description='Create or replace a UTF-8 text file under a registered skill package by relative path.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'skill_uuid': {'type': 'string', 'description': 'Skill UUID.'},
+                    'skill_name': {'type': 'string', 'description': 'Skill name.'},
+                    'path': {'type': 'string', 'description': 'Relative file path under the skill package root.'},
+                    'content': {'type': 'string', 'description': 'Full file content to write.'},
+                },
+                'required': ['path', 'content'],
                 'additionalProperties': False,
             },
             func=lambda parameters: parameters,

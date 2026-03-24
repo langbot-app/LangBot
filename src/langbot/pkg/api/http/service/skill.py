@@ -150,9 +150,33 @@ class SkillService:
         with open(entry_path, 'w', encoding='utf-8') as f:
             f.write(content)
 
-        skill_uuid = str(uuid_lib.uuid4())
+        return await self._register_existing_skill(
+            {
+                'name': data['name'],
+                'package_root': package_root,
+                'entry_file': entry_file,
+                'sandbox_timeout_sec': data.get('sandbox_timeout_sec', 120),
+                'sandbox_network': data.get('sandbox_network', False),
+                'is_enabled': data.get('is_enabled', True),
+                'is_builtin': data.get('is_builtin', False),
+            }
+        )
 
-        # Only store registry fields in DB
+    async def _register_existing_skill(self, data: dict) -> dict:
+        """Register an existing on-disk skill package without rewriting files."""
+        existing = await self.get_skill_by_name(data['name'])
+        if existing:
+            raise ValueError(f"Skill with name '{data['name']}' already exists")
+
+        package_root = self._normalize_package_root(data.get('package_root', ''))
+        entry_file = data.get('entry_file', 'SKILL.md')
+        self._validate_package_fields(package_root, entry_file)
+
+        entry_path = os.path.join(package_root, entry_file)
+        if not os.path.isfile(entry_path):
+            raise ValueError(f'Skill entry file not found: {entry_path}')
+
+        skill_uuid = str(uuid_lib.uuid4())
         db_data = {
             'uuid': skill_uuid,
             'name': data['name'],
@@ -257,6 +281,10 @@ class SkillService:
         if skill.get('is_builtin'):
             raise ValueError('Cannot delete builtin skill')
 
+        managed_storage_path = self._get_managed_skill_storage_path(skill.get('package_root', ''))
+        if managed_storage_path and os.path.isdir(managed_storage_path):
+            shutil.rmtree(managed_storage_path)
+
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.delete(persistence_skill.Skill).where(persistence_skill.Skill.uuid == skill_uuid)
         )
@@ -268,6 +296,91 @@ class SkillService:
         """Enable or disable a skill."""
         return await self.update_skill(skill_uuid, {'is_enabled': is_enabled})
 
+    async def list_skill_files(
+        self,
+        skill_uuid: str,
+        path: str = '.',
+        include_hidden: bool = False,
+        max_entries: int = 200,
+    ) -> dict:
+        """List files under a registered skill package."""
+        skill = await self.get_skill(skill_uuid)
+        if not skill:
+            raise ValueError(f'Skill {skill_uuid} not found')
+
+        target_dir, relative_path = self._resolve_skill_path(skill, path, expect_directory=True)
+        entries: list[dict] = []
+
+        with os.scandir(target_dir) as iterator:
+            for entry in sorted(iterator, key=lambda item: item.name):
+                if not include_hidden and entry.name.startswith('.'):
+                    continue
+                entry_rel_path = entry.name if relative_path in ('', '.') else os.path.join(relative_path, entry.name)
+                is_dir = entry.is_dir()
+                entries.append(
+                    {
+                        'path': entry_rel_path.replace(os.sep, '/'),
+                        'name': entry.name,
+                        'is_dir': is_dir,
+                        'size': None if is_dir else entry.stat().st_size,
+                    }
+                )
+                if len(entries) >= max_entries:
+                    break
+
+        return {
+            'skill': {'uuid': skill['uuid'], 'name': skill['name']},
+            'base_path': '.' if relative_path in ('', '.') else relative_path.replace(os.sep, '/'),
+            'entries': entries,
+            'truncated': len(entries) >= max_entries,
+        }
+
+    async def read_skill_file(self, skill_uuid: str, path: str) -> dict:
+        """Read a UTF-8 text file under a registered skill package."""
+        skill = await self.get_skill(skill_uuid)
+        if not skill:
+            raise ValueError(f'Skill {skill_uuid} not found')
+
+        target_path, relative_path = self._resolve_skill_path(skill, path, expect_directory=False)
+        if not os.path.isfile(target_path):
+            raise ValueError(f'Skill file not found: {relative_path}')
+
+        try:
+            with open(target_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except UnicodeDecodeError as exc:
+            raise ValueError(f'Skill file is not valid UTF-8 text: {relative_path}') from exc
+
+        return {
+            'skill': {'uuid': skill['uuid'], 'name': skill['name']},
+            'path': relative_path.replace(os.sep, '/'),
+            'content': content,
+        }
+
+    async def write_skill_file(self, skill_uuid: str, path: str, content: str) -> dict:
+        """Write a UTF-8 text file under a registered skill package."""
+        skill = await self.get_skill(skill_uuid)
+        if not skill:
+            raise ValueError(f'Skill {skill_uuid} not found')
+
+        target_path, relative_path = self._resolve_skill_path(skill, path, expect_directory=False)
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+
+        with open(target_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+
+        skill_mgr = getattr(self.ap, 'skill_mgr', None)
+        if skill_mgr is not None:
+            refresh_skill = getattr(skill_mgr, 'refresh_skill_from_disk', None)
+            if callable(refresh_skill):
+                refresh_skill(skill.get('name', ''))
+
+        return {
+            'skill': {'uuid': skill['uuid'], 'name': skill['name']},
+            'path': relative_path.replace(os.sep, '/'),
+            'bytes_written': len(content.encode('utf-8')),
+        }
+
     # ========== Install from GitHub ==========
 
     async def install_from_github(self, data: dict) -> dict:
@@ -278,7 +391,7 @@ class SkillService:
 
         target_dir = os.path.join('data', 'skills', repo)
         if os.path.exists(target_dir):
-            tag_suffix = release_tag.lstrip('v').replace('/', '-')
+            tag_suffix = release_tag.lstrip('v').replace('/', '-') or 'source'
             target_dir = os.path.join('data', 'skills', f'{repo}-{tag_suffix}')
             if os.path.exists(target_dir):
                 raise ValueError(f'Skill directory already exists: {target_dir}')
@@ -302,14 +415,6 @@ class SkillService:
             else:
                 skill_root = extract_dir
 
-            has_skill_md = False
-            for candidate in ('SKILL.md', 'skill.md'):
-                if os.path.isfile(os.path.join(skill_root, candidate)):
-                    has_skill_md = True
-                    break
-            if not has_skill_md:
-                raise ValueError('No SKILL.md found in the downloaded archive')
-
             os.makedirs(os.path.dirname(target_dir), exist_ok=True)
             shutil.move(skill_root, target_dir)
 
@@ -322,7 +427,6 @@ class SkillService:
             shutil.rmtree(target_dir, ignore_errors=True)
             raise
 
-        # Only pass registry fields + name to create_skill
         skill_data = {
             'name': scanned['name'],
             'package_root': scanned['package_root'],
@@ -330,7 +434,7 @@ class SkillService:
         }
 
         try:
-            return await self.create_skill(skill_data)
+            return await self._register_existing_skill(skill_data)
         except ValueError:
             shutil.rmtree(target_dir, ignore_errors=True)
             raise
@@ -387,29 +491,69 @@ class SkillService:
         if '..' in entry_file.split(os.sep):
             raise ValueError('entry_file must not contain path traversal')
 
+    def _find_skill_entry(self, path: str) -> Optional[tuple[str, str]]:
+        for candidate in ('SKILL.md', 'skill.md', 'README.md'):
+            if os.path.isfile(os.path.join(path, candidate)):
+                return path, candidate
+        return None
+
+    def _discover_skill_directories(self, root_path: str, max_depth: int = 2) -> list[tuple[str, str]]:
+        """Find skill entry files in root_path and its child directories up to max_depth."""
+        discovered: list[tuple[str, str]] = []
+        queue: list[tuple[str, int]] = [(root_path, 0)]
+        seen: set[str] = set()
+
+        while queue:
+            current_path, depth = queue.pop(0)
+            normalized_path = os.path.abspath(current_path)
+            if normalized_path in seen:
+                continue
+            seen.add(normalized_path)
+
+            found = self._find_skill_entry(normalized_path)
+            if found:
+                discovered.append(found)
+                continue
+
+            if depth >= max_depth:
+                continue
+
+            try:
+                entries = sorted(os.scandir(normalized_path), key=lambda entry: entry.name)
+            except OSError:
+                continue
+
+            for entry in entries:
+                if entry.is_dir():
+                    queue.append((entry.path, depth + 1))
+
+        return discovered
+
     def scan_directory(self, path: str) -> dict:
         """Scan a directory for skill metadata from SKILL.md frontmatter."""
         if not os.path.isdir(path):
             raise ValueError(f'Directory does not exist: {path}')
 
-        entry_file = None
-        for candidate in ('SKILL.md', 'skill.md', 'README.md'):
-            if os.path.isfile(os.path.join(path, candidate)):
-                entry_file = candidate
-                break
+        discovered = self._discover_skill_directories(path, max_depth=2)
+        if not discovered:
+            raise ValueError(f'No SKILL.md found in {path} or its subdirectories (max depth: 2)')
+        if len(discovered) > 1:
+            candidates = ', '.join(found_path for found_path, _ in discovered)
+            raise ValueError(
+                f'Multiple skill directories found in {path}. Please choose a more specific path: {candidates}'
+            )
 
-        if not entry_file:
-            raise ValueError(f'No SKILL.md found in {path}')
+        package_root, entry_file = discovered[0]
 
-        entry_path = os.path.join(path, entry_file)
+        entry_path = os.path.join(package_root, entry_file)
         with open(entry_path, 'r', encoding='utf-8') as f:
             content = f.read()
 
         metadata, instructions = parse_frontmatter(content)
-        dir_name = os.path.basename(os.path.normpath(path))
+        dir_name = os.path.basename(os.path.normpath(package_root))
 
         result = {
-            'package_root': os.path.abspath(path),
+            'package_root': os.path.abspath(package_root),
             'entry_file': entry_file,
             'name': metadata.get('name', dir_name),
             'instructions': instructions,
@@ -424,3 +568,49 @@ class SkillService:
         if not package_root:
             return ''
         return os.path.realpath(os.path.abspath(package_root))
+
+    def _resolve_skill_path(self, skill: dict, path: str, *, expect_directory: bool) -> tuple[str, str]:
+        package_root = self._normalize_package_root(skill.get('package_root', ''))
+        if not package_root:
+            raise ValueError(f'Skill "{skill.get("name", "")}" has no package_root')
+
+        relative_path = str(path or '.').strip() or '.'
+        if os.path.isabs(relative_path):
+            raise ValueError('path must be relative to the skill package root')
+
+        normalized_relative = os.path.normpath(relative_path)
+        if normalized_relative.startswith('..') or normalized_relative == '..':
+            raise ValueError('path must stay within the skill package root')
+
+        target_path = os.path.realpath(os.path.join(package_root, normalized_relative))
+        if target_path != package_root and not target_path.startswith(f'{package_root}{os.sep}'):
+            raise ValueError('path must stay within the skill package root')
+
+        if expect_directory:
+            if not os.path.isdir(target_path):
+                raise ValueError(f'Skill directory not found: {relative_path}')
+        else:
+            parent_dir = os.path.dirname(target_path) or package_root
+            if parent_dir != package_root and not parent_dir.startswith(f'{package_root}{os.sep}'):
+                raise ValueError('path must stay within the skill package root')
+
+        return target_path, normalized_relative
+
+    def _get_managed_skill_storage_path(self, package_root: str) -> str:
+        normalized_root = self._normalize_package_root(package_root)
+        if not normalized_root:
+            return ''
+
+        managed_root = self._normalize_package_root(os.path.join('data', 'skills'))
+        if normalized_root != managed_root and not normalized_root.startswith(f'{managed_root}{os.sep}'):
+            return ''
+
+        relative_path = os.path.relpath(normalized_root, managed_root)
+        if relative_path in ('.', ''):
+            return ''
+
+        managed_entry = relative_path.split(os.sep, 1)[0]
+        if managed_entry in ('', '.', '..'):
+            return ''
+
+        return os.path.join(managed_root, managed_entry)

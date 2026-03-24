@@ -1255,7 +1255,7 @@ const enUS = {
       'When a user message contains these keywords, this skill will be activated. Leave empty to rely on auto-activation only.',
     packageRoot: 'Package Directory',
     packageRootHelp:
-      'Optional. Only needed when importing an existing skill directory. Leave empty for new skills.',
+      'Optional. Only needed when importing an existing skill directory. Leave empty for new skills. Scanning checks the current directory and subdirectories up to 2 levels deep.',
     skillType: 'Type',
     typeSkill: 'Skill',
     typeWorkflow: 'Workflow',
@@ -1275,6 +1275,7 @@ const enUS = {
     noReleasesFound: 'No releases found',
     fetchReleasesError: 'Failed to fetch releases: ',
     selectAsset: 'Select file to install',
+    sourceArchive: 'Source code (zip)',
     noAssetsFound: 'No installable files available in this release',
     fetchAssetsError: 'Failed to fetch assets: ',
     backToReleases: 'Back to releases',

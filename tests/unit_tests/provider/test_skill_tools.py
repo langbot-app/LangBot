@@ -661,6 +661,111 @@ class TestSkillAuthoringToolLoader:
         )
         assert result['bound_skill_names'] == ['new-skill']
 
+    @pytest.mark.asyncio
+    async def test_skill_file_tools_route_to_skill_service(self):
+        from langbot.pkg.provider.tools.loaders.skill_authoring import (
+            SKILL_LIST_FILES_TOOL_NAME,
+            SKILL_READ_FILE_TOOL_NAME,
+            SKILL_WRITE_FILE_TOOL_NAME,
+            SkillAuthoringToolLoader,
+        )
+
+        ap = _make_ap()
+        ap.skill_service = SimpleNamespace(
+            get_skill_by_name=AsyncMock(return_value={'uuid': 'uuid-mood', 'name': 'mood-logger'}),
+            get_skill=AsyncMock(return_value=_make_skill_data(name='mood-logger')),
+            list_skill_files=AsyncMock(return_value={'entries': [{'path': 'resources'}]}),
+            read_skill_file=AsyncMock(return_value={'path': 'resources/affinity.py', 'content': 'print("ok")\n'}),
+            write_skill_file=AsyncMock(return_value={'path': 'resources/affinity.py', 'bytes_written': 12}),
+        )
+        ap.pipeline_service = SimpleNamespace()
+        ap.skill_mgr = SimpleNamespace(get_skill_runtime_data=Mock(return_value={'instructions': 'x'}))
+
+        loader = SkillAuthoringToolLoader(ap)
+        await loader.initialize()
+
+        listed = await loader.invoke_tool(
+            SKILL_LIST_FILES_TOOL_NAME,
+            {'skill_name': 'mood-logger', 'path': 'resources'},
+            SimpleNamespace(pipeline_uuid='pipe-1'),
+        )
+        read_back = await loader.invoke_tool(
+            SKILL_READ_FILE_TOOL_NAME,
+            {'skill_name': 'mood-logger', 'path': 'resources/affinity.py'},
+            SimpleNamespace(pipeline_uuid='pipe-1'),
+        )
+        written = await loader.invoke_tool(
+            SKILL_WRITE_FILE_TOOL_NAME,
+            {
+                'skill_name': 'mood-logger',
+                'path': 'resources/affinity.py',
+                'content': 'print("ok")\n',
+            },
+            SimpleNamespace(pipeline_uuid='pipe-1'),
+        )
+
+        assert listed['entries'] == [{'path': 'resources'}]
+        assert read_back['path'] == 'resources/affinity.py'
+        assert written['bytes_written'] == 12
+        ap.skill_service.list_skill_files.assert_awaited_once_with(
+            'uuid-mood-logger',
+            path='resources',
+            include_hidden=False,
+            max_entries=200,
+        )
+        ap.skill_service.read_skill_file.assert_awaited_once_with('uuid-mood-logger', 'resources/affinity.py')
+        ap.skill_service.write_skill_file.assert_awaited_once_with(
+            'uuid-mood-logger',
+            'resources/affinity.py',
+            'print("ok")\n',
+        )
+
+
+class TestNativeToolLoader:
+    @pytest.mark.asyncio
+    async def test_sandbox_exec_rejects_paths_that_look_like_activated_skill_dirs(self):
+        from langbot.pkg.provider.tools.loaders.skill import register_activated_skill
+        from langbot.pkg.provider.tools.toolmgr import ToolManager
+
+        ap = _make_ap()
+        ap.box_service = Mock()
+        ap.box_service.execute_sandbox_tool = AsyncMock()
+        loader = ToolManager(ap).native_tool_loader
+
+        query = SimpleNamespace(variables={})
+        register_activated_skill(query, _make_skill_data(name='mood-logger'))
+
+        with pytest.raises(ValueError, match='Use skill_exec with skill_name="mood-logger"'):
+            await loader.invoke_tool(
+                'sandbox_exec',
+                {'cmd': 'mkdir -p /workspace/mood-logger/resources && touch /workspace/mood-logger/resources/a.py'},
+                query,
+            )
+
+        ap.box_service.execute_sandbox_tool.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_sandbox_exec_allows_general_workspace_usage_when_no_skill_path_confusion(self):
+        from langbot.pkg.provider.tools.loaders.skill import register_activated_skill
+        from langbot.pkg.provider.tools.toolmgr import ToolManager
+
+        ap = _make_ap()
+        ap.box_service = Mock()
+        ap.box_service.execute_sandbox_tool = AsyncMock(return_value={'ok': True})
+        loader = ToolManager(ap).native_tool_loader
+
+        query = SimpleNamespace(variables={})
+        register_activated_skill(query, _make_skill_data(name='mood-logger'))
+
+        result = await loader.invoke_tool(
+            'sandbox_exec',
+            {'cmd': 'mkdir -p /workspace/tmp && echo hi > /workspace/tmp/out.txt'},
+            query,
+        )
+
+        assert result == {'ok': True}
+        ap.box_service.execute_sandbox_tool.assert_awaited_once()
+
 
 class TestBoxServiceSkillExec:
     """Test BoxService skill sandbox execution helpers."""
@@ -703,6 +808,48 @@ class TestBoxServiceSkillExec:
         spec = client.execute.await_args.args[0]
         assert spec.host_path_mode == BoxHostMountMode.READ_WRITE
         ap.skill_mgr.refresh_skill_from_disk.assert_called_once_with('writer')
+        assert 'VIRTUAL_ENV="$_LB_VENV_DIR"' not in spec.cmd
+
+    @pytest.mark.asyncio
+    async def test_execute_in_skill_sandbox_bootstraps_persistent_python_env(self):
+        from langbot.pkg.box.service import BoxService
+
+        client = Mock()
+        client.execute = AsyncMock(
+            return_value=BoxExecutionResult(
+                session_id='skill-1',
+                backend_name='fake',
+                status=BoxExecutionStatus.COMPLETED,
+                exit_code=0,
+                stdout='ok',
+                stderr='',
+                duration_ms=5,
+            )
+        )
+
+        ap = _make_ap()
+        ap.skill_mgr = Mock()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ap.instance_config = SimpleNamespace(
+                data={'box': {'profile': 'default', 'allowed_host_mount_roots': [tmpdir], 'default_host_workspace': ''}}
+            )
+            with open(os.path.join(tmpdir, 'requirements.txt'), 'w', encoding='utf-8') as handle:
+                handle.write('requests==2.32.0\n')
+
+            service = BoxService(ap, client=client)
+            service._available = True
+
+            skill_data = _make_skill_data(name='writer', package_root=tmpdir)
+            query = SimpleNamespace(query_id=7)
+
+            await service.execute_in_skill_sandbox(skill_data, 'python scripts/run.py', query)
+
+        spec = client.execute.await_args.args[0]
+        assert 'python -m venv "$_LB_VENV_DIR"' in spec.cmd
+        assert 'export VIRTUAL_ENV="$_LB_VENV_DIR"' in spec.cmd
+        assert 'export TMPDIR="$_LB_TMP_DIR"' in spec.cmd
+        assert spec.cmd.rstrip().endswith('python scripts/run.py')
 
     def test_build_skill_session_id_with_launcher(self):
         from langbot.pkg.box.service import BoxService

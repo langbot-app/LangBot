@@ -1197,7 +1197,8 @@ const zhHans = {
     keywordsHelp:
       '当用户消息包含这些关键词时，将强制激活此技能。留空则仅依赖自动激活。',
     packageRoot: '技能目录',
-    packageRootHelp: '非必填。仅在导入已有技能目录时需要填写，新建技能可留空。',
+    packageRootHelp:
+      '非必填。仅在导入已有技能目录时需要填写，新建技能可留空。扫描会检查当前目录及两级子目录。',
     skillType: '类型',
     typeSkill: '技能',
     typeWorkflow: '工作流',
@@ -1217,6 +1218,7 @@ const zhHans = {
     noReleasesFound: '未找到发布版本',
     fetchReleasesError: '获取发布版本失败：',
     selectAsset: '选择要安装的文件',
+    sourceArchive: '源码包 (zip)',
     noAssetsFound: '此版本暂无可安装的文件',
     fetchAssetsError: '获取文件列表失败：',
     backToReleases: '返回版本列表',

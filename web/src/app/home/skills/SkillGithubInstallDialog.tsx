@@ -37,6 +37,8 @@ interface GithubRelease {
   published_at: string;
   prerelease: boolean;
   draft: boolean;
+  source_type?: 'release' | 'tag' | 'branch';
+  archive_url?: string;
 }
 
 interface GithubAsset {
@@ -102,6 +104,18 @@ export default function SkillGithubInstallDialog({
     }
   }
 
+  function buildSourceArchiveAsset(release: GithubRelease): GithubAsset | null {
+    if (!release.archive_url) return null;
+
+    return {
+      id: 0,
+      name: t('skills.sourceArchive'),
+      size: 0,
+      download_url: release.archive_url,
+      content_type: 'application/zip',
+    };
+  }
+
   async function fetchReleases() {
     if (!githubURL.trim()) return;
     setFetchingReleases(true);
@@ -130,19 +144,47 @@ export default function SkillGithubInstallDialog({
 
   async function handleReleaseSelect(release: GithubRelease) {
     setSelectedRelease(release);
+    setSelectedAsset(null);
     setFetchingAssets(true);
     setInstallError(null);
 
     try {
+      if (release.source_type && release.source_type !== 'release') {
+        const archiveAsset = buildSourceArchiveAsset(release);
+        if (!archiveAsset) {
+          toast.warning(t('skills.noAssetsFound'));
+          return;
+        }
+
+        setGithubAssets([archiveAsset]);
+        setSelectedAsset(archiveAsset);
+        setStatus(InstallStatus.ASK_CONFIRM);
+        return;
+      }
+
       const result = await httpClient.getGithubReleaseAssets(
         githubOwner,
         githubRepo,
         release.id,
+        release.tag_name,
+        release.source_type,
+        release.archive_url,
       );
-      setGithubAssets(result.assets);
+      let assets = result.assets;
+      if (assets.length === 0) {
+        const archiveAsset = buildSourceArchiveAsset(release);
+        if (archiveAsset) {
+          assets = [archiveAsset];
+        }
+      }
 
-      if (result.assets.length === 0) {
+      setGithubAssets(assets);
+
+      if (assets.length === 0) {
         toast.warning(t('skills.noAssetsFound'));
+      } else if (assets.length === 1 && assets[0].id === 0) {
+        setSelectedAsset(assets[0]);
+        setStatus(InstallStatus.ASK_CONFIRM);
       } else {
         setStatus(InstallStatus.SELECT_ASSET);
       }

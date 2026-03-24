@@ -14,6 +14,18 @@ from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 
 @group.group_class('plugins', '/api/v1/plugins')
 class PluginsRouterGroup(group.RouterGroup):
+    @staticmethod
+    def _parse_github_repo(repo_url: str) -> tuple[str, str] | None:
+        pattern = r'github\.com/([^/]+)/([^/]+?)(?:\.git)?(?:/.*)?$'
+        match = re.search(pattern, repo_url)
+        if not match:
+            return None
+        return match.groups()
+
+    @staticmethod
+    def _build_github_archive_url(owner: str, repo: str, ref: str) -> str:
+        return f'https://api.github.com/repos/{owner}/{repo}/zipball/{ref}'
+
     async def _check_extensions_limit(self) -> str | None:
         """Check if extensions limit is reached. Returns error response if limit exceeded, None otherwise."""
         limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
@@ -151,27 +163,25 @@ class PluginsRouterGroup(group.RouterGroup):
             data = await quart.request.json
             repo_url = data.get('repo_url', '')
 
-            # Parse GitHub repository URL to extract owner and repo
-            # Supports: https://github.com/owner/repo or github.com/owner/repo
-            pattern = r'github\.com/([^/]+)/([^/]+?)(?:\.git)?(?:/.*)?$'
-            match = re.search(pattern, repo_url)
-
-            if not match:
+            parsed_repo = self._parse_github_repo(repo_url)
+            if not parsed_repo:
                 return self.http_status(400, -1, 'Invalid GitHub repository URL')
 
-            owner, repo = match.groups()
+            owner, repo = parsed_repo
 
             try:
-                # Fetch releases from GitHub API
-                url = f'https://api.github.com/repos/{owner}/{repo}/releases'
                 async with httpx.AsyncClient(
                     trust_env=True,
                     follow_redirects=True,
                     timeout=10,
                 ) as client:
-                    response = await client.get(url)
-                    response.raise_for_status()
-                    releases = response.json()
+                    repo_response = await client.get(f'https://api.github.com/repos/{owner}/{repo}')
+                    repo_response.raise_for_status()
+                    repo_info = repo_response.json()
+
+                    releases_response = await client.get(f'https://api.github.com/repos/{owner}/{repo}/releases')
+                    releases_response.raise_for_status()
+                    releases = releases_response.json()
 
                 # Format releases data for frontend
                 formatted_releases = []
@@ -184,11 +194,55 @@ class PluginsRouterGroup(group.RouterGroup):
                             'published_at': release['published_at'],
                             'prerelease': release['prerelease'],
                             'draft': release['draft'],
+                            'source_type': 'release',
+                            'archive_url': release.get('zipball_url')
+                            or self._build_github_archive_url(owner, repo, release['tag_name']),
                         }
                     )
 
+                repo_timestamp = repo_info.get('pushed_at') or repo_info.get('updated_at') or repo_info.get('created_at')
+                if not formatted_releases:
+                    async with httpx.AsyncClient(
+                        trust_env=True,
+                        follow_redirects=True,
+                        timeout=10,
+                    ) as client:
+                        tags_response = await client.get(f'https://api.github.com/repos/{owner}/{repo}/tags')
+                        tags_response.raise_for_status()
+                        tags = tags_response.json()
+
+                    if tags:
+                        formatted_releases = [
+                            {
+                                'id': -(index + 1),
+                                'tag_name': tag['name'],
+                                'name': tag['name'],
+                                'published_at': repo_timestamp,
+                                'prerelease': False,
+                                'draft': False,
+                                'source_type': 'tag',
+                                'archive_url': tag.get('zipball_url')
+                                or self._build_github_archive_url(owner, repo, tag['name']),
+                            }
+                            for index, tag in enumerate(tags)
+                        ]
+                    else:
+                        default_branch = repo_info.get('default_branch') or 'main'
+                        formatted_releases = [
+                            {
+                                'id': 0,
+                                'tag_name': default_branch,
+                                'name': default_branch,
+                                'published_at': repo_timestamp,
+                                'prerelease': False,
+                                'draft': False,
+                                'source_type': 'branch',
+                                'archive_url': self._build_github_archive_url(owner, repo, default_branch),
+                            }
+                        ]
+
                 return self.success(data={'releases': formatted_releases, 'owner': owner, 'repo': repo})
-            except httpx.RequestError as e:
+            except httpx.HTTPError as e:
                 return self.http_status(500, -1, f'Failed to fetch releases: {str(e)}')
 
         @self.route(
@@ -202,11 +256,30 @@ class PluginsRouterGroup(group.RouterGroup):
             owner = data.get('owner', '')
             repo = data.get('repo', '')
             release_id = data.get('release_id', '')
+            release_tag = data.get('release_tag', '')
+            source_type = data.get('source_type', 'release')
+            archive_url = data.get('archive_url', '')
 
-            if not all([owner, repo, release_id]):
+            if not owner or not repo or release_id in ('', None):
                 return self.http_status(400, -1, 'Missing required parameters')
 
             try:
+                if source_type in ('tag', 'branch') or int(release_id) <= 0:
+                    download_url = archive_url or self._build_github_archive_url(owner, repo, release_tag)
+                    return self.success(
+                        data={
+                            'assets': [
+                                {
+                                    'id': 0,
+                                    'name': 'Source code (zip)',
+                                    'size': 0,
+                                    'download_url': download_url,
+                                    'content_type': 'application/zip',
+                                }
+                            ]
+                        }
+                    )
+
                 # Fetch release assets from GitHub API
                 url = f'https://api.github.com/repos/{owner}/{repo}/releases/{release_id}'
                 async with httpx.AsyncClient(
@@ -233,19 +306,18 @@ class PluginsRouterGroup(group.RouterGroup):
                         }
                     )
 
-                # add zipball as a downloadable asset
-                # formatted_assets.append(
-                #     {
-                #         "id": 0,
-                #         "name": "Source code (zip)",
-                #         "size": -1,
-                #         "download_url": release["zipball_url"],
-                #         "content_type": "application/zip",
-                #     }
-                # )
+                formatted_assets.append(
+                    {
+                        'id': 0,
+                        'name': 'Source code (zip)',
+                        'size': 0,
+                        'download_url': release['zipball_url'],
+                        'content_type': 'application/zip',
+                    }
+                )
 
                 return self.success(data={'assets': formatted_assets})
-            except httpx.RequestError as e:
+            except (ValueError, httpx.HTTPError) as e:
                 return self.http_status(500, -1, f'Failed to fetch release assets: {str(e)}')
 
         @self.route('/install/github', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)

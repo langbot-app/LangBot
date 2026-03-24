@@ -594,6 +594,8 @@ export class BackendClient extends BaseHttpClient {
       published_at: string;
       prerelease: boolean;
       draft: boolean;
+      source_type?: 'release' | 'tag' | 'branch';
+      archive_url?: string;
     }>;
     owner: string;
     repo: string;
@@ -605,6 +607,9 @@ export class BackendClient extends BaseHttpClient {
     owner: string,
     repo: string,
     releaseId: number,
+    releaseTag?: string,
+    sourceType?: 'release' | 'tag' | 'branch',
+    archiveUrl?: string,
   ): Promise<{
     assets: Array<{
       id: number;
@@ -618,6 +623,9 @@ export class BackendClient extends BaseHttpClient {
       owner,
       repo,
       release_id: releaseId,
+      release_tag: releaseTag,
+      source_type: sourceType,
+      archive_url: archiveUrl,
     });
   }
 
