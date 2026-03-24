@@ -42,7 +42,7 @@ def make_tool(name: str) -> resource_tool.LLMTool:
 
 
 @pytest.mark.asyncio
-async def test_tool_manager_lists_native_tools_first():
+async def test_tool_manager_omits_skill_authoring_tools_by_default():
     manager = ToolManager(SimpleNamespace())
     manager.native_tool_loader = StubLoader([make_tool('exec')])
     manager.skill_authoring_tool_loader = StubLoader([make_tool('list_skills')])
@@ -50,6 +50,19 @@ async def test_tool_manager_lists_native_tools_first():
     manager.mcp_tool_loader = StubLoader([make_tool('mcp_tool')])
 
     tools = await manager.get_all_tools()
+
+    assert [tool.name for tool in tools] == ['exec', 'plugin_tool', 'mcp_tool']
+
+
+@pytest.mark.asyncio
+async def test_tool_manager_includes_skill_authoring_tools_when_requested():
+    manager = ToolManager(SimpleNamespace())
+    manager.native_tool_loader = StubLoader([make_tool('exec')])
+    manager.skill_authoring_tool_loader = StubLoader([make_tool('list_skills')])
+    manager.plugin_tool_loader = StubLoader([make_tool('plugin_tool')])
+    manager.mcp_tool_loader = StubLoader([make_tool('mcp_tool')])
+
+    tools = await manager.get_all_tools(include_skill_authoring=True)
 
     assert [tool.name for tool in tools] == ['exec', 'list_skills', 'plugin_tool', 'mcp_tool']
 

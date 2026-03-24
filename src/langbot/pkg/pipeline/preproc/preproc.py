@@ -90,7 +90,11 @@ class PreProcessor(stage.PipelineStage):
                     # Get bound plugins and MCP servers for filtering tools
                     bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
                     bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
-                    query.use_funcs = await self.ap.tool_mgr.get_all_tools(bound_plugins, bound_mcp_servers)
+                    query.use_funcs = await self.ap.tool_mgr.get_all_tools(
+                        bound_plugins,
+                        bound_mcp_servers,
+                        include_skill_authoring=bool(query.variables.get('_skill_authoring_enabled', False)),
+                    )
 
                     self.ap.logger.debug(f'Bound plugins: {bound_plugins}')
                     self.ap.logger.debug(f'Bound MCP servers: {bound_mcp_servers}')
@@ -101,7 +105,11 @@ class PreProcessor(stage.PipelineStage):
             if not query.use_funcs and query.variables.get('_fallback_model_uuids'):
                 bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
                 bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
-                query.use_funcs = await self.ap.tool_mgr.get_all_tools(bound_plugins, bound_mcp_servers)
+                query.use_funcs = await self.ap.tool_mgr.get_all_tools(
+                    bound_plugins,
+                    bound_mcp_servers,
+                    include_skill_authoring=bool(query.variables.get('_skill_authoring_enabled', False)),
+                )
 
         sender_name = ''
 

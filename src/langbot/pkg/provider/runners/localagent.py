@@ -9,7 +9,7 @@ from ..tools.loaders.native import EXEC_TOOL_NAME
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.rag.context as rag_context
-from ...skill.activation import prepare_skill_activation
+from ...skill.activation import get_skill_activation_coordinator
 
 
 rag_combined_prompt_template = """
@@ -151,6 +151,8 @@ class LocalAgentRunner(runner.RequestRunner):
     ) -> typing.AsyncGenerator[provider_message.Message | provider_message.MessageChunk, None]:
         """Run request"""
         pending_tool_calls = []
+        initial_response_emitted = False
+        skill_activation = get_skill_activation_coordinator(self.ap)
 
         # Get knowledge bases list from query variables (set by PreProcessor,
         # may have been modified by plugins during PromptPreProcessing)
@@ -245,7 +247,6 @@ class LocalAgentRunner(runner.RequestRunner):
                 query.use_funcs,
                 remove_think,
             )
-            yield msg
             final_msg = msg
         else:
             # Streaming: invoke with fallback
@@ -254,6 +255,7 @@ class LocalAgentRunner(runner.RequestRunner):
             accumulated_content = ''
             last_role = 'assistant'
             msg_sequence = 1
+            suppress_initial_stream = False
 
             stream_src, use_llm_model = await self._invoke_stream_with_fallback(
                 query,
@@ -284,7 +286,31 @@ class LocalAgentRunner(runner.RequestRunner):
                         if tool_call.function and tool_call.function.arguments:
                             tool_calls_map[tool_call.id].function.arguments += tool_call.function.arguments
 
-                if msg_idx % 8 == 0 or msg.is_final:
+                emitted_this_round = False
+                if skill_activation is not None:
+                    activation_prefix_state = skill_activation.inspect_initial_content(
+                        accumulated_content,
+                        msg.is_final,
+                    )
+                    if activation_prefix_state == 'buffer':
+                        suppress_initial_stream = True
+                    elif (
+                        activation_prefix_state == 'emit'
+                        and suppress_initial_stream is False
+                        and not initial_response_emitted
+                    ):
+                        msg_sequence += 1
+                        yield provider_message.MessageChunk(
+                            role=last_role,
+                            content=accumulated_content,
+                            tool_calls=list(tool_calls_map.values()) if (tool_calls_map and msg.is_final) else None,
+                            is_final=msg.is_final,
+                            msg_sequence=msg_sequence,
+                        )
+                        initial_response_emitted = True
+                        emitted_this_round = True
+
+                if not suppress_initial_stream and not emitted_this_round and (msg_idx % 8 == 0 or msg.is_final):
                     msg_sequence += 1
                     yield provider_message.MessageChunk(
                         role=last_role,
@@ -293,6 +319,7 @@ class LocalAgentRunner(runner.RequestRunner):
                         is_final=msg.is_final,
                         msg_sequence=msg_sequence,
                     )
+                    initial_response_emitted = True
 
             final_msg = provider_message.MessageChunk(
                 role=last_role,
@@ -308,35 +335,32 @@ class LocalAgentRunner(runner.RequestRunner):
 
         # =========== Skill activation detection ===========
         # Check if the LLM response contains a skill activation marker
-        if first_content and self.ap.skill_mgr:
-            original_use_funcs = query.use_funcs
-            original_variables = copy.deepcopy(query.variables) if query.variables is not None else None
+        if first_content and skill_activation is not None:
+            activation_plan = None
             original_req_messages_len = len(req_messages)
 
             try:
-                activation = prepare_skill_activation(self.ap, query, first_content)
-                if activation:
-                    self.ap.logger.info(f'Skill activations detected: {activation.activated_skill_names}')
-
-                    skill_system_msg = provider_message.Message(role='system', content=activation.prompt)
+                activation_plan = skill_activation.prepare_followup(query, first_content)
+                if activation_plan:
+                    self.ap.logger.info(f'Skill activations detected: {activation_plan.activated_skill_names}')
 
                     # Reconstruct messages: keep original + add skill prompt + let LLM continue
                     req_messages.append(final_msg)
-                    req_messages.append(skill_system_msg)
+                    req_messages.append(activation_plan.system_message)
 
                     # Make another request to let the LLM execute the skill
                     if is_stream:
                         tool_calls_map = {}
                         msg_idx = 0
-                        accumulated_content = activation.cleaned_content
+                        accumulated_content = ''
                         last_role = 'assistant'
                         msg_sequence = first_end_sequence
 
-                        async for msg in use_llm_model.provider.requester.invoke_llm_stream(
+                        async for msg in use_llm_model.provider.invoke_llm_stream(
                             query,
                             use_llm_model,
                             req_messages,
-                            query.use_funcs,
+                            query.use_funcs if use_llm_model.model_entity.abilities.__contains__('func_call') else [],
                             extra_args=use_llm_model.model_entity.extra_args,
                             remove_think=remove_think,
                         ):
@@ -373,6 +397,7 @@ class LocalAgentRunner(runner.RequestRunner):
                                     is_final=msg.is_final,
                                     msg_sequence=msg_sequence,
                                 )
+                                initial_response_emitted = True
 
                         final_msg = provider_message.MessageChunk(
                             role=last_role,
@@ -383,15 +408,14 @@ class LocalAgentRunner(runner.RequestRunner):
                         first_content = accumulated_content
                         first_end_sequence = msg_sequence
                     else:
-                        msg = await use_llm_model.provider.requester.invoke_llm(
+                        msg = await use_llm_model.provider.invoke_llm(
                             query,
                             use_llm_model,
                             req_messages,
-                            query.use_funcs,
+                            query.use_funcs if use_llm_model.model_entity.abilities.__contains__('func_call') else [],
                             extra_args=use_llm_model.model_entity.extra_args,
                             remove_think=remove_think,
                         )
-                        yield msg
                         final_msg = msg
                         first_content = msg.content
 
@@ -401,9 +425,20 @@ class LocalAgentRunner(runner.RequestRunner):
                     req_messages = req_messages[:-2]
             except Exception:
                 self.ap.logger.exception('Skill activation failed, falling back to normal execution')
-                query.use_funcs = original_use_funcs
-                query.variables = original_variables
+                skill_activation.rollback(
+                    query,
+                    activation_plan.snapshot if activation_plan is not None else None,
+                    final_msg,
+                )
                 req_messages = req_messages[:original_req_messages_len]
+                first_content = final_msg.content
+
+        if not is_stream:
+            yield final_msg
+            initial_response_emitted = True
+        elif not initial_response_emitted:
+            yield final_msg
+            initial_response_emitted = True
 
         req_messages.append(final_msg)
 

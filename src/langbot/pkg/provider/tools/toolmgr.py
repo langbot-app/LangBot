@@ -56,13 +56,17 @@ class ToolManager:
         await self.skill_authoring_tool_loader.initialize()
 
     async def get_all_tools(
-        self, bound_plugins: list[str] | None = None, bound_mcp_servers: list[str] | None = None
+        self,
+        bound_plugins: list[str] | None = None,
+        bound_mcp_servers: list[str] | None = None,
+        include_skill_authoring: bool = False,
     ) -> list[resource_tool.LLMTool]:
         """获取所有函数"""
         all_functions: list[resource_tool.LLMTool] = []
 
         all_functions.extend(await self.native_tool_loader.get_tools())
-        all_functions.extend(await self.skill_authoring_tool_loader.get_tools())
+        if include_skill_authoring:
+            all_functions.extend(await self.skill_authoring_tool_loader.get_tools())
         all_functions.extend(await self.plugin_tool_loader.get_tools(bound_plugins))
         all_functions.extend(await self.mcp_tool_loader.get_tools(bound_mcp_servers))
 
