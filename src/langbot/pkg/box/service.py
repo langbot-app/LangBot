@@ -279,11 +279,6 @@ class BoxService:
             default_host_workspace = os.path.join(self.shared_host_root, 'default')
         return os.path.realpath(os.path.abspath(default_host_workspace))
 
-    def get_managed_skills_root(self) -> str | None:
-        if self.shared_host_root is None:
-            return None
-        return os.path.join(self.shared_host_root, 'skills')
-
     def _ensure_default_host_workspace(self):
         if self.default_host_workspace is None:
             return

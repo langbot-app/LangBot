@@ -12,7 +12,9 @@ import os
 import sys
 import tempfile
 import types
-from unittest.mock import Mock
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -576,3 +578,58 @@ class TestBoxConfigParsing:
         assert isinstance(s.box_config, mcp_module.MCPServerBoxConfig)
         assert s.box_config.image is None
         assert s.box_config.host_path_mode == 'ro'
+
+
+@pytest.mark.asyncio
+async def test_init_box_stdio_server_keeps_host_mount_validation_enabled(mcp_module):
+    class FakeClientSession:
+        def __init__(self, *_args):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def initialize(self):
+            return None
+
+    @asynccontextmanager
+    async def fake_websocket_client(_url: str):
+        yield ('read-stream', 'write-stream')
+
+    mcp_module.ClientSession = FakeClientSession
+    mcp_module.websocket_client = fake_websocket_client
+
+    ap = _make_ap()
+    ap.box_service.available = True
+    ap.box_service.create_session = AsyncMock(return_value={})
+    ap.box_service.build_spec = Mock(return_value='validated-spec')
+    ap.box_service.client = SimpleNamespace(
+        execute=AsyncMock(return_value=SimpleNamespace(ok=True, stderr='', exit_code=0))
+    )
+    ap.box_service.start_managed_process = AsyncMock(return_value={})
+    ap.box_service.get_managed_process_websocket_url = Mock(return_value='ws://box.example/process')
+
+    session = _make_session(
+        mcp_module,
+        {
+            'name': 'test',
+            'uuid': 'u1',
+            'mode': 'stdio',
+            'command': '/home/user/mcp/.venv/bin/python',
+            'args': ['/home/user/mcp/server.py'],
+            'box': {'host_path': '/home/user/mcp'},
+        },
+        ap=ap,
+    )
+    session._detect_install_command = Mock(return_value='pip install --no-cache-dir -r /workspace/requirements.txt')
+
+    await session._init_box_stdio_server()
+    await session.exit_stack.aclose()
+
+    assert ap.box_service.create_session.await_count == 1
+    assert ap.box_service.create_session.await_args.kwargs.get('skip_host_mount_validation', False) is False
+    assert ap.box_service.build_spec.call_count == 1
+    assert ap.box_service.build_spec.call_args.kwargs.get('skip_host_mount_validation', False) is False

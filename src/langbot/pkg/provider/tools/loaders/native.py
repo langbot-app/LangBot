@@ -17,12 +17,14 @@ class NativeToolLoader(loader.ToolLoader):
         self._sandbox_exec_tool: resource_tool.LLMTool | None = None
 
     async def get_tools(self, bound_plugins: list[str] | None = None) -> list[resource_tool.LLMTool]:
+        if not self._is_sandbox_available():
+            return []
         if self._sandbox_exec_tool is None:
             self._sandbox_exec_tool = self._build_sandbox_exec_tool()
         return [self._sandbox_exec_tool]
 
     async def has_tool(self, name: str) -> bool:
-        return name == SANDBOX_EXEC_TOOL_NAME
+        return name == SANDBOX_EXEC_TOOL_NAME and self._is_sandbox_available()
 
     async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query):
         if name != SANDBOX_EXEC_TOOL_NAME:
@@ -36,6 +38,10 @@ class NativeToolLoader(loader.ToolLoader):
 
     async def shutdown(self):
         pass
+
+    def _is_sandbox_available(self) -> bool:
+        box_service = getattr(self.ap, 'box_service', None)
+        return bool(getattr(box_service, 'available', False))
 
     def _build_sandbox_exec_tool(self) -> resource_tool.LLMTool:
         return resource_tool.LLMTool(

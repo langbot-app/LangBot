@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import typing
+from typing import TYPE_CHECKING
 
-from ...core import app
 from langbot.pkg.utils import importutil
 from langbot.pkg.provider.tools import loaders
 from langbot.pkg.provider.tools.loaders import mcp as mcp_loader, native as native_loader, plugin as plugin_loader
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 from langbot_plugin.api.entities.events import pipeline_query
+
+if TYPE_CHECKING:
+    from ...core import app
 
 importutil.import_modules_in_pkg(loaders)
 
@@ -15,13 +18,13 @@ importutil.import_modules_in_pkg(loaders)
 class ToolManager:
     """LLM工具管理器"""
 
-    ap: app.Application
+    ap: 'app.Application'
 
     native_tool_loader: native_loader.NativeToolLoader
     plugin_tool_loader: plugin_loader.PluginToolLoader
     mcp_tool_loader: mcp_loader.MCPLoader
 
-    def __init__(self, ap: app.Application):
+    def __init__(self, ap: 'app.Application'):
         self.ap = ap
 
     async def initialize(self):

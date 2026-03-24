@@ -21,13 +21,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from langbot.pkg.box.backend import BaseSandboxBackend
-from langbot.pkg.box.client import ActionRPCBoxClient
-from langbot.pkg.box.errors import BoxBackendUnavailableError
-from langbot.pkg.box.models import BoxExecutionStatus, BoxNetworkMode, BoxSpec
-from langbot.pkg.box.runtime import BoxRuntime
-from langbot.pkg.box.server import BoxServerHandler
 from langbot.pkg.box.service import BoxService
+from langbot_plugin.box.backend import BaseSandboxBackend
+from langbot_plugin.box.client import ActionRPCBoxClient
+from langbot_plugin.box.errors import BoxBackendUnavailableError
+from langbot_plugin.box.models import BoxExecutionStatus, BoxNetworkMode, BoxSpec
+from langbot_plugin.box.runtime import BoxRuntime
+from langbot_plugin.box.server import BoxServerHandler
 
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
