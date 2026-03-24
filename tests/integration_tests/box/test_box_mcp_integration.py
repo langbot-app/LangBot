@@ -22,11 +22,11 @@ import aiohttp
 import pytest
 from aiohttp.test_utils import TestServer
 
-from langbot.pkg.box.client import ActionRPCBoxClient
-from langbot.pkg.box.errors import BoxSessionNotFoundError
-from langbot.pkg.box.models import BoxManagedProcessSpec, BoxManagedProcessStatus, BoxSpec
-from langbot.pkg.box.runtime import BoxRuntime
-from langbot.pkg.box.server import BoxServerHandler, create_ws_relay_app
+from langbot_plugin.box.client import ActionRPCBoxClient
+from langbot_plugin.box.errors import BoxSessionNotFoundError
+from langbot_plugin.box.models import BoxManagedProcessSpec, BoxManagedProcessStatus, BoxSpec
+from langbot_plugin.box.runtime import BoxRuntime
+from langbot_plugin.box.server import BoxServerHandler, create_ws_relay_app
 
 _logger = logging.getLogger('test.box.mcp_integration')
 

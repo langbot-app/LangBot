@@ -7,6 +7,7 @@ import pytest
 
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
+from langbot.pkg.provider.tools.loaders.native import NativeToolLoader
 from langbot.pkg.provider.tools.toolmgr import ToolManager
 
 
@@ -61,3 +62,21 @@ async def test_tool_manager_routes_native_tool_calls():
     result = await manager.execute_func_call('sandbox_exec', {'cmd': 'pwd'}, query=Mock())
 
     assert result == {'backend': 'fake'}
+
+
+@pytest.mark.asyncio
+async def test_native_tool_loader_hides_sandbox_exec_when_box_unavailable():
+    loader = NativeToolLoader(SimpleNamespace(box_service=SimpleNamespace(available=False)))
+
+    assert await loader.get_tools() == []
+    assert await loader.has_tool('sandbox_exec') is False
+
+
+@pytest.mark.asyncio
+async def test_native_tool_loader_exposes_sandbox_exec_when_box_available():
+    loader = NativeToolLoader(SimpleNamespace(box_service=SimpleNamespace(available=True)))
+
+    tools = await loader.get_tools()
+
+    assert [tool.name for tool in tools] == ['sandbox_exec']
+    assert await loader.has_tool('sandbox_exec') is True
