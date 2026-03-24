@@ -99,6 +99,7 @@ class FakeBackend(BaseSandboxBackend):
             network=spec.network,
             host_path=spec.host_path,
             host_path_mode=spec.host_path_mode,
+            mount_path=spec.mount_path,
             cpus=spec.cpus,
             memory_mb=spec.memory_mb,
             pids_limit=spec.pids_limit,
@@ -1017,7 +1018,7 @@ class TestBoxHostMountModeNone:
         assert spec.workdir == '/opt/custom'
 
     def test_spec_with_rw_mode_requires_workspace_workdir(self):
-        """When host_path_mode is RW, workdir must be under /workspace."""
+        """When host_path_mode is RW, workdir must be under mount_path."""
         with pytest.raises(Exception):
             BoxSpec(
                 session_id='test',
@@ -1028,7 +1029,7 @@ class TestBoxHostMountModeNone:
             )
 
     def test_spec_with_ro_mode_requires_workspace_workdir(self):
-        """When host_path_mode is RO, workdir must be under /workspace."""
+        """When host_path_mode is RO, workdir must be under mount_path."""
         with pytest.raises(Exception):
             BoxSpec(
                 session_id='test',
@@ -1036,4 +1037,27 @@ class TestBoxHostMountModeNone:
                 host_path='/home/user/data',
                 host_path_mode=BoxHostMountMode.READ_ONLY,
                 workdir='/opt/custom',
+            )
+
+    def test_spec_with_custom_mount_path_allows_matching_workdir(self):
+        spec = BoxSpec(
+            session_id='test',
+            cmd='echo hi',
+            host_path='/home/user/data',
+            host_path_mode=BoxHostMountMode.READ_WRITE,
+            mount_path='/project',
+            workdir='/project/src',
+        )
+        assert spec.mount_path == '/project'
+        assert spec.workdir == '/project/src'
+
+    def test_spec_with_custom_mount_path_rejects_outside_workdir(self):
+        with pytest.raises(Exception):
+            BoxSpec(
+                session_id='test',
+                cmd='echo hi',
+                host_path='/home/user/data',
+                host_path_mode=BoxHostMountMode.READ_WRITE,
+                mount_path='/project',
+                workdir='/workspace',
             )

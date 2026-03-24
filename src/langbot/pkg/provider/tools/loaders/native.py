@@ -55,7 +55,18 @@ class NativeToolLoader(loader.ToolLoader):
                     },
                     'workdir': {
                         'type': 'string',
-                        'description': 'Absolute working directory path inside the sandbox. Defaults to /workspace.',
+                        'description': (
+                            'Absolute working directory path inside the sandbox. '
+                            'Defaults to mount_path, or /workspace when mount_path is omitted.'
+                        ),
+                        'default': '/workspace',
+                    },
+                    'mount_path': {
+                        'type': 'string',
+                        'description': (
+                            'Absolute sandbox path where host_path is mounted. '
+                            'Defaults to /workspace. When omitted, workdir defaults to the same path.'
+                        ),
                         'default': '/workspace',
                     },
                     'timeout_sec': {
