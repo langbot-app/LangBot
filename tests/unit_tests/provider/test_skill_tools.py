@@ -339,7 +339,8 @@ class TestSkillExecLoader:
 
         ap = _make_ap()
         ap.box_service = Mock()
-        ap.box_service.execute_in_skill_sandbox = AsyncMock(return_value={'ok': True})
+        ap.box_service.execute_spec_payload = AsyncMock(return_value={'ok': True})
+        ap.skill_mgr = Mock()
         loader = SkillToolLoader(ap)
 
         query = SimpleNamespace(variables={})
@@ -353,11 +354,88 @@ class TestSkillExecLoader:
         )
 
         assert result == {'ok': True}
-        ap.box_service.execute_in_skill_sandbox.assert_called_once_with(
-            skill_data=skill_data,
-            command='python scripts/check.py',
-            query=query,
-        )
+        ap.box_service.execute_spec_payload.assert_awaited_once()
+        spec_payload, called_query = ap.box_service.execute_spec_payload.await_args.args
+        assert called_query is query
+        assert spec_payload['cmd'] == 'python scripts/check.py'
+        assert spec_payload['session_id'] == 'skill-unknown-uuid-my-skill'
+        assert spec_payload['host_path'] == ''
+        assert spec_payload['host_path_mode'] == 'rw'
+        ap.skill_mgr.refresh_skill_from_disk.assert_called_once_with('my-skill')
+
+
+class TestSkillExecRuntime:
+    """Test SkillToolLoader skill sandbox execution helpers."""
+
+    @pytest.mark.asyncio
+    async def test_execute_in_skill_sandbox_mounts_skill_rw_and_refreshes_cache(self):
+        from langbot.pkg.provider.tools.loaders.skill import SkillToolLoader
+
+        ap = _make_ap()
+        ap.box_service = Mock()
+        ap.box_service.execute_spec_payload = AsyncMock(return_value={'ok': True})
+        ap.skill_mgr = Mock()
+        loader = SkillToolLoader(ap)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_data = _make_skill_data(name='writer', package_root=tmpdir)
+            query = SimpleNamespace(query_id=7)
+
+            result = await loader._execute_in_skill_sandbox(skill_data, 'python scripts/run.py', query)
+
+        assert result['ok'] is True
+        spec_payload, called_query = ap.box_service.execute_spec_payload.await_args.args
+        assert called_query is query
+        assert spec_payload['host_path'] == tmpdir
+        assert spec_payload['host_path_mode'] == 'rw'
+        assert spec_payload['session_id'] == 'skill-7-uuid-writer'
+        assert 'VIRTUAL_ENV="$_LB_VENV_DIR"' not in spec_payload['cmd']
+        ap.skill_mgr.refresh_skill_from_disk.assert_called_once_with('writer')
+
+    @pytest.mark.asyncio
+    async def test_execute_in_skill_sandbox_bootstraps_persistent_python_env(self):
+        from langbot.pkg.provider.tools.loaders.skill import SkillToolLoader
+
+        ap = _make_ap()
+        ap.box_service = Mock()
+        ap.box_service.execute_spec_payload = AsyncMock(return_value={'ok': True})
+        ap.skill_mgr = Mock()
+        loader = SkillToolLoader(ap)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with open(os.path.join(tmpdir, 'requirements.txt'), 'w', encoding='utf-8') as handle:
+                handle.write('requests==2.32.0\n')
+
+            skill_data = _make_skill_data(name='writer', package_root=tmpdir)
+            query = SimpleNamespace(query_id=7)
+
+            await loader._execute_in_skill_sandbox(skill_data, 'python scripts/run.py', query)
+
+        spec_payload = ap.box_service.execute_spec_payload.await_args.args[0]
+        assert 'python -m venv "$_LB_VENV_DIR"' in spec_payload['cmd']
+        assert 'export VIRTUAL_ENV="$_LB_VENV_DIR"' in spec_payload['cmd']
+        assert 'export TMPDIR="$_LB_TMP_DIR"' in spec_payload['cmd']
+        assert spec_payload['cmd'].rstrip().endswith('python scripts/run.py')
+
+    def test_build_skill_session_id_with_launcher(self):
+        from langbot.pkg.provider.tools.loaders.skill import SkillToolLoader
+
+        loader = SkillToolLoader(_make_ap())
+        query = SimpleNamespace(query_id=42, launcher_type='person', launcher_id='123')
+        skill_data = {'uuid': 'skill-uuid-1'}
+
+        sid = loader._build_skill_session_id(skill_data, query)
+        assert sid == 'skill-person_123-skill-uuid-1'
+
+    def test_build_skill_session_id_fallback(self):
+        from langbot.pkg.provider.tools.loaders.skill import SkillToolLoader
+
+        loader = SkillToolLoader(_make_ap())
+        query = SimpleNamespace(query_id=99)
+        skill_data = {'uuid': 'skill-uuid-2'}
+
+        sid = loader._build_skill_session_id(skill_data, query)
+        assert sid == 'skill-99-skill-uuid-2'
 
     def test_register_multiple_skills(self):
         from langbot.pkg.provider.tools.loaders.skill import (
@@ -765,114 +843,3 @@ class TestNativeToolLoader:
 
         assert result == {'ok': True}
         ap.box_service.execute_sandbox_tool.assert_awaited_once()
-
-
-class TestBoxServiceSkillExec:
-    """Test BoxService skill sandbox execution helpers."""
-
-    @pytest.mark.asyncio
-    async def test_execute_in_skill_sandbox_mounts_skill_rw_and_refreshes_cache(self):
-        from langbot.pkg.box.service import BoxService
-        from langbot_plugin.box.models import BoxHostMountMode
-
-        client = Mock()
-        client.execute = AsyncMock(
-            return_value=BoxExecutionResult(
-                session_id='skill-1',
-                backend_name='fake',
-                status=BoxExecutionStatus.COMPLETED,
-                exit_code=0,
-                stdout='ok',
-                stderr='',
-                duration_ms=5,
-            )
-        )
-
-        ap = _make_ap()
-        ap.skill_mgr = Mock()
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ap.instance_config = SimpleNamespace(
-                data={'box': {'profile': 'default', 'allowed_host_mount_roots': [tmpdir], 'default_host_workspace': ''}}
-            )
-
-            service = BoxService(ap, client=client)
-            service._available = True
-
-            skill_data = _make_skill_data(name='writer', package_root=tmpdir)
-            query = SimpleNamespace(query_id=7)
-
-            result = await service.execute_in_skill_sandbox(skill_data, 'python scripts/run.py', query)
-
-        assert result['ok'] is True
-        spec = client.execute.await_args.args[0]
-        assert spec.host_path_mode == BoxHostMountMode.READ_WRITE
-        ap.skill_mgr.refresh_skill_from_disk.assert_called_once_with('writer')
-        assert 'VIRTUAL_ENV="$_LB_VENV_DIR"' not in spec.cmd
-
-    @pytest.mark.asyncio
-    async def test_execute_in_skill_sandbox_bootstraps_persistent_python_env(self):
-        from langbot.pkg.box.service import BoxService
-
-        client = Mock()
-        client.execute = AsyncMock(
-            return_value=BoxExecutionResult(
-                session_id='skill-1',
-                backend_name='fake',
-                status=BoxExecutionStatus.COMPLETED,
-                exit_code=0,
-                stdout='ok',
-                stderr='',
-                duration_ms=5,
-            )
-        )
-
-        ap = _make_ap()
-        ap.skill_mgr = Mock()
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ap.instance_config = SimpleNamespace(
-                data={'box': {'profile': 'default', 'allowed_host_mount_roots': [tmpdir], 'default_host_workspace': ''}}
-            )
-            with open(os.path.join(tmpdir, 'requirements.txt'), 'w', encoding='utf-8') as handle:
-                handle.write('requests==2.32.0\n')
-
-            service = BoxService(ap, client=client)
-            service._available = True
-
-            skill_data = _make_skill_data(name='writer', package_root=tmpdir)
-            query = SimpleNamespace(query_id=7)
-
-            await service.execute_in_skill_sandbox(skill_data, 'python scripts/run.py', query)
-
-        spec = client.execute.await_args.args[0]
-        assert 'python -m venv "$_LB_VENV_DIR"' in spec.cmd
-        assert 'export VIRTUAL_ENV="$_LB_VENV_DIR"' in spec.cmd
-        assert 'export TMPDIR="$_LB_TMP_DIR"' in spec.cmd
-        assert spec.cmd.rstrip().endswith('python scripts/run.py')
-
-    def test_build_skill_session_id_with_launcher(self):
-        from langbot.pkg.box.service import BoxService
-
-        ap = _make_ap()
-        ap.instance_config = SimpleNamespace(data={})
-        service = BoxService(ap, client=Mock())
-
-        query = SimpleNamespace(query_id=42, launcher_type='person', launcher_id='123')
-        skill_data = {'uuid': 'skill-uuid-1'}
-
-        sid = service._build_skill_session_id(skill_data, query)
-        assert sid == 'skill-person_123-skill-uuid-1'
-
-    def test_build_skill_session_id_fallback(self):
-        from langbot.pkg.box.service import BoxService
-
-        ap = _make_ap()
-        ap.instance_config = SimpleNamespace(data={})
-        service = BoxService(ap, client=Mock())
-
-        query = SimpleNamespace(query_id=99)
-        skill_data = {'uuid': 'skill-uuid-2'}
-
-        sid = service._build_skill_session_id(skill_data, query)
-        assert sid == 'skill-99-skill-uuid-2'

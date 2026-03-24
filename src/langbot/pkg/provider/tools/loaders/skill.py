@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import textwrap
 import typing
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
@@ -14,6 +16,12 @@ SKILL_GET_TOOL_NAME = 'skill_get'
 # Key used to store activated skills in query.variables
 ACTIVATED_SKILLS_KEY = '_activated_skills'
 PIPELINE_BOUND_SKILLS_KEY = '_pipeline_bound_skills'
+_PYTHON_SKILL_MANIFESTS = (
+    'requirements.txt',
+    'pyproject.toml',
+    'setup.py',
+    'setup.cfg',
+)
 
 
 class SkillToolLoader:
@@ -67,11 +75,7 @@ class SkillToolLoader:
                 f'Skill "{skill_name}" is not activated for this query. Activated skills: {activated_names}'
             )
 
-        return await self.ap.box_service.execute_in_skill_sandbox(
-            skill_data=skill_data,
-            command=command,
-            query=query,
-        )
+        return await self._execute_in_skill_sandbox(skill_data, command, query)
 
     async def _invoke_skill_get(self, parameters: dict, query: pipeline_query.Query) -> typing.Any:
         """Return readable information about a visible skill."""
@@ -125,6 +129,181 @@ class SkillToolLoader:
 
     async def shutdown(self):
         pass
+
+    async def _execute_in_skill_sandbox(
+        self,
+        skill_data: dict,
+        command: str,
+        query: pipeline_query.Query,
+    ) -> typing.Any:
+        session_id = self._build_skill_session_id(skill_data, query)
+        timeout_sec = skill_data.get('sandbox_timeout_sec', 120)
+        network = 'on' if skill_data.get('sandbox_network', False) else 'off'
+        package_root = skill_data.get('package_root')
+        wrapped_command = command
+        if self._should_prepare_skill_python_env(package_root):
+            wrapped_command = self._wrap_skill_command_with_python_env(command)
+
+        result = await self.ap.box_service.execute_spec_payload(
+            {
+                'cmd': wrapped_command,
+                'workdir': '/workspace',
+                'timeout_sec': timeout_sec,
+                'network': network,
+                'session_id': session_id,
+                'host_path': package_root,
+                'host_path_mode': 'rw',
+            },
+            query,
+        )
+
+        skill_mgr = getattr(self.ap, 'skill_mgr', None)
+        if skill_mgr is not None:
+            refresh_skill = getattr(skill_mgr, 'refresh_skill_from_disk', None)
+            if callable(refresh_skill):
+                refresh_skill(skill_data.get('name', ''))
+
+        return result
+
+    @staticmethod
+    def _build_skill_session_id(skill_data: dict, query: pipeline_query.Query) -> str:
+        skill_uuid = skill_data.get('uuid', 'unknown')
+        launcher_type = getattr(query, 'launcher_type', None)
+        launcher_id = getattr(query, 'launcher_id', None)
+        query_id = getattr(query, 'query_id', 'unknown')
+
+        if launcher_type is not None and launcher_id is not None:
+            return f'skill-{launcher_type}_{launcher_id}-{skill_uuid}'
+        return f'skill-{query_id}-{skill_uuid}'
+
+    def _should_prepare_skill_python_env(self, package_root: str | None) -> bool:
+        normalized_root = self._normalize_host_path(package_root)
+        if not normalized_root:
+            return False
+        if os.path.isdir(os.path.join(normalized_root, '.venv')):
+            return True
+        return any(os.path.isfile(os.path.join(normalized_root, filename)) for filename in _PYTHON_SKILL_MANIFESTS)
+
+    @staticmethod
+    def _wrap_skill_command_with_python_env(command: str) -> str:
+        bootstrap = textwrap.dedent(
+            """
+            set -e
+
+            _LB_VENV_DIR="/workspace/.venv"
+            _LB_META_DIR="/workspace/.langbot"
+            _LB_META_FILE="$_LB_META_DIR/python-env.json"
+            _LB_LOCK_DIR="$_LB_META_DIR/python-env.lock"
+            _LB_TMP_DIR="/workspace/.tmp"
+            _LB_PIP_CACHE_DIR="/workspace/.cache/pip"
+
+            mkdir -p "$_LB_META_DIR" "$_LB_TMP_DIR" "$_LB_PIP_CACHE_DIR"
+            export TMPDIR="$_LB_TMP_DIR"
+            export TEMP="$_LB_TMP_DIR"
+            export TMP="$_LB_TMP_DIR"
+            export PIP_CACHE_DIR="$_LB_PIP_CACHE_DIR"
+
+            _lb_python_meta() {
+              python - <<'PY'
+            import hashlib
+            import json
+            import os
+            import sys
+
+            root = "/workspace"
+            digest = hashlib.sha256()
+            manifest_files = []
+            for rel in ("requirements.txt", "pyproject.toml", "setup.py", "setup.cfg"):
+                path = os.path.join(root, rel)
+                if not os.path.isfile(path):
+                    continue
+                manifest_files.append(rel)
+                with open(path, "rb") as handle:
+                    digest.update(rel.encode("utf-8"))
+                    digest.update(b"\\0")
+                    digest.update(handle.read())
+                    digest.update(b"\\0")
+
+            print(
+                json.dumps(
+                    {
+                        "python_executable": sys.executable,
+                        "python_version": list(sys.version_info[:3]),
+                        "manifest_files": manifest_files,
+                        "manifest_sha256": digest.hexdigest(),
+                    },
+                    sort_keys=True,
+                )
+            )
+            PY
+            }
+
+            _LB_CURRENT_META="$(_lb_python_meta)"
+            _LB_NEEDS_BOOTSTRAP=0
+
+            if [ ! -x "$_LB_VENV_DIR/bin/python" ]; then
+              _LB_NEEDS_BOOTSTRAP=1
+            elif [ ! -f "$_LB_META_FILE" ]; then
+              _LB_NEEDS_BOOTSTRAP=1
+            elif [ "$(cat "$_LB_META_FILE")" != "$_LB_CURRENT_META" ]; then
+              _LB_NEEDS_BOOTSTRAP=1
+            fi
+
+            if [ "$_LB_NEEDS_BOOTSTRAP" -eq 1 ]; then
+              _LB_LOCK_WAIT=0
+              while ! mkdir "$_LB_LOCK_DIR" 2>/dev/null; do
+                if [ "$_LB_LOCK_WAIT" -ge 120 ]; then
+                  echo "Timed out waiting for Python environment lock: $_LB_LOCK_DIR" >&2
+                  exit 1
+                fi
+                sleep 1
+                _LB_LOCK_WAIT=$((_LB_LOCK_WAIT + 1))
+              done
+
+              _lb_cleanup_lock() {
+                rmdir "$_LB_LOCK_DIR" >/dev/null 2>&1 || true
+              }
+              trap _lb_cleanup_lock EXIT INT TERM
+
+              _LB_CURRENT_META="$(_lb_python_meta)"
+              _LB_NEEDS_BOOTSTRAP=0
+              if [ ! -x "$_LB_VENV_DIR/bin/python" ]; then
+                _LB_NEEDS_BOOTSTRAP=1
+              elif [ ! -f "$_LB_META_FILE" ]; then
+                _LB_NEEDS_BOOTSTRAP=1
+              elif [ "$(cat "$_LB_META_FILE")" != "$_LB_CURRENT_META" ]; then
+                _LB_NEEDS_BOOTSTRAP=1
+              fi
+
+              if [ "$_LB_NEEDS_BOOTSTRAP" -eq 1 ]; then
+                rm -rf "$_LB_VENV_DIR"
+                python -m venv "$_LB_VENV_DIR"
+
+                if [ -f /workspace/requirements.txt ]; then
+                  "$_LB_VENV_DIR/bin/python" -m pip install -r /workspace/requirements.txt
+                elif [ -f /workspace/pyproject.toml ] || [ -f /workspace/setup.py ] || [ -f /workspace/setup.cfg ]; then
+                  "$_LB_VENV_DIR/bin/python" -m pip install -e /workspace
+                fi
+
+                printf '%s' "$_LB_CURRENT_META" > "$_LB_META_FILE"
+              fi
+            fi
+
+            export VIRTUAL_ENV="$_LB_VENV_DIR"
+            export PATH="$_LB_VENV_DIR/bin:$PATH"
+            """
+        ).strip()
+
+        return f'{bootstrap}\n\n{command}'
+
+    @staticmethod
+    def _normalize_host_path(path: str | None) -> str:
+        if path is None:
+            return ''
+        stripped = str(path).strip()
+        if not stripped:
+            return ''
+        return os.path.realpath(os.path.abspath(stripped))
 
 
 def register_activated_skill(
