@@ -25,7 +25,7 @@ def _get_box_config(ap) -> dict:
     return config_data.get('box', {})
 
 
-def resolve_box_ws_relay_url(ap: 'core_app.Application') -> str:
+def resolve_box_ws_relay_url(ap: core_app.Application) -> str:
     """Derive the ws relay base URL used for managed-process attach."""
     runtime_url = str(_get_box_config(ap).get('runtime_url', '')).strip()
     if runtime_url:
@@ -39,7 +39,7 @@ def resolve_box_ws_relay_url(ap: 'core_app.Application') -> str:
 class BoxRuntimeConnector:
     """Connect to the Box runtime via action RPC (stdio or ws)."""
 
-    def __init__(self, ap: 'core_app.Application'):
+    def __init__(self, ap: core_app.Application):
         self.ap = ap
         self.configured_runtime_url = self._load_configured_runtime_url()
         self.manages_local_runtime = self._should_manage_local_runtime()
