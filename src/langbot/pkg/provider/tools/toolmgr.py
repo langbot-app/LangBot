@@ -18,13 +18,13 @@ importutil.import_modules_in_pkg(loaders)
 class ToolManager:
     """LLM工具管理器"""
 
-    ap: 'app.Application'
+    ap: app.Application
 
     native_tool_loader: native_loader.NativeToolLoader
     plugin_tool_loader: plugin_loader.PluginToolLoader
     mcp_tool_loader: mcp_loader.MCPLoader
 
-    def __init__(self, ap: 'app.Application'):
+    def __init__(self, ap: app.Application):
         self.ap = ap
 
     async def initialize(self):

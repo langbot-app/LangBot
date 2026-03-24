@@ -30,9 +30,9 @@ class ToolLoader(abc.ABC):
 
     name: str = None
 
-    ap: 'app.Application'
+    ap: app.Application
 
-    def __init__(self, ap: 'app.Application'):
+    def __init__(self, ap: app.Application):
         self.ap = ap
 
     async def initialize(self):

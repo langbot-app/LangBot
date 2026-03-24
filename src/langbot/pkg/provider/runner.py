@@ -29,17 +29,17 @@ class RequestRunner(abc.ABC):
 
     name: str = None
 
-    ap: 'app.Application'
+    ap: app.Application
 
     pipeline_config: dict
 
-    def __init__(self, ap: 'app.Application', pipeline_config: dict):
+    def __init__(self, ap: app.Application, pipeline_config: dict):
         self.ap = ap
         self.pipeline_config = pipeline_config
 
     @abc.abstractmethod
     async def run(
-        self, query: 'pipeline_query.Query'
-    ) -> typing.AsyncGenerator['provider_message.Message | provider_message.MessageChunk', None]:
+        self, query: pipeline_query.Query
+    ) -> typing.AsyncGenerator[provider_message.Message | provider_message.MessageChunk, None]:
         """运行请求"""
         pass

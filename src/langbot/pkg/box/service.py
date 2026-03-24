@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 class BoxService:
     def __init__(
         self,
-        ap: 'core_app.Application',
+        ap: core_app.Application,
         client: BoxRuntimeClient | None = None,
         output_limit_chars: int = 4000,
     ):
@@ -77,7 +77,7 @@ class BoxService:
     async def execute_spec_payload(
         self,
         spec_payload: dict,
-        query: 'pipeline_query.Query',
+        query: pipeline_query.Query,
         *,
         skip_host_mount_validation: bool = False,
     ) -> dict:
@@ -105,7 +105,7 @@ class BoxService:
         )
         return self._serialize_result(result)
 
-    async def execute_sandbox_tool(self, parameters: dict, query: 'pipeline_query.Query') -> dict:
+    async def execute_sandbox_tool(self, parameters: dict, query: pipeline_query.Query) -> dict:
         spec_payload = dict(parameters)
         spec_payload.setdefault('session_id', str(query.query_id))
         return await self.execute_spec_payload(spec_payload, query)
@@ -365,7 +365,7 @@ class BoxService:
 
     # ── Observability ─────────────────────────────────────────────────
 
-    def _record_error(self, exc: Exception, query: 'pipeline_query.Query'):
+    def _record_error(self, exc: Exception, query: pipeline_query.Query):
         self._recent_errors.append(
             {
                 'timestamp': _dt.datetime.now(_UTC).isoformat(),
