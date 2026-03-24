@@ -35,9 +35,9 @@ class RecordingProvider:
                         id='call-1',
                         type='function',
                         function=provider_message.FunctionCall(
-                            name='sandbox_exec',
+                            name='exec',
                             arguments=json.dumps(
-                                {'cmd': ("python - <<'PY'\nnums = [1, 2, 3, 4]\nprint(sum(nums) / len(nums))\nPY")}
+                                {'command': ("python - <<'PY'\nnums = [1, 2, 3, 4]\nprint(sum(nums) / len(nums))\nPY")}
                             ),
                         ),
                     )
@@ -73,8 +73,8 @@ class RecordingStreamProvider:
                             id='call-1',
                             type='function',
                             function=provider_message.FunctionCall(
-                                name='sandbox_exec',
-                                arguments=json.dumps({'cmd': "python -c 'print(1)'"}),
+                                name='exec',
+                                arguments=json.dumps({'command': "python -c 'print(1)'"}),
                             ),
                         )
                     ],
@@ -118,14 +118,14 @@ def make_query() -> pipeline_query.Query:
             role='user',
             content='Please calculate the average of 1, 2, 3, and 4.',
         ),
-        use_funcs=[SimpleNamespace(name='sandbox_exec')],
+        use_funcs=[SimpleNamespace(name='exec')],
         use_llm_model_uuid='test-model-uuid',
         variables={},
     )
 
 
 @pytest.mark.asyncio
-async def test_localagent_uses_sandbox_exec_for_exact_calculation():
+async def test_localagent_uses_exec_for_exact_calculation():
     provider = RecordingProvider()
     model = SimpleNamespace(
         provider=provider,
@@ -160,11 +160,11 @@ async def test_localagent_uses_sandbox_exec_for_exact_calculation():
         box_service=SimpleNamespace(
             get_system_guidance=Mock(
                 return_value=(
-                    'When sandbox_exec is available, use it for exact calculations, statistics, '
+                    'When the exec tool is available, use it for exact calculations, statistics, '
                     'structured data parsing, and code execution instead of estimating mentally. '
                     'Unless the user explicitly asks for the script, code, or implementation details, '
                     'do not include the generated script in the final answer. '
-                    'A default host workspace is mounted at /workspace for file tasks.'
+                    'A default workspace is mounted at /workspace for file tasks.'
                 )
             ),
         ),
@@ -180,19 +180,19 @@ async def test_localagent_uses_sandbox_exec_for_exact_calculation():
 
     tool_manager.execute_func_call.assert_awaited_once()
     tool_name, tool_parameters = tool_manager.execute_func_call.await_args.args[:2]
-    assert tool_name == 'sandbox_exec'
-    assert 'print(sum(nums) / len(nums))' in tool_parameters['cmd']
+    assert tool_name == 'exec'
+    assert 'print(sum(nums) / len(nums))' in tool_parameters['command']
 
     first_request = provider.requests[0]
     assert any(
         message.role == 'system'
-        and 'sandbox_exec' in str(message.content)
+        and 'exec' in str(message.content)
         and 'exact calculations' in str(message.content)
         and 'Unless the user explicitly asks for the script' in str(message.content)
         and '/workspace' in str(message.content)
         for message in first_request['messages']
     )
-    assert [tool.name for tool in first_request['funcs']] == ['sandbox_exec']
+    assert [tool.name for tool in first_request['funcs']] == ['exec']
 
 
 @pytest.mark.asyncio

@@ -309,8 +309,8 @@ async def test_full_service_to_remote_runtime(tmp_path):
         await service.initialize()
 
         query = pipeline_query.Query.model_construct(query_id=42)
-        result = await service.execute_sandbox_tool(
-            {'cmd': 'echo service-path', 'image': _TEST_IMAGE},
+        result = await service.execute_tool(
+            {'command': 'echo service-path'},
             query,
         )
 
