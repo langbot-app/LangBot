@@ -75,6 +75,16 @@ spec:
       type: string
       required: false
       default: ""
+    - name: enable-stream-reply
+      label:
+        en_US: Enable Stream Reply
+        zh_Hans: 启用流式回复
+      description:
+        en_US: If enabled, the bot will use streaming mode to reply messages
+        zh_Hans: 如果启用，机器人将使用流式模式回复消息
+      type: boolean
+      required: false
+      default: true
 execution:
   python:
     path: ./wecombot.py

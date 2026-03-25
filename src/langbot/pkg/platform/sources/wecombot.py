@@ -277,14 +277,8 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             return {'stream': success}
 
     async def is_stream_output_supported(self) -> bool:
-        """智能机器人侧默认开启流式能力。
-
-        Returns:
-            bool: 恒定返回 True。
-
-        Example:
-            流水线执行阶段会调用此方法以确认是否启用流式。"""
-        return True
+        """Whether streaming output is enabled for this bot instance."""
+        return self.config.get('enable-stream-reply', True)
 
     async def send_message(self, target_type, target_id, message):
         _ws_mode = not self.config.get('enable-webhook', False)
