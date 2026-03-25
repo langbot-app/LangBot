@@ -344,8 +344,13 @@ class LocalAgentRunner(runner.RequestRunner):
                 if activation_plan:
                     self.ap.logger.info(f'Skill activations detected: {activation_plan.activated_skill_names}')
 
-                    # Reconstruct messages: keep original + add skill prompt + let LLM continue
-                    req_messages.append(final_msg)
+                    # Reconstruct messages with a sanitized activation response, then add the skill prompt.
+                    sanitized_activation_msg = provider_message.Message(
+                        role=getattr(final_msg, 'role', 'assistant'),
+                        content=activation_plan.cleaned_content,
+                        tool_calls=getattr(final_msg, 'tool_calls', None),
+                    )
+                    req_messages.append(sanitized_activation_msg)
                     req_messages.append(activation_plan.system_message)
 
                     # Make another request to let the LLM execute the skill
@@ -421,7 +426,7 @@ class LocalAgentRunner(runner.RequestRunner):
 
                     # Update pending tool calls from the new response
                     pending_tool_calls = final_msg.tool_calls
-                    # Remove the messages we added (the original final_msg and skill_system_msg)
+                    # Remove the sanitized activation message and follow-up system prompt.
                     req_messages = req_messages[:-2]
             except Exception:
                 self.ap.logger.exception('Skill activation failed, falling back to normal execution')

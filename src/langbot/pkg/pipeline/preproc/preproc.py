@@ -3,7 +3,6 @@ from __future__ import annotations
 import datetime
 
 from .. import stage, entities
-from ...provider.tools.loaders import skill as skill_loader
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 import langbot_plugin.api.entities.events as events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
@@ -232,6 +231,9 @@ class PreProcessor(stage.PipelineStage):
                 # Get specific bound skill names
                 bound_skills = extensions_prefs.get('skills', [])
 
+            # Store bound skills in query variables for runtime path visibility checks
+            query.variables['_pipeline_bound_skills'] = bound_skills
+
             # Build skill awareness addition
             skill_addition = self.ap.skill_mgr.build_skill_aware_prompt_addition(
                 pipeline_uuid=query.pipeline_uuid,
@@ -245,9 +247,6 @@ class PreProcessor(stage.PipelineStage):
                     f'bound_skills={bound_skills or "all"} '
                     f'available_skills=[{", ".join(s["name"] for s in self.ap.skill_mgr.skills.values() if s.get("auto_activate", True))}]'
                 )
-                # Store bound skills in query variables for later use
-                query.variables['_pipeline_bound_skills'] = bound_skills
-
                 # Append skill instruction to the first system message
                 if query.prompt.messages and query.prompt.messages[0].role == 'system':
                     if isinstance(query.prompt.messages[0].content, str):

@@ -200,7 +200,9 @@ class PluginsRouterGroup(group.RouterGroup):
                         }
                     )
 
-                repo_timestamp = repo_info.get('pushed_at') or repo_info.get('updated_at') or repo_info.get('created_at')
+                repo_timestamp = (
+                    repo_info.get('pushed_at') or repo_info.get('updated_at') or repo_info.get('created_at')
+                )
                 if not formatted_releases:
                     async with httpx.AsyncClient(
                         trust_env=True,

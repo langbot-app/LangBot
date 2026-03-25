@@ -176,6 +176,62 @@ async def test_install_from_github_supports_nested_skill_archive(skill_service, 
 
 
 @pytest.mark.asyncio
+async def test_install_from_github_rejects_asset_url_outside_requested_repo(skill_service, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValueError, match='owner/repo'):
+        await skill_service.install_from_github(
+            {
+                'asset_url': 'https://api.github.com/repos/example/other-repo/zipball/main',
+                'owner': 'example',
+                'repo': 'demo-repo',
+                'release_tag': 'main',
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_install_from_github_rejects_zip_with_path_traversal(skill_service, tmp_path, monkeypatch):
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, 'w') as archive:
+        archive.writestr('../escape.txt', 'boom')
+    archive_bytes = stream.getvalue()
+
+    class _FakeResponse:
+        def __init__(self, content: bytes) -> None:
+            self.content = content
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class _FakeAsyncClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def get(self, url: str) -> _FakeResponse:
+            return _FakeResponse(archive_bytes)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr('src.langbot.pkg.api.http.service.skill.httpx.AsyncClient', _FakeAsyncClient)
+
+    with pytest.raises(ValueError, match='unsafe path'):
+        await skill_service.install_from_github(
+            {
+                'asset_url': 'https://api.github.com/repos/example/demo-repo/zipball/main',
+                'owner': 'example',
+                'repo': 'demo-repo',
+                'release_tag': 'main',
+            }
+        )
+
+
+@pytest.mark.asyncio
 async def test_skill_file_operations_stay_within_package_root(skill_service, tmp_path):
     skill_dir = tmp_path / 'mood-logger'
     skill_dir.mkdir()

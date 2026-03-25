@@ -12,7 +12,7 @@ if typing.TYPE_CHECKING:
 ACTIVATED_SKILLS_KEY = '_activated_skills'
 PIPELINE_BOUND_SKILLS_KEY = '_pipeline_bound_skills'
 SKILL_MOUNT_PREFIX = '/workspace/.skills'
-_SKILL_MOUNT_PATTERN = re.compile(r"/workspace/\.skills/([A-Za-z0-9_-]+)")
+_SKILL_MOUNT_PATTERN = re.compile(r'/workspace/\.skills/([A-Za-z0-9_-]+)')
 _PYTHON_SKILL_MANIFESTS = (
     'requirements.txt',
     'pyproject.toml',
@@ -56,11 +56,7 @@ def get_visible_skills(ap: app.Application, query: pipeline_query.Query) -> dict
     if bound_skills is None:
         return visible_skills
 
-    return {
-        skill_name: skill_data
-        for skill_name, skill_data in visible_skills.items()
-        if skill_name in bound_skills
-    }
+    return {skill_name: skill_data for skill_name, skill_data in visible_skills.items() if skill_name in bound_skills}
 
 
 def get_visible_skill(ap: app.Application, query: pipeline_query.Query, skill_name: str) -> dict | None:

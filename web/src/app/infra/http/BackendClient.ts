@@ -1108,11 +1108,16 @@ export class BackendClient extends BaseHttpClient {
     return this.get(`/api/v1/skills/${name}`);
   }
 
-  public createSkill(skill: Omit<Skill, 'name'> & { name: string }): Promise<ApiRespSkill> {
+  public createSkill(
+    skill: Omit<Skill, 'name'> & { name: string },
+  ): Promise<ApiRespSkill> {
     return this.post('/api/v1/skills', skill);
   }
 
-  public updateSkill(name: string, skill: Partial<Skill>): Promise<ApiRespSkill> {
+  public updateSkill(
+    name: string,
+    skill: Partial<Skill>,
+  ): Promise<ApiRespSkill> {
     return this.put(`/api/v1/skills/${name}`, skill);
   }
 

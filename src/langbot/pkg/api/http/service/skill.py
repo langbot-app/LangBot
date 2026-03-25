@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import inspect
 import os
+import posixpath
 import shutil
 import tempfile
 import zipfile
 from typing import Optional
+from urllib.parse import urlparse
 
 import httpx
 import yaml
@@ -30,6 +32,15 @@ _PUBLIC_SKILL_FIELDS = (
     'created_at',
     'updated_at',
 )
+
+_GITHUB_ASSET_HOSTS = {
+    'github.com',
+    'api.github.com',
+    'objects.githubusercontent.com',
+    'githubusercontent.com',
+    'raw.githubusercontent.com',
+    'codeload.github.com',
+}
 
 
 def _build_skill_md(metadata: dict, instructions: str) -> str:
@@ -234,9 +245,10 @@ class SkillService:
         }
 
     async def install_from_github(self, data: dict) -> dict:
-        asset_url = data['asset_url']
-        repo = data['repo']
-        release_tag = data.get('release_tag', '')
+        owner = str(data['owner']).strip()
+        repo = str(data['repo']).strip()
+        release_tag = str(data.get('release_tag', '')).strip()
+        asset_url = self._validate_github_asset_url(data['asset_url'], owner=owner, repo=repo, release_tag=release_tag)
 
         target_dir = os.path.join('data', 'skills', repo)
         if os.path.exists(target_dir):
@@ -256,7 +268,7 @@ class SkillService:
 
             extract_dir = os.path.join(tmp_dir, 'extracted')
             with zipfile.ZipFile(zip_path, 'r') as zf:
-                zf.extractall(extract_dir)
+                self._safe_extract_zip(zf, extract_dir)
 
             entries = os.listdir(extract_dir)
             if len(entries) == 1 and os.path.isdir(os.path.join(extract_dir, entries[0])):
@@ -338,6 +350,49 @@ class SkillService:
             'instructions': instructions,
             'auto_activate': bool(metadata.get('auto_activate', True)),
         }
+
+    @staticmethod
+    def _validate_github_asset_url(asset_url: str, *, owner: str, repo: str, release_tag: str) -> str:
+        parsed = urlparse(str(asset_url).strip())
+        if parsed.scheme != 'https' or not parsed.netloc:
+            raise ValueError('asset_url must be a valid HTTPS GitHub asset URL')
+
+        host = parsed.netloc.lower()
+        if host not in _GITHUB_ASSET_HOSTS:
+            raise ValueError('asset_url must point to a GitHub-hosted release asset or archive')
+
+        normalized_path = posixpath.normpath(parsed.path or '/')
+        allowed_prefixes = [
+            f'/repos/{owner}/{repo}/',
+            f'/{owner}/{repo}/',
+        ]
+        if not any(normalized_path.startswith(prefix) for prefix in allowed_prefixes):
+            raise ValueError('asset_url does not match the requested owner/repo')
+
+        if release_tag and release_tag not in parsed.path and release_tag not in parsed.query:
+            raise ValueError('asset_url does not match the requested release_tag')
+
+        return parsed.geturl()
+
+    @staticmethod
+    def _safe_extract_zip(archive: zipfile.ZipFile, target_dir: str) -> None:
+        target_root = os.path.realpath(target_dir)
+        os.makedirs(target_root, exist_ok=True)
+
+        for member in archive.infolist():
+            member_name = member.filename
+            if not member_name or member_name.endswith('/'):
+                continue
+
+            normalized = posixpath.normpath(member_name)
+            if normalized.startswith('../') or normalized == '..' or os.path.isabs(normalized):
+                raise ValueError(f'Archive contains an unsafe path: {member_name}')
+
+            destination = os.path.realpath(os.path.join(target_root, normalized))
+            if destination != target_root and not destination.startswith(f'{target_root}{os.sep}'):
+                raise ValueError(f'Archive contains an unsafe path: {member_name}')
+
+        archive.extractall(target_root)
 
     @staticmethod
     def _resolve_create_field(data: dict, field: str, imported_skill_data: dict | None, *, default: str) -> str:

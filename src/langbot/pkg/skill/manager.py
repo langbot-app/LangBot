@@ -150,7 +150,6 @@ class SkillManager:
     def get_skill_by_name(self, name: str) -> dict | None:
         return self.skills.get(name)
 
-
     def get_skill_index(self, pipeline_uuid: str | None = None, bound_skills: list[str] | None = None) -> str:
         skills_to_index = []
         for skill in self.skills.values():

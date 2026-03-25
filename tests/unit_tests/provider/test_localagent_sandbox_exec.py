@@ -369,6 +369,8 @@ async def test_localagent_hides_activation_marker_before_follow_up_request():
         ('assistant', 'final answer after activation')
     ]
     assert len(provider.requests) == 2
+    assert provider.requests[1]['messages'][-2].content == 'I will use the skill.'
+    assert '[ACTIVATE_SKILL:' not in provider.requests[1]['messages'][-2].content
 
 
 @pytest.mark.asyncio

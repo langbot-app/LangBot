@@ -126,7 +126,9 @@ class NativeToolLoader(loader.ToolLoader):
         )
 
         box_service = self.ap.box_service
-        host_root = selected_skill.get('package_root') if selected_skill is not None else box_service.default_host_workspace
+        host_root = (
+            selected_skill.get('package_root') if selected_skill is not None else box_service.default_host_workspace
+        )
         if not host_root:
             raise ValueError('No host workspace configured for file operations.')
 
