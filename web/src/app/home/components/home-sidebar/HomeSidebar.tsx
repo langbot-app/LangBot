@@ -517,7 +517,7 @@ function NavItems({
                     const name =
                       slashIdx >= 0
                         ? targetPluginItem!.id.substring(slashIdx + 1)
-                        : targetPluginItem?.id ?? '';
+                        : (targetPluginItem?.id ?? '');
                     return pluginOpType === PluginOperationType.DELETE
                       ? t('plugins.confirmDeletePlugin', { author, name })
                       : t('plugins.confirmUpdatePlugin', { author, name });
