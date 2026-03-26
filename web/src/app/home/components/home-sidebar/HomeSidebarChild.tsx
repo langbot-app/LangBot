@@ -1,5 +1,7 @@
 import { I18nObject } from '@/app/infra/entities/common';
 
+export type SidebarSection = 'home' | 'extensions';
+
 export interface ISidebarChildVO {
   id: string;
   icon: React.ReactNode;
@@ -7,6 +9,7 @@ export interface ISidebarChildVO {
   route: string;
   description: string;
   helpLink: I18nObject;
+  section?: SidebarSection;
 }
 
 export class SidebarChildVO {
@@ -16,6 +19,7 @@ export class SidebarChildVO {
   route: string;
   description: string;
   helpLink: I18nObject;
+  section: SidebarSection;
 
   constructor(props: ISidebarChildVO) {
     this.id = props.id;
@@ -24,5 +28,6 @@ export class SidebarChildVO {
     this.route = props.route;
     this.description = props.description;
     this.helpLink = props.helpLink;
+    this.section = props.section ?? 'home';
   }
 }

@@ -45,6 +45,7 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -52,7 +53,6 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
-  SidebarRail,
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar';
@@ -92,8 +92,16 @@ const ENTITY_CATEGORY_IDS = [
 ] as const;
 type EntityCategoryId = (typeof ENTITY_CATEGORY_IDS)[number];
 
-// Categories that support detail pages (plugins do not — they use inline dialog)
+// Categories that support detail pages via ?id= query param
 const DETAIL_PAGE_CATEGORIES: EntityCategoryId[] = [
+  'bots',
+  'pipelines',
+  'knowledge',
+  'plugins',
+];
+
+// Categories that support creating new entities from the sidebar
+const CREATABLE_CATEGORIES: EntityCategoryId[] = [
   'bots',
   'pipelines',
   'knowledge',
@@ -122,24 +130,71 @@ const ENTITY_ROUTE_MAP: Record<EntityCategoryId, string> = {
   plugins: '/home/plugins',
 };
 
+// localStorage key for collapsible section open/closed state
+const SIDEBAR_SECTIONS_KEY = 'sidebar_sections';
+
+function loadSectionState(): Record<string, boolean> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const stored = localStorage.getItem(SIDEBAR_SECTIONS_KEY);
+    return stored ? JSON.parse(stored) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSectionState(state: Record<string, boolean>) {
+  try {
+    localStorage.setItem(SIDEBAR_SECTIONS_KEY, JSON.stringify(state));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+// Maximum number of entity sub-items visible before "More" toggle
+const MAX_VISIBLE_ITEMS = 5;
+
+// Sort entity items by updatedAt descending (most recent first), items without updatedAt go last
+function sortByRecent(items: SidebarEntityItem[]): SidebarEntityItem[] {
+  return [...items].sort((a, b) => {
+    if (!a.updatedAt && !b.updatedAt) return 0;
+    if (!a.updatedAt) return 1;
+    if (!b.updatedAt) return -1;
+    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+  });
+}
+
 // Renders sidebar navigation items with collapsible sub-items for entity categories
 function NavItems({
   selectedChild,
   onChildClick,
+  section,
+  sectionOpenState,
+  onSectionToggle,
 }: {
   selectedChild: SidebarChildVO | undefined;
   onChildClick: (child: SidebarChildVO) => void;
+  section: 'home' | 'extensions';
+  sectionOpenState: Record<string, boolean>;
+  onSectionToggle: (id: string, open: boolean) => void;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const sidebarData = useSidebarData();
+  const { t } = useTranslation();
+  // Track which entity categories have their full list expanded
+  const [expandedLists, setExpandedLists] = useState<Record<string, boolean>>(
+    {},
+  );
+
+  const sectionItems = sidebarConfigList.filter((c) => c.section === section);
 
   return (
     <>
-      {sidebarConfigList.map((config) => {
+      {sectionItems.map((config) => {
         if (!isEntityCategory(config.id)) {
-          // Non-entity entries (e.g. monitoring) render as plain links
+          // Non-entity entries (e.g. monitoring, market, mcp) render as plain links
           return (
             <SidebarMenuItem key={config.id}>
               <SidebarMenuButton
@@ -159,68 +214,123 @@ function NavItems({
         const items: SidebarEntityItem[] = sidebarData[entityKey];
         const routePrefix = ENTITY_ROUTE_MAP[config.id];
         const hasDetailPages = DETAIL_PAGE_CATEGORIES.includes(config.id);
+        const canCreate = CREATABLE_CATEGORIES.includes(config.id);
         const isActive =
           selectedChild?.id === config.id ||
           pathname === routePrefix ||
           pathname.startsWith(routePrefix + '/');
 
+        // Use stored open state if available, otherwise default to active state
+        const isOpen = sectionOpenState[config.id] ?? isActive;
+
         return (
           <Collapsible
             key={config.id}
             asChild
-            defaultOpen={isActive}
+            open={isOpen}
+            onOpenChange={(open) => onSectionToggle(config.id, open)}
             className="group/collapsible"
           >
             <SidebarMenuItem>
-              <CollapsibleTrigger asChild>
-                <SidebarMenuButton
-                  isActive={isActive}
-                  onClick={() => onChildClick(config)}
-                  tooltip={config.name}
-                >
-                  {config.icon}
-                  <span>{config.name}</span>
-                  <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                </SidebarMenuButton>
-              </CollapsibleTrigger>
+              <SidebarMenuButton
+                isActive={isActive}
+                onClick={() => onChildClick(config)}
+                tooltip={config.name}
+              >
+                {config.icon}
+                <span>{config.name}</span>
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="ml-auto p-1 -mr-1 rounded-sm hover:bg-sidebar-accent"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ChevronRight className="size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                  </button>
+                </CollapsibleTrigger>
+              </SidebarMenuButton>
               <CollapsibleContent>
                 <SidebarMenuSub>
-                  {items.map((item) => {
-                    // Plugins navigate to the list page; others use ?id= query param
-                    const itemRoute = hasDetailPages
-                      ? `${routePrefix}?id=${encodeURIComponent(item.id)}`
-                      : routePrefix;
-                    const isItemActive =
-                      hasDetailPages &&
-                      pathname === routePrefix &&
-                      searchParams.get('id') === item.id;
+                  {(() => {
+                    const sortedItems = sortByRecent(items);
+                    const isExpanded = expandedLists[config.id] ?? false;
+                    const visibleItems =
+                      sortedItems.length > MAX_VISIBLE_ITEMS && !isExpanded
+                        ? sortedItems.slice(0, MAX_VISIBLE_ITEMS)
+                        : sortedItems;
+                    const hiddenCount = sortedItems.length - MAX_VISIBLE_ITEMS;
+
                     return (
-                      <SidebarMenuSubItem key={item.id}>
-                        <SidebarMenuSubButton asChild isActive={isItemActive}>
-                          <a
-                            href={itemRoute}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              router.push(itemRoute);
-                            }}
-                          >
-                            {item.emoji ? (
-                              <span className="text-sm">{item.emoji}</span>
-                            ) : item.iconURL ? (
-                              <img
-                                src={item.iconURL}
-                                alt=""
-                                className="size-4 rounded shrink-0"
-                              />
-                            ) : null}
-                            <span>{item.name}</span>
-                          </a>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
+                      <>
+                        {visibleItems.map((item) => {
+                          // Plugins navigate to the list page; others use ?id= query param
+                          const itemRoute = hasDetailPages
+                            ? `${routePrefix}?id=${encodeURIComponent(item.id)}`
+                            : routePrefix;
+                          const isItemActive =
+                            hasDetailPages &&
+                            pathname === routePrefix &&
+                            searchParams.get('id') === item.id;
+                          return (
+                            <SidebarMenuSubItem key={item.id}>
+                              <SidebarMenuSubButton
+                                asChild
+                                isActive={isItemActive}
+                              >
+                                <a
+                                  href={itemRoute}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    router.push(itemRoute);
+                                  }}
+                                >
+                                  {item.emoji ? (
+                                    <span className="text-sm">
+                                      {item.emoji}
+                                    </span>
+                                  ) : item.iconURL ? (
+                                    <img
+                                      src={item.iconURL}
+                                      alt=""
+                                      className="size-4 rounded shrink-0"
+                                    />
+                                  ) : null}
+                                  <span>{item.name}</span>
+                                </a>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          );
+                        })}
+                        {/* Show more / less toggle when items exceed limit */}
+                        {sortedItems.length > MAX_VISIBLE_ITEMS && (
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton
+                              asChild
+                              className="text-muted-foreground"
+                            >
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedLists((prev) => ({
+                                    ...prev,
+                                    [config.id]: !isExpanded,
+                                  }))
+                                }
+                              >
+                                <span className="text-xs">
+                                  {isExpanded
+                                    ? t('common.less')
+                                    : t('common.more', { count: hiddenCount })}
+                                </span>
+                              </button>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        )}
+                      </>
                     );
-                  })}
-                  {/* Create new entity entry (only for categories with detail pages) */}
-                  {hasDetailPages && (
+                  })()}
+                  {/* Create new entity entry (only for creatable categories) */}
+                  {canCreate && (
                     <SidebarMenuSubItem>
                       <SidebarMenuSubButton
                         asChild
@@ -279,11 +389,12 @@ export default function HomeSidebar({
   }, [searchParams]);
 
   const [selectedChild, setSelectedChild] = useState<SidebarChildVO>();
+  const [sectionOpenState, setSectionOpenState] =
+    useState<Record<string, boolean>>(loadSectionState);
   const { theme, setTheme } = useTheme();
   const { t } = useTranslation();
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
   const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false);
-  const [starCount, setStarCount] = useState<number | null>(null);
   const [latestRelease, setLatestRelease] = useState<GitHubRelease | null>(
     null,
   );
@@ -345,16 +456,6 @@ export default function HomeSidebar({
     }
 
     getCloudServiceClientSync()
-      .get('/api/v1/dist/info/repo')
-      .then((response) => {
-        const data = response as { repo: { stargazers_count: number } };
-        setStarCount(data.repo.stargazers_count);
-      })
-      .catch((error) => {
-        console.error('Failed to fetch GitHub star count:', error);
-      });
-
-    getCloudServiceClientSync()
       .getLangBotReleases()
       .then((releases) => {
         if (releases && releases.length > 0) {
@@ -374,10 +475,25 @@ export default function HomeSidebar({
       });
   }, []);
 
-  function handleChildClick(child: SidebarChildVO) {
+  // Update selected state + notify parent without navigating
+  function selectChild(child: SidebarChildVO) {
     setSelectedChild(child);
-    handleRoute(child);
     onSelectedChangeAction(child);
+  }
+
+  // Toggle collapsible section open/closed with localStorage persistence
+  function handleSectionToggle(id: string, open: boolean) {
+    setSectionOpenState((prev) => {
+      const next = { ...prev, [id]: open };
+      saveSectionState(next);
+      return next;
+    });
+  }
+
+  // User click: update state AND navigate
+  function handleChildClick(child: SidebarChildVO) {
+    selectChild(child);
+    router.push(child.route);
   }
 
   function initSelect() {
@@ -391,14 +507,12 @@ export default function HomeSidebar({
         currentPath.startsWith(childConfig.route + '/'),
       );
     if (matchedChild) {
-      handleChildClick(matchedChild);
+      // Route already matches — just select without navigating (preserves ?id= query params)
+      selectChild(matchedChild);
     } else {
+      // No match — redirect to default route
       handleChildClick(sidebarConfigList[0]);
     }
-  }
-
-  function handleRoute(child: SidebarChildVO) {
-    router.push(`${child.route}`);
   }
 
   function handleRouteChange(pathname: string) {
@@ -436,13 +550,11 @@ export default function HomeSidebar({
                 className="cursor-default hover:bg-transparent active:bg-transparent"
                 tooltip="LangBot"
               >
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  <img
-                    src={langbotIcon.src}
-                    alt="LangBot"
-                    className="size-6 rounded"
-                  />
-                </div>
+                <img
+                  src={langbotIcon.src}
+                  alt="LangBot"
+                  className="size-8 rounded-lg"
+                />
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">LangBot</span>
                   <div className="flex items-center gap-1.5">
@@ -464,14 +576,32 @@ export default function HomeSidebar({
           </SidebarMenu>
         </SidebarHeader>
 
-        {/* Navigation items with collapsible entity sub-items */}
+        {/* Navigation items grouped by section */}
         <SidebarContent>
           <SidebarGroup>
+            <SidebarGroupLabel>{t('sidebar.home')}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 <NavItems
                   selectedChild={selectedChild}
                   onChildClick={handleChildClick}
+                  section="home"
+                  sectionOpenState={sectionOpenState}
+                  onSectionToggle={handleSectionToggle}
+                />
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+          <SidebarGroup>
+            <SidebarGroupLabel>{t('sidebar.extensions')}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <NavItems
+                  selectedChild={selectedChild}
+                  onChildClick={handleChildClick}
+                  section="extensions"
+                  sectionOpenState={sectionOpenState}
+                  onSectionToggle={handleSectionToggle}
                 />
               </SidebarMenu>
             </SidebarGroupContent>
@@ -480,35 +610,6 @@ export default function HomeSidebar({
 
         {/* Footer */}
         <SidebarFooter>
-          {/* GitHub star badge - hidden when collapsed */}
-          {starCount !== null && (
-            <div className="flex justify-center px-2 group-data-[collapsible=icon]:hidden">
-              <Badge
-                variant="outline"
-                className="hover:bg-secondary/50 px-3 py-1.5 text-sm font-medium transition-colors border-border relative overflow-hidden group cursor-pointer"
-                onClick={() => {
-                  window.open(
-                    'https://github.com/langbot-app/LangBot',
-                    '_blank',
-                  );
-                }}
-              >
-                <svg
-                  className="w-4 h-4 mr-2"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
-                  <path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z" />
-                </svg>
-                <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent group-hover:translate-x-full transition-transform duration-1000 ease-out" />
-                {starCount.toLocaleString()}
-              </Badge>
-            </div>
-          )}
-
-          <SidebarSeparator className="group-data-[collapsible=icon]:hidden" />
-
           {/* Models entry */}
           <SidebarMenu>
             <SidebarMenuItem>
@@ -528,8 +629,6 @@ export default function HomeSidebar({
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
-
-          <SidebarSeparator className="group-data-[collapsible=icon]:hidden" />
 
           {/* User menu using sidebar-07 nav-user DropdownMenu pattern */}
           <SidebarMenu>
@@ -668,8 +767,6 @@ export default function HomeSidebar({
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarFooter>
-
-        <SidebarRail />
       </Sidebar>
 
       <AccountSettingsDialog

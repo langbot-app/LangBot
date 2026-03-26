@@ -1,10 +1,9 @@
 'use client';
 
 import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useRouter } from 'next/navigation';
 import { PluginCardVO } from '@/app/home/plugins/components/plugin-installed/PluginCardVO';
 import PluginCardComponent from '@/app/home/plugins/components/plugin-installed/plugin-card/PluginCardComponent';
-import PluginForm from '@/app/home/plugins/components/plugin-installed/plugin-form/PluginForm';
-import PluginReadme from '@/app/home/plugins/components/plugin-installed/plugin-readme/PluginReadme';
 import styles from '@/app/home/plugins/plugins.module.css';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { getCloudServiceClientSync } from '@/app/infra/http';
@@ -37,11 +36,8 @@ enum PluginOperationType {
 const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
   (props, ref) => {
     const { t } = useTranslation();
+    const router = useRouter();
     const [pluginList, setPluginList] = useState<PluginCardVO[]>([]);
-    const [detailModalOpen, setDetailModalOpen] = useState<boolean>(false);
-    const [selectedPlugin, setSelectedPlugin] = useState<PluginCardVO | null>(
-      null,
-    );
     const [showOperationModal, setShowOperationModal] = useState(false);
     const [operationType, setOperationType] = useState<PluginOperationType>(
       PluginOperationType.DELETE,
@@ -163,8 +159,8 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
     }));
 
     function handlePluginClick(plugin: PluginCardVO) {
-      setSelectedPlugin(plugin);
-      setDetailModalOpen(true);
+      const pluginId = `${plugin.author}/${plugin.name}`;
+      router.push(`/home/plugins?id=${encodeURIComponent(pluginId)}`);
     }
 
     function handlePluginDelete(plugin: PluginCardVO) {
@@ -348,50 +344,6 @@ const PluginInstalledComponent = forwardRef<PluginInstalledComponentRef>(
           </div>
         ) : (
           <div className={`${styles.pluginListContainer}`}>
-            <Dialog open={detailModalOpen} onOpenChange={setDetailModalOpen}>
-              <DialogContent className="sm:max-w-[1100px] max-w-[95vw] max-h-[85vh] p-0 flex flex-col">
-                <DialogHeader className="px-6 pt-6 pb-2 border-b">
-                  <DialogTitle>
-                    {selectedPlugin &&
-                      `${selectedPlugin.author}/${selectedPlugin.name}`}
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="flex-1 flex flex-row overflow-hidden min-h-0">
-                  {/* Left side - Readme */}
-                  <div className="flex-1 overflow-y-auto border-r min-w-0">
-                    {selectedPlugin && (
-                      <PluginReadme
-                        pluginAuthor={selectedPlugin.author}
-                        pluginName={selectedPlugin.name}
-                      />
-                    )}
-                  </div>
-                  {/* Right side - Config */}
-                  <div className="w-[380px] flex-shrink-0 overflow-y-auto px-4">
-                    {selectedPlugin && (
-                      <PluginForm
-                        pluginAuthor={selectedPlugin.author}
-                        pluginName={selectedPlugin.name}
-                        onFormSubmit={(timeout?: number) => {
-                          setDetailModalOpen(false);
-                          if (timeout) {
-                            setTimeout(() => {
-                              getPluginList();
-                            }, timeout);
-                          } else {
-                            getPluginList();
-                          }
-                        }}
-                        onFormCancel={() => {
-                          setDetailModalOpen(false);
-                        }}
-                      />
-                    )}
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-
             {pluginList.map((vo, index) => {
               return (
                 <div key={index}>

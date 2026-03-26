@@ -16,6 +16,7 @@ export interface SidebarEntityItem {
   name: string;
   emoji?: string;
   iconURL?: string;
+  updatedAt?: string; // ISO timestamp for sorting by most recently edited
 }
 
 // Entity lists and refresh functions exposed via context
@@ -29,6 +30,9 @@ export interface SidebarDataContextValue {
   refreshKnowledgeBases: () => Promise<void>;
   refreshPlugins: () => Promise<void>;
   refreshAll: () => Promise<void>;
+  // Breadcrumb: entity name shown when viewing a detail page
+  detailEntityName: string | null;
+  setDetailEntityName: (name: string | null) => void;
 }
 
 const SidebarDataContext = createContext<SidebarDataContextValue | null>(null);
@@ -42,6 +46,7 @@ export function SidebarDataProvider({
   const [pipelines, setPipelines] = useState<SidebarEntityItem[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<SidebarEntityItem[]>([]);
   const [plugins, setPlugins] = useState<SidebarEntityItem[]>([]);
+  const [detailEntityName, setDetailEntityName] = useState<string | null>(null);
 
   const refreshBots = useCallback(async () => {
     try {
@@ -51,6 +56,7 @@ export function SidebarDataProvider({
           id: bot.uuid || '',
           name: bot.name,
           iconURL: httpClient.getAdapterIconURL(bot.adapter),
+          updatedAt: bot.updated_at,
         })),
       );
     } catch (error) {
@@ -66,6 +72,7 @@ export function SidebarDataProvider({
           id: p.uuid || '',
           name: p.name,
           emoji: p.emoji,
+          updatedAt: p.updated_at,
         })),
       );
     } catch (error) {
@@ -81,6 +88,7 @@ export function SidebarDataProvider({
           id: kb.uuid || '',
           name: kb.name,
           emoji: kb.emoji,
+          updatedAt: kb.updated_at,
         })),
       );
     } catch (error) {
@@ -134,6 +142,8 @@ export function SidebarDataProvider({
         refreshKnowledgeBases,
         refreshPlugins,
         refreshAll,
+        detailEntityName,
+        setDetailEntityName,
       }}
     >
       {children}

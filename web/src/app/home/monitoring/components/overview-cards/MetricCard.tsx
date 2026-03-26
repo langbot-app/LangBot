@@ -23,7 +23,7 @@ export default function MetricCard({
 }: MetricCardProps) {
   if (loading) {
     return (
-      <Card className="bg-white dark:bg-[#2a2a2e] border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all duration-300">
+      <Card className="bg-white dark:bg-[#2a2a2e] border-gray-200 dark:border-gray-700 transition-all duration-300">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
           <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
             {title}
@@ -43,7 +43,7 @@ export default function MetricCard({
   }
 
   return (
-    <Card className="bg-white dark:bg-[#2a2a2e] border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all duration-300 group">
+    <Card className="bg-white dark:bg-[#2a2a2e] border-gray-200 dark:border-gray-700 transition-all duration-300 group">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
         <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
           {title}

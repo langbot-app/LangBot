@@ -1,4 +1,11 @@
 const enUS = {
+  sidebar: {
+    home: 'Home',
+    extensions: 'Extensions',
+    installedPlugins: 'Installed Plugins',
+    pluginMarket: 'Marketplace',
+    mcpServers: 'MCP Servers',
+  },
   common: {
     login: 'Login',
     logout: 'Logout',
@@ -136,6 +143,8 @@ const enUS = {
     apiKeyCreatedMessage:
       'Please copy this API key, if the button is invalid, please copy manually.',
     none: 'None',
+    more: 'More ({{count}})',
+    less: 'Less',
   },
   notFound: {
     title: 'Page not found',
@@ -687,7 +696,7 @@ const enUS = {
       showRaw: 'Show Raw',
     },
     monitoring: {
-      title: 'Monitoring',
+      title: 'Dashboard',
       description:
         'View execution logs and errors for this pipeline (last 24 hours)',
       detailedLogs: 'Detailed Logs',

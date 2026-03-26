@@ -109,8 +109,13 @@ export default function PluginConfigPage() {
     getPipelines(newSortBy, newSortOrder);
   }
 
+  // Show detail/edit view when ?id= query param is present
+  if (detailId) {
+    return <PipelineDetailContent id={detailId} />;
+  }
+
   return (
-    <div className={styles.configPageContainer}>
+    <div className={`${styles.configPageContainer} h-full overflow-y-auto`}>
       <div className="flex flex-row justify-between items-center mb-4 px-[0.8rem]">
         <Select
           value={`${sortByValue},${sortOrderValue}`}
@@ -155,21 +160,14 @@ export default function PluginConfigPage() {
           onClick={handleCreateNew}
         />
 
-        {pipelineList.map((pipeline) => {
-          // Show detail/edit view when ?id= query param is present
-          if (detailId) {
-            return <PipelineDetailContent id={detailId} />;
-          }
-
-          return (
-            <div
-              key={pipeline.id}
-              onClick={() => handlePipelineClick(pipeline.id)}
-            >
-              <PipelineCard cardVO={pipeline} />
-            </div>
-          );
-        })}
+        {pipelineList.map((pipeline) => (
+          <div
+            key={pipeline.id}
+            onClick={() => handlePipelineClick(pipeline.id)}
+          >
+            <PipelineCard cardVO={pipeline} />
+          </div>
+        ))}
       </div>
     </div>
   );

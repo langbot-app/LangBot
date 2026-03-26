@@ -1,4 +1,11 @@
 ﻿const jaJP = {
+  sidebar: {
+    home: 'ホーム',
+    extensions: '拡張機能',
+    installedPlugins: 'インストール済みプラグイン',
+    pluginMarket: 'プラグインマーケット',
+    mcpServers: 'MCPサーバー',
+  },
   common: {
     login: 'ログイン',
     logout: 'ログアウト',
@@ -138,6 +145,8 @@
     apiKeyCreatedMessage:
       'この API キーをコピーしてください。もしボタンが無効な場合は手動でコピーしてください。',
     none: 'なし',
+    more: 'もっと見る ({{count}})',
+    less: '折りたたむ',
   },
   notFound: {
     title: 'ページが見つかりません',
@@ -690,7 +699,7 @@
       showRaw: '原文で表示',
     },
     monitoring: {
-      title: 'モニタリング',
+      title: 'ダッシュボード',
       description: 'このパイプラインの実行ログとエラー情報を表示（過去24時間）',
       detailedLogs: '詳細ログ',
     },

@@ -126,7 +126,7 @@ export default function TrafficChart({
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
+      <div className="bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="h-5 w-32 bg-gray-200 dark:bg-gray-700 animate-pulse rounded"></div>
           <div className="flex gap-4">
@@ -143,7 +143,7 @@ export default function TrafficChart({
 
   if (chartData.length === 0) {
     return (
-      <div className="bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
+      <div className="bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 p-6">
         <h3 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-4">
           {t('monitoring.trafficChart.title')}
         </h3>
@@ -170,7 +170,7 @@ export default function TrafficChart({
   }
 
   return (
-    <div className="bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
+    <div className="bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 p-6 transition-shadow duration-300">
       <h3 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-6">
         {t('monitoring.trafficChart.title')}
       </h3>

@@ -1,4 +1,11 @@
 const zhHans = {
+  sidebar: {
+    home: '首页',
+    extensions: '扩展',
+    installedPlugins: '已安装插件',
+    pluginMarket: '插件市场',
+    mcpServers: 'MCP 服务器',
+  },
   common: {
     login: '登录',
     logout: '退出登录',
@@ -127,6 +134,8 @@ const zhHans = {
     actions: '操作',
     apiKeyCreatedMessage: '请复制此 API 密钥，若按钮无效，请手动复制。',
     none: '无',
+    more: '更多 ({{count}})',
+    less: '收起',
   },
   notFound: {
     title: '页面不存在',
@@ -857,7 +866,7 @@ const zhHans = {
     spaceEmailMismatch: 'Space登录账号邮箱与本实例账号邮箱不匹配',
   },
   monitoring: {
-    title: '日志监控',
+    title: '仪表盘',
     description: '查看机器人活动、LLM调用和系统性能',
     overview: '概览',
     totalMessages: '总消息数',

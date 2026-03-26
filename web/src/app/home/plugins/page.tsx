@@ -2,19 +2,9 @@
 import PluginInstalledComponent, {
   PluginInstalledComponentRef,
 } from '@/app/home/plugins/components/plugin-installed/PluginInstalledComponent';
-import MarketPage from '@/app/home/plugins/components/plugin-market/PluginMarketComponent';
-import MCPServerComponent from '@/app/home/plugins/mcp-server/MCPServerComponent';
-import MCPFormDialog from '@/app/home/plugins/mcp-server/mcp-form/MCPFormDialog';
-import MCPDeleteConfirmDialog from '@/app/home/plugins/mcp-server/mcp-form/MCPDeleteConfirmDialog';
+import PluginDetailContent from './PluginDetailContent';
 import styles from './plugins.module.css';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from '@/components/ui/card';
 import {
   PlusIcon,
   ChevronDownIcon,
@@ -47,12 +37,18 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { PluginV4 } from '@/app/infra/entities/plugin';
 import { systemInfo } from '@/app/infra/http/HttpClient';
 import { ApiRespPluginSystemStatus } from '@/app/infra/entities/api';
 
@@ -83,12 +79,23 @@ interface GithubAsset {
 }
 
 export default function PluginConfigPage() {
+  const searchParams = useSearchParams();
+  const detailId = searchParams.get('id');
+
+  // Show plugin detail view when ?id= query param is present
+  if (detailId) {
+    return <PluginDetailContent id={detailId} />;
+  }
+
+  return <PluginListView />;
+}
+
+function PluginListView() {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState('installed');
+  const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
   const [installSource, setInstallSource] = useState<string>('local');
   const [installInfo, setInstallInfo] = useState<Record<string, any>>({}); // eslint-disable-line @typescript-eslint/no-explicit-any
-  const [mcpSSEModalOpen, setMcpSSEModalOpen] = useState(false);
   const [pluginInstallStatus, setPluginInstallStatus] =
     useState<PluginInstallStatus>(PluginInstallStatus.WAIT_INPUT);
   const [installError, setInstallError] = useState<string | null>(null);
@@ -108,12 +115,6 @@ export default function PluginConfigPage() {
     useState<ApiRespPluginSystemStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
-  const [editingServerName, setEditingServerName] = useState<string | null>(
-    null,
-  );
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [debugInfo, setDebugInfo] = useState<{
     debug_url: string;
     plugin_debug_key: string;
@@ -318,17 +319,6 @@ export default function PluginConfigPage() {
           setInstallError(err.msg);
           setPluginInstallStatus(PluginInstallStatus.ERROR);
         });
-    } else if (installSource === 'marketplace') {
-      httpClient
-        .installPluginFromMarketplace(
-          installInfo.plugin_author,
-          installInfo.plugin_name,
-          installInfo.plugin_version,
-        )
-        .then((resp) => {
-          const taskId = resp.task_id;
-          watchTask(taskId);
-        });
     }
   }
 
@@ -526,218 +516,144 @@ export default function PluginConfigPage() {
         onChange={handleFileChange}
         style={{ display: 'none' }}
       />
-      <Tabs
-        value={activeTab}
-        onValueChange={setActiveTab}
-        className="w-full h-full flex flex-col"
-      >
-        <div className="flex flex-row justify-between items-center px-[0.8rem] flex-shrink-0">
-          <TabsList className="shadow-md py-5 bg-[#f0f0f0] dark:bg-[#2a2a2e]">
-            <TabsTrigger value="installed" className="px-6 py-4 cursor-pointer">
-              {t('plugins.installed')}
-            </TabsTrigger>
-            {systemInfo.enable_marketplace && (
-              <TabsTrigger value="market" className="px-6 py-4 cursor-pointer">
-                {t('plugins.marketplace')}
-              </TabsTrigger>
-            )}
-            <TabsTrigger
-              value="mcp-servers"
-              className="px-6 py-4 cursor-pointer"
+
+      {/* Header bar with debug info and install button */}
+      <div className="flex flex-row justify-end items-center px-[0.8rem] pb-4 flex-shrink-0 gap-2">
+        <Popover open={debugPopoverOpen} onOpenChange={setDebugPopoverOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className="px-4 py-5 cursor-pointer"
+              onClick={handleShowDebugInfo}
             >
-              {t('mcp.title')}
-            </TabsTrigger>
-          </TabsList>
+              <Code className="w-4 h-4 mr-2" />
+              {t('plugins.debugInfo')}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[380px]" align="end">
+            <div className="space-y-3">
+              {/* Header with icon and title */}
+              <div className="flex items-center gap-2 pb-2 border-b">
+                <Bug className="w-4 h-4" />
+                <h4 className="font-semibold text-sm">
+                  {t('plugins.debugInfoTitle')}
+                </h4>
+              </div>
 
-          <div className="flex flex-row justify-end items-center gap-2">
-            {activeTab === 'installed' && (
-              <Popover
-                open={debugPopoverOpen}
-                onOpenChange={setDebugPopoverOpen}
-              >
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="px-4 py-5 cursor-pointer"
-                    onClick={handleShowDebugInfo}
-                  >
-                    <Code className="w-4 h-4 mr-2" />
-                    {t('plugins.debugInfo')}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[380px]" align="end">
-                  <div className="space-y-3">
-                    {/* Header with icon and title */}
-                    <div className="flex items-center gap-2 pb-2 border-b">
-                      <Bug className="w-4 h-4" />
-                      <h4 className="font-semibold text-sm">
-                        {t('plugins.debugInfoTitle')}
-                      </h4>
-                    </div>
-
-                    {/* Debug URL row */}
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium whitespace-nowrap min-w-[50px]">
-                        {t('plugins.debugUrl')}:
-                      </label>
-                      <Input
-                        value={debugInfo?.debug_url || ''}
-                        readOnly
-                        className="w-[220px] font-mono text-xs h-8"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 shrink-0"
-                        onClick={() =>
-                          handleCopyDebugInfo(debugInfo?.debug_url || '', 'url')
-                        }
-                      >
-                        {copiedDebugUrl ? (
-                          <Check className="w-3.5 h-3.5 text-green-600" />
-                        ) : (
-                          <Copy className="w-3.5 h-3.5" />
-                        )}
-                      </Button>
-                    </div>
-
-                    {/* Debug Key row */}
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm font-medium whitespace-nowrap min-w-[50px]">
-                          {t('plugins.debugKey')}:
-                        </label>
-                        <Input
-                          value={
-                            debugInfo?.plugin_debug_key ||
-                            t('plugins.noDebugKey')
-                          }
-                          readOnly
-                          className="w-[220px] font-mono text-xs h-8"
-                        />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0"
-                          onClick={() =>
-                            handleCopyDebugInfo(
-                              debugInfo?.plugin_debug_key || '',
-                              'key',
-                            )
-                          }
-                          disabled={!debugInfo?.plugin_debug_key}
-                        >
-                          {copiedDebugKey ? (
-                            <Check className="w-3.5 h-3.5 text-green-600" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </Button>
-                      </div>
-                      {!debugInfo?.plugin_debug_key && (
-                        <p className="text-xs text-muted-foreground ml-[58px]">
-                          {t('plugins.debugKeyDisabled')}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="default" className="px-6 py-4 cursor-pointer">
-                  <PlusIcon className="w-4 h-4" />
-                  {activeTab === 'mcp-servers'
-                    ? t('mcp.add')
-                    : t('plugins.install')}
-                  <ChevronDownIcon className="ml-2 w-4 h-4" />
+              {/* Debug URL row */}
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium whitespace-nowrap min-w-[50px]">
+                  {t('plugins.debugUrl')}:
+                </label>
+                <Input
+                  value={debugInfo?.debug_url || ''}
+                  readOnly
+                  className="w-[220px] font-mono text-xs h-8"
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={() =>
+                    handleCopyDebugInfo(debugInfo?.debug_url || '', 'url')
+                  }
+                >
+                  {copiedDebugUrl ? (
+                    <Check className="w-3.5 h-3.5 text-green-600" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {activeTab === 'mcp-servers' ? (
-                  <>
-                    <DropdownMenuItem
-                      onClick={async () => {
-                        if (!(await checkExtensionsLimit())) return;
-                        setActiveTab('mcp-servers');
-                        setIsEditMode(false);
-                        setEditingServerName(null);
-                        setMcpSSEModalOpen(true);
-                      }}
-                    >
-                      <PlusIcon className="w-4 h-4" />
-                      {t('mcp.createServer')}
-                    </DropdownMenuItem>
-                  </>
-                ) : (
-                  <>
-                    {systemInfo.enable_marketplace && (
-                      <DropdownMenuItem
-                        onClick={() => {
-                          setActiveTab('market');
-                        }}
-                      >
-                        <StoreIcon className="w-4 h-4" />
-                        {t('plugins.marketplace')}
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem onClick={handleFileSelect}>
-                      <UploadIcon className="w-4 h-4" />
-                      {t('plugins.uploadLocal')}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={async () => {
-                        if (!(await checkExtensionsLimit())) return;
-                        setInstallSource('github');
-                        setPluginInstallStatus(PluginInstallStatus.WAIT_INPUT);
-                        setInstallError(null);
-                        resetGithubState();
-                        setModalOpen(true);
-                      }}
-                    >
-                      <Github className="w-4 h-4" />
-                      {t('plugins.installFromGithub')}
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-        <TabsContent value="installed" className="flex-1 overflow-y-auto mt-0">
-          <PluginInstalledComponent ref={pluginInstalledRef} />
-        </TabsContent>
-        <TabsContent value="market" className="flex-1 overflow-y-auto mt-0">
-          <MarketPage
-            installPlugin={async (plugin: PluginV4) => {
-              if (!(await checkExtensionsLimit())) return;
-              setInstallSource('marketplace');
-              setInstallInfo({
-                plugin_author: plugin.author,
-                plugin_name: plugin.name,
-                plugin_version: plugin.latest_version,
-              });
-              setPluginInstallStatus(PluginInstallStatus.ASK_CONFIRM);
-              setModalOpen(true);
-            }}
-          />
-        </TabsContent>
-        <TabsContent
-          value="mcp-servers"
-          className="flex-1 overflow-y-auto mt-0"
-        >
-          <MCPServerComponent
-            key={refreshKey}
-            onEditServer={(serverName) => {
-              setEditingServerName(serverName);
-              setIsEditMode(true);
-              setMcpSSEModalOpen(true);
-            }}
-          />
-        </TabsContent>
-      </Tabs>
+              </div>
 
+              {/* Debug Key row */}
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium whitespace-nowrap min-w-[50px]">
+                    {t('plugins.debugKey')}:
+                  </label>
+                  <Input
+                    value={
+                      debugInfo?.plugin_debug_key || t('plugins.noDebugKey')
+                    }
+                    readOnly
+                    className="w-[220px] font-mono text-xs h-8"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    onClick={() =>
+                      handleCopyDebugInfo(
+                        debugInfo?.plugin_debug_key || '',
+                        'key',
+                      )
+                    }
+                    disabled={!debugInfo?.plugin_debug_key}
+                  >
+                    {copiedDebugKey ? (
+                      <Check className="w-3.5 h-3.5 text-green-600" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                  </Button>
+                </div>
+                {!debugInfo?.plugin_debug_key && (
+                  <p className="text-xs text-muted-foreground ml-[58px]">
+                    {t('plugins.debugKeyDisabled')}
+                  </p>
+                )}
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="default" className="px-6 py-4 cursor-pointer">
+              <PlusIcon className="w-4 h-4" />
+              {t('plugins.install')}
+              <ChevronDownIcon className="ml-2 w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {systemInfo.enable_marketplace && (
+              <DropdownMenuItem
+                onClick={() => {
+                  router.push('/home/market');
+                }}
+              >
+                <StoreIcon className="w-4 h-4" />
+                {t('plugins.marketplace')}
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onClick={handleFileSelect}>
+              <UploadIcon className="w-4 h-4" />
+              {t('plugins.uploadLocal')}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={async () => {
+                if (!(await checkExtensionsLimit())) return;
+                setInstallSource('github');
+                setPluginInstallStatus(PluginInstallStatus.WAIT_INPUT);
+                setInstallError(null);
+                resetGithubState();
+                setModalOpen(true);
+              }}
+            >
+              <Github className="w-4 h-4" />
+              {t('plugins.installFromGithub')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {/* Installed plugins grid */}
+      <div className="flex-1 overflow-y-auto">
+        <PluginInstalledComponent ref={pluginInstalledRef} />
+      </div>
+
+      {/* Install plugin dialog (GitHub flow) */}
       <Dialog
         open={modalOpen}
         onOpenChange={(open) => {
@@ -886,19 +802,6 @@ export default function PluginConfigPage() {
               </div>
             )}
 
-          {/* Marketplace Install Confirm */}
-          {installSource === 'marketplace' &&
-            pluginInstallStatus === PluginInstallStatus.ASK_CONFIRM && (
-              <div className="mt-4">
-                <p className="mb-2">
-                  {t('plugins.askConfirm', {
-                    name: installInfo.plugin_name,
-                    version: installInfo.plugin_version,
-                  })}
-                </p>
-              </div>
-            )}
-
           {/* GitHub Install Confirm */}
           {installSource === 'github' &&
             pluginInstallStatus === PluginInstallStatus.ASK_CONFIRM && (
@@ -1009,33 +912,6 @@ export default function PluginConfigPage() {
           </div>
         </div>
       )}
-
-      <MCPFormDialog
-        open={mcpSSEModalOpen}
-        onOpenChange={setMcpSSEModalOpen}
-        serverName={editingServerName}
-        isEditMode={isEditMode}
-        onSuccess={() => {
-          setEditingServerName(null);
-          setIsEditMode(false);
-          setRefreshKey((prev) => prev + 1);
-        }}
-        onDelete={() => {
-          setShowDeleteConfirmModal(true);
-        }}
-      />
-
-      <MCPDeleteConfirmDialog
-        open={showDeleteConfirmModal}
-        onOpenChange={setShowDeleteConfirmModal}
-        serverName={editingServerName}
-        onSuccess={() => {
-          setMcpSSEModalOpen(false);
-          setEditingServerName(null);
-          setIsEditMode(false);
-          setRefreshKey((prev) => prev + 1);
-        }}
-      />
     </div>
   );
 }

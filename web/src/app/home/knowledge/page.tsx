@@ -91,8 +91,13 @@ export default function KnowledgePage() {
     getKnowledgeBaseList();
   };
 
+  // Show detail/edit view when ?id= query param is present
+  if (detailId) {
+    return <KBDetailContent id={detailId} />;
+  }
+
   return (
-    <div>
+    <div className="h-full overflow-y-auto">
       <KBMigrationDialog
         open={migrationDialogOpen}
         onOpenChange={setMigrationDialogOpen}
@@ -109,18 +114,11 @@ export default function KnowledgePage() {
           onClick={handleCreateKBClick}
         />
 
-        {knowledgeBaseList.map((kb) => {
-          // Show detail/edit view when ?id= query param is present
-          if (detailId) {
-            return <KBDetailContent id={detailId} />;
-          }
-
-          return (
-            <div key={kb.id} onClick={() => handleKBCardClick(kb.id)}>
-              <KBCard kbCardVO={kb} />
-            </div>
-          );
-        })}
+        {knowledgeBaseList.map((kb) => (
+          <div key={kb.id} onClick={() => handleKBCardClick(kb.id)}>
+            <KBCard kbCardVO={kb} />
+          </div>
+        ))}
       </div>
     </div>
   );

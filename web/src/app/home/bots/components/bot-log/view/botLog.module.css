@@ -26,7 +26,6 @@
 
 .botLogCardContainer:hover {
   border-color: #cbd5e1;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 :global(.dark) .botLogCardContainer {
@@ -36,7 +35,6 @@
 
 :global(.dark) .botLogCardContainer:hover {
   border-color: #3a3a3e;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .listHeader {

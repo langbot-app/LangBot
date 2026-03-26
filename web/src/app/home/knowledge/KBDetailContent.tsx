@@ -27,7 +27,19 @@ export default function KBDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
   const router = useRouter();
   const { t } = useTranslation();
-  const { refreshKnowledgeBases } = useSidebarData();
+  const { refreshKnowledgeBases, knowledgeBases, setDetailEntityName } =
+    useSidebarData();
+
+  // Set breadcrumb entity name
+  useEffect(() => {
+    if (isCreateMode) {
+      setDetailEntityName(t('knowledge.createKnowledgeBase'));
+    } else {
+      const kb = knowledgeBases.find((k) => k.id === id);
+      setDetailEntityName(kb?.name ?? id);
+    }
+    return () => setDetailEntityName(null);
+  }, [id, isCreateMode, knowledgeBases, setDetailEntityName, t]);
 
   const [activeTab, setActiveTab] = useState('metadata');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -101,35 +113,35 @@ export default function KBDetailContent({ id }: { id: string }) {
   // Create mode: simple form layout
   if (isCreateMode) {
     return (
-      <div className="mx-auto max-w-2xl space-y-6">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.push('/home/knowledge')}
-          >
-            <ArrowLeft className="size-4" />
-          </Button>
-          <h1 className="text-xl font-semibold">
-            {t('knowledge.createKnowledgeBase')}
-          </h1>
-        </div>
+      <div className="h-full overflow-y-auto">
+        <div className="mx-auto max-w-2xl space-y-6">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => router.push('/home/knowledge')}
+            >
+              <ArrowLeft className="size-4" />
+            </Button>
+            <h1 className="text-xl font-semibold">
+              {t('knowledge.createKnowledgeBase')}
+            </h1>
+          </div>
 
-        <div className="rounded-lg border p-6">
           <KBForm
             initKbId={undefined}
             onNewKbCreated={handleNewKbCreated}
             onKbUpdated={handleKbUpdated}
           />
-        </div>
 
-        <div className="flex justify-end gap-2">
-          <Button type="submit" form="kb-form">
-            {t('common.submit')}
-          </Button>
-          <Button variant="outline" onClick={handleFormCancel}>
-            {t('common.cancel')}
-          </Button>
+          <div className="flex justify-end gap-2">
+            <Button type="submit" form="kb-form">
+              {t('common.submit')}
+            </Button>
+            <Button variant="outline" onClick={handleFormCancel}>
+              {t('common.cancel')}
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -139,7 +151,7 @@ export default function KBDetailContent({ id }: { id: string }) {
   return (
     <>
       <div className="flex h-full flex-col">
-        <div className="flex items-center gap-3 pb-4">
+        <div className="flex items-center gap-3 pb-4 shrink-0">
           <Button
             variant="ghost"
             size="icon"
@@ -158,7 +170,7 @@ export default function KBDetailContent({ id }: { id: string }) {
           onValueChange={setActiveTab}
           className="flex flex-1 flex-col min-h-0"
         >
-          <TabsList>
+          <TabsList className="shrink-0">
             <TabsTrigger value="metadata" className="gap-1.5">
               <FileText className="size-3.5" />
               {t('knowledge.metadata')}
@@ -177,15 +189,13 @@ export default function KBDetailContent({ id }: { id: string }) {
 
           <TabsContent value="metadata" className="flex-1 overflow-y-auto mt-4">
             <div className="mx-auto max-w-2xl">
-              <div className="rounded-lg border p-6">
-                <KBForm
-                  initKbId={id}
-                  onNewKbCreated={handleNewKbCreated}
-                  onKbUpdated={handleKbUpdated}
-                />
-              </div>
+              <KBForm
+                initKbId={id}
+                onNewKbCreated={handleNewKbCreated}
+                onKbUpdated={handleKbUpdated}
+              />
 
-              <div className="flex justify-end gap-2 mt-4 pb-4">
+              <div className="flex justify-end gap-2 mt-6 pb-4">
                 <Button
                   type="button"
                   variant="destructive"

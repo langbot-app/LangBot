@@ -6,6 +6,27 @@ const t = (key: string) => {
 };
 
 export const sidebarConfigList = [
+  // ── Home section ──
+  new SidebarChildVO({
+    id: 'monitoring',
+    name: t('monitoring.title'),
+    icon: (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+      >
+        <path d="M2 3.9934C2 3.44476 2.45531 3 2.9918 3H21.0082C21.556 3 22 3.44495 22 3.9934V20.0066C22 20.5552 21.5447 21 21.0082 21H2.9918C2.44405 21 2 20.5551 2 20.0066V3.9934ZM4 5V19H20V5H4ZM6 7H18V9H6V7ZM6 11H18V13H6V11ZM6 15H12V17H6V15Z"></path>
+      </svg>
+    ),
+    route: '/home/monitoring',
+    description: t('monitoring.description'),
+    helpLink: {
+      en_US: '',
+      zh_Hans: '',
+    },
+    section: 'home',
+  }),
   new SidebarChildVO({
     id: 'bots',
     name: t('bots.title'),
@@ -25,6 +46,7 @@ export const sidebarConfigList = [
       zh_Hans: 'https://docs.langbot.app/zh/usage/platforms/readme',
       ja_JP: 'https://docs.langbot.app/ja/usage/platforms/readme',
     },
+    section: 'home',
   }),
   new SidebarChildVO({
     id: 'pipelines',
@@ -45,25 +67,7 @@ export const sidebarConfigList = [
       zh_Hans: 'https://docs.langbot.app/zh/usage/pipelines/readme',
       ja_JP: 'https://docs.langbot.app/ja/usage/pipelines/readme',
     },
-  }),
-  new SidebarChildVO({
-    id: 'monitoring',
-    name: t('monitoring.title'),
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="currentColor"
-      >
-        <path d="M2 3.9934C2 3.44476 2.45531 3 2.9918 3H21.0082C21.556 3 22 3.44495 22 3.9934V20.0066C22 20.5552 21.5447 21 21.0082 21H2.9918C2.44405 21 2 20.5551 2 20.0066V3.9934ZM4 5V19H20V5H4ZM6 7H18V9H6V7ZM6 11H18V13H6V11ZM6 15H12V17H6V15Z"></path>
-      </svg>
-    ),
-    route: '/home/monitoring',
-    description: t('monitoring.description'),
-    helpLink: {
-      en_US: '',
-      zh_Hans: '',
-    },
+    section: 'home',
   }),
   new SidebarChildVO({
     id: 'knowledge',
@@ -84,10 +88,13 @@ export const sidebarConfigList = [
       zh_Hans: 'https://docs.langbot.app/zh/usage/knowledge/readme',
       ja_JP: 'https://docs.langbot.app/ja/usage/knowledge/readme',
     },
+    section: 'home',
   }),
+
+  // ── Extensions section ──
   new SidebarChildVO({
     id: 'plugins',
-    name: t('plugins.title'),
+    name: t('sidebar.installedPlugins'),
     icon: (
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -104,5 +111,47 @@ export const sidebarConfigList = [
       zh_Hans: 'https://docs.langbot.app/zh/usage/plugin/plugin-intro',
       ja_JP: 'https://docs.langbot.app/ja/usage/plugin/plugin-intro',
     },
+    section: 'extensions',
+  }),
+  new SidebarChildVO({
+    id: 'market',
+    name: t('sidebar.pluginMarket'),
+    icon: (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+      >
+        <path d="M21 13.242V20H22V22H2V20H3V13.242C1.79401 12.435 1 11.0602 1 9.5C1 8.67286 1.25027 7.90335 1.67755 7.2612L4.5547 2.36088C4.80513 1.93859 5.26028 1.67578 5.76 1.67578H18.24C18.7397 1.67578 19.1949 1.93859 19.4453 2.36088L22.3225 7.2612C22.7497 7.90335 23 8.67286 23 9.5C23 11.0602 22.206 12.435 21 13.242ZM19 13.972C18.4511 14.0706 17.8794 14.0706 17.3305 13.972C16.1644 13.7566 15.1377 13.0712 14.5 12.1C13.8623 13.0712 12.8356 13.7566 11.6695 13.972C11.1206 14.0706 10.5489 14.0706 10 13.972C9.45108 14.0706 8.87938 14.0706 8.33053 13.972C7.16437 13.7566 6.13771 13.0712 5.5 12.1C4.86229 13.0712 3.83563 13.7566 2.66947 13.972C2.44883 14.0124 2.22434 14.0352 2 14.0404V20H5V15H10V20H19V13.972Z"></path>
+      </svg>
+    ),
+    route: '/home/market',
+    description: t('plugins.description'),
+    helpLink: {
+      en_US: 'https://docs.langbot.app/en/usage/plugin/plugin-intro',
+      zh_Hans: 'https://docs.langbot.app/zh/usage/plugin/plugin-intro',
+      ja_JP: 'https://docs.langbot.app/ja/usage/plugin/plugin-intro',
+    },
+    section: 'extensions',
+  }),
+  new SidebarChildVO({
+    id: 'mcp',
+    name: t('sidebar.mcpServers'),
+    icon: (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+      >
+        <path d="M4.5 7.65311V16.3469L12 20.689L19.5 16.3469V7.65311L12 3.311L4.5 7.65311ZM12 1L21.5 6.5V17.5L12 23L2.5 17.5V6.5L12 1ZM6.49896 9.97065L11 12.5765V17.625H13V12.5765L17.501 9.97066L16.499 8.2398L12 10.8445L7.50104 8.2398L6.49896 9.97065Z"></path>
+      </svg>
+    ),
+    route: '/home/mcp',
+    description: t('mcp.title'),
+    helpLink: {
+      en_US: '',
+      zh_Hans: '',
+    },
+    section: 'extensions',
   }),
 ];

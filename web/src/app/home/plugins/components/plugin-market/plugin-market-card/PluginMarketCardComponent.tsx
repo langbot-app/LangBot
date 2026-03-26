@@ -85,7 +85,7 @@ export default function PluginMarketCardComponent({
 
   return (
     <div
-      className="w-[100%] h-auto min-h-[8rem] sm:min-h-[9rem] bg-white rounded-[10px] shadow-[0px_0px_4px_0_rgba(0,0,0,0.2)] p-3 sm:p-[1rem] hover:shadow-[0px_3px_6px_0_rgba(0,0,0,0.12)] transition-all duration-200 hover:scale-[1.005] dark:bg-[#1f1f22] relative"
+      className="w-[100%] h-auto min-h-[8rem] sm:min-h-[9rem] bg-white rounded-[10px] border border-[#e4e4e7] dark:border-[#27272a] p-3 sm:p-[1rem] hover:border-[#a1a1aa] dark:hover:border-[#3f3f46] transition-all duration-200 dark:bg-[#1f1f22] relative"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >

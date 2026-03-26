@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -24,7 +24,18 @@ export default function BotDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
   const router = useRouter();
   const { t } = useTranslation();
-  const { refreshBots } = useSidebarData();
+  const { refreshBots, bots, setDetailEntityName } = useSidebarData();
+
+  // Set breadcrumb entity name
+  useEffect(() => {
+    if (isCreateMode) {
+      setDetailEntityName(t('bots.createBot'));
+    } else {
+      const bot = bots.find((b) => b.id === id);
+      setDetailEntityName(bot?.name ?? id);
+    }
+    return () => setDetailEntityName(null);
+  }, [id, isCreateMode, bots, setDetailEntityName, t]);
 
   const [activeTab, setActiveTab] = useState('config');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -62,34 +73,34 @@ export default function BotDetailContent({ id }: { id: string }) {
   // Create mode: simple form layout
   if (isCreateMode) {
     return (
-      <div className="mx-auto max-w-2xl space-y-6">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.push('/home/bots')}
-          >
-            <ArrowLeft className="size-4" />
-          </Button>
-          <h1 className="text-xl font-semibold">{t('bots.createBot')}</h1>
-        </div>
+      <div className="h-full overflow-y-auto">
+        <div className="mx-auto max-w-2xl space-y-6">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => router.push('/home/bots')}
+            >
+              <ArrowLeft className="size-4" />
+            </Button>
+            <h1 className="text-xl font-semibold">{t('bots.createBot')}</h1>
+          </div>
 
-        <div className="rounded-lg border p-6">
           <BotForm
             initBotId={undefined}
             onFormSubmit={handleFormSubmit}
             onBotDeleted={handleBotDeleted}
             onNewBotCreated={handleNewBotCreated}
           />
-        </div>
 
-        <div className="flex justify-end gap-2">
-          <Button type="submit" form="bot-form">
-            {t('common.submit')}
-          </Button>
-          <Button variant="outline" onClick={handleFormCancel}>
-            {t('common.cancel')}
-          </Button>
+          <div className="flex justify-end gap-2">
+            <Button type="submit" form="bot-form">
+              {t('common.submit')}
+            </Button>
+            <Button variant="outline" onClick={handleFormCancel}>
+              {t('common.cancel')}
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -99,7 +110,7 @@ export default function BotDetailContent({ id }: { id: string }) {
   return (
     <>
       <div className="flex h-full flex-col">
-        <div className="flex items-center gap-3 pb-4">
+        <div className="flex items-center gap-3 pb-4 shrink-0">
           <Button
             variant="ghost"
             size="icon"
@@ -116,7 +127,7 @@ export default function BotDetailContent({ id }: { id: string }) {
           onValueChange={setActiveTab}
           className="flex flex-1 flex-col min-h-0"
         >
-          <TabsList>
+          <TabsList className="shrink-0">
             <TabsTrigger value="config" className="gap-1.5">
               <Settings className="size-3.5" />
               {t('bots.configuration')}
@@ -133,16 +144,14 @@ export default function BotDetailContent({ id }: { id: string }) {
 
           <TabsContent value="config" className="flex-1 overflow-y-auto mt-4">
             <div className="mx-auto max-w-2xl">
-              <div className="rounded-lg border p-6">
-                <BotForm
-                  initBotId={id}
-                  onFormSubmit={handleFormSubmit}
-                  onBotDeleted={handleBotDeleted}
-                  onNewBotCreated={handleNewBotCreated}
-                />
-              </div>
+              <BotForm
+                initBotId={id}
+                onFormSubmit={handleFormSubmit}
+                onBotDeleted={handleBotDeleted}
+                onNewBotCreated={handleNewBotCreated}
+              />
 
-              <div className="flex justify-end gap-2 mt-4 pb-4">
+              <div className="flex justify-end gap-2 mt-6 pb-4">
                 <Button
                   type="button"
                   variant="destructive"

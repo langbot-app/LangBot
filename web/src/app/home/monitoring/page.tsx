@@ -188,11 +188,11 @@ function MonitoringPageContent() {
   };
 
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full overflow-y-auto">
       {/* Filters and Refresh Button - Sticky */}
       <div className="sticky top-[-1.5rem] z-10 -ml-[2rem] -mr-[1.5rem] -mt-[1.5rem] pt-[1.5rem] pb-4 bg-[#fafafa] dark:bg-[#151518]">
         <div className="ml-[2rem] mr-[1.5rem] px-[0.8rem]">
-          <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700">
             <MonitoringFilters
               selectedBots={filterState.selectedBots}
               selectedPipelines={filterState.selectedPipelines}
@@ -235,7 +235,7 @@ function MonitoringPageContent() {
         />
 
         {/* Tabs Section */}
-        <div className="bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-[#2a2a2e] rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
           <Tabs
             value={activeTab}
             onValueChange={setActiveTab}
@@ -290,7 +290,7 @@ function MonitoringPageContent() {
                         .map((msg) => (
                           <div
                             key={msg.id}
-                            className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden hover:shadow-md transition-all duration-200"
+                            className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden transition-all duration-200"
                           >
                             {/* Message Header - Always Visible */}
                             <div
@@ -427,7 +427,7 @@ function MonitoringPageContent() {
                       {data.modelCalls.map((call) => (
                         <div
                           key={call.id}
-                          className="border border-gray-200 dark:border-gray-700 rounded-xl p-5 hover:shadow-md transition-all duration-200"
+                          className="border border-gray-200 dark:border-gray-700 rounded-xl p-5 transition-all duration-200"
                         >
                           <div className="flex justify-between items-start mb-3">
                             <div className="flex-1">
@@ -642,7 +642,7 @@ function MonitoringPageContent() {
                     {data.errors.map((error) => (
                       <div
                         key={error.id}
-                        className="border border-red-200 dark:border-red-900 rounded-xl overflow-hidden hover:shadow-md transition-all duration-200"
+                        className="border border-red-200 dark:border-red-900 rounded-xl overflow-hidden transition-all duration-200"
                       >
                         {/* Error Header - Always Visible */}
                         <div

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -25,7 +25,18 @@ export default function PipelineDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
   const router = useRouter();
   const { t } = useTranslation();
-  const { refreshPipelines } = useSidebarData();
+  const { refreshPipelines, pipelines, setDetailEntityName } = useSidebarData();
+
+  // Set breadcrumb entity name
+  useEffect(() => {
+    if (isCreateMode) {
+      setDetailEntityName(t('pipelines.createPipeline'));
+    } else {
+      const pipeline = pipelines.find((p) => p.id === id);
+      setDetailEntityName(pipeline?.name ?? id);
+    }
+    return () => setDetailEntityName(null);
+  }, [id, isCreateMode, pipelines, setDetailEntityName, t]);
 
   const [activeTab, setActiveTab] = useState('config');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -56,21 +67,21 @@ export default function PipelineDetailContent({ id }: { id: string }) {
   // Create mode: simple form layout
   if (isCreateMode) {
     return (
-      <div className="mx-auto max-w-2xl space-y-6">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.push('/home/pipelines')}
-          >
-            <ArrowLeft className="size-4" />
-          </Button>
-          <h1 className="text-xl font-semibold">
-            {t('pipelines.createPipeline')}
-          </h1>
-        </div>
+      <div className="h-full overflow-y-auto">
+        <div className="mx-auto max-w-2xl space-y-6">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => router.push('/home/pipelines')}
+            >
+              <ArrowLeft className="size-4" />
+            </Button>
+            <h1 className="text-xl font-semibold">
+              {t('pipelines.createPipeline')}
+            </h1>
+          </div>
 
-        <div className="rounded-lg border p-6">
           <PipelineFormComponent
             pipelineId={undefined}
             isEditMode={false}
@@ -90,7 +101,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
   return (
     <>
       <div className="flex h-full flex-col">
-        <div className="flex items-center gap-3 pb-4">
+        <div className="flex items-center gap-3 pb-4 shrink-0">
           <Button
             variant="ghost"
             size="icon"
@@ -116,7 +127,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
           onValueChange={setActiveTab}
           className="flex flex-1 flex-col min-h-0"
         >
-          <TabsList>
+          <TabsList className="shrink-0">
             <TabsTrigger value="config" className="gap-1.5">
               <Settings className="size-3.5" />
               {t('pipelines.configuration')}
@@ -137,18 +148,16 @@ export default function PipelineDetailContent({ id }: { id: string }) {
 
           <TabsContent value="config" className="flex-1 overflow-y-auto mt-4">
             <div className="mx-auto max-w-2xl">
-              <div className="rounded-lg border p-6">
-                <PipelineFormComponent
-                  pipelineId={id}
-                  isEditMode={true}
-                  disableForm={false}
-                  showButtons={true}
-                  onFinish={handleFinish}
-                  onNewPipelineCreated={handleNewPipelineCreated}
-                  onDeletePipeline={() => setShowDeleteConfirm(true)}
-                  onCancel={handleCancel}
-                />
-              </div>
+              <PipelineFormComponent
+                pipelineId={id}
+                isEditMode={true}
+                disableForm={false}
+                showButtons={true}
+                onFinish={handleFinish}
+                onNewPipelineCreated={handleNewPipelineCreated}
+                onDeletePipeline={() => setShowDeleteConfirm(true)}
+                onCancel={handleCancel}
+              />
             </div>
           </TabsContent>
 

@@ -31,7 +31,7 @@ export default function PluginCardComponent({
   return (
     <>
       <div
-        className="w-[100%] h-[10rem] bg-white rounded-[10px] shadow-[0px_2px_2px_0_rgba(0,0,0,0.2)] p-[1.2rem] cursor-pointer dark:bg-[#1f1f22] relative transition-all duration-200 hover:shadow-[0px_3px_6px_0_rgba(0,0,0,0.12)] hover:scale-[1.005]"
+        className="w-[100%] h-[10rem] bg-white rounded-[10px] border border-[#e4e4e7] dark:border-[#27272a] p-[1.2rem] cursor-pointer dark:bg-[#1f1f22] relative transition-all duration-200 hover:border-[#a1a1aa] dark:hover:border-[#3f3f46]"
         onClick={() => onCardClick()}
       >
         <div className="w-full h-full flex flex-row items-start justify-start gap-[1.2rem]">

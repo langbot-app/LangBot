@@ -1,4 +1,11 @@
 const zhHant = {
+  sidebar: {
+    home: '首頁',
+    extensions: '擴展',
+    installedPlugins: '已安裝外掛',
+    pluginMarket: '外掛市場',
+    mcpServers: 'MCP 伺服器',
+  },
   common: {
     login: '登入',
     logout: '登出',
@@ -127,6 +134,8 @@ const zhHant = {
     actions: '操作',
     apiKeyCreatedMessage: '請複製此 API 金鑰，若按鈕無效，請手動複製。',
     none: '無',
+    more: '更多 ({{count}})',
+    less: '收起',
   },
   notFound: {
     title: '頁面不存在',
@@ -839,7 +848,7 @@ const zhHant = {
     spaceEmailMismatch: 'Space登入帳號電子郵件與本實例帳號電子郵件不匹配',
   },
   monitoring: {
-    title: '日誌監控',
+    title: '儀表盤',
     description: '監控機器人活動、LLM調用和系統效能',
     overview: '概覽',
     totalMessages: '總訊息數',
