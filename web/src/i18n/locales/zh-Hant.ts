@@ -662,6 +662,11 @@ const zhHant = {
       replyTo: '回覆給',
       showMarkdown: '渲染',
       showRaw: '原文',
+      allMembers: '全體成員',
+      file: '檔案',
+      voice: '語音',
+      uploadImage: '上傳圖片',
+      uploading: '上傳中...',
     },
     monitoring: {
       title: '監控日誌',

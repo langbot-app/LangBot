@@ -133,18 +133,16 @@ export default function PipelineDetailContent({ id }: { id: string }) {
             value="config"
             className="flex-1 min-h-0 overflow-y-auto mt-4"
           >
-            <div className="mx-auto max-w-2xl">
-              <PipelineFormComponent
-                pipelineId={id}
-                isEditMode={true}
-                disableForm={false}
-                showButtons={true}
-                onFinish={handleFinish}
-                onNewPipelineCreated={handleNewPipelineCreated}
-                onDeletePipeline={() => setShowDeleteConfirm(true)}
-                onCancel={() => router.push('/home/pipelines')}
-              />
-            </div>
+            <PipelineFormComponent
+              pipelineId={id}
+              isEditMode={true}
+              disableForm={false}
+              showButtons={true}
+              onFinish={handleFinish}
+              onNewPipelineCreated={handleNewPipelineCreated}
+              onDeletePipeline={() => setShowDeleteConfirm(true)}
+              onCancel={() => router.push('/home/pipelines')}
+            />
           </TabsContent>
 
           <TabsContent

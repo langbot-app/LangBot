@@ -696,6 +696,11 @@ const enUS = {
       replyTo: 'Reply to',
       showMarkdown: 'Show Markdown',
       showRaw: 'Show Raw',
+      allMembers: 'All Members',
+      file: 'File',
+      voice: 'Voice',
+      uploadImage: 'Upload Image',
+      uploading: 'Uploading...',
     },
     monitoring: {
       title: 'Dashboard',

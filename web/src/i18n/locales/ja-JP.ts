@@ -699,6 +699,11 @@
       replyTo: '返信先',
       showMarkdown: 'Markdownで表示',
       showRaw: '原文で表示',
+      allMembers: '全メンバー',
+      file: 'ファイル',
+      voice: '音声',
+      uploadImage: '画像をアップロード',
+      uploading: 'アップロード中...',
     },
     monitoring: {
       title: 'ダッシュボード',

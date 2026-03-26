@@ -5,7 +5,6 @@ import {
   PipelineConfigTab,
   PipelineConfigStage,
 } from '@/app/infra/entities/pipeline';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import N8nAuthFormComponent from '@/app/home/components/dynamic-form/N8nAuthFormComponent';
 import { Button } from '@/components/ui/button';
@@ -32,6 +31,8 @@ import {
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { extractI18nObject } from '@/i18n/I18nProvider';
+import { cn } from '@/lib/utils';
+import { Info, Brain, Zap, Shield, FileOutput } from 'lucide-react';
 
 export default function PipelineFormComponent({
   onFinish,
@@ -85,16 +86,52 @@ export default function PipelineFormComponent({
       });
 
   type FormValues = z.infer<typeof formSchema>;
-  // 这里不好，可以改成enum等
-  const formLabelList: FormLabel[] = isEditMode
+  // Section navigation items with icons
+  const SECTION_ICONS: Record<string, React.ElementType> = {
+    basic: Info,
+    ai: Brain,
+    trigger: Zap,
+    safety: Shield,
+    output: FileOutput,
+  };
+
+  const formLabelList: SectionItem[] = isEditMode
     ? [
-        { label: t('pipelines.basicInfo'), name: 'basic' },
-        { label: t('pipelines.aiCapabilities'), name: 'ai' },
-        { label: t('pipelines.triggerConditions'), name: 'trigger' },
-        { label: t('pipelines.safetyControls'), name: 'safety' },
-        { label: t('pipelines.outputProcessing'), name: 'output' },
+        {
+          label: t('pipelines.basicInfo'),
+          name: 'basic',
+          icon: SECTION_ICONS.basic,
+        },
+        {
+          label: t('pipelines.aiCapabilities'),
+          name: 'ai',
+          icon: SECTION_ICONS.ai,
+        },
+        {
+          label: t('pipelines.triggerConditions'),
+          name: 'trigger',
+          icon: SECTION_ICONS.trigger,
+        },
+        {
+          label: t('pipelines.safetyControls'),
+          name: 'safety',
+          icon: SECTION_ICONS.safety,
+        },
+        {
+          label: t('pipelines.outputProcessing'),
+          name: 'output',
+          icon: SECTION_ICONS.output,
+        },
       ]
-    : [{ label: t('pipelines.basicInfo'), name: 'basic' }];
+    : [
+        {
+          label: t('pipelines.basicInfo'),
+          name: 'basic',
+          icon: SECTION_ICONS.basic,
+        },
+      ];
+
+  const [activeSection, setActiveSection] = useState(formLabelList[0].name);
 
   const [aiConfigTabSchema, setAIConfigTabSchema] =
     useState<PipelineConfigTab>();
@@ -269,12 +306,12 @@ export default function PipelineFormComponent({
     stage: PipelineConfigStage,
     formName: keyof FormValues,
   ) {
-    // 如果是 AI 配置，需要特殊处理
+    // Special handling for AI config section
     if (formName === 'ai') {
-      // 获取当前选择的 runner
+      // Get the currently selected runner
       const currentRunner = form.watch('ai.runner.runner');
 
-      // 如果是 runner 配置项，直接渲染
+      // If this is the runner selector stage, render it directly
       if (stage.name === 'runner') {
         return (
           <div key={stage.name} className="space-y-4 mb-6">
@@ -282,7 +319,7 @@ export default function PipelineFormComponent({
               {extractI18nObject(stage.label)}
             </div>
             {stage.description && (
-              <div className="text-sm text-gray-500">
+              <div className="text-sm text-muted-foreground">
                 {extractI18nObject(stage.description)}
               </div>
             )}
@@ -301,12 +338,12 @@ export default function PipelineFormComponent({
         );
       }
 
-      // 如果不是当前选择的 runner 对应的配置项，则不渲染
+      // Do not render if not the currently selected runner
       if (stage.name !== currentRunner) {
         return null;
       }
 
-      // 对于n8n-service-api配置，使用N8nAuthFormComponent处理表单联动
+      // For n8n-service-api config, use N8nAuthFormComponent for form linkage
       if (stage.name === 'n8n-service-api') {
         return (
           <div key={stage.name} className="space-y-4 mb-6">
@@ -314,7 +351,7 @@ export default function PipelineFormComponent({
               {extractI18nObject(stage.label)}
             </div>
             {stage.description && (
-              <div className="text-sm text-gray-500">
+              <div className="text-sm text-muted-foreground">
                 {extractI18nObject(stage.description)}
               </div>
             )}
@@ -340,7 +377,7 @@ export default function PipelineFormComponent({
           {extractI18nObject(stage.label)}
         </div>
         {stage.description && (
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-muted-foreground">
             {extractI18nObject(stage.description)}
           </div>
         )}
@@ -399,140 +436,144 @@ export default function PipelineFormComponent({
 
   return (
     <>
-      <div className="!max-w-[70vw] max-w-6xl h-full p-0 flex flex-col bg-white dark:bg-black">
+      <div className="h-full p-0 flex flex-col">
         <Form {...form}>
           <form
             id="pipeline-form"
             onSubmit={form.handleSubmit(handleFormSubmit)}
             className="h-full flex flex-col flex-1 min-h-0 mb-2"
           >
-            <div className="flex-1 flex flex-col min-h-0">
-              <Tabs
-                defaultValue={formLabelList[0].name}
-                className="h-full flex flex-col flex-1 min-h-0"
-              >
-                <TabsList>
-                  {formLabelList.map((formLabel) => (
-                    <TabsTrigger key={formLabel.name} value={formLabel.name}>
-                      {formLabel.label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-
-                <div
-                  id="pipeline-form-content"
-                  className="flex-1 overflow-y-auto min-h-0"
-                >
-                  {formLabelList.map((formLabel) => (
-                    <TabsContent
-                      key={formLabel.name}
-                      value={formLabel.name}
-                      className="overflow-y-auto max-h-full"
-                    >
-                      {formLabel.name === 'basic' && (
-                        <div className="space-y-6">
-                          {/* Name and Emoji in same row */}
-                          <div className="flex gap-4 items-start">
-                            <FormField
-                              control={form.control}
-                              name="basic.name"
-                              render={({ field }) => (
-                                <FormItem className="flex-1">
-                                  <FormLabel>
-                                    {t('common.name')}
-                                    <span className="text-red-500">*</span>
-                                  </FormLabel>
-                                  <FormControl>
-                                    <Input {...field} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name="basic.emoji"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>{t('common.icon')}</FormLabel>
-                                  <FormControl>
-                                    <EmojiPicker
-                                      value={field.value}
-                                      onChange={field.onChange}
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          </div>
-
-                          <FormField
-                            control={form.control}
-                            name="basic.description"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>
-                                  {t('common.description')}
-                                  <span className="text-red-500">*</span>
-                                </FormLabel>
-                                <FormControl>
-                                  <Input {...field} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
+            <div className="flex-1 flex min-h-0">
+              {/* Vertical section navigation (only show when multiple sections) */}
+              {formLabelList.length > 1 && (
+                <nav className="w-44 shrink-0 pr-4 mr-4 border-r overflow-y-auto">
+                  <ul className="space-y-1">
+                    {formLabelList.map((section) => {
+                      const Icon = section.icon;
+                      return (
+                        <li key={section.name}>
+                          <button
+                            type="button"
+                            onClick={() => setActiveSection(section.name)}
+                            className={cn(
+                              'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors text-left',
+                              activeSection === section.name
+                                ? 'bg-accent text-accent-foreground'
+                                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                             )}
-                          />
-                        </div>
+                          >
+                            <Icon className="size-4 shrink-0" />
+                            {section.label}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </nav>
+              )}
+
+              {/* Content panel */}
+              <div className="flex-1 overflow-y-auto min-h-0">
+                {/* Basic info section */}
+                {activeSection === 'basic' && (
+                  <div className="space-y-6">
+                    {/* Name and Emoji in same row */}
+                    <div className="flex gap-4 items-start">
+                      <FormField
+                        control={form.control}
+                        name="basic.name"
+                        render={({ field }) => (
+                          <FormItem className="flex-1">
+                            <FormLabel>
+                              {t('common.name')}
+                              <span className="text-red-500">*</span>
+                            </FormLabel>
+                            <FormControl>
+                              <Input {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="basic.emoji"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('common.icon')}</FormLabel>
+                            <FormControl>
+                              <EmojiPicker
+                                value={field.value}
+                                onChange={field.onChange}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <FormField
+                      control={form.control}
+                      name="basic.description"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            {t('common.description')}
+                            <span className="text-red-500">*</span>
+                          </FormLabel>
+                          <FormControl>
+                            <Input {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
                       )}
+                    />
+                  </div>
+                )}
 
-                      {isEditMode && (
-                        <>
-                          {formLabel.name === 'ai' && aiConfigTabSchema && (
-                            <div className="space-y-6">
-                              {aiConfigTabSchema.stages.map((stage) =>
-                                renderDynamicForms(stage, 'ai'),
-                              )}
-                            </div>
-                          )}
+                {/* Dynamic config sections (edit mode only) */}
+                {isEditMode && (
+                  <>
+                    {activeSection === 'ai' && aiConfigTabSchema && (
+                      <div className="space-y-6">
+                        {aiConfigTabSchema.stages.map((stage) =>
+                          renderDynamicForms(stage, 'ai'),
+                        )}
+                      </div>
+                    )}
 
-                          {formLabel.name === 'trigger' &&
-                            triggerConfigTabSchema && (
-                              <div className="space-y-6">
-                                {triggerConfigTabSchema.stages.map((stage) =>
-                                  renderDynamicForms(stage, 'trigger'),
-                                )}
-                              </div>
-                            )}
+                    {activeSection === 'trigger' && triggerConfigTabSchema && (
+                      <div className="space-y-6">
+                        {triggerConfigTabSchema.stages.map((stage) =>
+                          renderDynamicForms(stage, 'trigger'),
+                        )}
+                      </div>
+                    )}
 
-                          {formLabel.name === 'safety' &&
-                            safetyConfigTabSchema && (
-                              <div className="space-y-6">
-                                {safetyConfigTabSchema.stages.map((stage) =>
-                                  renderDynamicForms(stage, 'safety'),
-                                )}
-                              </div>
-                            )}
+                    {activeSection === 'safety' && safetyConfigTabSchema && (
+                      <div className="space-y-6">
+                        {safetyConfigTabSchema.stages.map((stage) =>
+                          renderDynamicForms(stage, 'safety'),
+                        )}
+                      </div>
+                    )}
 
-                          {formLabel.name === 'output' &&
-                            outputConfigTabSchema && (
-                              <div className="space-y-6">
-                                {outputConfigTabSchema.stages.map((stage) =>
-                                  renderDynamicForms(stage, 'output'),
-                                )}
-                              </div>
-                            )}
-                        </>
-                      )}
-                    </TabsContent>
-                  ))}
-                </div>
-              </Tabs>
+                    {activeSection === 'output' && outputConfigTabSchema && (
+                      <div className="space-y-6">
+                        {outputConfigTabSchema.stages.map((stage) =>
+                          renderDynamicForms(stage, 'output'),
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           </form>
-          {/* 按钮栏移到 Tabs 外部，始终固定底部 */}
+          {/* Button bar pinned to bottom */}
           {showButtons && (
-            <div className="flex justify-end items-center gap-2 pt-4 border-t mb-0 bg-white dark:bg-black sticky bottom-0 z-10">
+            <div className="flex justify-end items-center gap-2 pt-4 border-t mb-0 sticky bottom-0 z-10">
               {isEditMode && hasUnsavedChanges && (
                 <div className="text-amber-600 dark:text-amber-400 text-sm flex items-center gap-1.5 mr-auto">
                   <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />
@@ -551,7 +592,7 @@ export default function PipelineFormComponent({
               )}
 
               {isEditMode && isDefaultPipeline && (
-                <div className="text-gray-500 text-sm h-full flex items-center mr-2">
+                <div className="text-muted-foreground text-sm h-full flex items-center mr-2">
                   {t('pipelines.defaultPipelineCannotDelete')}
                 </div>
               )}
@@ -575,7 +616,7 @@ export default function PipelineFormComponent({
         </Form>
       </div>
 
-      {/* 删除确认对话框 */}
+      {/* Delete confirmation dialog */}
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <DialogContent>
           <DialogHeader>
@@ -596,7 +637,7 @@ export default function PipelineFormComponent({
         </DialogContent>
       </Dialog>
 
-      {/* 复制确认对话框 */}
+      {/* Copy confirmation dialog */}
       <Dialog open={showCopyConfirm} onOpenChange={setShowCopyConfirm}>
         <DialogContent>
           <DialogHeader>
@@ -614,7 +655,8 @@ export default function PipelineFormComponent({
     </>
   );
 }
-interface FormLabel {
+interface SectionItem {
   label: string;
   name: string;
+  icon: React.ElementType;
 }

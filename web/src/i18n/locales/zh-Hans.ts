@@ -669,6 +669,11 @@ const zhHans = {
       replyTo: '回复给',
       showMarkdown: '渲染',
       showRaw: '原文',
+      allMembers: '全体成员',
+      file: '文件',
+      voice: '语音',
+      uploadImage: '上传图片',
+      uploading: '上传中...',
     },
     monitoring: {
       title: '监控日志',
