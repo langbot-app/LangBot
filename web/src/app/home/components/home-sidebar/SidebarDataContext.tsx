@@ -7,8 +7,9 @@ import React, {
   useEffect,
   useCallback,
 } from 'react';
-import { httpClient } from '@/app/infra/http';
+import { httpClient, getCloudServiceClientSync } from '@/app/infra/http';
 import { extractI18nObject } from '@/i18n/I18nProvider';
+import { isNewerVersion } from '@/app/utils/versionCompare';
 
 // Lightweight entity item for sidebar display
 export interface SidebarEntityItem {
@@ -20,6 +21,7 @@ export interface SidebarEntityItem {
   // Plugin-specific fields
   installSource?: string;
   installInfo?: Record<string, unknown>;
+  hasUpdate?: boolean;
 }
 
 // Entity lists and refresh functions exposed via context
@@ -101,18 +103,44 @@ export function SidebarDataProvider({
 
   const refreshPlugins = useCallback(async () => {
     try {
-      const resp = await httpClient.getPlugins();
+      const [pluginsResp, marketplaceResp] = await Promise.all([
+        httpClient.getPlugins(),
+        getCloudServiceClientSync()
+          .getMarketplacePlugins(1, 100)
+          .catch(() => ({ plugins: [] })),
+      ]);
+
+      // Build marketplace version lookup: "author/name" -> latest_version
+      const marketplaceVersions = new Map<string, string>();
+      for (const mp of marketplaceResp.plugins) {
+        if (mp.latest_version) {
+          marketplaceVersions.set(`${mp.author}/${mp.name}`, mp.latest_version);
+        }
+      }
+
       setPlugins(
-        resp.plugins.map((plugin) => {
+        pluginsResp.plugins.map((plugin) => {
           const meta = plugin.manifest.manifest.metadata;
           const author = meta.author ?? '';
           const name = meta.name;
+          const compositeKey = `${author}/${name}`;
+          const installedVersion = meta.version ?? '';
+
+          let hasUpdate = false;
+          if (plugin.install_source === 'marketplace') {
+            const latestVersion = marketplaceVersions.get(compositeKey);
+            if (latestVersion) {
+              hasUpdate = isNewerVersion(latestVersion, installedVersion);
+            }
+          }
+
           return {
-            id: `${author}/${name}`,
+            id: compositeKey,
             name: extractI18nObject(meta.label),
             iconURL: httpClient.getPluginIconURL(author, name),
             installSource: plugin.install_source,
             installInfo: plugin.install_info,
+            hasUpdate,
           };
         }),
       );

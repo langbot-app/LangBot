@@ -642,11 +642,16 @@ function PluginItemMenu({
           className={`absolute right-1 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${
             open
               ? 'opacity-100'
-              : 'opacity-0 group-hover/plugin-item:opacity-100'
+              : item.hasUpdate
+                ? 'opacity-100'
+                : 'opacity-0 group-hover/plugin-item:opacity-100'
           } transition-opacity`}
           onClick={(e) => e.stopPropagation()}
         >
           <Ellipsis className="size-4" />
+          {item.hasUpdate && !open && (
+            <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-red-500" />
+          )}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="right" align="start">
@@ -660,6 +665,11 @@ function PluginItemMenu({
           >
             <ArrowUp className="size-4" />
             <span>{t('plugins.update')}</span>
+            {item.hasUpdate && (
+              <Badge className="ml-auto bg-red-500 hover:bg-red-500 text-white text-[0.6rem] px-1.5 py-0 h-4">
+                {t('plugins.new')}
+              </Badge>
+            )}
           </DropdownMenuItem>
         )}
         {hasSourceLink && (
