@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import styles from './botConfig.module.css';
 import { BotCardVO } from '@/app/home/bots/components/bot-card/BotCardVO';
 import BotCard from '@/app/home/bots/components/bot-card/BotCard';
@@ -10,20 +11,22 @@ import { Bot, Adapter } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { extractI18nObject } from '@/i18n/I18nProvider';
-import BotDetailDialog from '@/app/home/bots/BotDetailDialog';
 import { CustomApiError } from '@/app/infra/entities/common';
 import { systemInfo } from '@/app/infra/http';
+import BotDetailContent from './BotDetailContent';
 
 export default function BotConfigPage() {
   const { t } = useTranslation();
-  // 机器人详情dialog
-  const [detailDialogOpen, setDetailDialogOpen] = useState<boolean>(false);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const detailId = searchParams.get('id');
   const [botList, setBotList] = useState<BotCardVO[]>([]);
-  const [selectedBotId, setSelectedBotId] = useState<string>('');
 
   useEffect(() => {
-    getBotList();
-  }, []);
+    if (!detailId) {
+      getBotList();
+    }
+  }, [detailId]);
 
   async function getBotList() {
     const adapterListResp = await httpClient.getAdapters();
@@ -66,47 +69,20 @@ export default function BotConfigPage() {
       toast.error(t('limitation.maxBotsReached', { max: maxBots }));
       return;
     }
-    setSelectedBotId('');
-    setDetailDialogOpen(true);
+    router.push('/home/bots?id=new');
   }
 
   function selectBot(botUUID: string) {
-    setSelectedBotId(botUUID);
-    setDetailDialogOpen(true);
+    router.push(`/home/bots?id=${encodeURIComponent(botUUID)}`);
   }
 
-  function handleFormSubmit() {
-    getBotList();
-    // setDetailDialogOpen(false);
-  }
-
-  function handleFormCancel() {
-    setDetailDialogOpen(false);
-  }
-
-  function handleBotDeleted() {
-    getBotList();
-    setDetailDialogOpen(false);
-  }
-
-  function handleNewBotCreated(botId: string) {
-    getBotList();
-    setSelectedBotId(botId);
+  // Show detail/edit view when ?id= query param is present
+  if (detailId) {
+    return <BotDetailContent id={detailId} />;
   }
 
   return (
     <div>
-      <BotDetailDialog
-        open={detailDialogOpen}
-        onOpenChange={setDetailDialogOpen}
-        botId={selectedBotId || undefined}
-        onFormSubmit={handleFormSubmit}
-        onFormCancel={handleFormCancel}
-        onBotDeleted={handleBotDeleted}
-        onNewBotCreated={handleNewBotCreated}
-      />
-
-      {/* 注意：其余的返回内容需要保持在Spin组件外部 */}
       <div className={`${styles.botListContainer}`}>
         <CreateCardComponent
           width={'100%'}

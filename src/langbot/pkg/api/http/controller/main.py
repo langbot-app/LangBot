@@ -105,6 +105,28 @@ class HTTPController:
             ):
                 if os.path.exists(os.path.join(frontend_path, path + '.html')):
                     path += '.html'
+                elif path.startswith('home/'):
+                    # SPA fallback for /home/* sub-routes.
+                    # Entity detail views use query params (e.g. /home/bots?id=uuid),
+                    # so the pre-rendered list page is served directly via path + '.html'.
+                    # This fallback handles any remaining unmatched sub-paths.
+                    segments = path.rstrip('/').split('/')
+
+                    # Walk up parent segments looking for matching .html files
+                    for i in range(len(segments) - 1, 0, -1):
+                        parent_path = '/'.join(segments[:i]) + '.html'
+                        if os.path.exists(os.path.join(frontend_path, parent_path)):
+                            response = await quart.send_from_directory(frontend_path, parent_path, mimetype='text/html')
+                            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                            response.headers['Pragma'] = 'no-cache'
+                            response.headers['Expires'] = '0'
+                            return response
+                    # Final fallback to index.html for /home/* routes
+                    response = await quart.send_from_directory(frontend_path, 'index.html', mimetype='text/html')
+                    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                    response.headers['Pragma'] = 'no-cache'
+                    response.headers['Expires'] = '0'
+                    return response
                 else:
                     return await quart.send_from_directory(frontend_path, '404.html')
 

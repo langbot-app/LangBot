@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import CreateCardComponent from '@/app/infra/basic-component/create-card-component/CreateCardComponent';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { PipelineCardVO } from '@/app/home/pipelines/components/pipeline-card/PipelineCardVO';
@@ -7,7 +8,6 @@ import PipelineCard from '@/app/home/pipelines/components/pipeline-card/Pipeline
 import styles from './pipelineConfig.module.css';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import PipelineDialog from './PipelineDetailDialog';
 import {
   Select,
   SelectContent,
@@ -16,17 +16,20 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { systemInfo } from '@/app/infra/http';
+import PipelineDetailContent from './PipelineDetailContent';
 
 export default function PluginConfigPage() {
   const { t } = useTranslation();
-  const [dialogOpen, setDialogOpen] = useState<boolean>(false);
-  const [isEditForm, setIsEditForm] = useState(false);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const detailId = searchParams.get('id');
   const [pipelineList, setPipelineList] = useState<PipelineCardVO[]>([]);
-  const [selectedPipelineId, setSelectedPipelineId] = useState('');
   const [sortByValue, setSortByValue] = useState<string>('created_at');
   const [sortOrderValue, setSortOrderValue] = useState<string>('DESC');
 
   useEffect(() => {
+    if (detailId) return;
+
     // Load sort preference from localStorage
     const savedSortBy = localStorage.getItem('pipeline_sort_by');
     const savedSortOrder = localStorage.getItem('pipeline_sort_order');
@@ -38,7 +41,7 @@ export default function PluginConfigPage() {
     } else {
       getPipelines();
     }
-  }, []);
+  }, [detailId]);
 
   function getPipelines(
     sortBy: string = sortByValue,
@@ -82,9 +85,7 @@ export default function PluginConfigPage() {
   }
 
   const handlePipelineClick = (pipelineId: string) => {
-    setSelectedPipelineId(pipelineId);
-    setIsEditForm(true);
-    setDialogOpen(true);
+    router.push(`/home/pipelines?id=${encodeURIComponent(pipelineId)}`);
   };
 
   const handleCreateNew = () => {
@@ -93,9 +94,7 @@ export default function PluginConfigPage() {
       toast.error(t('limitation.maxPipelinesReached', { max: maxPipelines }));
       return;
     }
-    setIsEditForm(false);
-    setSelectedPipelineId('');
-    setDialogOpen(true);
+    router.push('/home/pipelines?id=new');
   };
 
   function handleSortChange(value: string) {
@@ -112,29 +111,6 @@ export default function PluginConfigPage() {
 
   return (
     <div className={styles.configPageContainer}>
-      <PipelineDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        pipelineId={selectedPipelineId || undefined}
-        isEditMode={isEditForm}
-        onFinish={() => {
-          getPipelines();
-        }}
-        onNewPipelineCreated={(pipelineId) => {
-          getPipelines();
-          setSelectedPipelineId(pipelineId);
-          setIsEditForm(true);
-          setDialogOpen(true);
-        }}
-        onDeletePipeline={() => {
-          getPipelines();
-          setDialogOpen(false);
-        }}
-        onCancel={() => {
-          setDialogOpen(false);
-        }}
-      />
-
       <div className="flex flex-row justify-between items-center mb-4 px-[0.8rem]">
         <Select
           value={`${sortByValue},${sortOrderValue}`}
@@ -180,6 +156,11 @@ export default function PluginConfigPage() {
         />
 
         {pipelineList.map((pipeline) => {
+          // Show detail/edit view when ?id= query param is present
+          if (detailId) {
+            return <PipelineDetailContent id={detailId} />;
+          }
+
           return (
             <div
               key={pipeline.id}
