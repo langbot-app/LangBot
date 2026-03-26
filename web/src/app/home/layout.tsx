@@ -76,7 +76,6 @@ function HomeLayoutInner({ children }: { children: React.ReactNode }) {
 
   const onSelectedChangeAction = useCallback((child: SidebarChildVO) => {
     setTitle(child.name);
-    setSubtitle(child.description);
     setHelpLink(child.helpLink);
   }, []);
 
