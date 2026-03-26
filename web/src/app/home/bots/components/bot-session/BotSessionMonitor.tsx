@@ -256,7 +256,7 @@ const BotSessionMonitor = forwardRef<
         return (
           <div
             key={index}
-            className="mb-2 pl-2.5 border-l-2 border-gray-300 dark:border-gray-600 opacity-80"
+            className="mb-2 pl-2.5 border-l-2 border-muted-foreground/50 opacity-80"
           >
             <div className="text-sm">
               {quote.origin?.map((comp, idx) =>

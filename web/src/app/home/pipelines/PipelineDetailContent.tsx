@@ -94,13 +94,6 @@ export default function PipelineDetailContent({ id }: { id: string }) {
         <div className="flex items-center gap-3 pb-4 shrink-0">
           <h1 className="text-xl font-semibold">
             {t('pipelines.editPipeline')}
-            {activeTab === 'debug' && (
-              <span
-                className={`ml-2 inline-block size-2 rounded-full ${
-                  isWebSocketConnected ? 'bg-green-500' : 'bg-red-500'
-                }`}
-              />
-            )}
           </h1>
         </div>
 
@@ -122,6 +115,11 @@ export default function PipelineDetailContent({ id }: { id: string }) {
             <TabsTrigger value="debug" className="gap-1.5">
               <Bug className="size-3.5" />
               {t('pipelines.debugChat')}
+              <span
+                className={`inline-block size-2 rounded-full ${
+                  isWebSocketConnected ? 'bg-green-500' : 'bg-red-500'
+                }`}
+              />
             </TabsTrigger>
             <TabsTrigger value="monitoring" className="gap-1.5">
               <BarChart3 className="size-3.5" />
