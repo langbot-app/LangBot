@@ -275,7 +275,7 @@ class DingTalkClient:
                 # 获取原始数据字典并提取嵌套的文件信息
                 raw_data = incoming_message.to_dict()
                 file_info = raw_data.get('content', {})
-                
+
                 # 兼容处理：如果 content 仍为 JSON 字符串则进行解析
                 if isinstance(file_info, str):
                     try:
