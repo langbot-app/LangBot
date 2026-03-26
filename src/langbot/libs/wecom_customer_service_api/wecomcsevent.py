@@ -86,7 +86,10 @@ class WecomCSEvent(dict):
             Optional[str]: 消息内容。
         """
         if self.get('msgtype') == 'text':
-            return self.get('text').get('content', '')
+            text_obj = self.get('text')
+            if text_obj and isinstance(text_obj, dict):
+                return text_obj.get('content', '')
+            return ''
         else:
             return None
 

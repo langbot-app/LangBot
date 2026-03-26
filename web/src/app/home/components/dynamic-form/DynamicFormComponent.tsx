@@ -196,6 +196,31 @@ export default function DynamicFormComponent({
   const onSubmitRef = useRef(onSubmit);
   onSubmitRef.current = onSubmit;
 
+  const visibleItemConfigList = itemConfigList.filter((config) => {
+    if (config.show_if) {
+      const dependValue =
+        watchedValues[config.show_if.field as keyof typeof watchedValues] !==
+        undefined
+          ? watchedValues[config.show_if.field as keyof typeof watchedValues]
+          : externalDependentValues?.[config.show_if.field];
+
+      if (config.show_if.operator === 'eq' && dependValue !== config.show_if.value) {
+        return false;
+      }
+      if (config.show_if.operator === 'neq' && dependValue === config.show_if.value) {
+        return false;
+      }
+      if (
+        config.show_if.operator === 'in' &&
+        Array.isArray(config.show_if.value) &&
+        !config.show_if.value.includes(dependValue)
+      ) {
+        return false;
+      }
+    }
+    return true;
+  });
+
   // 监听表单值变化
   useEffect(() => {
     // Emit initial form values immediately so the parent always has a valid snapshot,
@@ -238,74 +263,59 @@ export default function DynamicFormComponent({
   return (
     <Form {...form}>
       <div className="space-y-4">
-        {itemConfigList.map((config) => {
-          if (config.show_if) {
-            const dependValue =
-              watchedValues[
-                config.show_if.field as keyof typeof watchedValues
-              ] !== undefined
-                ? watchedValues[
-                    config.show_if.field as keyof typeof watchedValues
-                  ]
-                : externalDependentValues?.[config.show_if.field];
-
-            if (
-              config.show_if.operator === 'eq' &&
-              dependValue !== config.show_if.value
-            ) {
-              return null;
-            }
-            if (
-              config.show_if.operator === 'neq' &&
-              dependValue === config.show_if.value
-            ) {
-              return null;
-            }
-            if (
-              config.show_if.operator === 'in' &&
-              Array.isArray(config.show_if.value) &&
-              !config.show_if.value.includes(dependValue)
-            ) {
-              return null;
-            }
-          }
-
+        {visibleItemConfigList.map((config, index) => {
           // All fields are disabled when editing (creation_settings are immutable)
           const isFieldDisabled = !!isEditing;
+          const currentSection = config.section
+            ? extractI18nObject(config.section)
+            : '';
+          const previousSection =
+            index > 0 && visibleItemConfigList[index - 1].section
+              ? extractI18nObject(visibleItemConfigList[index - 1].section!)
+              : '';
+          const showSectionHeader = Boolean(currentSection) && currentSection !== previousSection;
 
           return (
-            <FormField
-              key={config.id}
-              control={form.control}
-              name={config.name as keyof FormValues}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    {extractI18nObject(config.label)}{' '}
-                    {config.required && <span className="text-red-500">*</span>}
-                  </FormLabel>
-                  <FormControl>
-                    <div
-                      className={
-                        isFieldDisabled ? 'pointer-events-none opacity-60' : ''
-                      }
-                    >
-                      <DynamicFormItemComponent
-                        config={config}
-                        field={field}
-                        onFileUploaded={onFileUploaded}
-                      />
-                    </div>
-                  </FormControl>
-                  {config.description && (
-                    <p className="text-sm text-muted-foreground">
-                      {extractI18nObject(config.description)}
-                    </p>
-                  )}
-                  <FormMessage />
-                </FormItem>
+            <div key={config.id} className="space-y-4">
+              {showSectionHeader && (
+                <div className="border-t pt-4">
+                  <h4 className="text-sm font-medium text-foreground">
+                    {currentSection}
+                  </h4>
+                </div>
               )}
-            />
+              <FormField
+                control={form.control}
+                name={config.name as keyof FormValues}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {extractI18nObject(config.label)}{' '}
+                      {config.required && <span className="text-red-500">*</span>}
+                    </FormLabel>
+                    <FormControl>
+                      <div
+                        className={
+                          isFieldDisabled ? 'pointer-events-none opacity-60' : ''
+                        }
+                      >
+                        <DynamicFormItemComponent
+                          config={config}
+                          field={field}
+                          onFileUploaded={onFileUploaded}
+                        />
+                      </div>
+                    </FormControl>
+                    {config.description && (
+                      <p className="text-sm text-muted-foreground">
+                        {extractI18nObject(config.description)}
+                      </p>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
           );
         })}
       </div>

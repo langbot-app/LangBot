@@ -87,3 +87,28 @@ space:
     oauth_authorize_url: 'https://space.langbot.app/auth/authorize'
     disable_models_service: false
     disable_telemetry: false
+
+redis:
+    enabled: false
+    url: 'redis://127.0.0.1:6379/0'
+    key_prefix: 'langbot'
+wecomcs_scheduler:
+    enabled: false
+    token_refresh_skew_seconds: 300
+    pull_stream_shard_count: 8
+    process_stream_shard_count: 16
+    pull_consumer_group: 'wecomcs-pull-group'
+    process_consumer_group: 'wecomcs-process-group'
+    stream_block_ms: 1000
+    stream_batch_size: 10
+    retry_poll_interval_seconds: 3
+    retry_max_attempts: 3
+    retry_backoff_seconds:
+    - 15
+    - 30
+    - 45
+    dedupe_ttl_seconds: 604800
+    message_state_ttl_seconds: 604800
+    history_message_drop_threshold_seconds: 90
+    cursor_bootstrap_mode: 'latest'
+    lock_ttl_seconds: 60

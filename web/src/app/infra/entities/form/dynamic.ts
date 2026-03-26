@@ -15,6 +15,7 @@ export interface IDynamicFormItemSchema {
   required: boolean;
   type: DynamicFormItemType;
   description?: I18nObject;
+  section?: I18nObject;
   options?: IDynamicFormItemOption[];
   show_if?: IShowIfCondition;
 

@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import logging
 import time
 import traceback
 import uuid
@@ -17,6 +18,8 @@ from langbot.libs.wecom_ai_bot_api import wecombotevent
 from langbot.libs.wecom_ai_bot_api.WXBizMsgCrypt3 import WXBizMsgCrypt
 from langbot.libs.wecom_ai_bot_api.pull_stream_policy import PullStreamPolicy
 from langbot.pkg.platform.logger import EventLogger
+
+_logger = logging.getLogger('langbot')
 
 
 @dataclass
@@ -621,14 +624,18 @@ class WecomBotClient:
             首次回调时调用，立即返回带 `stream_id` 的响应。
         """
         session, is_new = self.stream_sessions.create_or_get(msg_json)
+        await self.logger.debug(f'[wecombot] 流式会话: stream_id={session.stream_id}, is_new={is_new}')
 
         message_data = await self.get_message(msg_json)
         if message_data:
             message_data['stream_id'] = session.stream_id
             try:
                 event = wecombotevent.WecomBotEvent(message_data)
+                await self.logger.debug(
+                    f'[wecombot] 事件对象: type={event.type}, userid={event.userid}, content={event.content[:50] if event.content else "N/A"}'
+                )
             except Exception:
-                await self.logger.error(traceback.format_exc())
+                await self.logger.error(f'[wecombot] 事件构建失败: {traceback.format_exc()}')
                 await self._force_finish_stream(
                     session.stream_id,
                     self.stream_error_final_text,
@@ -636,7 +643,10 @@ class WecomBotClient:
                 )
             else:
                 if is_new:
+                    await self.logger.debug(f'[wecombot] 启动异步任务处理消息: stream_id={session.stream_id}')
                     asyncio.create_task(self._dispatch_event(event))
+        else:
+            await self.logger.warning(f'[wecombot] get_message返回空数据: msg_json={msg_json}')
 
         payload = self._build_stream_payload(session.stream_id, '', False)
         return await self._encrypt_and_reply(payload, nonce)
@@ -724,6 +734,8 @@ class WecomBotClient:
             req: Quart Request 对象
         """
         try:
+            _logger.debug(f'[wecombot] 收到回调请求: method={req.method}')
+
             self.wxcpt = WXBizMsgCrypt(self.Token, self.EnCodingAESKey, '')
 
             if req.method == 'GET':
@@ -735,7 +747,7 @@ class WecomBotClient:
             return Response('', status=405)
 
         except Exception:
-            await self.logger.error(traceback.format_exc())
+            _logger.error(f'[wecombot] 回调处理异常: {traceback.format_exc()}')
             return Response('Internal Server Error', status=500)
 
     async def _handle_get_callback(self, req) -> tuple[Response, int] | Response:
@@ -746,13 +758,16 @@ class WecomBotClient:
         nonce = unquote(req.args.get('nonce', ''))
         echostr = unquote(req.args.get('echostr', ''))
 
+        _logger.debug(f'[wecombot] GET验证请求: msg_signature={msg_signature[:20]}..., nonce={nonce}')
+
         if not all([msg_signature, timestamp, nonce, echostr]):
-            await self.logger.error('请求参数缺失')
+            _logger.error('[wecombot] GET验证请求参数缺失')
             return Response('缺少参数', status=400)
 
         ret, decrypted_str = self.wxcpt.VerifyURL(msg_signature, timestamp, nonce, echostr)
+        _logger.debug(f'[wecombot] GET验证结果: ret={ret}')
         if ret != 0:
-            await self.logger.error('验证URL失败')
+            _logger.error(f'[wecombot] 验证URL失败: ret={ret}')
             return Response('验证失败', status=403)
 
         return Response(decrypted_str, mimetype='text/plain')
@@ -772,23 +787,33 @@ class WecomBotClient:
         timestamp = unquote(req.args.get('timestamp', ''))
         nonce = unquote(req.args.get('nonce', ''))
 
+        _logger.debug(f'[wecombot] POST回调请求: msg_signature={msg_signature[:20] if msg_signature else "N/A"}..., nonce={nonce}')
+
         encrypted_json = await req.get_json()
         encrypted_msg = (encrypted_json or {}).get('encrypt', '')
         if not encrypted_msg:
-            await self.logger.error("请求体中缺少 'encrypt' 字段")
+            _logger.error("[wecombot] 请求体中缺少 'encrypt' 字段")
             return Response('Bad Request', status=400)
+
+        _logger.debug(f'[wecombot] 加密消息长度: {len(encrypted_msg)}')
 
         xml_post_data = f'<xml><Encrypt><![CDATA[{encrypted_msg}]]></Encrypt></xml>'
         ret, decrypted_xml = self.wxcpt.DecryptMsg(xml_post_data, msg_signature, timestamp, nonce)
+        _logger.debug(f'[wecombot] 解密结果: ret={ret}')
         if ret != 0:
-            await self.logger.error('解密失败')
+            _logger.error(f'[wecombot] 解密失败: ret={ret}')
             return Response('解密失败', status=400)
 
         msg_json = json.loads(decrypted_xml)
+        _logger.debug(
+            f'[wecombot] 解密后消息: msgtype={msg_json.get("msgtype")}, chattype={msg_json.get("chattype")}, msgid={msg_json.get("msgid")}'
+        )
 
         if msg_json.get('msgtype') == 'stream':
+            _logger.debug(f'[wecombot] 收到流式刷新请求: stream_id={msg_json.get("stream", {}).get("id")}')
             return await self._handle_post_followup_response(msg_json, nonce)
 
+        _logger.debug('[wecombot] 收到首包消息，准备创建流式会话')
         return await self._handle_post_initial_response(msg_json, nonce)
 
     async def get_message(self, msg_json):
@@ -802,14 +827,20 @@ class WecomBotClient:
             message_id = event.message_id
             if message_id in self.msg_id_map.keys():
                 self.msg_id_map[message_id] += 1
+                await self.logger.debug(f'[wecombot] 消息重复，跳过: message_id={message_id}')
                 return
             self.msg_id_map[message_id] = 1
             msg_type = event.type
+            await self.logger.debug(f'[wecombot] 处理消息: message_id={message_id}, type={msg_type}')
             if msg_type in self._message_handlers:
+                handler_count = len(self._message_handlers[msg_type])
+                await self.logger.debug(f'[wecombot] 找到{handler_count}个处理器: type={msg_type}')
                 for handler in self._message_handlers[msg_type]:
                     await handler(event)
+            else:
+                await self.logger.warning(f'[wecombot] 未找到处理器: type={msg_type}')
         except Exception:
-            print(traceback.format_exc())
+            await self.logger.error(f'[wecombot] 消息处理异常: {traceback.format_exc()}')
 
     async def push_stream_chunk(self, msg_id: str, content: str, is_final: bool = False) -> bool:
         """将流水线片段推送到 stream 会话。

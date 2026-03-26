@@ -38,6 +38,7 @@ dependencies = [
     "quart>=0.20.0",
     "quart-cors>=0.8.0",
     "requests>=2.32.3",
+    "redis>=6.0.0",
     "slack-sdk>=3.35.0",
     "sqlalchemy[asyncio]>=2.0.40",
     "sqlmodel>=0.0.24",

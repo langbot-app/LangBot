@@ -30,16 +30,23 @@ class WebhookRouterGroup(group.RouterGroup):
             适配器返回的响应
         """
         try:
+            self.ap.logger.debug(f'[webhook] 收到请求: bot_uuid={bot_uuid}, path={path}, method={quart.request.method}')
+
             runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
 
             if not runtime_bot:
+                self.ap.logger.warning(f'[webhook] Bot未找到: bot_uuid={bot_uuid}')
                 return quart.jsonify({'error': 'Bot not found'}), 404
 
             if not runtime_bot.enable:
+                self.ap.logger.warning(f'[webhook] Bot已禁用: bot_uuid={bot_uuid}')
                 return quart.jsonify({'error': 'Bot is disabled'}), 403
 
             if not hasattr(runtime_bot.adapter, 'handle_unified_webhook'):
+                self.ap.logger.warning(f'[webhook] Adapter不支持unified_webhook: bot_uuid={bot_uuid}')
                 return quart.jsonify({'error': 'Adapter does not support unified webhook'}), 501
+
+            self.ap.logger.debug(f'[webhook] 分发到adapter: bot_uuid={bot_uuid}, adapter={type(runtime_bot.adapter).__name__}')
 
             response = await runtime_bot.adapter.handle_unified_webhook(
                 bot_uuid=bot_uuid,
@@ -47,6 +54,7 @@ class WebhookRouterGroup(group.RouterGroup):
                 request=quart.request,
             )
 
+            self.ap.logger.debug(f'[webhook] adapter响应完成: bot_uuid={bot_uuid}')
             return response
 
         except Exception as e:

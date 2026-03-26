@@ -1,3 +1,6 @@
+import asyncio
+import hashlib
+import logging
 from quart import request
 from ..wecom_api.WXBizMsgCrypt3 import WXBizMsgCrypt
 import base64
@@ -11,6 +14,14 @@ from .wecomcsevent import WecomCSEvent
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import aiofiles
 import time
+from ...pkg.platform.wecomcs.token_cache import WecomCSTokenCache
+from ...pkg.platform.wecomcs.pull_trigger_publisher import WecomCSPullTriggerPublisher
+
+_logger = logging.getLogger('langbot')
+
+
+class WecomCSInvalidSyncMsgTokenError(Exception):
+    """Raised when WeCom customer service sync_msg token is invalid or expired."""
 
 
 class WecomCSClient:
@@ -35,6 +46,36 @@ class WecomCSClient:
         self.unified_mode = unified_mode
         self.app = Quart(__name__)
 
+        redis_mgr = getattr(getattr(logger, 'ap', None), 'redis_mgr', None) if logger else None
+        scheduler_config = getattr(getattr(logger, 'ap', None), 'instance_config', None)
+        refresh_skew_seconds = 300
+        if scheduler_config is not None:
+            refresh_skew_seconds = (
+                scheduler_config.data.get('wecomcs_scheduler', {}).get('token_refresh_skew_seconds', 300)
+            )
+        secret_fingerprint = hashlib.sha256(secret.encode('utf-8')).hexdigest()[:16] if secret else ''
+        self.token_cache = WecomCSTokenCache(
+            corpid=corpid,
+            redis_mgr=redis_mgr,
+            refresh_skew_seconds=refresh_skew_seconds,
+            secret_fingerprint=secret_fingerprint,
+        )
+        self.bot_uuid = ''
+        self.state_store = None
+        self.scheduler_enabled = False
+        self.pull_trigger_publisher = None
+        if scheduler_config is not None:
+            scheduler_settings = scheduler_config.data.get('wecomcs_scheduler', {})
+            self.scheduler_enabled = bool(scheduler_settings.get('enabled', False))
+            pull_stream_shard_count = int(scheduler_settings.get('pull_stream_shard_count', 8) or 8)
+            if self.scheduler_enabled and redis_mgr is not None and redis_mgr.is_available():
+                self.pull_trigger_publisher = WecomCSPullTriggerPublisher(redis_mgr, pull_stream_shard_count)
+
+        # 用于防止并发获取 access_token
+        self._token_lock = asyncio.Lock()
+        # 统一 webhook 下会快速返回 success，因此需要持有后台任务引用避免被提前回收
+        self._background_tasks: set[asyncio.Task] = set()
+
         # Customer info cache: {external_userid: (info_dict, timestamp)}
         self._customer_cache: dict[str, tuple[dict, float]] = {}
         self._cache_ttl = 60  # Cache TTL in seconds (1 minute)
@@ -50,17 +91,17 @@ class WecomCSClient:
         }
 
     async def get_pic_url(self, media_id: str):
-        if not await self.check_access_token():
-            self.access_token = await self.get_access_token(self.secret)
+        await self.ensure_access_token()
 
         url = f'{self.base_url}/media/get?access_token={self.access_token}&media_id={media_id}'
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(url)
             if response.headers.get('Content-Type', '').startswith('application/json'):
                 data = response.json()
                 if data.get('errcode') in [40014, 42001]:
-                    self.access_token = await self.get_access_token(self.secret)
+                    await self.token_cache.invalidate()
+                    self.access_token = ''
                     return await self.get_pic_url(media_id)
                 else:
                     raise Exception('Failed to get image: ' + str(data))
@@ -74,67 +115,139 @@ class WecomCSClient:
 
     # access——token操作
     async def check_access_token(self):
-        return bool(self.access_token and self.access_token.strip())
+        cached_token = await self.token_cache.get_cached_token()
+        if cached_token:
+            self.access_token = cached_token
+            return True
+        return False
 
     async def check_access_token_for_contacts(self):
         return bool(self.access_token_for_contacts and self.access_token_for_contacts.strip())
 
-    async def get_access_token(self, secret):
+    async def ensure_access_token(self):
+        """确保 access_token 有效，使用锁防止并发获取。"""
+        if await self.check_access_token():
+            return self.access_token
+
+        async with self._token_lock:
+            # 中文注释：双重检查可以避免并发场景下重复请求企业微信 token 接口。
+            if await self.check_access_token():
+                return self.access_token
+
+            _logger.debug('[wecomcs] access_token为空，正在获取...')
+            self.access_token = await self.token_cache.get_or_refresh(self._fetch_main_access_token_data)
+            return self.access_token
+
+    async def refresh_access_token(self):
+        """强制刷新主 access_token。"""
+        async with self._token_lock:
+            # 中文注释：收到 40014 / 42001 时必须绕过本地缓存，强制重新拉取 token。
+            await self.token_cache.invalidate()
+            self.access_token = await self.token_cache.get_or_refresh(self._fetch_main_access_token_data, force_refresh=True)
+            return self.access_token
+
+    async def _request_access_token(self, secret: str):
+        """实际请求指定 secret 对应的 access_token 数据。"""
         url = f'{self.base_url}/gettoken?corpid={self.corpid}&corpsecret={secret}'
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url)
-            data = response.json()
-            if 'access_token' in data:
-                return data['access_token']
-            else:
+        _logger.debug(f'[wecomcs] 获取access_token: corpid={self.corpid[:10] if self.corpid else "N/A"}...')
+        print(f'[wecomcs] 获取access_token: corpid={self.corpid[:10] if self.corpid else "N/A"}...', flush=True)
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                _logger.debug(f'[wecomcs] 正在请求: {url}')
+                print('[wecomcs] 正在请求 gettoken API...', flush=True)
+                response = await client.get(url)
+                print('[wecomcs] gettoken请求完成，正在解析响应...', flush=True)
+                _logger.debug(f'[wecomcs] gettoken响应状态: {response.status_code}')
+                print(f'[wecomcs] gettoken响应状态: {response.status_code}', flush=True)
+                data = response.json()
+                _logger.debug(f'[wecomcs] gettoken响应: errcode={data.get("errcode")}, errmsg={data.get("errmsg")}')
+                print(f'[wecomcs] gettoken响应: errcode={data.get("errcode")}, errmsg={data.get("errmsg")}', flush=True)
+                if 'access_token' in data:
+                    return {
+                        'access_token': data['access_token'],
+                        'expires_in': int(data.get('expires_in', 7200) or 7200),
+                    }
+
+                _logger.error(f'[wecomcs] 未获取access token: {data}')
                 raise Exception(f'未获取access token: {data}')
+        except Exception as e:
+            _logger.error(f'[wecomcs] get_access_token异常: {traceback.format_exc()}')
+            print(f'[wecomcs] get_access_token异常: {e}', flush=True)
+            raise
 
-    async def get_detailed_message_list(self, xml_msg: str):
-        # 在本方法中解析消息，并且获得消息的具体内容
-        if isinstance(xml_msg, bytes):
-            xml_msg = xml_msg.decode('utf-8')
-        root = ET.fromstring(xml_msg)
-        token = root.find('Token').text
-        open_kfid = root.find('OpenKfId').text
+    async def _fetch_main_access_token_data(self):
+        return await self._request_access_token(self.secret)
 
-        # if open_kfid in self.openkfid_list:
-        #     return None
-        # else:
-        #     self.openkfid_list.append(open_kfid)
+    async def get_access_token(self, secret):
+        """兼容旧接口。"""
+        if secret != self.secret:
+            token_data = await self._request_access_token(secret)
+            return token_data['access_token']
+        return await self.ensure_access_token()
 
-        if not await self.check_access_token():
-            self.access_token = await self.get_access_token(self.secret)
+    async def fetch_sync_msg_page(self, callback_token: str, open_kfid: str, cursor: str | None = None):
+        await self.ensure_access_token()
 
         url = self.base_url + '/kf/sync_msg?access_token=' + self.access_token
-        async with httpx.AsyncClient() as client:
-            params = {
-                'token': token,
-                'voice_format': 0,
-                'open_kfid': open_kfid,
-            }
+        params = {
+            'token': callback_token,
+            'voice_format': 0,
+            'open_kfid': open_kfid,
+        }
+        if cursor:
+            params['cursor'] = cursor
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(url, json=params)
             data = response.json()
-            if data['errcode'] == 40014 or data['errcode'] == 42001:
-                self.access_token = await self.get_access_token(self.secret)
-                return await self.get_detailed_message_list(xml_msg)
-            if data['errcode'] != 0:
+            if data.get('errcode') in [40014, 42001]:
+                await self.refresh_access_token()
+                return await self.fetch_sync_msg_page(callback_token, open_kfid, cursor)
+            if data.get('errcode') == 95007:
+                _logger.error(f'[wecomcs] sync_msg失败: {data}')
+                raise WecomCSInvalidSyncMsgTokenError(data.get('errmsg', 'invalid msg token'))
+            if data.get('errcode') != 0:
+                _logger.error(f'[wecomcs] sync_msg失败: {data}')
                 raise Exception('Failed to get message')
 
-            last_msg_data = data['msg_list'][-1]
-            open_kfid = last_msg_data.get('open_kfid')
-            # 进行获取图片操作
-            if last_msg_data.get('msgtype') == 'image':
-                media_id = last_msg_data.get('image').get('media_id')
-                picurl = await self.get_pic_url(media_id)
-                last_msg_data['picurl'] = picurl
-            # await self.change_service_status(userid=external_userid,openkfid=open_kfid,servicer=servicer)
-            return last_msg_data
+            msg_list = data.get('msg_list') or []
+            for msg_data in msg_list:
+                if msg_data.get('msgtype') == 'image' and msg_data.get('image'):
+                    media_id = msg_data['image'].get('media_id')
+                    if media_id:
+                        msg_data['picurl'] = await self.get_pic_url(media_id)
+
+            return {
+                'msg_list': msg_list,
+                'next_cursor': data.get('next_cursor', ''),
+                'has_more': bool(data.get('has_more', False)),
+            }
+
+    async def get_detailed_message_list(self, xml_msg: str):
+        # 中文注释：企业微信一次回调可能携带多条消息，不能只取最后一条，否则会丢消息。
+        try:
+            if isinstance(xml_msg, bytes):
+                xml_msg = xml_msg.decode('utf-8')
+            root = ET.fromstring(xml_msg)
+            callback_token = root.find('Token').text
+            open_kfid = root.find('OpenKfId').text
+            _logger.debug(f'[wecomcs] sync_msg参数: token={callback_token[:20] if callback_token else "N/A"}..., open_kfid={open_kfid}')
+
+            page = await self.fetch_sync_msg_page(callback_token, open_kfid)
+            msg_list = page.get('msg_list') or []
+            if not msg_list:
+                _logger.warning('[wecomcs] sync_msg返回空消息列表')
+                return []
+            return msg_list
+        except Exception:
+            _logger.error(f'[wecomcs] get_detailed_message_list异常: {traceback.format_exc()}')
+            raise
 
     async def change_service_status(self, userid: str, openkfid: str, servicer: str):
         if not await self.check_access_token():
-            self.access_token = await self.get_access_token(self.secret)
+            await self.ensure_access_token()
         url = self.base_url + '/kf/service_state/get?access_token=' + self.access_token
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             params = {
                 'open_kfid': openkfid,
                 'external_userid': userid,
@@ -144,16 +257,16 @@ class WecomCSClient:
             response = await client.post(url, json=params)
             data = response.json()
             if data['errcode'] == 40014 or data['errcode'] == 42001:
-                self.access_token = await self.get_access_token(self.secret)
+                await self.refresh_access_token()
                 return await self.change_service_status(userid, openkfid)
             if data['errcode'] != 0:
                 raise Exception('Failed to change service status: ' + str(data))
 
     async def send_image(self, user_id: str, agent_id: int, media_id: str):
         if not await self.check_access_token():
-            self.access_token = await self.get_access_token(self.secret)
+            await self.ensure_access_token()
         url = self.base_url + '/media/upload?access_token=' + self.access_token
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             params = {
                 'touser': user_id,
                 'toparty': '',
@@ -176,7 +289,7 @@ class WecomCSClient:
 
             # 企业微信错误码40014和42001，代表accesstoken问题
             if data['errcode'] == 40014 or data['errcode'] == 42001:
-                self.access_token = await self.get_access_token(self.secret)
+                await self.refresh_access_token()
                 return await self.send_image(user_id, agent_id, media_id)
 
             if data['errcode'] != 0:
@@ -184,7 +297,7 @@ class WecomCSClient:
 
     async def send_text_msg(self, open_kfid: str, external_userid: str, msgid: str, content: str):
         if not await self.check_access_token():
-            self.access_token = await self.get_access_token(self.secret)
+            await self.ensure_access_token()
 
         url = f'{self.base_url}/kf/send_msg?access_token={self.access_token}'
 
@@ -198,16 +311,18 @@ class WecomCSClient:
             },
         }
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(url, json=payload)
 
             data = response.json()
             if data['errcode'] == 40014 or data['errcode'] == 42001:
-                self.access_token = await self.get_access_token(self.secret)
+                await self.refresh_access_token()
                 return await self.send_text_msg(open_kfid, external_userid, msgid, content)
             if data['errcode'] != 0:
-                await self.logger.error(f'发送消息失败：{data}')
-                raise Exception('Failed to send message')
+                await self.logger.error(
+                    f"[wecomcs] 发送消息失败: errcode={data.get('errcode')}, errmsg={data.get('errmsg')}, open_kfid={open_kfid}, external_userid={external_userid}, msgid={msgid}"
+                )
+                raise Exception(f'Failed to send message: {data}')
             return data
 
     async def handle_callback_request(self):
@@ -233,41 +348,89 @@ class WecomCSClient:
             req: Quart Request 对象
         """
         try:
+            _logger.debug(f'[wecomcs] 收到回调请求: method={req.method}')
+
             msg_signature = req.args.get('msg_signature')
             timestamp = req.args.get('timestamp')
             nonce = req.args.get('nonce')
             try:
                 wxcpt = WXBizMsgCrypt(self.token, self.aes, self.corpid)
             except Exception as e:
+                _logger.error(f'[wecomcs] 加密组件初始化失败: {e}')
                 raise Exception(f'初始化失败，错误码: {e}')
 
             if req.method == 'GET':
                 echostr = req.args.get('echostr')
                 ret, reply_echo_str = wxcpt.VerifyURL(msg_signature, timestamp, nonce, echostr)
+                _logger.debug(f'[wecomcs] GET验证结果: ret={ret}')
                 if ret != 0:
                     raise Exception(f'验证失败，错误码: {ret}')
                 return reply_echo_str
 
             elif req.method == 'POST':
                 encrypt_msg = await req.data
+                _logger.debug(f'[wecomcs] POST数据长度: {len(encrypt_msg)}')
+
                 ret, xml_msg = wxcpt.DecryptMsg(encrypt_msg, msg_signature, timestamp, nonce)
+                _logger.debug(f'[wecomcs] 解密结果: ret={ret}')
                 if ret != 0:
                     raise Exception(f'消息解密失败，错误码: {ret}')
 
-                # 解析消息并处理
-                message_data = await self.get_detailed_message_list(xml_msg)
-                if message_data is not None:
-                    event = WecomCSEvent.from_payload(message_data)
-                    if event:
-                        await self._handle_message(event)
+                _logger.debug(f'[wecomcs] 解密后XML: {xml_msg[:500] if xml_msg else "空"}')
 
+                if self.scheduler_enabled and self.pull_trigger_publisher and self.bot_uuid:
+                    try:
+                        stream_name, payload = await self.pull_trigger_publisher.publish_from_xml(
+                            self.bot_uuid,
+                            xml_msg,
+                            webhook_received_at=int(time.time()),
+                        )
+                        _logger.debug(
+                            f'[wecomcs] 已发布pull-trigger: stream={stream_name}, open_kfid={payload.get("open_kfid")}'
+                        )
+                        return 'success'
+                    except Exception:
+                        _logger.error(f'[wecomcs] 发布pull-trigger失败，降级为本地后台处理: {traceback.format_exc()}')
+
+                # 中文注释：企业微信客服回调需要尽快返回 success，避免企业微信因为超时反复重试。
+                self._create_background_task(self._process_callback_xml(xml_msg), description='process_wecomcs_callback')
                 return 'success'
         except Exception as e:
-            if self.logger:
-                await self.logger.error(f'Error in handle_callback_request: {traceback.format_exc()}')
-            else:
-                traceback.print_exc()
+            _logger.error(f'[wecomcs] 回调处理异常: {traceback.format_exc()}')
             return f'Error processing request: {str(e)}', 400
+
+    def _create_background_task(self, coro, description: str):
+        """创建后台任务并做好异常回收。"""
+        task = asyncio.create_task(coro, name=description)
+        self._background_tasks.add(task)
+
+        def _on_done(done_task: asyncio.Task):
+            self._background_tasks.discard(done_task)
+            try:
+                done_task.result()
+            except Exception:
+                _logger.error(f'[wecomcs] 后台任务执行异常: {traceback.format_exc()}')
+
+        task.add_done_callback(_on_done)
+        return task
+
+    async def _process_callback_xml(self, xml_msg: str):
+        message_list = await self.get_detailed_message_list(xml_msg)
+        _logger.debug(f'[wecomcs] 消息详情: {message_list}')
+
+        if not message_list:
+            _logger.debug('[wecomcs] get_detailed_message_list返回空列表')
+            return
+
+        for message_data in message_list:
+            event = WecomCSEvent.from_payload(message_data)
+            _logger.debug(
+                f'[wecomcs] 事件对象: type={event.type if event else "N/A"}, user_id={event.user_id if event else "N/A"}'
+            )
+            if event:
+                await self._handle_message(event)
+            else:
+                _logger.warning(f'[wecomcs] 事件解析返回None, payload={message_data}')
 
     async def run_task(self, host: str, port: int, *args, **kwargs):
         """
@@ -293,9 +456,14 @@ class WecomCSClient:
         处理消息事件。
         """
         msg_type = event.type
+        _logger.debug(f'[wecomcs] _handle_message: msg_type={msg_type}, handlers_keys={list(self._message_handlers.keys())}')
         if msg_type in self._message_handlers:
+            _logger.debug(f'[wecomcs] 找到处理器, handler_count={len(self._message_handlers[msg_type])}')
             for handler in self._message_handlers[msg_type]:
+                _logger.debug(f'[wecomcs] 调用处理器: {handler.__name__ if hasattr(handler, "__name__") else handler}')
                 await handler(event)
+        else:
+            _logger.warning(f'[wecomcs] 没有找到消息类型 {msg_type} 的处理器')
 
     @staticmethod
     async def get_image_type(image_bytes: bytes) -> str:
@@ -320,7 +488,7 @@ class WecomCSClient:
         获取 media_id
         """
         if not await self.check_access_token():
-            self.access_token = await self.get_access_token(self.secret)
+            await self.ensure_access_token()
 
         url = self.base_url + '/media/upload?access_token=' + self.access_token + '&type=file'
         file_bytes = None
@@ -361,12 +529,12 @@ class WecomCSClient:
         )
 
         # 上传文件
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(url, headers=headers, content=body)
             data = response.json()
             if data['errcode'] == 40014 or data['errcode'] == 42001:
-                self.access_token = await self.get_access_token(self.secret)
-                media_id = await self.upload_to_work(image)
+                await self.refresh_access_token()
+                return await self.upload_to_work(image)
             if data.get('errcode', 0) != 0:
                 raise Exception('failed to upload file')
 
@@ -374,7 +542,7 @@ class WecomCSClient:
             return media_id
 
     async def download_image_to_bytes(self, url: str) -> bytes:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(url)
             response.raise_for_status()
             return response.content
@@ -396,16 +564,23 @@ class WecomCSClient:
         Returns:
             Customer info dict with 'nickname', 'avatar', etc., or None if not found.
         """
-        # Check cache first
+        _logger.debug(f'[wecomcs] get_customer_info开始: user_id={external_userid}')
+
+        # 中文注释：这里把缓存、token、接口请求三段耗时拆开打印，便于定位究竟卡在哪一步。
+        started_at = time.perf_counter()
         current_time = time.time()
         if external_userid in self._customer_cache:
             cached_info, cached_time = self._customer_cache[external_userid]
             if current_time - cached_time < self._cache_ttl:
+                total_elapsed_ms = (time.perf_counter() - started_at) * 1000
+                _logger.debug(
+                    f'[wecomcs] get_customer_info缓存命中: user_id={external_userid}, total_elapsed_ms={total_elapsed_ms:.2f}'
+                )
                 return cached_info
 
-        # Cache miss or expired, fetch from API
-        if not await self.check_access_token():
-            self.access_token = await self.get_access_token(self.secret)
+        token_started_at = time.perf_counter()
+        await self.ensure_access_token()
+        token_elapsed_ms = (time.perf_counter() - token_started_at) * 1000
 
         url = f'{self.base_url}/kf/customer/batchget?access_token={self.access_token}'
 
@@ -413,23 +588,50 @@ class WecomCSClient:
             'external_userid_list': [external_userid],
         }
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, json=payload)
-            data = response.json()
+        _logger.debug(f'[wecomcs] get_customer_info: url={url[:60]}...')
+        try:
+            request_started_at = time.perf_counter()
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(url, json=payload)
+                data = response.json()
+            request_elapsed_ms = (time.perf_counter() - request_started_at) * 1000
+            total_elapsed_ms = (time.perf_counter() - started_at) * 1000
+            _logger.debug(
+                f'[wecomcs] get_customer_info响应: errcode={data.get("errcode")}, token_elapsed_ms={token_elapsed_ms:.2f}, request_elapsed_ms={request_elapsed_ms:.2f}, total_elapsed_ms={total_elapsed_ms:.2f}'
+            )
 
             if data.get('errcode') in [40014, 42001]:
-                self.access_token = await self.get_access_token(self.secret)
+                await self.token_cache.invalidate()
+                self.access_token = ''
                 return await self.get_customer_info(external_userid)
 
             if data.get('errcode', 0) != 0:
-                if self.logger:
-                    await self.logger.warning(f'Failed to get customer info: {data}')
+                _logger.warning(
+                    f'[wecomcs] get_customer_info业务错误: external_userid={external_userid}, errcode={data.get("errcode")}, errmsg={data.get("errmsg")}, payload={data}'
+                )
+                return None
+
+            invalid_external_userid = data.get('invalid_external_userid') or []
+            if external_userid in invalid_external_userid:
+                _logger.warning(
+                    f'[wecomcs] get_customer_info命中invalid_external_userid: external_userid={external_userid}, invalid_external_userid={invalid_external_userid}'
+                )
                 return None
 
             customer_list = data.get('customer_list', [])
             if customer_list:
                 customer_info = customer_list[0]
-                # Store in cache
+                # 中文注释：成功结果写入短期缓存，减少同一个客户短时间内重复查资料。
                 self._customer_cache[external_userid] = (customer_info, current_time)
                 return customer_info
+
+            _logger.warning(
+                f'[wecomcs] get_customer_info返回空customer_list: external_userid={external_userid}, payload={data}'
+            )
+            return None
+        except Exception as e:
+            total_elapsed_ms = (time.perf_counter() - started_at) * 1000
+            _logger.error(
+                f'[wecomcs] get_customer_info异常: external_userid={external_userid}, error_type={type(e).__name__}, error={e}, total_elapsed_ms={total_elapsed_ms:.2f}'
+            )
             return None

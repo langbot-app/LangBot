@@ -66,6 +66,7 @@ class BotService:
             'qqofficial',
             'slack',
             'wecomcs',
+            'wecom_kf_app',
             'LINE',
             'lark',
         ]:

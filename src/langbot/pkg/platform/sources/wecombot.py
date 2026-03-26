@@ -336,9 +336,10 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     ):
         async def on_message(event: WecomBotEvent):
             try:
+                await self.logger.debug(f'[wecombot] adapter收到消息: type={event.type}, userid={event.userid}')
                 return await callback(await self.event_converter.target2yiri(event), self)
             except Exception:
-                await self.logger.error(f'Error in wecombot callback: {traceback.format_exc()}')
+                await self.logger.error(f'[wecombot] adapter回调异常: {traceback.format_exc()}')
                 print(traceback.format_exc())
 
         try:
