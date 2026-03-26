@@ -377,13 +377,14 @@ function NavItems({
                               >
                                 <a
                                   href={itemRoute}
+                                  className={isPlugin ? 'pr-6' : ''}
                                   onClick={(e) => {
                                     e.preventDefault();
                                     router.push(itemRoute);
                                   }}
                                 >
                                   {item.emoji ? (
-                                    <span className="text-sm">
+                                    <span className="text-sm shrink-0">
                                       {item.emoji}
                                     </span>
                                   ) : item.iconURL ? (
@@ -393,7 +394,7 @@ function NavItems({
                                       className="size-4 rounded shrink-0"
                                     />
                                   ) : null}
-                                  <span>{item.name}</span>
+                                  <span className="truncate">{item.name}</span>
                                 </a>
                               </SidebarMenuSubButton>
                               {/* Plugin context menu - shown on hover */}
