@@ -18,6 +18,10 @@ import {
   LogOut,
   KeyRound,
   Settings,
+  Ellipsis,
+  ArrowUp,
+  ExternalLink,
+  Trash,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 
@@ -30,6 +34,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +52,8 @@ import ApiIntegrationDialog from '@/app/home/components/api-integration-dialog/A
 import NewVersionDialog from '@/app/home/components/new-version-dialog/NewVersionDialog';
 import ModelsDialog from '@/app/home/components/models-dialog/ModelsDialog';
 import { GitHubRelease } from '@/app/infra/http/CloudServiceClient';
+import { useAsyncTask, AsyncTaskStatus } from '@/hooks/useAsyncTask';
+import { toast } from 'sonner';
 import {
   Sidebar,
   SidebarContent,
@@ -171,6 +186,12 @@ function sortByRecent(items: SidebarEntityItem[]): SidebarEntityItem[] {
   });
 }
 
+// Plugin operation type enum
+enum PluginOperationType {
+  DELETE = 'DELETE',
+  UPDATE = 'UPDATE',
+}
+
 // Renders sidebar navigation items with collapsible sub-items for entity categories
 function NavItems({
   selectedChild,
@@ -194,6 +215,70 @@ function NavItems({
   const [expandedLists, setExpandedLists] = useState<Record<string, boolean>>(
     {},
   );
+
+  // Plugin operation state
+  const [showPluginOpModal, setShowPluginOpModal] = useState(false);
+  const [pluginOpType, setPluginOpType] = useState<PluginOperationType>(
+    PluginOperationType.DELETE,
+  );
+  const [targetPluginItem, setTargetPluginItem] =
+    useState<SidebarEntityItem | null>(null);
+  const [deleteData, setDeleteData] = useState(false);
+
+  const asyncTask = useAsyncTask({
+    onSuccess: () => {
+      const msg =
+        pluginOpType === PluginOperationType.DELETE
+          ? t('plugins.deleteSuccess')
+          : t('plugins.updateSuccess');
+      toast.success(msg);
+      setShowPluginOpModal(false);
+      sidebarData.refreshPlugins();
+    },
+  });
+
+  function handlePluginDelete(item: SidebarEntityItem) {
+    setTargetPluginItem(item);
+    setPluginOpType(PluginOperationType.DELETE);
+    setDeleteData(false);
+    asyncTask.reset();
+    setShowPluginOpModal(true);
+  }
+
+  function handlePluginUpdate(item: SidebarEntityItem) {
+    setTargetPluginItem(item);
+    setPluginOpType(PluginOperationType.UPDATE);
+    asyncTask.reset();
+    setShowPluginOpModal(true);
+  }
+
+  function executePluginOperation() {
+    if (!targetPluginItem) return;
+    const slashIdx = targetPluginItem.id.indexOf('/');
+    const author =
+      slashIdx >= 0 ? targetPluginItem.id.substring(0, slashIdx) : '';
+    const name =
+      slashIdx >= 0
+        ? targetPluginItem.id.substring(slashIdx + 1)
+        : targetPluginItem.id;
+
+    const apiCall =
+      pluginOpType === PluginOperationType.DELETE
+        ? httpClient.removePlugin(author, name, deleteData)
+        : httpClient.upgradePlugin(author, name);
+
+    apiCall
+      .then((res) => {
+        asyncTask.startTask(res.task_id);
+      })
+      .catch((error) => {
+        const errorMessage =
+          pluginOpType === PluginOperationType.DELETE
+            ? t('plugins.deleteError') + error.message
+            : t('plugins.updateError') + error.message;
+        toast.error(errorMessage);
+      });
+  }
 
   const sectionItems = sidebarConfigList.filter((c) => c.section === section);
 
@@ -222,6 +307,7 @@ function NavItems({
         const routePrefix = ENTITY_ROUTE_MAP[config.id];
         const hasDetailPages = DETAIL_PAGE_CATEGORIES.includes(config.id);
         const canCreate = CREATABLE_CATEGORIES.includes(config.id);
+        const isPlugin = config.id === 'plugins';
         const isActive =
           selectedChild?.id === config.id ||
           pathname === routePrefix ||
@@ -279,7 +365,12 @@ function NavItems({
                             pathname === routePrefix &&
                             searchParams.get('id') === item.id;
                           return (
-                            <SidebarMenuSubItem key={item.id}>
+                            <SidebarMenuSubItem
+                              key={item.id}
+                              className={
+                                isPlugin ? 'group/plugin-item relative' : ''
+                              }
+                            >
                               <SidebarMenuSubButton
                                 asChild
                                 isActive={isItemActive}
@@ -305,6 +396,14 @@ function NavItems({
                                   <span>{item.name}</span>
                                 </a>
                               </SidebarMenuSubButton>
+                              {/* Plugin context menu - shown on hover */}
+                              {isPlugin && (
+                                <PluginItemMenu
+                                  item={item}
+                                  onUpdate={() => handlePluginUpdate(item)}
+                                  onDelete={() => handlePluginDelete(item)}
+                                />
+                              )}
                             </SidebarMenuSubItem>
                           );
                         })}
@@ -365,7 +464,227 @@ function NavItems({
           </Collapsible>
         );
       })}
+
+      {/* Plugin operation confirmation dialog */}
+      <Dialog
+        open={showPluginOpModal}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowPluginOpModal(false);
+            setTargetPluginItem(null);
+            asyncTask.reset();
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {pluginOpType === PluginOperationType.DELETE
+                ? t('plugins.deleteConfirm')
+                : t('plugins.updateConfirm')}
+            </DialogTitle>
+          </DialogHeader>
+          <DialogDescription>
+            {asyncTask.status === AsyncTaskStatus.WAIT_INPUT && (
+              <div className="flex flex-col gap-4">
+                <div>
+                  {(() => {
+                    const slashIdx = targetPluginItem?.id.indexOf('/') ?? -1;
+                    const author =
+                      slashIdx >= 0
+                        ? targetPluginItem!.id.substring(0, slashIdx)
+                        : '';
+                    const name =
+                      slashIdx >= 0
+                        ? targetPluginItem!.id.substring(slashIdx + 1)
+                        : targetPluginItem?.id ?? '';
+                    return pluginOpType === PluginOperationType.DELETE
+                      ? t('plugins.confirmDeletePlugin', { author, name })
+                      : t('plugins.confirmUpdatePlugin', { author, name });
+                  })()}
+                </div>
+                {pluginOpType === PluginOperationType.DELETE && (
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="sidebar-delete-data"
+                      checked={deleteData}
+                      onCheckedChange={(checked) =>
+                        setDeleteData(checked === true)
+                      }
+                    />
+                    <label
+                      htmlFor="sidebar-delete-data"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                    >
+                      {t('plugins.deleteDataCheckbox')}
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+            {asyncTask.status === AsyncTaskStatus.RUNNING && (
+              <div>
+                {pluginOpType === PluginOperationType.DELETE
+                  ? t('plugins.deleting')
+                  : t('plugins.updating')}
+              </div>
+            )}
+            {asyncTask.status === AsyncTaskStatus.ERROR && (
+              <div>
+                {pluginOpType === PluginOperationType.DELETE
+                  ? t('plugins.deleteError')
+                  : t('plugins.updateError')}
+                <div className="text-red-500">{asyncTask.error}</div>
+              </div>
+            )}
+          </DialogDescription>
+          <DialogFooter>
+            {asyncTask.status === AsyncTaskStatus.WAIT_INPUT && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowPluginOpModal(false);
+                  setTargetPluginItem(null);
+                  asyncTask.reset();
+                }}
+              >
+                {t('common.cancel')}
+              </Button>
+            )}
+            {asyncTask.status === AsyncTaskStatus.WAIT_INPUT && (
+              <Button
+                variant={
+                  pluginOpType === PluginOperationType.DELETE
+                    ? 'destructive'
+                    : 'default'
+                }
+                onClick={executePluginOperation}
+              >
+                {pluginOpType === PluginOperationType.DELETE
+                  ? t('plugins.confirmDelete')
+                  : t('plugins.confirmUpdate')}
+              </Button>
+            )}
+            {asyncTask.status === AsyncTaskStatus.RUNNING && (
+              <Button
+                variant={
+                  pluginOpType === PluginOperationType.DELETE
+                    ? 'destructive'
+                    : 'default'
+                }
+                disabled
+              >
+                {pluginOpType === PluginOperationType.DELETE
+                  ? t('plugins.deleting')
+                  : t('plugins.updating')}
+              </Button>
+            )}
+            {asyncTask.status === AsyncTaskStatus.ERROR && (
+              <Button
+                variant="default"
+                onClick={() => {
+                  setShowPluginOpModal(false);
+                  asyncTask.reset();
+                }}
+              >
+                {t('plugins.close')}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
+  );
+}
+
+// Dropdown menu for plugin sidebar sub-items (shown on hover)
+function PluginItemMenu({
+  item,
+  onUpdate,
+  onDelete,
+}: {
+  item: SidebarEntityItem;
+  onUpdate: () => void;
+  onDelete: () => void;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+
+  const isMarketplace = item.installSource === 'marketplace';
+  const isGithub = item.installSource === 'github';
+  const hasSourceLink = isMarketplace || isGithub;
+
+  function handleViewSource() {
+    const slashIdx = item.id.indexOf('/');
+    const author = slashIdx >= 0 ? item.id.substring(0, slashIdx) : '';
+    const name = slashIdx >= 0 ? item.id.substring(slashIdx + 1) : item.id;
+
+    if (isGithub && item.installInfo?.github_url) {
+      window.open(item.installInfo.github_url as string, '_blank');
+    } else if (isMarketplace) {
+      window.open(
+        getCloudServiceClientSync().getPluginMarketplaceURL(
+          systemInfo.cloud_service_url,
+          author,
+          name,
+        ),
+        '_blank',
+      );
+    }
+  }
+
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className={`absolute right-1 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${
+            open
+              ? 'opacity-100'
+              : 'opacity-0 group-hover/plugin-item:opacity-100'
+          } transition-opacity`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Ellipsis className="size-4" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="right" align="start">
+        {isMarketplace && (
+          <DropdownMenuItem
+            className="cursor-pointer"
+            onClick={() => {
+              onUpdate();
+              setOpen(false);
+            }}
+          >
+            <ArrowUp className="size-4" />
+            <span>{t('plugins.update')}</span>
+          </DropdownMenuItem>
+        )}
+        {hasSourceLink && (
+          <DropdownMenuItem
+            className="cursor-pointer"
+            onClick={() => {
+              handleViewSource();
+              setOpen(false);
+            }}
+          >
+            <ExternalLink className="size-4" />
+            <span>{t('plugins.viewSource')}</span>
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem
+          className="cursor-pointer text-red-600 focus:text-red-600"
+          onClick={() => {
+            onDelete();
+            setOpen(false);
+          }}
+        >
+          <Trash className="size-4" />
+          <span>{t('plugins.delete')}</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

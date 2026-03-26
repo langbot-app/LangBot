@@ -389,7 +389,7 @@ export default function PipelineFormComponent({
           onFinish();
           toast.success(t('common.copySuccess'));
           setShowCopyConfirm(false);
-          onCancel();
+          onCancel?.();
         })
         .catch((err) => {
           toast.error(t('pipelines.createError') + err.msg);

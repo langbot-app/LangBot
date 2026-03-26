@@ -17,6 +17,9 @@ export interface SidebarEntityItem {
   emoji?: string;
   iconURL?: string;
   updatedAt?: string; // ISO timestamp for sorting by most recently edited
+  // Plugin-specific fields
+  installSource?: string;
+  installInfo?: Record<string, unknown>;
 }
 
 // Entity lists and refresh functions exposed via context
@@ -108,6 +111,8 @@ export function SidebarDataProvider({
             id: `${author}/${name}`,
             name: extractI18nObject(meta.label),
             iconURL: httpClient.getPluginIconURL(author, name),
+            installSource: plugin.install_source,
+            installInfo: plugin.install_info,
           };
         }),
       );
