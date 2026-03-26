@@ -249,6 +249,7 @@ const zhHans = {
     title: '机器人',
     description: '创建和管理机器人，这是 LangBot 与各个平台连接的入口',
     createBot: '创建机器人',
+    selectFromSidebar: '从侧边栏选择一个机器人',
     editBot: '编辑机器人',
     getBotListError: '获取机器人列表失败：',
     botName: '机器人名称',
@@ -578,6 +579,7 @@ const zhHans = {
     title: '流水线',
     description: '流水线定义了对消息事件的处理流程，用于绑定到机器人',
     createPipeline: '创建流水线',
+    selectFromSidebar: '从侧边栏选择一个流水线',
     editPipeline: '编辑流水线',
     chat: '对话',
     configuration: '配置',
@@ -677,6 +679,7 @@ const zhHans = {
   knowledge: {
     title: '知识库',
     createKnowledgeBase: '创建知识库',
+    selectFromSidebar: '从侧边栏选择一个知识库',
     editKnowledgeBase: '编辑知识库',
     selectKnowledgeBase: '选择知识库',
     selectKnowledgeBases: '选择知识库',

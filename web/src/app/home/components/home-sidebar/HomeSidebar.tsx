@@ -122,6 +122,13 @@ const CREATABLE_CATEGORIES: EntityCategoryId[] = [
   'knowledge',
 ];
 
+// Categories where clicking the parent only toggles collapse (no list page)
+const COLLAPSIBLE_ONLY_CATEGORIES: EntityCategoryId[] = [
+  'bots',
+  'pipelines',
+  'knowledge',
+];
+
 // Map creatable category IDs to their i18n "create" keys
 const CREATE_I18N_KEYS: Partial<Record<EntityCategoryId, string>> = {
   bots: 'bots.createBot',
@@ -307,6 +314,7 @@ function NavItems({
         const routePrefix = ENTITY_ROUTE_MAP[config.id];
         const hasDetailPages = DETAIL_PAGE_CATEGORIES.includes(config.id);
         const canCreate = CREATABLE_CATEGORIES.includes(config.id);
+        const isCollapseOnly = COLLAPSIBLE_ONLY_CATEGORIES.includes(config.id);
         const isPlugin = config.id === 'plugins';
         const isActive =
           selectedChild?.id === config.id ||
@@ -327,7 +335,13 @@ function NavItems({
             <SidebarMenuItem>
               <SidebarMenuButton
                 isActive={isActive}
-                onClick={() => onChildClick(config)}
+                onClick={() => {
+                  if (isCollapseOnly) {
+                    onSectionToggle(config.id, !isOpen);
+                  } else {
+                    onChildClick(config);
+                  }
+                }}
                 tooltip={config.name}
               >
                 {config.icon}

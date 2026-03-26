@@ -260,6 +260,7 @@ const enUS = {
     description:
       'Create and manage bots, which are the entry points for LangBot to connect with various platforms',
     createBot: 'Create Bot',
+    selectFromSidebar: 'Select a bot from the sidebar',
     editBot: 'Edit Bot',
     getBotListError: 'Failed to get bot list: ',
     botName: 'Bot Name',
@@ -605,6 +606,7 @@ const enUS = {
     description:
       'Pipelines define the processing flow for message events, used to bind to bots',
     createPipeline: 'Create Pipeline',
+    selectFromSidebar: 'Select a pipeline from the sidebar',
     editPipeline: 'Edit Pipeline',
     chat: 'Chat',
     configuration: 'Configuration',
@@ -705,6 +707,7 @@ const enUS = {
   knowledge: {
     title: 'Knowledge',
     createKnowledgeBase: 'Create Knowledge Base',
+    selectFromSidebar: 'Select a knowledge base from the sidebar',
     editKnowledgeBase: 'Edit Knowledge Base',
     selectKnowledgeBase: 'Select Knowledge Base',
     selectKnowledgeBases: 'Select Knowledge Bases',

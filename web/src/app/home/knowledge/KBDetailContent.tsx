@@ -21,7 +21,7 @@ import { useTranslation } from 'react-i18next';
 import { KnowledgeBase } from '@/app/infra/entities/api';
 import { CustomApiError } from '@/app/infra/entities/common';
 import { toast } from 'sonner';
-import { ArrowLeft, FileText, FolderOpen, Search } from 'lucide-react';
+import { FileText, FolderOpen, Search } from 'lucide-react';
 
 export default function KBDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
@@ -111,13 +111,6 @@ export default function KBDetailContent({ id }: { id: string }) {
     return (
       <div className="flex h-full flex-col">
         <div className="flex items-center gap-3 pb-4 shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.push('/home/knowledge')}
-          >
-            <ArrowLeft className="size-4" />
-          </Button>
           <h1 className="text-xl font-semibold">
             {t('knowledge.createKnowledgeBase')}
           </h1>
@@ -147,13 +140,6 @@ export default function KBDetailContent({ id }: { id: string }) {
     <>
       <div className="flex h-full flex-col">
         <div className="flex items-center gap-3 pb-4 shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.push('/home/knowledge')}
-          >
-            <ArrowLeft className="size-4" />
-          </Button>
           <h1 className="text-xl font-semibold">
             {t('knowledge.editKnowledgeBase')}
           </h1>

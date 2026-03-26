@@ -248,6 +248,7 @@ const zhHant = {
     title: '機器人',
     description: '建立和管理機器人，這是 LangBot 與各個平台連接的入口',
     createBot: '建立機器人',
+    selectFromSidebar: '從側邊欄選擇一個機器人',
     editBot: '編輯機器人',
     getBotListError: '取得機器人清單失敗：',
     botName: '機器人名稱',
@@ -571,6 +572,7 @@ const zhHant = {
     title: '流程線',
     description: '流程線定義了對訊息事件的處理流程，用於綁定到機器人',
     createPipeline: '建立流程線',
+    selectFromSidebar: '從側邊欄選擇一個流程線',
     editPipeline: '編輯流程線',
     chat: '對話',
     configuration: '設定',
@@ -670,6 +672,7 @@ const zhHant = {
   knowledge: {
     title: '知識庫',
     createKnowledgeBase: '建立知識庫',
+    selectFromSidebar: '從側邊欄選擇一個知識庫',
     editKnowledgeBase: '編輯知識庫',
     selectKnowledgeBase: '選擇知識庫',
     selectKnowledgeBases: '選擇知識庫',

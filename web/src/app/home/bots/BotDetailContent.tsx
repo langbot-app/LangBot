@@ -18,7 +18,7 @@ import BotSessionMonitor from '@/app/home/bots/components/bot-session/BotSession
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Settings, FileText, Users } from 'lucide-react';
+import { Settings, FileText, Users } from 'lucide-react';
 
 export default function BotDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
@@ -71,13 +71,6 @@ export default function BotDetailContent({ id }: { id: string }) {
     return (
       <div className="flex h-full flex-col">
         <div className="flex items-center gap-3 pb-4 shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.push('/home/bots')}
-          >
-            <ArrowLeft className="size-4" />
-          </Button>
           <h1 className="text-xl font-semibold">{t('bots.createBot')}</h1>
         </div>
 
@@ -106,13 +99,6 @@ export default function BotDetailContent({ id }: { id: string }) {
     <>
       <div className="flex h-full flex-col">
         <div className="flex items-center gap-3 pb-4 shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.push('/home/bots')}
-          >
-            <ArrowLeft className="size-4" />
-          </Button>
           <h1 className="text-xl font-semibold">{t('bots.editBot')}</h1>
         </div>
 

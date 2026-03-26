@@ -265,6 +265,7 @@
     description:
       'ボットの作成と管理を行います。LangBotと各プラットフォームを接続するためのエントリーポイントです',
     createBot: 'ボットを作成',
+    selectFromSidebar: 'サイドバーからボットを選択してください',
     editBot: 'ボットを編集',
     getBotListError: 'ボットリストの取得に失敗しました：',
     botName: 'ボット名',
@@ -606,6 +607,7 @@
     description:
       'メッセージイベントの処理フローを定義し、ボットに紐付けて使用するパイプラインです',
     createPipeline: 'パイプラインを作成',
+    selectFromSidebar: 'サイドバーからパイプラインを選択してください',
     editPipeline: 'パイプラインを編集',
     chat: 'チャット',
     configuration: '設定',
@@ -707,6 +709,7 @@
   knowledge: {
     title: '知識ベース',
     createKnowledgeBase: '知識ベースを作成',
+    selectFromSidebar: 'サイドバーから知識ベースを選択してください',
     editKnowledgeBase: '知識ベースを編集',
     selectKnowledgeBase: '知識ベースを選択',
     selectKnowledgeBases: '知識ベースを選択',

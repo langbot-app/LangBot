@@ -116,13 +116,7 @@ function HomeLayoutInner({ children }: { children: React.ReactNode }) {
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
                 <BreadcrumbItem>
-                  {detailEntityName ? (
-                    <BreadcrumbLink asChild>
-                      <Link href={pathname}>{title}</Link>
-                    </BreadcrumbLink>
-                  ) : (
-                    <BreadcrumbPage>{title}</BreadcrumbPage>
-                  )}
+                  <BreadcrumbPage>{title}</BreadcrumbPage>
                 </BreadcrumbItem>
                 {detailEntityName && (
                   <>

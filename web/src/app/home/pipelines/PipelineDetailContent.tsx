@@ -19,7 +19,7 @@ import PipelineMonitoringTab from '@/app/home/pipelines/components/monitoring-ta
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Settings, Puzzle, Bug, BarChart3 } from 'lucide-react';
+import { Settings, Puzzle, Bug, BarChart3 } from 'lucide-react';
 
 export default function PipelineDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
@@ -65,13 +65,6 @@ export default function PipelineDetailContent({ id }: { id: string }) {
     return (
       <div className="flex h-full flex-col">
         <div className="flex items-center gap-3 pb-4 shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.push('/home/pipelines')}
-          >
-            <ArrowLeft className="size-4" />
-          </Button>
           <h1 className="text-xl font-semibold">
             {t('pipelines.createPipeline')}
           </h1>
@@ -99,13 +92,6 @@ export default function PipelineDetailContent({ id }: { id: string }) {
     <>
       <div className="flex h-full flex-col">
         <div className="flex items-center gap-3 pb-4 shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.push('/home/pipelines')}
-          >
-            <ArrowLeft className="size-4" />
-          </Button>
           <h1 className="text-xl font-semibold">
             {t('pipelines.editPipeline')}
             {activeTab === 'debug' && (
