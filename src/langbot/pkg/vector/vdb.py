@@ -53,6 +53,7 @@ class VectorDatabase(abc.ABC):
         search_type: str = 'vector',
         query_text: str = '',
         filter: dict[str, Any] | None = None,
+        vector_weight: float | None = None,
     ) -> Dict[str, Any]:
         """Search for the most similar vectors in the specified collection.
 
@@ -70,6 +71,8 @@ class VectorDatabase(abc.ABC):
                     {"file_id": "abc"}
                     {"created_at": {"$gte": 1700000000}}
                     {"file_type": {"$in": ["pdf", "docx"]}}
+            vector_weight: Weight for vector search in hybrid mode (0.0–1.0).
+                ``None`` means use equal weights (backward compatible).
         """
         pass
 

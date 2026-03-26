@@ -4,6 +4,7 @@ import base64
 import binascii
 import httpx
 import traceback
+from urllib.parse import quote
 from quart import Quart
 import xml.etree.ElementTree as ET
 from typing import Callable, Dict, Any
@@ -66,6 +67,31 @@ class WecomClient:
             else:
                 await self.logger.error(f'获取accesstoken失败:{response.json()}')
                 raise Exception(f'未获取access token: {data}')
+
+    async def get_user_info(self, userid: str) -> dict:
+        """
+        Get user information by user ID using the application secret.
+
+        Args:
+            userid: The user ID to look up.
+
+        Returns:
+            dict: User information including 'name' field.
+        """
+        if not await self.check_access_token():
+            self.access_token = await self.get_access_token(self.secret)
+
+        url = self.base_url + '/user/get?access_token=' + self.access_token + '&userid=' + quote(userid)
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+            data = response.json()
+            if data.get('errcode') == 40014 or data.get('errcode') == 42001:
+                self.access_token = await self.get_access_token(self.secret)
+                return await self.get_user_info(userid)
+            if data.get('errcode', 0) != 0:
+                await self.logger.error(f'获取用户信息失败:{data}')
+                return {}
+            return data
 
     async def get_users(self):
         if not self.check_access_token_for_contacts():

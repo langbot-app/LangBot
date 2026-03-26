@@ -10,6 +10,7 @@ import { MessageContentRenderer } from '@/app/home/monitoring/components/Message
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { MessageDetails } from '@/app/home/monitoring/types/monitoring';
+import { parseUTCTimestamp } from '@/app/home/monitoring/utils/dateUtils';
 
 interface PipelineMonitoringTabProps {
   pipelineId: string;
@@ -120,7 +121,7 @@ export default function PipelineMonitoringTab({
                 message: result.message
                   ? {
                       id: result.message.id,
-                      timestamp: new Date(result.message.timestamp),
+                      timestamp: parseUTCTimestamp(result.message.timestamp),
                       botId: result.message.bot_id,
                       botName: result.message.bot_name,
                       pipelineId: result.message.pipeline_id,
@@ -137,7 +138,7 @@ export default function PipelineMonitoringTab({
                   : undefined,
                 llmCalls: result.llm_calls.map((call: RawLLMCallData) => ({
                   id: call.id,
-                  timestamp: new Date(call.timestamp),
+                  timestamp: parseUTCTimestamp(call.timestamp),
                   modelName: call.model_name,
                   status: call.status,
                   duration: call.duration,
@@ -150,7 +151,7 @@ export default function PipelineMonitoringTab({
                 })),
                 errors: result.errors.map((error: RawErrorData) => ({
                   id: error.id,
-                  timestamp: new Date(error.timestamp),
+                  timestamp: parseUTCTimestamp(error.timestamp),
                   errorType: error.error_type,
                   errorMessage: error.error_message,
                   stackTrace: error.stack_trace,

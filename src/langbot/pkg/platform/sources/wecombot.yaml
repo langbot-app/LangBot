@@ -18,6 +18,13 @@ spec:
       type: string
       required: true
       default: ""
+    - name: robot_name
+      label:
+        en_US: Robot Name
+        zh_Hans: 机器人名称
+      type: string
+      required: true
+      default: ""
     - name: enable-webhook
       label:
         en_US: Enable Webhook Mode

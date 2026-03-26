@@ -100,6 +100,7 @@ class QdrantVectorDatabase(VectorDatabase):
         search_type: str = 'vector',
         query_text: str = '',
         filter: dict[str, Any] | None = None,
+        vector_weight: float | None = None,
     ) -> dict[str, Any]:
         exists = await self.client.collection_exists(collection)
         if not exists:

@@ -41,6 +41,7 @@ class RAGRuntimeService:
         filters: dict[str, Any] | None = None,
         search_type: str = 'vector',
         query_text: str = '',
+        vector_weight: float | None = None,
     ) -> list[dict[str, Any]]:
         """Handle VECTOR_SEARCH action."""
         return await self.ap.vector_db_mgr.search(
@@ -50,6 +51,7 @@ class RAGRuntimeService:
             filter=filters,
             search_type=search_type,
             query_text=query_text,
+            vector_weight=vector_weight,
         )
 
     async def vector_delete(
