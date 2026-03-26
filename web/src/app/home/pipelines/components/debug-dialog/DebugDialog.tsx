@@ -36,7 +36,6 @@ import {
   Paperclip,
   Send,
   Reply,
-  FileText,
   Music,
   Code,
   AlignLeft,

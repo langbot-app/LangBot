@@ -66,7 +66,6 @@ export default function HomeLayout({
 
 function HomeLayoutInner({ children }: { children: React.ReactNode }) {
   const [title, setTitle] = useState<string>('');
-  const [subtitle, setSubtitle] = useState<string>('');
   const [helpLink, setHelpLink] = useState<I18nObject>({
     en_US: '',
     zh_Hans: '',
