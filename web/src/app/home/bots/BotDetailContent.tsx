@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -15,10 +15,12 @@ import {
 import BotForm from '@/app/home/bots/components/bot-form/BotForm';
 import { BotLogListComponent } from '@/app/home/bots/components/bot-log/view/BotLogListComponent';
 import BotSessionMonitor from '@/app/home/bots/components/bot-session/BotSessionMonitor';
+import type { BotSessionMonitorHandle } from '@/app/home/bots/components/bot-session/BotSessionMonitor';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
-import { Settings, FileText, Users } from 'lucide-react';
+import { Settings, FileText, Users, RefreshCw } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export default function BotDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
@@ -39,6 +41,8 @@ export default function BotDetailContent({ id }: { id: string }) {
 
   const [activeTab, setActiveTab] = useState('config');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isRefreshingSessions, setIsRefreshingSessions] = useState(false);
+  const sessionMonitorRef = useRef<BotSessionMonitorHandle>(null);
 
   function handleFormSubmit() {
     refreshBots();
@@ -120,6 +124,31 @@ export default function BotDetailContent({ id }: { id: string }) {
             <TabsTrigger value="sessions" className="gap-1.5">
               <Users className="size-3.5" />
               {t('bots.sessionMonitor.title')}
+              {activeTab === 'sessions' && (
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center ml-0.5"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    if (isRefreshingSessions) return;
+                    setIsRefreshingSessions(true);
+                    const minDelay = new Promise((r) => setTimeout(r, 500));
+                    Promise.all([
+                      sessionMonitorRef.current?.refreshSessions(),
+                      minDelay,
+                    ]).finally(() => setIsRefreshingSessions(false));
+                  }}
+                >
+                  <RefreshCw
+                    className={cn(
+                      'size-3 text-muted-foreground hover:text-foreground transition-colors',
+                      isRefreshingSessions && 'animate-spin',
+                    )}
+                  />
+                </button>
+              )}
             </TabsTrigger>
           </TabsList>
 
@@ -158,7 +187,7 @@ export default function BotDetailContent({ id }: { id: string }) {
           </TabsContent>
 
           <TabsContent value="sessions" className="flex-1 min-h-0 mt-4">
-            <BotSessionMonitor botId={id} />
+            <BotSessionMonitor ref={sessionMonitorRef} botId={id} />
           </TabsContent>
         </Tabs>
       </div>
