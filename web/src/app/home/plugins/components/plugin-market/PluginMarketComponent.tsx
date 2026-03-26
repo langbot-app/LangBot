@@ -152,7 +152,15 @@ function MarketPageContent({
           );
 
         const data: ApiRespMarketplacePlugins = response;
-        const newPlugins = data.plugins.map(transformToVO);
+        const newPlugins = data.plugins
+          .filter((plugin) => {
+            // Hide plugins that only contain deprecated KnowledgeRetriever components
+            const keys = Object.keys(plugin.components || {});
+            return !(
+              keys.length > 0 && keys.every((k) => k === 'KnowledgeRetriever')
+            );
+          })
+          .map(transformToVO);
         const total = data.total;
 
         if (reset || page === 1) {
