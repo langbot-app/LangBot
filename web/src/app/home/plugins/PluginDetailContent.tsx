@@ -5,6 +5,8 @@ import PluginForm from '@/app/home/plugins/components/plugin-installed/plugin-fo
 import PluginReadme from '@/app/home/plugins/components/plugin-installed/plugin-readme/PluginReadme';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
+import { Badge } from '@/components/ui/badge';
+import { Bug } from 'lucide-react';
 
 /**
  * Plugin detail page content.
@@ -19,12 +21,13 @@ export default function PluginDetailContent({ id }: { id: string }) {
   const pluginAuthor = slashIndex >= 0 ? id.substring(0, slashIndex) : '';
   const pluginName = slashIndex >= 0 ? id.substring(slashIndex + 1) : id;
 
+  const plugin = plugins.find((p) => p.id === id);
+
   // Set breadcrumb entity name
   useEffect(() => {
-    const plugin = plugins.find((p) => p.id === id);
     setDetailEntityName(plugin?.name ?? `${pluginAuthor}/${pluginName}`);
     return () => setDetailEntityName(null);
-  }, [id, plugins, pluginAuthor, pluginName, setDetailEntityName]);
+  }, [plugin, pluginAuthor, pluginName, setDetailEntityName]);
 
   function handleFormSubmit(timeout?: number) {
     if (timeout) {
@@ -42,6 +45,36 @@ export default function PluginDetailContent({ id }: { id: string }) {
         <h1 className="text-xl font-semibold">
           {pluginAuthor}/{pluginName}
         </h1>
+        {plugin?.debug ? (
+          <Badge
+            variant="outline"
+            className="text-[0.7rem] border-orange-400 text-orange-400"
+          >
+            <Bug className="size-3.5" />
+            {t('plugins.debugging')}
+          </Badge>
+        ) : plugin?.installSource === 'github' ? (
+          <Badge
+            variant="outline"
+            className="text-[0.7rem] border-blue-400 text-blue-400"
+          >
+            {t('plugins.fromGithub')}
+          </Badge>
+        ) : plugin?.installSource === 'local' ? (
+          <Badge
+            variant="outline"
+            className="text-[0.7rem] border-green-400 text-green-400"
+          >
+            {t('plugins.fromLocal')}
+          </Badge>
+        ) : plugin?.installSource === 'marketplace' ? (
+          <Badge
+            variant="outline"
+            className="text-[0.7rem] border-purple-400 text-purple-400"
+          >
+            {t('plugins.fromMarketplace')}
+          </Badge>
+        ) : null}
       </div>
 
       <div className="flex flex-1 flex-row overflow-hidden min-h-0 gap-6 max-w-full">
