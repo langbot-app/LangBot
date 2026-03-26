@@ -76,7 +76,7 @@ export function MessageContentRenderer({
           return (
             <span
               key={index}
-              className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-sm"
+              className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-muted text-muted-foreground text-sm"
             >
               [Image]
             </span>
@@ -87,8 +87,8 @@ export function MessageContentRenderer({
           <span key={index} className="inline-block align-middle mx-1">
             <img
               src={imageUrl}
-              alt="Image"
-              className="w-20 h-20 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity border border-gray-200 dark:border-gray-700"
+              alt="Message attachment"
+              className="w-20 h-20 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity border"
               onClick={(e) => {
                 e.stopPropagation();
                 setPreviewImageUrl(imageUrl);
@@ -104,7 +104,7 @@ export function MessageContentRenderer({
         return (
           <span
             key={index}
-            className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-sm"
+            className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-muted text-muted-foreground text-sm"
           >
             <svg
               className="w-3.5 h-3.5 mr-1"
@@ -123,7 +123,7 @@ export function MessageContentRenderer({
         return (
           <span
             key={index}
-            className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-sm"
+            className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-muted text-muted-foreground text-sm"
           >
             <svg
               className="w-3.5 h-3.5 mr-1"
@@ -142,7 +142,7 @@ export function MessageContentRenderer({
         return (
           <span
             key={index}
-            className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-sm border-l-2 border-gray-400"
+            className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-muted text-muted-foreground text-sm border-l-2 border-muted-foreground/50"
           >
             {quote.origin
               ?.filter((c) => (c as MessageChainComponent).type === 'Plain')
@@ -159,7 +159,7 @@ export function MessageContentRenderer({
         return (
           <span
             key={index}
-            className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-sm"
+            className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-muted text-muted-foreground text-sm"
           >
             [{component.type}]
           </span>
@@ -188,9 +188,7 @@ export function MessageContentRenderer({
     // If no visible components, show placeholder
     if (visibleComponents.length === 0) {
       return (
-        <span className="text-gray-400 dark:text-gray-500 italic">
-          [Empty message]
-        </span>
+        <span className="text-muted-foreground italic">[Empty message]</span>
       );
     }
 
@@ -219,9 +217,7 @@ export function MessageContentRenderer({
     content === '""'
   ) {
     return (
-      <span className="text-gray-400 dark:text-gray-500 italic">
-        [Empty message]
-      </span>
+      <span className="text-muted-foreground italic">[Empty message]</span>
     );
   }
 
