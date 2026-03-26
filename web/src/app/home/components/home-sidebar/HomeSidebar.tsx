@@ -107,6 +107,13 @@ const CREATABLE_CATEGORIES: EntityCategoryId[] = [
   'knowledge',
 ];
 
+// Map creatable category IDs to their i18n "create" keys
+const CREATE_I18N_KEYS: Partial<Record<EntityCategoryId, string>> = {
+  bots: 'bots.createBot',
+  pipelines: 'pipelines.createPipeline',
+  knowledge: 'knowledge.createKnowledgeBase',
+};
+
 function isEntityCategory(id: string): id is EntityCategoryId {
   return (ENTITY_CATEGORY_IDS as readonly string[]).includes(id);
 }
@@ -347,7 +354,7 @@ function NavItems({
                           }}
                         >
                           <Plus className="size-4" />
-                          <span>{config.name}</span>
+                          <span>{t(CREATE_I18N_KEYS[config.id] ?? '')}</span>
                         </a>
                       </SidebarMenuSubButton>
                     </SidebarMenuSubItem>

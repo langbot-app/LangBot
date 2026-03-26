@@ -910,7 +910,7 @@ const enUS = {
       'Space login email does not match the local account email',
   },
   monitoring: {
-    title: 'Monitoring',
+    title: 'Dashboard',
     description: 'Monitor bot activities, LLM calls, and system performance',
     overview: 'Overview',
     totalMessages: 'Total Messages',

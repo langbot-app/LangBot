@@ -44,10 +44,6 @@ export default function BotDetailContent({ id }: { id: string }) {
     refreshBots();
   }
 
-  function handleFormCancel() {
-    router.push('/home/bots');
-  }
-
   function handleBotDeleted() {
     refreshBots();
     router.push('/home/bots');
@@ -97,9 +93,6 @@ export default function BotDetailContent({ id }: { id: string }) {
             <div className="flex justify-end gap-2 pb-4">
               <Button type="submit" form="bot-form">
                 {t('common.submit')}
-              </Button>
-              <Button variant="outline" onClick={handleFormCancel}>
-                {t('common.cancel')}
               </Button>
             </div>
           </div>
@@ -166,9 +159,6 @@ export default function BotDetailContent({ id }: { id: string }) {
                 </Button>
                 <Button type="submit" form="bot-form">
                   {t('common.save')}
-                </Button>
-                <Button variant="outline" onClick={handleFormCancel}>
-                  {t('common.cancel')}
                 </Button>
               </div>
             </div>

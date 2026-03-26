@@ -46,10 +46,6 @@ export default function PipelineDetailContent({ id }: { id: string }) {
     refreshPipelines();
   }
 
-  function handleCancel() {
-    router.push('/home/pipelines');
-  }
-
   function handleDeletePipeline() {
     httpClient.deletePipeline(id).then(() => {
       refreshPipelines();
@@ -91,7 +87,6 @@ export default function PipelineDetailContent({ id }: { id: string }) {
               onFinish={handleFinish}
               onNewPipelineCreated={handleNewPipelineCreated}
               onDeletePipeline={() => {}}
-              onCancel={handleCancel}
             />
           </div>
         </div>
@@ -161,7 +156,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
                 onFinish={handleFinish}
                 onNewPipelineCreated={handleNewPipelineCreated}
                 onDeletePipeline={() => setShowDeleteConfirm(true)}
-                onCancel={handleCancel}
+                onCancel={() => router.push('/home/pipelines')}
               />
             </div>
           </TabsContent>

@@ -62,7 +62,6 @@ export default function PluginDetailContent({ id }: { id: string }) {
             pluginAuthor={pluginAuthor}
             pluginName={pluginName}
             onFormSubmit={handleFormSubmit}
-            onFormCancel={handleBack}
           />
         </div>
         {/* Right side - Readme */}

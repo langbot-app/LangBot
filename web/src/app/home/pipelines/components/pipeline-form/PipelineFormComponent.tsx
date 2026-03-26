@@ -49,7 +49,7 @@ export default function PipelineFormComponent({
   onFinish: () => void;
   onNewPipelineCreated: (pipelineId: string) => void;
   onDeletePipeline: () => void;
-  onCancel: () => void;
+  onCancel?: () => void;
 }) {
   const { t } = useTranslation();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -569,9 +569,6 @@ export default function PipelineFormComponent({
 
               <Button type="submit" form="pipeline-form">
                 {isEditMode ? t('common.save') : t('common.submit')}
-              </Button>
-              <Button type="button" variant="outline" onClick={onCancel}>
-                {t('common.cancel')}
               </Button>
             </div>
           )}

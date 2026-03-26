@@ -13,12 +13,10 @@ export default function PluginForm({
   pluginAuthor,
   pluginName,
   onFormSubmit,
-  onFormCancel,
 }: {
   pluginAuthor: string;
   pluginName: string;
   onFormSubmit: (timeout?: number) => void;
-  onFormCancel: () => void;
 }) {
   const { t } = useTranslation();
   const [pluginInfo, setPluginInfo] = useState<Plugin>();
@@ -195,20 +193,19 @@ export default function PluginForm({
         )}
       </div>
 
-      <div className="sticky bottom-0 left-0 right-0 bg-background border-t p-4 mt-4">
-        <div className="flex justify-end gap-2">
-          <Button
-            type="submit"
-            onClick={() => handleSubmit()}
-            disabled={isSaving}
-          >
-            {isSaving ? t('plugins.saving') : t('plugins.saveConfig')}
-          </Button>
-          <Button type="button" variant="outline" onClick={onFormCancel}>
-            {t('plugins.cancel')}
-          </Button>
+      {pluginInfo.manifest.manifest.spec.config.length > 0 && (
+        <div className="sticky bottom-0 left-0 right-0 bg-background border-t p-4 mt-4">
+          <div className="flex justify-end gap-2">
+            <Button
+              type="submit"
+              onClick={() => handleSubmit()}
+              disabled={isSaving}
+            >
+              {isSaving ? t('plugins.saving') : t('plugins.saveConfig')}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

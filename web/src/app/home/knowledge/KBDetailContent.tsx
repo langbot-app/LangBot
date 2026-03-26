@@ -74,10 +74,6 @@ export default function KBDetailContent({ id }: { id: string }) {
     );
   };
 
-  function handleFormCancel() {
-    router.push('/home/knowledge');
-  }
-
   function handleKbDeleted() {
     refreshKnowledgeBases();
     router.push('/home/knowledge');
@@ -138,9 +134,6 @@ export default function KBDetailContent({ id }: { id: string }) {
             <div className="flex justify-end gap-2 pb-4">
               <Button type="submit" form="kb-form">
                 {t('common.submit')}
-              </Button>
-              <Button variant="outline" onClick={handleFormCancel}>
-                {t('common.cancel')}
               </Button>
             </div>
           </div>
@@ -210,9 +203,6 @@ export default function KBDetailContent({ id }: { id: string }) {
                 </Button>
                 <Button type="submit" form="kb-form">
                   {t('common.save')}
-                </Button>
-                <Button variant="outline" onClick={handleFormCancel}>
-                  {t('common.cancel')}
                 </Button>
               </div>
             </div>
