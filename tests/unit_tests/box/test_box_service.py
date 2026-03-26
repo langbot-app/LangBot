@@ -133,18 +133,21 @@ def make_app(
     allowed_host_mount_roots: list[str] | None = None,
     profile: str = 'default',
     shared_host_root: str = '',
+    workspace_quota_mb: int | None = None,
 ):
+    box_config = {
+        'profile': profile,
+        'shared_host_root': shared_host_root,
+        'allowed_host_mount_roots': allowed_host_mount_roots or [],
+        'default_host_workspace': '',
+    }
+    if workspace_quota_mb is not None:
+        box_config['workspace_quota_mb'] = workspace_quota_mb
+
     return SimpleNamespace(
         logger=logger,
         instance_config=SimpleNamespace(
-            data={
-                'box': {
-                    'profile': profile,
-                    'shared_host_root': shared_host_root,
-                    'allowed_host_mount_roots': allowed_host_mount_roots or [],
-                    'default_host_workspace': '',
-                }
-            }
+            data={'box': box_config}
         ),
     )
 
@@ -429,6 +432,32 @@ class FakeBackendWithOutput(FakeBackend):
         )
 
 
+class FakeBackendWritingFiles(FakeBackend):
+    """Fake backend that writes files into the mounted host workspace during exec."""
+
+    def __init__(self, logger: Mock, files_to_write: list[tuple[str, int]]):
+        super().__init__(logger)
+        self._files_to_write = files_to_write
+
+    async def exec(self, session: BoxSessionInfo, spec: BoxSpec) -> BoxExecutionResult:
+        self.exec_calls.append((session.session_id, spec.cmd))
+        if session.host_path:
+            for relative_path, size in self._files_to_write:
+                host_path = os.path.join(session.host_path, relative_path)
+                os.makedirs(os.path.dirname(host_path), exist_ok=True)
+                with open(host_path, 'wb') as f:
+                    f.write(b'x' * size)
+        return BoxExecutionResult(
+            session_id=session.session_id,
+            backend_name=self.name,
+            status=BoxExecutionStatus.COMPLETED,
+            exit_code=0,
+            stdout='wrote files',
+            stderr='',
+            duration_ms=5,
+        )
+
+
 @pytest.mark.asyncio
 async def test_truncate_short_output_unchanged():
     logger = Mock()
@@ -648,6 +677,64 @@ async def test_profile_default_applies_resource_limits():
     assert spec.memory_mb == profile.memory_mb
     assert spec.pids_limit == profile.pids_limit
     assert spec.read_only_rootfs == profile.read_only_rootfs
+    assert spec.workspace_quota_mb == profile.workspace_quota_mb
+
+
+@pytest.mark.asyncio
+async def test_box_service_applies_workspace_quota_from_config(tmp_path):
+    logger = Mock()
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
+    host_dir = tmp_path / 'default-workspace'
+    host_dir.mkdir()
+    app = make_app(logger, [str(tmp_path)], workspace_quota_mb=32)
+    app.instance_config.data['box']['default_host_workspace'] = str(host_dir)
+    service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
+
+    await service.initialize()
+    await service.execute_tool({'command': 'echo hi'}, make_query(43))
+
+    assert backend.start_specs[0].workspace_quota_mb == 32
+
+
+@pytest.mark.asyncio
+async def test_box_service_rejects_execution_when_workspace_already_exceeds_quota(tmp_path):
+    logger = Mock()
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
+    host_dir = tmp_path / 'quota-workspace'
+    host_dir.mkdir()
+    (host_dir / 'already-too-large.bin').write_bytes(b'x' * (2 * 1024 * 1024))
+    app = make_app(logger, [str(tmp_path)], workspace_quota_mb=1)
+    app.instance_config.data['box']['default_host_workspace'] = str(host_dir)
+    service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
+
+    await service.initialize()
+
+    with pytest.raises(BoxValidationError, match='workspace quota exceeded before execution'):
+        await service.execute_tool({'command': 'echo hi'}, make_query(44))
+
+    assert backend.start_calls == []
+
+
+@pytest.mark.asyncio
+async def test_box_service_rejects_and_cleans_up_when_execution_exceeds_workspace_quota(tmp_path):
+    logger = Mock()
+    backend = FakeBackendWritingFiles(logger, files_to_write=[('output.bin', 2 * 1024 * 1024)])
+    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
+    host_dir = tmp_path / 'quota-workspace-post'
+    host_dir.mkdir()
+    app = make_app(logger, [str(tmp_path)], workspace_quota_mb=1)
+    app.instance_config.data['box']['default_host_workspace'] = str(host_dir)
+    service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
+
+    await service.initialize()
+
+    with pytest.raises(BoxValidationError, match='workspace quota exceeded after execution'):
+        await service.execute_tool({'command': 'generate-output'}, make_query(45))
+
+    assert backend.start_calls == ['45']
+    assert backend.stop_calls == ['45']
 
 
 @pytest.mark.asyncio
@@ -695,6 +782,8 @@ def test_box_spec_validates_resource_limits():
         BoxSpec.model_validate({'cmd': 'echo', 'session_id': 's1', 'memory_mb': 10})
     with pytest.raises(Exception):
         BoxSpec.model_validate({'cmd': 'echo', 'session_id': 's1', 'pids_limit': 0})
+    with pytest.raises(Exception):
+        BoxSpec.model_validate({'cmd': 'echo', 'session_id': 's1', 'workspace_quota_mb': -1})
 
 
 # ── Observability tests ───────────────────────────────────────────────
