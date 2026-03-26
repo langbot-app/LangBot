@@ -73,33 +73,35 @@ export default function BotDetailContent({ id }: { id: string }) {
   // Create mode: simple form layout
   if (isCreateMode) {
     return (
-      <div className="h-full overflow-y-auto">
-        <div className="mx-auto max-w-2xl space-y-6">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => router.push('/home/bots')}
-            >
-              <ArrowLeft className="size-4" />
-            </Button>
-            <h1 className="text-xl font-semibold">{t('bots.createBot')}</h1>
-          </div>
+      <div className="flex h-full flex-col">
+        <div className="flex items-center gap-3 pb-4 shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push('/home/bots')}
+          >
+            <ArrowLeft className="size-4" />
+          </Button>
+          <h1 className="text-xl font-semibold">{t('bots.createBot')}</h1>
+        </div>
 
-          <BotForm
-            initBotId={undefined}
-            onFormSubmit={handleFormSubmit}
-            onBotDeleted={handleBotDeleted}
-            onNewBotCreated={handleNewBotCreated}
-          />
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="mx-auto max-w-2xl space-y-6">
+            <BotForm
+              initBotId={undefined}
+              onFormSubmit={handleFormSubmit}
+              onBotDeleted={handleBotDeleted}
+              onNewBotCreated={handleNewBotCreated}
+            />
 
-          <div className="flex justify-end gap-2">
-            <Button type="submit" form="bot-form">
-              {t('common.submit')}
-            </Button>
-            <Button variant="outline" onClick={handleFormCancel}>
-              {t('common.cancel')}
-            </Button>
+            <div className="flex justify-end gap-2 pb-4">
+              <Button type="submit" form="bot-form">
+                {t('common.submit')}
+              </Button>
+              <Button variant="outline" onClick={handleFormCancel}>
+                {t('common.cancel')}
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -142,7 +144,10 @@ export default function BotDetailContent({ id }: { id: string }) {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="config" className="flex-1 overflow-y-auto mt-4">
+          <TabsContent
+            value="config"
+            className="flex-1 min-h-0 overflow-y-auto mt-4"
+          >
             <div className="mx-auto max-w-2xl">
               <BotForm
                 initBotId={id}
@@ -169,7 +174,10 @@ export default function BotDetailContent({ id }: { id: string }) {
             </div>
           </TabsContent>
 
-          <TabsContent value="logs" className="flex-1 overflow-y-auto mt-4">
+          <TabsContent
+            value="logs"
+            className="flex-1 min-h-0 overflow-y-auto mt-4"
+          >
             <BotLogListComponent botId={id} />
           </TabsContent>
 

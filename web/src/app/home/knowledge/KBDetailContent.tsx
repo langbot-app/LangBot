@@ -113,34 +113,36 @@ export default function KBDetailContent({ id }: { id: string }) {
   // Create mode: simple form layout
   if (isCreateMode) {
     return (
-      <div className="h-full overflow-y-auto">
-        <div className="mx-auto max-w-2xl space-y-6">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => router.push('/home/knowledge')}
-            >
-              <ArrowLeft className="size-4" />
-            </Button>
-            <h1 className="text-xl font-semibold">
-              {t('knowledge.createKnowledgeBase')}
-            </h1>
-          </div>
+      <div className="flex h-full flex-col">
+        <div className="flex items-center gap-3 pb-4 shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push('/home/knowledge')}
+          >
+            <ArrowLeft className="size-4" />
+          </Button>
+          <h1 className="text-xl font-semibold">
+            {t('knowledge.createKnowledgeBase')}
+          </h1>
+        </div>
 
-          <KBForm
-            initKbId={undefined}
-            onNewKbCreated={handleNewKbCreated}
-            onKbUpdated={handleKbUpdated}
-          />
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="mx-auto max-w-2xl space-y-6">
+            <KBForm
+              initKbId={undefined}
+              onNewKbCreated={handleNewKbCreated}
+              onKbUpdated={handleKbUpdated}
+            />
 
-          <div className="flex justify-end gap-2">
-            <Button type="submit" form="kb-form">
-              {t('common.submit')}
-            </Button>
-            <Button variant="outline" onClick={handleFormCancel}>
-              {t('common.cancel')}
-            </Button>
+            <div className="flex justify-end gap-2 pb-4">
+              <Button type="submit" form="kb-form">
+                {t('common.submit')}
+              </Button>
+              <Button variant="outline" onClick={handleFormCancel}>
+                {t('common.cancel')}
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -187,7 +189,10 @@ export default function KBDetailContent({ id }: { id: string }) {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="metadata" className="flex-1 overflow-y-auto mt-4">
+          <TabsContent
+            value="metadata"
+            className="flex-1 min-h-0 overflow-y-auto mt-4"
+          >
             <div className="mx-auto max-w-2xl">
               <KBForm
                 initKbId={id}
@@ -216,7 +221,7 @@ export default function KBDetailContent({ id }: { id: string }) {
           {hasDocumentCapability() && (
             <TabsContent
               value="documents"
-              className="flex-1 overflow-y-auto mt-4"
+              className="flex-1 min-h-0 overflow-y-auto mt-4"
             >
               <KBDoc
                 kbId={id}
@@ -226,7 +231,10 @@ export default function KBDetailContent({ id }: { id: string }) {
             </TabsContent>
           )}
 
-          <TabsContent value="retrieve" className="flex-1 overflow-y-auto mt-4">
+          <TabsContent
+            value="retrieve"
+            className="flex-1 min-h-0 overflow-y-auto mt-4"
+          >
             <KBRetrieveGeneric kbId={id} retrieveFunction={retrieveFunction} />
           </TabsContent>
         </Tabs>

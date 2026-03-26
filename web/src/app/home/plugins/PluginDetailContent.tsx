@@ -57,7 +57,7 @@ export default function PluginDetailContent({ id }: { id: string }) {
 
       <div className="flex flex-1 flex-row overflow-hidden min-h-0 gap-6 max-w-full">
         {/* Left side - Config */}
-        <div className="w-[380px] flex-shrink-0 overflow-y-auto">
+        <div className="w-[380px] flex-shrink-0 overflow-y-auto overflow-x-hidden">
           <PluginForm
             pluginAuthor={pluginAuthor}
             pluginName={pluginName}
@@ -66,7 +66,7 @@ export default function PluginDetailContent({ id }: { id: string }) {
           />
         </div>
         {/* Right side - Readme */}
-        <div className="flex-1 overflow-y-auto min-w-0">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
           <PluginReadme pluginAuthor={pluginAuthor} pluginName={pluginName} />
         </div>
       </div>

@@ -67,31 +67,33 @@ export default function PipelineDetailContent({ id }: { id: string }) {
   // Create mode: simple form layout
   if (isCreateMode) {
     return (
-      <div className="h-full overflow-y-auto">
-        <div className="mx-auto max-w-2xl space-y-6">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => router.push('/home/pipelines')}
-            >
-              <ArrowLeft className="size-4" />
-            </Button>
-            <h1 className="text-xl font-semibold">
-              {t('pipelines.createPipeline')}
-            </h1>
-          </div>
+      <div className="flex h-full flex-col">
+        <div className="flex items-center gap-3 pb-4 shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push('/home/pipelines')}
+          >
+            <ArrowLeft className="size-4" />
+          </Button>
+          <h1 className="text-xl font-semibold">
+            {t('pipelines.createPipeline')}
+          </h1>
+        </div>
 
-          <PipelineFormComponent
-            pipelineId={undefined}
-            isEditMode={false}
-            disableForm={false}
-            showButtons={true}
-            onFinish={handleFinish}
-            onNewPipelineCreated={handleNewPipelineCreated}
-            onDeletePipeline={() => {}}
-            onCancel={handleCancel}
-          />
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="mx-auto max-w-2xl space-y-6">
+            <PipelineFormComponent
+              pipelineId={undefined}
+              isEditMode={false}
+              disableForm={false}
+              showButtons={true}
+              onFinish={handleFinish}
+              onNewPipelineCreated={handleNewPipelineCreated}
+              onDeletePipeline={() => {}}
+              onCancel={handleCancel}
+            />
+          </div>
         </div>
       </div>
     );
@@ -146,7 +148,10 @@ export default function PipelineDetailContent({ id }: { id: string }) {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="config" className="flex-1 overflow-y-auto mt-4">
+          <TabsContent
+            value="config"
+            className="flex-1 min-h-0 overflow-y-auto mt-4"
+          >
             <div className="mx-auto max-w-2xl">
               <PipelineFormComponent
                 pipelineId={id}
@@ -163,7 +168,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
 
           <TabsContent
             value="extensions"
-            className="flex-1 overflow-y-auto mt-4"
+            className="flex-1 min-h-0 overflow-y-auto mt-4"
           >
             <PipelineExtension pipelineId={id} />
           </TabsContent>
@@ -179,7 +184,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
 
           <TabsContent
             value="monitoring"
-            className="flex-1 overflow-y-auto mt-4"
+            className="flex-1 min-h-0 overflow-y-auto mt-4"
           >
             <PipelineMonitoringTab
               pipelineId={id}
