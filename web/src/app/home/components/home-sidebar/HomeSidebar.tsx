@@ -22,6 +22,7 @@ import {
   ArrowUp,
   ExternalLink,
   Trash,
+  Bug,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 
@@ -391,7 +392,9 @@ function NavItems({
                               >
                                 <a
                                   href={itemRoute}
-                                  className={isPlugin ? 'pr-6' : ''}
+                                  className={
+                                    isPlugin && !item.debug ? 'pr-6' : ''
+                                  }
                                   onClick={(e) => {
                                     e.preventDefault();
                                     router.push(itemRoute);
@@ -409,10 +412,13 @@ function NavItems({
                                     />
                                   ) : null}
                                   <span className="truncate">{item.name}</span>
+                                  {item.debug && (
+                                    <Bug className="size-3.5 shrink-0 text-orange-400" />
+                                  )}
                                 </a>
                               </SidebarMenuSubButton>
-                              {/* Plugin context menu - shown on hover */}
-                              {isPlugin && (
+                              {/* Plugin context menu - shown on hover (not for debug plugins) */}
+                              {isPlugin && !item.debug && (
                                 <PluginItemMenu
                                   item={item}
                                   onUpdate={() => handlePluginUpdate(item)}

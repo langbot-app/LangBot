@@ -22,6 +22,7 @@ export interface SidebarEntityItem {
   installSource?: string;
   installInfo?: Record<string, unknown>;
   hasUpdate?: boolean;
+  debug?: boolean;
 }
 
 // Entity lists and refresh functions exposed via context
@@ -141,6 +142,7 @@ export function SidebarDataProvider({
             installSource: plugin.install_source,
             installInfo: plugin.install_info,
             hasUpdate,
+            debug: plugin.debug,
           };
         }),
       );
