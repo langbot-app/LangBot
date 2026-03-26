@@ -24,6 +24,7 @@ from langbot_plugin.box.models import (
 _INT_ADAPTER = pydantic.TypeAdapter(int)
 _UTC = _dt.timezone.utc
 _MAX_RECENT_ERRORS = 50
+_MIB = 1024 * 1024
 
 
 def _is_path_under(path: str, root: str) -> bool:
@@ -54,6 +55,7 @@ class BoxService:
         self.allowed_host_mount_roots = self._load_allowed_host_mount_roots()
         self.default_host_workspace = self._load_default_host_workspace()
         self.profile = self._load_profile()
+        self.workspace_quota_mb = self._load_workspace_quota_mb()
         self._recent_errors: collections.deque[dict] = collections.deque(maxlen=_MAX_RECENT_ERRORS)
         self._shutdown_task = None
         self._available = False
@@ -94,8 +96,19 @@ class BoxService:
             f'spec={json.dumps(self._summarize_spec(spec), ensure_ascii=False)}'
         )
         try:
+            self._enforce_workspace_quota(spec, phase='before execution')
+        except BoxError as exc:
+            self._record_error(exc, query)
+            raise
+        try:
             result = await self.client.execute(spec)
         except BoxError as exc:
+            self._record_error(exc, query)
+            raise
+        try:
+            self._enforce_workspace_quota(spec, phase='after execution')
+        except BoxError as exc:
+            await self._cleanup_exceeded_session(spec)
             self._record_error(exc, query)
             raise
         self.ap.logger.info(
@@ -141,6 +154,8 @@ class BoxService:
         spec_payload.setdefault('env', {})
         if spec_payload.get('host_path') in (None, '') and self.default_host_workspace is not None:
             spec_payload['host_path'] = self.default_host_workspace
+        if spec_payload.get('workspace_quota_mb') in (None, '') and self.workspace_quota_mb is not None:
+            spec_payload['workspace_quota_mb'] = self.workspace_quota_mb
 
         self._apply_profile(spec_payload)
 
@@ -241,6 +256,7 @@ class BoxService:
             'memory_mb': spec.memory_mb,
             'pids_limit': spec.pids_limit,
             'read_only_rootfs': spec.read_only_rootfs,
+            'workspace_quota_mb': spec.workspace_quota_mb,
             'env_keys': sorted(spec.env.keys()),
             'cmd': cmd,
         }
@@ -291,6 +307,18 @@ class BoxService:
                 return None
             default_host_workspace = os.path.join(self.shared_host_root, 'default')
         return os.path.realpath(os.path.abspath(default_host_workspace))
+
+    def _load_workspace_quota_mb(self) -> int | None:
+        raw_value = _get_box_config(self.ap).get('workspace_quota_mb')
+        if raw_value in (None, ''):
+            return None
+        try:
+            value = _INT_ADAPTER.validate_python(raw_value)
+        except pydantic.ValidationError as exc:
+            raise BoxValidationError('workspace_quota_mb must be an integer greater than or equal to 0') from exc
+        if value < 0:
+            raise BoxValidationError('workspace_quota_mb must be greater than or equal to 0')
+        return value
 
     def _ensure_default_host_workspace(self):
         if self.default_host_workspace is None:
@@ -356,6 +384,7 @@ class BoxService:
             'memory_mb',
             'pids_limit',
             'read_only_rootfs',
+            'workspace_quota_mb',
         )
 
         for field in _PROFILE_FIELDS:
@@ -375,6 +404,58 @@ class BoxService:
 
         if normalized_timeout > profile.max_timeout_sec:
             params['timeout_sec'] = profile.max_timeout_sec
+
+    def _get_workspace_size_bytes(self, root: str) -> int:
+        total = 0
+
+        def _walk(path: str):
+            nonlocal total
+            try:
+                with os.scandir(path) as entries:
+                    for entry in entries:
+                        try:
+                            if entry.is_symlink():
+                                total += entry.stat(follow_symlinks=False).st_size
+                                continue
+                            if entry.is_dir(follow_symlinks=False):
+                                _walk(entry.path)
+                                continue
+                            total += entry.stat(follow_symlinks=False).st_size
+                        except FileNotFoundError:
+                            continue
+            except FileNotFoundError:
+                return
+
+        _walk(root)
+        return total
+
+    def _enforce_workspace_quota(self, spec: BoxSpec, *, phase: str) -> None:
+        if spec.host_path is None or spec.workspace_quota_mb <= 0:
+            return
+
+        host_path = os.path.realpath(spec.host_path)
+        if not os.path.isdir(host_path):
+            return
+
+        used_bytes = self._get_workspace_size_bytes(host_path)
+        limit_bytes = spec.workspace_quota_mb * _MIB
+        if used_bytes <= limit_bytes:
+            return
+
+        raise BoxValidationError(
+            f'workspace quota exceeded {phase}: '
+            f'used={used_bytes} bytes limit={limit_bytes} bytes '
+            f'host_path={host_path} session_id={spec.session_id}'
+        )
+
+    async def _cleanup_exceeded_session(self, spec: BoxSpec) -> None:
+        try:
+            await self.client.delete_session(spec.session_id)
+        except Exception as exc:
+            self.ap.logger.warning(
+                'Failed to clean up Box session after workspace quota was exceeded: '
+                f'session_id={spec.session_id} error={exc}'
+            )
 
     # ── Observability ─────────────────────────────────────────────────
 
