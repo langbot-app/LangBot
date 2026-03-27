@@ -1,3 +1,4 @@
+# ========== 前端构建阶段 ==========
 FROM node:22-alpine AS node
 
 WORKDIR /app
@@ -14,6 +15,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock README.md LICENSE main.py ./
 COPY src ./src
 
+# 安装系统依赖和 Python 依赖（排除开发依赖）
 RUN apt update \
     && apt install gcc -y \
     && python -m pip install --no-cache-dir uv \
@@ -22,9 +24,6 @@ RUN apt update \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/* \
     && touch /.dockerenv
-
-# 再复制其余运行时文件，避免无关文件变更导致依赖重装
-COPY . .
 
 COPY --from=node /app/web/out ./web/out
 

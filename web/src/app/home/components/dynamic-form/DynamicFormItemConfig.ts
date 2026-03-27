@@ -14,6 +14,7 @@ export class DynamicFormItemConfig implements IDynamicFormItemSchema {
   required: boolean;
   type: DynamicFormItemType;
   description?: I18nObject;
+  section?: I18nObject;
   options?: IDynamicFormItemOption[];
   show_if?: IShowIfCondition;
 
@@ -25,6 +26,7 @@ export class DynamicFormItemConfig implements IDynamicFormItemSchema {
     this.required = params.required;
     this.type = params.type;
     this.description = params.description;
+    this.section = params.section;
     this.options = params.options;
     this.show_if = params.show_if;
   }

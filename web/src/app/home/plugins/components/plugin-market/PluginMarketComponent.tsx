@@ -66,6 +66,7 @@ function MarketPageContent({
   const pageSize = 12; // 每页12个
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const isComposingRef = useRef(false);
 
   // 排序选项
   const sortOptions: SortOption[] = [
@@ -151,7 +152,15 @@ function MarketPageContent({
           );
 
         const data: ApiRespMarketplacePlugins = response;
-        const newPlugins = data.plugins.map(transformToVO);
+        const newPlugins = data.plugins
+          .filter((plugin) => {
+            // Hide plugins that only contain deprecated KnowledgeRetriever components
+            const keys = Object.keys(plugin.components || {});
+            return !(
+              keys.length > 0 && keys.every((k) => k === 'KnowledgeRetriever')
+            );
+          })
+          .map(transformToVO);
         const total = data.total;
 
         if (reset || page === 1) {
@@ -250,10 +259,14 @@ function MarketPageContent({
         clearTimeout(searchTimeoutRef.current);
       }
 
+      if (isComposingRef.current) {
+        return;
+      }
+
       // 设置新的定时器
       searchTimeoutRef.current = setTimeout(() => {
         handleSearch(value);
-      }, 300);
+      }, 500);
     },
     [handleSearch],
   );
@@ -398,6 +411,13 @@ function MarketPageContent({
               placeholder={t('market.searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => handleSearchInputChange(e.target.value)}
+              onCompositionStart={() => {
+                isComposingRef.current = true;
+              }}
+              onCompositionEnd={(e) => {
+                isComposingRef.current = false;
+                handleSearchInputChange((e.target as HTMLInputElement).value);
+              }}
               onKeyPress={(e) => {
                 if (e.key === 'Enter') {
                   // Immediately search, clear debounce timer

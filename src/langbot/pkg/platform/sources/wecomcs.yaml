@@ -49,6 +49,71 @@ spec:
       type: string
       required: false
       default: "https://qyapi.weixin.qq.com/cgi-bin"
+    - name: history_message_drop_threshold_seconds
+      label:
+        en_US: History Message Window
+        zh_Hans: 历史消息过滤时间窗口
+      description:
+        en_US: "Advanced setting. During bootstrap or recovery pull, messages older than this window will be dropped. Unit: seconds."
+        zh_Hans: 高级配置。冷启动或恢复拉取时，超过该时间窗口的历史消息会被丢弃，单位秒。
+      type: integer
+      required: false
+      default: 90
+      section:
+        en_US: Advanced Settings
+        zh_Hans: 高级配置
+    - name: nickname_lookup_timeout_seconds
+      label:
+        en_US: Nickname Lookup Timeout
+        zh_Hans: 昵称查询超时
+      description:
+        en_US: "Advanced setting. Timeout for customer nickname lookup. Unit: seconds."
+        zh_Hans: 高级配置。客户昵称查询超时时间，单位秒。
+      type: float
+      required: false
+      default: 30.0
+      section:
+        en_US: Advanced Settings
+        zh_Hans: 高级配置
+    - name: retry_max_attempts
+      label:
+        en_US: Retry Attempts
+        zh_Hans: 重试次数
+      description:
+        en_US: Advanced setting. Maximum retry attempts for failed pull/process jobs.
+        zh_Hans: 高级配置。pull/process 失败任务的最大重试次数。
+      type: integer
+      required: false
+      default: 3
+      section:
+        en_US: Advanced Settings
+        zh_Hans: 高级配置
+    - name: retry_backoff_seconds
+      label:
+        en_US: Retry Backoff Seconds
+        zh_Hans: 重试间隔
+      description:
+        en_US: Advanced setting. Comma-separated retry backoff seconds, for example 15,30,45.
+        zh_Hans: 高级配置。逗号分隔的重试间隔秒数，例如 15,30,45。
+      type: string
+      required: false
+      default: "15,30,45"
+      section:
+        en_US: Advanced Settings
+        zh_Hans: 高级配置
+    - name: lock_ttl_seconds
+      label:
+        en_US: Pull Lock Timeout
+        zh_Hans: pull 锁超时
+      description:
+        en_US: Advanced setting. Pull lock TTL in seconds.
+        zh_Hans: 高级配置。pull 锁的超时时间，单位秒。
+      type: integer
+      required: false
+      default: 60
+      section:
+        en_US: Advanced Settings
+        zh_Hans: 高级配置
 execution:
   python:
     path: ./wecomcs.py

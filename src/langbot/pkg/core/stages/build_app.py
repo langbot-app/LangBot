@@ -30,6 +30,7 @@ from ...api.http.service import webhook as webhook_service
 from ...api.http.service import monitoring as monitoring_service
 from ...discover import engine as discover_engine
 from ...storage import mgr as storagemgr
+from ...cache.redis_mgr import RedisManager
 from ...utils import logcache
 from ...vector import mgr as vectordb_mgr
 from .. import taskmgr
@@ -98,6 +99,10 @@ class BuildAppStage(stage.BootingStage):
         storage_mgr_inst = storagemgr.StorageMgr(ap)
         await storage_mgr_inst.initialize()
         ap.storage_mgr = storage_mgr_inst
+
+        redis_mgr_inst = RedisManager(ap)
+        await redis_mgr_inst.initialize()
+        ap.redis_mgr = redis_mgr_inst
 
         persistence_mgr_inst = persistencemgr.PersistenceManager(ap)
         ap.persistence_mgr = persistence_mgr_inst

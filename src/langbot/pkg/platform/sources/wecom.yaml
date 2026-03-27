@@ -39,13 +39,6 @@ spec:
       type: string
       required: true
       default: ""
-    - name: contacts_secret
-      label:
-        en_US: Contacts Secret
-        zh_Hans: 通讯录密钥
-      type: string
-      required: true
-      default: ""
     - name: api_base_url
       label:
         en_US: API Base URL

@@ -1,0 +1,139 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: wecom_kf_app
+  label:
+    en_US: WeComKFApp
+    zh_Hans: 企微应用授权管理微信客服
+  description:
+    en_US: WeCom app managed customer service adapter
+    zh_Hans: 使用企微应用授权管理微信客服的适配器
+  icon: wecom.png
+spec:
+  config:
+    - name: corpid
+      label:
+        en_US: Corpid
+        zh_Hans: 企业ID（Corpid）
+      type: string
+      required: true
+      default: ""
+    - name: secret
+      label:
+        en_US: Secret
+        zh_Hans: 应用密钥（Secret）
+      description:
+        en_US: "The secret of the WeCom app that has permission to call WeCom customer service APIs."
+        zh_Hans: 可调用微信客服接口的企微应用 Secret。需先在微信客服后台配置为可调用接口的应用。
+      type: string
+      required: true
+      default: ""
+    - name: token
+      label:
+        en_US: Token
+        zh_Hans: 回调令牌（Token）
+      type: string
+      required: true
+      default: ""
+    - name: EncodingAESKey
+      label:
+        en_US: EncodingAESKey
+        zh_Hans: 回调加解密密钥（EncodingAESKey）
+      type: string
+      required: true
+      default: ""
+    - name: api_base_url
+      label:
+        en_US: API Base URL
+        zh_Hans: API 基础 URL
+      description:
+        en_US: API Base URL, used for accessing the WeCom API. If you are deploying in an internal network environment and accessing the WeCom Customer Service API through a reverse proxy, please fill in this item according to the documentation.
+        zh_Hans: 可选，若您部署在内网环境并通过反向代理访问企业微信 API，可根据文档修改此项。
+      type: string
+      required: false
+      default: "https://qyapi.weixin.qq.com/cgi-bin"
+      section:
+        en_US: Access Requirements
+        zh_Hans: 接入要求
+    - name: app_visibility_notice
+      label:
+        en_US: App Visibility Notice
+        zh_Hans: 应用可见范围说明
+      description:
+        en_US: "The customer service account must be API-managed, and the assigned servicer must be within the app visibility scope, otherwise errors such as 60030 may occur."
+        zh_Hans: 客服账号需已开启 API 管理，且接待人员必须在应用可见范围内，否则可能返回 60030 等错误。
+      type: string
+      required: false
+      default: "无需填写，仅作说明"
+      section:
+        en_US: Access Requirements
+        zh_Hans: 接入要求
+    - name: history_message_drop_threshold_seconds
+      label:
+        en_US: History Message Window
+        zh_Hans: 历史消息过滤时间窗口
+      description:
+        en_US: "Advanced setting. During bootstrap or recovery pull, messages older than this window will be dropped. Unit: seconds."
+        zh_Hans: 高级配置。冷启动或恢复拉取时，超过该时间窗口的历史消息会被丢弃，单位秒。
+      type: integer
+      required: false
+      default: 90
+      section:
+        en_US: Advanced Settings
+        zh_Hans: 高级配置
+    - name: nickname_lookup_timeout_seconds
+      label:
+        en_US: Nickname Lookup Timeout
+        zh_Hans: 昵称查询超时
+      description:
+        en_US: "Advanced setting. Timeout for customer nickname lookup. Unit: seconds."
+        zh_Hans: 高级配置。客户昵称查询超时时间，单位秒。
+      type: float
+      required: false
+      default: 30.0
+      section:
+        en_US: Advanced Settings
+        zh_Hans: 高级配置
+    - name: retry_max_attempts
+      label:
+        en_US: Retry Attempts
+        zh_Hans: 重试次数
+      description:
+        en_US: Advanced setting. Maximum retry attempts for failed pull/process jobs.
+        zh_Hans: 高级配置。pull/process 失败任务的最大重试次数。
+      type: integer
+      required: false
+      default: 3
+      section:
+        en_US: Advanced Settings
+        zh_Hans: 高级配置
+    - name: retry_backoff_seconds
+      label:
+        en_US: Retry Backoff Seconds
+        zh_Hans: 重试间隔
+      description:
+        en_US: Advanced setting. Comma-separated retry backoff seconds, for example 15,30,45.
+        zh_Hans: 高级配置。逗号分隔的重试间隔秒数，例如 15,30,45。
+      type: string
+      required: false
+      default: "15,30,45"
+      section:
+        en_US: Advanced Settings
+        zh_Hans: 高级配置
+    - name: lock_ttl_seconds
+      label:
+        en_US: Pull Lock Timeout
+        zh_Hans: pull 锁超时
+      description:
+        en_US: Advanced setting. Pull lock TTL in seconds.
+        zh_Hans: 高级配置。pull 锁的超时时间，单位秒。
+      type: integer
+      required: false
+      default: 60
+      section:
+        en_US: Advanced Settings
+        zh_Hans: 高级配置
+execution:
+  python:
+    path: ./wecom_kf_app.py
+    attr: WecomKFAppAdapter

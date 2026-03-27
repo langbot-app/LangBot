@@ -18,14 +18,18 @@ class SessionManager:
     def __init__(self, ap: app.Application):
         self.ap = ap
         self.session_list = []
+        self._session_keys: dict[int, tuple[str | None, provider_session.LauncherTypes, int | str]] = {}
 
     async def initialize(self):
         pass
 
     async def get_session(self, query: pipeline_query.Query) -> provider_session.Session:
         """获取会话"""
+        query_key = (query.bot_uuid, query.launcher_type, query.launcher_id)
+
         for session in self.session_list:
-            if query.launcher_type == session.launcher_type and query.launcher_id == session.launcher_id:
+            session_key = self._session_keys.get(id(session))
+            if session_key == query_key:
                 return session
 
         session_concurrency = self.ap.instance_config.data['concurrency']['session']
@@ -37,6 +41,8 @@ class SessionManager:
         )
         session._semaphore = asyncio.Semaphore(session_concurrency)
         self.session_list.append(session)
+        # Keep the bot dimension outside the shared plugin SDK Session model.
+        self._session_keys[id(session)] = query_key
         return session
 
     async def get_conversation(
@@ -63,7 +69,11 @@ class SessionManager:
             messages=prompt_messages,
         )
 
-        if session.using_conversation is None or session.using_conversation.pipeline_uuid != pipeline_uuid:
+        if (
+            session.using_conversation is None
+            or session.using_conversation.pipeline_uuid != pipeline_uuid
+            or session.using_conversation.bot_uuid != bot_uuid
+        ):
             conversation = provider_session.Conversation(
                 prompt=prompt,
                 messages=[],

@@ -4,6 +4,21 @@ version: "3"
 
 services:
 
+  redis:
+    image: redis:7-alpine
+    container_name: langbot_redis
+    restart: on-failure
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ./data/redis:/data
+    environment:
+      - TZ=Asia/Shanghai
+    ports:
+      - 6379:6379
+    networks:
+      - langbot_network
+
+
   langbot_plugin_runtime:
     image: rockchin/langbot:latest
     container_name: langbot_plugin_runtime

@@ -2,12 +2,6 @@ import { PluginMarketCardVO } from './PluginMarketCardVO';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
-import {
   Wrench,
   AudioWaveform,
   Hash,
@@ -15,7 +9,6 @@ import {
   ExternalLink,
   Book,
   FileText,
-  Info,
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
@@ -90,13 +83,6 @@ export default function PluginMarketCardComponent({
     Parser: <FileText className="w-4 h-4" />,
   };
 
-  // Plugins that only contain KnowledgeRetriever components are deprecated
-  const isDeprecated = (() => {
-    if (!cardVO.components) return false;
-    const keys = Object.keys(cardVO.components);
-    return keys.length > 0 && keys.every((k) => k === 'KnowledgeRetriever');
-  })();
-
   return (
     <div
       className="w-[100%] h-auto min-h-[8rem] sm:min-h-[9rem] bg-white rounded-[10px] shadow-[0px_0px_4px_0_rgba(0,0,0,0.2)] p-3 sm:p-[1rem] hover:shadow-[0px_3px_6px_0_rgba(0,0,0,0.12)] transition-all duration-200 hover:scale-[1.005] dark:bg-[#1f1f22] relative"
@@ -121,30 +107,6 @@ export default function PluginMarketCardComponent({
                 <div className="text-base sm:text-[1.2rem] text-black dark:text-[#f0f0f0] truncate">
                   {cardVO.label}
                 </div>
-                {isDeprecated && (
-                  <TooltipProvider delayDuration={200}>
-                    <Tooltip>
-                      <TooltipTrigger
-                        asChild
-                        onClick={(e) => e.preventDefault()}
-                      >
-                        <Badge
-                          variant="outline"
-                          className="text-[0.6rem] px-1.5 py-0 h-4 flex-shrink-0 border-red-400 text-red-500 dark:border-red-500 dark:text-red-400 gap-0.5 cursor-help"
-                        >
-                          {t('market.deprecated')}
-                          <Info className="w-2.5 h-2.5" />
-                        </Badge>
-                      </TooltipTrigger>
-                      <TooltipContent
-                        side="top"
-                        className="max-w-[240px] text-xs"
-                      >
-                        {t('market.deprecatedTooltip')}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
               </div>
             </div>
 

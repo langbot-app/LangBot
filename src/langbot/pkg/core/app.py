@@ -34,6 +34,7 @@ from ..api.http.service import monitoring as monitoring_service
 
 from ..discover import engine as discover_engine
 from ..storage import mgr as storagemgr
+from ..cache.redis_mgr import RedisManager
 from ..utils import logcache
 from . import taskmgr
 from . import entities as core_entities
@@ -122,6 +123,8 @@ class Application:
     log_cache: logcache.LogCache = None
 
     storage_mgr: storagemgr.StorageMgr = None
+
+    redis_mgr: RedisManager = None
 
     # ========= HTTP Services =========
 
