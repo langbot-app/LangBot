@@ -83,6 +83,9 @@ stages:
           zh_Hans: 除非您了解消息结构，否则请只使用 system 单提示词
         type: prompt-editor
         required: true
+        default:
+          - role: system
+            content: "You are a helpful assistant."
       - name: knowledge-bases
         label:
           en_US: Knowledge Bases

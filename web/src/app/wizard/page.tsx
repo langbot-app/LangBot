@@ -840,8 +840,45 @@ function StepAIEngine({
     return r ? extractI18nObject(r.label) : (selected ?? '');
   }, [runnerOptions, selected]);
 
+  // Before any runner is selected: centered grid layout
+  if (!selected) {
+    return (
+      <div className="space-y-6 max-w-4xl mx-auto">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold">
+            {t('wizard.aiEngine.title')}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            {t('wizard.aiEngine.description')}
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {runnerOptions.map((opt) => (
+            <Card
+              key={opt.name}
+              className="cursor-pointer transition-all hover:shadow-md hover:border-primary/50"
+              onClick={() => onSelect(opt.name)}
+            >
+              <CardHeader className="flex flex-row items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <CardTitle className="text-base">
+                    {extractI18nObject(opt.label)}
+                  </CardTitle>
+                  <CardDescription className="mt-1 text-xs font-mono text-muted-foreground">
+                    {opt.name}
+                  </CardDescription>
+                </div>
+              </CardHeader>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // After a runner is selected: left-right split layout
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="max-w-6xl mx-auto space-y-4">
       <div className="text-center">
         <h2 className="text-xl font-semibold">{t('wizard.aiEngine.title')}</h2>
         <p className="text-sm text-muted-foreground mt-1">
@@ -849,81 +886,83 @@ function StepAIEngine({
         </p>
       </div>
 
-      {/* Runner selection cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {runnerOptions.map((opt) => (
-          <Card
-            key={opt.name}
-            className={cn(
-              'cursor-pointer transition-all hover:shadow-md',
-              selected === opt.name
-                ? 'ring-2 ring-primary shadow-md'
-                : 'hover:border-primary/50',
-            )}
-            onClick={() => onSelect(opt.name)}
-          >
-            <CardHeader className="flex flex-row items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <CardTitle className="text-base">
-                  {extractI18nObject(opt.label)}
-                </CardTitle>
-                <CardDescription className="mt-1 text-xs font-mono text-muted-foreground">
-                  {opt.name}
-                </CardDescription>
-              </div>
-              {selected === opt.name && (
-                <div className="shrink-0">
-                  <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                    <Check className="w-3 h-3 text-primary-foreground" />
-                  </div>
-                </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+        {/* Left: runner list */}
+        <div className="space-y-3">
+          {runnerOptions.map((opt) => (
+            <Card
+              key={opt.name}
+              className={cn(
+                'cursor-pointer transition-all hover:shadow-md',
+                selected === opt.name
+                  ? 'ring-2 ring-primary shadow-md'
+                  : 'hover:border-primary/50',
               )}
-            </CardHeader>
-          </Card>
-        ))}
-      </div>
+              onClick={() => onSelect(opt.name)}
+            >
+              <CardHeader className="flex flex-row items-center gap-3 py-3 px-4">
+                <div className="min-w-0 flex-1">
+                  <CardTitle className="text-sm">
+                    {extractI18nObject(opt.label)}
+                  </CardTitle>
+                  <CardDescription className="text-xs font-mono text-muted-foreground">
+                    {opt.name}
+                  </CardDescription>
+                </div>
+                {selected === opt.name && (
+                  <div className="shrink-0">
+                    <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                      <Check className="w-3 h-3 text-primary-foreground" />
+                    </div>
+                  </div>
+                )}
+              </CardHeader>
+            </Card>
+          ))}
 
-      {/* Space promotion banner */}
-      {selected === 'local-agent' && isLocalAccount && (
-        <div className="mt-2">
-          <div className="relative rounded-lg p-[2px] bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500">
-            <div className="rounded-[calc(0.5rem-2px)] bg-background p-4 flex flex-col sm:flex-row items-center gap-4">
-              <Sparkles className="w-8 h-8 text-purple-500 shrink-0" />
-              <div className="flex-1 text-center sm:text-left">
-                <p className="text-sm font-medium">
-                  {t('wizard.spaceBanner.message')}
-                </p>
+          {/* Space promotion banner */}
+          {selected === 'local-agent' && isLocalAccount && (
+            <div className="animate-in fade-in slide-in-from-left-2 duration-300">
+              <div className="relative rounded-lg p-[2px] bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500">
+                <div className="rounded-[calc(0.5rem-2px)] bg-background p-3 flex flex-col items-center gap-2 text-center">
+                  <Sparkles className="w-6 h-6 text-purple-500 shrink-0" />
+                  <p className="text-xs font-medium">
+                    {t('wizard.spaceBanner.message')}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onSpaceAuth}
+                    className="w-full"
+                  >
+                    {t('wizard.spaceBanner.action')}
+                  </Button>
+                </div>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onSpaceAuth}
-                className="shrink-0"
-              >
-                {t('wizard.spaceBanner.action')}
-              </Button>
             </div>
-          </div>
+          )}
         </div>
-      )}
 
-      {/* Runner configuration */}
-      {selected && runnerConfigItems.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              {t('wizard.config.aiConfig', { engine: runnerLabel })}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <DynamicFormComponent
-              itemConfigList={runnerConfigItems}
-              initialValues={runnerConfigValues as Record<string, object>}
-              onSubmit={stableRunnerConfigCb}
-            />
-          </CardContent>
-        </Card>
-      )}
+        {/* Right: runner configuration */}
+        <div className="animate-in fade-in slide-in-from-right-2 duration-300">
+          {runnerConfigItems.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  {t('wizard.config.aiConfig', { engine: runnerLabel })}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <DynamicFormComponent
+                  itemConfigList={runnerConfigItems}
+                  initialValues={runnerConfigValues as Record<string, object>}
+                  onSubmit={stableRunnerConfigCb}
+                />
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
