@@ -119,6 +119,49 @@ async def test_create_skill_import_preserves_existing_skill_content_when_form_fi
     assert content.endswith('Original instructions')
 
 
+@pytest.mark.asyncio
+async def test_create_skill_reuses_existing_managed_directory_without_copying(tmp_path, monkeypatch):
+    managed_root = tmp_path / 'data' / 'skills' / 'demo-repo' / 'skills' / 'nested-skill'
+    managed_root.mkdir(parents=True)
+    _create_skill_file(
+        managed_root / 'SKILL.md',
+        name='nested-skill',
+        display_name='Nested Skill',
+        description='Already managed',
+        body='Managed instructions',
+    )
+
+    service = SkillService(SimpleNamespace(skill_mgr=SimpleNamespace(reload_skills=AsyncMock())))
+    service.get_skill_by_name = AsyncMock(return_value=None)
+    service.get_skill = AsyncMock(
+        return_value={
+            'name': 'nested-skill',
+            'package_root': str(managed_root.resolve()),
+            'description': 'Already managed',
+            'instructions': 'Managed instructions',
+            'auto_activate': True,
+        }
+    )
+
+    monkeypatch.chdir(tmp_path)
+
+    await service.create_skill(
+        {
+            'name': 'nested-skill',
+            'package_root': str(managed_root),
+            'display_name': '',
+            'description': '',
+            'instructions': '',
+        }
+    )
+
+    copied_root = tmp_path / 'data' / 'skills' / 'nested-skill'
+    assert not copied_root.exists()
+    content = (managed_root / 'SKILL.md').read_text(encoding='utf-8')
+    assert 'display_name: Nested Skill' in content
+    assert content.endswith('Managed instructions')
+
+
 def _build_skill_archive() -> bytes:
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, 'w') as archive:

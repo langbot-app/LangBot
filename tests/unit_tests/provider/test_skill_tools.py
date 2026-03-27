@@ -232,272 +232,107 @@ class TestSkillPathHelpers:
 
 class TestSkillAuthoringToolLoader:
     @pytest.mark.asyncio
-    async def test_list_skills_returns_current_summary_shape(self):
+    async def test_import_skill_from_directory_uses_workspace_path_and_service_import(self):
         from langbot.pkg.provider.tools.loaders.skill_authoring import (
-            LIST_SKILLS_TOOL_NAME,
+            IMPORT_SKILL_FROM_DIRECTORY_TOOL_NAME,
             SkillAuthoringToolLoader,
         )
 
         ap = _make_ap()
+        ap.box_service = SimpleNamespace(default_host_workspace='/tmp/langbot-workspace')
         ap.skill_service = SimpleNamespace(
-            list_skills=AsyncMock(
-                return_value=[
-                    _make_skill_data(name='alpha', instructions='Alpha instructions', updated_at='2026-03-23T00:00:00Z')
-                ]
-            )
-        )
-        ap.pipeline_service = SimpleNamespace()
-
-        loader = SkillAuthoringToolLoader(ap)
-        await loader.initialize()
-
-        result = await loader.invoke_tool(LIST_SKILLS_TOOL_NAME, {}, SimpleNamespace(pipeline_uuid='pipe-1'))
-
-        assert result['skills'] == [
-            {
-                'name': 'alpha',
-                'display_name': 'alpha',
-                'description': 'Description of alpha',
-                'auto_activate': True,
-                'updated_at': '2026-03-23T00:00:00Z',
-            }
-        ]
-
-    @pytest.mark.asyncio
-    async def test_create_skill_calls_service_and_returns_detail(self):
-        from langbot.pkg.provider.tools.loaders.skill_authoring import (
-            CREATE_SKILL_TOOL_NAME,
-            SkillAuthoringToolLoader,
-        )
-
-        created_skill = _make_skill_data(
-            name='writer',
-            description='Writes release notes',
-            instructions='Do the release notes work.',
-            display_name='Release Writer',
-        )
-
-        ap = _make_ap()
-        ap.skill_service = SimpleNamespace(create_skill=AsyncMock(return_value=created_skill))
-        ap.pipeline_service = SimpleNamespace()
-
-        loader = SkillAuthoringToolLoader(ap)
-        await loader.initialize()
-
-        result = await loader.invoke_tool(
-            CREATE_SKILL_TOOL_NAME,
-            {
-                'name': 'writer',
-                'display_name': 'Release Writer',
-                'description': 'Writes release notes',
-                'instructions': 'Do the release notes work.',
-                'package_root': '/tmp/imported-skill',
-                'auto_activate': False,
-            },
-            SimpleNamespace(pipeline_uuid='pipe-1'),
-        )
-
-        assert result['skill']['name'] == 'writer'
-        payload = ap.skill_service.create_skill.await_args.args[0]
-        assert payload == {
-            'name': 'writer',
-            'display_name': 'Release Writer',
-            'description': 'Writes release notes',
-            'instructions': 'Do the release notes work.',
-            'package_root': '/tmp/imported-skill',
-            'auto_activate': False,
-        }
-
-    @pytest.mark.asyncio
-    async def test_update_skill_uses_name_based_lookup(self):
-        from langbot.pkg.provider.tools.loaders.skill_authoring import (
-            SkillAuthoringToolLoader,
-            UPDATE_SKILL_TOOL_NAME,
-        )
-
-        ap = _make_ap()
-        ap.skill_service = SimpleNamespace(
-            get_skill=AsyncMock(return_value=_make_skill_data(name='writer', instructions='Old instructions')),
-            update_skill=AsyncMock(return_value=_make_skill_data(name='writer', instructions='New instructions')),
-        )
-        ap.pipeline_service = SimpleNamespace()
-
-        loader = SkillAuthoringToolLoader(ap)
-        await loader.initialize()
-
-        result = await loader.invoke_tool(
-            UPDATE_SKILL_TOOL_NAME,
-            {
-                'skill_name': 'writer',
-                'updates': {'instructions': 'New instructions'},
-            },
-            SimpleNamespace(pipeline_uuid='pipe-1'),
-        )
-
-        assert result['skill']['instructions'] == 'New instructions'
-        ap.skill_service.update_skill.assert_awaited_once_with('writer', {'instructions': 'New instructions'})
-
-    @pytest.mark.asyncio
-    async def test_get_pipeline_skills_defaults_to_current_query_pipeline(self):
-        from langbot.pkg.provider.tools.loaders.skill_authoring import (
-            GET_PIPELINE_SKILLS_TOOL_NAME,
-            SkillAuthoringToolLoader,
-        )
-
-        ap = _make_ap()
-        ap.skill_service = SimpleNamespace(
-            list_skills=AsyncMock(
-                return_value=[
-                    _make_skill_data(name='alpha'),
-                    _make_skill_data(name='beta'),
-                ]
-            )
-        )
-        ap.pipeline_service = SimpleNamespace(
-            get_pipeline=AsyncMock(
+            scan_directory=Mock(
                 return_value={
-                    'uuid': 'pipe-1',
-                    'extensions_preferences': {
-                        'enable_all_skills': False,
-                        'skills': ['alpha'],
-                    },
+                    'name': 'cloned-skill',
+                    'display_name': 'Cloned Skill',
+                    'description': 'Imported from clone',
+                    'instructions': 'Do work',
+                    'auto_activate': True,
                 }
+            ),
+            create_skill=AsyncMock(return_value=_make_skill_data(name='cloned-skill', package_root='/repo/root')),
+            reload_skills=AsyncMock(),
+            list_skills=AsyncMock(return_value=[]),
+        )
+
+        loader = SkillAuthoringToolLoader(ap)
+        await loader.initialize()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ap.box_service.default_host_workspace = tmpdir
+            repo_dir = os.path.join(tmpdir, 'repos', 'cloned-skill')
+            os.makedirs(repo_dir)
+
+            result = await loader.invoke_tool(
+                IMPORT_SKILL_FROM_DIRECTORY_TOOL_NAME,
+                {'path': '/workspace/repos/cloned-skill'},
+                SimpleNamespace(),
             )
+
+        ap.skill_service.scan_directory.assert_called_once_with(os.path.realpath(repo_dir))
+        ap.skill_service.create_skill.assert_awaited_once_with(
+            {
+                'name': 'cloned-skill',
+                'display_name': 'Cloned Skill',
+                'description': 'Imported from clone',
+                'instructions': 'Do work',
+                'package_root': os.path.realpath(repo_dir),
+                'auto_activate': True,
+            }
         )
-
-        loader = SkillAuthoringToolLoader(ap)
-        await loader.initialize()
-
-        result = await loader.invoke_tool(
-            GET_PIPELINE_SKILLS_TOOL_NAME,
-            {},
-            SimpleNamespace(pipeline_uuid='pipe-1'),
-        )
-
-        assert result['pipeline_uuid'] == 'pipe-1'
-        assert result['enable_all_skills'] is False
-        assert result['bound_skill_names'] == ['alpha']
+        assert result['imported'] is True
+        assert result['source_path'] == '/workspace/repos/cloned-skill'
 
     @pytest.mark.asyncio
-    async def test_update_pipeline_skills_preserves_other_extension_settings(self):
+    async def test_import_skill_from_directory_rejects_workspace_escape(self):
         from langbot.pkg.provider.tools.loaders.skill_authoring import (
+            IMPORT_SKILL_FROM_DIRECTORY_TOOL_NAME,
             SkillAuthoringToolLoader,
-            UPDATE_PIPELINE_SKILLS_TOOL_NAME,
         )
-
-        original_pipeline = {
-            'uuid': 'pipe-1',
-            'extensions_preferences': {
-                'enable_all_plugins': False,
-                'enable_all_mcp_servers': False,
-                'enable_all_skills': False,
-                'plugins': [{'name': 'plugin-a'}],
-                'mcp_servers': ['mcp-a'],
-                'skills': ['old-skill'],
-            },
-        }
-        updated_pipeline = {
-            'uuid': 'pipe-1',
-            'extensions_preferences': {
-                'enable_all_plugins': False,
-                'enable_all_mcp_servers': False,
-                'enable_all_skills': False,
-                'plugins': [{'name': 'plugin-a'}],
-                'mcp_servers': ['mcp-a'],
-                'skills': ['new-skill'],
-            },
-        }
 
         ap = _make_ap()
+        ap.box_service = SimpleNamespace(default_host_workspace='/tmp/langbot-workspace')
         ap.skill_service = SimpleNamespace(
-            get_skill=AsyncMock(return_value={'name': 'new-skill'}),
-            list_skills=AsyncMock(return_value=[_make_skill_data(name='new-skill')]),
-        )
-        ap.pipeline_service = SimpleNamespace(
-            get_pipeline=AsyncMock(side_effect=[original_pipeline, updated_pipeline]),
-            update_pipeline_extensions=AsyncMock(),
+            scan_directory=Mock(),
+            create_skill=AsyncMock(),
+            reload_skills=AsyncMock(),
+            list_skills=AsyncMock(return_value=[]),
         )
 
         loader = SkillAuthoringToolLoader(ap)
         await loader.initialize()
 
-        result = await loader.invoke_tool(
-            UPDATE_PIPELINE_SKILLS_TOOL_NAME,
-            {
-                'bound_skill_names': ['new-skill'],
-                'enable_all_skills': False,
-            },
-            SimpleNamespace(pipeline_uuid='pipe-1'),
-        )
-
-        ap.pipeline_service.update_pipeline_extensions.assert_awaited_once_with(
-            pipeline_uuid='pipe-1',
-            bound_plugins=[{'name': 'plugin-a'}],
-            bound_mcp_servers=['mcp-a'],
-            enable_all_plugins=False,
-            enable_all_mcp_servers=False,
-            bound_skills=['new-skill'],
-            enable_all_skills=False,
-        )
-        assert result['bound_skill_names'] == ['new-skill']
+        with pytest.raises(ValueError, match='escapes the workspace boundary'):
+            await loader.invoke_tool(
+                IMPORT_SKILL_FROM_DIRECTORY_TOOL_NAME,
+                {'path': '/workspace/../../etc'},
+                SimpleNamespace(),
+            )
 
     @pytest.mark.asyncio
-    async def test_skill_file_tools_route_to_skill_service(self):
+    async def test_reload_skills_rescans_filesystem_and_returns_current_names(self):
         from langbot.pkg.provider.tools.loaders.skill_authoring import (
-            SKILL_LIST_FILES_TOOL_NAME,
-            SKILL_READ_FILE_TOOL_NAME,
-            SKILL_WRITE_FILE_TOOL_NAME,
+            RELOAD_SKILLS_TOOL_NAME,
             SkillAuthoringToolLoader,
         )
 
         ap = _make_ap()
         ap.skill_service = SimpleNamespace(
-            get_skill=AsyncMock(return_value=_make_skill_data(name='mood-logger')),
-            list_skill_files=AsyncMock(return_value={'entries': [{'path': 'resources'}]}),
-            read_skill_file=AsyncMock(return_value={'path': 'resources/affinity.py', 'content': 'print("ok")\n'}),
-            write_skill_file=AsyncMock(return_value={'path': 'resources/affinity.py', 'bytes_written': 12}),
+            reload_skills=AsyncMock(),
+            list_skills=AsyncMock(return_value=[_make_skill_data(name='alpha'), _make_skill_data(name='beta')]),
         )
-        ap.pipeline_service = SimpleNamespace()
-        ap.skill_mgr = SimpleNamespace(get_skill_runtime_data=Mock(return_value={'instructions': 'x'}))
 
         loader = SkillAuthoringToolLoader(ap)
         await loader.initialize()
 
-        listed = await loader.invoke_tool(
-            SKILL_LIST_FILES_TOOL_NAME,
-            {'skill_name': 'mood-logger', 'path': 'resources'},
-            SimpleNamespace(pipeline_uuid='pipe-1'),
-        )
-        read_back = await loader.invoke_tool(
-            SKILL_READ_FILE_TOOL_NAME,
-            {'skill_name': 'mood-logger', 'path': 'resources/affinity.py'},
-            SimpleNamespace(pipeline_uuid='pipe-1'),
-        )
-        written = await loader.invoke_tool(
-            SKILL_WRITE_FILE_TOOL_NAME,
-            {
-                'skill_name': 'mood-logger',
-                'path': 'resources/affinity.py',
-                'content': 'print("ok")\n',
-            },
-            SimpleNamespace(pipeline_uuid='pipe-1'),
-        )
+        result = await loader.invoke_tool(RELOAD_SKILLS_TOOL_NAME, {}, SimpleNamespace())
 
-        assert listed['entries'] == [{'path': 'resources'}]
-        assert read_back['path'] == 'resources/affinity.py'
-        assert written['bytes_written'] == 12
-        ap.skill_service.list_skill_files.assert_awaited_once_with(
-            'mood-logger',
-            path='resources',
-            include_hidden=False,
-            max_entries=200,
-        )
-        ap.skill_service.read_skill_file.assert_awaited_once_with('mood-logger', 'resources/affinity.py')
-        ap.skill_service.write_skill_file.assert_awaited_once_with(
-            'mood-logger',
-            'resources/affinity.py',
-            'print("ok")\n',
-        )
+        assert result == {
+            'reloaded': True,
+            'skill_names': ['alpha', 'beta'],
+            'count': 2,
+        }
+        ap.skill_service.reload_skills.assert_awaited_once_with()
 
 
 class TestNativeToolLoaderSkillPaths:

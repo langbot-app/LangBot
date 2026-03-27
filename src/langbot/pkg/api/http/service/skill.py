@@ -93,9 +93,15 @@ class SkillService:
 
         package_root = self._normalize_package_root(data.get('package_root', ''))
         managed_root = self._managed_skill_path(name)
+        target_root = managed_root
         imported_skill_data: dict | None = None
 
-        if package_root and package_root != managed_root:
+        if package_root and self._managed_install_root_for_package(package_root):
+            if not os.path.isdir(package_root):
+                raise ValueError(f'Directory does not exist: {package_root}')
+            target_root = package_root
+            imported_skill_data = self._read_skill_package(target_root)
+        elif package_root and package_root != managed_root:
             if not os.path.isdir(package_root):
                 raise ValueError(f'Directory does not exist: {package_root}')
             if os.path.exists(managed_root):
@@ -113,7 +119,7 @@ class SkillService:
             'auto_activate': self._resolve_create_bool(data, 'auto_activate', imported_skill_data, default=True),
         }
         instructions = self._resolve_create_field(data, 'instructions', imported_skill_data, default='')
-        self._write_skill_md(managed_root, metadata, instructions)
+        self._write_skill_md(target_root, metadata, instructions)
 
         await self._reload_skills()
         created = await self.get_skill(name)
@@ -292,6 +298,10 @@ class SkillService:
         if not installed:
             installed = self._serialize_skill(scanned)
         return installed
+
+    async def reload_skills(self) -> list[dict]:
+        await self._reload_skills()
+        return await self.list_skills()
 
     def scan_directory(self, path: str) -> dict:
         if not os.path.isdir(path):

@@ -185,6 +185,9 @@ If multiple skills are needed, include multiple activation markers at the beginn
 After activation, the selected skills' detailed instructions will be loaded for you to follow.
 Use the first activated skill as the primary skill. Use any additional activated skills as supporting guidance.
 If you need to inspect a visible skill before activation, use `read` on `/workspace/.skills/<skill-name>/SKILL.md` or other files under that path.
+When creating a new skill package, first prepare it under `/workspace` with the standard `exec`, `read`, `write`, and `edit` tools.
+Then use `import_skill_from_directory` to import that prepared directory into the managed skills store.
+Use `reload_skills` when you need LangBot to rescan managed skills after filesystem changes.
 If no skill matches, respond normally without activation.
 """
 
@@ -224,6 +227,7 @@ If no skill matches, respond normally without activation.
 The activated skill package is available through the standard runtime tools under `/workspace/.skills/{skill_name}`.
 Use `read` to inspect files there. Use `exec` with `workdir` set to `/workspace/.skills/{skill_name}` to run commands in that package.
 Use `write` and `edit` on that path when the instructions require updating files.
+Do not create a new skill by writing directly into `/workspace/.skills/...`; new skills should be prepared under `/workspace`, then imported with `import_skill_from_directory`.
 
 </activated_skill>
 
@@ -252,7 +256,7 @@ Respond to the user based on the skill's guidance.
             role = 'primary' if skill_name == activated_skill_names[0] else 'auxiliary'
             blocks.append(
                 f"""
-<activated_skill name=\"{skill_name}\" role=\"{role}\">\n\n## Instructions\n{instructions}\n\n## Runtime Context\nUse the standard `exec`, `read`, `write`, and `edit` tools for activated skills.\nEach activated skill package is available under `/workspace/.skills/<skill-name>`.\nFor a given skill, set `exec.workdir` to `/workspace/.skills/<skill-name>` and use that prefix in file tool paths.\n\n</activated_skill>
+<activated_skill name=\"{skill_name}\" role=\"{role}\">\n\n## Instructions\n{instructions}\n\n## Runtime Context\nUse the standard `exec`, `read`, `write`, and `edit` tools for activated skills.\nEach activated skill package is available under `/workspace/.skills/<skill-name>`.\nFor a given skill, set `exec.workdir` to `/workspace/.skills/<skill-name>` and use that prefix in file tool paths.\nDo not create a new skill under `/workspace/.skills/...`; prepare new skill directories under `/workspace`, then call `import_skill_from_directory`.\n\n</activated_skill>
 """.strip()
             )
         if not blocks:

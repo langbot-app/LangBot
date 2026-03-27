@@ -232,7 +232,8 @@ class NativeToolLoader(loader.ToolLoader):
                 'Run shell commands in an isolated execution environment. '
                 'Use this tool for bash commands, Python execution, and exact calculations over '
                 'user-provided data. Activated skill packages are addressable under '
-                '/workspace/.skills/<skill-name>; when running inside one, set workdir to that path.'
+                '/workspace/.skills/<skill-name>; when running inside one, set workdir to that path. '
+                'To create a new skill package, prepare it under /workspace first, then use import_skill_from_directory.'
             ),
             parameters={
                 'type': 'object',
@@ -297,7 +298,8 @@ class NativeToolLoader(loader.ToolLoader):
             human_desc='Write a file to the workspace',
             description=(
                 'Create or overwrite a file at the given path under /workspace with the provided content. '
-                'Activated skill packages can be modified through /workspace/.skills/<skill-name>/... .'
+                'Activated skill packages can be modified through /workspace/.skills/<skill-name>/... . '
+                'For new skills, write files under /workspace and then call import_skill_from_directory.'
             ),
             parameters={
                 'type': 'object',
@@ -324,7 +326,8 @@ class NativeToolLoader(loader.ToolLoader):
             description=(
                 'Perform an exact string replacement in a file under /workspace. '
                 'The old_string must appear exactly once in the file. Activated skill packages '
-                'can be edited through /workspace/.skills/<skill-name>/... .'
+                'can be edited through /workspace/.skills/<skill-name>/... . '
+                'For new skills, edit files under /workspace and then call import_skill_from_directory.'
             ),
             parameters={
                 'type': 'object',
