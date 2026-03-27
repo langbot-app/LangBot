@@ -16,6 +16,30 @@ import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
+/**
+ * Resolve the value referenced by a `show_if.field` string.
+ *
+ * Fields prefixed with `__system.` are looked up in the caller-supplied
+ * `systemContext` dictionary (e.g. `__system.is_wizard` → `systemContext.is_wizard`).
+ * All other field names are resolved from the live form values first, then
+ * fall back to `externalDependentValues`.
+ */
+function resolveShowIfValue(
+  field: string,
+  watchedValues: Record<string, unknown>,
+  externalDependentValues?: Record<string, unknown>,
+  systemContext?: Record<string, unknown>,
+): unknown {
+  if (field.startsWith('__system.')) {
+    const key = field.slice('__system.'.length);
+    return systemContext?.[key];
+  }
+  if (watchedValues[field] !== undefined) {
+    return watchedValues[field];
+  }
+  return externalDependentValues?.[field];
+}
+
 export default function DynamicFormComponent({
   itemConfigList,
   onSubmit,
@@ -23,6 +47,7 @@ export default function DynamicFormComponent({
   onFileUploaded,
   isEditing,
   externalDependentValues,
+  systemContext,
 }: {
   itemConfigList: IDynamicFormItemSchema[];
   onSubmit?: (val: object) => unknown;
@@ -30,6 +55,9 @@ export default function DynamicFormComponent({
   onFileUploaded?: (fileKey: string) => void;
   isEditing?: boolean;
   externalDependentValues?: Record<string, unknown>;
+  /** Extra variables accessible via the `__system.*` namespace in show_if conditions.
+   *  e.g. `{ is_wizard: true }` makes `show_if: { field: "__system.is_wizard", ... }` work. */
+  systemContext?: Record<string, unknown>;
 }) {
   const isInitialMount = useRef(true);
   const previousInitialValues = useRef(initialValues);
@@ -248,14 +276,12 @@ export default function DynamicFormComponent({
       <div className="space-y-4">
         {itemConfigList.map((config) => {
           if (config.show_if) {
-            const dependValue =
-              watchedValues[
-                config.show_if.field as keyof typeof watchedValues
-              ] !== undefined
-                ? watchedValues[
-                    config.show_if.field as keyof typeof watchedValues
-                  ]
-                : externalDependentValues?.[config.show_if.field];
+            const dependValue = resolveShowIfValue(
+              config.show_if.field,
+              watchedValues as Record<string, unknown>,
+              externalDependentValues,
+              systemContext,
+            );
 
             if (
               config.show_if.operator === 'eq' &&

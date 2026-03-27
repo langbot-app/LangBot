@@ -337,7 +337,6 @@ export default function WizardPage() {
         enable: true,
       });
       setBotSaved(true);
-      toast.success(t('wizard.botSaveSuccess'));
     } catch (err) {
       const apiErr = err as { msg?: string };
       toast.error(
@@ -787,6 +786,7 @@ function StepBotConfig({
                   itemConfigList={adapterConfigItems}
                   initialValues={adapterConfigValues as Record<string, object>}
                   onSubmit={stableAdapterConfigCb}
+                  systemContext={{ is_wizard: true }}
                 />
               </CardContent>
             </Card>
@@ -998,6 +998,7 @@ function StepAIEngine({
                     itemConfigList={runnerConfigItems}
                     initialValues={runnerConfigValues as Record<string, object>}
                     onSubmit={stableRunnerConfigCb}
+                    systemContext={{ is_wizard: true }}
                   />
                 </CardContent>
               </Card>

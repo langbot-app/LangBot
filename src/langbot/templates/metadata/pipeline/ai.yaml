@@ -74,6 +74,10 @@ stages:
         type: integer
         required: true
         default: 10
+        show_if:
+          field: __system.is_wizard
+          operator: neq
+          value: true
       - name: prompt
         label:
           en_US: Prompt
@@ -96,6 +100,10 @@ stages:
         type: knowledge-base-multi-selector
         required: false
         default: []
+        show_if:
+          field: __system.is_wizard
+          operator: neq
+          value: true
   - name: tbox-app-api
     label:
       en_US: Tbox App API
