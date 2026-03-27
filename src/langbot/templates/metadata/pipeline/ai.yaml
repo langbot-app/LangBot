@@ -110,12 +110,14 @@ stages:
           zh_Hans: API 密钥
         type: string
         required: true
+        default: ''
       - name: app-id
         label:
           en_US: App ID
           zh_Hans: 应用 ID
         type: string
         required: true
+        default: ''
   - name: dify-service-api
     label:
       en_US: Dify Service API
@@ -130,6 +132,7 @@ stages:
           zh_Hans: 基础 URL
         type: string
         required: true
+        default: 'https://api.dify.ai/v1'
       - name: base-prompt
         label:
           en_US: Base PROMPT
@@ -166,6 +169,7 @@ stages:
           zh_Hans: API 密钥
         type: string
         required: true
+        default: 'your-api-key'
   - name: dashscope-app-api
     label:
       en_US: Aliyun Dashscope App API
@@ -196,12 +200,14 @@ stages:
           zh_Hans: API 密钥
         type: string
         required: true
+        default: 'your-api-key'
       - name: app-id
         label:
           en_US: App ID
           zh_Hans: 应用 ID
         type: string
         required: true
+        default: 'your-app-id'
       - name: references_quote
         label:
           en_US: References Quote
@@ -229,6 +235,7 @@ stages:
           zh_Hans: n8n 工作流的 webhook URL
         type: string
         required: true
+        default: 'http://your-n8n-webhook-url'
       - name: auth-type
         label:
           en_US: Authentication Type
@@ -266,6 +273,10 @@ stages:
         type: string
         required: false
         default: ''
+        show_if:
+          field: auth-type
+          operator: eq
+          value: 'basic'
       - name: basic-password
         label:
           en_US: Password
@@ -276,6 +287,10 @@ stages:
         type: string
         required: false
         default: ''
+        show_if:
+          field: auth-type
+          operator: eq
+          value: 'basic'
       - name: jwt-secret
         label:
           en_US: Secret
@@ -286,6 +301,10 @@ stages:
         type: string
         required: false
         default: ''
+        show_if:
+          field: auth-type
+          operator: eq
+          value: 'jwt'
       - name: jwt-algorithm
         label:
           en_US: Algorithm
@@ -296,6 +315,10 @@ stages:
         type: string
         required: false
         default: 'HS256'
+        show_if:
+          field: auth-type
+          operator: eq
+          value: 'jwt'
       - name: header-name
         label:
           en_US: Header Name
@@ -306,6 +329,10 @@ stages:
         type: string
         required: false
         default: ''
+        show_if:
+          field: auth-type
+          operator: eq
+          value: 'header'
       - name: header-value
         label:
           en_US: Header Value
@@ -316,6 +343,10 @@ stages:
         type: string
         required: false
         default: ''
+        show_if:
+          field: auth-type
+          operator: eq
+          value: 'header'
       - name: timeout
         label:
           en_US: Timeout
@@ -353,6 +384,7 @@ stages:
           zh_Hans: Langflow 服务器的基础 URL
         type: string
         required: true
+        default: 'http://localhost:7860'
       - name: api-key
         label:
           en_US: API Key
@@ -362,6 +394,7 @@ stages:
           zh_Hans: Langflow 服务器的 API 密钥
         type: string
         required: true
+        default: 'your-api-key'
       - name: flow-id
         label:
           en_US: Flow ID
@@ -371,6 +404,7 @@ stages:
           zh_Hans: 要运行的流程 ID
         type: string
         required: true
+        default: 'your-flow-id'
       - name: input-type
         label:
           en_US: Input Type
@@ -418,6 +452,7 @@ stages:
           zh_Hans: Coze服务器的 API 密钥
         type: string
         required: true
+        default: ''
       - name: bot-id
         label:
           en_US: Bot ID
@@ -427,6 +462,7 @@ stages:
           zh_Hans: 要运行的机器人 ID
         type: string
         required: true
+        default: ''
       - name: api-base
         label:
           en_US: API Base URL

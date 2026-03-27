@@ -775,10 +775,18 @@ export default function DynamicFormItemComponent({
         </Select>
       );
 
-    case DynamicFormItemType.PROMPT_EDITOR:
+    case DynamicFormItemType.PROMPT_EDITOR: {
+      // Guard: field.value may be undefined when the form resets or
+      // initialValues haven't propagated yet. Fall back to a default
+      // single system-prompt entry to prevent the .map() crash.
+      const promptItems: { role: string; content: string }[] = Array.isArray(
+        field.value,
+      )
+        ? field.value
+        : [{ role: 'system', content: '' }];
       return (
         <div className="space-y-2">
-          {field.value.map(
+          {promptItems.map(
             (item: { role: string; content: string }, index: number) => (
               <div key={index} className="flex gap-2 items-center">
                 {/* 角色选择 */}
@@ -790,7 +798,7 @@ export default function DynamicFormItemComponent({
                   <Select
                     value={item.role}
                     onValueChange={(value) => {
-                      const newValue = [...field.value];
+                      const newValue = [...(field.value ?? promptItems)];
                       newValue[index] = { ...newValue[index], role: value };
                       field.onChange(newValue);
                     }}
@@ -811,7 +819,7 @@ export default function DynamicFormItemComponent({
                   className="w-[300px]"
                   value={item.content}
                   onChange={(e) => {
-                    const newValue = [...field.value];
+                    const newValue = [...(field.value ?? promptItems)];
                     newValue[index] = {
                       ...newValue[index],
                       content: e.target.value,
@@ -825,7 +833,7 @@ export default function DynamicFormItemComponent({
                     type="button"
                     className="p-2 hover:bg-gray-100 rounded"
                     onClick={() => {
-                      const newValue = field.value.filter(
+                      const newValue = (field.value ?? promptItems).filter(
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         (_: any, i: number) => i !== index,
                       );
@@ -849,13 +857,17 @@ export default function DynamicFormItemComponent({
             type="button"
             variant="outline"
             onClick={() => {
-              field.onChange([...field.value, { role: 'user', content: '' }]);
+              field.onChange([
+                ...(field.value ?? promptItems),
+                { role: 'user', content: '' },
+              ]);
             }}
           >
             {t('common.addRound')}
           </Button>
         </div>
       );
+    }
 
     case DynamicFormItemType.FILE:
       return (

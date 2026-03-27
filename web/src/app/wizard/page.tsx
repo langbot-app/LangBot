@@ -362,22 +362,36 @@ export default function WizardPage() {
     setIsSubmitting(true);
 
     try {
-      // 1. Create pipeline
-      const pipelineConfig: Record<string, unknown> = {
+      // 1. Create pipeline (backend fills config from default template)
+      const pipeline: Pipeline = {
+        name: `${botName} Pipeline`,
+        description: botDescription || '',
+        config: {},
+      };
+      const pipelineResp = await httpClient.createPipeline(pipeline);
+
+      // 2. Fetch the created pipeline to get the full default config
+      //    (includes trigger, safety, ai, output sections).
+      //    Then merge only the AI section with the wizard's runner config.
+      const createdPipeline = await httpClient.getPipeline(pipelineResp.uuid);
+      const fullConfig = createdPipeline.pipeline.config;
+
+      const mergedConfig = {
+        ...fullConfig,
         ai: {
+          ...fullConfig.ai,
           runner: { runner: selectedRunner },
           [selectedRunner]: runnerConfig,
         },
       };
 
-      const pipeline: Pipeline = {
+      await httpClient.updatePipeline(pipelineResp.uuid, {
         name: `${botName} Pipeline`,
         description: botDescription || '',
-        config: pipelineConfig,
-      };
-      const pipelineResp = await httpClient.createPipeline(pipeline);
+        config: mergedConfig,
+      });
 
-      // 2. Link pipeline to the bot created in Step 1
+      // 3. Link pipeline to the bot created in Step 1
       const botData = await httpClient.getBot(createdBotUuid);
       const existingBot = botData.bot;
       await httpClient.updateBot(createdBotUuid, {
@@ -454,10 +468,10 @@ export default function WizardPage() {
   return (
     <div className="fixed inset-0 z-50 bg-background flex flex-col">
       {/* Top bar: Skip button */}
-      <div className="shrink-0 flex items-center justify-between px-6 py-3 border-b">
+      <div className="shrink-0 flex items-center justify-between px-4 sm:px-6 py-3 border-b">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-primary" />
-          <span className="font-semibold text-lg">
+          <span className="font-semibold text-base sm:text-lg">
             {t('sidebar.quickStart')}
           </span>
         </div>
@@ -477,14 +491,14 @@ export default function WizardPage() {
       </div>
 
       {/* Stepper header */}
-      <div className="shrink-0 py-4 px-6">
-        <div className="flex items-center justify-center gap-2">
+      <div className="shrink-0 py-3 sm:py-4 px-4 sm:px-6">
+        <div className="flex items-center justify-center gap-1.5 sm:gap-2">
           {stepLabels.map((label, idx) => (
-            <div key={label} className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5">
+            <div key={label} className="flex items-center gap-1.5 sm:gap-2">
+              <div className="flex items-center gap-1 sm:gap-1.5">
                 <div
                   className={cn(
-                    'w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium transition-colors',
+                    'w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs font-medium transition-colors',
                     idx < currentStep
                       ? 'bg-primary text-primary-foreground'
                       : idx === currentStep
@@ -493,7 +507,7 @@ export default function WizardPage() {
                   )}
                 >
                   {idx < currentStep ? (
-                    <Check className="w-3.5 h-3.5" />
+                    <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   ) : (
                     idx + 1
                   )}
@@ -512,7 +526,7 @@ export default function WizardPage() {
               {idx < TOTAL_STEPS - 1 && (
                 <div
                   className={cn(
-                    'w-8 h-px',
+                    'w-4 sm:w-8 h-px',
                     idx < currentStep ? 'bg-primary' : 'bg-border',
                   )}
                 />
@@ -523,7 +537,14 @@ export default function WizardPage() {
       </div>
 
       {/* Step content */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6">
+      <div
+        className={cn(
+          'flex-1 min-h-0 px-4 sm:px-6 pb-4 sm:pb-6',
+          currentStep === 2 && selectedRunner
+            ? 'lg:flex lg:flex-col lg:overflow-hidden overflow-y-auto'
+            : 'overflow-y-auto',
+        )}
+      >
         {currentStep === 0 && (
           <StepPlatform
             adapters={adapters}
@@ -561,7 +582,7 @@ export default function WizardPage() {
 
       {/* Footer navigation */}
       {currentStep < 3 && (
-        <div className="shrink-0 flex justify-between items-center px-6 py-4 border-t">
+        <div className="shrink-0 flex justify-between items-center px-4 sm:px-6 py-3 sm:py-4 border-t">
           <Button
             variant="outline"
             onClick={goPrev}
@@ -741,13 +762,18 @@ function StepBotConfig({
         <div className="space-y-4">
           {adapterConfigItems.length > 0 && (
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-2">
-                <CardTitle>
+              <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <CardTitle className="text-base">
                   {t('wizard.config.platformConfig', {
                     platform: adapterLabel,
                   })}
                 </CardTitle>
-                <Button size="sm" onClick={onSaveBot} disabled={isSavingBot}>
+                <Button
+                  size="sm"
+                  onClick={onSaveBot}
+                  disabled={isSavingBot}
+                  className="w-full sm:w-auto shrink-0"
+                >
                   {isSavingBot && (
                     <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
                   )}
@@ -877,90 +903,106 @@ function StepAIEngine({
   }
 
   // After a runner is selected: left-right split layout
+  // On mobile (< lg): single column, normal scroll from parent
+  // On desktop (>= lg): side-by-side with independent scroll per column
   return (
-    <div className="max-w-6xl mx-auto space-y-4">
-      <div className="text-center">
+    <div className="flex flex-col lg:flex-1 lg:min-h-0 max-w-6xl mx-auto w-full">
+      <div className="text-center shrink-0 mb-4">
         <h2 className="text-xl font-semibold">{t('wizard.aiEngine.title')}</h2>
         <p className="text-sm text-muted-foreground mt-1">
           {t('wizard.aiEngine.description')}
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="flex flex-col lg:flex-row lg:justify-center gap-6 lg:flex-1 lg:min-h-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
         {/* Left: runner list */}
-        <div className="space-y-3">
-          {runnerOptions.map((opt) => (
-            <Card
-              key={opt.name}
-              className={cn(
-                'cursor-pointer transition-all hover:shadow-md',
-                selected === opt.name
-                  ? 'ring-2 ring-primary shadow-md'
-                  : 'hover:border-primary/50',
-              )}
-              onClick={() => onSelect(opt.name)}
-            >
-              <CardHeader className="flex flex-row items-center gap-3 py-3 px-4">
-                <div className="min-w-0 flex-1">
-                  <CardTitle className="text-sm">
-                    {extractI18nObject(opt.label)}
-                  </CardTitle>
-                  <CardDescription className="text-xs font-mono text-muted-foreground">
-                    {opt.name}
-                  </CardDescription>
-                </div>
-                {selected === opt.name && (
-                  <div className="shrink-0">
-                    <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                      <Check className="w-3 h-3 text-primary-foreground" />
+        <div className="w-full lg:w-[280px] shrink-0 lg:overflow-y-auto lg:pr-3">
+          {/* p-1 provides space for ring-2 (4px) to render without clipping */}
+          <div className="space-y-3 p-1">
+            {runnerOptions.map((opt) => {
+              const isSelected = selected === opt.name;
+              return (
+                <Card
+                  key={opt.name}
+                  className={cn(
+                    'cursor-pointer transition-all',
+                    isSelected
+                      ? 'ring-2 ring-primary shadow-md'
+                      : 'opacity-50 hover:opacity-80 hover:border-primary/50',
+                  )}
+                  onClick={() => onSelect(opt.name)}
+                >
+                  <CardHeader className="flex flex-row items-center gap-3 py-3 px-4">
+                    <div className="min-w-0 flex-1">
+                      <CardTitle
+                        className={cn(
+                          'text-sm',
+                          !isSelected && 'text-muted-foreground',
+                        )}
+                      >
+                        {extractI18nObject(opt.label)}
+                      </CardTitle>
+                      <CardDescription className="text-xs font-mono text-muted-foreground">
+                        {opt.name}
+                      </CardDescription>
                     </div>
-                  </div>
-                )}
-              </CardHeader>
-            </Card>
-          ))}
+                    {isSelected && (
+                      <div className="shrink-0">
+                        <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                          <Check className="w-3 h-3 text-primary-foreground" />
+                        </div>
+                      </div>
+                    )}
+                  </CardHeader>
+                </Card>
+              );
+            })}
 
-          {/* Space promotion banner */}
-          {selected === 'local-agent' && isLocalAccount && (
-            <div className="animate-in fade-in slide-in-from-left-2 duration-300">
-              <div className="relative rounded-lg p-[2px] bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500">
-                <div className="rounded-[calc(0.5rem-2px)] bg-background p-3 flex flex-col items-center gap-2 text-center">
-                  <Sparkles className="w-6 h-6 text-purple-500 shrink-0" />
-                  <p className="text-xs font-medium">
-                    {t('wizard.spaceBanner.message')}
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onSpaceAuth}
-                    className="w-full"
-                  >
-                    {t('wizard.spaceBanner.action')}
-                  </Button>
+            {/* Space promotion banner */}
+            {selected === 'local-agent' && isLocalAccount && (
+              <div className="animate-in fade-in slide-in-from-left-2 duration-300">
+                <div className="relative rounded-lg p-[2px] bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500">
+                  <div className="rounded-[calc(0.5rem-2px)] bg-background p-3 flex flex-col items-center gap-2 text-center">
+                    <Sparkles className="w-6 h-6 text-purple-500 shrink-0" />
+                    <p className="text-xs font-medium">
+                      {t('wizard.spaceBanner.message')}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={onSpaceAuth}
+                      className="w-full"
+                    >
+                      {t('wizard.spaceBanner.action')}
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
-        {/* Right: runner configuration */}
-        <div className="animate-in fade-in slide-in-from-right-2 duration-300">
-          {runnerConfigItems.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>
-                  {t('wizard.config.aiConfig', { engine: runnerLabel })}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <DynamicFormComponent
-                  itemConfigList={runnerConfigItems}
-                  initialValues={runnerConfigValues as Record<string, object>}
-                  onSubmit={stableRunnerConfigCb}
-                />
-              </CardContent>
-            </Card>
-          )}
+        {/* Right: runner configuration — fixed width on desktop */}
+        <div className="w-full lg:w-[560px] shrink-0 lg:overflow-y-auto lg:pr-3 animate-in fade-in slide-in-from-right-2 duration-300">
+          <div className="p-1">
+            {runnerConfigItems.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>
+                    {t('wizard.config.aiConfig', { engine: runnerLabel })}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <DynamicFormComponent
+                    key={selected}
+                    itemConfigList={runnerConfigItems}
+                    initialValues={runnerConfigValues as Record<string, object>}
+                    onSubmit={stableRunnerConfigCb}
+                  />
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </div>
       </div>
     </div>
