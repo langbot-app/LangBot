@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import logging
+import threading
 from quart import request
 from ..wecom_api.WXBizMsgCrypt3 import WXBizMsgCrypt
 import base64
@@ -78,7 +79,11 @@ class WecomCSClient:
 
         # Customer info cache: {external_userid: (info_dict, timestamp)}
         self._customer_cache: dict[str, tuple[dict, float]] = {}
-        self._cache_ttl = 60  # Cache TTL in seconds (1 minute)
+        self._cache_ttl = 600  # Cache TTL in seconds (10 minutes)
+
+        # 中文注释：AsyncClient 仅在同一线程 + 同一事件循环内复用，避免跨线程共享。
+        self._http_clients: dict[tuple[int, int], httpx.AsyncClient] = {}
+        self._http_client_lock = asyncio.Lock()
 
         # 只有在非统一模式下才注册独立路由
         if not self.unified_mode:
@@ -90,28 +95,66 @@ class WecomCSClient:
             'example': [],
         }
 
+    def _corpid_short(self) -> str:
+        return self.corpid[:10] if self.corpid else 'N/A'
+
+    def _secret_fingerprint_short(self) -> str:
+        fingerprint = getattr(self.token_cache, 'secret_fingerprint', '') or ''
+        return fingerprint[:8] if fingerprint else 'N/A'
+
+    def _diag_context(self, *, open_kfid: str = '', bot_uuid: str = '') -> str:
+        return (
+            f"bot_uuid={bot_uuid or self.bot_uuid or 'N/A'}, "
+            f"corpid={self._corpid_short()}, "
+            f"secret_fp={self._secret_fingerprint_short()}, "
+            f"open_kfid={open_kfid or 'N/A'}"
+        )
+
+    async def _get_http_client(self) -> httpx.AsyncClient:
+        loop = asyncio.get_running_loop()
+        client_key = (threading.get_ident(), id(loop))
+
+        async with self._http_client_lock:
+            client = self._http_clients.get(client_key)
+            if client is not None and not getattr(client, 'is_closed', False):
+                return client
+
+            client = httpx.AsyncClient(timeout=10.0)
+            self._http_clients[client_key] = client
+            return client
+
+    async def aclose_http_clients(self):
+        async with self._http_client_lock:
+            clients = list(self._http_clients.values())
+            self._http_clients.clear()
+
+        for client in clients:
+            try:
+                await client.aclose()
+            except Exception:
+                continue
+
     async def get_pic_url(self, media_id: str):
         await self.ensure_access_token()
 
         url = f'{self.base_url}/media/get?access_token={self.access_token}&media_id={media_id}'
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(url)
-            if response.headers.get('Content-Type', '').startswith('application/json'):
-                data = response.json()
-                if data.get('errcode') in [40014, 42001]:
-                    await self.token_cache.invalidate()
-                    self.access_token = ''
-                    return await self.get_pic_url(media_id)
-                else:
-                    raise Exception('Failed to get image: ' + str(data))
+        client = await self._get_http_client()
+        response = await client.get(url)
+        if response.headers.get('Content-Type', '').startswith('application/json'):
+            data = response.json()
+            if data.get('errcode') in [40014, 42001]:
+                await self.token_cache.invalidate()
+                self.access_token = ''
+                return await self.get_pic_url(media_id)
+            raise Exception('Failed to get image: ' + str(data))
 
-            # 否则是图片，转成 base64
-            image_bytes = response.content
-            content_type = response.headers.get('Content-Type', '')
-            base64_str = base64.b64encode(image_bytes).decode('utf-8')
-            base64_str = f'data:{content_type};base64,{base64_str}'
-            return base64_str
+        # 否则是图片，转成 base64
+        image_bytes = response.content
+        content_type = response.headers.get('Content-Type', '')
+        base64_str = base64.b64encode(image_bytes).decode('utf-8')
+        base64_str = f'data:{content_type};base64,{base64_str}'
+        return base64_str
 
     # access——token操作
     async def check_access_token(self):
@@ -149,27 +192,27 @@ class WecomCSClient:
     async def _request_access_token(self, secret: str):
         """实际请求指定 secret 对应的 access_token 数据。"""
         url = f'{self.base_url}/gettoken?corpid={self.corpid}&corpsecret={secret}'
-        _logger.debug(f'[wecomcs] 获取access_token: corpid={self.corpid[:10] if self.corpid else "N/A"}...')
-        print(f'[wecomcs] 获取access_token: corpid={self.corpid[:10] if self.corpid else "N/A"}...', flush=True)
+        _logger.debug(f'[wecomcs] 获取access_token: {self._diag_context()}')
+        print(f'[wecomcs] 获取access_token: {self._diag_context()}', flush=True)
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                _logger.debug(f'[wecomcs] 正在请求: {url}')
-                print('[wecomcs] 正在请求 gettoken API...', flush=True)
-                response = await client.get(url)
-                print('[wecomcs] gettoken请求完成，正在解析响应...', flush=True)
-                _logger.debug(f'[wecomcs] gettoken响应状态: {response.status_code}')
-                print(f'[wecomcs] gettoken响应状态: {response.status_code}', flush=True)
-                data = response.json()
-                _logger.debug(f'[wecomcs] gettoken响应: errcode={data.get("errcode")}, errmsg={data.get("errmsg")}')
-                print(f'[wecomcs] gettoken响应: errcode={data.get("errcode")}, errmsg={data.get("errmsg")}', flush=True)
-                if 'access_token' in data:
-                    return {
-                        'access_token': data['access_token'],
-                        'expires_in': int(data.get('expires_in', 7200) or 7200),
-                    }
+            client = await self._get_http_client()
+            _logger.debug(f'[wecomcs] 正在请求access_token接口: {self._diag_context()} url={url}')
+            print('[wecomcs] 正在请求 gettoken API...', flush=True)
+            response = await client.get(url)
+            print('[wecomcs] gettoken请求完成，正在解析响应...', flush=True)
+            _logger.debug(f'[wecomcs] gettoken响应状态: {response.status_code}')
+            print(f'[wecomcs] gettoken响应状态: {response.status_code}', flush=True)
+            data = response.json()
+            _logger.debug(f'[wecomcs] gettoken响应: errcode={data.get("errcode")}, errmsg={data.get("errmsg")}, {self._diag_context()}')
+            print(f'[wecomcs] gettoken响应: errcode={data.get("errcode")}, errmsg={data.get("errmsg")}', flush=True)
+            if 'access_token' in data:
+                return {
+                    'access_token': data['access_token'],
+                    'expires_in': int(data.get('expires_in', 7200) or 7200),
+                }
 
-                _logger.error(f'[wecomcs] 未获取access token: {data}')
-                raise Exception(f'未获取access token: {data}')
+            _logger.error(f'[wecomcs] 未获取access token: {data}')
+            raise Exception(f'未获取access token: {data}')
         except Exception as e:
             _logger.error(f'[wecomcs] get_access_token异常: {traceback.format_exc()}')
             print(f'[wecomcs] get_access_token异常: {e}', flush=True)
@@ -197,31 +240,31 @@ class WecomCSClient:
         if cursor:
             params['cursor'] = cursor
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(url, json=params)
-            data = response.json()
-            if data.get('errcode') in [40014, 42001]:
-                await self.refresh_access_token()
-                return await self.fetch_sync_msg_page(callback_token, open_kfid, cursor)
-            if data.get('errcode') == 95007:
-                _logger.error(f'[wecomcs] sync_msg失败: {data}')
-                raise WecomCSInvalidSyncMsgTokenError(data.get('errmsg', 'invalid msg token'))
-            if data.get('errcode') != 0:
-                _logger.error(f'[wecomcs] sync_msg失败: {data}')
-                raise Exception('Failed to get message')
+        client = await self._get_http_client()
+        response = await client.post(url, json=params)
+        data = response.json()
+        if data.get('errcode') in [40014, 42001]:
+            await self.refresh_access_token()
+            return await self.fetch_sync_msg_page(callback_token, open_kfid, cursor)
+        if data.get('errcode') == 95007:
+            _logger.error(f'[wecomcs] sync_msg失败: {self._diag_context(open_kfid=open_kfid)}, payload={data}')
+            raise WecomCSInvalidSyncMsgTokenError(data.get('errmsg', 'invalid msg token'))
+        if data.get('errcode') != 0:
+            _logger.error(f'[wecomcs] sync_msg失败: {self._diag_context(open_kfid=open_kfid)}, payload={data}')
+            raise Exception('Failed to get message')
 
-            msg_list = data.get('msg_list') or []
-            for msg_data in msg_list:
-                if msg_data.get('msgtype') == 'image' and msg_data.get('image'):
-                    media_id = msg_data['image'].get('media_id')
-                    if media_id:
-                        msg_data['picurl'] = await self.get_pic_url(media_id)
+        msg_list = data.get('msg_list') or []
+        for msg_data in msg_list:
+            if msg_data.get('msgtype') == 'image' and msg_data.get('image'):
+                media_id = msg_data['image'].get('media_id')
+                if media_id:
+                    msg_data['picurl'] = await self.get_pic_url(media_id)
 
-            return {
-                'msg_list': msg_list,
-                'next_cursor': data.get('next_cursor', ''),
-                'has_more': bool(data.get('has_more', False)),
-            }
+        return {
+            'msg_list': msg_list,
+            'next_cursor': data.get('next_cursor', ''),
+            'has_more': bool(data.get('has_more', False)),
+        }
 
     async def get_detailed_message_list(self, xml_msg: str):
         # 中文注释：企业微信一次回调可能携带多条消息，不能只取最后一条，否则会丢消息。
@@ -231,7 +274,7 @@ class WecomCSClient:
             root = ET.fromstring(xml_msg)
             callback_token = root.find('Token').text
             open_kfid = root.find('OpenKfId').text
-            _logger.debug(f'[wecomcs] sync_msg参数: token={callback_token[:20] if callback_token else "N/A"}..., open_kfid={open_kfid}')
+            _logger.debug(f'[wecomcs] sync_msg参数: token={callback_token[:20] if callback_token else "N/A"}..., {self._diag_context(open_kfid=open_kfid)}')
 
             page = await self.fetch_sync_msg_page(callback_token, open_kfid)
             msg_list = page.get('msg_list') or []
@@ -247,53 +290,53 @@ class WecomCSClient:
         if not await self.check_access_token():
             await self.ensure_access_token()
         url = self.base_url + '/kf/service_state/get?access_token=' + self.access_token
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            params = {
-                'open_kfid': openkfid,
-                'external_userid': userid,
-                'service_state': 1,
-                'servicer_userid': servicer,
-            }
-            response = await client.post(url, json=params)
-            data = response.json()
-            if data['errcode'] == 40014 or data['errcode'] == 42001:
-                await self.refresh_access_token()
-                return await self.change_service_status(userid, openkfid)
-            if data['errcode'] != 0:
-                raise Exception('Failed to change service status: ' + str(data))
+        client = await self._get_http_client()
+        params = {
+            'open_kfid': openkfid,
+            'external_userid': userid,
+            'service_state': 1,
+            'servicer_userid': servicer,
+        }
+        response = await client.post(url, json=params)
+        data = response.json()
+        if data['errcode'] == 40014 or data['errcode'] == 42001:
+            await self.refresh_access_token()
+            return await self.change_service_status(userid, openkfid)
+        if data['errcode'] != 0:
+            raise Exception('Failed to change service status: ' + str(data))
 
     async def send_image(self, user_id: str, agent_id: int, media_id: str):
         if not await self.check_access_token():
             await self.ensure_access_token()
         url = self.base_url + '/media/upload?access_token=' + self.access_token
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            params = {
-                'touser': user_id,
-                'toparty': '',
-                'totag': '',
-                'agentid': agent_id,
-                'msgtype': 'image',
-                'image': {
-                    'media_id': media_id,
-                },
-                'safe': 0,
-                'enable_id_trans': 0,
-                'enable_duplicate_check': 0,
-                'duplicate_check_interval': 1800,
-            }
-            try:
-                response = await client.post(url, json=params)
-                data = response.json()
-            except Exception as e:
-                raise Exception('Failed to send image: ' + str(e))
+        client = await self._get_http_client()
+        params = {
+            'touser': user_id,
+            'toparty': '',
+            'totag': '',
+            'agentid': agent_id,
+            'msgtype': 'image',
+            'image': {
+                'media_id': media_id,
+            },
+            'safe': 0,
+            'enable_id_trans': 0,
+            'enable_duplicate_check': 0,
+            'duplicate_check_interval': 1800,
+        }
+        try:
+            response = await client.post(url, json=params)
+            data = response.json()
+        except Exception as e:
+            raise Exception('Failed to send image: ' + str(e))
 
-            # 企业微信错误码40014和42001，代表accesstoken问题
-            if data['errcode'] == 40014 or data['errcode'] == 42001:
-                await self.refresh_access_token()
-                return await self.send_image(user_id, agent_id, media_id)
+        # 企业微信错误码40014和42001，代表accesstoken问题
+        if data['errcode'] == 40014 or data['errcode'] == 42001:
+            await self.refresh_access_token()
+            return await self.send_image(user_id, agent_id, media_id)
 
-            if data['errcode'] != 0:
-                raise Exception('Failed to send image: ' + str(data))
+        if data['errcode'] != 0:
+            raise Exception('Failed to send image: ' + str(data))
 
     async def send_text_msg(self, open_kfid: str, external_userid: str, msgid: str, content: str):
         if not await self.check_access_token():
@@ -311,19 +354,19 @@ class WecomCSClient:
             },
         }
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(url, json=payload)
+        client = await self._get_http_client()
+        response = await client.post(url, json=payload)
 
-            data = response.json()
-            if data['errcode'] == 40014 or data['errcode'] == 42001:
-                await self.refresh_access_token()
-                return await self.send_text_msg(open_kfid, external_userid, msgid, content)
-            if data['errcode'] != 0:
-                await self.logger.error(
-                    f"[wecomcs] 发送消息失败: errcode={data.get('errcode')}, errmsg={data.get('errmsg')}, open_kfid={open_kfid}, external_userid={external_userid}, msgid={msgid}"
-                )
-                raise Exception(f'Failed to send message: {data}')
-            return data
+        data = response.json()
+        if data['errcode'] == 40014 or data['errcode'] == 42001:
+            await self.refresh_access_token()
+            return await self.send_text_msg(open_kfid, external_userid, msgid, content)
+        if data['errcode'] != 0:
+            await self.logger.error(
+                f"[wecomcs] 发送消息失败: errcode={data.get('errcode')}, errmsg={data.get('errmsg')}, external_userid={external_userid}, msgid={msgid}, {self._diag_context(open_kfid=open_kfid)}"
+            )
+            raise Exception(f'Failed to send message: {data}')
+        return data
 
     async def handle_callback_request(self):
         """处理回调请求（独立端口模式，使用全局 request）。"""
@@ -348,7 +391,7 @@ class WecomCSClient:
             req: Quart Request 对象
         """
         try:
-            _logger.debug(f'[wecomcs] 收到回调请求: method={req.method}')
+            _logger.debug(f'[wecomcs] 收到回调请求: method={req.method}, {self._diag_context()}')
 
             msg_signature = req.args.get('msg_signature')
             timestamp = req.args.get('timestamp')
@@ -386,7 +429,7 @@ class WecomCSClient:
                             webhook_received_at=int(time.time()),
                         )
                         _logger.debug(
-                            f'[wecomcs] 已发布pull-trigger: stream={stream_name}, open_kfid={payload.get("open_kfid")}'
+                            f'[wecomcs] 已发布pull-trigger: stream={stream_name}, {self._diag_context(open_kfid=str(payload.get("open_kfid") or ""))}'
                         )
                         return 'success'
                     except Exception:
@@ -529,23 +572,23 @@ class WecomCSClient:
         )
 
         # 上传文件
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(url, headers=headers, content=body)
-            data = response.json()
-            if data['errcode'] == 40014 or data['errcode'] == 42001:
-                await self.refresh_access_token()
-                return await self.upload_to_work(image)
-            if data.get('errcode', 0) != 0:
-                raise Exception('failed to upload file')
+        client = await self._get_http_client()
+        response = await client.post(url, headers=headers, content=body)
+        data = response.json()
+        if data['errcode'] == 40014 or data['errcode'] == 42001:
+            await self.refresh_access_token()
+            return await self.upload_to_work(image)
+        if data.get('errcode', 0) != 0:
+            raise Exception('failed to upload file')
 
-            media_id = data.get('media_id')
-            return media_id
+        media_id = data.get('media_id')
+        return media_id
 
     async def download_image_to_bytes(self, url: str) -> bytes:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            return response.content
+        client = await self._get_http_client()
+        response = await client.get(url)
+        response.raise_for_status()
+        return response.content
 
     # 进行media_id的获取
     async def get_media_id(self, image: platform_message.Image):
@@ -556,7 +599,7 @@ class WecomCSClient:
         """
         Get customer information by external_userid with caching.
 
-        Uses a 1-minute cache to avoid repeated API calls for the same user.
+        Uses a 10-minute cache to avoid repeated API calls for the same user.
 
         Args:
             external_userid: The external user ID of the customer.
@@ -591,9 +634,9 @@ class WecomCSClient:
         _logger.debug(f'[wecomcs] get_customer_info: url={url[:60]}...')
         try:
             request_started_at = time.perf_counter()
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(url, json=payload)
-                data = response.json()
+            client = await self._get_http_client()
+            response = await client.post(url, json=payload)
+            data = response.json()
             request_elapsed_ms = (time.perf_counter() - request_started_at) * 1000
             total_elapsed_ms = (time.perf_counter() - started_at) * 1000
             _logger.debug(
@@ -621,7 +664,7 @@ class WecomCSClient:
             customer_list = data.get('customer_list', [])
             if customer_list:
                 customer_info = customer_list[0]
-                # 中文注释：成功结果写入短期缓存，减少同一个客户短时间内重复查资料。
+                # 中文注释：成功结果写入 10 分钟缓存，减少同一个客户短时间内重复查资料。
                 self._customer_cache[external_userid] = (customer_info, current_time)
                 return customer_info
 

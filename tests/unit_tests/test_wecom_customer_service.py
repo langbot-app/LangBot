@@ -241,7 +241,7 @@ async def test_callback_publishes_pull_trigger_when_scheduler_enabled(monkeypatc
     class FakePublisher:
         async def publish_from_xml(self, bot_uuid: str, xml_msg: str, webhook_received_at: int | None = None):
             published.append((bot_uuid, xml_msg, webhook_received_at))
-            return 'wecomcs:pull-trigger:0', {'open_kfid': 'kf-1', 'webhook_received_at': str(webhook_received_at or '')}
+            return 'wecomcs:bot-1:pull-trigger:0', {'open_kfid': 'kf-1', 'webhook_received_at': str(webhook_received_at or '')}
 
     monkeypatch.setattr(wecomcs_api, 'WXBizMsgCrypt', FakeWXBizMsgCrypt)
     client.scheduler_enabled = True
@@ -413,3 +413,111 @@ async def test_get_customer_info_logs_elapsed_time(monkeypatch, client, caplog):
     assert 'token_elapsed_ms=200.00' in caplog.text
     assert 'request_elapsed_ms=250.00' in caplog.text
     assert 'total_elapsed_ms=450.00' in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_get_customer_info_uses_sender_cache_within_ten_minutes(monkeypatch, client):
+    client.access_token = 'token-1'
+
+    async def fake_ensure_access_token():
+        return client.access_token
+
+    request_count = 0
+
+    class FakeResponse:
+        def json(self):
+            return {
+                'errcode': 0,
+                'errmsg': 'ok',
+                'customer_list': [
+                    {
+                        'external_userid': 'user-1',
+                        'nickname': 'Tester',
+                    }
+                ],
+                'invalid_external_userid': [],
+            }
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            return None
+
+        async def post(self, url, json=None, headers=None, content=None):
+            nonlocal request_count
+            request_count += 1
+            return FakeResponse()
+
+    current_time = {'value': 1000.0}
+
+    monkeypatch.setattr(client, 'ensure_access_token', fake_ensure_access_token)
+    monkeypatch.setattr(wecomcs_api.httpx, 'AsyncClient', FakeAsyncClient)
+    monkeypatch.setattr(wecomcs_api.time, 'time', lambda: current_time['value'])
+
+    first = await client.get_customer_info('user-1')
+    current_time['value'] = 1000.0 + 599
+    second = await client.get_customer_info('user-1')
+
+    assert first == {'external_userid': 'user-1', 'nickname': 'Tester'}
+    assert second == first
+    assert request_count == 1
+
+
+@pytest.mark.asyncio
+async def test_wecomcs_http_client_reused_within_same_loop(monkeypatch, client):
+    client.access_token = 'token-1'
+
+    async def fake_ensure_access_token():
+        return client.access_token
+
+    create_count = 0
+
+    class FakeResponse:
+        def __init__(self, payload=None, headers=None, content=b''):
+            self._payload = payload or {'errcode': 0, 'errmsg': 'ok'}
+            self.headers = headers or {'Content-Type': 'application/json'}
+            self.content = content
+            self.status_code = 200
+
+        def json(self):
+            return self._payload
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            nonlocal create_count
+            create_count += 1
+            self.is_closed = False
+
+        async def post(self, url, json=None, headers=None, content=None):
+            if '/kf/sync_msg' in url:
+                return FakeResponse({'errcode': 0, 'errmsg': 'ok', 'msg_list': [], 'next_cursor': 'cursor-2', 'has_more': False})
+            if '/kf/customer/batchget' in url:
+                return FakeResponse({'errcode': 0, 'errmsg': 'ok', 'customer_list': [{'external_userid': 'user-1', 'nickname': 'Tester'}], 'invalid_external_userid': []})
+            if '/kf/send_msg' in url:
+                return FakeResponse({'errcode': 0, 'errmsg': 'ok'})
+            return FakeResponse()
+
+        async def get(self, url):
+            return FakeResponse({'errcode': 0, 'errmsg': 'ok'})
+
+        async def aclose(self):
+            self.is_closed = True
+
+    monkeypatch.setattr(client, 'ensure_access_token', fake_ensure_access_token)
+    monkeypatch.setattr(wecomcs_api.httpx, 'AsyncClient', FakeAsyncClient)
+
+    await client.fetch_sync_msg_page('callback-token', 'kf-1', 'cursor-1')
+    await client.get_customer_info('user-1')
+    await client.send_text_msg('kf-1', 'user-1', 'msg-1', 'reply')
+
+    assert create_count == 1
+
+
+
+def test_wecomcs_diag_context_contains_bot_and_secret_fingerprint(client):
+    client.bot_uuid = 'bot-123'
+    diag = client._diag_context(open_kfid='kf-123')
+
+    assert 'bot_uuid=bot-123' in diag
+    assert 'open_kfid=kf-123' in diag
+    assert 'corpid=corp-id' in diag
+    assert 'secret_fp=' in diag

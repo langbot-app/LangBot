@@ -12,7 +12,7 @@ class FakeRedisManager:
         self.acks: list[tuple[str, str, str]] = []
         self.pull_messages = [
             (
-                'langbot:wecomcs:pull-trigger:0',
+                'langbot:wecomcs:bot-1:pull-trigger:0',
                 [
                     ('1-0', {'bot_uuid': 'bot-1', 'open_kfid': 'kf-1', 'callback_token': 'token-1'}),
                 ],
@@ -20,7 +20,7 @@ class FakeRedisManager:
         ]
         self.process_messages = [
             (
-                'langbot:wecomcs:message-process:0',
+                'langbot:wecomcs:bot-1:message-process:0',
                 [
                     ('2-0', {'payload': '{"msgtype":"text","external_userid":"user-1","open_kfid":"kf-1","msgid":"msg-1","send_time":111,"text":{"content":"hello"}}'}),
                 ],
@@ -35,9 +35,9 @@ class FakeRedisManager:
 
     async def xreadgroup(self, group: str, consumer: str, streams: dict[str, str], count=None, block_ms=None):
         self.xreadgroup_calls.append((group, consumer, streams))
-        if group == 'pull-group' and self.pull_messages:
+        if group == 'pull-group:bot-1' and self.pull_messages:
             return [self.pull_messages.pop(0)]
-        if group == 'process-group' and self.process_messages:
+        if group == 'process-group:bot-1' and self.process_messages:
             return [self.process_messages.pop(0)]
         return []
 
@@ -61,9 +61,9 @@ async def test_runtime_initializes_consumer_groups():
 
     await runtime.initialize()
 
-    assert ('wecomcs:pull-trigger:0', 'pull-group') in runtime.redis_mgr.groups
-    assert ('wecomcs:pull-trigger:1', 'pull-group') in runtime.redis_mgr.groups
-    assert ('wecomcs:message-process:2', 'process-group') in runtime.redis_mgr.groups
+    assert ('wecomcs:bot-1:pull-trigger:0', 'pull-group:bot-1') in runtime.redis_mgr.groups
+    assert ('wecomcs:bot-1:pull-trigger:1', 'pull-group:bot-1') in runtime.redis_mgr.groups
+    assert ('wecomcs:bot-1:message-process:2', 'process-group:bot-1') in runtime.redis_mgr.groups
 
 
 @pytest.mark.asyncio
@@ -99,7 +99,7 @@ async def test_runtime_pull_loop_handles_and_acks_messages(monkeypatch):
     await runtime._run_pull_loop()
 
     assert handled[0]['open_kfid'] == 'kf-1'
-    assert ('wecomcs:pull-trigger:0', 'pull-group', '1-0') in redis_mgr.acks
+    assert ('wecomcs:bot-1:pull-trigger:0', 'pull-group:bot-1', '1-0') in redis_mgr.acks
 
 
 @pytest.mark.asyncio
@@ -131,7 +131,7 @@ async def test_runtime_process_loop_handles_and_acks_messages():
     runtime.running = True
     await runtime._run_process_loop()
 
-    assert ('wecomcs:message-process:0', 'process-group', '2-0') in redis_mgr.acks
+    assert ('wecomcs:bot-1:message-process:0', 'process-group:bot-1', '2-0') in redis_mgr.acks
 
 
 @pytest.mark.asyncio
@@ -172,8 +172,8 @@ async def test_runtime_pull_loop_schedules_retry_and_acks_on_failure():
     runtime.running = True
     await runtime._run_pull_loop()
 
-    assert scheduled[0][0] == 'wecomcs:pull-trigger:0'
-    assert ('wecomcs:pull-trigger:0', 'pull-group', '1-0') in redis_mgr.acks
+    assert scheduled[0][0] == 'wecomcs:bot-1:pull-trigger:0'
+    assert ('wecomcs:bot-1:pull-trigger:0', 'pull-group:bot-1', '1-0') in redis_mgr.acks
 
 
 @pytest.mark.asyncio
@@ -181,7 +181,7 @@ async def test_runtime_pull_loop_uses_retry_count_from_stream_fields_on_failure(
     redis_mgr = FakeRedisManager()
     redis_mgr.pull_messages = [
         (
-            'langbot:wecomcs:pull-trigger:0',
+            'langbot:wecomcs:bot-1:pull-trigger:0',
             [
                 ('1-0', {'bot_uuid': 'bot-1', 'open_kfid': 'kf-1', 'callback_token': 'token-1', 'retry_count': '2'}),
             ],
@@ -222,9 +222,9 @@ async def test_runtime_pull_loop_uses_retry_count_from_stream_fields_on_failure(
     runtime.running = True
     await runtime._run_pull_loop()
 
-    assert scheduled[0][0] == 'wecomcs:pull-trigger:0'
+    assert scheduled[0][0] == 'wecomcs:bot-1:pull-trigger:0'
     assert scheduled[0][2] == 2
-    assert ('wecomcs:pull-trigger:0', 'pull-group', '1-0') in redis_mgr.acks
+    assert ('wecomcs:bot-1:pull-trigger:0', 'pull-group:bot-1', '1-0') in redis_mgr.acks
 
 
 @pytest.mark.asyncio
@@ -300,4 +300,53 @@ async def test_runtime_pull_loop_does_not_retry_invalid_sync_msg_token():
     await runtime._run_pull_loop()
 
     assert scheduled == []
-    assert ('wecomcs:pull-trigger:0', 'pull-group', '1-0') in redis_mgr.acks
+    assert ('wecomcs:bot-1:pull-trigger:0', 'pull-group:bot-1', '1-0') in redis_mgr.acks
+
+
+@pytest.mark.asyncio
+async def test_runtime_pull_loop_skips_foreign_bot_message():
+    redis_mgr = FakeRedisManager()
+    redis_mgr.pull_messages = [
+        (
+            'langbot:wecomcs:bot-1:pull-trigger:0',
+            [
+                ('1-0', {'bot_uuid': 'bot-2', 'open_kfid': 'kf-1', 'callback_token': 'token-1'}),
+            ],
+        )
+    ]
+
+    runtime = WecomCSSchedulerRuntime(
+        'bot-1',
+        client=object(),
+        redis_mgr=redis_mgr,
+        scheduler_config={
+            'pull_stream_shard_count': 1,
+            'process_stream_shard_count': 1,
+            'pull_consumer_group': 'pull-group',
+            'process_consumer_group': 'process-group',
+            'stream_batch_size': 1,
+            'stream_block_ms': 1,
+        },
+    )
+
+    called = False
+
+    async def fake_handle_trigger(payload):
+        nonlocal called
+        called = True
+        runtime.running = False
+        return 1
+
+    runtime.pull_worker.handle_trigger = fake_handle_trigger
+
+    async def fake_xreadgroup(group, consumer, streams, count=None, block_ms=None):
+        result = await FakeRedisManager.xreadgroup(redis_mgr, group, consumer, streams, count=count, block_ms=block_ms)
+        runtime.running = False
+        return result
+
+    redis_mgr.xreadgroup = fake_xreadgroup
+    runtime.running = True
+    await runtime._run_pull_loop()
+
+    assert called is False
+    assert ('wecomcs:bot-1:pull-trigger:0', 'pull-group:bot-1', '1-0') in redis_mgr.acks

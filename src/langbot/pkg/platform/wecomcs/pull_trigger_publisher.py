@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 
 from ...cache.redis_mgr import RedisManager
 from .sharding import resolve_pull_shard
+from .stream_keys import build_pull_stream_name
 
 
 _logger = logging.getLogger("langbot")
@@ -28,7 +29,7 @@ class WecomCSPullTriggerPublisher:
             raise ValueError('Token and OpenKfId are required in callback XML')
 
         shard = resolve_pull_shard(bot_uuid, open_kfid, self.shard_count)
-        stream_name = f'wecomcs:pull-trigger:{shard}'
+        stream_name = build_pull_stream_name(bot_uuid, shard)
         payload = {
             'job_type': 'pull_trigger',
             'bot_uuid': bot_uuid,

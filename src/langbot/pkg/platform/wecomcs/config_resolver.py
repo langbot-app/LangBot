@@ -13,6 +13,8 @@ WECOMCS_RUNTIME_DEFAULTS = {
     'retry_max_attempts': 3,
     'retry_backoff_seconds': [15, 30, 45],
     'lock_ttl_seconds': 60,
+    'pull_stream_shard_count': 1,
+    'process_stream_shard_count': 1,
 }
 
 
@@ -156,5 +158,10 @@ def resolve_wecomcs_runtime_settings(bot_config: dict[str, Any], global_schedule
         or _coerce_retry_backoff(global_scheduler_config.get('retry_backoff_seconds'), source='global')
         or list(WECOMCS_RUNTIME_DEFAULTS['retry_backoff_seconds'])
     )
+
+    # English comment: We currently pin WeCom CS scheduling to one pull stream and one process stream per bot.
+    # This keeps routing deterministic and avoids cross-bot queue coupling until a broader runtime redesign lands.
+    resolved['pull_stream_shard_count'] = WECOMCS_RUNTIME_DEFAULTS['pull_stream_shard_count']
+    resolved['process_stream_shard_count'] = WECOMCS_RUNTIME_DEFAULTS['process_stream_shard_count']
 
     return resolved

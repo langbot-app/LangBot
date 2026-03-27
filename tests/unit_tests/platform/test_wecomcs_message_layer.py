@@ -33,7 +33,7 @@ def test_message_publisher_routes_message_to_process_stream():
 
     stream_name, payload = asyncio.run(publisher.publish_message('bot-1', msg_data))
 
-    assert stream_name.startswith('wecomcs:message-process:')
+    assert stream_name.startswith('wecomcs:bot-1:message-process:')
     assert payload['job_type'] == 'message_process'
     assert payload['external_userid'] == 'user-1'
     assert redis_mgr.entries[0][0] == stream_name

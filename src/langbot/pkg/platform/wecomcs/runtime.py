@@ -10,6 +10,13 @@ from .message_worker import WecomCSMessageWorker
 from .pull_worker import PullLockNotAcquiredError, WecomCSPullWorker
 from .state_store import WecomCSStateStore
 from .retry_scheduler import WecomCSRetryScheduler
+from .stream_keys import (
+    build_process_consumer_group_name,
+    build_process_stream_name,
+    build_pull_consumer_group_name,
+    build_pull_stream_name,
+    build_retry_zset_key,
+)
 
 
 _logger = logging.getLogger("langbot")
@@ -49,14 +56,21 @@ class WecomCSSchedulerRuntime:
         )
         self.pull_stream_shard_count = int(scheduler_config.get('pull_stream_shard_count', 8) or 8)
         self.process_stream_shard_count = int(scheduler_config.get('process_stream_shard_count', 16) or 16)
-        self.pull_consumer_group = scheduler_config.get('pull_consumer_group', 'wecomcs-pull-group')
-        self.process_consumer_group = scheduler_config.get('process_consumer_group', 'wecomcs-process-group')
+        self.pull_consumer_group = build_pull_consumer_group_name(
+            str(scheduler_config.get('pull_consumer_group', 'wecomcs-pull-group') or 'wecomcs-pull-group'),
+            bot_uuid,
+        )
+        self.process_consumer_group = build_process_consumer_group_name(
+            str(scheduler_config.get('process_consumer_group', 'wecomcs-process-group') or 'wecomcs-process-group'),
+            bot_uuid,
+        )
         self.stream_block_ms = int(scheduler_config.get('stream_block_ms', 1000) or 1000)
         self.stream_batch_size = int(scheduler_config.get('stream_batch_size', 10) or 10)
         self.consumer_name = f'{socket.gethostname()}-{self.bot_uuid}'
         self.retry_poll_interval_seconds = int(scheduler_config.get('retry_poll_interval_seconds', 3) or 3)
         self.retry_scheduler = WecomCSRetryScheduler(
             redis_mgr,
+            retry_zset_key=build_retry_zset_key(bot_uuid),
             retry_backoff_seconds=list(scheduler_config.get('retry_backoff_seconds', [15, 30, 45]) or [15, 30, 45]),
             retry_max_attempts=int(scheduler_config.get('retry_max_attempts', 3) or 3),
         )
@@ -65,10 +79,16 @@ class WecomCSSchedulerRuntime:
         await self.message_publisher.publish_message(self.bot_uuid, msg_data)
 
     def _pull_streams(self) -> list[str]:
-        return [f'wecomcs:pull-trigger:{index}' for index in range(self.pull_stream_shard_count)]
+        return [build_pull_stream_name(self.bot_uuid, index) for index in range(self.pull_stream_shard_count)]
 
     def _process_streams(self) -> list[str]:
-        return [f'wecomcs:message-process:{index}' for index in range(self.process_stream_shard_count)]
+        return [build_process_stream_name(self.bot_uuid, index) for index in range(self.process_stream_shard_count)]
+
+    def _matches_runtime_bot(self, fields: dict[str, str]) -> bool:
+        payload_bot_uuid = str(fields.get('bot_uuid', '') or '')
+        if not payload_bot_uuid:
+            return True
+        return payload_bot_uuid == self.bot_uuid
 
     @staticmethod
     def _extract_retry_count(fields: dict[str, str]) -> int:
@@ -111,6 +131,11 @@ class WecomCSSchedulerRuntime:
                     retry_count = self._extract_retry_count(fields)
                     try:
                         _logger.debug(f'[wecomcs][runtime] pull-loop消费消息: stream={logical_stream_name}, message_id={message_id}, bot_uuid={fields.get("bot_uuid")}, open_kfid={fields.get("open_kfid")}')
+                        if not self._matches_runtime_bot(fields):
+                            _logger.error(
+                                f'[wecomcs][runtime] pull-loop检测到跨bot消息，直接跳过: stream={logical_stream_name}, message_id={message_id}, runtime_bot_uuid={self.bot_uuid}, payload_bot_uuid={fields.get("bot_uuid")}'
+                            )
+                            continue
                         await self.pull_worker.handle_trigger(fields)
                     except PullLockNotAcquiredError as exc:
                         _logger.debug(f'[wecomcs][runtime] pull-loop未拿到锁，安排重试: stream={logical_stream_name}, message_id={message_id}, error={exc}')
@@ -143,6 +168,11 @@ class WecomCSSchedulerRuntime:
                     retry_count = self._extract_retry_count(fields)
                     try:
                         _logger.debug(f'[wecomcs][runtime] process-loop消费消息: stream={logical_stream_name}, message_id={message_id}')
+                        if not self._matches_runtime_bot(fields):
+                            _logger.error(
+                                f'[wecomcs][runtime] process-loop检测到跨bot消息，直接跳过: stream={logical_stream_name}, message_id={message_id}, runtime_bot_uuid={self.bot_uuid}, payload_bot_uuid={fields.get("bot_uuid")}'
+                            )
+                            continue
                         handled = await self.message_worker.handle_stream_entry(fields)
                         if not handled:
                             _logger.debug(f'[wecomcs][runtime] process-loop消息无效，直接ACK: stream={logical_stream_name}, message_id={message_id}')

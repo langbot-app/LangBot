@@ -7,8 +7,10 @@ class FakeRedisManager:
     def __init__(self):
         self.zset: dict[str, float] = {}
         self.stream_entries: list[tuple[str, dict[str, str]]] = []
+        self.zadd_calls: list[str] = []
 
     async def zadd(self, key: str, mapping: dict[str, float]):
+        self.zadd_calls.append(key)
         self.zset.update(mapping)
         return 1
 
@@ -27,12 +29,13 @@ class FakeRedisManager:
 @pytest.mark.asyncio
 async def test_retry_scheduler_schedules_and_replays_job():
     redis_mgr = FakeRedisManager()
-    scheduler = WecomCSRetryScheduler(redis_mgr, retry_backoff_seconds=[15, 30], retry_max_attempts=3)
+    scheduler = WecomCSRetryScheduler(redis_mgr, retry_zset_key='wecomcs:bot-1:retry', retry_backoff_seconds=[15, 30], retry_max_attempts=3)
 
     scheduled = await scheduler.schedule_retry('wecomcs:pull-trigger:0', {'bot_uuid': 'bot-1'}, retry_count=0, error='boom')
 
     assert scheduled is True
     assert len(redis_mgr.zset) == 1
+    assert redis_mgr.zadd_calls == ['wecomcs:bot-1:retry']
 
     replayed = await scheduler.replay_due_jobs(now_ts=9999999999)
 
@@ -49,7 +52,7 @@ async def test_retry_scheduler_schedules_and_replays_job():
 @pytest.mark.asyncio
 async def test_retry_scheduler_stops_after_max_attempts():
     redis_mgr = FakeRedisManager()
-    scheduler = WecomCSRetryScheduler(redis_mgr, retry_backoff_seconds=[15], retry_max_attempts=2)
+    scheduler = WecomCSRetryScheduler(redis_mgr, retry_zset_key='wecomcs:bot-1:retry', retry_backoff_seconds=[15], retry_max_attempts=2)
 
     assert await scheduler.schedule_retry('stream-a', {'foo': 'bar'}, retry_count=0) is True
     assert await scheduler.schedule_retry('stream-a', {'foo': 'bar'}, retry_count=1) is True

@@ -46,7 +46,15 @@ class WebhookRouterGroup(group.RouterGroup):
                 self.ap.logger.warning(f'[webhook] Adapter不支持unified_webhook: bot_uuid={bot_uuid}')
                 return quart.jsonify({'error': 'Adapter does not support unified webhook'}), 501
 
-            self.ap.logger.debug(f'[webhook] 分发到adapter: bot_uuid={bot_uuid}, adapter={type(runtime_bot.adapter).__name__}')
+            adapter_bot = getattr(runtime_bot.adapter, 'bot', None)
+            adapter_corpid = getattr(adapter_bot, 'corpid', '') if adapter_bot else ''
+            adapter_corpid_short = adapter_corpid[:10] if adapter_corpid else 'N/A'
+            adapter_token_cache = getattr(adapter_bot, 'token_cache', None)
+            adapter_secret_fp = getattr(adapter_token_cache, 'secret_fingerprint', '') if adapter_token_cache else ''
+            adapter_secret_fp_short = adapter_secret_fp[:8] if adapter_secret_fp else 'N/A'
+            self.ap.logger.debug(
+                f'[webhook] 分发到adapter: bot_uuid={bot_uuid}, adapter={type(runtime_bot.adapter).__name__}, corpid={adapter_corpid_short}, secret_fp={adapter_secret_fp_short}'
+            )
 
             response = await runtime_bot.adapter.handle_unified_webhook(
                 bot_uuid=bot_uuid,

@@ -38,6 +38,9 @@ class WecomCSTokenCache:
             return f"wecomcs:access_token:{self.corpid}:{self.secret_fingerprint}"
         return f"wecomcs:access_token:{self.corpid}"
 
+    def _secret_fingerprint_short(self) -> str:
+        return self.secret_fingerprint[:8] if self.secret_fingerprint else 'N/A'
+
     def _is_valid_payload(self, payload: dict | None) -> bool:
         # 中文注释：本地和 Redis 都统一按 expires_at 判断，避免只凭是否有字符串误判 token 有效。
         if not payload:
@@ -48,13 +51,13 @@ class WecomCSTokenCache:
 
     async def _read_cached_payload(self) -> dict | None:
         if self._is_valid_payload(self._local_cache):
-            _logger.debug(f'[wecomcs][token-cache] 本地缓存命中: corpid={self.corpid[:10]}...')
+            _logger.debug(f'[wecomcs][token-cache] 本地缓存命中: corpid={self.corpid[:10]}..., secret_fp={self._secret_fingerprint_short()}')
             return dict(self._local_cache)
 
         if self.redis_mgr and self.redis_mgr.is_available():
             payload = await self.redis_mgr.get_json(self._cache_key())
             if self._is_valid_payload(payload):
-                _logger.debug(f'[wecomcs][token-cache] Redis缓存命中: corpid={self.corpid[:10]}...')
+                _logger.debug(f'[wecomcs][token-cache] Redis缓存命中: corpid={self.corpid[:10]}..., secret_fp={self._secret_fingerprint_short()}')
                 self._local_cache = {
                     "access_token": str(payload["access_token"]),
                     "expires_at": int(payload["expires_at"]),
@@ -102,7 +105,7 @@ class WecomCSTokenCache:
             }
 
             _logger.debug(
-                f'[wecomcs][token-cache] 刷新token成功: corpid={self.corpid[:10]}..., ttl_seconds={ttl_seconds}, expires_at={expires_at}'
+                f'[wecomcs][token-cache] 刷新token成功: corpid={self.corpid[:10]}..., secret_fp={self._secret_fingerprint_short()}, ttl_seconds={ttl_seconds}, expires_at={expires_at}'
             )
             self._local_cache = payload
             if self.redis_mgr and self.redis_mgr.is_available():
@@ -111,7 +114,7 @@ class WecomCSTokenCache:
             return access_token
 
     async def invalidate(self):
-        _logger.debug(f'[wecomcs][token-cache] 失效token缓存: corpid={self.corpid[:10]}...')
+        _logger.debug(f'[wecomcs][token-cache] 失效token缓存: corpid={self.corpid[:10]}..., secret_fp={self._secret_fingerprint_short()}')
         self._local_cache = {
             "access_token": "",
             "expires_at": 0,

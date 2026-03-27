@@ -5,6 +5,7 @@ import logging
 
 from ...cache.redis_mgr import RedisManager
 from .sharding import resolve_process_shard
+from .stream_keys import build_process_stream_name
 
 
 _logger = logging.getLogger("langbot")
@@ -27,7 +28,7 @@ class WecomCSMessagePublisher:
             raise ValueError('open_kfid and external_userid are required')
 
         shard = resolve_process_shard(bot_uuid, open_kfid, external_userid, self.shard_count)
-        stream_name = f'wecomcs:message-process:{shard}'
+        stream_name = build_process_stream_name(bot_uuid, shard)
         payload = {
             'job_type': 'message_process',
             'bot_uuid': bot_uuid,

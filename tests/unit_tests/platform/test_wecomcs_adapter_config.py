@@ -77,6 +77,8 @@ async def test_wecomcs_bot_config_overrides_global_scheduler_settings(base_confi
     adapter.set_bot_uuid('bot-1')
 
     assert adapter.scheduler_runtime is not None
+    assert adapter.scheduler_runtime.scheduler_config['pull_stream_shard_count'] == 1
+    assert adapter.scheduler_runtime.scheduler_config['process_stream_shard_count'] == 1
     assert adapter.scheduler_runtime.scheduler_config['history_message_drop_threshold_seconds'] == 45
     assert adapter.scheduler_runtime.scheduler_config['retry_max_attempts'] == 2
     assert adapter.scheduler_runtime.scheduler_config['retry_backoff_seconds'] == [3, 6, 9]
@@ -101,6 +103,8 @@ async def test_wecomcs_adapter_falls_back_to_global_scheduler_settings(base_conf
     adapter.set_bot_uuid('bot-1')
 
     assert adapter.scheduler_runtime is not None
+    assert adapter.scheduler_runtime.scheduler_config['pull_stream_shard_count'] == 1
+    assert adapter.scheduler_runtime.scheduler_config['process_stream_shard_count'] == 1
     assert adapter.scheduler_runtime.scheduler_config['history_message_drop_threshold_seconds'] == 150
     assert adapter.scheduler_runtime.scheduler_config['retry_max_attempts'] == 5
     assert adapter.scheduler_runtime.scheduler_config['retry_backoff_seconds'] == [10, 20]
@@ -116,6 +120,8 @@ async def test_wecomcs_adapter_falls_back_to_code_defaults_when_configs_missing(
     adapter.set_bot_uuid('bot-1')
 
     assert adapter.scheduler_runtime is not None
+    assert adapter.scheduler_runtime.scheduler_config['pull_stream_shard_count'] == 1
+    assert adapter.scheduler_runtime.scheduler_config['process_stream_shard_count'] == 1
     assert adapter.scheduler_runtime.scheduler_config['history_message_drop_threshold_seconds'] == 90
     assert adapter.scheduler_runtime.scheduler_config['retry_max_attempts'] == 3
     assert adapter.scheduler_runtime.scheduler_config['retry_backoff_seconds'] == [15, 30, 45]
