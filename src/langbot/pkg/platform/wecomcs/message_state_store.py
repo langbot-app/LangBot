@@ -68,7 +68,7 @@ class WecomCSMessageStateStore:
             return False
 
         current = await self.get_state(bot_uuid, open_kfid, msgid)
-        if current and current.get('process_status') in self.ACTIVE_STATUSES:
+        if current:
             return False
 
         now_ts = int(time.time())

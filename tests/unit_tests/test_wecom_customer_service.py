@@ -521,3 +521,40 @@ def test_wecomcs_diag_context_contains_bot_and_secret_fingerprint(client):
     assert 'open_kfid=kf-123' in diag
     assert 'corpid=corp-id' in diag
     assert 'secret_fp=' in diag
+
+
+@pytest.mark.asyncio
+async def test_send_text_msg_treats_repeated_msgid_as_idempotent_success(monkeypatch, client):
+    client.access_token = 'token-1'
+    client.token_cache._local_cache = {
+        'access_token': 'token-1',
+        'expires_at': 4102444800,
+    }
+
+    class FakeResponse:
+        def json(self):
+            return {'errcode': 95033, 'errmsg': 'repeated msgid'}
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            return None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url, json=None, headers=None, content=None):
+            return FakeResponse()
+
+    monkeypatch.setattr(wecomcs_api.httpx, 'AsyncClient', FakeAsyncClient)
+
+    result = await client.send_text_msg(
+        open_kfid='kf-1',
+        external_userid='user-1',
+        msgid='stable-outbound-msg-1',
+        content='reply',
+    )
+
+    assert result == {'errcode': 95033, 'errmsg': 'repeated msgid'}

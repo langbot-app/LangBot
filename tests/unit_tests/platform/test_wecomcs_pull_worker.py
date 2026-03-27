@@ -106,6 +106,32 @@ async def test_pull_worker_skips_duplicates_using_state_store():
 
 
 @pytest.mark.asyncio
+async def test_pull_worker_does_not_requeue_failed_message_from_state_store():
+    redis_mgr = FakeRedisManager()
+    store = WecomCSStateStore(redis_mgr, cursor_bootstrap_mode='replay')
+    client = FakeWecomClient()
+    handled_messages: list[str] = []
+
+    await store.reserve_message_for_queue('bot-1', 'kf-1', {'msgid': 'msg-1', 'external_userid': 'user-1', 'msgtype': 'text'})
+    await store.mark_message_failed('bot-1', 'kf-1', 'msg-1', stage='reply_message', error='boom')
+
+    async def on_message(message_data: dict):
+        handled_messages.append(message_data['msgid'])
+
+    worker = WecomCSPullWorker(client, store, on_message, message_state_ttl_seconds=600, lock_ttl_seconds=60)
+    processed_count = await worker.handle_trigger(
+        {
+            'bot_uuid': 'bot-1',
+            'open_kfid': 'kf-1',
+            'callback_token': 'token-1',
+        }
+    )
+
+    assert processed_count == 2
+    assert handled_messages == ['msg-2', 'msg-3']
+
+
+@pytest.mark.asyncio
 async def test_pull_worker_raises_when_lock_not_acquired():
     redis_mgr = FakeRedisManager()
     store = WecomCSStateStore(redis_mgr, cursor_bootstrap_mode='replay')

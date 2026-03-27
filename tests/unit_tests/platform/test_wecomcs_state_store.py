@@ -102,7 +102,7 @@ async def test_state_store_tracks_message_status_with_ttl():
 
 
 @pytest.mark.asyncio
-async def test_state_store_allows_failed_message_to_requeue():
+async def test_state_store_rejects_failed_message_from_pull_requeue():
     redis_mgr = FakeRedisManager()
     store = WecomCSStateStore(redis_mgr, message_state_ttl_seconds=123)
 
@@ -127,6 +127,7 @@ async def test_state_store_allows_failed_message_to_requeue():
         },
     )
 
-    assert reserved is True
+    assert reserved is False
     state = await store.get_message_state('bot-1', 'kf-1', 'msg-1')
-    assert state['process_status'] == 'queued'
+    assert state['process_status'] == 'failed'
+    assert state['last_error_stage'] == 'publish'

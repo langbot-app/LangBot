@@ -1,4 +1,5 @@
 from __future__ import annotations
+import hashlib
 import typing
 import asyncio
 import traceback
@@ -199,6 +200,19 @@ class WecomCSAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         )
         self.resolved_wecomcs_runtime_settings = resolved_runtime_settings
 
+    @staticmethod
+    def _build_outbound_msgid(event: WecomCSEvent, content_index: int) -> str:
+        seed = '::'.join(
+            [
+                'langbot-wecomcs-reply',
+                str(event.receiver_id or ''),
+                str(event.user_id or ''),
+                str(event.message_id or ''),
+                str(content_index),
+            ]
+        )
+        return hashlib.sha256(seed.encode('utf-8')).hexdigest()[:32]
+
     async def reply_message(
         self,
         message_source: platform_events.MessageEvent,
@@ -208,15 +222,17 @@ class WecomCSAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         Wecom_event = await WecomEventConverter.yiri2target(message_source, self.bot_account_id, self.bot)
         content_list = await WecomMessageConverter.yiri2target(message, self.bot)
 
-        for content in content_list:
+        for content_index, content in enumerate(content_list):
             if content['type'] != 'text':
                 continue
+
+            outbound_msgid = self._build_outbound_msgid(Wecom_event, content_index)
 
             try:
                 await self.bot.send_text_msg(
                     open_kfid=Wecom_event.receiver_id,
                     external_userid=Wecom_event.user_id,
-                    msgid=Wecom_event.message_id,
+                    msgid=outbound_msgid,
                     content=content['content'],
                 )
                 state_store = getattr(self.bot, 'state_store', None)

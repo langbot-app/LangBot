@@ -180,3 +180,51 @@ async def test_target2yiri_uses_bot_configured_nickname_timeout(monkeypatch):
 
     assert captured['timeout'] == 1.75
     assert result.sender.nickname == 'Tester'
+
+
+@pytest.mark.asyncio
+async def test_reply_message_uses_stable_outbound_msgids_instead_of_inbound_msgid(base_config, monkeypatch):
+    logger = FakeLogger({'enabled': False})
+    adapter = WecomCSAdapter(base_config, logger)
+
+    class FakeWecomEvent:
+        receiver_id = 'kf-1'
+        user_id = 'user-1'
+        message_id = 'incoming-msg-1'
+
+    outbound_calls: list[tuple[str, str]] = []
+
+    async def fake_yiri2target(_message_source, _bot_account_id, _bot):
+        return FakeWecomEvent()
+
+    async def fake_message_yiri2target(_message, _bot):
+        return [
+            {'type': 'text', 'content': 'hello'},
+            {'type': 'text', 'content': 'world'},
+        ]
+
+    async def fake_send_text_msg(open_kfid: str, external_userid: str, msgid: str, content: str):
+        outbound_calls.append((msgid, content))
+        return {'errcode': 0, 'errmsg': 'ok'}
+
+    monkeypatch.setattr(wecomcs_source.WecomEventConverter, 'yiri2target', staticmethod(fake_yiri2target))
+    monkeypatch.setattr(wecomcs_source.WecomMessageConverter, 'yiri2target', staticmethod(fake_message_yiri2target))
+    monkeypatch.setattr(adapter.bot, 'send_text_msg', fake_send_text_msg)
+
+    await adapter.reply_message(object(), object())
+
+    assert [content for _, content in outbound_calls] == ['hello', 'world']
+    assert all(msgid != 'incoming-msg-1' for msgid, _ in outbound_calls)
+    assert len({msgid for msgid, _ in outbound_calls}) == 2
+
+    repeated_calls: list[tuple[str, str]] = []
+
+    async def fake_send_text_msg_again(open_kfid: str, external_userid: str, msgid: str, content: str):
+        repeated_calls.append((msgid, content))
+        return {'errcode': 0, 'errmsg': 'ok'}
+
+    monkeypatch.setattr(adapter.bot, 'send_text_msg', fake_send_text_msg_again)
+
+    await adapter.reply_message(object(), object())
+
+    assert repeated_calls == outbound_calls

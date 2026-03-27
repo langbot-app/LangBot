@@ -361,6 +361,11 @@ class WecomCSClient:
         if data['errcode'] == 40014 or data['errcode'] == 42001:
             await self.refresh_access_token()
             return await self.send_text_msg(open_kfid, external_userid, msgid, content)
+        if data['errcode'] == 95033:
+            _logger.warning(
+                f"[wecomcs] send_text_msg命中幂等重复msgid，按成功处理: external_userid={external_userid}, msgid={msgid}, {self._diag_context(open_kfid=open_kfid)}"
+            )
+            return data
         if data['errcode'] != 0:
             await self.logger.error(
                 f"[wecomcs] 发送消息失败: errcode={data.get('errcode')}, errmsg={data.get('errmsg')}, external_userid={external_userid}, msgid={msgid}, {self._diag_context(open_kfid=open_kfid)}"
