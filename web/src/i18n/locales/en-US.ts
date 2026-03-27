@@ -5,6 +5,7 @@ const enUS = {
     installedPlugins: 'Installed Plugins',
     pluginMarket: 'Marketplace',
     mcpServers: 'MCP Servers',
+    quickStart: 'Quick Start',
   },
   common: {
     login: 'Login',
@@ -1108,6 +1109,62 @@ const enUS = {
       'Maximum number of pipelines ({{max}}) reached. Please remove an existing pipeline before creating a new one.',
     maxExtensionsReached:
       'Maximum number of extensions ({{max}}) reached. Please remove an existing MCP server or plugin before adding a new one.',
+  },
+  wizard: {
+    sidebarDescription: 'Create a bot with guided steps',
+    loading: 'Loading wizard...',
+    loadError: 'Failed to load wizard data',
+    skip: 'Skip',
+    prev: 'Previous',
+    next: 'Next',
+    finish: 'Create & Deploy',
+    createSuccess: 'Pipeline created and linked to bot successfully!',
+    botCreateSuccess: 'Bot created successfully!',
+    createError: 'Failed to create resources',
+    spaceAuthError: 'Failed to initiate Space authorization',
+    step: {
+      platform: 'Platform',
+      botConfig: 'Bot Setup',
+      aiEngine: 'AI Engine',
+      done: 'Done',
+    },
+    platform: {
+      title: 'Select a Platform',
+      description: 'Choose the messaging platform your bot will connect to.',
+    },
+    botConfig: {
+      title: 'Configure Your Bot',
+      description: 'Set up your bot and verify it works before continuing.',
+      createBot: 'Create Bot',
+      botCreated:
+        'Bot created successfully. Check the logs to verify the connection.',
+      logsTitle: 'Bot Logs',
+      logsDescription:
+        'Monitor bot activity to verify the platform connection is working.',
+    },
+    aiEngine: {
+      title: 'Select an AI Engine',
+      description:
+        "Choose the AI engine that will power your bot's intelligence.",
+    },
+    spaceBanner: {
+      message:
+        'Connect to LangBot Space for free trial model credits and zero-config instant setup!',
+      action: 'Authorize with Space',
+    },
+    config: {
+      botInfo: 'Bot Information',
+      botNamePlaceholder: 'Enter bot name',
+      botDescPlaceholder: 'Enter bot description (optional)',
+      platformConfig: '{{platform}} Configuration',
+      aiConfig: '{{engine}} Configuration',
+    },
+    done: {
+      title: 'All Set!',
+      description:
+        'Your bot has been created and connected to the AI pipeline. You can now manage it from the workbench.',
+      backToWorkbench: 'Back to Workbench',
+    },
   },
 };
 

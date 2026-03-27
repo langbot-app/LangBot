@@ -5,6 +5,7 @@ const zhHant = {
     installedPlugins: '已安裝外掛',
     pluginMarket: '外掛市場',
     mcpServers: 'MCP 伺服器',
+    quickStart: '快速開始',
   },
   common: {
     login: '登入',
@@ -1022,6 +1023,58 @@ const zhHant = {
       '已達到流水線數量上限（{{max}}個）。請先刪除已有流水線後再建立新的。',
     maxExtensionsReached:
       '已達到擴充功能數量上限（{{max}}個）。請先刪除已有的 MCP 伺服器或外掛後再新增。',
+  },
+  wizard: {
+    sidebarDescription: '透過引導步驟建立機器人',
+    loading: '正在載入嚮導...',
+    loadError: '載入嚮導資料失敗',
+    skip: '跳過',
+    prev: '上一步',
+    next: '下一步',
+    finish: '建立並部署',
+    createSuccess: '流水線已建立並關聯到機器人！',
+    botCreateSuccess: '機器人建立成功！',
+    createError: '建立資源失敗',
+    spaceAuthError: '無法發起 Space 授權',
+    step: {
+      platform: '平台接入',
+      botConfig: '機器人配置',
+      aiEngine: 'AI 引擎',
+      done: '完成',
+    },
+    platform: {
+      title: '選擇平台',
+      description: '選擇機器人要接入的訊息平台。',
+    },
+    botConfig: {
+      title: '配置機器人',
+      description: '配置好機器人並確認其正常運作後再繼續。',
+      createBot: '建立機器人',
+      botCreated: '機器人已建立成功，請查看日誌確認連接正常。',
+      logsTitle: '機器人日誌',
+      logsDescription: '監控機器人活動，確認平台連接是否正常運作。',
+    },
+    aiEngine: {
+      title: '選擇 AI 引擎',
+      description: '選擇驅動機器人智慧的 AI 引擎。',
+    },
+    spaceBanner: {
+      message: '接入 LangBot Space，取得免費試用模型額度，零配置極速開箱！',
+      action: '前往授權登入',
+    },
+    config: {
+      botInfo: '機器人資訊',
+      botNamePlaceholder: '請輸入機器人名稱',
+      botDescPlaceholder: '請輸入機器人描述（可選）',
+      platformConfig: '{{platform}} 配置',
+      aiConfig: '{{engine}} 配置',
+    },
+    done: {
+      title: '一切就緒！',
+      description:
+        '機器人已建立並連接到 AI 流水線。你現在可以在工作台中管理它。',
+      backToWorkbench: '返回工作台',
+    },
   },
 };
 

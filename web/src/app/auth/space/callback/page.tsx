@@ -46,8 +46,12 @@ function SpaceOAuthCallbackContent() {
         }
         setStatus('success');
         toast.success(t('common.spaceLoginSuccess'));
+
+        // If wizard state exists, redirect back to wizard instead of home
+        const wizardState = localStorage.getItem('langbot_wizard_state');
+        const redirectTo = wizardState ? '/wizard' : '/home';
         setTimeout(() => {
-          router.push('/home');
+          router.push(redirectTo);
         }, 1000);
       } catch (err) {
         setStatus('error');

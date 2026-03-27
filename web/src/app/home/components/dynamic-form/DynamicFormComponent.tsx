@@ -61,6 +61,13 @@ export default function DynamicFormComponent({
         fallbacks: [],
       };
     }
+    if (item.type === 'prompt-editor') {
+      if (Array.isArray(value)) {
+        return value;
+      }
+      // Default to a single empty system prompt entry
+      return [{ role: 'system', content: '' }];
+    }
     return value;
   };
 
