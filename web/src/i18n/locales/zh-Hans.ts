@@ -1088,6 +1088,7 @@ const zhHans = {
       title: '配置机器人',
       description: '配置好机器人并确认其正常运行后再继续。',
       saveBot: '保存并启用',
+      resaveBot: '重新保存配置',
       botSaved: '机器人配置已保存并启用，请查看日志确认连接正常。',
       logsTitle: '机器人日志',
       logsDescription: '监控机器人活动，确认平台连接是否正常工作。',

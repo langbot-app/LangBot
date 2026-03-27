@@ -1141,6 +1141,7 @@ const enUS = {
       title: 'Configure Your Bot',
       description: 'Set up your bot and verify it works before continuing.',
       saveBot: 'Save & Enable Bot',
+      resaveBot: 'Re-save Configuration',
       botSaved:
         'Bot configuration saved and enabled. Check the logs to verify the connection.',
       logsTitle: 'Bot Logs',

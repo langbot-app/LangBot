@@ -20,10 +20,13 @@ import { useRouter } from 'next/navigation';
 export function BotLogListComponent({
   botId,
   autoExpandImages = false,
+  hideDetailedLogsLink = false,
 }: {
   botId: string;
   /** When true, log entries with images are rendered expanded by default */
   autoExpandImages?: boolean;
+  /** When true, hides the "View Detailed Logs" navigation button */
+  hideDetailedLogsLink?: boolean;
 }) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -219,15 +222,17 @@ export function BotLogListComponent({
         </div>
 
         {/* Link to detailed logs */}
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1"
-          onClick={() => router.push(`/home/monitoring?botId=${botId}`)}
-        >
-          <ExternalLink className="size-3.5" />
-          <span className="text-sm">{t('bots.viewDetailedLogs')}</span>
-        </Button>
+        {!hideDetailedLogsLink && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1"
+            onClick={() => router.push(`/home/monitoring?botId=${botId}`)}
+          >
+            <ExternalLink className="size-3.5" />
+            <span className="text-sm">{t('bots.viewDetailedLogs')}</span>
+          </Button>
+        )}
       </div>
 
       {/* Log cards */}

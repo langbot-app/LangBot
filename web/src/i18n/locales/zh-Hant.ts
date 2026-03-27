@@ -1055,6 +1055,7 @@ const zhHant = {
       title: '配置機器人',
       description: '配置好機器人並確認其正常運作後再繼續。',
       saveBot: '儲存並啟用',
+      resaveBot: '重新儲存配置',
       botSaved: '機器人配置已儲存並啟用，請查看日誌確認連接正常。',
       logsTitle: '機器人日誌',
       logsDescription: '監控機器人活動，確認平台連接是否正常運作。',

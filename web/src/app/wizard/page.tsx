@@ -748,23 +748,22 @@ function StepBotConfig({
                   itemConfigList={adapterConfigItems}
                   initialValues={adapterConfigValues as Record<string, object>}
                   onSubmit={stableAdapterConfigCb}
-                  isEditing={botSaved}
                 />
               </CardContent>
             </Card>
           )}
 
           {/* Save & enable button */}
-          {!botSaved && (
-            <div className="flex justify-center">
-              <Button size="lg" onClick={onSaveBot} disabled={isSavingBot}>
-                {isSavingBot && (
-                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-                )}
-                {t('wizard.botConfig.saveBot')}
-              </Button>
-            </div>
-          )}
+          <div className="flex justify-center">
+            <Button size="lg" onClick={onSaveBot} disabled={isSavingBot}>
+              {isSavingBot && (
+                <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+              )}
+              {botSaved
+                ? t('wizard.botConfig.resaveBot')
+                : t('wizard.botConfig.saveBot')}
+            </Button>
+          </div>
 
           {/* Bot saved indicator */}
           {botSaved && (
@@ -789,7 +788,11 @@ function StepBotConfig({
               </CardDescription>
             </CardHeader>
             <CardContent className="flex-1 min-h-0 overflow-hidden">
-              <BotLogListComponent botId={createdBotUuid} autoExpandImages />
+              <BotLogListComponent
+                botId={createdBotUuid}
+                autoExpandImages
+                hideDetailedLogsLink
+              />
             </CardContent>
           </Card>
         )}
