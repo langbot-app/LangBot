@@ -39,9 +39,18 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { cn } from '@/lib/utils';
+import { LanguageSelector } from '@/components/ui/language-selector';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -132,6 +141,8 @@ export default function WizardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingBot, setIsCreatingBot] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingBot, setIsSavingBot] = useState(false);
+  const [botSaved, setBotSaved] = useState(false);
 
   // ---- Persist state on every change ----
   useEffect(() => {
@@ -246,13 +257,13 @@ export default function WizardPage() {
       case 0:
         return selectedAdapter !== null;
       case 1:
-        return botName.trim().length > 0 && createdBotUuid !== null;
+        return createdBotUuid !== null && botSaved;
       case 2:
         return selectedRunner !== null;
       default:
         return false;
     }
-  }, [currentStep, selectedAdapter, botName, createdBotUuid, selectedRunner]);
+  }, [currentStep, selectedAdapter, createdBotUuid, botSaved, selectedRunner]);
 
   const goNext = useCallback(() => {
     if (currentStep < TOTAL_STEPS - 1 && canProceed()) {
@@ -266,25 +277,33 @@ export default function WizardPage() {
     }
   }, [currentStep]);
 
-  // ---- Create Bot (Step 1) ----
-  // NOTE: This wizard is purely incremental - it only creates new bots and
-  // pipelines. It never modifies or deletes existing resources.
+  // ---- Create Bot (Step 0) ----
+  // Creates a disabled bot using the adapter label as name.
 
   const handleCreateBot = useCallback(async () => {
-    if (!selectedAdapter || !botName.trim()) return;
+    if (!selectedAdapter) return;
     setIsCreatingBot(true);
 
     try {
+      // Use adapter label as default bot name
+      const adapter = adapters.find((a) => a.name === selectedAdapter);
+      const defaultName = adapter
+        ? extractI18nObject(adapter.label)
+        : selectedAdapter;
+      setBotName(defaultName);
+
       const bot: Bot = {
-        name: botName,
-        description: botDescription || '',
+        name: defaultName,
+        description: '',
         adapter: selectedAdapter,
-        adapter_config: adapterConfig,
-        enable: true,
+        adapter_config: {},
+        enable: false,
       };
       const resp = await httpClient.createBot(bot);
       setCreatedBotUuid(resp.uuid);
       toast.success(t('wizard.botCreateSuccess'));
+      // Advance to Step 1
+      setCurrentStep(1);
     } catch (err) {
       const apiErr = err as { msg?: string };
       toast.error(
@@ -293,7 +312,41 @@ export default function WizardPage() {
     } finally {
       setIsCreatingBot(false);
     }
-  }, [selectedAdapter, botName, botDescription, adapterConfig, t]);
+  }, [selectedAdapter, adapters, t]);
+
+  // ---- Save Bot Config & Enable (Step 1) ----
+  // Updates the bot's adapter config and enables it.
+
+  const handleSaveBot = useCallback(async () => {
+    if (!createdBotUuid || !selectedAdapter) return;
+    setIsSavingBot(true);
+
+    try {
+      await httpClient.updateBot(createdBotUuid, {
+        name: botName,
+        description: botDescription || '',
+        adapter: selectedAdapter,
+        adapter_config: adapterConfig,
+        enable: true,
+      });
+      setBotSaved(true);
+      toast.success(t('wizard.botSaveSuccess'));
+    } catch (err) {
+      const apiErr = err as { msg?: string };
+      toast.error(
+        t('wizard.createError') + (apiErr?.msg ? `: ${apiErr.msg}` : ''),
+      );
+    } finally {
+      setIsSavingBot(false);
+    }
+  }, [
+    createdBotUuid,
+    selectedAdapter,
+    botName,
+    botDescription,
+    adapterConfig,
+    t,
+  ]);
 
   // ---- Create Pipeline & Link (Step 2 finish) ----
 
@@ -369,7 +422,9 @@ export default function WizardPage() {
   }, []);
 
   // ---- Skip handler ----
-  const handleSkip = useCallback(() => {
+  const [showSkipConfirm, setShowSkipConfirm] = useState(false);
+
+  const handleSkipConfirm = useCallback(() => {
     clearWizardState();
     router.push('/home');
   }, [router]);
@@ -401,12 +456,19 @@ export default function WizardPage() {
             {t('sidebar.quickStart')}
           </span>
         </div>
-        {currentStep < 3 && (
-          <Button variant="ghost" size="sm" onClick={handleSkip}>
-            {t('wizard.skip')}
-            <X className="w-4 h-4 ml-1" />
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <LanguageSelector />
+          {currentStep < 3 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowSkipConfirm(true)}
+            >
+              {t('wizard.skip')}
+              <X className="w-4 h-4 ml-1" />
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Stepper header */}
@@ -466,18 +528,15 @@ export default function WizardPage() {
         )}
         {currentStep === 1 && (
           <StepBotConfig
-            botName={botName}
-            botDescription={botDescription}
-            onBotNameChange={setBotName}
-            onBotDescriptionChange={setBotDescription}
             adapterConfigItems={selectedAdapterConfig}
             adapterConfigValues={adapterConfig}
             onAdapterConfigChange={setAdapterConfig}
             selectedAdapterName={selectedAdapter}
             adapters={adapters}
             createdBotUuid={createdBotUuid}
-            isCreatingBot={isCreatingBot}
-            onCreateBot={handleCreateBot}
+            isSavingBot={isSavingBot}
+            botSaved={botSaved}
+            onSaveBot={handleSaveBot}
           />
         )}
         {currentStep === 2 && (
@@ -507,7 +566,18 @@ export default function WizardPage() {
             {t('wizard.prev')}
           </Button>
 
-          {currentStep < 2 ? (
+          {currentStep === 0 ? (
+            <Button
+              onClick={handleCreateBot}
+              disabled={!canProceed() || isCreatingBot}
+            >
+              {isCreatingBot && (
+                <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+              )}
+              {t('wizard.confirmCreateBot')}
+              <ArrowRight className="w-4 h-4 ml-1.5" />
+            </Button>
+          ) : currentStep === 1 ? (
             <Button onClick={goNext} disabled={!canProceed()}>
               {t('wizard.next')}
               <ArrowRight className="w-4 h-4 ml-1.5" />
@@ -525,6 +595,23 @@ export default function WizardPage() {
           )}
         </div>
       )}
+
+      {/* Skip confirmation dialog */}
+      <AlertDialog open={showSkipConfirm} onOpenChange={setShowSkipConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('wizard.skip')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('wizard.skipConfirmMessage')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={handleSkipConfirm}>
+              {t('wizard.skipConfirmOk')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -545,14 +632,14 @@ function StepPlatform({
   const { t } = useTranslation();
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6 max-w-4xl mx-auto">
       <div className="text-center">
         <h2 className="text-xl font-semibold">{t('wizard.platform.title')}</h2>
         <p className="text-sm text-muted-foreground mt-1">
           {t('wizard.platform.description')}
         </p>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl mx-auto">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {adapters.map((adapter) => (
           <Card
             key={adapter.name}
@@ -600,31 +687,25 @@ function StepPlatform({
 // ---------------------------------------------------------------------------
 
 function StepBotConfig({
-  botName,
-  botDescription,
-  onBotNameChange,
-  onBotDescriptionChange,
   adapterConfigItems,
   adapterConfigValues,
   onAdapterConfigChange,
   selectedAdapterName,
   adapters,
   createdBotUuid,
-  isCreatingBot,
-  onCreateBot,
+  isSavingBot,
+  botSaved,
+  onSaveBot,
 }: {
-  botName: string;
-  botDescription: string;
-  onBotNameChange: (v: string) => void;
-  onBotDescriptionChange: (v: string) => void;
   adapterConfigItems: IDynamicFormItemSchema[];
   adapterConfigValues: Record<string, unknown>;
   onAdapterConfigChange: (v: Record<string, unknown>) => void;
   selectedAdapterName: string | null;
   adapters: Adapter[];
   createdBotUuid: string | null;
-  isCreatingBot: boolean;
-  onCreateBot: () => void;
+  isSavingBot: boolean;
+  botSaved: boolean;
+  onSaveBot: () => void;
 }) {
   const { t } = useTranslation();
 
@@ -641,8 +722,6 @@ function StepBotConfig({
     [],
   );
 
-  const canCreate = botName.trim().length > 0 && !createdBotUuid;
-
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="text-center">
@@ -652,57 +731,9 @@ function StepBotConfig({
         </p>
       </div>
 
-      <div
-        className={cn(
-          'grid gap-6',
-          createdBotUuid ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1',
-        )}
-      >
-        {/* Left column: Bot form */}
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
+        {/* Left column: Adapter config form */}
         <div className="space-y-4">
-          {/* Bot basic info */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('wizard.config.botInfo')}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label
-                  htmlFor="wizard-bot-name"
-                  className="text-sm font-medium"
-                >
-                  {t('bots.botName')}
-                  <span className="text-destructive ml-0.5">*</span>
-                </label>
-                <Input
-                  id="wizard-bot-name"
-                  className="mt-1.5"
-                  value={botName}
-                  onChange={(e) => onBotNameChange(e.target.value)}
-                  placeholder={t('wizard.config.botNamePlaceholder')}
-                  disabled={!!createdBotUuid}
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="wizard-bot-desc"
-                  className="text-sm font-medium"
-                >
-                  {t('bots.botDescription')}
-                </label>
-                <Input
-                  id="wizard-bot-desc"
-                  className="mt-1.5"
-                  value={botDescription}
-                  onChange={(e) => onBotDescriptionChange(e.target.value)}
-                  placeholder={t('wizard.config.botDescPlaceholder')}
-                  disabled={!!createdBotUuid}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Adapter config */}
           {adapterConfigItems.length > 0 && (
             <Card>
               <CardHeader>
@@ -717,42 +748,38 @@ function StepBotConfig({
                   itemConfigList={adapterConfigItems}
                   initialValues={adapterConfigValues as Record<string, object>}
                   onSubmit={stableAdapterConfigCb}
-                  isEditing={!!createdBotUuid}
+                  isEditing={botSaved}
                 />
               </CardContent>
             </Card>
           )}
 
-          {/* Create bot button */}
-          {!createdBotUuid && (
+          {/* Save & enable button */}
+          {!botSaved && (
             <div className="flex justify-center">
-              <Button
-                size="lg"
-                onClick={onCreateBot}
-                disabled={!canCreate || isCreatingBot}
-              >
-                {isCreatingBot && (
+              <Button size="lg" onClick={onSaveBot} disabled={isSavingBot}>
+                {isSavingBot && (
                   <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
                 )}
-                {t('wizard.botConfig.createBot')}
+                {t('wizard.botConfig.saveBot')}
               </Button>
             </div>
           )}
 
-          {/* Bot created indicator */}
-          {createdBotUuid && (
+          {/* Bot saved indicator */}
+          {botSaved && (
             <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30">
               <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center shrink-0">
                 <Check className="w-3 h-3 text-white" />
               </div>
               <span className="text-sm text-green-700 dark:text-green-300">
-                {t('wizard.botConfig.botCreated')}
+                {t('wizard.botConfig.botSaved')}
               </span>
             </div>
           )}
         </div>
 
-        {/* Right column: Bot logs (only after bot is created) */}
+        {/* Right column: Bot logs */}
         {createdBotUuid && (
           <Card className="flex flex-col min-h-[400px]">
             <CardHeader className="shrink-0">
@@ -762,7 +789,7 @@ function StepBotConfig({
               </CardDescription>
             </CardHeader>
             <CardContent className="flex-1 min-h-0 overflow-hidden">
-              <BotLogListComponent botId={createdBotUuid} />
+              <BotLogListComponent botId={createdBotUuid} autoExpandImages />
             </CardContent>
           </Card>
         )}

@@ -19,11 +19,17 @@ const LEVEL_STYLES: Record<string, string> = {
 
 const SHORT_TEXT_LIMIT = 120;
 
-export function BotLogCard({ botLog }: { botLog: BotLog }) {
+export function BotLogCard({
+  botLog,
+  defaultExpanded = false,
+}: {
+  botLog: BotLog;
+  defaultExpanded?: boolean;
+}) {
   const { t } = useTranslation();
   const baseURL = httpClient.getBaseUrl();
   const [copied, setCopied] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
 
   function copySessionId() {
     const text = botLog.message_session_id;

@@ -1115,11 +1115,16 @@ const enUS = {
     loading: 'Loading wizard...',
     loadError: 'Failed to load wizard data',
     skip: 'Skip',
+    skipConfirmMessage:
+      'You can re-enter the Quick Start wizard from the sidebar later, or create a bot manually.',
+    skipConfirmOk: 'OK',
     prev: 'Previous',
     next: 'Next',
     finish: 'Create & Deploy',
+    confirmCreateBot: 'Confirm, Create Bot',
     createSuccess: 'Pipeline created and linked to bot successfully!',
     botCreateSuccess: 'Bot created successfully!',
+    botSaveSuccess: 'Bot configuration saved and enabled!',
     createError: 'Failed to create resources',
     spaceAuthError: 'Failed to initiate Space authorization',
     step: {
@@ -1135,9 +1140,9 @@ const enUS = {
     botConfig: {
       title: 'Configure Your Bot',
       description: 'Set up your bot and verify it works before continuing.',
-      createBot: 'Create Bot',
-      botCreated:
-        'Bot created successfully. Check the logs to verify the connection.',
+      saveBot: 'Save & Enable Bot',
+      botSaved:
+        'Bot configuration saved and enabled. Check the logs to verify the connection.',
       logsTitle: 'Bot Logs',
       logsDescription:
         'Monitor bot activity to verify the platform connection is working.',

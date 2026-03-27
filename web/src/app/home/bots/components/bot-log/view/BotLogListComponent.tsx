@@ -17,7 +17,14 @@ import { debounce } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'next/navigation';
 
-export function BotLogListComponent({ botId }: { botId: string }) {
+export function BotLogListComponent({
+  botId,
+  autoExpandImages = false,
+}: {
+  botId: string;
+  /** When true, log entries with images are rendered expanded by default */
+  autoExpandImages?: boolean;
+}) {
   const { t } = useTranslation();
   const router = useRouter();
   const manager = useRef(new BotLogManager(botId)).current;
@@ -226,7 +233,11 @@ export function BotLogListComponent({ botId }: { botId: string }) {
       {/* Log cards */}
       <div className="flex flex-col gap-2">
         {filteredLogs.map((botLog) => (
-          <BotLogCard botLog={botLog} key={botLog.seq_id} />
+          <BotLogCard
+            botLog={botLog}
+            key={botLog.seq_id}
+            defaultExpanded={autoExpandImages && botLog.images.length > 0}
+          />
         ))}
       </div>
     </div>

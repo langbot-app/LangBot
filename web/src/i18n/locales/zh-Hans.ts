@@ -1062,11 +1062,16 @@ const zhHans = {
     loading: '正在加载向导...',
     loadError: '加载向导数据失败',
     skip: '跳过',
+    skipConfirmMessage:
+      '您之后可以在侧边栏重新进入快速开始向导，或手动创建机器人。',
+    skipConfirmOk: '确定',
     prev: '上一步',
     next: '下一步',
     finish: '创建并部署',
+    confirmCreateBot: '确定，创建机器人',
     createSuccess: '流水线已创建并关联到机器人！',
     botCreateSuccess: '机器人创建成功！',
+    botSaveSuccess: '机器人配置已保存并启用！',
     createError: '创建资源失败',
     spaceAuthError: '无法发起 Space 授权',
     step: {
@@ -1082,8 +1087,8 @@ const zhHans = {
     botConfig: {
       title: '配置机器人',
       description: '配置好机器人并确认其正常运行后再继续。',
-      createBot: '创建机器人',
-      botCreated: '机器人已创建成功，请查看日志确认连接正常。',
+      saveBot: '保存并启用',
+      botSaved: '机器人配置已保存并启用，请查看日志确认连接正常。',
       logsTitle: '机器人日志',
       logsDescription: '监控机器人活动，确认平台连接是否正常工作。',
     },

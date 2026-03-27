@@ -1089,11 +1089,16 @@
     loading: 'ウィザードを読み込み中...',
     loadError: 'ウィザードデータの読み込みに失敗しました',
     skip: 'スキップ',
+    skipConfirmMessage:
+      'サイドバーからクイックスタートウィザードに再度アクセスするか、手動でボットを作成できます。',
+    skipConfirmOk: 'OK',
     prev: '前へ',
     next: '次へ',
     finish: '作成＆デプロイ',
+    confirmCreateBot: '確定、ボットを作成',
     createSuccess: 'パイプラインが作成され、ボットにリンクされました！',
     botCreateSuccess: 'ボットが正常に作成されました！',
+    botSaveSuccess: 'ボット設定が保存され、有効になりました！',
     createError: 'リソースの作成に失敗しました',
     spaceAuthError: 'Space 認証の開始に失敗しました',
     step: {
@@ -1111,9 +1116,9 @@
       title: 'ボットを設定',
       description:
         'ボットをセットアップし、正常に動作することを確認してから続行してください。',
-      createBot: 'ボットを作成',
-      botCreated:
-        'ボットが正常に作成されました。ログを確認して接続を検証してください。',
+      saveBot: '保存して有効化',
+      botSaved:
+        'ボット設定が保存され、有効になりました。ログを確認して接続を検証してください。',
       logsTitle: 'ボットログ',
       logsDescription:
         'ボットの活動を監視して、プラットフォーム接続が正常に動作していることを確認します。',
