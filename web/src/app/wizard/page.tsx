@@ -736,12 +736,20 @@ function StepBotConfig({
         <div className="space-y-4">
           {adapterConfigItems.length > 0 && (
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between gap-2">
                 <CardTitle>
                   {t('wizard.config.platformConfig', {
                     platform: adapterLabel,
                   })}
                 </CardTitle>
+                <Button size="sm" onClick={onSaveBot} disabled={isSavingBot}>
+                  {isSavingBot && (
+                    <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                  )}
+                  {botSaved
+                    ? t('wizard.botConfig.resaveBot')
+                    : t('wizard.botConfig.saveBot')}
+                </Button>
               </CardHeader>
               <CardContent>
                 <DynamicFormComponent
@@ -752,18 +760,6 @@ function StepBotConfig({
               </CardContent>
             </Card>
           )}
-
-          {/* Save & enable button */}
-          <div className="flex justify-center">
-            <Button size="lg" onClick={onSaveBot} disabled={isSavingBot}>
-              {isSavingBot && (
-                <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-              )}
-              {botSaved
-                ? t('wizard.botConfig.resaveBot')
-                : t('wizard.botConfig.saveBot')}
-            </Button>
-          </div>
 
           {/* Bot saved indicator */}
           {botSaved && (
