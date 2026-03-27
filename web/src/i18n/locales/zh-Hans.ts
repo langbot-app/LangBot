@@ -307,6 +307,7 @@ const zhHans = {
     viewDetails: '详情',
     collapse: '收起',
     imagesAttached: '张图片',
+    noLogs: '暂无日志',
     sessionMonitor: {
       title: '会话监控',
       sessions: '会话列表',

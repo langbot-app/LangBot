@@ -323,6 +323,7 @@
     allLevels: 'すべてのレベル',
     selectLevel: 'レベルを選択',
     levelsSelected: 'レベル選択済み',
+    noLogs: 'ログはまだありません',
     sessionMonitor: {
       title: 'セッション監視',
       sessions: 'セッション一覧',

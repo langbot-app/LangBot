@@ -16,7 +16,11 @@ import {
 } from 'lucide-react';
 
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { userInfo } from '@/app/infra/http';
+import {
+  userInfo,
+  initializeUserInfo,
+  initializeSystemInfo,
+} from '@/app/infra/http';
 import { Adapter, Bot, Pipeline } from '@/app/infra/entities/api';
 import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
 import {
@@ -172,6 +176,9 @@ export default function WizardPage() {
     let cancelled = false;
     (async () => {
       try {
+        // Initialize user/system info (wizard is outside /home layout)
+        await Promise.all([initializeUserInfo(), initializeSystemInfo()]);
+
         const [adaptersResp, metadataResp] = await Promise.all([
           httpClient.getAdapters(),
           httpClient.getGeneralPipelineMetadata(),
@@ -415,11 +422,9 @@ export default function WizardPage() {
   }, [t]);
 
   // ---- Check if local account ----
-  const isLocalAccount = useMemo(() => {
-    if (userInfo) return userInfo.account_type === 'local';
-    if (typeof window === 'undefined') return false;
-    return false;
-  }, []);
+  // Re-evaluated after remote data fetch (when userInfo is populated)
+  const isLocalAccount =
+    !isLoading && (!userInfo || userInfo.account_type === 'local');
 
   // ---- Skip handler ----
   const [showSkipConfirm, setShowSkipConfirm] = useState(false);
@@ -787,7 +792,7 @@ function StepBotConfig({
               <BotLogListComponent
                 botId={createdBotUuid}
                 autoExpandImages
-                hideDetailedLogsLink
+                hideToolbar
               />
             </CardContent>
           </Card>

@@ -322,6 +322,7 @@ const enUS = {
     viewDetails: 'Details',
     collapse: 'Collapse',
     imagesAttached: 'image(s) attached',
+    noLogs: 'No logs yet',
     sessionMonitor: {
       title: 'Sessions',
       sessions: 'Sessions',

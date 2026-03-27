@@ -302,6 +302,7 @@ const zhHant = {
     allLevels: '全部級別',
     selectLevel: '選擇級別',
     levelsSelected: '個級別已選',
+    noLogs: '暫無日誌',
     sessionMonitor: {
       title: '會話監控',
       sessions: '會話列表',

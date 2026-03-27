@@ -21,12 +21,15 @@ export function BotLogListComponent({
   botId,
   autoExpandImages = false,
   hideDetailedLogsLink = false,
+  hideToolbar = false,
 }: {
   botId: string;
   /** When true, log entries with images are rendered expanded by default */
   autoExpandImages?: boolean;
   /** When true, hides the "View Detailed Logs" navigation button */
   hideDetailedLogsLink?: boolean;
+  /** When true, hides the entire toolbar (auto-refresh, level filter, detailed logs link) */
+  hideToolbar?: boolean;
 }) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -168,83 +171,91 @@ export function BotLogListComponent({
       ref={listContainerRef}
     >
       {/* Toolbar */}
-      <div className="flex items-center gap-3 pb-3 shrink-0 flex-wrap">
-        {/* Auto-refresh toggle */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-sm text-muted-foreground">
-            {t('bots.enableAutoRefresh')}
-          </span>
-          <Switch
-            checked={autoFlush}
-            onCheckedChange={(v) => setAutoFlush(v)}
-          />
-        </div>
+      {!hideToolbar && (
+        <div className="flex items-center gap-3 pb-3 shrink-0 flex-wrap">
+          {/* Auto-refresh toggle */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm text-muted-foreground">
+              {t('bots.enableAutoRefresh')}
+            </span>
+            <Switch
+              checked={autoFlush}
+              onCheckedChange={(v) => setAutoFlush(v)}
+            />
+          </div>
 
-        {/* Level filter */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-sm text-muted-foreground">
-            {t('bots.logLevel')}
-          </span>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-[160px] justify-between"
-              >
-                <span className="text-sm truncate">{getDisplayText()}</span>
-                <ChevronDownIcon className="size-3.5 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[160px] p-2">
-              <div className="flex flex-col gap-2">
-                {logLevels.map((level) => (
-                  <div
-                    key={level.value}
-                    className="flex items-center space-x-2"
-                  >
-                    <Checkbox
-                      id={level.value}
-                      checked={selectedLevels.includes(level.value)}
-                      onCheckedChange={() => handleLevelToggle(level.value)}
-                    />
-                    <label
-                      htmlFor={level.value}
-                      className="text-sm font-medium leading-none cursor-pointer"
+          {/* Level filter */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm text-muted-foreground">
+              {t('bots.logLevel')}
+            </span>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-[160px] justify-between"
+                >
+                  <span className="text-sm truncate">{getDisplayText()}</span>
+                  <ChevronDownIcon className="size-3.5 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[160px] p-2">
+                <div className="flex flex-col gap-2">
+                  {logLevels.map((level) => (
+                    <div
+                      key={level.value}
+                      className="flex items-center space-x-2"
                     >
-                      {level.label}
-                    </label>
-                  </div>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
+                      <Checkbox
+                        id={level.value}
+                        checked={selectedLevels.includes(level.value)}
+                        onCheckedChange={() => handleLevelToggle(level.value)}
+                      />
+                      <label
+                        htmlFor={level.value}
+                        className="text-sm font-medium leading-none cursor-pointer"
+                      >
+                        {level.label}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
 
-        {/* Link to detailed logs */}
-        {!hideDetailedLogsLink && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1"
-            onClick={() => router.push(`/home/monitoring?botId=${botId}`)}
-          >
-            <ExternalLink className="size-3.5" />
-            <span className="text-sm">{t('bots.viewDetailedLogs')}</span>
-          </Button>
-        )}
-      </div>
+          {/* Link to detailed logs */}
+          {!hideDetailedLogsLink && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              onClick={() => router.push(`/home/monitoring?botId=${botId}`)}
+            >
+              <ExternalLink className="size-3.5" />
+              <span className="text-sm">{t('bots.viewDetailedLogs')}</span>
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* Log cards */}
-      <div className="flex flex-col gap-2">
-        {filteredLogs.map((botLog) => (
-          <BotLogCard
-            botLog={botLog}
-            key={botLog.seq_id}
-            defaultExpanded={autoExpandImages && botLog.images.length > 0}
-          />
-        ))}
-      </div>
+      {filteredLogs.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center py-12">
+          <p className="text-sm text-muted-foreground">{t('bots.noLogs')}</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {filteredLogs.map((botLog) => (
+            <BotLogCard
+              botLog={botLog}
+              key={botLog.seq_id}
+              defaultExpanded={autoExpandImages && botLog.images.length > 0}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
