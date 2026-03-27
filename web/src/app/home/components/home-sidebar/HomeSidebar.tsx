@@ -1181,8 +1181,11 @@ export default function HomeSidebar({
       // Route already matches — just select without navigating (preserves ?id= query params)
       selectChild(matchedChild);
     } else {
-      // No match — redirect to default route
-      handleChildClick(sidebarConfigList[0]);
+      // No match — redirect to the first route under /home
+      const defaultChild =
+        sidebarConfigList.find((c) => c.route.startsWith('/home')) ??
+        sidebarConfigList[0];
+      handleChildClick(defaultChild);
     }
   }
 
@@ -1249,6 +1252,28 @@ export default function HomeSidebar({
 
         {/* Navigation items grouped by section */}
         <SidebarContent>
+          {/* Standalone items (e.g. Quick Start) — rendered before section groups */}
+          {sidebarConfigList
+            .filter((c) => c.section === 'standalone')
+            .map((config) => (
+              <SidebarGroup key={config.id}>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        isActive={selectedChild?.id === config.id}
+                        onClick={() => handleChildClick(config)}
+                        tooltip={config.name}
+                      >
+                        {config.icon}
+                        <span>{config.name}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            ))}
+
           <SidebarGroup>
             <SidebarGroupLabel>{t('sidebar.home')}</SidebarGroupLabel>
             <SidebarGroupContent>

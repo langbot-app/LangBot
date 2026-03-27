@@ -6,6 +6,28 @@ const t = (key: string) => {
 };
 
 export const sidebarConfigList = [
+  // ── Quick Start ──
+  new SidebarChildVO({
+    id: 'wizard',
+    name: t('sidebar.quickStart'),
+    icon: (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+      >
+        <path d="M13 9H21L11 24V15H4L13 0V9ZM11 11V7.22063L7.53238 13H13V17.3944L17.263 11H11Z"></path>
+      </svg>
+    ),
+    route: '/wizard',
+    description: t('wizard.sidebarDescription'),
+    helpLink: {
+      en_US: '',
+      zh_Hans: '',
+    },
+    section: 'standalone',
+  }),
+
   // ── Home section ──
   new SidebarChildVO({
     id: 'monitoring',
@@ -153,27 +175,5 @@ export const sidebarConfigList = [
       zh_Hans: '',
     },
     section: 'extensions',
-  }),
-
-  // ── Quick Start (placed last so it is not the default fallback route) ──
-  new SidebarChildVO({
-    id: 'wizard',
-    name: t('sidebar.quickStart'),
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="currentColor"
-      >
-        <path d="M13 9H21L11 24V15H4L13 0V9ZM11 11V7.22063L7.53238 13H13V17.3944L17.263 11H11Z"></path>
-      </svg>
-    ),
-    route: '/wizard',
-    description: t('wizard.sidebarDescription'),
-    helpLink: {
-      en_US: '',
-      zh_Hans: '',
-    },
-    section: 'home',
   }),
 ];

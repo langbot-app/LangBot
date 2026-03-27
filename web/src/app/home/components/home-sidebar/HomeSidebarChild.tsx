@@ -1,6 +1,6 @@
 import { I18nObject } from '@/app/infra/entities/common';
 
-export type SidebarSection = 'home' | 'extensions';
+export type SidebarSection = 'home' | 'extensions' | 'standalone';
 
 export interface ISidebarChildVO {
   id: string;
