@@ -3,9 +3,52 @@ from __future__ import annotations
 import uuid
 import json
 import sqlalchemy
+import typing
 
 from ....core import app
 from ....entity.persistence import pipeline as persistence_pipeline
+from ....provider.conversation.dify_store import DifyConversationStore
+
+
+def _normalize_launcher_type(launcher_type: typing.Any) -> str:
+    if hasattr(launcher_type, 'value'):
+        return str(launcher_type.value)
+    return str(launcher_type)
+
+
+def _get_dify_conversation_store(ap: app.Application) -> DifyConversationStore | None:
+    cfg = getattr(getattr(ap, 'instance_config', None), 'data', {}) or {}
+    store_cfg = cfg.get('dify_conversation_store', {}) or {}
+
+    try:
+        ttl_seconds = int(store_cfg.get('ttl_seconds', 86400))
+    except (TypeError, ValueError):
+        ttl_seconds = 86400
+
+    try:
+        lock_ttl_seconds = int(store_cfg.get('lock_ttl_seconds', 10))
+    except (TypeError, ValueError):
+        lock_ttl_seconds = 10
+
+    redis_mgr = getattr(ap, 'redis_mgr', None)
+    if redis_mgr is None:
+        return None
+
+    return DifyConversationStore(
+        redis_mgr=redis_mgr,
+        ttl_seconds=max(1, ttl_seconds),
+        lock_ttl_seconds=max(1, lock_ttl_seconds),
+        enabled=bool(store_cfg.get('enabled', True)),
+    )
+
+
+def _get_session_scope(session: typing.Any) -> tuple[str, str] | None:
+    launcher_type = getattr(session, 'launcher_type', None)
+    launcher_id = getattr(session, 'launcher_id', None)
+    if launcher_type is None or launcher_id is None:
+        return None
+
+    return _normalize_launcher_type(launcher_type), str(launcher_id)
 
 
 default_stage_order = [
@@ -147,9 +190,34 @@ class PipelineService:
         await self.ap.pipeline_mgr.load_pipeline(pipeline)
 
         # update all conversation that use this pipeline
+        store = _get_dify_conversation_store(self.ap)
         for session in self.ap.sess_mgr.session_list:
-            if session.using_conversation is not None and session.using_conversation.pipeline_uuid == pipeline_uuid:
-                session.using_conversation = None
+            using_conversation = getattr(session, 'using_conversation', None)
+            if using_conversation is None or using_conversation.pipeline_uuid != pipeline_uuid:
+                continue
+
+            if store is not None:
+                scope = _get_session_scope(session)
+                bot_uuid = getattr(using_conversation, 'bot_uuid', None)
+                if scope is not None and bot_uuid:
+                    launcher_type, launcher_id = scope
+                    scope_bot_uuid = str(bot_uuid)
+                    scope_pipeline_uuid = str(pipeline_uuid)
+                    try:
+                        await store.delete_conversation_id(
+                            scope_bot_uuid,
+                            scope_pipeline_uuid,
+                            launcher_type,
+                            launcher_id,
+                        )
+                    except Exception as exc:
+                        self.ap.logger.warning(
+                            'dify conversation reset delete failed '
+                            f'bot_uuid={scope_bot_uuid} pipeline_uuid={scope_pipeline_uuid} '
+                            f'launcher_type={launcher_type} launcher_id={launcher_id}: {exc}'
+                        )
+
+            session.using_conversation = None
 
     async def delete_pipeline(self, pipeline_uuid: str) -> None:
         await self.ap.persistence_mgr.execute_async(

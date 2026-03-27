@@ -23,6 +23,7 @@ from ..entity.persistence import plugin as persistence_plugin
 from ..entity.persistence import bstorage as persistence_bstorage
 
 from ..core import app
+from ..provider.conversation.dify_store import DifyConversationStore
 from ..utils import constants
 
 
@@ -38,6 +39,53 @@ def _make_rag_error_response(error: Exception, error_type: str, **extra_context)
     context_str = f' [{", ".join(context_parts)}]' if context_parts else ''
     message = f'[{error_type}/{type(error).__name__}]{context_str} {str(error)}'
     return handler.ActionResponse.error(message=message)
+
+
+def _normalize_launcher_type(launcher_type: Any) -> str:
+    if hasattr(launcher_type, 'value'):
+        return str(launcher_type.value)
+    return str(launcher_type)
+
+
+def _get_dify_conversation_store(ap: app.Application) -> DifyConversationStore | None:
+    cfg = getattr(getattr(ap, 'instance_config', None), 'data', {}) or {}
+    store_cfg = cfg.get('dify_conversation_store', {}) or {}
+
+    try:
+        ttl_seconds = int(store_cfg.get('ttl_seconds', 86400))
+    except (TypeError, ValueError):
+        ttl_seconds = 86400
+
+    try:
+        lock_ttl_seconds = int(store_cfg.get('lock_ttl_seconds', 10))
+    except (TypeError, ValueError):
+        lock_ttl_seconds = 10
+
+    redis_mgr = getattr(ap, 'redis_mgr', None)
+    if redis_mgr is None:
+        return None
+
+    return DifyConversationStore(
+        redis_mgr=redis_mgr,
+        ttl_seconds=max(1, ttl_seconds),
+        lock_ttl_seconds=max(1, lock_ttl_seconds),
+        enabled=bool(store_cfg.get('enabled', True)),
+    )
+
+
+def _get_dify_scope_from_query(query: Any) -> tuple[str, str, str, str] | None:
+    session = getattr(query, 'session', None)
+    using_conversation = getattr(session, 'using_conversation', None)
+
+    bot_uuid = getattr(query, 'bot_uuid', None) or getattr(using_conversation, 'bot_uuid', None)
+    pipeline_uuid = getattr(query, 'pipeline_uuid', None) or getattr(using_conversation, 'pipeline_uuid', None)
+    launcher_type = getattr(session, 'launcher_type', None) or getattr(query, 'launcher_type', None)
+    launcher_id = getattr(session, 'launcher_id', None) or getattr(query, 'launcher_id', None)
+
+    if not bot_uuid or not pipeline_uuid or launcher_type is None or launcher_id is None:
+        return None
+
+    return str(bot_uuid), str(pipeline_uuid), _normalize_launcher_type(launcher_type), str(launcher_id)
 
 
 class RuntimeConnectionHandler(handler.Handler):
@@ -248,8 +296,22 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
 
             query = self.ap.query_pool.cached_queries[query_id]
+            scope = _get_dify_scope_from_query(query)
 
             query.session.using_conversation = None
+
+            if scope is not None:
+                store = _get_dify_conversation_store(self.ap)
+                if store is not None:
+                    bot_uuid, pipeline_uuid, launcher_type, launcher_id = scope
+                    try:
+                        await store.delete_conversation_id(bot_uuid, pipeline_uuid, launcher_type, launcher_id)
+                    except Exception as exc:
+                        self.ap.logger.warning(
+                            'dify conversation reset delete failed '
+                            f'bot_uuid={bot_uuid} pipeline_uuid={pipeline_uuid} '
+                            f'launcher_type={launcher_type} launcher_id={launcher_id}: {exc}'
+                        )
 
             return handler.ActionResponse.success(
                 data={},

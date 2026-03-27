@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import typing
 import json
 import uuid
@@ -13,6 +14,7 @@ import langbot_plugin.api.entities.builtin.provider.message as provider_message
 from langbot.pkg.utils import image
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 from langbot.libs.dify_service_api.v1 import client, errors
+from langbot.pkg.provider.conversation.dify_store import DifyConversationStore
 import httpx
 
 
@@ -25,6 +27,8 @@ class DifyServiceAPIRunner(runner.RequestRunner):
     def __init__(self, ap: app.Application, pipeline_config: dict):
         self.ap = ap
         self.pipeline_config = pipeline_config
+        self._conversation_store: DifyConversationStore | None = None
+        self._conversation_store_initialized = False
 
         valid_app_types = ['chat', 'agent', 'workflow']
         if self.pipeline_config['ai']['dify-service-api']['app-type'] not in valid_app_types:
@@ -38,6 +42,207 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             api_key=api_key,
             base_url=self.pipeline_config['ai']['dify-service-api']['base-url'],
         )
+
+    def _resolve_conversation_store_config(self) -> dict[str, typing.Any]:
+        app_cfg = getattr(getattr(self.ap, 'instance_config', None), 'data', {}) or {}
+        store_cfg = app_cfg.get('dify_conversation_store', {}) or {}
+
+        enabled = bool(store_cfg.get('enabled', True))
+
+        try:
+            ttl_seconds = int(store_cfg.get('ttl_seconds', 86400))
+        except (TypeError, ValueError):
+            ttl_seconds = 86400
+        ttl_seconds = max(1, ttl_seconds)
+
+        try:
+            lock_ttl_seconds = int(store_cfg.get('lock_ttl_seconds', 10))
+        except (TypeError, ValueError):
+            lock_ttl_seconds = 10
+
+        # Keep lock TTL longer than the Dify request window to avoid early lock expiration.
+        request_timeout_seconds = 120
+        lock_ttl_floor = request_timeout_seconds + 10
+        lock_ttl_seconds = max(1, lock_ttl_seconds, lock_ttl_floor)
+
+        try:
+            contention_wait_retry_count = int(store_cfg.get('contention_wait_retry_count', 15))
+        except (TypeError, ValueError):
+            contention_wait_retry_count = 15
+        contention_wait_retry_count = max(1, min(60, contention_wait_retry_count))
+
+        try:
+            contention_wait_interval_ms = int(store_cfg.get('contention_wait_interval_ms', 500))
+        except (TypeError, ValueError):
+            contention_wait_interval_ms = 500
+        contention_wait_interval_ms = max(50, min(2000, contention_wait_interval_ms))
+
+        return {
+            'enabled': enabled,
+            'ttl_seconds': ttl_seconds,
+            'lock_ttl_seconds': lock_ttl_seconds,
+            'contention_wait_retry_count': contention_wait_retry_count,
+            'contention_wait_interval_ms': contention_wait_interval_ms,
+        }
+
+    def _get_conversation_store(self) -> DifyConversationStore | None:
+        if self._conversation_store_initialized:
+            return self._conversation_store
+
+        self._conversation_store_initialized = True
+        cfg = self._resolve_conversation_store_config()
+
+        if not cfg['enabled']:
+            return None
+
+        redis_mgr = getattr(self.ap, 'redis_mgr', None)
+        if redis_mgr is None:
+            return None
+
+        self._conversation_store = DifyConversationStore(
+            redis_mgr=redis_mgr,
+            ttl_seconds=cfg['ttl_seconds'],
+            lock_ttl_seconds=cfg['lock_ttl_seconds'],
+            enabled=cfg['enabled'],
+        )
+
+        return self._conversation_store
+
+    @staticmethod
+    def _extract_conversation_id_from_chunk(chunk: typing.Any) -> str | None:
+        if not isinstance(chunk, dict):
+            return None
+        conversation_id = chunk.get('conversation_id')
+        if isinstance(conversation_id, str) and conversation_id.strip():
+            return conversation_id
+        return None
+
+    @staticmethod
+    def _normalize_launcher_type(launcher_type: typing.Any) -> str:
+        if hasattr(launcher_type, 'value'):
+            return str(launcher_type.value)
+        return str(launcher_type)
+
+    def _get_conversation_scope(self, query: pipeline_query.Query) -> tuple[str, str, str, str] | None:
+        session = getattr(query, 'session', None)
+        using_conversation = getattr(session, 'using_conversation', None)
+
+        bot_uuid = getattr(query, 'bot_uuid', None) or getattr(using_conversation, 'bot_uuid', None)
+        pipeline_uuid = getattr(query, 'pipeline_uuid', None) or getattr(using_conversation, 'pipeline_uuid', None)
+        launcher_type = getattr(session, 'launcher_type', None) or getattr(query, 'launcher_type', None)
+        launcher_id = getattr(session, 'launcher_id', None) or getattr(query, 'launcher_id', None)
+
+        if not bot_uuid or not pipeline_uuid or launcher_type is None or launcher_id is None:
+            return None
+
+        return (
+            str(bot_uuid),
+            str(pipeline_uuid),
+            self._normalize_launcher_type(launcher_type),
+            str(launcher_id),
+        )
+
+    async def _restore_conversation_id_if_needed(self, query: pipeline_query.Query) -> tuple[str | None, str | None]:
+        session = getattr(query, 'session', None)
+        using_conversation = getattr(session, 'using_conversation', None)
+        if using_conversation is None:
+            return None, None
+
+        current_conversation_id = getattr(using_conversation, 'uuid', None)
+        if current_conversation_id:
+            return current_conversation_id, None
+
+        store = self._get_conversation_store()
+        scope = self._get_conversation_scope(query)
+        if store is None or scope is None:
+            return None, None
+
+        try:
+            conversation_id = await store.get_conversation_id(*scope)
+        except Exception as exc:
+            self.ap.logger.warning(f'dify conversation restore failed: {exc}')
+            return None, None
+
+        if conversation_id:
+            using_conversation.uuid = conversation_id
+            return conversation_id, None
+
+        try:
+            lock_owner = await store.acquire_lock(*scope)
+        except Exception as exc:
+            self.ap.logger.warning(f'dify conversation lock acquire failed: {exc}')
+            return None, None
+
+        if not lock_owner:
+            cfg = self._resolve_conversation_store_config()
+            retry_count = int(cfg.get('contention_wait_retry_count', 15))
+            wait_interval_seconds = int(cfg.get('contention_wait_interval_ms', 500)) / 1000.0
+
+            for _ in range(retry_count):
+                await asyncio.sleep(wait_interval_seconds)
+                try:
+                    conversation_id = await store.get_conversation_id(*scope)
+                except Exception as exc:
+                    self.ap.logger.warning(f'dify conversation contention re-check failed: {exc}')
+                    continue
+
+                if conversation_id:
+                    using_conversation.uuid = conversation_id
+                    return conversation_id, None
+
+            self.ap.logger.warning(
+                'dify conversation lock contention unresolved after bounded wait, continue without restored conversation id'
+            )
+            return None, None
+
+        try:
+            conversation_id = await store.get_conversation_id(*scope)
+        except Exception as exc:
+            self.ap.logger.warning(f'dify conversation restore re-check failed: {exc}')
+            conversation_id = None
+
+        if conversation_id:
+            using_conversation.uuid = conversation_id
+            try:
+                await store.release_lock(*scope, lock_owner)
+            except Exception as exc:
+                self.ap.logger.warning(f'dify conversation lock release failed: {exc}')
+            return conversation_id, None
+
+        return None, lock_owner
+
+    async def _release_conversation_lock(self, query: pipeline_query.Query, lock_owner: str | None):
+        if not lock_owner:
+            return
+
+        store = self._get_conversation_store()
+        scope = self._get_conversation_scope(query)
+        if store is None or scope is None:
+            return
+
+        try:
+            await store.release_lock(*scope, lock_owner)
+        except Exception as exc:
+            self.ap.logger.warning(f'dify conversation lock release failed: {exc}')
+
+    async def _persist_conversation_id(self, query: pipeline_query.Query, conversation_id: str | None):
+        if not conversation_id:
+            return
+
+        session = getattr(query, 'session', None)
+        using_conversation = getattr(session, 'using_conversation', None)
+        if using_conversation is not None:
+            using_conversation.uuid = conversation_id
+
+        store = self._get_conversation_store()
+        scope = self._get_conversation_scope(query)
+        if store is None or scope is None:
+            return
+
+        try:
+            await store.set_conversation_id(*scope, conversation_id)
+        except Exception as exc:
+            self.ap.logger.warning(f'dify conversation persist failed: {exc}')
 
     def _process_thinking_content(
         self,
@@ -237,6 +442,9 @@ class DifyServiceAPIRunner(runner.RequestRunner):
     ) -> typing.AsyncGenerator[provider_message.Message, None]:
         """调用聊天助手"""
         cov_id = query.session.using_conversation.uuid or None
+        conversation_lock_owner = None
+        if not cov_id:
+            cov_id, conversation_lock_owner = await self._restore_conversation_id_if_needed(query)
         query.variables['conversation_id'] = cov_id
 
         plain_text, upload_files = await self._preprocess_user_message(query)
@@ -260,50 +468,56 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         chunk = None  # 初始化chunk变量，防止在没有响应时引用错误
 
-        async for chunk in self.dify_client.chat_messages(
-            inputs=inputs,
-            query=plain_text,
-            user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
-            conversation_id=cov_id,
-            files=files,
-            timeout=120,
-        ):
-            self.ap.logger.debug('dify-chat-chunk: ' + str(chunk))
+        try:
+            async for chunk in self.dify_client.chat_messages(
+                inputs=inputs,
+                query=plain_text,
+                user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+                conversation_id=cov_id,
+                files=files,
+                timeout=120,
+            ):
+                self.ap.logger.debug('dify-chat-chunk: ' + str(chunk))
 
-            if chunk['event'] == 'workflow_started':
-                mode = 'workflow'
+                if chunk['event'] == 'workflow_started':
+                    mode = 'workflow'
 
-            if mode == 'workflow':
-                if chunk['event'] == 'node_finished':
-                    if chunk['data']['node_type'] == 'answer':
-                        answer = self._extract_dify_text_output(chunk['data']['outputs'].get('answer'))
-                        content, _ = self._process_thinking_content(answer)
+                if mode == 'workflow':
+                    if chunk['event'] == 'node_finished':
+                        if chunk['data']['node_type'] == 'answer':
+                            answer = self._extract_dify_text_output(chunk['data']['outputs'].get('answer'))
+                            content, _ = self._process_thinking_content(answer)
 
+                            yield provider_message.Message(
+                                role='assistant',
+                                content=content,
+                            )
+                elif mode == 'basic':
+                    if chunk['event'] == 'message':
+                        basic_mode_pending_chunk += chunk['answer']
+                    elif chunk['event'] == 'message_end':
+                        content, _ = self._process_thinking_content(basic_mode_pending_chunk)
                         yield provider_message.Message(
                             role='assistant',
                             content=content,
                         )
-            elif mode == 'basic':
-                if chunk['event'] == 'message':
-                    basic_mode_pending_chunk += chunk['answer']
-                elif chunk['event'] == 'message_end':
-                    content, _ = self._process_thinking_content(basic_mode_pending_chunk)
-                    yield provider_message.Message(
-                        role='assistant',
-                        content=content,
-                    )
-                    basic_mode_pending_chunk = ''
+                        basic_mode_pending_chunk = ''
 
-        if chunk is None:
-            raise errors.DifyAPIError('Dify API 没有返回任何响应，请检查网络连接和API配置')
-
-        query.session.using_conversation.uuid = chunk['conversation_id']
+            if chunk is None:
+                raise errors.DifyAPIError('Dify API 没有返回任何响应，请检查网络连接和API配置')
+            final_conversation_id = self._extract_conversation_id_from_chunk(chunk) or query.session.using_conversation.uuid
+            await self._persist_conversation_id(query, final_conversation_id)
+        finally:
+            await self._release_conversation_lock(query, conversation_lock_owner)
 
     async def _agent_chat_messages(
         self, query: pipeline_query.Query
     ) -> typing.AsyncGenerator[provider_message.Message, None]:
         """调用聊天助手"""
         cov_id = query.session.using_conversation.uuid or None
+        conversation_lock_owner = None
+        if not cov_id:
+            cov_id, conversation_lock_owner = await self._restore_conversation_id_if_needed(query)
         query.variables['conversation_id'] = cov_id
 
         plain_text, upload_files = await self._preprocess_user_message(query)
@@ -327,80 +541,85 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         chunk = None  # 初始化chunk变量，防止在没有响应时引用错误
 
-        async for chunk in self.dify_client.chat_messages(
-            inputs=inputs,
-            query=plain_text,
-            user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
-            response_mode='streaming',
-            conversation_id=cov_id,
-            files=files,
-            timeout=120,
-        ):
-            self.ap.logger.debug('dify-agent-chunk: ' + str(chunk))
+        try:
+            async for chunk in self.dify_client.chat_messages(
+                inputs=inputs,
+                query=plain_text,
+                user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+                response_mode='streaming',
+                conversation_id=cov_id,
+                files=files,
+                timeout=120,
+            ):
+                self.ap.logger.debug('dify-agent-chunk: ' + str(chunk))
 
-            if chunk['event'] in ignored_events:
-                continue
+                if chunk['event'] in ignored_events:
+                    continue
 
-            if chunk['event'] == 'agent_message' or chunk['event'] == 'message':
-                pending_agent_message += chunk['answer']
-            else:
-                if pending_agent_message.strip() != '':
-                    pending_agent_message = pending_agent_message.replace('</details>Action:', '</details>')
-                    content, _ = self._process_thinking_content(pending_agent_message)
-                    yield provider_message.Message(
-                        role='assistant',
-                        content=content,
-                    )
-                pending_agent_message = ''
-
-                if chunk['event'] == 'agent_thought':
-                    if chunk['tool'] != '' and chunk['observation'] != '':  # 工具调用结果，跳过
-                        continue
-
-                    if chunk['tool']:
-                        msg = provider_message.Message(
-                            role='assistant',
-                            tool_calls=[
-                                provider_message.ToolCall(
-                                    id=chunk['id'],
-                                    type='function',
-                                    function=provider_message.FunctionCall(
-                                        name=chunk['tool'],
-                                        arguments=json.dumps({}),
-                                    ),
-                                )
-                            ],
-                        )
-                        yield msg
-                if chunk['event'] == 'message_file':
-                    if chunk['type'] == 'image' and chunk['belongs_to'] == 'assistant':
-                        # 检查URL是否已经是完整的连接
-                        if chunk['url'].startswith('http://') or chunk['url'].startswith('https://'):
-                            image_url = chunk['url']
-                        else:
-                            base_url = self.dify_client.base_url
-
-                            if base_url.endswith('/v1'):
-                                base_url = base_url[:-3]
-
-                            image_url = base_url + chunk['url']
-
+                if chunk['event'] == 'agent_message' or chunk['event'] == 'message':
+                    pending_agent_message += chunk['answer']
+                else:
+                    if pending_agent_message.strip() != '':
+                        pending_agent_message = pending_agent_message.replace('</details>Action:', '</details>')
+                        content, _ = self._process_thinking_content(pending_agent_message)
                         yield provider_message.Message(
                             role='assistant',
-                            content=[provider_message.ContentElement.from_image_url(image_url)],
+                            content=content,
                         )
-                if chunk['event'] == 'error':
-                    raise errors.DifyAPIError('dify 服务错误: ' + chunk['message'])
+                    pending_agent_message = ''
 
-        if chunk is None:
-            raise errors.DifyAPIError('Dify API 没有返回任何响应，请检查网络连接和API配置')
+                    if chunk['event'] == 'agent_thought':
+                        if chunk['tool'] != '' and chunk['observation'] != '':  # 工具调用结果，跳过
+                            continue
 
-        query.session.using_conversation.uuid = chunk['conversation_id']
+                        if chunk['tool']:
+                            msg = provider_message.Message(
+                                role='assistant',
+                                tool_calls=[
+                                    provider_message.ToolCall(
+                                        id=chunk['id'],
+                                        type='function',
+                                        function=provider_message.FunctionCall(
+                                            name=chunk['tool'],
+                                            arguments=json.dumps({}),
+                                        ),
+                                    )
+                                ],
+                            )
+                            yield msg
+                    if chunk['event'] == 'message_file':
+                        if chunk['type'] == 'image' and chunk['belongs_to'] == 'assistant':
+                            # 检查URL是否已经是完整的连接
+                            if chunk['url'].startswith('http://') or chunk['url'].startswith('https://'):
+                                image_url = chunk['url']
+                            else:
+                                base_url = self.dify_client.base_url
+
+                                if base_url.endswith('/v1'):
+                                    base_url = base_url[:-3]
+
+                                image_url = base_url + chunk['url']
+
+                            yield provider_message.Message(
+                                role='assistant',
+                                content=[provider_message.ContentElement.from_image_url(image_url)],
+                            )
+                    if chunk['event'] == 'error':
+                        raise errors.DifyAPIError('dify 服务错误: ' + chunk['message'])
+
+            if chunk is None:
+                raise errors.DifyAPIError('Dify API 没有返回任何响应，请检查网络连接和API配置')
+            final_conversation_id = self._extract_conversation_id_from_chunk(chunk) or query.session.using_conversation.uuid
+            await self._persist_conversation_id(query, final_conversation_id)
+        finally:
+            await self._release_conversation_lock(query, conversation_lock_owner)
 
     async def _workflow_messages(
         self, query: pipeline_query.Query
     ) -> typing.AsyncGenerator[provider_message.Message, None]:
         """调用工作流"""
+
+        _, conversation_lock_owner = await self._restore_conversation_id_if_needed(query)
 
         if not query.session.using_conversation.uuid:
             query.session.using_conversation.uuid = str(uuid.uuid4())
@@ -429,54 +648,70 @@ class DifyServiceAPIRunner(runner.RequestRunner):
 
         inputs.update(query.variables)
 
-        async for chunk in self.dify_client.workflow_run(
-            inputs=inputs,
-            user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
-            files=files,
-            timeout=120,
-        ):
-            self.ap.logger.debug('dify-workflow-chunk: ' + str(chunk))
-            if chunk['event'] in ignored_events:
-                continue
+        chunk = None
+        workflow_succeeded = False
 
-            if chunk['event'] == 'node_started':
-                if chunk['data']['node_type'] == 'start' or chunk['data']['node_type'] == 'end':
+        try:
+            async for chunk in self.dify_client.workflow_run(
+                inputs=inputs,
+                user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+                files=files,
+                timeout=120,
+            ):
+                self.ap.logger.debug('dify-workflow-chunk: ' + str(chunk))
+                if chunk['event'] in ignored_events:
                     continue
 
-                msg = provider_message.Message(
-                    role='assistant',
-                    content=None,
-                    tool_calls=[
-                        provider_message.ToolCall(
-                            id=chunk['data']['node_id'],
-                            type='function',
-                            function=provider_message.FunctionCall(
-                                name=chunk['data']['title'],
-                                arguments=json.dumps({}),
-                            ),
-                        )
-                    ],
+                if chunk['event'] == 'node_started':
+                    if chunk['data']['node_type'] == 'start' or chunk['data']['node_type'] == 'end':
+                        continue
+
+                    msg = provider_message.Message(
+                        role='assistant',
+                        content=None,
+                        tool_calls=[
+                            provider_message.ToolCall(
+                                id=chunk['data']['node_id'],
+                                type='function',
+                                function=provider_message.FunctionCall(
+                                    name=chunk['data']['title'],
+                                    arguments=json.dumps({}),
+                                ),
+                            )
+                        ],
+                    )
+
+                    yield msg
+
+                elif chunk['event'] == 'workflow_finished':
+                    if chunk['data']['error']:
+                        raise errors.DifyAPIError(chunk['data']['error'])
+                    workflow_succeeded = True
+                    content, _ = self._process_thinking_content(chunk['data']['outputs']['summary'])
+
+                    msg = provider_message.Message(
+                        role='assistant',
+                        content=content,
+                    )
+
+                    yield msg
+
+            if workflow_succeeded:
+                final_conversation_id = (
+                    self._extract_conversation_id_from_chunk(chunk) or query.session.using_conversation.uuid
                 )
-
-                yield msg
-
-            elif chunk['event'] == 'workflow_finished':
-                if chunk['data']['error']:
-                    raise errors.DifyAPIError(chunk['data']['error'])
-                content, _ = self._process_thinking_content(chunk['data']['outputs']['summary'])
-
-                msg = provider_message.Message(
-                    role='assistant',
-                    content=content,
-                )
-
-                yield msg
+                await self._persist_conversation_id(query, final_conversation_id)
+        finally:
+            await self._release_conversation_lock(query, conversation_lock_owner)
 
     async def _chat_messages_chunk(
         self, query: pipeline_query.Query
     ) -> typing.AsyncGenerator[provider_message.MessageChunk, None]:
         """调用聊天助手"""
         cov_id = query.session.using_conversation.uuid or None
+        conversation_lock_owner = None
+        if not cov_id:
+            cov_id, conversation_lock_owner = await self._restore_conversation_id_if_needed(query)
         query.variables['conversation_id'] = cov_id
 
         plain_text, upload_files = await self._preprocess_user_message(query)
@@ -514,104 +749,113 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         flush_window_enabled = self._is_stream_flush_window_enabled(query)
         flush_window_ms = self._get_stream_flush_window_ms(query)
 
-        async for chunk in self.dify_client.chat_messages(
-            inputs=inputs,
-            query=plain_text,
-            user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
-            conversation_id=cov_id,
-            files=files,
-            timeout=120,
-        ):
-            self.ap.logger.debug('dify-chat-chunk: ' + str(chunk))
-
-            if chunk['event'] == 'workflow_started':
-                mode = 'workflow'
-            elif chunk['event'] in ('node_started', 'node_finished', 'workflow_finished'):
-                # Some Dify deployments may omit workflow_started in streamed chunks.
-                mode = 'workflow'
-
-            if chunk['event'] == 'message':
-                answer = chunk.get('answer', '')
-                if answer != '':
-                    message_idx += 1
-                    pending_chunk_count += 1
-                    if remove_think:
-                        if '<think>' in answer and not think_start:
-                            think_start = True
-                            continue
-                        if '</think>' in answer and not think_end:
-                            import re
-
-                            content = re.sub(r'^\n</think>', '', answer)
-                            basic_mode_pending_chunk += content
-                            think_end = True
-                        elif think_end:
-                            basic_mode_pending_chunk += answer
-                        if think_start:
-                            continue
-
-                    else:
-                        basic_mode_pending_chunk += answer
-
-            if chunk['event'] == 'message_end':
-                is_final = True
-                stream_completed = True
-            elif chunk['event'] == 'workflow_finished':
-                is_final = True
-                stream_completed = True
-                if chunk['data'].get('error'):
-                    raise errors.DifyAPIError(chunk['data']['error'])
-
-            if mode == 'workflow' and chunk['event'] == 'node_finished':
-                if chunk['data'].get('node_type') == 'answer':
-                    answer = self._extract_dify_text_output(chunk['data'].get('outputs', {}).get('answer'))
-                    if answer:
-                        basic_mode_pending_chunk = answer
-
-            if final_snapshot_emitted and is_final:
-                continue
-
-            if self._should_emit_stream_snapshot(
-                content=basic_mode_pending_chunk,
-                is_final=is_final,
-                pending_chunk_count=pending_chunk_count,
-                chunk_batch_size=chunk_batch_size,
-                flush_window_enabled=flush_window_enabled,
-                flush_window_ms=flush_window_ms,
-                last_emitted_content=last_emitted_content,
-                last_emit_at=last_emit_at,
+        try:
+            async for chunk in self.dify_client.chat_messages(
+                inputs=inputs,
+                query=plain_text,
+                user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+                conversation_id=cov_id,
+                files=files,
+                timeout=120,
             ):
-                yield provider_message.MessageChunk(
-                    role='assistant',
+                self.ap.logger.debug('dify-chat-chunk: ' + str(chunk))
+
+                if chunk['event'] == 'workflow_started':
+                    mode = 'workflow'
+                elif chunk['event'] in ('node_started', 'node_finished', 'workflow_finished'):
+                    # Some Dify deployments may omit workflow_started in streamed chunks.
+                    mode = 'workflow'
+
+                if chunk['event'] == 'message':
+                    answer = chunk.get('answer', '')
+                    if answer != '':
+                        message_idx += 1
+                        pending_chunk_count += 1
+                        if remove_think:
+                            if '<think>' in answer and not think_start:
+                                think_start = True
+                                continue
+                            if '</think>' in answer and not think_end:
+                                import re
+
+                                content = re.sub(r'^\n</think>', '', answer)
+                                basic_mode_pending_chunk += content
+                                think_end = True
+                            elif think_end:
+                                basic_mode_pending_chunk += answer
+                            if think_start:
+                                continue
+
+                        else:
+                            basic_mode_pending_chunk += answer
+
+                if chunk['event'] == 'message_end':
+                    is_final = True
+                    stream_completed = True
+                elif chunk['event'] == 'workflow_finished':
+                    is_final = True
+                    stream_completed = True
+                    if chunk['data'].get('error'):
+                        raise errors.DifyAPIError(chunk['data']['error'])
+
+                if mode == 'workflow' and chunk['event'] == 'node_finished':
+                    if chunk['data'].get('node_type') == 'answer':
+                        answer = self._extract_dify_text_output(chunk['data'].get('outputs', {}).get('answer'))
+                        if answer:
+                            basic_mode_pending_chunk = answer
+
+                if final_snapshot_emitted and is_final:
+                    continue
+
+                if self._should_emit_stream_snapshot(
                     content=basic_mode_pending_chunk,
                     is_final=is_final,
-                )
-                if is_final:
-                    final_snapshot_emitted = True
-                last_emitted_content = basic_mode_pending_chunk
-                pending_chunk_count = 0
-                last_emit_at = time.monotonic()
+                    pending_chunk_count=pending_chunk_count,
+                    chunk_batch_size=chunk_batch_size,
+                    flush_window_enabled=flush_window_enabled,
+                    flush_window_ms=flush_window_ms,
+                    last_emitted_content=last_emitted_content,
+                    last_emit_at=last_emit_at,
+                ):
+                    yield provider_message.MessageChunk(
+                        role='assistant',
+                        content=basic_mode_pending_chunk,
+                        is_final=is_final,
+                    )
+                    if is_final:
+                        final_snapshot_emitted = True
+                    last_emitted_content = basic_mode_pending_chunk
+                    pending_chunk_count = 0
+                    last_emit_at = time.monotonic()
 
-        if chunk is None:
-            raise errors.DifyAPIError('Dify API 没有返回任何响应，请检查网络连接和API配置')
+            if chunk is None:
+                raise errors.DifyAPIError('Dify API 没有返回任何响应，请检查网络连接和API配置')
 
-        if stream_completed and not final_snapshot_emitted:
-            final_content = basic_mode_pending_chunk or last_emitted_content
-            if final_content:
-                self.ap.logger.debug('dify-chat-stream: emit final snapshot fallback')
-                yield provider_message.MessageChunk(
-                    role='assistant',
-                    content=final_content,
-                    is_final=True,
-                )
+            if stream_completed and not final_snapshot_emitted:
+                final_content = basic_mode_pending_chunk or last_emitted_content
+                if final_content:
+                    self.ap.logger.debug('dify-chat-stream: emit final snapshot fallback')
+                    yield provider_message.MessageChunk(
+                        role='assistant',
+                        content=final_content,
+                        is_final=True,
+                    )
 
-        query.session.using_conversation.uuid = chunk['conversation_id']
+            final_conversation_id = (
+                self._extract_conversation_id_from_chunk(chunk) or query.session.using_conversation.uuid
+            )
+            await self._persist_conversation_id(query, final_conversation_id)
+        finally:
+            await self._release_conversation_lock(query, conversation_lock_owner)
 
     async def _agent_chat_messages_chunk(
         self, query: pipeline_query.Query
     ) -> typing.AsyncGenerator[provider_message.MessageChunk, None]:
         """调用聊天助手"""
         cov_id = query.session.using_conversation.uuid or None
+        conversation_lock_owner = None
+        if not cov_id:
+            cov_id, conversation_lock_owner = await self._restore_conversation_id_if_needed(query)
         query.variables['conversation_id'] = cov_id
 
         plain_text, upload_files = await self._preprocess_user_message(query)
@@ -649,127 +893,135 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         flush_window_enabled = self._is_stream_flush_window_enabled(query)
         flush_window_ms = self._get_stream_flush_window_ms(query)
 
-        async for chunk in self.dify_client.chat_messages(
-            inputs=inputs,
-            query=plain_text,
-            user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
-            response_mode='streaming',
-            conversation_id=cov_id,
-            files=files,
-            timeout=120,
-        ):
-            self.ap.logger.debug('dify-agent-chunk: ' + str(chunk))
-
-            if chunk['event'] in ignored_events:
-                continue
-
-            if chunk['event'] == 'agent_message':
-                answer = chunk.get('answer', '')
-                if answer != '':
-                    message_idx += 1
-                    pending_chunk_count += 1
-                    if remove_think:
-                        if '<think>' in answer and not think_start:
-                            think_start = True
-                            continue
-                        if '</think>' in answer and not think_end:
-                            import re
-
-                            content = re.sub(r'^\n</think>', '', answer)
-                            pending_agent_message += content
-                            think_end = True
-                        elif think_end or not think_start:
-                            pending_agent_message += answer
-                        if think_start and not think_end:
-                            continue
-
-                    else:
-                        pending_agent_message += answer
-            elif chunk['event'] in ('message_end', 'workflow_finished'):
-                is_final = True
-                stream_completed = True
-            else:
-                if chunk['event'] == 'agent_thought':
-                    if chunk['tool'] != '' and chunk['observation'] != '':  # 工具调用结果，跳过
-                        continue
-                    message_idx += 1
-                    if chunk['tool']:
-                        msg = provider_message.MessageChunk(
-                            role='assistant',
-                            tool_calls=[
-                                provider_message.ToolCall(
-                                    id=chunk['id'],
-                                    type='function',
-                                    function=provider_message.FunctionCall(
-                                        name=chunk['tool'],
-                                        arguments=json.dumps({}),
-                                    ),
-                                )
-                            ],
-                        )
-                        yield msg
-                if chunk['event'] == 'message_file':
-                    message_idx += 1
-                    if chunk['type'] == 'image' and chunk['belongs_to'] == 'assistant':
-                        # 检查URL是否已经是完整的连接
-                        if chunk['url'].startswith('http://') or chunk['url'].startswith('https://'):
-                            image_url = chunk['url']
-                        else:
-                            base_url = self.dify_client.base_url
-
-                            if base_url.endswith('/v1'):
-                                base_url = base_url[:-3]
-
-                            image_url = base_url + chunk['url']
-
-                        yield provider_message.MessageChunk(
-                            role='assistant',
-                            content=[provider_message.ContentElement.from_image_url(image_url)],
-                            is_final=is_final,
-                        )
-
-                if chunk['event'] == 'error':
-                    raise errors.DifyAPIError('dify 服务错误: ' + chunk['message'])
-            if self._should_emit_stream_snapshot(
-                content=pending_agent_message,
-                is_final=is_final,
-                pending_chunk_count=pending_chunk_count,
-                chunk_batch_size=chunk_batch_size,
-                flush_window_enabled=flush_window_enabled,
-                flush_window_ms=flush_window_ms,
-                last_emitted_content=last_emitted_content,
-                last_emit_at=last_emit_at,
+        try:
+            async for chunk in self.dify_client.chat_messages(
+                inputs=inputs,
+                query=plain_text,
+                user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+                response_mode='streaming',
+                conversation_id=cov_id,
+                files=files,
+                timeout=120,
             ):
-                yield provider_message.MessageChunk(
-                    role='assistant',
+                self.ap.logger.debug('dify-agent-chunk: ' + str(chunk))
+
+                if chunk['event'] in ignored_events:
+                    continue
+
+                if chunk['event'] == 'agent_message':
+                    answer = chunk.get('answer', '')
+                    if answer != '':
+                        message_idx += 1
+                        pending_chunk_count += 1
+                        if remove_think:
+                            if '<think>' in answer and not think_start:
+                                think_start = True
+                                continue
+                            if '</think>' in answer and not think_end:
+                                import re
+
+                                content = re.sub(r'^\n</think>', '', answer)
+                                pending_agent_message += content
+                                think_end = True
+                            elif think_end or not think_start:
+                                pending_agent_message += answer
+                            if think_start and not think_end:
+                                continue
+
+                        else:
+                            pending_agent_message += answer
+                elif chunk['event'] in ('message_end', 'workflow_finished'):
+                    is_final = True
+                    stream_completed = True
+                else:
+                    if chunk['event'] == 'agent_thought':
+                        if chunk['tool'] != '' and chunk['observation'] != '':  # 工具调用结果，跳过
+                            continue
+                        message_idx += 1
+                        if chunk['tool']:
+                            msg = provider_message.MessageChunk(
+                                role='assistant',
+                                tool_calls=[
+                                    provider_message.ToolCall(
+                                        id=chunk['id'],
+                                        type='function',
+                                        function=provider_message.FunctionCall(
+                                            name=chunk['tool'],
+                                            arguments=json.dumps({}),
+                                        ),
+                                    )
+                                ],
+                            )
+                            yield msg
+                    if chunk['event'] == 'message_file':
+                        message_idx += 1
+                        if chunk['type'] == 'image' and chunk['belongs_to'] == 'assistant':
+                            # 检查URL是否已经是完整的连接
+                            if chunk['url'].startswith('http://') or chunk['url'].startswith('https://'):
+                                image_url = chunk['url']
+                            else:
+                                base_url = self.dify_client.base_url
+
+                                if base_url.endswith('/v1'):
+                                    base_url = base_url[:-3]
+
+                                image_url = base_url + chunk['url']
+
+                            yield provider_message.MessageChunk(
+                                role='assistant',
+                                content=[provider_message.ContentElement.from_image_url(image_url)],
+                                is_final=is_final,
+                            )
+
+                    if chunk['event'] == 'error':
+                        raise errors.DifyAPIError('dify 服务错误: ' + chunk['message'])
+                if self._should_emit_stream_snapshot(
                     content=pending_agent_message,
                     is_final=is_final,
-                )
-                if is_final:
-                    final_snapshot_emitted = True
-                last_emitted_content = pending_agent_message
-                pending_chunk_count = 0
-                last_emit_at = time.monotonic()
+                    pending_chunk_count=pending_chunk_count,
+                    chunk_batch_size=chunk_batch_size,
+                    flush_window_enabled=flush_window_enabled,
+                    flush_window_ms=flush_window_ms,
+                    last_emitted_content=last_emitted_content,
+                    last_emit_at=last_emit_at,
+                ):
+                    yield provider_message.MessageChunk(
+                        role='assistant',
+                        content=pending_agent_message,
+                        is_final=is_final,
+                    )
+                    if is_final:
+                        final_snapshot_emitted = True
+                    last_emitted_content = pending_agent_message
+                    pending_chunk_count = 0
+                    last_emit_at = time.monotonic()
 
-        if chunk is None:
-            raise errors.DifyAPIError('Dify API 没有返回任何响应，请检查网络连接和API配置')
+            if chunk is None:
+                raise errors.DifyAPIError('Dify API 没有返回任何响应，请检查网络连接和API配置')
 
-        if stream_completed and not final_snapshot_emitted:
-            final_content = pending_agent_message or last_emitted_content
-            if final_content:
-                self.ap.logger.debug('dify-agent-stream: emit final snapshot fallback')
-                yield provider_message.MessageChunk(
-                    role='assistant',
-                    content=final_content,
-                    is_final=True,
-                )
+            if stream_completed and not final_snapshot_emitted:
+                final_content = pending_agent_message or last_emitted_content
+                if final_content:
+                    self.ap.logger.debug('dify-agent-stream: emit final snapshot fallback')
+                    yield provider_message.MessageChunk(
+                        role='assistant',
+                        content=final_content,
+                        is_final=True,
+                    )
 
-        query.session.using_conversation.uuid = chunk['conversation_id']
+            final_conversation_id = (
+                self._extract_conversation_id_from_chunk(chunk) or query.session.using_conversation.uuid
+            )
+            await self._persist_conversation_id(query, final_conversation_id)
+        finally:
+            await self._release_conversation_lock(query, conversation_lock_owner)
 
     async def _workflow_messages_chunk(
         self, query: pipeline_query.Query
     ) -> typing.AsyncGenerator[provider_message.MessageChunk, None]:
         """调用工作流"""
+
+        _, conversation_lock_owner = await self._restore_conversation_id_if_needed(query)
 
         if not query.session.using_conversation.uuid:
             query.session.using_conversation.uuid = str(uuid.uuid4())
@@ -812,95 +1064,106 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         chunk_batch_size = self._get_stream_chunk_batch_size(query)
         flush_window_enabled = self._is_stream_flush_window_enabled(query)
         flush_window_ms = self._get_stream_flush_window_ms(query)
-        async for chunk in self.dify_client.workflow_run(
-            inputs=inputs,
-            user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
-            files=files,
-            timeout=120,
-        ):
-            self.ap.logger.debug('dify-workflow-chunk: ' + str(chunk))
-            if chunk['event'] in ignored_events:
-                continue
-            if chunk['event'] == 'workflow_finished':
-                is_final = True
-                stream_completed = True
-                if chunk['data']['error']:
-                    raise errors.DifyAPIError(chunk['data']['error'])
+        chunk = None
 
-            if chunk['event'] == 'text_chunk':
-                text = chunk['data'].get('text', '')
-                if text != '':
-                    messsage_idx += 1
-                    pending_chunk_count += 1
-                    if remove_think:
-                        if '<think>' in text and not think_start:
-                            think_start = True
-                            continue
-                        if '</think>' in text and not think_end:
-                            import re
-
-                            content = re.sub(r'^\n</think>', '', text)
-                            workflow_contents += content
-                            think_end = True
-                        elif think_end:
-                            workflow_contents += text
-                        if think_start:
-                            continue
-
-                    else:
-                        workflow_contents += text
-
-            if chunk['event'] == 'node_started':
-                if chunk['data']['node_type'] == 'start' or chunk['data']['node_type'] == 'end':
-                    continue
-                messsage_idx += 1
-                msg = provider_message.MessageChunk(
-                    role='assistant',
-                    content=None,
-                    tool_calls=[
-                        provider_message.ToolCall(
-                            id=chunk['data']['node_id'],
-                            type='function',
-                            function=provider_message.FunctionCall(
-                                name=chunk['data']['title'],
-                                arguments=json.dumps({}),
-                            ),
-                        )
-                    ],
-                )
-
-                yield msg
-
-            if self._should_emit_stream_snapshot(
-                content=workflow_contents,
-                is_final=is_final,
-                pending_chunk_count=pending_chunk_count,
-                chunk_batch_size=chunk_batch_size,
-                flush_window_enabled=flush_window_enabled,
-                flush_window_ms=flush_window_ms,
-                last_emitted_content=last_emitted_content,
-                last_emit_at=last_emit_at,
+        try:
+            async for chunk in self.dify_client.workflow_run(
+                inputs=inputs,
+                user=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+                files=files,
+                timeout=120,
             ):
-                yield provider_message.MessageChunk(
-                    role='assistant',
+                self.ap.logger.debug('dify-workflow-chunk: ' + str(chunk))
+                if chunk['event'] in ignored_events:
+                    continue
+                if chunk['event'] == 'workflow_finished':
+                    is_final = True
+                    stream_completed = True
+                    if chunk['data']['error']:
+                        raise errors.DifyAPIError(chunk['data']['error'])
+
+                if chunk['event'] == 'text_chunk':
+                    text = chunk['data'].get('text', '')
+                    if text != '':
+                        messsage_idx += 1
+                        pending_chunk_count += 1
+                        if remove_think:
+                            if '<think>' in text and not think_start:
+                                think_start = True
+                                continue
+                            if '</think>' in text and not think_end:
+                                import re
+
+                                content = re.sub(r'^\n</think>', '', text)
+                                workflow_contents += content
+                                think_end = True
+                            elif think_end:
+                                workflow_contents += text
+                            if think_start:
+                                continue
+
+                        else:
+                            workflow_contents += text
+
+                if chunk['event'] == 'node_started':
+                    if chunk['data']['node_type'] == 'start' or chunk['data']['node_type'] == 'end':
+                        continue
+                    messsage_idx += 1
+                    msg = provider_message.MessageChunk(
+                        role='assistant',
+                        content=None,
+                        tool_calls=[
+                            provider_message.ToolCall(
+                                id=chunk['data']['node_id'],
+                                type='function',
+                                function=provider_message.FunctionCall(
+                                    name=chunk['data']['title'],
+                                    arguments=json.dumps({}),
+                                ),
+                            )
+                        ],
+                    )
+
+                    yield msg
+
+                if self._should_emit_stream_snapshot(
                     content=workflow_contents,
                     is_final=is_final,
-                )
-                if is_final:
-                    final_snapshot_emitted = True
-                last_emitted_content = workflow_contents
-                pending_chunk_count = 0
-                last_emit_at = time.monotonic()
+                    pending_chunk_count=pending_chunk_count,
+                    chunk_batch_size=chunk_batch_size,
+                    flush_window_enabled=flush_window_enabled,
+                    flush_window_ms=flush_window_ms,
+                    last_emitted_content=last_emitted_content,
+                    last_emit_at=last_emit_at,
+                ):
+                    yield provider_message.MessageChunk(
+                        role='assistant',
+                        content=workflow_contents,
+                        is_final=is_final,
+                    )
+                    if is_final:
+                        final_snapshot_emitted = True
+                    last_emitted_content = workflow_contents
+                    pending_chunk_count = 0
+                    last_emit_at = time.monotonic()
 
-        if stream_completed and not final_snapshot_emitted:
-            final_content = workflow_contents or last_emitted_content
-            if final_content:
-                self.ap.logger.debug('dify-workflow-stream: emit final snapshot fallback')
-                yield provider_message.MessageChunk(
-                    role='assistant',
-                    content=final_content,
-                    is_final=True,
+            if stream_completed and not final_snapshot_emitted:
+                final_content = workflow_contents or last_emitted_content
+                if final_content:
+                    self.ap.logger.debug('dify-workflow-stream: emit final snapshot fallback')
+                    yield provider_message.MessageChunk(
+                        role='assistant',
+                        content=final_content,
+                        is_final=True,
+                    )
+
+            if stream_completed:
+                final_conversation_id = (
+                    self._extract_conversation_id_from_chunk(chunk) or query.session.using_conversation.uuid
                 )
+                await self._persist_conversation_id(query, final_conversation_id)
+        finally:
+            await self._release_conversation_lock(query, conversation_lock_owner)
 
     async def run(self, query: pipeline_query.Query) -> typing.AsyncGenerator[provider_message.Message, None]:
         """运行请求"""
