@@ -124,7 +124,8 @@ export default function WizardPage() {
     restoredState.current?.selectedRunner ?? null,
   );
   const [botName, setBotName] = useState(restoredState.current?.botName ?? '');
-  const [botDescription, setBotDescription] = useState(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [botDescription, _setBotDescription] = useState(
     restoredState.current?.botDescription ?? '',
   );
   const [adapterConfig, setAdapterConfig] = useState<Record<string, unknown>>(
