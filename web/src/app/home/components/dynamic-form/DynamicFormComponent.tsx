@@ -17,7 +17,8 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, Globe } from 'lucide-react';
+import { systemInfo } from '@/app/infra/http';
 
 /**
  * Resolve the value referenced by a `show_if.field` string.
@@ -61,6 +62,7 @@ function WebhookUrlField({
 }) {
   const [copied, setCopied] = useState(false);
   const [extraCopied, setExtraCopied] = useState(false);
+  const { t } = useTranslation();
 
   const handleCopy = (text: string, setter: (v: boolean) => void) => {
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -121,6 +123,22 @@ function WebhookUrlField({
       )}
       {description && (
         <p className="text-sm text-muted-foreground">{description}</p>
+      )}
+      {systemInfo.edition === 'community' && (
+        <div className="flex items-start gap-2.5 rounded-md border border-border/60 bg-muted/40 px-3 py-2.5 mt-1 max-w-2xl">
+          <Globe className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {t('bots.webhookSaasHint')}{' '}
+            <a
+              href="https://space.langbot.app/cloud?utm_source=local_webui&utm_medium=webhook_alert&utm_campaign=saas_conversion"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline-offset-4 hover:underline font-medium"
+            >
+              {t('bots.webhookSaasLink')}
+            </a>
+          </p>
+        </div>
       )}
     </FormItem>
   );

@@ -318,6 +318,9 @@ const enUS = {
       'Click the input to select all, then press Ctrl+C (Mac: Cmd+C) to copy, or click the button',
     webhookUrlHintEither:
       'Use either of the two URLs above in your platform configuration',
+    webhookSaasHint:
+      'Webhook requires a publicly accessible domain. LangBot Cloud provides a ready-to-use public endpoint for your bot.',
+    webhookSaasLink: 'Learn more about LangBot Cloud',
     logLevel: 'Log Level',
     allLevels: 'All Levels',
     selectLevel: 'Select Level',

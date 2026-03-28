@@ -323,6 +323,9 @@
       '入力ボックスをクリックして全選択し、Ctrl+C (Mac: Cmd+C) でコピーするか、右側のボタンをクリックしてください',
     webhookUrlHintEither:
       '上記の2つのURLのいずれかをプラットフォーム設定に使用してください',
+    webhookSaasHint:
+      'Webhook には公開アクセス可能なドメインが必要です。LangBot Cloud では、ボット用のパブリックエンドポイントをすぐにご利用いただけます。',
+    webhookSaasLink: 'LangBot Cloud の詳細はこちら',
     logLevel: 'ログレベル',
     allLevels: 'すべてのレベル',
     selectLevel: 'レベルを選択',

@@ -303,6 +303,9 @@ const zhHans = {
     webhookUrlHint:
       '点击输入框自动全选，然后按 Ctrl+C (Mac: Cmd+C) 复制，或点击右侧按钮',
     webhookUrlHintEither: '以上两个地址任选其一填入平台配置即可',
+    webhookSaasHint:
+      'Webhook 需要公网可访问的域名。LangBot Cloud 为你的机器人提供开箱即用的公网地址。',
+    webhookSaasLink: '了解 LangBot Cloud',
     logLevel: '日志级别',
     allLevels: '全部级别',
     selectLevel: '选择级别',
