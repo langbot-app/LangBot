@@ -100,7 +100,7 @@ async def test_create_skill_import_preserves_existing_skill_content_when_form_fi
         }
     )
 
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('LANGBOT_DATA_ROOT', str(tmp_path / 'data'))
 
     await service.create_skill(
         {
@@ -143,7 +143,7 @@ async def test_create_skill_reuses_existing_managed_directory_without_copying(tm
         }
     )
 
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('LANGBOT_DATA_ROOT', str(tmp_path / 'data'))
 
     await service.create_skill(
         {
@@ -200,7 +200,7 @@ async def test_install_from_github_supports_nested_skill_archive(skill_service, 
         async def get(self, url: str) -> _FakeResponse:
             return _FakeResponse(archive_bytes)
 
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('LANGBOT_DATA_ROOT', str(tmp_path / 'data'))
     monkeypatch.setattr('src.langbot.pkg.api.http.service.skill.httpx.AsyncClient', _FakeAsyncClient)
     skill_service.get_skill = AsyncMock(return_value=None)
 
@@ -213,14 +213,14 @@ async def test_install_from_github_supports_nested_skill_archive(skill_service, 
         }
     )
 
-    expected_root = tmp_path / 'data' / 'skills' / 'demo-repo' / 'skills' / 'nested-skill'
-    assert result['package_root'] == str(expected_root.resolve())
+    expected_root = tmp_path / 'data' / 'skills' / 'demo-repo-nested-skill-main'
+    assert result[0]['package_root'] == str(expected_root.resolve())
     assert (expected_root / 'SKILL.md').read_text(encoding='utf-8').endswith('Skill instructions\n')
 
 
 @pytest.mark.asyncio
 async def test_install_from_github_rejects_asset_url_outside_requested_repo(skill_service, tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('LANGBOT_DATA_ROOT', str(tmp_path / 'data'))
 
     with pytest.raises(ValueError, match='owner/repo'):
         await skill_service.install_from_github(
@@ -260,7 +260,7 @@ async def test_install_from_github_rejects_zip_with_path_traversal(skill_service
         async def get(self, url: str) -> _FakeResponse:
             return _FakeResponse(archive_bytes)
 
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('LANGBOT_DATA_ROOT', str(tmp_path / 'data'))
     monkeypatch.setattr('src.langbot.pkg.api.http.service.skill.httpx.AsyncClient', _FakeAsyncClient)
 
     with pytest.raises(ValueError, match='unsafe path'):
@@ -358,7 +358,7 @@ async def test_delete_skill_removes_managed_skill_directory(tmp_path, monkeypatc
         }
     )
 
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('LANGBOT_DATA_ROOT', str(tmp_path / 'data'))
 
     result = await service.delete_skill('self-improving-agent')
 
@@ -381,7 +381,7 @@ async def test_delete_skill_removes_managed_install_root_for_nested_package(tmp_
         }
     )
 
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('LANGBOT_DATA_ROOT', str(tmp_path / 'data'))
 
     await service.delete_skill('nested-skill')
 

@@ -7,6 +7,7 @@ import typing
 
 from ..core import app
 from .utils import parse_frontmatter
+from ..utils import paths
 
 if typing.TYPE_CHECKING:
     pass
@@ -70,7 +71,7 @@ class SkillManager:
 
     @staticmethod
     def get_managed_skills_root() -> str:
-        return os.path.realpath(os.path.abspath(os.path.join('data', 'skills')))
+        return paths.get_data_path('skills')
 
     def _discover_skill_directories(self, root_path: str, max_depth: int = 6) -> list[tuple[str, str]]:
         discovered: list[tuple[str, str]] = []

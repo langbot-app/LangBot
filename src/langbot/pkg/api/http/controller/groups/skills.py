@@ -75,11 +75,63 @@ class SkillsRouterGroup(group.RouterGroup):
 
             try:
                 skill = await self.ap.skill_service.install_from_github(data)
-                return self.success(data={'skill': skill})
+                return self.success(data={'skills': skill})
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
             except Exception as exc:
                 return self.http_status(500, -1, f'Failed to install skill: {exc}')
+
+        @self.route('/install/github/preview', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def preview_skill_from_github() -> quart.Response:
+            data = await quart.request.json
+            required_fields = ['asset_url', 'owner', 'repo', 'release_tag']
+            for field in required_fields:
+                if field not in data or not data[field]:
+                    return self.http_status(400, -1, f'Missing required field: {field}')
+
+            try:
+                preview = await self.ap.skill_service.preview_install_from_github(data)
+                return self.success(data={'skills': preview})
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            except Exception as exc:
+                return self.http_status(500, -1, f'Failed to preview skill: {exc}')
+
+        @self.route('/install/upload', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def install_skill_from_upload() -> quart.Response:
+            file = (await quart.request.files).get('file')
+            if file is None:
+                return self.http_status(400, -1, 'file is required')
+            form = await quart.request.form
+
+            try:
+                skill = await self.ap.skill_service.install_from_zip_upload(
+                    file_bytes=file.read(),
+                    filename=file.filename or '',
+                    source_paths=form.getlist('source_paths'),
+                )
+                return self.success(data={'skills': skill})
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            except Exception as exc:
+                return self.http_status(500, -1, f'Failed to install skill: {exc}')
+
+        @self.route('/install/upload/preview', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def preview_skill_from_upload() -> quart.Response:
+            file = (await quart.request.files).get('file')
+            if file is None:
+                return self.http_status(400, -1, 'file is required')
+
+            try:
+                preview = await self.ap.skill_service.preview_install_from_zip_upload(
+                    file_bytes=file.read(),
+                    filename=file.filename or '',
+                )
+                return self.success(data={'skills': preview})
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            except Exception as exc:
+                return self.http_status(500, -1, f'Failed to preview skill: {exc}')
 
         @self.route('/scan', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def scan_skill_directory() -> quart.Response:

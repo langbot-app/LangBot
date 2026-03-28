@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import inspect
 import os
 import posixpath
@@ -14,6 +15,7 @@ import yaml
 
 from ....core import app
 from ....skill.utils import parse_frontmatter
+from ....utils import paths
 
 _FRONTMATTER_FIELDS = (
     'name',
@@ -250,54 +252,94 @@ class SkillService:
             'bytes_written': len(content.encode('utf-8')),
         }
 
-    async def install_from_github(self, data: dict) -> dict:
+    async def install_from_github(self, data: dict) -> list[dict]:
         owner = str(data['owner']).strip()
         repo = str(data['repo']).strip()
         release_tag = str(data.get('release_tag', '')).strip()
         asset_url = self._validate_github_asset_url(data['asset_url'], owner=owner, repo=repo, release_tag=release_tag)
-
-        target_dir = os.path.join('data', 'skills', repo)
-        if os.path.exists(target_dir):
-            tag_suffix = release_tag.lstrip('v').replace('/', '-') or 'source'
-            target_dir = os.path.join('data', 'skills', f'{repo}-{tag_suffix}')
-            if os.path.exists(target_dir):
-                raise ValueError(f'Skill directory already exists: {target_dir}')
+        source_subdir = str(data.get('source_subdir', '') or '').strip()
 
         tmp_dir = tempfile.mkdtemp(prefix='langbot_skill_')
         try:
-            zip_path = os.path.join(tmp_dir, 'skill.zip')
-            async with httpx.AsyncClient(follow_redirects=True, timeout=120) as client:
-                resp = await client.get(asset_url)
-                resp.raise_for_status()
-                with open(zip_path, 'wb') as f:
-                    f.write(resp.content)
-
-            extract_dir = os.path.join(tmp_dir, 'extracted')
-            with zipfile.ZipFile(zip_path, 'r') as zf:
-                self._safe_extract_zip(zf, extract_dir)
-
-            entries = os.listdir(extract_dir)
-            if len(entries) == 1 and os.path.isdir(os.path.join(extract_dir, entries[0])):
-                skill_root = os.path.join(extract_dir, entries[0])
-            else:
-                skill_root = extract_dir
-
-            os.makedirs(os.path.dirname(target_dir), exist_ok=True)
-            shutil.move(skill_root, target_dir)
+            skill_root = await self._download_github_skill_to_temp(asset_url, tmp_dir)
+            skill_root = self._resolve_github_source_root(skill_root, source_subdir)
+            previews = self._preview_skill_candidates(
+                skill_root,
+                base_target_name=repo,
+                suffix=release_tag.lstrip('v').replace('/', '-') or 'source',
+            )
+            selected_previews = self._select_preview_candidates(previews, data)
+            scanned = self._install_preview_candidates(skill_root, selected_previews)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
+        await self._reload_skills()
+        return await self._resolve_installed_skills(scanned)
+
+    async def preview_install_from_github(self, data: dict) -> list[dict]:
+        owner = str(data['owner']).strip()
+        repo = str(data['repo']).strip()
+        release_tag = str(data.get('release_tag', '')).strip()
+        asset_url = self._validate_github_asset_url(data['asset_url'], owner=owner, repo=repo, release_tag=release_tag)
+        source_subdir = str(data.get('source_subdir', '') or '').strip()
+
+        tmp_dir = tempfile.mkdtemp(prefix='langbot_skill_preview_')
         try:
-            scanned = self.scan_directory(target_dir)
-        except ValueError:
-            shutil.rmtree(target_dir, ignore_errors=True)
-            raise
+            skill_root = await self._download_github_skill_to_temp(asset_url, tmp_dir)
+            skill_root = self._resolve_github_source_root(skill_root, source_subdir)
+            return self._preview_skill_candidates(
+                skill_root,
+                base_target_name=repo,
+                suffix=release_tag.lstrip('v').replace('/', '-') or 'source',
+            )
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    async def install_from_zip_upload(
+        self,
+        *,
+        file_bytes: bytes,
+        filename: str,
+        source_paths: list[str] | None = None,
+        source_path: str = '',
+    ) -> list[dict]:
+        if not file_bytes:
+            raise ValueError('Uploaded file is empty')
+
+        tmp_dir = tempfile.mkdtemp(prefix='langbot_skill_upload_')
+        try:
+            skill_root = self._extract_uploaded_skill_to_temp(file_bytes, tmp_dir)
+            base_target_name = self._uploaded_skill_target_stem(filename)
+            previews = self._preview_skill_candidates(
+                skill_root,
+                base_target_name=base_target_name,
+                suffix='upload',
+            )
+            selected_previews = self._select_preview_candidates(
+                previews,
+                {'source_paths': source_paths or [], 'source_path': source_path},
+            )
+            scanned = self._install_preview_candidates(skill_root, selected_previews)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
         await self._reload_skills()
-        installed = await self.get_skill(scanned['name'])
-        if not installed:
-            installed = self._serialize_skill(scanned)
-        return installed
+        return await self._resolve_installed_skills(scanned)
+
+    async def preview_install_from_zip_upload(self, *, file_bytes: bytes, filename: str) -> list[dict]:
+        if not file_bytes:
+            raise ValueError('Uploaded file is empty')
+
+        tmp_dir = tempfile.mkdtemp(prefix='langbot_skill_upload_preview_')
+        try:
+            skill_root = self._extract_uploaded_skill_to_temp(file_bytes, tmp_dir)
+            return self._preview_skill_candidates(
+                skill_root,
+                base_target_name=self._uploaded_skill_target_stem(filename),
+                suffix='upload',
+            )
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     async def reload_skills(self) -> list[dict]:
         await self._reload_skills()
@@ -360,6 +402,173 @@ class SkillService:
             'instructions': instructions,
             'auto_activate': bool(metadata.get('auto_activate', True)),
         }
+
+    async def _download_github_skill_to_temp(self, asset_url: str, tmp_dir: str) -> str:
+        zip_path = os.path.join(tmp_dir, 'skill.zip')
+        async with httpx.AsyncClient(follow_redirects=True, timeout=120) as client:
+            resp = await client.get(asset_url)
+            resp.raise_for_status()
+            with open(zip_path, 'wb') as f:
+                f.write(resp.content)
+
+        extract_dir = os.path.join(tmp_dir, 'extracted')
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            self._safe_extract_zip(zf, extract_dir)
+
+        entries = os.listdir(extract_dir)
+        if len(entries) == 1 and os.path.isdir(os.path.join(extract_dir, entries[0])):
+            return os.path.join(extract_dir, entries[0])
+        return extract_dir
+
+    def _extract_uploaded_skill_to_temp(self, file_bytes: bytes, tmp_dir: str) -> str:
+        extract_dir = os.path.join(tmp_dir, 'extracted')
+        try:
+            with zipfile.ZipFile(io.BytesIO(file_bytes), 'r') as zf:
+                self._safe_extract_zip(zf, extract_dir)
+        except zipfile.BadZipFile as exc:
+            raise ValueError('Uploaded file must be a valid .zip archive') from exc
+
+        entries = os.listdir(extract_dir)
+        if len(entries) == 1 and os.path.isdir(os.path.join(extract_dir, entries[0])):
+            return os.path.join(extract_dir, entries[0])
+        return extract_dir
+
+    def _resolve_github_source_root(self, root_path: str, source_subdir: str) -> str:
+        normalized = str(source_subdir or '').strip().replace('\\', '/').strip('/')
+        if not normalized:
+            return root_path
+
+        target_path = os.path.realpath(os.path.join(root_path, normalized))
+        root_path = os.path.realpath(root_path)
+        if target_path != root_path and not target_path.startswith(f'{root_path}{os.sep}'):
+            raise ValueError('source_subdir must stay within the downloaded repository')
+        if not os.path.isdir(target_path):
+            raise ValueError(f'source_subdir does not exist in the downloaded repository: {normalized}')
+        return target_path
+
+    def _uploaded_skill_target_stem(self, filename: str) -> str:
+        stem = os.path.splitext(os.path.basename(str(filename or '').strip()))[0]
+        safe_stem = ''.join(ch if ch.isalnum() or ch in ('-', '_') else '-' for ch in stem).strip('-_')
+        if not safe_stem:
+            safe_stem = 'uploaded-skill'
+        return safe_stem
+
+    def _build_preview_target_dir(self, base_target_name: str, source_path: str, suffix: str) -> str:
+        relative = str(source_path or '').strip().replace('\\', '/').strip('/')
+        leaf_name = relative.split('/')[-1] if relative else ''
+        target_name = base_target_name
+        if leaf_name and leaf_name != base_target_name:
+            target_name = f'{base_target_name}-{leaf_name}'
+        if suffix:
+            target_name = f'{target_name}-{suffix}'
+        return paths.get_data_path('skills', target_name)
+
+    def _preview_skill_candidates(self, root_path: str, *, base_target_name: str, suffix: str) -> list[dict]:
+        discovered = self._discover_skill_directories(root_path, max_depth=2)
+        if not discovered:
+            raise ValueError(f'No SKILL.md found in {root_path} or its subdirectories (max depth: 2)')
+
+        previews: list[dict] = []
+        for package_root, entry_file in discovered:
+            entry_path = os.path.join(package_root, entry_file)
+            with open(entry_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            metadata, instructions = parse_frontmatter(content)
+            relative_path = os.path.relpath(package_root, root_path)
+            if relative_path in ('', '.'):
+                relative_path = ''
+
+            dir_name = os.path.basename(os.path.normpath(package_root))
+            previews.append(
+                {
+                    'source_path': relative_path.replace(os.sep, '/'),
+                    'entry_file': entry_file,
+                    'name': str(metadata.get('name') or dir_name).strip(),
+                    'display_name': str(metadata.get('display_name') or '').strip(),
+                    'description': str(metadata.get('description') or '').strip(),
+                    'instructions': instructions,
+                    'auto_activate': bool(metadata.get('auto_activate', True)),
+                    'package_root': self._build_preview_target_dir(base_target_name, relative_path, suffix),
+                }
+            )
+
+        previews.sort(key=lambda item: item['source_path'])
+        return previews
+
+    def _select_preview_candidates(self, previews: list[dict], data: dict) -> list[dict]:
+        normalized_paths: list[str] = []
+        raw_source_paths = data.get('source_paths', [])
+        if isinstance(raw_source_paths, list):
+            for source_path in raw_source_paths:
+                normalized = str(source_path or '').strip().replace('\\', '/').strip('/')
+                if normalized not in normalized_paths:
+                    normalized_paths.append(normalized)
+
+        legacy_source_path = str(data.get('source_path', '') or '').strip().replace('\\', '/').strip('/')
+        if legacy_source_path and legacy_source_path not in normalized_paths:
+            normalized_paths.append(legacy_source_path)
+
+        if len(previews) == 1 and not normalized_paths:
+            return previews
+
+        if not normalized_paths:
+            candidates = ', '.join(item['source_path'] or '.' for item in previews)
+            raise ValueError(f'Multiple skills found. Please choose one or more source_paths: {candidates}')
+
+        selected: list[dict] = []
+        available = {preview['source_path']: preview for preview in previews}
+        for normalized_path in normalized_paths:
+            preview = available.get(normalized_path)
+            if preview is None:
+                candidates = ', '.join(item['source_path'] or '.' for item in previews)
+                raise ValueError(f'Invalid source_path "{normalized_path}". Available: {candidates}')
+            selected.append(preview)
+
+        return selected
+
+    def _install_preview_candidates(self, root_path: str, selected_previews: list[dict]) -> list[dict]:
+        target_dirs: list[str] = []
+        for preview in selected_previews:
+            target_dir = self._normalize_package_root(preview['package_root'])
+            if target_dir in target_dirs:
+                raise ValueError(f'Duplicate target directory selected: {target_dir}')
+            if os.path.exists(target_dir):
+                raise ValueError(f'Skill directory already exists: {target_dir}')
+            target_dirs.append(target_dir)
+
+        installed_scans: list[dict] = []
+        created_dirs: list[str] = []
+        try:
+            for preview in selected_previews:
+                target_dir = self._normalize_package_root(preview['package_root'])
+                source_root = self._preview_source_root(root_path, preview['source_path'])
+                os.makedirs(os.path.dirname(target_dir), exist_ok=True)
+                shutil.copytree(source_root, target_dir)
+                created_dirs.append(target_dir)
+                installed_scans.append(self.scan_directory(target_dir))
+        except Exception:
+            for target_dir in created_dirs:
+                shutil.rmtree(target_dir, ignore_errors=True)
+            raise
+
+        return installed_scans
+
+    async def _resolve_installed_skills(self, scanned_skills: list[dict]) -> list[dict]:
+        installed_skills: list[dict] = []
+        for scanned in scanned_skills:
+            installed = await self.get_skill(scanned['name'])
+            if not installed:
+                installed = self._serialize_skill(scanned)
+            installed_skills.append(installed)
+        return installed_skills
+
+    @staticmethod
+    def _preview_source_root(root_path: str, source_path: str) -> str:
+        normalized = str(source_path or '').strip().replace('\\', '/').strip('/')
+        if not normalized:
+            return root_path
+        return os.path.join(root_path, normalized)
 
     @staticmethod
     def _validate_github_asset_url(asset_url: str, *, owner: str, repo: str, release_tag: str) -> str:
@@ -433,10 +642,10 @@ class SkillService:
             f.write(content)
 
     def _managed_skill_path(self, skill_name: str) -> str:
-        return self._normalize_package_root(os.path.join('data', 'skills', skill_name))
+        return self._normalize_package_root(paths.get_data_path('skills', skill_name))
 
     def _managed_install_root_for_package(self, package_root: str) -> str:
-        managed_root = self._normalize_package_root(os.path.join('data', 'skills'))
+        managed_root = self._normalize_package_root(paths.get_data_path('skills'))
         if not package_root or package_root == managed_root:
             return ''
 

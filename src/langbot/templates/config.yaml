@@ -93,6 +93,7 @@ box:
     shared_host_root: './data/box'  # For Docker deployment, use '/workspaces'
     default_host_workspace: ''  # Defaults to '<shared_host_root>/default'
     allowed_host_mount_roots:  # Defaults to ['<shared_host_root>'] when left empty
+        - './data/box'
         - '/tmp'
 space:
     # Space service URL for OAuth and API
