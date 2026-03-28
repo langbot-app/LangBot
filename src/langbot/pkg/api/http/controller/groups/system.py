@@ -1,7 +1,9 @@
 import quart
+import sqlalchemy
 
 from .. import group
 from .....utils import constants
+from .....entity.persistence.metadata import Metadata
 
 
 @group.group_class('system', '/api/v1/system')
@@ -9,6 +11,18 @@ class SystemRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('/info', methods=['GET'], auth_type=group.AuthType.NONE)
         async def _() -> str:
+            # Read wizard_completed flag from metadata table
+            wizard_completed = False
+            try:
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(Metadata).where(Metadata.key == 'wizard_completed')
+                )
+                row = result.first()
+                if row:
+                    wizard_completed = row[0].value == 'true'
+            except Exception:
+                pass
+
             return self.success(
                 data={
                     'version': constants.semantic_version,
@@ -27,8 +41,29 @@ class SystemRouterGroup(group.RouterGroup):
                         'disable_models_service', False
                     ),
                     'limitation': self.ap.instance_config.data.get('system', {}).get('limitation', {}),
+                    'wizard_completed': wizard_completed,
                 }
             )
+
+        @self.route('/wizard/completed', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
+        async def _() -> str:
+            """Mark wizard as completed in metadata table."""
+            try:
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(Metadata).where(Metadata.key == 'wizard_completed')
+                )
+                if result.first():
+                    await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.update(Metadata).where(Metadata.key == 'wizard_completed').values(value='true')
+                    )
+                else:
+                    await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.insert(Metadata).values(key='wizard_completed', value='true')
+                    )
+            except Exception as e:
+                return self.http_status(500, 500, f'Failed to mark wizard completed: {e}')
+
+            return self.success(data={})
 
         @self.route('/tasks', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:

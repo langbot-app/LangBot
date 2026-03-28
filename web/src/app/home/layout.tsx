@@ -15,8 +15,12 @@ import {
   useSidebarData,
 } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { I18nObject } from '@/app/infra/entities/common';
-import { userInfo, initializeUserInfo } from '@/app/infra/http';
-import { httpClient } from '@/app/infra/http/HttpClient';
+import {
+  userInfo,
+  systemInfo,
+  initializeUserInfo,
+  initializeSystemInfo,
+} from '@/app/infra/http';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { extractI18nObject } from '@/i18n/I18nProvider';
@@ -60,22 +64,22 @@ export default function HomeLayout({
     }
   }, []);
 
-  // Auto-redirect to wizard on first visit (no bots and wizard never dismissed)
+  // Auto-redirect to wizard on first visit (wizard not yet completed on this instance)
   useEffect(() => {
-    const dismissed = localStorage.getItem('langbot_wizard_dismissed');
-    if (dismissed) return;
-
-    httpClient
-      .getBots()
-      .then((res) => {
-        const bots = res?.bots ?? [];
-        if (bots.length === 0) {
+    const checkWizard = async () => {
+      try {
+        // Ensure systemInfo is loaded (may already be fetched on module load)
+        if (!systemInfo.version) {
+          await initializeSystemInfo();
+        }
+        if (!systemInfo.wizard_completed) {
           router.replace('/wizard');
         }
-      })
-      .catch(() => {
-        // If fetching bots fails, don't redirect — user can manually access wizard
-      });
+      } catch {
+        // If fetching system info fails, don't redirect
+      }
+    };
+    checkWizard();
   }, [router]);
 
   return (

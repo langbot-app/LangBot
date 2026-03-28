@@ -99,12 +99,9 @@ function saveWizardState(state: WizardState): void {
   }
 }
 
-const WIZARD_DISMISSED_KEY = 'langbot_wizard_dismissed';
-
 function clearWizardState(): void {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(WIZARD_STORAGE_KEY);
-  localStorage.setItem(WIZARD_DISMISSED_KEY, '1');
 }
 
 // ---------------------------------------------------------------------------
@@ -448,6 +445,7 @@ export default function WizardPage() {
 
   const handleSkipConfirm = useCallback(() => {
     clearWizardState();
+    httpClient.markWizardCompleted().catch(() => {});
     router.push('/home');
   }, [router]);
 
@@ -1042,6 +1040,7 @@ function StepDone() {
 
   const handleBack = useCallback(() => {
     clearWizardState();
+    httpClient.markWizardCompleted().catch(() => {});
     router.push('/home/bots');
   }, [router]);
 

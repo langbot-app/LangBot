@@ -260,6 +260,7 @@ export interface ApiRespSystemInfo {
   allow_modify_login_info: boolean;
   disable_models_service: boolean;
   limitation: SystemLimitation;
+  wizard_completed: boolean;
 }
 
 export interface RagMigrationStatusResp {

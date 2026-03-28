@@ -16,6 +16,7 @@ export let systemInfo: ApiRespSystemInfo = {
     max_pipelines: -1,
     max_extensions: -1,
   },
+  wizard_completed: false,
 };
 
 // 用户信息
