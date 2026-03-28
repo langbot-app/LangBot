@@ -83,6 +83,8 @@ export default function WizardPage() {
   );
   const [runnerConfig, setRunnerConfig] = useState<Record<string, unknown>>({});
   const [createdBotUuid, setCreatedBotUuid] = useState<string | null>(null);
+  const [webhookUrl, setWebhookUrl] = useState<string>('');
+  const [extraWebhookUrl, setExtraWebhookUrl] = useState<string>('');
 
   // ---- Remote data ----
   const [adapters, setAdapters] = useState<Adapter[]>([]);
@@ -236,6 +238,21 @@ export default function WizardPage() {
       };
       const resp = await httpClient.createBot(bot);
       setCreatedBotUuid(resp.uuid);
+
+      // Fetch runtime info to get webhook URL(s)
+      try {
+        const botData = await httpClient.getBot(resp.uuid);
+        const runtimeValues = botData.bot.adapter_runtime_values as
+          | Record<string, unknown>
+          | undefined;
+        setWebhookUrl((runtimeValues?.webhook_full_url as string) || '');
+        setExtraWebhookUrl(
+          (runtimeValues?.extra_webhook_full_url as string) || '',
+        );
+      } catch {
+        // Non-critical — webhook URL display is optional
+      }
+
       // Advance to Step 1
       setCurrentStep(1);
     } catch (err) {
@@ -264,6 +281,20 @@ export default function WizardPage() {
         enable: true,
       });
       setBotSaved(true);
+
+      // Re-fetch runtime info to get updated webhook URL(s)
+      try {
+        const botData = await httpClient.getBot(createdBotUuid);
+        const runtimeValues = botData.bot.adapter_runtime_values as
+          | Record<string, unknown>
+          | undefined;
+        setWebhookUrl((runtimeValues?.webhook_full_url as string) || '');
+        setExtraWebhookUrl(
+          (runtimeValues?.extra_webhook_full_url as string) || '',
+        );
+      } catch {
+        // Non-critical
+      }
     } catch (err) {
       const apiErr = err as { msg?: string };
       toast.error(
@@ -501,6 +532,8 @@ export default function WizardPage() {
             isSavingBot={isSavingBot}
             botSaved={botSaved}
             onSaveBot={handleSaveBot}
+            webhookUrl={webhookUrl}
+            extraWebhookUrl={extraWebhookUrl}
           />
         )}
         {currentStep === 2 && (
@@ -670,6 +703,8 @@ function StepBotConfig({
   isSavingBot,
   botSaved,
   onSaveBot,
+  webhookUrl,
+  extraWebhookUrl,
 }: {
   adapterConfigItems: IDynamicFormItemSchema[];
   adapterConfigValues: Record<string, unknown>;
@@ -680,6 +715,8 @@ function StepBotConfig({
   isSavingBot: boolean;
   botSaved: boolean;
   onSaveBot: () => void;
+  webhookUrl: string;
+  extraWebhookUrl: string;
 }) {
   const { t } = useTranslation();
 
@@ -735,7 +772,11 @@ function StepBotConfig({
                   itemConfigList={adapterConfigItems}
                   initialValues={adapterConfigValues as Record<string, object>}
                   onSubmit={stableAdapterConfigCb}
-                  systemContext={{ is_wizard: true }}
+                  systemContext={{
+                    is_wizard: true,
+                    webhook_url: webhookUrl,
+                    extra_webhook_url: extraWebhookUrl,
+                  }}
                 />
               </CardContent>
             </Card>

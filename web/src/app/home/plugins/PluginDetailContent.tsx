@@ -86,6 +86,8 @@ export default function PluginDetailContent({ id }: { id: string }) {
             onFormSubmit={handleFormSubmit}
           />
         </div>
+        {/* Divider */}
+        <div className="hidden md:block w-px bg-border shrink-0" />
         {/* Right side - Readme */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
           <PluginReadme pluginAuthor={pluginAuthor} pluginName={pluginName} />

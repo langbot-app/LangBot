@@ -304,7 +304,7 @@ export default function KBForm({
           {t('knowledge.noEnginesAvailable')}
         </p>
         <Link
-          href="/home/plugins"
+          href="/home/market?category=KnowledgeEngine"
           className="text-sm text-primary hover:underline"
         >
           {t('knowledge.installEngineHint')}

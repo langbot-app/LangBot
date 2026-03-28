@@ -166,7 +166,9 @@ function HomeLayoutInner({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <div className="flex-1 overflow-hidden p-4 pt-0">{mainContent}</div>
+        <div className="flex-1 overflow-hidden p-4 pt-0 min-w-0">
+          {mainContent}
+        </div>
 
         <SurveyWidget />
       </SidebarInset>

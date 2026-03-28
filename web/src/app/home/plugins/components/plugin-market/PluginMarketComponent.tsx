@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -46,9 +47,24 @@ function MarketPageContent({
   installPlugin: (plugin: PluginV4) => void;
 }) {
   const { t } = useTranslation();
+  const searchParams = useSearchParams();
+
+  const validCategories = [
+    'Tool',
+    'Command',
+    'EventListener',
+    'KnowledgeEngine',
+    'Parser',
+  ];
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [componentFilter, setComponentFilter] = useState<string>('all');
+  const [componentFilter, setComponentFilter] = useState<string>(() => {
+    const category = searchParams.get('category');
+    if (category && validCategories.includes(category)) {
+      return category;
+    }
+    return 'all';
+  });
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [availableTags, setAvailableTags] = useState<PluginTag[]>([]);
   const [tagNames, setTagNames] = useState<Record<string, string>>({});
@@ -284,6 +300,18 @@ function MarketPageContent({
     setComponentFilter(value);
     setCurrentPage(1);
     setPlugins([]);
+
+    // Update URL query param to keep it in sync
+    const params = new URLSearchParams(window.location.search);
+    if (value === 'all') {
+      params.delete('category');
+    } else {
+      params.set('category', value);
+    }
+    const newUrl = params.toString()
+      ? `${window.location.pathname}?${params.toString()}`
+      : window.location.pathname;
+    window.history.replaceState({}, '', newUrl);
     // fetchPlugins will be called by useEffect when componentFilter changes
   }, []);
 
