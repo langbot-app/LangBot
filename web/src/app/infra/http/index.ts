@@ -3,7 +3,7 @@ import { CloudServiceClient } from './CloudServiceClient';
 import { ApiRespSystemInfo } from '@/app/infra/entities/api';
 
 // 系统信息
-export let systemInfo: ApiRespSystemInfo = {
+export const systemInfo: ApiRespSystemInfo = {
   debug: false,
   version: '',
   edition: 'community',
