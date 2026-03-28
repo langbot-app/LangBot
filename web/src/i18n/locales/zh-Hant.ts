@@ -221,6 +221,10 @@ const zhHant = {
     loginWithSpace: '使用 Space 登入',
     loginToUseModels: '使用 Space 登入以使用雲端模型',
     noModels: '暫無模型',
+    langbotModels: 'LangBot 模型',
+    spaceTrialTooltip:
+      '免費試用積分已就緒！使用 Space 登入即可零設定使用雲端模型。',
+    unlockModels: '登入以使用',
     editProvider: '編輯供應商',
     addProvider: '新增供應商',
     addProviderHint: '新增供應商以使用其他來源的模型',

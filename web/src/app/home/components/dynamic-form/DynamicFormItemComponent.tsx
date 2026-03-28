@@ -37,7 +37,22 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, X, Eye, Wrench, Trash2 } from 'lucide-react';
+import {
+  Plus,
+  X,
+  Eye,
+  Wrench,
+  Trash2,
+  Sparkles,
+  Info,
+  Settings,
+} from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import ModelsDialog from '@/app/home/components/models-dialog/ModelsDialog';
 
 export default function DynamicFormItemComponent({
   config,
@@ -57,6 +72,25 @@ export default function DynamicFormItemComponent({
   const [kbDialogOpen, setKbDialogOpen] = useState(false);
   const [tempSelectedKBIds, setTempSelectedKBIds] = useState<string[]>([]);
   const { t } = useTranslation();
+  const [modelsDialogOpen, setModelsDialogOpen] = useState(false);
+
+  const fetchLlmModels = () => {
+    httpClient
+      .getProviderLLMModels()
+      .then((resp) => {
+        setLlmModels(resp.models);
+      })
+      .catch((err) => {
+        toast.error(t('models.getModelListError') + err.msg);
+      });
+  };
+
+  const handleModelsDialogChange = (open: boolean) => {
+    setModelsDialogOpen(open);
+    if (!open) {
+      fetchLlmModels();
+    }
+  };
 
   const handleFileUpload = async (file: File): Promise<IFileConfig | null> => {
     const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -88,26 +122,35 @@ export default function DynamicFormItemComponent({
     }
   };
 
+  // Whether to show Space login CTA in model selectors
+  const showSpaceLoginCTA =
+    !systemInfo.disable_models_service && userInfo?.account_type !== 'space';
+
+  const handleSpaceLogin = () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast.error(t('common.error'));
+        return;
+      }
+      const currentOrigin = window.location.origin;
+      const redirectUri = `${currentOrigin}/auth/space/callback?mode=bind`;
+      httpClient
+        .getSpaceAuthorizeUrl(redirectUri, token)
+        .then((response) => {
+          window.location.href = response.authorize_url;
+        })
+        .catch(() => {
+          toast.error(t('common.spaceLoginFailed'));
+        });
+    } catch {
+      toast.error(t('common.spaceLoginFailed'));
+    }
+  };
+
   useEffect(() => {
     if (config.type === DynamicFormItemType.LLM_MODEL_SELECTOR) {
-      httpClient
-        .getProviderLLMModels()
-        .then((resp) => {
-          let models = resp.models;
-          // Filter out space-chat-completions models when not logged in with space account or when models service is disabled
-          if (
-            systemInfo.disable_models_service ||
-            userInfo?.account_type !== 'space'
-          ) {
-            models = models.filter(
-              (m) => m.provider?.requester !== 'space-chat-completions',
-            );
-          }
-          setLlmModels(models);
-        })
-        .catch((err) => {
-          toast.error(t('models.getModelListError') + err.msg);
-        });
+      fetchLlmModels();
     }
   }, [config.type]);
 
@@ -126,23 +169,7 @@ export default function DynamicFormItemComponent({
 
   useEffect(() => {
     if (config.type === DynamicFormItemType.MODEL_FALLBACK_SELECTOR) {
-      httpClient
-        .getProviderLLMModels()
-        .then((resp) => {
-          let models = resp.models;
-          if (
-            systemInfo.disable_models_service ||
-            userInfo?.account_type !== 'space'
-          ) {
-            models = models.filter(
-              (m) => m.provider?.requester !== 'space-chat-completions',
-            );
-          }
-          setLlmModels(models);
-        })
-        .catch((err) => {
-          toast.error('Failed to get LLM model list: ' + err.msg);
-        });
+      fetchLlmModels();
     }
   }, [config.type]);
 
@@ -259,8 +286,16 @@ export default function DynamicFormItemComponent({
       );
 
     case DynamicFormItemType.LLM_MODEL_SELECTOR:
-      // Group models by provider
-      const groupedModels = llmModels.reduce(
+      // Separate space models from regular models
+      const spaceModels = llmModels.filter(
+        (m) => m.provider?.requester === 'space-chat-completions',
+      );
+      const regularModels = llmModels.filter(
+        (m) => m.provider?.requester !== 'space-chat-completions',
+      );
+
+      // Group regular models by provider
+      const groupedModels = regularModels.reduce(
         (acc, model) => {
           const providerName =
             model.provider?.name || model.provider?.requester || 'Unknown';
@@ -271,33 +306,180 @@ export default function DynamicFormItemComponent({
         {} as Record<string, LLMModel[]>,
       );
 
+      // Group space models by provider (for logged-in users)
+      const groupedSpaceModels = spaceModels.reduce(
+        (acc, model) => {
+          const providerName =
+            model.provider?.name || model.provider?.requester || 'Unknown';
+          if (!acc[providerName]) acc[providerName] = [];
+          acc[providerName].push(model);
+          return acc;
+        },
+        {} as Record<string, LLMModel[]>,
+      );
+
+      // Hardcoded preview model names for CTA when no space models are synced
+      const previewModelNames = [
+        'gpt-4o',
+        'claude-sonnet-4-20250514',
+        'deepseek-chat',
+        'gemini-2.5-flash',
+        'qwen-plus',
+      ];
+
       return (
-        <div className="max-w-md">
-          <Select value={field.value} onValueChange={field.onChange}>
-            <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
-              <SelectValue placeholder={t('models.selectModel')} />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(groupedModels).map(([providerName, models]) => (
-                <SelectGroup key={providerName}>
-                  <SelectLabel>{providerName}</SelectLabel>
-                  {models.map((model) => (
-                    <SelectItem key={model.uuid} value={model.uuid}>
-                      <span className="inline-flex items-center gap-1">
-                        {model.name}
-                        {model.abilities?.includes('vision') && (
-                          <Eye className="h-3 w-3 text-muted-foreground" />
-                        )}
-                        {model.abilities?.includes('func_call') && (
-                          <Wrench className="h-3 w-3 text-muted-foreground" />
-                        )}
+        <div className="max-w-md flex items-center gap-1.5">
+          <div className="flex-1">
+            <Select value={field.value} onValueChange={field.onChange}>
+              <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
+                <SelectValue placeholder={t('models.selectModel')} />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(groupedModels).map(([providerName, models]) => (
+                  <SelectGroup key={providerName}>
+                    <SelectLabel>{providerName}</SelectLabel>
+                    {models.map((model) => (
+                      <SelectItem key={model.uuid} value={model.uuid}>
+                        <span className="inline-flex items-center gap-1">
+                          {model.name}
+                          {model.abilities?.includes('vision') && (
+                            <Eye className="h-3 w-3 text-muted-foreground" />
+                          )}
+                          {model.abilities?.includes('func_call') && (
+                            <Wrench className="h-3 w-3 text-muted-foreground" />
+                          )}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))}
+                {/* Space models section */}
+                {showSpaceLoginCTA ? (
+                  <SelectGroup>
+                    <SelectLabel>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Sparkles className="h-3.5 w-3.5 text-purple-500" />
+                        {t('models.langbotModels')}
+                        <Tooltip>
+                          <TooltipTrigger
+                            asChild
+                            onMouseDown={(e) => e.preventDefault()}
+                          >
+                            <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[240px]">
+                            {t('models.spaceTrialTooltip')}
+                          </TooltipContent>
+                        </Tooltip>
                       </span>
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              ))}
-            </SelectContent>
-          </Select>
+                    </SelectLabel>
+                    <div
+                      className="relative"
+                      onMouseDown={(e) => e.preventDefault()}
+                    >
+                      {/* Preview models (first 3 visible, rest blurred) */}
+                      {(spaceModels.length > 0
+                        ? spaceModels.map((m) => m.name)
+                        : previewModelNames
+                      )
+                        .slice(0, 3)
+                        .map((name) => (
+                          <div
+                            key={name}
+                            className="relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm text-muted-foreground/60"
+                          >
+                            {name}
+                          </div>
+                        ))}
+                      {/* Blurred remaining models with login overlay */}
+                      <div className="relative">
+                        <div
+                          className="select-none overflow-hidden"
+                          style={{ maxHeight: '3rem' }}
+                        >
+                          {(spaceModels.length > 0
+                            ? spaceModels.map((m) => m.name)
+                            : previewModelNames
+                          )
+                            .slice(3)
+                            .map((name) => (
+                              <div
+                                key={name}
+                                className="flex w-full items-center py-1.5 pl-8 pr-2 text-sm text-muted-foreground/40 blur-[2px]"
+                              >
+                                {name}
+                              </div>
+                            ))}
+                        </div>
+                        {/* Login overlay */}
+                        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-transparent to-background/80">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs px-3 gap-1.5 shadow-sm"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleSpaceLogin();
+                            }}
+                          >
+                            <Sparkles className="h-3 w-3" />
+                            {t('models.unlockModels')}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </SelectGroup>
+                ) : !systemInfo.disable_models_service ? (
+                  // User is logged into Space — show space models normally
+                  Object.entries(groupedSpaceModels).map(
+                    ([providerName, models]) => (
+                      <SelectGroup key={providerName}>
+                        <SelectLabel>
+                          <span className="inline-flex items-center gap-1.5">
+                            <Sparkles className="h-3.5 w-3.5 text-purple-500" />
+                            {providerName}
+                          </span>
+                        </SelectLabel>
+                        {models.map((model) => (
+                          <SelectItem key={model.uuid} value={model.uuid}>
+                            <span className="inline-flex items-center gap-1">
+                              {model.name}
+                              {model.abilities?.includes('vision') && (
+                                <Eye className="h-3 w-3 text-muted-foreground" />
+                              )}
+                              {model.abilities?.includes('func_call') && (
+                                <Wrench className="h-3 w-3 text-muted-foreground" />
+                              )}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    ),
+                  )
+                ) : null}
+              </SelectContent>
+            </Select>
+          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 shrink-0"
+                onClick={() => setModelsDialogOpen(true)}
+              >
+                <Settings className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">{t('models.title')}</TooltipContent>
+          </Tooltip>
+          <ModelsDialog
+            open={modelsDialogOpen}
+            onOpenChange={handleModelsDialogChange}
+          />
         </div>
       );
 
@@ -338,8 +520,16 @@ export default function DynamicFormItemComponent({
       );
 
     case DynamicFormItemType.MODEL_FALLBACK_SELECTOR: {
-      // Group models by provider
-      const groupedModelsForFallback = llmModels.reduce(
+      // Separate space models from regular models
+      const fbSpaceModels = llmModels.filter(
+        (m) => m.provider?.requester === 'space-chat-completions',
+      );
+      const fbRegularModels = llmModels.filter(
+        (m) => m.provider?.requester !== 'space-chat-completions',
+      );
+
+      // Group regular models by provider
+      const groupedModelsForFallback = fbRegularModels.reduce(
         (acc, model) => {
           const providerName =
             model.provider?.name || model.provider?.requester || 'Unknown';
@@ -349,6 +539,27 @@ export default function DynamicFormItemComponent({
         },
         {} as Record<string, LLMModel[]>,
       );
+
+      // Group space models by provider (for logged-in users)
+      const fbGroupedSpaceModels = fbSpaceModels.reduce(
+        (acc, model) => {
+          const providerName =
+            model.provider?.name || model.provider?.requester || 'Unknown';
+          if (!acc[providerName]) acc[providerName] = [];
+          acc[providerName].push(model);
+          return acc;
+        },
+        {} as Record<string, LLMModel[]>,
+      );
+
+      // Hardcoded preview model names for CTA
+      const fbPreviewModelNames = [
+        'gpt-4o',
+        'claude-sonnet-4-20250514',
+        'deepseek-chat',
+        'gemini-2.5-flash',
+        'qwen-plus',
+      ];
 
       const rawModelValue = field.value;
       const modelValue: { primary: string; fallbacks: string[] } =
@@ -406,6 +617,112 @@ export default function DynamicFormItemComponent({
                 </SelectGroup>
               ),
             )}
+            {/* Space models section */}
+            {showSpaceLoginCTA ? (
+              <SelectGroup>
+                <SelectLabel>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-purple-500" />
+                    {t('models.langbotModels')}
+                    <Tooltip>
+                      <TooltipTrigger
+                        asChild
+                        onMouseDown={(e) => e.preventDefault()}
+                      >
+                        <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-[240px]">
+                        {t('models.spaceTrialTooltip')}
+                      </TooltipContent>
+                    </Tooltip>
+                  </span>
+                </SelectLabel>
+                <div
+                  className="relative"
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  {/* Preview models (first 3 visible, rest blurred) */}
+                  {(fbSpaceModels.length > 0
+                    ? fbSpaceModels.map((m) => m.name)
+                    : fbPreviewModelNames
+                  )
+                    .slice(0, 3)
+                    .map((name) => (
+                      <div
+                        key={name}
+                        className="relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm text-muted-foreground/60"
+                      >
+                        {name}
+                      </div>
+                    ))}
+                  {/* Blurred remaining models with login overlay */}
+                  <div className="relative">
+                    <div
+                      className="select-none overflow-hidden"
+                      style={{ maxHeight: '3rem' }}
+                    >
+                      {(fbSpaceModels.length > 0
+                        ? fbSpaceModels.map((m) => m.name)
+                        : fbPreviewModelNames
+                      )
+                        .slice(3)
+                        .map((name) => (
+                          <div
+                            key={name}
+                            className="flex w-full items-center py-1.5 pl-8 pr-2 text-sm text-muted-foreground/40 blur-[2px]"
+                          >
+                            {name}
+                          </div>
+                        ))}
+                    </div>
+                    {/* Login overlay */}
+                    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-transparent to-background/80">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs px-3 gap-1.5 shadow-sm"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleSpaceLogin();
+                        }}
+                      >
+                        <Sparkles className="h-3 w-3" />
+                        {t('models.unlockModels')}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </SelectGroup>
+            ) : !systemInfo.disable_models_service ? (
+              // User is logged into Space — show space models normally
+              Object.entries(fbGroupedSpaceModels).map(
+                ([providerName, models]) => (
+                  <SelectGroup key={providerName}>
+                    <SelectLabel>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Sparkles className="h-3.5 w-3.5 text-purple-500" />
+                        {providerName}
+                      </span>
+                    </SelectLabel>
+                    {models.map((model) => (
+                      <SelectItem key={model.uuid} value={model.uuid}>
+                        <span className="inline-flex items-center gap-1">
+                          {model.name}
+                          {model.abilities?.includes('vision') && (
+                            <Eye className="h-3 w-3 text-muted-foreground" />
+                          )}
+                          {model.abilities?.includes('func_call') && (
+                            <Wrench className="h-3 w-3 text-muted-foreground" />
+                          )}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ),
+              )
+            ) : null}
           </SelectContent>
         </Select>
       );
@@ -448,11 +765,35 @@ export default function DynamicFormItemComponent({
             <p className="text-xs text-muted-foreground mb-1">
               {t('models.fallback.primary')}
             </p>
-            {renderModelSelect(
-              modelValue.primary,
-              (val) => updateValue({ primary: val }),
-              t('models.selectModel'),
-            )}
+            <div className="flex items-center gap-1.5">
+              <div className="flex-1">
+                {renderModelSelect(
+                  modelValue.primary,
+                  (val) => updateValue({ primary: val }),
+                  t('models.selectModel'),
+                )}
+              </div>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0"
+                    onClick={() => setModelsDialogOpen(true)}
+                  >
+                    <Settings className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  {t('models.title')}
+                </TooltipContent>
+              </Tooltip>
+              <ModelsDialog
+                open={modelsDialogOpen}
+                onOpenChange={handleModelsDialogChange}
+              />
+            </div>
           </div>
 
           {/* Fallback models */}

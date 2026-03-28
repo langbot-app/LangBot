@@ -236,6 +236,10 @@
     loginWithSpace: 'Space でログイン',
     loginToUseModels: 'Space でログインしてクラウドモデルを使用',
     noModels: 'モデルがありません',
+    langbotModels: 'LangBot モデル',
+    spaceTrialTooltip:
+      '無料トライアルクレジットが利用可能！Space でログインして、設定不要でクラウドモデルを使用できます。',
+    unlockModels: 'ログインして使用',
     editProvider: 'プロバイダーを編集',
     addProvider: 'プロバイダーを追加',
     addProviderHint:
