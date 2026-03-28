@@ -22,7 +22,12 @@ import {
   initializeUserInfo,
   initializeSystemInfo,
 } from '@/app/infra/http';
-import { Adapter, Bot, Pipeline } from '@/app/infra/entities/api';
+import {
+  Adapter,
+  Bot,
+  Pipeline,
+  WizardProgress,
+} from '@/app/infra/entities/api';
 import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
 import {
   PipelineConfigTab,
@@ -97,7 +102,24 @@ export default function WizardPage() {
   const [isSavingBot, setIsSavingBot] = useState(false);
   const [botSaved, setBotSaved] = useState(false);
 
-  // ---- Fetch remote data ----
+  // ---- Helper: persist wizard progress to backend (fire-and-forget) ----
+  const saveProgress = useCallback(
+    (overrides: Partial<WizardProgress> = {}) => {
+      const progress: WizardProgress = {
+        step: overrides.step ?? currentStep,
+        selected_adapter: overrides.selected_adapter ?? selectedAdapter,
+        created_bot_uuid: overrides.created_bot_uuid ?? createdBotUuid,
+        bot_saved: overrides.bot_saved ?? botSaved,
+        selected_runner: overrides.selected_runner ?? selectedRunner,
+      };
+      httpClient.saveWizardProgress(progress).catch((err) => {
+        console.error('Failed to save wizard progress', err);
+      });
+    },
+    [currentStep, selectedAdapter, createdBotUuid, botSaved, selectedRunner],
+  );
+
+  // ---- Fetch remote data & restore progress ----
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -113,6 +135,47 @@ export default function WizardPage() {
         setAdapters(adaptersResp.adapters);
         const aiTab = metadataResp.configs.find((c) => c.name === 'ai');
         if (aiTab) setAiConfigTab(aiTab);
+
+        // Restore wizard progress if available
+        const progress = systemInfo.wizard_progress;
+        if (progress && progress.created_bot_uuid) {
+          // Verify the bot still exists before restoring
+          try {
+            const botData = await httpClient.getBot(progress.created_bot_uuid);
+            if (cancelled) return;
+
+            setSelectedAdapter(progress.selected_adapter);
+            setCreatedBotUuid(progress.created_bot_uuid);
+            setBotSaved(progress.bot_saved ?? false);
+            setSelectedRunner(progress.selected_runner);
+
+            // Restore bot name from fetched bot data
+            setBotName(botData.bot.name);
+
+            // Restore webhook URLs
+            const runtimeValues = botData.bot.adapter_runtime_values as
+              | Record<string, unknown>
+              | undefined;
+            setWebhookUrl((runtimeValues?.webhook_full_url as string) || '');
+            setExtraWebhookUrl(
+              (runtimeValues?.extra_webhook_full_url as string) || '',
+            );
+
+            // Restore step (cap at step 2 — step 3 means done)
+            setCurrentStep(Math.min(progress.step, 2));
+          } catch {
+            // Bot no longer exists — clear stale progress and start fresh
+            httpClient
+              .saveWizardProgress({
+                step: 0,
+                selected_adapter: null,
+                created_bot_uuid: null,
+                bot_saved: false,
+                selected_runner: null,
+              })
+              .catch(() => {});
+          }
+        }
       } catch (err) {
         console.error('Failed to load wizard data', err);
         toast.error(t('wizard.loadError'));
@@ -183,6 +246,15 @@ export default function WizardPage() {
     );
   }, [selectedRunnerConfigStage]);
 
+  // ---- Runner selection with progress saving ----
+  const handleSelectRunner = useCallback(
+    (runner: string) => {
+      setSelectedRunner(runner);
+      saveProgress({ step: 2, selected_runner: runner });
+    },
+    [saveProgress],
+  );
+
   // ---- Navigation helpers ----
 
   const canProceed = useCallback((): boolean => {
@@ -200,15 +272,19 @@ export default function WizardPage() {
 
   const goNext = useCallback(() => {
     if (currentStep < TOTAL_STEPS - 1 && canProceed()) {
-      setCurrentStep((s) => s + 1);
+      const nextStep = currentStep + 1;
+      setCurrentStep(nextStep);
+      saveProgress({ step: nextStep });
     }
-  }, [currentStep, canProceed]);
+  }, [currentStep, canProceed, saveProgress]);
 
   const goPrev = useCallback(() => {
     if (currentStep > 0) {
-      setCurrentStep((s) => s - 1);
+      const prevStep = currentStep - 1;
+      setCurrentStep(prevStep);
+      saveProgress({ step: prevStep });
     }
-  }, [currentStep]);
+  }, [currentStep, saveProgress]);
 
   // ---- Create Bot (Step 0) ----
   // Creates a disabled bot using the adapter label as name.
@@ -255,6 +331,15 @@ export default function WizardPage() {
 
       // Advance to Step 1
       setCurrentStep(1);
+
+      // Persist progress
+      saveProgress({
+        step: 1,
+        selected_adapter: selectedAdapter,
+        created_bot_uuid: resp.uuid,
+        bot_saved: false,
+        selected_runner: null,
+      });
     } catch (err) {
       const apiErr = err as { msg?: string };
       toast.error(
@@ -263,7 +348,7 @@ export default function WizardPage() {
     } finally {
       setIsCreatingBot(false);
     }
-  }, [selectedAdapter, adapters, t]);
+  }, [selectedAdapter, adapters, t, saveProgress]);
 
   // ---- Save Bot Config & Enable (Step 1) ----
   // Updates the bot's adapter config and enables it.
@@ -295,6 +380,9 @@ export default function WizardPage() {
       } catch {
         // Non-critical
       }
+
+      // Persist progress
+      saveProgress({ step: 1, bot_saved: true });
     } catch (err) {
       const apiErr = err as { msg?: string };
       toast.error(
@@ -310,6 +398,7 @@ export default function WizardPage() {
     botDescription,
     adapterConfig,
     t,
+    saveProgress,
   ]);
 
   // ---- Create Pipeline & Link (Step 2 finish) ----
@@ -540,7 +629,7 @@ export default function WizardPage() {
           <StepAIEngine
             runnerOptions={runnerOptions}
             selected={selectedRunner}
-            onSelect={setSelectedRunner}
+            onSelect={handleSelectRunner}
             isLocalAccount={isLocalAccount}
             onSpaceAuth={handleSpaceAuth}
             runnerConfigItems={selectedRunnerConfigItems}

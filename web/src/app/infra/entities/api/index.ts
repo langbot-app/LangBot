@@ -251,6 +251,14 @@ export interface SystemLimitation {
   max_extensions: number;
 }
 
+export interface WizardProgress {
+  step: number;
+  selected_adapter: string | null;
+  created_bot_uuid: string | null;
+  bot_saved: boolean;
+  selected_runner: string | null;
+}
+
 export interface ApiRespSystemInfo {
   debug: boolean;
   version: string;
@@ -261,6 +269,7 @@ export interface ApiRespSystemInfo {
   disable_models_service: boolean;
   limitation: SystemLimitation;
   wizard_status: string; // 'none' | 'skipped' | 'completed'
+  wizard_progress: WizardProgress | null;
 }
 
 export interface RagMigrationStatusResp {

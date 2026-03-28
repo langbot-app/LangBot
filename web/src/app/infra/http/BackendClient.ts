@@ -705,6 +705,16 @@ export class BackendClient extends BaseHttpClient {
     return this.post('/api/v1/system/wizard/completed', { status });
   }
 
+  public saveWizardProgress(progress: {
+    step: number;
+    selected_adapter: string | null;
+    created_bot_uuid: string | null;
+    bot_saved: boolean;
+    selected_runner: string | null;
+  }): Promise<void> {
+    return this.put('/api/v1/system/wizard/progress', progress);
+  }
+
   public getAsyncTasks(): Promise<ApiRespAsyncTasks> {
     return this.get('/api/v1/system/tasks');
   }

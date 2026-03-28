@@ -1,3 +1,5 @@
+import json
+
 import quart
 import sqlalchemy
 
@@ -11,16 +13,21 @@ class SystemRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('/info', methods=['GET'], auth_type=group.AuthType.NONE)
         async def _() -> str:
-            # Read wizard_status from metadata table
-            # Possible values: 'skipped', 'completed'; absent key means 'none'
+            # Read wizard_status and wizard_progress from metadata table
             wizard_status = 'none'
+            wizard_progress = None
             try:
                 result = await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.select(Metadata).where(Metadata.key == 'wizard_status')
+                    sqlalchemy.select(Metadata).where(Metadata.key.in_(['wizard_status', 'wizard_progress']))
                 )
-                row = result.first()
-                if row:
-                    wizard_status = row.value
+                for row in result:
+                    if row.key == 'wizard_status':
+                        wizard_status = row.value
+                    elif row.key == 'wizard_progress':
+                        try:
+                            wizard_progress = json.loads(row.value)
+                        except (json.JSONDecodeError, TypeError):
+                            wizard_progress = None
             except Exception:
                 pass
 
@@ -43,12 +50,13 @@ class SystemRouterGroup(group.RouterGroup):
                     ),
                     'limitation': self.ap.instance_config.data.get('system', {}).get('limitation', {}),
                     'wizard_status': wizard_status,
+                    'wizard_progress': wizard_progress,
                 }
             )
 
         @self.route('/wizard/completed', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:
-            """Mark wizard status in metadata table.
+            """Mark wizard status in metadata table and clear progress.
 
             Accepts JSON body: { "status": "skipped" | "completed" }
             """
@@ -69,8 +77,41 @@ class SystemRouterGroup(group.RouterGroup):
                     await self.ap.persistence_mgr.execute_async(
                         sqlalchemy.insert(Metadata).values(key='wizard_status', value=status)
                     )
+
+                # Clear wizard progress when wizard is completed/skipped
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.delete(Metadata).where(Metadata.key == 'wizard_progress')
+                )
             except Exception as e:
                 return self.http_status(500, 500, f'Failed to update wizard status: {e}')
+
+            return self.success(data={})
+
+        @self.route('/wizard/progress', methods=['PUT'], auth_type=group.AuthType.USER_TOKEN)
+        async def _() -> str:
+            """Save wizard progress to metadata table.
+
+            Accepts JSON body with wizard state fields:
+            { "step": int, "selected_adapter": str|null, "created_bot_uuid": str|null,
+              "bot_saved": bool, "selected_runner": str|null }
+            """
+            data = await quart.request.get_json(silent=True) or {}
+            progress_json = json.dumps(data, ensure_ascii=False)
+
+            try:
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(Metadata).where(Metadata.key == 'wizard_progress')
+                )
+                if result.first():
+                    await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.update(Metadata).where(Metadata.key == 'wizard_progress').values(value=progress_json)
+                    )
+                else:
+                    await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.insert(Metadata).values(key='wizard_progress', value=progress_json)
+                    )
+            except Exception as e:
+                return self.http_status(500, 500, f'Failed to save wizard progress: {e}')
 
             return self.success(data={})
 

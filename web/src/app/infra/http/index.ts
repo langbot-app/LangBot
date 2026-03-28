@@ -17,6 +17,7 @@ export const systemInfo: ApiRespSystemInfo = {
     max_extensions: -1,
   },
   wizard_status: 'none',
+  wizard_progress: null,
 };
 
 // 用户信息
