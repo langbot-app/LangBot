@@ -7,7 +7,8 @@ metadata:
     zh_Hans: Discord
   description:
     en_US: Discord Adapter
-    zh_Hans: Discord 适配器，请查看文档了解使用方式
+    zh_Hans: Discord 适配器，需要可连接 Discord 服务器的网络环境
+    ja_JP: Discord アダプター
   icon: discord.svg
 spec:
   config:

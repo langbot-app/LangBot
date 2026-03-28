@@ -6,8 +6,8 @@ metadata:
     en_US: OneBot v11
     zh_Hans: OneBot v11
   description:
-    en_US: OneBot v11 Adapter
-    zh_Hans: OneBot v11 适配器，请查看文档了解使用方式
+    en_US: OneBot v11 Adapter, used for QQ bots
+    zh_Hans: OneBot v11 适配器，用于接入 QQ 机器人协议端，请查看文档了解使用方式
   icon: onebot.png
 spec:
   config:

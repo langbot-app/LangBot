@@ -4,10 +4,10 @@ metadata:
   name: wechatpad
   label:
     en_US: WeChatPad
-    zh_CN: WeChatPad（个人微信ipad）
+    zh_Hans: WeChatPad（个人微信ipad）
   description:
     en_US: WeChatPad Adapter
-    zh_CN: WeChatPad 适配器
+    zh_Hans: WeChatPad 适配器，基于WeChatPad的个人微信解决方案，请查看文档了解使用方式
   icon: wechatpad.png
 spec:
   config:

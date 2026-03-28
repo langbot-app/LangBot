@@ -7,7 +7,7 @@ metadata:
     zh_Hans: 企业微信客服
   description:
     en_US: WeComCSAdapter
-    zh_Hans: 企业微信客服适配器
+    zh_Hans: 企业微信对外客服机器人，需要公网地址以接收消息推送，请查看文档了解使用方式
   icon: wecom.png
 spec:
   config:

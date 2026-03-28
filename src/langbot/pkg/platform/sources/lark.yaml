@@ -6,8 +6,9 @@ metadata:
     en_US: Lark
     zh_Hans: 飞书
   description:
-    en_US: Lark Adapter
-    zh_Hans: 飞书适配器，请查看文档了解使用方式
+    en_US: Lark Adapter, supports both long connection and Webhook modes. Please refer to the documentation for usage details.
+    zh_Hans: 飞书适配器，支持长连接和 Webhook 两种接入方式，请查看文档了解使用方式
+    ja_JP: Lark アダプター、長期接続およびWebhookモードの両方をサポートしています。使用方法の詳細については、ドキュメントを参照してください。
   icon: lark.svg
 spec:
   config:

@@ -7,7 +7,9 @@ metadata:
     zh_Hans: Slack
   description:
     en_US: Slack Adapter
-    zh_Hans: Slack 适配器，请查看文档了解使用方式
+    zh_Hans: Slack 适配器，需要公网地址以接收 Slack 消息推送，请查看文档了解使用方式
+    ja_JP: Slack アダプター、Slackのメッセージプッシュを受信するためにパブリックURLが必要です。使用方法の詳細については、ドキュメントを参照してください。
+    zh_Hant: Slack 适配器，需要公网地址以接收 Slack 消息推送，请查看文档了解使用方式
   icon: slack.png
 spec:
   config:

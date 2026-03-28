@@ -4,10 +4,10 @@ metadata:
   name: openclaw-weixin
   label:
     en_US: OpenClaw WeChat
-    zh_Hans: OpenClaw 微信
+    zh_Hans: 个人微信机器人
   description:
     en_US: OpenClaw WeChat adapter, supports personal WeChat via QR code login
-    zh_Hans: OpenClaw 微信适配器，通过扫码登录支持个人微信
+    zh_Hans: 微信官方个人助手，扫码即可登录使用
   icon: wechat.png
 spec:
   config:
@@ -27,7 +27,7 @@ spec:
         zh_Hans: 令牌
       description:
         en_US: Bearer token obtained after QR code login authorization. Leave empty to trigger QR code login on startup.
-        zh_Hans: 扫码登录授权后获取的 Bearer 令牌。留空则启动时自动触发扫码登录。
+        zh_Hans: 扫码登录授权后获取的 Bearer 令牌。请留空并保存，将在启动时输出二维码到日志，扫码后即可自动登录。
       type: string
       required: false
       default: ""

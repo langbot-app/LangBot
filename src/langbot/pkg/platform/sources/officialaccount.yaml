@@ -7,7 +7,7 @@ metadata:
     zh_Hans: 微信公众号
   description:
     en_US: Official Account Adapter
-    zh_Hans: 微信公众号适配器，请查看文档了解使用方式
+    zh_Hans: 微信公众号适配器，需要公网地址以接收消息推送，请查看文档了解使用方式
   icon: officialaccount.png
 spec:
   config:
