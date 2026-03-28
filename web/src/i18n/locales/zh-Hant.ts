@@ -1042,6 +1042,8 @@ const zhHant = {
     botSaveSuccess: '機器人配置已儲存並啟用！',
     createError: '建立資源失敗',
     spaceAuthError: '無法發起 Space 授權',
+    skipSaveError: '儲存跳過狀態失敗，請重試。',
+    completeSaveError: '儲存完成狀態失敗，請重試。',
     step: {
       platform: '平台接入',
       botConfig: '機器人配置',

@@ -701,8 +701,8 @@ export class BackendClient extends BaseHttpClient {
     return this.get('/api/v1/system/info');
   }
 
-  public markWizardCompleted(): Promise<void> {
-    return this.post('/api/v1/system/wizard/completed', {});
+  public updateWizardStatus(status: 'skipped' | 'completed'): Promise<void> {
+    return this.post('/api/v1/system/wizard/completed', { status });
   }
 
   public getAsyncTasks(): Promise<ApiRespAsyncTasks> {

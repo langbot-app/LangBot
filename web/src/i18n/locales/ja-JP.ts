@@ -1102,6 +1102,8 @@
     botSaveSuccess: 'ボット設定が保存され、有効になりました！',
     createError: 'リソースの作成に失敗しました',
     spaceAuthError: 'Space 認証の開始に失敗しました',
+    skipSaveError: 'スキップ状態の保存に失敗しました。もう一度お試しください。',
+    completeSaveError: '完了状態の保存に失敗しました。もう一度お試しください。',
     step: {
       platform: 'プラットフォーム',
       botConfig: 'ボット設定',

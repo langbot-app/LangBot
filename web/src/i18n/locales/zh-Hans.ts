@@ -1075,6 +1075,8 @@ const zhHans = {
     botSaveSuccess: '机器人配置已保存并启用！',
     createError: '创建资源失败',
     spaceAuthError: '无法发起 Space 授权',
+    skipSaveError: '保存跳过状态失败，请重试。',
+    completeSaveError: '保存完成状态失败，请重试。',
     step: {
       platform: '平台接入',
       botConfig: '机器人配置',

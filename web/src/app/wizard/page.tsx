@@ -49,7 +49,6 @@ import { cn } from '@/lib/utils';
 import { LanguageSelector } from '@/components/ui/language-selector';
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -61,49 +60,7 @@ import {
 // Types
 // ---------------------------------------------------------------------------
 
-interface WizardState {
-  currentStep: number;
-  selectedAdapter: string | null;
-  selectedRunner: string | null;
-  botName: string;
-  botDescription: string;
-  adapterConfig: Record<string, unknown>;
-  runnerConfig: Record<string, unknown>;
-  createdBotUuid: string | null;
-}
-
-const WIZARD_STORAGE_KEY = 'langbot_wizard_state';
-
 const TOTAL_STEPS = 4;
-
-// ---------------------------------------------------------------------------
-// Persistence helpers
-// ---------------------------------------------------------------------------
-
-function loadWizardState(): WizardState | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(WIZARD_STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as WizardState;
-  } catch {
-    return null;
-  }
-}
-
-function saveWizardState(state: WizardState): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // localStorage may be full - silently ignore
-  }
-}
-
-function clearWizardState(): void {
-  if (typeof window === 'undefined') return;
-  localStorage.removeItem(WIZARD_STORAGE_KEY);
-}
 
 // ---------------------------------------------------------------------------
 // Main Wizard Page (full-screen, no sidebar)
@@ -114,30 +71,17 @@ export default function WizardPage() {
   const router = useRouter();
 
   // ---- Wizard state ----
-  const restoredState = useRef(loadWizardState());
-  const [currentStep, setCurrentStep] = useState(
-    restoredState.current?.currentStep ?? 0,
-  );
-  const [selectedAdapter, setSelectedAdapter] = useState<string | null>(
-    restoredState.current?.selectedAdapter ?? null,
-  );
-  const [selectedRunner, setSelectedRunner] = useState<string | null>(
-    restoredState.current?.selectedRunner ?? null,
-  );
-  const [botName, setBotName] = useState(restoredState.current?.botName ?? '');
+  const [currentStep, setCurrentStep] = useState(0);
+  const [selectedAdapter, setSelectedAdapter] = useState<string | null>(null);
+  const [selectedRunner, setSelectedRunner] = useState<string | null>(null);
+  const [botName, setBotName] = useState('');
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [botDescription, _setBotDescription] = useState(
-    restoredState.current?.botDescription ?? '',
-  );
+  const [botDescription, _setBotDescription] = useState('');
   const [adapterConfig, setAdapterConfig] = useState<Record<string, unknown>>(
-    restoredState.current?.adapterConfig ?? {},
+    {},
   );
-  const [runnerConfig, setRunnerConfig] = useState<Record<string, unknown>>(
-    restoredState.current?.runnerConfig ?? {},
-  );
-  const [createdBotUuid, setCreatedBotUuid] = useState<string | null>(
-    restoredState.current?.createdBotUuid ?? null,
-  );
+  const [runnerConfig, setRunnerConfig] = useState<Record<string, unknown>>({});
+  const [createdBotUuid, setCreatedBotUuid] = useState<string | null>(null);
 
   // ---- Remote data ----
   const [adapters, setAdapters] = useState<Adapter[]>([]);
@@ -149,29 +93,6 @@ export default function WizardPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingBot, setIsSavingBot] = useState(false);
   const [botSaved, setBotSaved] = useState(false);
-
-  // ---- Persist state on every change ----
-  useEffect(() => {
-    saveWizardState({
-      currentStep,
-      selectedAdapter,
-      selectedRunner,
-      botName,
-      botDescription,
-      adapterConfig,
-      runnerConfig,
-      createdBotUuid,
-    });
-  }, [
-    currentStep,
-    selectedAdapter,
-    selectedRunner,
-    botName,
-    botDescription,
-    adapterConfig,
-    runnerConfig,
-    createdBotUuid,
-  ]);
 
   // ---- Fetch remote data ----
   useEffect(() => {
@@ -443,17 +364,24 @@ export default function WizardPage() {
 
   // ---- Skip handler ----
   const [showSkipConfirm, setShowSkipConfirm] = useState(false);
+  const [isSkipping, setIsSkipping] = useState(false);
 
   const handleSkipConfirm = useCallback(async () => {
-    clearWizardState();
-    try {
-      await httpClient.markWizardCompleted();
-    } catch {
-      // Continue even if the API call fails
+    if (systemInfo.wizard_status === 'none') {
+      setIsSkipping(true);
+      try {
+        await httpClient.updateWizardStatus('skipped');
+        systemInfo.wizard_status = 'skipped';
+      } catch {
+        toast.error(t('wizard.skipSaveError'));
+        setIsSkipping(false);
+        return; // Dialog stays open — user can retry
+      }
+      setIsSkipping(false);
     }
-    systemInfo.wizard_completed = true;
+    setShowSkipConfirm(false);
     router.push('/home');
-  }, [router]);
+  }, [router, t]);
 
   // ---- Render ----
 
@@ -639,9 +567,19 @@ export default function WizardPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogAction onClick={handleSkipConfirm}>
+            <Button
+              variant="outline"
+              onClick={() => setShowSkipConfirm(false)}
+              disabled={isSkipping}
+            >
+              {t('wizard.prev')}
+            </Button>
+            <Button onClick={handleSkipConfirm} disabled={isSkipping}>
+              {isSkipping && (
+                <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+              )}
               {t('wizard.skipConfirmOk')}
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1044,16 +982,23 @@ function StepDone() {
     })),
   );
 
+  const [isCompleting, setIsCompleting] = useState(false);
+
   const handleBack = useCallback(async () => {
-    clearWizardState();
-    try {
-      await httpClient.markWizardCompleted();
-    } catch {
-      // Continue even if the API call fails
+    if (systemInfo.wizard_status === 'none') {
+      setIsCompleting(true);
+      try {
+        await httpClient.updateWizardStatus('completed');
+        systemInfo.wizard_status = 'completed';
+      } catch {
+        toast.error(t('wizard.completeSaveError'));
+        setIsCompleting(false);
+        return; // Don't navigate — let user retry
+      }
+      setIsCompleting(false);
     }
-    systemInfo.wizard_completed = true;
     router.push('/home/bots');
-  }, [router]);
+  }, [router, t]);
 
   return (
     <div className="relative flex flex-col items-center justify-center h-full min-h-[400px]">
@@ -1078,7 +1023,8 @@ function StepDone() {
       <p className="text-muted-foreground mt-2 text-center max-w-md">
         {t('wizard.done.description')}
       </p>
-      <Button className="mt-6" onClick={handleBack}>
+      <Button className="mt-6" onClick={handleBack} disabled={isCompleting}>
+        {isCompleting && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
         {t('wizard.done.backToWorkbench')}
       </Button>
 

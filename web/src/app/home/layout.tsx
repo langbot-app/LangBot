@@ -68,9 +68,9 @@ export default function HomeLayout({
   useEffect(() => {
     const checkWizard = async () => {
       try {
-        // Always re-fetch to ensure we have the latest wizard_completed state from backend
+        // Always re-fetch to ensure we have the latest wizard_status from backend
         await initializeSystemInfo();
-        if (!systemInfo.wizard_completed) {
+        if (systemInfo.wizard_status === 'none') {
           router.replace('/wizard');
         }
       } catch {

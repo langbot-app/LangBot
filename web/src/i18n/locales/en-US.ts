@@ -1128,6 +1128,8 @@ const enUS = {
     botSaveSuccess: 'Bot configuration saved and enabled!',
     createError: 'Failed to create resources',
     spaceAuthError: 'Failed to initiate Space authorization',
+    skipSaveError: 'Failed to save skip status. Please try again.',
+    completeSaveError: 'Failed to save completion status. Please try again.',
     step: {
       platform: 'Platform',
       botConfig: 'Bot Setup',
