@@ -7,6 +7,13 @@ import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 from .. import loader
 
+# Skill authoring needs a managed abstraction above the generic box tools.
+# Pure prompt skills are just metadata plus SKILL.md instructions, so creating
+# or updating them should not require /workspace mounts, shell access, or box
+# to be enabled at all. These higher-level tools let local agents manage skills
+# directly through SkillService, while import_skill_from_directory remains the
+# path for file-based skills that actually need scripts or assets from box.
+
 CREATE_SKILL_TOOL_NAME = 'create_skill'
 LIST_SKILLS_TOOL_NAME = 'list_skills'
 GET_SKILL_TOOL_NAME = 'get_skill'
