@@ -444,9 +444,13 @@ export default function WizardPage() {
   // ---- Skip handler ----
   const [showSkipConfirm, setShowSkipConfirm] = useState(false);
 
-  const handleSkipConfirm = useCallback(() => {
+  const handleSkipConfirm = useCallback(async () => {
     clearWizardState();
-    httpClient.markWizardCompleted().catch(() => {});
+    try {
+      await httpClient.markWizardCompleted();
+    } catch {
+      // Continue even if the API call fails
+    }
     systemInfo.wizard_completed = true;
     router.push('/home');
   }, [router]);
@@ -1040,9 +1044,13 @@ function StepDone() {
     })),
   );
 
-  const handleBack = useCallback(() => {
+  const handleBack = useCallback(async () => {
     clearWizardState();
-    httpClient.markWizardCompleted().catch(() => {});
+    try {
+      await httpClient.markWizardCompleted();
+    } catch {
+      // Continue even if the API call fails
+    }
     systemInfo.wizard_completed = true;
     router.push('/home/bots');
   }, [router]);

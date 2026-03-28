@@ -68,10 +68,8 @@ export default function HomeLayout({
   useEffect(() => {
     const checkWizard = async () => {
       try {
-        // Ensure systemInfo is loaded (may already be fetched on module load)
-        if (!systemInfo.version) {
-          await initializeSystemInfo();
-        }
+        // Always re-fetch to ensure we have the latest wizard_completed state from backend
+        await initializeSystemInfo();
         if (!systemInfo.wizard_completed) {
           router.replace('/wizard');
         }
