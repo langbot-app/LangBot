@@ -32,6 +32,7 @@ class PreProcessor(stage.PipelineStage):
     ) -> entities.StageProcessResult:
         """Process"""
         selected_runner = query.pipeline_config['ai']['runner']['runner']
+        include_skill_authoring = selected_runner == 'local-agent' and getattr(self.ap, 'skill_service', None) is not None
 
         session = await self.ap.sess_mgr.get_session(query)
 
@@ -92,7 +93,7 @@ class PreProcessor(stage.PipelineStage):
                     query.use_funcs = await self.ap.tool_mgr.get_all_tools(
                         bound_plugins,
                         bound_mcp_servers,
-                        include_skill_authoring=bool(query.variables.get('_skill_authoring_enabled', False)),
+                        include_skill_authoring=include_skill_authoring,
                     )
 
                     self.ap.logger.debug(f'Bound plugins: {bound_plugins}')
@@ -107,7 +108,7 @@ class PreProcessor(stage.PipelineStage):
                 query.use_funcs = await self.ap.tool_mgr.get_all_tools(
                     bound_plugins,
                     bound_mcp_servers,
-                    include_skill_authoring=bool(query.variables.get('_skill_authoring_enabled', False)),
+                    include_skill_authoring=include_skill_authoring,
                 )
 
         sender_name = ''

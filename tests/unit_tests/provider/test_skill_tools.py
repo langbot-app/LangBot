@@ -232,6 +232,160 @@ class TestSkillPathHelpers:
 
 class TestSkillAuthoringToolLoader:
     @pytest.mark.asyncio
+    async def test_create_skill_creates_managed_prompt_only_skill(self):
+        from langbot.pkg.provider.tools.loaders.skill_authoring import (
+            CREATE_SKILL_TOOL_NAME,
+            SkillAuthoringToolLoader,
+        )
+
+        ap = _make_ap()
+        ap.skill_service = SimpleNamespace(
+            create_skill=AsyncMock(return_value=_make_skill_data(name='prompt-skill', package_root='/data/skills/prompt-skill')),
+            reload_skills=AsyncMock(),
+            list_skills=AsyncMock(return_value=[]),
+        )
+
+        loader = SkillAuthoringToolLoader(ap)
+        await loader.initialize()
+
+        result = await loader.invoke_tool(
+            CREATE_SKILL_TOOL_NAME,
+            {
+                'name': 'prompt-skill',
+                'display_name': 'Prompt Skill',
+                'description': 'Prompt only skill',
+                'instructions': 'Follow these steps carefully.',
+                'auto_activate': False,
+            },
+            SimpleNamespace(),
+        )
+
+        ap.skill_service.create_skill.assert_awaited_once_with(
+            {
+                'name': 'prompt-skill',
+                'display_name': 'Prompt Skill',
+                'description': 'Prompt only skill',
+                'instructions': 'Follow these steps carefully.',
+                'auto_activate': False,
+            }
+        )
+        assert result == {
+            'created': True,
+            'skill': _make_skill_data(name='prompt-skill', package_root='/data/skills/prompt-skill'),
+        }
+
+    @pytest.mark.asyncio
+    async def test_list_skills_returns_managed_skills(self):
+        from langbot.pkg.provider.tools.loaders.skill_authoring import (
+            LIST_SKILLS_TOOL_NAME,
+            SkillAuthoringToolLoader,
+        )
+
+        ap = _make_ap()
+        ap.skill_service = SimpleNamespace(
+            list_skills=AsyncMock(return_value=[_make_skill_data(name='alpha'), _make_skill_data(name='beta')]),
+        )
+
+        loader = SkillAuthoringToolLoader(ap)
+        await loader.initialize()
+
+        result = await loader.invoke_tool(LIST_SKILLS_TOOL_NAME, {}, SimpleNamespace())
+
+        assert result == {
+            'skills': [_make_skill_data(name='alpha'), _make_skill_data(name='beta')],
+            'skill_names': ['alpha', 'beta'],
+            'count': 2,
+        }
+
+    @pytest.mark.asyncio
+    async def test_get_skill_returns_one_managed_skill(self):
+        from langbot.pkg.provider.tools.loaders.skill_authoring import (
+            GET_SKILL_TOOL_NAME,
+            SkillAuthoringToolLoader,
+        )
+
+        ap = _make_ap()
+        ap.skill_service = SimpleNamespace(
+            get_skill=AsyncMock(return_value=_make_skill_data(name='time-now', package_root='/data/skills/time-now')),
+        )
+
+        loader = SkillAuthoringToolLoader(ap)
+        await loader.initialize()
+
+        result = await loader.invoke_tool(GET_SKILL_TOOL_NAME, {'name': 'time-now'}, SimpleNamespace())
+
+        ap.skill_service.get_skill.assert_awaited_once_with('time-now')
+        assert result == {
+            'skill': _make_skill_data(name='time-now', package_root='/data/skills/time-now'),
+        }
+
+    @pytest.mark.asyncio
+    async def test_update_skill_updates_managed_prompt_only_skill(self):
+        from langbot.pkg.provider.tools.loaders.skill_authoring import (
+            UPDATE_SKILL_TOOL_NAME,
+            SkillAuthoringToolLoader,
+        )
+
+        ap = _make_ap()
+        ap.skill_service = SimpleNamespace(
+            create_skill=AsyncMock(),
+            update_skill=AsyncMock(return_value=_make_skill_data(name='time-now', package_root='/data/skills/time-now')),
+            reload_skills=AsyncMock(),
+            list_skills=AsyncMock(return_value=[]),
+        )
+
+        loader = SkillAuthoringToolLoader(ap)
+        await loader.initialize()
+
+        result = await loader.invoke_tool(
+            UPDATE_SKILL_TOOL_NAME,
+            {
+                'name': 'time-now',
+                'description': 'Fixed to Beijing time',
+                'instructions': 'Always use Asia/Shanghai and never offer other timezones.',
+                'auto_activate': True,
+            },
+            SimpleNamespace(),
+        )
+
+        ap.skill_service.update_skill.assert_awaited_once_with(
+            'time-now',
+            {
+                'name': 'time-now',
+                'description': 'Fixed to Beijing time',
+                'instructions': 'Always use Asia/Shanghai and never offer other timezones.',
+                'auto_activate': True,
+            },
+        )
+        assert result == {
+            'updated': True,
+            'skill': _make_skill_data(name='time-now', package_root='/data/skills/time-now'),
+        }
+
+    @pytest.mark.asyncio
+    async def test_delete_skill_deletes_managed_skill(self):
+        from langbot.pkg.provider.tools.loaders.skill_authoring import (
+            DELETE_SKILL_TOOL_NAME,
+            SkillAuthoringToolLoader,
+        )
+
+        ap = _make_ap()
+        ap.skill_service = SimpleNamespace(
+            delete_skill=AsyncMock(return_value=True),
+        )
+
+        loader = SkillAuthoringToolLoader(ap)
+        await loader.initialize()
+
+        result = await loader.invoke_tool(DELETE_SKILL_TOOL_NAME, {'name': 'time-now'}, SimpleNamespace())
+
+        ap.skill_service.delete_skill.assert_awaited_once_with('time-now')
+        assert result == {
+            'deleted': True,
+            'skill_name': 'time-now',
+        }
+
+    @pytest.mark.asyncio
     async def test_import_skill_from_directory_uses_workspace_path_and_service_import(self):
         from langbot.pkg.provider.tools.loaders.skill_authoring import (
             IMPORT_SKILL_FROM_DIRECTORY_TOOL_NAME,

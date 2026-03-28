@@ -7,10 +7,20 @@ import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 from .. import loader
 
+CREATE_SKILL_TOOL_NAME = 'create_skill'
+LIST_SKILLS_TOOL_NAME = 'list_skills'
+GET_SKILL_TOOL_NAME = 'get_skill'
+UPDATE_SKILL_TOOL_NAME = 'update_skill'
+DELETE_SKILL_TOOL_NAME = 'delete_skill'
 IMPORT_SKILL_FROM_DIRECTORY_TOOL_NAME = 'import_skill_from_directory'
 RELOAD_SKILLS_TOOL_NAME = 'reload_skills'
 
 AUTHORING_TOOL_NAMES = {
+    CREATE_SKILL_TOOL_NAME,
+    LIST_SKILLS_TOOL_NAME,
+    GET_SKILL_TOOL_NAME,
+    UPDATE_SKILL_TOOL_NAME,
+    DELETE_SKILL_TOOL_NAME,
     IMPORT_SKILL_FROM_DIRECTORY_TOOL_NAME,
     RELOAD_SKILLS_TOOL_NAME,
 }
@@ -25,6 +35,11 @@ class SkillAuthoringToolLoader(loader.ToolLoader):
 
     async def initialize(self):
         self._tools = [
+            self._build_create_skill_tool(),
+            self._build_list_skills_tool(),
+            self._build_get_skill_tool(),
+            self._build_update_skill_tool(),
+            self._build_delete_skill_tool(),
             self._build_import_skill_from_directory_tool(),
             self._build_reload_skills_tool(),
         ]
@@ -38,6 +53,16 @@ class SkillAuthoringToolLoader(loader.ToolLoader):
         return self._has_authoring_services() and name in AUTHORING_TOOL_NAMES
 
     async def invoke_tool(self, name: str, parameters: dict, query) -> typing.Any:
+        if name == CREATE_SKILL_TOOL_NAME:
+            return await self._invoke_create_skill(parameters)
+        if name == LIST_SKILLS_TOOL_NAME:
+            return await self._invoke_list_skills()
+        if name == GET_SKILL_TOOL_NAME:
+            return await self._invoke_get_skill(parameters)
+        if name == UPDATE_SKILL_TOOL_NAME:
+            return await self._invoke_update_skill(parameters)
+        if name == DELETE_SKILL_TOOL_NAME:
+            return await self._invoke_delete_skill(parameters)
         if name == IMPORT_SKILL_FROM_DIRECTORY_TOOL_NAME:
             return await self._invoke_import_skill_from_directory(parameters)
         if name == RELOAD_SKILLS_TOOL_NAME:
@@ -57,6 +82,73 @@ class SkillAuthoringToolLoader(loader.ToolLoader):
             'reloaded': True,
             'skill_names': [skill['name'] for skill in skills],
             'count': len(skills),
+        }
+
+    async def _invoke_create_skill(self, parameters: dict) -> typing.Any:
+        name = str(parameters.get('name', '') or '').strip()
+        instructions = str(parameters.get('instructions', '') or '')
+        if not name:
+            raise ValueError('name is required')
+        if not instructions.strip():
+            raise ValueError('instructions is required')
+
+        created = await self.ap.skill_service.create_skill(
+            {
+                'name': name,
+                'display_name': str(parameters.get('display_name', '') or '').strip(),
+                'description': str(parameters.get('description', '') or '').strip(),
+                'instructions': instructions,
+                'auto_activate': parameters.get('auto_activate', True),
+            }
+        )
+        return {
+            'created': True,
+            'skill': created,
+        }
+
+    async def _invoke_list_skills(self) -> typing.Any:
+        skills = await self.ap.skill_service.list_skills()
+        return {
+            'skills': skills,
+            'skill_names': [skill['name'] for skill in skills],
+            'count': len(skills),
+        }
+
+    async def _invoke_get_skill(self, parameters: dict) -> typing.Any:
+        name = str(parameters.get('name', '') or '').strip()
+        if not name:
+            raise ValueError('name is required')
+
+        skill = await self.ap.skill_service.get_skill(name)
+        if not skill:
+            raise ValueError(f'Skill "{name}" not found')
+        return {'skill': skill}
+
+    async def _invoke_update_skill(self, parameters: dict) -> typing.Any:
+        name = str(parameters.get('name', '') or '').strip()
+        if not name:
+            raise ValueError('name is required')
+
+        data = {'name': name}
+        for field in ('display_name', 'description', 'instructions', 'auto_activate'):
+            if field in parameters:
+                data[field] = parameters[field]
+
+        updated = await self.ap.skill_service.update_skill(name, data)
+        return {
+            'updated': True,
+            'skill': updated,
+        }
+
+    async def _invoke_delete_skill(self, parameters: dict) -> typing.Any:
+        name = str(parameters.get('name', '') or '').strip()
+        if not name:
+            raise ValueError('name is required')
+
+        await self.ap.skill_service.delete_skill(name)
+        return {
+            'deleted': True,
+            'skill_name': name,
         }
 
     async def _invoke_import_skill_from_directory(self, parameters: dict) -> typing.Any:
@@ -101,6 +193,135 @@ class SkillAuthoringToolLoader(loader.ToolLoader):
             raise ValueError(f'Directory does not exist: {sandbox_path}')
         return host_path
 
+    def _build_create_skill_tool(self) -> resource_tool.LLMTool:
+        return resource_tool.LLMTool(
+            name=CREATE_SKILL_TOOL_NAME,
+            human_desc='Create a managed skill',
+            description=(
+                'Create a new managed skill directly in the skills store without using /workspace. '
+                'Use this for prompt-only skills or simple skills whose main content is the SKILL.md instructions. '
+                'Pure prompt skills should not depend on box or a workspace directory just to be created or edited later.'
+            ),
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'name': {
+                        'type': 'string',
+                        'description': 'Skill name. Use lowercase letters, numbers, hyphens, or underscores.',
+                    },
+                    'display_name': {
+                        'type': 'string',
+                        'description': 'Optional human-friendly display name.',
+                    },
+                    'description': {
+                        'type': 'string',
+                        'description': 'Optional concise description of what the skill does and when to use it.',
+                    },
+                    'instructions': {
+                        'type': 'string',
+                        'description': 'The SKILL.md body instructions for the new skill.',
+                    },
+                    'auto_activate': {
+                        'type': 'boolean',
+                        'description': 'Whether the skill should be considered for automatic activation. Defaults to true.',
+                    },
+                },
+                'required': ['name', 'instructions'],
+                'additionalProperties': False,
+            },
+            func=lambda parameters: parameters,
+        )
+
+    def _build_list_skills_tool(self) -> resource_tool.LLMTool:
+        return resource_tool.LLMTool(
+            name=LIST_SKILLS_TOOL_NAME,
+            human_desc='List managed skills',
+            description='List all managed skills so you can inspect what already exists before creating, updating, or deleting one.',
+            parameters={
+                'type': 'object',
+                'properties': {},
+                'additionalProperties': False,
+            },
+            func=lambda parameters: parameters,
+        )
+
+    def _build_get_skill_tool(self) -> resource_tool.LLMTool:
+        return resource_tool.LLMTool(
+            name=GET_SKILL_TOOL_NAME,
+            human_desc='Get a managed skill',
+            description='Fetch one managed skill by name, including its current metadata and instructions, without relying on /workspace or skill activation.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'name': {
+                        'type': 'string',
+                        'description': 'Existing skill name to fetch.',
+                    },
+                },
+                'required': ['name'],
+                'additionalProperties': False,
+            },
+            func=lambda parameters: parameters,
+        )
+
+    def _build_update_skill_tool(self) -> resource_tool.LLMTool:
+        return resource_tool.LLMTool(
+            name=UPDATE_SKILL_TOOL_NAME,
+            human_desc='Update a managed skill',
+            description=(
+                'Update an existing managed skill directly in the skills store without using /workspace. '
+                'Use this for prompt-only skills or for metadata and instruction changes to an existing skill. '
+                'Pure prompt skills should remain editable through managed skill tools instead of depending on box.'
+            ),
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'name': {
+                        'type': 'string',
+                        'description': 'Existing skill name to update.',
+                    },
+                    'display_name': {
+                        'type': 'string',
+                        'description': 'Optional new human-friendly display name.',
+                    },
+                    'description': {
+                        'type': 'string',
+                        'description': 'Optional new concise description.',
+                    },
+                    'instructions': {
+                        'type': 'string',
+                        'description': 'Optional replacement SKILL.md body instructions.',
+                    },
+                    'auto_activate': {
+                        'type': 'boolean',
+                        'description': 'Optional new auto_activate value.',
+                    },
+                },
+                'required': ['name'],
+                'additionalProperties': False,
+            },
+            func=lambda parameters: parameters,
+        )
+
+    def _build_delete_skill_tool(self) -> resource_tool.LLMTool:
+        return resource_tool.LLMTool(
+            name=DELETE_SKILL_TOOL_NAME,
+            human_desc='Delete a managed skill',
+            description='Delete an existing managed skill by name from the managed skills store.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'name': {
+                        'type': 'string',
+                        'description': 'Existing skill name to delete.',
+                    },
+                },
+                'required': ['name'],
+                'additionalProperties': False,
+            },
+            func=lambda parameters: parameters,
+        )
+
     def _build_import_skill_from_directory_tool(self) -> resource_tool.LLMTool:
         return resource_tool.LLMTool(
             name=IMPORT_SKILL_FROM_DIRECTORY_TOOL_NAME,
@@ -108,6 +329,8 @@ class SkillAuthoringToolLoader(loader.ToolLoader):
             description=(
                 'Import a skill package from a directory under /workspace into the managed skills store. '
                 'Use this after cloning or preparing a skill repository in the default workspace. '
+                'This is for file-based skills that actually need scripts, assets, or extra files. '
+                'Pure prompt skills should use create_skill or update_skill instead of depending on box. '
                 'If the source directory is already under the managed skills root, it will be registered in place instead of copied again.'
             ),
             parameters={
