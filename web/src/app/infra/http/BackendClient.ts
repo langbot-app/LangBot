@@ -671,7 +671,9 @@ export class BackendClient extends BaseHttpClient {
     });
   }
 
-  public previewSkillInstallFromUpload(file: File): Promise<{ skills: Skill[] }> {
+  public previewSkillInstallFromUpload(
+    file: File,
+  ): Promise<{ skills: Skill[] }> {
     const formData = new FormData();
     formData.append('file', file);
     return this.postFile('/api/v1/skills/install/upload/preview', formData);

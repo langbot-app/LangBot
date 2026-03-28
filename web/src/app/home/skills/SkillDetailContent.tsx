@@ -83,7 +83,9 @@ export default function SkillDetailContent({ id }: { id: string }) {
             <SkillForm
               key="new-skill"
               initSkillName={undefined}
-              onNewSkillCreated={(skillName) => handleImportedSkills([skillName])}
+              onNewSkillCreated={(skillName) =>
+                handleImportedSkills([skillName])
+              }
               onSkillUpdated={() => {}}
             />
           </div>
@@ -107,7 +109,9 @@ export default function SkillDetailContent({ id }: { id: string }) {
             <SkillForm
               key={id}
               initSkillName={id}
-              onNewSkillCreated={(skillName) => handleImportedSkills([skillName])}
+              onNewSkillCreated={(skillName) =>
+                handleImportedSkills([skillName])
+              }
               onSkillUpdated={handleSkillUpdated}
             />
 
@@ -123,9 +127,7 @@ export default function SkillDetailContent({ id }: { id: string }) {
               <CardContent>
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
-                    <p className="text-sm font-medium">
-                      {t('common.delete')}
-                    </p>
+                    <p className="text-sm font-medium">{t('common.delete')}</p>
                     <p className="text-sm text-muted-foreground">
                       {t('skills.deleteConfirmation')}
                     </p>

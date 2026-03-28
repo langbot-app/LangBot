@@ -67,7 +67,9 @@ export default function SkillGithubImportPanel({
   const [githubAssets, setGithubAssets] = useState<GithubAsset[]>([]);
   const [selectedAsset, setSelectedAsset] = useState<GithubAsset | null>(null);
   const [previewSkills, setPreviewSkills] = useState<PreviewSkill[]>([]);
-  const [selectedPreviewPaths, setSelectedPreviewPaths] = useState<string[]>([]);
+  const [selectedPreviewPaths, setSelectedPreviewPaths] = useState<string[]>(
+    [],
+  );
   const [activePreviewPath, setActivePreviewPath] = useState('');
   const [fetchingReleases, setFetchingReleases] = useState(false);
   const [fetchingAssets, setFetchingAssets] = useState(false);
@@ -75,9 +77,9 @@ export default function SkillGithubImportPanel({
   const [installingGithub, setInstallingGithub] = useState(false);
 
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploadPreviewSkills, setUploadPreviewSkills] = useState<PreviewSkill[]>(
-    [],
-  );
+  const [uploadPreviewSkills, setUploadPreviewSkills] = useState<
+    PreviewSkill[]
+  >([]);
   const [selectedUploadPreviewPaths, setSelectedUploadPreviewPaths] = useState<
     string[]
   >([]);
@@ -228,7 +230,11 @@ export default function SkillGithubImportPanel({
       );
       const skills = resp.skills as PreviewSkill[];
       setPreviewSkills(skills);
-      initializeSelection(skills, setSelectedPreviewPaths, setActivePreviewPath);
+      initializeSelection(
+        skills,
+        setSelectedPreviewPaths,
+        setActivePreviewPath,
+      );
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       setErrorMessage(message || t('skills.installError'));
@@ -542,7 +548,9 @@ export default function SkillGithubImportPanel({
                 <Button
                   type="button"
                   onClick={handleGithubImport}
-                  disabled={installingGithub || selectedPreviewPaths.length === 0}
+                  disabled={
+                    installingGithub || selectedPreviewPaths.length === 0
+                  }
                 >
                   {installingGithub
                     ? t('skills.installing')
@@ -575,7 +583,9 @@ export default function SkillGithubImportPanel({
             }}
           />
           {uploadFile && (
-            <div className="text-sm text-muted-foreground">{uploadFile.name}</div>
+            <div className="text-sm text-muted-foreground">
+              {uploadFile.name}
+            </div>
           )}
 
           <div className="flex justify-end">
@@ -605,7 +615,9 @@ export default function SkillGithubImportPanel({
                 <Button
                   type="button"
                   onClick={handleUploadImport}
-                  disabled={installingUpload || selectedUploadPreviewPaths.length === 0}
+                  disabled={
+                    installingUpload || selectedUploadPreviewPaths.length === 0
+                  }
                 >
                   {installingUpload
                     ? t('skills.installing')

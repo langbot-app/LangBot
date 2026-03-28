@@ -32,7 +32,9 @@ class PreProcessor(stage.PipelineStage):
     ) -> entities.StageProcessResult:
         """Process"""
         selected_runner = query.pipeline_config['ai']['runner']['runner']
-        include_skill_authoring = selected_runner == 'local-agent' and getattr(self.ap, 'skill_service', None) is not None
+        include_skill_authoring = (
+            selected_runner == 'local-agent' and getattr(self.ap, 'skill_service', None) is not None
+        )
 
         session = await self.ap.sess_mgr.get_session(query)
 
