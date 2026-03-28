@@ -18,6 +18,7 @@ import {
 import { httpClient } from '@/app/infra/http/HttpClient';
 import {
   userInfo,
+  systemInfo,
   initializeUserInfo,
   initializeSystemInfo,
 } from '@/app/infra/http';
@@ -446,6 +447,7 @@ export default function WizardPage() {
   const handleSkipConfirm = useCallback(() => {
     clearWizardState();
     httpClient.markWizardCompleted().catch(() => {});
+    systemInfo.wizard_completed = true;
     router.push('/home');
   }, [router]);
 
@@ -1041,6 +1043,7 @@ function StepDone() {
   const handleBack = useCallback(() => {
     clearWizardState();
     httpClient.markWizardCompleted().catch(() => {});
+    systemInfo.wizard_completed = true;
     router.push('/home/bots');
   }, [router]);
 
