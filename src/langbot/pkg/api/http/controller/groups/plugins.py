@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import quart
 import re
-import httpx
 import uuid
 import os
 
@@ -14,6 +13,8 @@ from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 
 @group.group_class('plugins', '/api/v1/plugins')
 class PluginsRouterGroup(group.RouterGroup):
+    _DEFAULT_GITHUB_REF = 'master'
+
     @staticmethod
     def _parse_github_repo(repo_url: str) -> tuple[str, str] | None:
         pattern = r'github\.com/([^/]+)/([^/]+?)(?:\.git)?(?:/.*)?$'
@@ -168,84 +169,25 @@ class PluginsRouterGroup(group.RouterGroup):
                 return self.http_status(400, -1, 'Invalid GitHub repository URL')
 
             owner, repo = parsed_repo
-
-            try:
-                async with httpx.AsyncClient(
-                    trust_env=True,
-                    follow_redirects=True,
-                    timeout=10,
-                ) as client:
-                    repo_response = await client.get(f'https://api.github.com/repos/{owner}/{repo}')
-                    repo_response.raise_for_status()
-                    repo_info = repo_response.json()
-
-                    releases_response = await client.get(f'https://api.github.com/repos/{owner}/{repo}/releases')
-                    releases_response.raise_for_status()
-                    releases = releases_response.json()
-
-                # Format releases data for frontend
-                formatted_releases = []
-                for release in releases:
-                    formatted_releases.append(
+            default_ref = self._DEFAULT_GITHUB_REF
+            return self.success(
+                data={
+                    'releases': [
                         {
-                            'id': release['id'],
-                            'tag_name': release['tag_name'],
-                            'name': release['name'],
-                            'published_at': release['published_at'],
-                            'prerelease': release['prerelease'],
-                            'draft': release['draft'],
-                            'source_type': 'release',
-                            'archive_url': release.get('zipball_url')
-                            or self._build_github_archive_url(owner, repo, release['tag_name']),
+                            'id': 0,
+                            'tag_name': default_ref,
+                            'name': default_ref,
+                            'published_at': '',
+                            'prerelease': False,
+                            'draft': False,
+                            'source_type': 'branch',
+                            'archive_url': self._build_github_archive_url(owner, repo, default_ref),
                         }
-                    )
-
-                repo_timestamp = (
-                    repo_info.get('pushed_at') or repo_info.get('updated_at') or repo_info.get('created_at')
-                )
-                if not formatted_releases:
-                    async with httpx.AsyncClient(
-                        trust_env=True,
-                        follow_redirects=True,
-                        timeout=10,
-                    ) as client:
-                        tags_response = await client.get(f'https://api.github.com/repos/{owner}/{repo}/tags')
-                        tags_response.raise_for_status()
-                        tags = tags_response.json()
-
-                    if tags:
-                        formatted_releases = [
-                            {
-                                'id': -(index + 1),
-                                'tag_name': tag['name'],
-                                'name': tag['name'],
-                                'published_at': repo_timestamp,
-                                'prerelease': False,
-                                'draft': False,
-                                'source_type': 'tag',
-                                'archive_url': tag.get('zipball_url')
-                                or self._build_github_archive_url(owner, repo, tag['name']),
-                            }
-                            for index, tag in enumerate(tags)
-                        ]
-                    else:
-                        default_branch = repo_info.get('default_branch') or 'main'
-                        formatted_releases = [
-                            {
-                                'id': 0,
-                                'tag_name': default_branch,
-                                'name': default_branch,
-                                'published_at': repo_timestamp,
-                                'prerelease': False,
-                                'draft': False,
-                                'source_type': 'branch',
-                                'archive_url': self._build_github_archive_url(owner, repo, default_branch),
-                            }
-                        ]
-
-                return self.success(data={'releases': formatted_releases, 'owner': owner, 'repo': repo})
-            except httpx.HTTPError as e:
-                return self.http_status(500, -1, f'Failed to fetch releases: {str(e)}')
+                    ],
+                    'owner': owner,
+                    'repo': repo,
+                }
+            )
 
         @self.route(
             '/github/release-assets',
@@ -257,70 +199,26 @@ class PluginsRouterGroup(group.RouterGroup):
             data = await quart.request.json
             owner = data.get('owner', '')
             repo = data.get('repo', '')
-            release_id = data.get('release_id', '')
-            release_tag = data.get('release_tag', '')
-            source_type = data.get('source_type', 'release')
+            release_tag = data.get('release_tag', '') or self._DEFAULT_GITHUB_REF
             archive_url = data.get('archive_url', '')
 
-            if not owner or not repo or release_id in ('', None):
+            if not owner or not repo:
                 return self.http_status(400, -1, 'Missing required parameters')
 
-            try:
-                if source_type in ('tag', 'branch') or int(release_id) <= 0:
-                    download_url = archive_url or self._build_github_archive_url(owner, repo, release_tag)
-                    return self.success(
-                        data={
-                            'assets': [
-                                {
-                                    'id': 0,
-                                    'name': 'Source code (zip)',
-                                    'size': 0,
-                                    'download_url': download_url,
-                                    'content_type': 'application/zip',
-                                }
-                            ]
-                        }
-                    )
-
-                # Fetch release assets from GitHub API
-                url = f'https://api.github.com/repos/{owner}/{repo}/releases/{release_id}'
-                async with httpx.AsyncClient(
-                    trust_env=True,
-                    follow_redirects=True,
-                    timeout=10,
-                ) as client:
-                    response = await client.get(
-                        url,
-                    )
-                    response.raise_for_status()
-                    release = response.json()
-
-                # Format assets data for frontend
-                formatted_assets = []
-                for asset in release.get('assets', []):
-                    formatted_assets.append(
+            download_url = archive_url or self._build_github_archive_url(owner, repo, release_tag)
+            return self.success(
+                data={
+                    'assets': [
                         {
-                            'id': asset['id'],
-                            'name': asset['name'],
-                            'size': asset['size'],
-                            'download_url': asset['browser_download_url'],
-                            'content_type': asset['content_type'],
+                            'id': 0,
+                            'name': 'Source code (zip)',
+                            'size': 0,
+                            'download_url': download_url,
+                            'content_type': 'application/zip',
                         }
-                    )
-
-                formatted_assets.append(
-                    {
-                        'id': 0,
-                        'name': 'Source code (zip)',
-                        'size': 0,
-                        'download_url': release['zipball_url'],
-                        'content_type': 'application/zip',
-                    }
-                )
-
-                return self.success(data={'assets': formatted_assets})
-            except (ValueError, httpx.HTTPError) as e:
-                return self.http_status(500, -1, f'Failed to fetch release assets: {str(e)}')
+                    ]
+                }
+            )
 
         @self.route('/install/github', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
         async def _() -> str:
@@ -330,13 +228,13 @@ class PluginsRouterGroup(group.RouterGroup):
                 return limit_error
 
             data = await quart.request.json
-            asset_url = data.get('asset_url', '')
             owner = data.get('owner', '')
             repo = data.get('repo', '')
-            release_tag = data.get('release_tag', '')
+            release_tag = data.get('release_tag', '') or self._DEFAULT_GITHUB_REF
+            asset_url = data.get('asset_url', '') or self._build_github_archive_url(owner, repo, release_tag)
 
-            if not asset_url:
-                return self.http_status(400, -1, 'Missing asset_url parameter')
+            if not owner or not repo:
+                return self.http_status(400, -1, 'Missing owner or repo parameter')
 
             ctx = taskmgr.TaskContext.new()
             ctx.metadata['plugin_name'] = f'{owner}/{repo}'
